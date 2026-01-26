@@ -1,0 +1,42 @@
+{
+  "global": {
+    "storage_path": "./data",
+    "base_agent": "default"
+  },
+  "endpoints": {
+    "local_ollama": {
+      "type": "ollama",
+      "url": "http://192.168.1.232:11434",
+      "timeout_seconds": 360
+    },
+    "research_agent": {
+      "type": "remote_agent",
+      "url": "http://localhost:8080/agent",
+      "timeout_seconds": 360,
+      "auth_token": "bearer-token-placeholder",
+      "capabilities": {
+        "web_search": "true",
+        "reasoning": "advanced"
+      }
+    }
+  },
+  "security": {
+    "approval_required_for": ["shell", "web_fetch", "file_write"],
+    "always_allow_commands": ["ls", "pwd", "grep", "cat", "echo", "whoami"],
+    "blocked_commands": ["rm", "mv", "shutdown", "reboot", ":(){ :|:& };:"]
+  },
+  "models": {
+    "Devstral2": { "model_name": "devstral2", "endpoint": "local_ollama", "max_tokens": 30000 },
+    "GLM-4.7": { "model_name": "glf4.7f", "endpoint": "local_ollama", "max_tokens": 15000 }
+  },
+  "agents": {
+    "default": {
+      "system_prompt": "default_system",
+      "model": "Devstral2",
+      "tools": ["shell", "files"]
+    }
+  },
+  "prompts" : {
+    "default_system": "You are Magenta, a helpful AI assistant."
+  }
+}
