@@ -1,6 +1,7 @@
 package com.magenta.data;
 
 import com.magenta.config.ConfigManager;
+
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -12,9 +13,9 @@ public class DatabaseService {
     private Connection taskConnection;
 
     public void init() throws SQLException {
-        String storagePath = ConfigManager.get().global.storagePath();
+        String storagePath = ConfigManager.get().baseStoragePath();
         File dir = new File(storagePath);
-        if (!dir.exists()) dir.mkdirs();
+        if (!dir.exists()) { dir.mkdirs(); }
 
         agentConnection = DriverManager.getConnection("jdbc:sqlite:" + storagePath + "/agent.db");
         taskConnection = DriverManager.getConnection("jdbc:sqlite:" + storagePath + "/tasks.db");
@@ -38,10 +39,11 @@ public class DatabaseService {
     }
 
     public Connection getAgentConnection() { return agentConnection; }
+
     public Connection getTaskConnection() { return taskConnection; }
-    
+
     public void close() {
-        try { if (agentConnection != null) agentConnection.close(); } catch (SQLException e) {}
-        try { if (taskConnection != null) taskConnection.close(); } catch (SQLException e) {}
+        try { if (agentConnection != null) agentConnection.close(); } catch (SQLException e) { }
+        try { if (taskConnection != null) taskConnection.close(); } catch (SQLException e) { }
     }
 }

@@ -1,6 +1,7 @@
 package com.magenta.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.io.File;
 import java.io.IOException;
 
@@ -10,7 +11,14 @@ public class ConfigManager {
     public static Config load(String filePath) throws IOException {
         ObjectMapper mapper = new ObjectMapper();
         instance = mapper.readValue(new File(filePath), Config.class);
+        instance.initializeReferences();
         return instance;
+    }
+
+    public static Config loadOrFail(String filePath) {
+        try {
+            return load(filePath);
+        } catch (IOException e) { throw new RuntimeException("Failed to load config file, cannot proceed: " + e); }
     }
 
     public static Config get() {

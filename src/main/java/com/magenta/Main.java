@@ -1,12 +1,15 @@
 package com.magenta;
 
+import com.magenta.config.Arg;
+import com.magenta.config.Config;
 import com.magenta.data.DatabaseService;
 import com.magenta.domain.TodoService;
 import com.magenta.memory.VectorStoreService;
+import com.magenta.state.SessionState;
 import com.magenta.tools.*;
+import com.magenta.utility.ArgParser;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatLanguageModel;
-import dev.langchain4j.model.ollama.OllamaChatModel;
 import dev.langchain4j.service.AiServices;
 import dev.langchain4j.service.SystemMessage;
 import org.jline.reader.LineReader;
@@ -16,7 +19,7 @@ import org.jline.terminal.TerminalBuilder;
 
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.time.Duration;
+import java.util.Map;
 
 public class Main {
 
@@ -41,7 +44,13 @@ public class Main {
     }
 
     public static void main(String[] args) {
+        Map<Arg, Arg.Value> arguments = ArgParser.parseArgs(args);
+        SessionState session = new SessionState(arguments);
+
         System.out.println("Starting Magenta Experiment CLI...");
+
+
+        System.out.println("Loading config from: " + session.config());
 
         // 1. Services
         DatabaseService dbService = new DatabaseService();
@@ -62,15 +71,14 @@ public class Main {
         KnowledgeTools knowledgeTools = new KnowledgeTools(vectorStoreService);
         DelegateTool delegateTool = new DelegateTool();
 
+
+        Config.AgentConfig baseAgent = session.config().baseAgent();
+
         // 3. Model Configuration
         System.out.println("Connecting to Ollama (glm4.7f)...");
-        ChatLanguageModel model = OllamaChatModel.builder()
-                .baseUrl("http://192.168.1.232:11434")
-                .modelName("glm4.7f")
-                .timeout(Duration.ofSeconds(120))
-                .temperature(0.25)
-                .numCtx(30000)
-                .build();
+
+
+        ChatLanguageModel model = baseAgent.model().getAsChatModel();
 
         // 4. Build Agent
         ExperimentAgent agent = AiServices.builder(ExperimentAgent.class)

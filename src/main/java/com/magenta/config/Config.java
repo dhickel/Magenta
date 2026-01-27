@@ -3,15 +3,18 @@ package com.magenta.config;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.chat.StreamingChatLanguageModel;
+import dev.langchain4j.model.ollama.OllamaChatModel;
+import dev.langchain4j.model.ollama.OllamaStreamingChatModel;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
 public class Config {
-
-
     @JsonProperty("global")
-    public GlobalConfig global;
+    private GlobalConfig global;
 
     @JsonProperty("endpoints")
     public Map<String, EndpointConfig> endpoints;
@@ -27,6 +30,22 @@ public class Config {
 
     @JsonProperty("prompts")
     public Map<String, String> prompts;
+
+    public void initializeReferences() {
+        models.values().forEach(model -> model.config = this);
+        agents.values().forEach(agent -> agent.config = this);
+    }
+
+    public AgentConfig baseAgent() {
+        AgentConfig agent = agents.get(global.baseAgent());
+        if (agent == null) { throw new IllegalStateException("Base agent not found: " + global.baseAgent()); }
+        return agent;
+    }
+
+    public String baseStoragePath() {
+        if (global.storagePath == null) { throw new IllegalStateException("No storage path defined"); }
+        return global.storagePath;
+    }
 
     public record GlobalConfig(
             @JsonProperty("base_agent") String baseAgent,
@@ -46,16 +65,55 @@ public class Config {
         private String endpointKey;
         @JsonProperty("max_tokens")
         private int maxTokens;
+        @JsonProperty("temperature")
+        private double temperature;
+
+        private Config config;
 
         public String modelName() { return modelName; }
 
         public int maxTokens() { return maxTokens; }
 
-        public EndpointConfig endpoint(Config config) {
+        public double temperature() { return temperature; }
+
+        public EndpointConfig endpoint() {
             EndpointConfig endpoint = config.endpoints.get(endpointKey);
             if (endpoint == null) { throw new IllegalStateException("Endpoint not found: " + endpointKey); }
             return endpoint;
         }
+
+        public ChatLanguageModel getAsChatModel() {
+            return switch (endpoint()) {
+                case EndpointConfig.Anthropic ep -> throw new UnsupportedOperationException();
+                case EndpointConfig.Ollama ep -> OllamaChatModel.builder()
+                        .baseUrl(ep.url)
+                        .modelName(modelName)
+                        .timeout(Duration.ofSeconds(ep.timeoutSeconds))
+                        .temperature(temperature)
+                        .numCtx(maxTokens)
+                        .build();
+                case EndpointConfig.OpenAI ep -> throw new UnsupportedOperationException();
+                case EndpointConfig.RemoteAgent ep -> throw new UnsupportedOperationException();
+            };
+        }
+
+
+        public StreamingChatLanguageModel getAsStreamingChatModel() {
+            return switch (endpoint()) {
+                case EndpointConfig.Anthropic ep -> throw new UnsupportedOperationException();
+                case EndpointConfig.Ollama ep -> OllamaStreamingChatModel.builder()
+                        .baseUrl(ep.url)
+                        .modelName(modelName)
+                        .timeout(Duration.ofSeconds(ep.timeoutSeconds))
+                        .temperature(temperature)
+                        .numCtx(maxTokens)
+                        .build();
+                case EndpointConfig.OpenAI ep -> throw new UnsupportedOperationException();
+                case EndpointConfig.RemoteAgent ep -> throw new UnsupportedOperationException();
+            };
+        }
+
+
     }
 
     public static class AgentConfig {
@@ -63,17 +121,20 @@ public class Config {
         private String systemPromptKey;
         @JsonProperty("model")
         private String modelKey;
+        @JsonProperty("tools")
         private List<String> tools;
+
+        private Config config;
 
         public List<String> tools() { return tools; }
 
-        public String systemPrompt(Config config) {
+        public String systemPrompt() {
             String prompt = config.prompts.get(systemPromptKey);
             if (prompt == null) { throw new IllegalStateException("System prompt not found: " + systemPromptKey); }
             return prompt;
         }
 
-        public ModelConfig model(Config config) {
+        public ModelConfig model() {
             ModelConfig model = config.models.get(modelKey);
             if (model == null) { throw new IllegalStateException("Model not found: " + modelKey); }
             return model;
@@ -93,30 +154,30 @@ public class Config {
             @JsonSubTypes.Type(value = EndpointConfig.RemoteAgent.class, name = "remote_agent")
     })
     public sealed interface EndpointConfig {
-        Integer timeoutSeconds();
+        int timeoutSeconds();
 
         record Ollama(
                 String url,
-                @JsonProperty("timeout_seconds") Integer timeoutSeconds
+                @JsonProperty("timeout_seconds") int timeoutSeconds
         ) implements EndpointConfig { }
 
         record OpenAI(
                 @JsonProperty("api_key") String apiKey,
                 @JsonProperty("org_id") String orgId,
                 @JsonProperty("base_url") String baseUrl,
-                @JsonProperty("timeout_seconds") Integer timeoutSeconds
+                @JsonProperty("timeout_seconds") int timeoutSeconds
         ) implements EndpointConfig { }
 
         record Anthropic(
                 @JsonProperty("api_key") String apiKey,
                 String version,
-                @JsonProperty("timeout_seconds") Integer timeoutSeconds
+                @JsonProperty("timeout_seconds") int timeoutSeconds
         ) implements EndpointConfig { }
 
         record RemoteAgent(
                 String url,
                 @JsonProperty("auth_token") String authToken,
-                @JsonProperty("timeout_seconds") Integer timeoutSeconds,
+                @JsonProperty("timeout_seconds") int timeoutSeconds,
                 Map<String, String> capabilities
         ) implements EndpointConfig { }
     }

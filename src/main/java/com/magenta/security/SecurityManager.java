@@ -10,8 +10,8 @@ public class SecurityManager {
         SecurityConfig config = ConfigManager.get().security;
         
         // 1. Blacklist (Blocking)
-        if (config.blockedCommands != null) {
-            for (String blocked : config.blockedCommands) {
+        if (config.blockedCommands()!= null) {
+            for (String blocked : config.blockedCommands()) {
                 if (command.contains(blocked)) {
                     System.out.println("[SECURITY] AUTOMATICALLY BLOCKED: " + command + " (Matches rule: " + blocked + ")");
                     return false;
@@ -20,8 +20,8 @@ public class SecurityManager {
         }
 
         // 2. Whitelist (Auto-Allow)
-        if (config.alwaysAllowCommands != null) {
-            for (String allowed : config.alwaysAllowCommands) {
+        if (config.alwaysAllowCommands() != null) {
+            for (String allowed : config.alwaysAllowCommands()) {
                 // strict check: command starts with allowed + space or is exact match
                 if (command.equals(allowed) || command.startsWith(allowed + " ")) {
                     return true;
@@ -30,7 +30,7 @@ public class SecurityManager {
         }
 
         // 3. Approval Check
-        if (config.approvalRequiredFor != null && config.approvalRequiredFor.contains(toolType)) {
+        if (config.approvalRequiredFor() != null && config.approvalRequiredFor().contains(toolType)) {
             return requestUserApproval(toolType, command);
         }
 
