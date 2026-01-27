@@ -12,6 +12,12 @@ target/
 *.iml
 *.ipr
 
+
+### MINE ###
+agents.md
+.claude/
+claude.md
+
 ### Eclipse ###
 .apt_generated
 .classpath
