@@ -2,26 +2,18 @@ package com.magenta.session;
 
 import com.magenta.io.IOManager;
 
-public class Session {
-    private final SessionState state;
+/**
+ * Interface defining a session's I/O context.
+ * Implementations provide access to I/O, global context, and exit control.
+ * All I/O interactions go through the IOManager.
+ * Sessions own their resources and must be closed when done.
+ */
+public interface Session extends AutoCloseable {
+    IOManager io();
+    GlobalContext context();
+    boolean shouldExit();
+    void setExit(boolean exit);
 
-    public Session(SessionState state) {
-        this.state = state;
-    }
-
-    public void setExit(boolean shouldExit) {
-        state.setExit(shouldExit);
-    }
-
-    public boolean shouldExit() {
-        return state.shouldExit();
-    }
-
-    protected SessionState state() {
-        return state;
-    }
-
-    protected IOManager io() {
-        return state.getIOManager();
-    }
+    @Override
+    void close() throws Exception;
 }

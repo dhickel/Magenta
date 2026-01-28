@@ -5,7 +5,7 @@ package com.magenta.io;
  */
 public class Writer implements ResponseHandler {
 
-    protected final IOManager io;
+    protected final OutputPipe pipe;
     protected final Integer colorCode;
     private final StringBuilder buffer = new StringBuilder();
 
@@ -13,12 +13,12 @@ public class Writer implements ResponseHandler {
         buffer.append(token);
     }
 
-    public Writer(IOManager io) {
-        this(io, null);
+    public Writer(OutputPipe pipe) {
+        this(pipe, null);
     }
 
-    public Writer(IOManager io, Integer colorCode) {
-        this.io = io;
+    public Writer(OutputPipe pipe, Integer colorCode) {
+        this.pipe = pipe;
         this.colorCode = colorCode;
     }
 
@@ -26,25 +26,35 @@ public class Writer implements ResponseHandler {
     public void write(String token) {
         appendBuffer(token);
         if (colorCode != null) {
-            io.print(token, colorCode);
+            pipe.print(token, colorCode);
         } else {
-            io.print(token);
+            pipe.print(token);
         }
     }
 
     @Override
     public void complete() {
-        io.println("");
+        pipe.println("");
+        reset();
     }
 
     @Override
     public void error(Throwable t) {
-        io.println("");
-        io.error("Error: " + t.getMessage());
+        pipe.println("");
+        pipe.println("Error: " + t.getMessage());
+        reset();
     }
 
     @Override
     public String getBuffer() {
         return buffer.toString();
+    }
+
+    /**
+     * Reset the buffer for reuse.
+     * Called automatically by complete() and error().
+     */
+    protected void reset() {
+        buffer.setLength(0);
     }
 }

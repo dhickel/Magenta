@@ -1,17 +1,25 @@
 package com.magenta.tools;
 
+import com.magenta.io.IOManager;
+import com.magenta.security.SecurityManager;
 import dev.langchain4j.agent.tool.Tool;
 import org.apache.commons.exec.CommandLine;
 import org.apache.commons.exec.DefaultExecutor;
 import org.apache.commons.exec.PumpStreamHandler;
 import org.apache.commons.exec.ExecuteWatchdog;
 
-import com.magenta.security.SecurityManager;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 
 public class ShellTools {
+
+    private final SecurityManager securityManager;
+    private final IOManager io;
+
+    public ShellTools(SecurityManager securityManager, IOManager io) {
+        this.securityManager = securityManager;
+        this.io = io;
+    }
 
     @Tool("Execute a shell command. Use with EXTREME CAUTION. Only run commands you understand and that are safe.")
     public String runShellCommand(String command) {
@@ -19,8 +27,8 @@ public class ShellTools {
             return "Error: Command cannot be empty.";
         }
 
-        // Security Check
-        if (!SecurityManager.requireApproval("shell", command)) {
+        // Security check via instance method
+        if (!securityManager.requireToolApproval("shell", command, io)) {
             return "Error: Command execution denied by user or security policy.";
         }
 
@@ -29,11 +37,11 @@ public class ShellTools {
 
         CommandLine cmdLine = CommandLine.parse("/bin/bash");
         cmdLine.addArgument("-c");
-        cmdLine.addArgument(command, false); // false = handle quoting manually if needed, but here we pass the whole string
+        cmdLine.addArgument(command, false);
 
         DefaultExecutor executor = new DefaultExecutor();
         executor.setStreamHandler(streamHandler);
-        
+
         // Timeout of 60 seconds
         ExecuteWatchdog watchdog = new ExecuteWatchdog(60000);
         executor.setWatchdog(watchdog);

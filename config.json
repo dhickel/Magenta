@@ -30,10 +30,12 @@
       }
     }
   },
-  "security": {
-    "approval_required_for": ["shell", "web_fetch", "file_write"],
-    "always_allow_commands": ["ls", "pwd", "grep", "cat", "echo", "whoami"],
-    "blocked_commands": ["rm", "mv", "shutdown", "reboot", ":(){ :|:& };:"]
+  "securities": {
+    "default": {
+      "approval_required_for": ["shell", "web_fetch", "file_write"],
+      "always_allow_commands": ["ls", "pwd", "grep", "cat", "echo", "whoami"],
+      "blocked_commands": ["rm", "mv", "shutdown", "reboot", ":(){ :|:& };:"]
+    }
   },
   "models": {
     "Devstral2": { "model_name": "devstral2", "endpoint": "local_ollama", "max_tokens": 30000, "temperature": 0.2 },
@@ -43,6 +45,7 @@
     "default": {
       "system_prompt": "default_system",
       "model": "Devstral2",
+      "security": "default",
       "tools": ["shell", "files"],
       "color": 5
     }

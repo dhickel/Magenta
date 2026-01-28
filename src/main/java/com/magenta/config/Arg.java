@@ -48,8 +48,6 @@ public enum Arg {
         Map<Arg, Value> argMap = new HashMap<>((args.length / 2) + 2);
         for (int i = 0; i < args.length; ++i) {
 
-
-
             switch (args[i]) {
                 case "--config" -> {
                     argMap.put(Arg.CONFIG, parseString.apply(i));
@@ -59,6 +57,8 @@ public enum Arg {
             }
         }
 
+        // Ensure we always have our base config if no other config is passed
+        argMap.computeIfAbsent(Arg.CONFIG, (_) -> Arg.Value.String.of("config.json"));
 
         return argMap;
     }

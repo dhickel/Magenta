@@ -7,10 +7,15 @@ public sealed interface Command {
     record Clear() implements Command {}
     record History() implements Command {}
     record Unknown(String raw) implements Command {}
+    record Message(String text) implements Command {}
 
     static Command parse(String input) {
-        if (input == null || !input.startsWith("/")) {
+        if (input == null || input.isBlank()) {
             return null;
+        }
+
+        if (!input.startsWith("/")) {
+            return new Message(input);
         }
 
         String cmd = input.substring(1).trim().toLowerCase();

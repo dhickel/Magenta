@@ -8,17 +8,25 @@ import java.util.concurrent.TimeUnit;
 /**
  * Writer with smooth character-by-character output.
  * Queues tokens and displays them with a configurable delay.
+ * Reusable - resets state after complete()/error().
  */
 public class SmoothWriter extends Writer {
 
-    private final BlockingQueue<String> queue = new LinkedBlockingQueue<>();
-    private final CountDownLatch finished = new CountDownLatch(1);
     private final int charDelayMs;
-    private volatile boolean done = false;
+    private BlockingQueue<String> queue;
+    private CountDownLatch finished;
+    private volatile boolean done;
 
-    public SmoothWriter(IOManager io, Integer colorCode, int charDelayMs) {
-        super(io, colorCode);
+    public SmoothWriter(OutputPipe pipe, Integer colorCode, int charDelayMs) {
+        super(pipe, colorCode);
         this.charDelayMs = charDelayMs;
+        resetState();
+    }
+
+    private void resetState() {
+        this.queue = new LinkedBlockingQueue<>();
+        this.finished = new CountDownLatch(1);
+        this.done = false;
         startDisplayThread();
     }
 
@@ -30,15 +38,15 @@ public class SmoothWriter extends Writer {
                     if (token != null) {
                         for (char c : token.toCharArray()) {
                             if (colorCode != null) {
-                                io.print(String.valueOf(c), colorCode);
+                                pipe.print(String.valueOf(c), colorCode);
                             } else {
-                                io.print(String.valueOf(c));
+                                pipe.print(String.valueOf(c));
                             }
                             Thread.sleep(charDelayMs);
                         }
                     }
                 }
-                io.println("");
+                pipe.println("");
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } finally {
@@ -61,6 +69,7 @@ public class SmoothWriter extends Writer {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+        reset();
     }
 
     @Override
@@ -71,6 +80,13 @@ public class SmoothWriter extends Writer {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-        io.error("Error: " + t.getMessage());
+        pipe.println("Error: " + t.getMessage());
+        reset();
+    }
+
+    @Override
+    protected void reset() {
+        super.reset();
+        resetState(); // Restart display thread with fresh state
     }
 }

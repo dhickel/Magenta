@@ -3,15 +3,12 @@ package com.magenta.config;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.magenta.model.ChatModel;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.ollama.OllamaChatModel;
 import dev.langchain4j.model.ollama.OllamaStreamingChatModel;
 
-import java.io.File;
-import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -26,8 +23,8 @@ public class Config {
     @JsonProperty("endpoints")
     public Map<String, EndpointConfig> endpoints;
 
-    @JsonProperty("security")
-    public SecurityConfig security;
+    @JsonProperty("securities")
+    public Map<String, SecurityConfig> securities;
 
     @JsonProperty("colors")
     public ColorsConfig colors;
@@ -44,6 +41,10 @@ public class Config {
     public void initializeReferences() {
         models.values().forEach(model -> model.config = this);
         agents.values().forEach(agent -> agent.config = this);
+    }
+
+    public GlobalConfig global() {
+        return global;
     }
 
     public AgentConfig baseAgent() {
@@ -182,6 +183,8 @@ public class Config {
         private String systemPromptKey;
         @JsonProperty("model")
         private String modelKey;
+        @JsonProperty("security")
+        private String securityKey;
         @JsonProperty("tools")
         private List<String> tools;
         @JsonProperty("color")
@@ -203,6 +206,12 @@ public class Config {
             ModelConfig model = config.models.get(modelKey);
             if (model == null) { throw new IllegalStateException("Model not found: " + modelKey); }
             return model;
+        }
+
+        public SecurityConfig security() {
+            SecurityConfig security = config.securities.get(securityKey);
+            if (security == null) { throw new IllegalStateException("Security config not found: " + securityKey); }
+            return security;
         }
     }
 

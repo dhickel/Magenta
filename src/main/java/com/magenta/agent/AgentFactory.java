@@ -1,8 +1,7 @@
 package com.magenta.agent;
 
-import com.magenta.tools.*;
-import com.magenta.memory.VectorStoreService;
-import com.magenta.domain.TodoService;
+import com.magenta.io.IOManager;
+import com.magenta.tools.ToolProvider;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.ollama.OllamaChatModel;
@@ -10,6 +9,7 @@ import dev.langchain4j.service.AiServices;
 import dev.langchain4j.service.SystemMessage;
 
 import java.time.Duration;
+import java.util.List;
 
 public class AgentFactory {
 
@@ -25,24 +25,27 @@ public class AgentFactory {
         return OllamaChatModel.builder()
                 .baseUrl(OLLAMA_BASE_URL)
                 .modelName(MODEL_NAME)
-                .timeout(Duration.ofSeconds(120)) // Longer timeout for sub-tasks
+                .timeout(Duration.ofSeconds(120))
                 .temperature(0.0)
                 .build();
     }
 
-    public static SubAgent createSpecializedAgent(String roleDescription) {
+    public static SubAgent createSpecializedAgent(
+            String roleDescription,
+            List<String> toolNames,
+            IOManager io,
+            ToolProvider toolProvider
+    ) {
         ChatLanguageModel model = createModel();
-        
-        // For simplicity, sub-agents get a basic set of tools or none. 
-        // In a full system, we might inject specific tools based on role.
-        // Here we give them FileSystem and Shell tools to be useful "workers".
-        FileSystemTools fileSystemTools = new FileSystemTools();
-        ShellTools shellTools = new ShellTools();
+
+        // Create tools from configuration with IOManager context
+        // Security is enforced within individual tools via requireToolApproval()
+        Object[] tools = toolProvider.createTools(toolNames, io);
 
         return AiServices.builder(SubAgent.class)
                 .chatLanguageModel(model)
                 .chatMemory(MessageWindowChatMemory.withMaxMessages(10))
-                .tools(fileSystemTools, shellTools)
+                .tools(tools)
                 .systemMessageProvider(chatMemoryId -> "You are a specialized assistant. Role: " + roleDescription)
                 .build();
     }
