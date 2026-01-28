@@ -3,16 +3,23 @@ package com.magenta.config;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.magenta.model.ChatModel;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.ollama.OllamaChatModel;
 import dev.langchain4j.model.ollama.OllamaStreamingChatModel;
 
+import java.io.File;
+import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
 public class Config {
+
+
+
     @JsonProperty("global")
     private GlobalConfig global;
 
@@ -21,6 +28,9 @@ public class Config {
 
     @JsonProperty("security")
     public SecurityConfig security;
+
+    @JsonProperty("colors")
+    public ColorsConfig colors;
 
     @JsonProperty("models")
     public Map<String, ModelConfig> models;
@@ -47,16 +57,55 @@ public class Config {
         return global.storagePath;
     }
 
+    public int streamDelayMs() {
+        return global.getStreamDelayMs();
+    }
+
     public record GlobalConfig(
             @JsonProperty("base_agent") String baseAgent,
-            @JsonProperty("storage_path") String storagePath
-    ) { }
+            @JsonProperty("storage_path") String storagePath,
+            @JsonProperty("stream_delay_ms") Integer streamDelayMs
+    ) {
+        public int getStreamDelayMs() {
+            return streamDelayMs != null ? streamDelayMs : 0;
+        }
+    }
 
     public record SecurityConfig(
             @JsonProperty("approval_required_for") List<String> approvalRequiredFor,
             @JsonProperty("always_allow_commands") List<String> alwaysAllowCommands,
             @JsonProperty("blocked_commands") List<String> blockedCommands
     ) { }
+
+    /**
+     * Color codes (JLine AttributedStyle constants):
+     * 0=BLACK, 1=RED, 2=GREEN, 3=YELLOW, 4=BLUE, 5=MAGENTA, 6=CYAN, 7=WHITE
+     * Add 8 for bright variants (e.g., 9=BRIGHT_RED)
+     */
+    public record ColorsConfig(
+            @JsonProperty("error") Integer error,
+            @JsonProperty("warning") Integer warning,
+            @JsonProperty("success") Integer success,
+            @JsonProperty("info") Integer info,
+            @JsonProperty("agent") Integer agent,
+            @JsonProperty("prompt") Integer prompt,
+            @JsonProperty("security") Integer security,
+            @JsonProperty("command") Integer command
+    ) {
+        public Integer getColor(String styleName) {
+            return switch (styleName.toLowerCase()) {
+                case "error" -> error;
+                case "warning" -> warning;
+                case "success" -> success;
+                case "info" -> info;
+                case "agent" -> agent;
+                case "prompt" -> prompt;
+                case "security" -> security;
+                case "command" -> command;
+                default -> null;
+            };
+        }
+    }
 
     public static class ModelConfig {
         @JsonProperty("model_name")
@@ -113,7 +162,19 @@ public class Config {
             };
         }
 
+        public ChatModel asChatModel(boolean streaming) {
+            return streaming
+                    ? new ChatModel.Streaming(getAsStreamingChatModel())
+                    : new ChatModel.Blocking(getAsChatModel());
+        }
 
+        public ChatModel asStreamingChatModel() {
+            return new ChatModel.Streaming(getAsStreamingChatModel());
+        }
+
+        public ChatModel asBlockingChatModel() {
+            return new ChatModel.Blocking(getAsChatModel());
+        }
     }
 
     public static class AgentConfig {
@@ -123,10 +184,14 @@ public class Config {
         private String modelKey;
         @JsonProperty("tools")
         private List<String> tools;
+        @JsonProperty("color")
+        private Integer color;
 
         private Config config;
 
         public List<String> tools() { return tools; }
+
+        public Integer color() { return color; }
 
         public String systemPrompt() {
             String prompt = config.prompts.get(systemPromptKey);

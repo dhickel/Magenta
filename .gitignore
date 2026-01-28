@@ -16,6 +16,7 @@ target/
 ### MINE ###
 agents.md
 .claude/
+.internal-dev/
 claude.md
 
 ### Eclipse ###

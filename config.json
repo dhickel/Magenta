@@ -1,7 +1,17 @@
 {
   "global": {
     "storage_path": "./data",
-    "base_agent": "default"
+    "base_agent": "default",
+    "stream_delay_ms": 10
+  },
+  "colors": {
+    "error": 1,
+    "warning": 3,
+    "success": 2,
+    "info": 6,
+    "prompt": 15,
+    "security": 9,
+    "command": 5
   },
   "endpoints": {
     "local_ollama": {
@@ -33,7 +43,8 @@
     "default": {
       "system_prompt": "default_system",
       "model": "Devstral2",
-      "tools": ["shell", "files"]
+      "tools": ["shell", "files"],
+      "color": 5
     }
   },
   "prompts" : {

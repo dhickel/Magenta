@@ -10,9 +10,9 @@ public class ConfigManager {
 
     public static Config load(String filePath) throws IOException {
         ObjectMapper mapper = new ObjectMapper();
-        instance = mapper.readValue(new File(filePath), Config.class);
-        instance.initializeReferences();
-        return instance;
+        Config conf = mapper.readValue(new File(filePath), Config.class);
+        conf.initializeReferences();
+        return conf;
     }
 
     public static Config loadOrFail(String filePath) {

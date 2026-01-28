@@ -1,14 +1,70 @@
 package com.magenta.config;
 
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.Consumer;
+import java.util.function.Function;
 
 public enum Arg {
-
-
     CONFIG;
 
-    public enum Flag {
 
+    public static Map<Arg, Value> parseAll(String[] args) {
+        if (args.length == 0) { return new HashMap<>(); }
+
+        Consumer<Integer> checkLength = idx -> {
+            if (idx > args.length) { throw new IllegalStateException("Argument must have value, index: " + idx); }
+        };
+
+
+        Function<Integer, Arg.Value> parseFlag = idx -> {
+             switch(args[idx]) {
+                 default -> throw new IllegalStateException("Unexpected value: " + args[idx]);
+             }
+        };
+
+        Function<Integer, Arg.Value> parseFloat = idx -> {
+            checkLength.accept(idx + 1);
+            float val = java.lang.Float.parseFloat(args[idx + 1]);
+            return Arg.Value.Float.of(val);
+        };
+
+        Function<Integer, Arg.Value> parseInt = idx -> {
+            checkLength.accept(idx + 1);
+            int val = java.lang.Integer.parseInt(args[idx + 1]);
+            return Arg.Value.Int.of(val);
+        };
+
+        Function<Integer, Arg.Value> parseString = idx -> {
+            checkLength.accept(idx + 1);
+            String val = args[idx + 1];
+            return Arg.Value.String.of(val);
+        };
+
+
+
+
+        Map<Arg, Value> argMap = new HashMap<>((args.length / 2) + 2);
+        for (int i = 0; i < args.length; ++i) {
+
+
+
+            switch (args[i]) {
+                case "--config" -> {
+                    argMap.put(Arg.CONFIG, parseString.apply(i));
+                    i++;
+                }
+                default -> throw new IllegalStateException("Invalid argument: " + args[i]);
+            }
+        }
+
+
+        return argMap;
+    }
+
+
+    public enum Flag {
     }
 
     public sealed interface Value {
@@ -33,7 +89,6 @@ public enum Arg {
                 }
             }
         }
-
 
         default java.lang.String getString() {
             return switch (this) {

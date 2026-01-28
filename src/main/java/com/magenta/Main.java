@@ -1,109 +1,35 @@
 package com.magenta;
 
 import com.magenta.config.Arg;
-import com.magenta.config.Config;
-import com.magenta.data.DatabaseService;
-import com.magenta.domain.TodoService;
-import com.magenta.memory.VectorStoreService;
-import com.magenta.state.SessionState;
-import com.magenta.tools.*;
-import com.magenta.utility.ArgParser;
-import dev.langchain4j.memory.chat.MessageWindowChatMemory;
-import dev.langchain4j.model.chat.ChatLanguageModel;
-import dev.langchain4j.service.AiServices;
-import dev.langchain4j.service.SystemMessage;
-import org.jline.reader.LineReader;
-import org.jline.reader.LineReaderBuilder;
-import org.jline.terminal.Terminal;
-import org.jline.terminal.TerminalBuilder;
+import com.magenta.io.IOManager;
+import com.magenta.security.SecurityManager;
+import com.magenta.session.SessionState;
+import com.magenta.session.AgentSession;
 
 import java.io.IOException;
-import java.io.PrintWriter;
 import java.util.Map;
 
 public class Main {
 
-    public interface ExperimentAgent {
-        @SystemMessage("""
-                You are a Test Agent for the Magenta framework.
-                You are running in an experimental CLI loop to help the developer test tools.
-                
-                TOOLS:
-                - File System: Read/Write/List files.
-                - Shell: Execute commands.
-                - Web: Fetch content.
-                - Todo: Manage tasks.
-                - Knowledge: Store/Retrieve vectors.
-                
-                INSTRUCTIONS:
-                - Use tools whenever appropriate.
-                - Be concise but helpful.
-                - If a tool fails, report the error clearly.
-                """)
-        String chat(String userMessage);
-    }
-
     public static void main(String[] args) {
-        Map<Arg, Arg.Value> arguments = ArgParser.parseArgs(args);
-        SessionState session = new SessionState(arguments);
+        Map<Arg, Arg.Value> arguments = Arg.parseAll(args);
+        SessionState sessionState = new SessionState(arguments);
 
-        System.out.println("Starting Magenta Experiment CLI...");
+        try (IOManager io = new IOManager()) {
+            sessionState.setIOManager(io);
+            SecurityManager.setIOManager(io);
 
-
-        System.out.println("Loading config from: " + session.config());
-
-        // 1. Services
-        DatabaseService dbService = new DatabaseService();
-        try {
-            dbService.init();
-        } catch (Exception e) {
-            System.err.println("Warning: DB Init failed (some tools may break): " + e.getMessage());
-        }
-
-        TodoService todoService = new TodoService(dbService);
-        VectorStoreService vectorStoreService = new VectorStoreService();
-
-        // 2. Tools
-        TodoTools todoTools = new TodoTools(todoService);
-        FileSystemTools fileSystemTools = new FileSystemTools();
-        WebTools webTools = new WebTools();
-        ShellTools shellTools = new ShellTools();
-        KnowledgeTools knowledgeTools = new KnowledgeTools(vectorStoreService);
-        DelegateTool delegateTool = new DelegateTool();
-
-
-        Config.AgentConfig baseAgent = session.config().baseAgent();
-
-        // 3. Model Configuration
-        System.out.println("Connecting to Ollama (glm4.7f)...");
-
-
-        ChatLanguageModel model = baseAgent.model().getAsChatModel();
-
-        // 4. Build Agent
-        ExperimentAgent agent = AiServices.builder(ExperimentAgent.class)
-                .chatLanguageModel(model)
-                .chatMemory(MessageWindowChatMemory.withMaxMessages(50))
-                .tools(todoTools, fileSystemTools, webTools, shellTools, knowledgeTools, delegateTool)
-                .build();
-
-        // 5. Loop
-        try (Terminal terminal = TerminalBuilder.builder().system(true).build()) {
-            LineReader reader = LineReaderBuilder.builder().terminal(terminal).build();
-            PrintWriter writer = terminal.writer();
-
-
-            while (true) {
-                String lineIn = reader.readLine();
-                if ("/exit".equalsIgnoreCase(lineIn)) { break; }
-
-                String response = agent.chat(lineIn);
-                writer.println(response);
-                terminal.flush();
+            if (sessionState.config().colors != null) {
+                io.setColorsConfig(sessionState.config().colors);
             }
-            writer.println("Exiting....");
-            terminal.flush();
-        } catch (IOException e) { System.err.println("Error creating terminal: " + e.getMessage()); }
 
+            io.info("Starting Magenta...");
+            AgentSession agent = new AgentSession(sessionState);
+            agent.run();
+
+            io.info("Exiting...");
+        } catch (IOException e) {
+            System.err.println("Error creating terminal: " + e.getMessage());
+        }
     }
 }

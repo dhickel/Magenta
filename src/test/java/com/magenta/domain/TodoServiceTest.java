@@ -1,10 +1,11 @@
 package com.magenta.domain;
 
-import com.magenta.data.DatabaseService;
 import com.magenta.config.ConfigManager;
+import com.magenta.data.DatabaseService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
 import java.io.File;
 import java.nio.file.Files;
 import java.util.Optional;
