@@ -35,7 +35,6 @@ public sealed interface TypeName permits TypeName.Variant1, TypeName.Variant2 {
 - `ChatModel` (Streaming | Blocking)
 - `EndpointConfig` (Ollama | OpenAI | Anthropic | RemoteAgent)
 - `Arg.Value` (String | Int | Float | Flag)
-- `InteractionMode` (StreamingChat | ...)
 
 **Why Nested Implementations:**
 - Encapsulation: Variants live with their interface
@@ -79,9 +78,31 @@ IOManager.Internal implements IOManager
 ├── filters: All input/output through SecurityFilter
 └── creates: ResponseHandlers that use filtered OutputPipe
 
+Session (interface)
+└── defines contract: io(), config(), args(), responseHandler(), shouldExit(), setExit()
+
+ConfigManager (singleton)
+├── holds: Config (loaded once at startup)
+└── holds: Args (parsed once at startup)
+
+AbstractSession (base)
+├── accesses: ConfigManager.config() (shared singleton)
+├── accesses: ConfigManager.args() (shared singleton)
+├── owns: IOManager (session-level)
+├── owns: ResponseHandler (session-level, lazy)
+└── manages: exitFlag (session-level)
+
+AgentSession (concrete)
+├── extends: AbstractSession
+├── owns: SecurityManager (per-agent, from agent's security config)
+├── owns: ToolProvider (per-agent, uses agent's SecurityManager)
+├── owns: Agent (per-agent instance)
+├── owns: InteractionMode (per-agent behavior)
+└── composes: ResponseHandler from IOManager + Agent color + Config delay
+
 Agent
-├── owns: ResponseHandler (created lazily, reused)
-└── gets handler from: IOManager.createResponseHandler()
+├── owns: ChatModel, ConversationHistory
+└── provides: color config, system prompt
 
 Writer implements ResponseHandler
 ├── uses: OutputPipe (filtered automatically by IOManager)
@@ -103,8 +124,8 @@ SecurityFilter (functional composition)
 - **Testability:** Use `IOManager.Internal` for tests, no terminal needed
 - **Extensibility:** Add new `IOManager` variants without changing `Writer`
 - **Transparent Security:** All I/O automatically filtered, no manual security checks needed
-- **Efficient Reuse:** ResponseHandlers created once per agent, reset after each message
-- **Encapsulation:** IOManager knows how to create appropriate handlers for its context
+- **Efficient Reuse:** ResponseHandlers created once per session, reset after each message
+- **Encapsulation:** Session manages complete lifecycle, no object passing between layers
 
 **Example - Context-Dependent I/O with Security:**
 ```java
@@ -126,10 +147,10 @@ internal.enqueueInput("message from agent A");
 Command cmd = internal.read(""); // No prompt needed, still filtered
 internal.println("response from agent B"); // Filtered
 
-// Agent owns and reuses ResponseHandler
-ResponseHandler handler = agent.getResponseHandler(io, delayMs); // Created lazily
-model.generate(history, handler)
-    .thenAccept(response -> agent.addMessage(response))
+// Session owns and manages ResponseHandler lifecycle
+ResponseHandler handler = session.responseHandler(); // Lazily composed from config
+agent.model().generate(agent.conversationHistory(), handler)
+    .thenAccept(response -> agent.addMessage(AiMessage.from(response)))
     .join();
 // Handler automatically resets in complete()/error(), ready for next iteration
 ```
@@ -137,6 +158,9 @@ model.generate(history, handler)
 ### 3. Functional and Data-Driven
 
 - Configuration is the single source of truth (`Config.java` + JSON)
+- `ConfigManager` manages Config and Args as application-wide singletons
+- Call `ConfigManager.initialize(args)` once at startup
+- Access via `ConfigManager.config()` and `ConfigManager.args()` anywhere
 - Use function references and streams where natural
 - Prefer immutable records for data classes
 - Use `CompletableFuture` for async operations
@@ -158,7 +182,7 @@ model.generate(history, handler)
 
 ## Project Direction
 
-**Current State:** Terminal-based CLI with single agent, task management, and tool execution.
+**Current State:** Terminal-based CLI with multi-agent session switching, task management, and tool execution.
 
 **Architecture Evolution:** Moving towards a fully composable, multi-context system:
 
@@ -169,6 +193,9 @@ model.generate(history, handler)
    - **Network:** Future remote agent communication
 
 2. **Multi-Agent Workflows**
+   - **Session Switching:** `SessionManager` enables switching between agent sessions in terminal
+   - Agent sessions cached with independent conversation histories
+   - Commands: `/agent <name>`, `/sessions`, `/agents`
    - Agents communicate through `IOManager.Internal` instances
    - Each agent workflow can have different I/O contexts
    - Terminal agents for user interaction, internal agents for background tasks
@@ -176,20 +203,21 @@ model.generate(history, handler)
 
 3. **Separation of Concerns by Layer**
    - **I/O Layer:** `InputPipe`, `OutputPipe`, `IOManager` variants with integrated `SecurityFilter`
-   - **Session Layer:** `Session`, `SessionState`, `AgentSession`
-   - **Agent Layer:** `AgentFactory`, `AgentNetwork`, delegation logic
+   - **Session Layer:** `SessionManager` (singleton, owns IO), `Session`, `AbstractSession`, `AgentSession`
+   - **Agent Layer:** `Agent`, `AgentFactory`, `AgentNetwork`, delegation logic
    - **Domain Layer:** `Task`, `TodoService`, business logic
-   - **Security Layer:** `SecurityFilter`, `SecurityManager` (integrated at I/O layer)
+   - **Security Layer:** `SecurityFilter`, `SecurityManager` (per-agent, managed by session)
    - **Persistence Layer:** Database, vector store, memory
 
 **Design Goal:** Each component handles its own logic without tight coupling:
 - `Writer` only knows about `OutputPipe`, not `IOManager` specifics
-- `Session` works with any `IOManager` implementation
+- `Session` works with any `IOManager` implementation (IO is injected, not owned)
+- `SessionManager` owns `IOManager` lifecycle, sessions own behavior
 - Commands are parsed context-independently
 - Tools execute regardless of I/O context
 - Security filtering is transparent at the I/O layer (no manual checks needed)
 - `IOManager` creates context-appropriate ResponseHandlers (factory pattern)
-- `Agent` owns and reuses its ResponseHandler (lifecycle management)
+- `Session` owns and manages ResponseHandler lifecycle (no object passing)
 - ResponseHandlers reset after complete/error for efficient reuse
 
 ## Code Organization
@@ -214,12 +242,14 @@ src/main/java/com/magenta/
 |---------|---------|-------|
 | Sealed ADT + Nested | `IOManager`, `Command`, `EndpointConfig` | Exhaustive matching, encapsulated variants |
 | Composable Interfaces | `InputPipe`, `OutputPipe`, `ResponseHandler` | Small, focused contracts |
-| Composition | `Session` composes `SessionState` | Favor over inheritance |
+| Inheritance + Composition | `AbstractSession` → `AgentSession` | Clear shared vs per-agent state separation |
+| Singleton | `ConfigManager`, `SessionManager` | Global state management |
 | Builder | `AgentSession.Builder` | Encapsulates complex object construction |
-| Factory | `AgentFactory`, `IOManager.createResponseHandler()` | Create from config or context |
+| Factory | `AgentFactory`, `IOManager.createResponseHandler()`, `SessionManager.getOrCreateAgentSession()` | Create from config or context |
+| Functional Interface | `InteractionMode` | Can use lambda for simple cases, or implement for complex behavior |
 | Functional Composition | `SecurityFilter.andThen()` | Composable filters with function references |
 | Observer | `TodoService` + PropertyChangeSupport | Reactive updates |
-| Strategy | `InteractionMode`, `ChatModel` | Pluggable behaviors |
+| Strategy | `ChatModel` | Pluggable behaviors |
 
 ## Build & Run
 
@@ -234,31 +264,89 @@ mvn exec:java -Dexec.mainClass="com.magenta.Main"
 mvn clean package
 ```
 
-## Creating Agent Sessions
+## Session Management
 
-Agent sessions are created using a builder pattern that encapsulates all component assembly:
+### SessionManager (Production)
+
+The `SessionManager` singleton manages terminal lifecycle and agent session switching:
 
 ```java
-// Simple config-based construction
-try (AgentSession session = AgentSession.fromConfig(args)) {
-    session.run();
-}
+// Startup (Main.java)
+TerminalIOManager terminalIO = new TerminalIOManager();
+AgentSession initialSession = AgentSession.builder()
+    .agent(ConfigManager.config().baseAgent())
+    .messageHandler(new StreamingChat())
+    .commandHandler(new DefaultCommandHandler())
+    .inputParser(Input::defaultParser)
+    .ioManager(terminalIO)
+    .build();
 
-// Manual builder construction
-try (AgentSession session = AgentSession.builder()
-        .config(config)
-        .arguments(arguments)
-        .agent("agent-name")
-        .mode(new InteractionMode.StreamingChat())
-        .build()) {
-    session.run();
-}
+SessionManager.initialize(terminalIO, initialSession);
+SessionManager.getInstance().run();
+SessionManager.getInstance().close();
+```
 
+**SessionManager Features:**
+- Owns the `TerminalIOManager` lifecycle
+- Creates and caches agent sessions on-demand
+- Switches between agents without recreating terminal
+- Each agent maintains independent conversation history
+
+**Available Commands:**
+- `/agent <name>` - Switch to a different agent (creates if doesn't exist)
+- `/sessions` - List active cached sessions (shows current with `*`)
+- `/agents` - List all available agent configurations
+
+**Example Session:**
+```
+magenta> /agents
+Available agents:
+  default (current)
+  helpful
+
+magenta> /agent helpful
+Switched to agent: helpful
+
+helpful> Hello!
+[Agent responds with different personality/model]
+
+helpful> /sessions
+Active sessions:
+  default
+  helpful *
+
+helpful> /agent default
+Switched to agent: default
+
+magenta> /exit
+```
+
+### Creating Agent Sessions (Testing/Custom)
+
+For testing or custom workflows, create sessions directly:
+
+```java
 // Testing with custom IOManager
 try (AgentSession session = AgentSession.builder()
-        .config(config)
-        .agent("test-agent")
-        .ioManager(new IOManager.Internal())
+        .agent(testConfig)
+        .messageHandler(new StreamingChat())
+        .commandHandler(new DefaultCommandHandler())
+        .inputParser(Input::defaultParser)
+        .ioManager(new InternalIOManager())
+        .build()) {
+    // Test logic
+}
+
+// Custom interaction mode
+try (AgentSession session = AgentSession.builder()
+        .agent(testConfig)
+        .messageHandler((session, msg) -> {
+            // Custom message handling
+            session.io().println("Custom: " + msg);
+        })
+        .commandHandler(new DefaultCommandHandler())
+        .inputParser(Input::defaultParser)
+        .ioManager(new InternalIOManager())
         .build()) {
     session.run();
 }
@@ -266,16 +354,40 @@ try (AgentSession session = AgentSession.builder()
 
 **Key Points:**
 - Sessions implement AutoCloseable - use try-with-resources
-- Sessions own their IOManager and close it on close()
-- Builder validates required config and fails fast
-- Config-based construction handles all internal wiring
-- Manual construction allows component override for testing
+- Sessions DON'T own their IOManager (SessionManager owns it in production)
+- Calling session.close() is safe but doesn't close IO (SessionManager closes it)
+- All components (messageHandler, commandHandler, inputParser, ioManager) must be explicitly set
+- Builder validates all required components and fails fast with clear error messages
+- IOManager creation must happen before try-with-resources since it throws IOException
+- No hidden defaults - every dependency is visible at construction site
+
+**Session Lifecycle:**
+- `attachIO(IOManager)` - Inject or swap IOManager
+- `runOnce()` - Execute one iteration (read, parse, dispatch)
+- `run()` - Loop calling runOnce() until shouldExit()
+- `close()` - Close session resources (NOT IOManager)
 
 **Security Configuration:**
 - Each agent references a security config by key (like models reference endpoints)
 - Multiple security profiles can be defined in `securities` map
 - Example: `"securities": { "default": {...}, "strict": {...} }`
 - Agent config: `"security": "default"`
+
+**Colors Configuration:**
+- Each agent references a colors config by key (same pattern as security and models)
+- Multiple color themes can be defined in `colors` map
+- Example: `"colors": { "default": {...}, "vibrant": {...} }`
+- Agent config: `"colors": "default"`
+- Colors are automatically set on IOManager by AgentSession.Builder
+- Agent's response color comes from the colors config's "agent" field
+
+**Cursor Configuration:**
+- Each agent can define a custom cursor prompt and color
+- Agent config fields: `"cursor": "magenta> "` and `"cursor_color": 5`
+- Both fields are optional (defaults to "magenta> " with prompt color)
+- Cursor is automatically configured on IOManager by AgentSession.Builder
+- TerminalIOManager uses the configured cursor for all input prompts
+- InternalIOManager ignores cursor settings (no visible prompts)
 
 ## .internal-dev Directory
 
@@ -387,4 +499,5 @@ When designing new composable interfaces:
 | Data with variants | Sealed interface + records | `Command`, `Arg.Value` |
 | Behavior with variants | Sealed interface + classes | `IOManager`, `ChatModel` |
 | Mixin capabilities | Composable interfaces | `InputPipe`, `OutputPipe` |
-| Pluggable behavior | Strategy interface | `InteractionMode` |
+| Pluggable behavior (simple) | Functional interface | `InteractionMode` (use lambda) |
+| Pluggable behavior (complex) | Interface + classes | `InteractionMode` (use `StreamingChat`) |

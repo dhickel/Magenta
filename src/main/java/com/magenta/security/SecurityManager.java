@@ -1,14 +1,10 @@
 package com.magenta.security;
 
 import com.magenta.config.Config.SecurityConfig;
-import com.magenta.io.Command;
 import com.magenta.io.IOManager;
 import com.magenta.io.TerminalIOManager;
 
-/**
- * Instance-based security manager that enforces security policies for tool execution.
- * Tools call requireToolApproval() before executing potentially dangerous operations.
- */
+
 public class SecurityManager {
 
     private final SecurityConfig config;
@@ -56,10 +52,7 @@ public class SecurityManager {
         return true;
     }
 
-    /**
-     * Create a security filter for future use with I/O filtering.
-     * Currently contains placeholder logic; can be extended for input/output filtering.
-     */
+
     public SecurityFilter createFilter(IOManager io) {
         return new SecurityFilter(
             (cmd, ioMgr) -> cmd,  // Pass-through for now
@@ -87,9 +80,8 @@ public class SecurityManager {
         io.println("Tool:    " + toolType);
         io.println("Command: " + command);
 
-        Command cmd = io.read("Allow? [y/N]: ");
-        if (cmd instanceof Command.Message msg) {
-            String response = msg.text();
+        String response = io.read("Allow? [y/N]: ");
+        if (response != null) {
             return response.equalsIgnoreCase("y") || response.equalsIgnoreCase("yes");
         }
         return false;

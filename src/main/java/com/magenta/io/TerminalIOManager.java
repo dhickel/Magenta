@@ -11,10 +11,7 @@ import org.jline.utils.AttributedStyle;
 import java.io.IOException;
 import java.io.PrintWriter;
 
-/**
- * Terminal-based IOManager for human-agent interaction.
- * Uses JLine for rich terminal features including colors and command history.
- */
+
 public class TerminalIOManager implements IOManager {
 
     private final org.jline.terminal.Terminal terminal;
@@ -23,6 +20,8 @@ public class TerminalIOManager implements IOManager {
     private final boolean colorEnabled;
     private ColorsConfig colorsConfig;
     private SecurityFilter securityFilter;
+    private String cursor = "magenta> ";
+    private Integer cursorColor;
 
     public TerminalIOManager() throws IOException {
         this.terminal = TerminalBuilder.builder().system(true).build();
@@ -46,34 +45,42 @@ public class TerminalIOManager implements IOManager {
         this.securityFilter = filter;
     }
 
+    @Override
+    public void setCursor(String cursor, Integer cursorColor) {
+        this.cursor = cursor;
+        this.cursorColor = cursorColor;
+    }
+
     // === Input (InputPipe) ===
 
     @Override
-    public Command read(String prompt) {
+    public String read(String prompt) {
         while (true) {
-            String line = readLine(prompt);
+            String line = readLine();
             if (line == null) {
-                return new Command.Exit(); // EOF or Ctrl-D
+                return "/exit"; // EOF or Ctrl-D -> treat as exit command
             }
 
-            Command cmd = Command.parse(line);
-
-            // Handle terminal-specific commands locally
-            if (cmd instanceof Command.Clear) {
+            // Handle terminal-specific commands locally (before filtering/parsing)
+            if (line.trim().toLowerCase().matches("^/(clear|cls).*")) {
                 terminal.puts(org.jline.utils.InfoCmp.Capability.clear_screen);
                 terminal.flush();
                 continue; // Ask for input again
             }
 
-            // Apply security filter
-            cmd = securityFilter.inputFilter().apply(cmd, this);
+            // Apply security filter to raw input
+            String filtered = securityFilter.inputFilter().apply(line, this);
 
-            return cmd;
+            return filtered;
         }
     }
 
     public String readLine() {
-        return reader.readLine();
+        // Use configured cursor with custom color if set, otherwise use default prompt styling
+        String styledCursor = (cursorColor != null)
+                ? styled(cursor, cursorColor)
+                : styled(cursor, OutputStyle.PROMPT);
+        return reader.readLine(styledCursor);
     }
 
     public String readLine(String prompt) {

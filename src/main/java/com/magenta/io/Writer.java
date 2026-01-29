@@ -1,8 +1,6 @@
 package com.magenta.io;
 
-/**
- * Simple immediate-mode writer. Outputs tokens directly as they arrive.
- */
+
 public class Writer implements ResponseHandler {
 
     protected final OutputPipe pipe;
@@ -50,10 +48,7 @@ public class Writer implements ResponseHandler {
         return buffer.toString();
     }
 
-    /**
-     * Reset the buffer for reuse.
-     * Called automatically by complete() and error().
-     */
+
     protected void reset() {
         buffer.setLength(0);
     }

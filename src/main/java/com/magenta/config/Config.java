@@ -27,7 +27,7 @@ public class Config {
     public Map<String, SecurityConfig> securities;
 
     @JsonProperty("colors")
-    public ColorsConfig colors;
+    public Map<String, ColorsConfig> colorConfigs;
 
     @JsonProperty("models")
     public Map<String, ModelConfig> models;
@@ -185,16 +185,26 @@ public class Config {
         private String modelKey;
         @JsonProperty("security")
         private String securityKey;
+        @JsonProperty("colors")
+        private String colorsKey;
         @JsonProperty("tools")
         private List<String> tools;
         @JsonProperty("color")
         private Integer color;
+        @JsonProperty("cursor")
+        private String cursor;
+        @JsonProperty("cursor_color")
+        private Integer cursorColor;
 
         private Config config;
 
         public List<String> tools() { return tools; }
 
         public Integer color() { return color; }
+
+        public String cursor() { return cursor != null ? cursor : "magenta> "; }
+
+        public Integer cursorColor() { return cursorColor; }
 
         public String systemPrompt() {
             String prompt = config.prompts.get(systemPromptKey);
@@ -212,6 +222,13 @@ public class Config {
             SecurityConfig security = config.securities.get(securityKey);
             if (security == null) { throw new IllegalStateException("Security config not found: " + securityKey); }
             return security;
+        }
+
+        public ColorsConfig colors() {
+            if (colorsKey == null) { return null; } // Colors are optional
+            ColorsConfig colors = config.colorConfigs.get(colorsKey);
+            if (colors == null) { throw new IllegalStateException("Colors config not found: " + colorsKey); }
+            return colors;
         }
     }
 

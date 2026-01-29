@@ -5,13 +5,16 @@
     "stream_delay_ms": 10
   },
   "colors": {
-    "error": 1,
-    "warning": 3,
-    "success": 2,
-    "info": 6,
-    "prompt": 15,
-    "security": 9,
-    "command": 5
+    "default": {
+      "error": 1,
+      "warning": 3,
+      "success": 2,
+      "info": 6,
+      "agent": 5,
+      "prompt": 15,
+      "security": 9,
+      "command": 5
+    }
   },
   "endpoints": {
     "local_ollama": {
@@ -46,11 +49,23 @@
       "system_prompt": "default_system",
       "model": "Devstral2",
       "security": "default",
-      "tools": ["shell", "files"],
-      "color": 5
+      "colors": "default",
+      "cursor": "magenta> ",
+      "cursor_color": 5,
+      "tools": ["shell", "files"]
+    },
+    "helpful": {
+      "system_prompt": "helpful_system",
+      "model": "GLM-4.7",
+      "security": "default",
+      "colors": "default",
+      "cursor": "helpful> ",
+      "cursor_color": 2,
+      "tools": ["shell", "files"]
     }
   },
   "prompts" : {
-    "default_system": "You are Magenta, a helpful AI assistant."
+    "default_system": "You are Magenta, a helpful AI assistant.",
+    "helpful_system": "You are a very helpful and friendly AI assistant. Always be encouraging and positive!"
   }
 }

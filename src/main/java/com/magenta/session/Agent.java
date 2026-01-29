@@ -1,8 +1,6 @@
 package com.magenta.session;
 
 import com.magenta.config.Config.AgentConfig;
-import com.magenta.io.IOManager;
-import com.magenta.io.ResponseHandler;
 import com.magenta.model.ChatModel;
 import dev.langchain4j.data.message.ChatMessage;
 
@@ -17,7 +15,6 @@ public class Agent {
     private final AgentConfig agentConfig;
     private final ChatModel model;
     private final List<ChatMessage> conversationHistory;
-    private ResponseHandler responseHandler; // Lazily created, reused
 
     public Agent(AgentConfig agentConfig) {
         this.agentConfig = agentConfig;
@@ -46,21 +43,15 @@ public class Agent {
     }
 
     public Integer getColor() {
+        // Prefer colors config's agent color, fall back to direct color field
+        var colors = agentConfig.colors();
+        if (colors != null && colors.agent() != null) {
+            return colors.agent();
+        }
         return agentConfig.color();
     }
 
     public String getSystemPrompt() {
         return agentConfig.systemPrompt();
-    }
-
-    /**
-     * Get the response handler for this agent, creating it lazily if needed.
-     * The handler is reused across iterations and reset after each complete/error.
-     */
-    public ResponseHandler getResponseHandler(IOManager io, int streamDelayMs) {
-        if (responseHandler == null) {
-            responseHandler = io.createResponseHandler(agentConfig.color(), streamDelayMs);
-        }
-        return responseHandler;
     }
 }

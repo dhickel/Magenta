@@ -23,10 +23,10 @@ class TodoServiceTest {
         tempStoragePath = Files.createTempDirectory("magenta_test").toString();
         
         File configFile = new File(tempStoragePath, "config.json");
-        String json = "{\"global\":{\"storage_path\":\"" + tempStoragePath + "\"}, \"security\":{}}";
+        String json = "{\"global\":{\"storage_path\":\"" + tempStoragePath + "\"}, \"models\":{}, \"agents\":{}}";
         Files.writeString(configFile.toPath(), json);
-        
-        ConfigManager.load(configFile.getAbsolutePath());
+
+        ConfigManager.loadForTest(configFile.getAbsolutePath());
 
         dbService = new DatabaseService();
         dbService.init();

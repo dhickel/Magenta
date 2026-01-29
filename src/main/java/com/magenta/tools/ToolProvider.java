@@ -8,10 +8,7 @@ import com.magenta.security.SecurityManager;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Factory for instantiating tools based on configuration.
- * Centralizes tool creation and dependency injection.
- */
+
 public class ToolProvider {
 
     private final TodoService todoService;
@@ -25,10 +22,7 @@ public class ToolProvider {
         this.securityManager = securityManager;
     }
 
-    /**
-     * Create tools based on a list of tool names from configuration.
-     * Injects IOManager for context-aware security.
-     */
+
     public Object[] createTools(List<String> toolNames, IOManager io) {
         if (toolNames == null || toolNames.isEmpty()) {
             return new Object[0];

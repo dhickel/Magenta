@@ -1,18 +1,25 @@
 package com.magenta.session;
 
 import com.magenta.io.IOManager;
+import com.magenta.io.ResponseHandler;
 
-/**
- * Interface defining a session's I/O context.
- * Implementations provide access to I/O, global context, and exit control.
- * All I/O interactions go through the IOManager.
- * Sessions own their resources and must be closed when done.
- */
 public interface Session extends AutoCloseable {
     IOManager io();
-    GlobalContext context();
+    ResponseHandler responseHandler();
     boolean shouldExit();
     void setExit(boolean exit);
+
+    /**
+     * Attach an IOManager to this session.
+     * Allows IO injection for session switching without recreating terminal state.
+     */
+    void attachIO(IOManager io);
+
+    /**
+     * Execute one iteration of the session loop.
+     * Reads input, parses it, and dispatches to appropriate handler.
+     */
+    void runOnce();
 
     @Override
     void close() throws Exception;

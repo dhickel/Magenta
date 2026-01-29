@@ -13,7 +13,7 @@ public class DatabaseService {
     private Connection taskConnection;
 
     public void init() throws SQLException {
-        String storagePath = ConfigManager.get().baseStoragePath();
+        String storagePath = ConfigManager.config().baseStoragePath();
         File dir = new File(storagePath);
         if (!dir.exists()) { dir.mkdirs(); }
 
