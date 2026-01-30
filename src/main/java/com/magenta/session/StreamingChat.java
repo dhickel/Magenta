@@ -1,7 +1,10 @@
 package com.magenta.session;
 
-import dev.langchain4j.data.message.AiMessage;
-import dev.langchain4j.data.message.UserMessage;
+import com.magenta.context.manager.ContextManager;
+import com.magenta.context.model.ContextElement;
+import dev.langchain4j.data.message.*;
+
+import java.util.List;
 
 /**
  * Streaming chat message handler.
@@ -12,15 +15,26 @@ public class StreamingChat implements MessageHandler<AgentSession> {
     @Override
     public void processMessage(AgentSession session, String message) {
         if (message.isBlank()) { return; }
-        // Get agent from session
+        
         Agent agent = session.agent();
+        SessionId sessionId = session.sessionId();
+        ContextManager cm = ContextManager.getInstance();
+
+        // Ensure system prompt is set if context is empty
+        // This check could also be moved to AgentSession init, but doing it here ensures it's checked on first message
+        if (cm.loadContext(sessionId).getElements().isEmpty() && agent.config().systemPrompt() != null) {
+            cm.append(sessionId, new ContextElement.System(agent.config().systemPrompt()));
+        }
 
         // Add user message to conversation
-        agent.addMessage(UserMessage.from(message));
+        cm.append(sessionId, new ContextElement.User(message));
+
+        // Get history for generation
+        List<ChatMessage> history = cm.loadContext(sessionId).compile();
 
         // Generate streaming response
-        agent.model().generate(agent.conversationHistory(), session.responseHandler())
-                .thenAccept(response -> agent.addMessage(AiMessage.from(response)))
+        agent.model().generate(history, session.responseHandler())
+                .thenAccept(response -> cm.append(sessionId, new ContextElement.Assistant(response)))
                 .join();
     }
 }

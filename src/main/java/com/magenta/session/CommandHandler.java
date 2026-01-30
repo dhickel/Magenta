@@ -16,4 +16,5 @@ import com.magenta.io.Command;
 public interface CommandHandler {
 
     void handle(Session session, Command command);
+
 }

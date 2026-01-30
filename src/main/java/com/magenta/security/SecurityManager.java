@@ -7,10 +7,31 @@ import com.magenta.io.TerminalIOManager;
 
 public class SecurityManager {
 
-    private final SecurityConfig config;
+    private static SecurityManager instance;
+    private SecurityConfig config;
 
-    public SecurityManager(SecurityConfig config) {
+    private SecurityManager() {
+        // Default safe config (empty lists to avoid NPEs if not set)
+        this.config = new SecurityConfig(
+            java.util.Collections.emptyList(),
+            java.util.Collections.emptyList(),
+            java.util.Collections.emptyList()
+        );
+    }
+
+    public static synchronized SecurityManager getInstance() {
+        if (instance == null) {
+            instance = new SecurityManager();
+        }
+        return instance;
+    }
+
+    public void setConfig(SecurityConfig config) {
         this.config = config;
+    }
+
+    public SecurityConfig getConfig() {
+        return config;
     }
 
     /**

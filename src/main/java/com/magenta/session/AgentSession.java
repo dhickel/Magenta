@@ -1,7 +1,6 @@
 package com.magenta.session;
 
 import com.magenta.config.Config.AgentConfig;
-import com.magenta.config.ConfigManager;
 import com.magenta.io.*;
 import com.magenta.security.SecurityManager;
 import com.magenta.tools.ToolProvider;
@@ -15,6 +14,7 @@ public class AgentSession extends AbstractSession {
     private final MessageHandler<AgentSession> messageHandler;
     private final CommandHandler commandHandler;
     private final InputParser inputParser;
+    private final SessionId sessionId;
 
     public AgentSession(
             IOManager ioManager,
@@ -23,9 +23,11 @@ public class AgentSession extends AbstractSession {
             AgentConfig agentConfig,
             MessageHandler<AgentSession> messageHandler,
             CommandHandler commandHandler,
-            InputParser inputParser
+            InputParser inputParser,
+            SessionId sessionId
     ) {
         super(ioManager);
+        this.sessionId = sessionId;
         this.agent = new Agent(agentConfig);
         this.securityManager = securityManager;
         this.toolProvider = toolProvider;
@@ -37,7 +39,7 @@ public class AgentSession extends AbstractSession {
     // Agent-specific methods
     @Override
     public void runOnce() {
-        String raw = io().read("magenta> ");
+        String raw = io().read(agent.config().cursor());
         if (raw == null) { return; } // No input, skip iteration
 
         // Parse input and dispatch
@@ -57,8 +59,8 @@ public class AgentSession extends AbstractSession {
     @Override
     public ResponseHandler responseHandler() {
         if (responseHandler == null) {
-            int streamDelay = ConfigManager.config().streamDelayMs();
-            Integer agentColor = agent.getColor();
+            int streamDelay = com.magenta.config.ConfigManager.config().streamDelayMs();
+            Integer agentColor = agent.config().resolveColor();
             responseHandler = ioManager.createResponseHandler(agentColor, streamDelay);
         }
         return responseHandler;
@@ -84,6 +86,10 @@ public class AgentSession extends AbstractSession {
     public CommandHandler commandHandler() {
         return commandHandler;
     }
+    
+    public SessionId sessionId() {
+        return sessionId;
+    }
 
 
     // Builder pattern for encapsulated construction
@@ -97,12 +103,17 @@ public class AgentSession extends AbstractSession {
         private CommandHandler commandHandler;
         private InputParser inputParser;
         private IOManager ioManager;
+        private SessionId sessionId;
 
         public Builder agent(AgentConfig agentConfig) {
             this.agentConfig = agentConfig;
             return this;
         }
 
+        public Builder sessionId(SessionId sessionId) {
+            this.sessionId = sessionId;
+            return this;
+        }
 
         public Builder messageHandler(MessageHandler<AgentSession> handler) {
             this.messageHandler = handler;
@@ -129,8 +140,12 @@ public class AgentSession extends AbstractSession {
         public AgentSession build() {
             validate();
 
-            // Create per-agent SecurityManager from agent's security config
-            SecurityManager securityManager = new SecurityManager(agentConfig.security());
+        // Create per-agent SecurityManager from agent's security config
+        SecurityManager securityManager = SecurityManager.getInstance();
+        securityManager.setConfig(agentConfig.security());
+
+        // Use the validated ioManager from the builder
+        IOManager ioManager = this.ioManager;
 
             // Set security filter on IOManager
             ioManager.setSecurityFilter(securityManager.createFilter(ioManager));
@@ -147,11 +162,11 @@ public class AgentSession extends AbstractSession {
             ioManager.setCursor(agentConfig.cursor(), agentConfig.cursorColor());
 
             // Create per-agent ToolProvider
-            ToolProvider toolProvider = new ToolProvider(null, null, securityManager);
+            ToolProvider toolProvider = new ToolProvider(null, null, securityManager, sessionId);
 
             // Create session with all components
             return new AgentSession(ioManager, securityManager, toolProvider, agentConfig,
-                    messageHandler, commandHandler, inputParser);
+                    messageHandler, commandHandler, inputParser, sessionId);
         }
 
         private void validate() {
@@ -169,6 +184,9 @@ public class AgentSession extends AbstractSession {
             }
             if (ioManager == null) {
                 throw new IllegalStateException("ioManager is required");
+            }
+            if (sessionId == null) {
+                throw new IllegalStateException("sessionId is required");
             }
         }
     }

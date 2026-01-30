@@ -4,6 +4,7 @@ import com.magenta.domain.TodoService;
 import com.magenta.io.IOManager;
 import com.magenta.memory.VectorStoreService;
 import com.magenta.security.SecurityManager;
+import com.magenta.session.SessionId;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -14,12 +15,14 @@ public class ToolProvider {
     private final TodoService todoService;
     private final VectorStoreService vectorStoreService;
     private final SecurityManager securityManager;
+    private final SessionId sessionId;
 
     public ToolProvider(TodoService todoService, VectorStoreService vectorStoreService,
-                       SecurityManager securityManager) {
+                       SecurityManager securityManager, SessionId sessionId) {
         this.todoService = todoService;
         this.vectorStoreService = vectorStoreService;
         this.securityManager = securityManager;
+        this.sessionId = sessionId;
     }
 
 
@@ -45,6 +48,7 @@ public class ToolProvider {
             case "web" -> new WebTools(securityManager, io);
             case "todo" -> todoService != null ? new TodoTools(todoService) : null;
             case "knowledge" -> vectorStoreService != null ? new KnowledgeTools(vectorStoreService) : null;
+            case "context", "memory" -> new ContextTools(sessionId);
             case "delegate" -> new DelegateTool(io, this);
             default -> {
                 System.err.println("Warning: Unknown tool: " + toolName);

@@ -40,7 +40,10 @@ public class Config {
 
     public void initializeReferences() {
         models.values().forEach(model -> model.config = this);
-        agents.values().forEach(agent -> agent.config = this);
+        agents.forEach((name, agent) -> {
+            agent.config = this;
+            agent.name = name;
+        });
     }
 
     public GlobalConfig global() {
@@ -197,10 +200,19 @@ public class Config {
         private Integer cursorColor;
 
         private Config config;
+        private String name;
+
+        public String name() { return name; }
 
         public List<String> tools() { return tools; }
 
         public Integer color() { return color; }
+
+        public Integer resolveColor() {
+            if (color != null) return color;
+            ColorsConfig c = colors();
+            return (c != null) ? c.agent() : null;
+        }
 
         public String cursor() { return cursor != null ? cursor : "magenta> "; }
 

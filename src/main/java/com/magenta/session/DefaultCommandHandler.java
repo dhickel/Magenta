@@ -1,11 +1,10 @@
 package com.magenta.session;
 
 import com.magenta.io.Command;
+import com.magenta.io.IOManager;
 
 /**
  * Default implementation of CommandHandler.
- * Handles standard commands like /exit, /help, /clear, /history.
- * Also handles session management commands: /agent, /sessions, /agents.
  */
 public class DefaultCommandHandler implements CommandHandler {
 
@@ -15,42 +14,55 @@ public class DefaultCommandHandler implements CommandHandler {
         switch (command) {
             case Command.Exit() -> session.setExit(true);
             case Command.Help() -> printHelp(io);
-            case Command.Clear() -> {
-                // Clear is handled by IOManager directly
-            }
+            case Command.Clear() -> { /* handled by IOManager */ }
             case Command.History() -> io.println("History not yet implemented");
-            case Command.Agent(String agentName) -> switchAgent(session, agentName);
+            case Command.Agent(String rawArg) -> switchAgent(session, rawArg);
             case Command.Sessions() -> listSessions(io);
             case Command.Agents() -> listAgents(io);
             case Command.Unknown(String raw) -> io.println("Unknown command: " + raw);
         }
     }
 
-    private void printHelp(com.magenta.io.IOManager io) {
+    private void printHelp(IOManager io) {
         io.println("Available commands:");
         io.println("  /exit, /quit, /q - Exit the session");
         io.println("  /help, /? - Show this help message");
         io.println("  /clear, /cls - Clear the screen");
         io.println("  /history - Show conversation history");
-        io.println("  /agent <name> - Switch to a different agent");
+        io.println("  /agent <name> [alias] - Switch to a different agent/session");
         io.println("  /sessions - List active sessions");
         io.println("  /agents - List available agent configurations");
     }
 
-    private void switchAgent(Session session, String agentName) {
+    private void switchAgent(Session session, String rawArg) {
         try {
-            SessionManager.getInstance().switchToAgent(agentName);
+            SessionManager sm = SessionManager.getInstance();
+            String[] parts = rawArg.trim().split("\\s+", 2);
+            String configName = parts[0];
+            String aliasStr = parts.length > 1 ? parts[1] : configName;
+            SessionAlias alias = SessionAlias.of(aliasStr);
+
+            // Check if alias exists (switch)
+            if (sm.getSession(alias) != null) {
+                sm.switchToSession(alias);
+                return;
+            }
+
+            // Otherwise, create new session (using configName)
+            sm.createSession(alias, configName);
+            sm.switchToSession(alias);
+
         } catch (IllegalArgumentException e) {
-            session.io().println("Error: " + e.getMessage(), 1); // Red error color
+            session.io().println("Error: " + e.getMessage(), 1); 
         } catch (IllegalStateException e) {
-            session.io().println("Session switching not available: " + e.getMessage(), 3); // Yellow warning
+            session.io().println("Session switching not available: " + e.getMessage(), 3); 
         }
     }
 
-    private void listSessions(com.magenta.io.IOManager io) {
+    private void listSessions(IOManager io) {
         try {
             var sessions = SessionManager.getInstance().listActiveSessions();
-            var current = SessionManager.getInstance().getCurrentSessionName();
+            var current = SessionManager.getInstance().getCurrentSessionAlias();
 
             io.println("Active sessions:");
             if (sessions.isEmpty()) {
@@ -62,22 +74,22 @@ public class DefaultCommandHandler implements CommandHandler {
                 }
             }
         } catch (IllegalStateException e) {
-            io.println("Session management not available: " + e.getMessage(), 3); // Yellow warning
+            io.println("Session management not available: " + e.getMessage(), 3);
         }
     }
 
-    private void listAgents(com.magenta.io.IOManager io) {
+    private void listAgents(IOManager io) {
         try {
             var agents = SessionManager.getInstance().listAvailableAgents();
-            var current = SessionManager.getInstance().getCurrentSessionName();
+            var currentAlias = SessionManager.getInstance().getCurrentSessionAlias();
 
-            io.println("Available agents:");
+            io.println("Available agents (configs):");
             for (String agent : agents) {
-                String marker = agent.equals(current) ? " (current)" : "";
+                String marker = agent.equals(currentAlias) ? " (active)" : "";
                 io.println("  " + agent + marker);
             }
         } catch (IllegalStateException e) {
-            io.println("Session management not available: " + e.getMessage(), 3); // Yellow warning
+            io.println("Session management not available: " + e.getMessage(), 3);
         }
     }
 }
