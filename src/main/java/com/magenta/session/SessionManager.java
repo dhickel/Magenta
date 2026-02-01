@@ -2,7 +2,6 @@ package com.magenta.session;
 
 import com.magenta.config.Config.AgentConfig;
 import com.magenta.config.ConfigManager;
-import com.magenta.io.Input;
 import com.magenta.io.TerminalIOManager;
 
 import java.util.ArrayList;
@@ -22,11 +21,11 @@ public class SessionManager implements AutoCloseable {
     // Map of Alias -> Session
     private final Map<SessionAlias, AgentSession> sessions = new HashMap<>();
 
-    public static void initialize(TerminalIOManager terminalIO, Session initialSession, SessionAlias initialSessionAlias) {
+    public static void initialize(TerminalIOManager terminalIO, Session initialSession) {
         if (instance != null) {
             throw new IllegalStateException("SessionManager already initialized");
         }
-        instance = new SessionManager(terminalIO, initialSession, initialSessionAlias);
+        instance = new SessionManager(terminalIO, initialSession);
     }
 
     public static SessionManager getInstance() {
@@ -36,13 +35,13 @@ public class SessionManager implements AutoCloseable {
         return instance;
     }
 
-    private SessionManager(TerminalIOManager terminalIO, Session initialSession, SessionAlias initialSessionAlias) {
+    private SessionManager(TerminalIOManager terminalIO, Session initialSession) {
         this.terminalIO = terminalIO;
-        initialSession.attachIO(terminalIO);
+        initialSession.attachIO(terminalIO.createProxy());
         this.currentSession = initialSession;
 
         if (initialSession instanceof AgentSession agentSession) {
-            sessions.put(initialSessionAlias, agentSession);
+            sessions.put(agentSession.getAlias(), agentSession);
         }
     }
 
@@ -57,11 +56,11 @@ public class SessionManager implements AutoCloseable {
         }
 
         AgentSession session = AgentSession.builder()
+                .alias(alias)
                 .agent(config)
                 .messageHandler(new StreamingChat())
                 .commandHandler(new DefaultCommandHandler())
-                .inputParser(Input::defaultParser)
-                .ioManager(terminalIO)
+                .ioManager(terminalIO.createProxy())
                 .sessionId(SessionId.random())
                 .build();
         
@@ -99,10 +98,8 @@ public class SessionManager implements AutoCloseable {
     }
 
     public String getCurrentSessionAlias() {
-        for (Map.Entry<SessionAlias, AgentSession> entry : sessions.entrySet()) {
-            if (entry.getValue() == currentSession) {
-                return entry.getKey().value(); // Return string value
-            }
+        if (currentSession instanceof AgentSession agentSession) {
+            return agentSession.getAlias().value();
         }
         return "unknown";
     }

@@ -5,7 +5,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  * IOManager for agent-to-agent communication using queues.
- * Does not support colors (uses ColorPipe.identity()).
+ * Does not support colors.
  */
 public class InternalIOManager extends AbstractIOManager {
 
@@ -18,7 +18,6 @@ public class InternalIOManager extends AbstractIOManager {
         // Initialize pipes (raw I/O, no filtering - IOManager defaults handle that)
         this.inputPipe = this::readRaw;
         this.outputPipe = this::printRaw;
-        // colorPipe already initialized to identity() in AbstractIOManager
     }
 
     @Override

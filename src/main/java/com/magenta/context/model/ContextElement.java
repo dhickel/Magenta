@@ -1,5 +1,7 @@
 package com.magenta.context.model;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import dev.langchain4j.data.message.*;
 
 import java.util.Collections;
@@ -9,13 +11,15 @@ import java.util.List;
  * ADT representing an element of context.
  * Can be a message, a system prompt, a summary, etc.
  */
-public sealed interface ContextElement permits
-        ContextElement.System,
-        ContextElement.User,
-        ContextElement.Assistant,
-        ContextElement.Tool,
-        ContextElement.Summary {
-
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+@JsonSubTypes({
+        @JsonSubTypes.Type(value = ContextElement.System.class, name = "System"),
+        @JsonSubTypes.Type(value = ContextElement.User.class, name = "User"),
+        @JsonSubTypes.Type(value = ContextElement.Assistant.class, name = "Assistant"),
+        @JsonSubTypes.Type(value = ContextElement.Tool.class, name = "Tool"),
+        @JsonSubTypes.Type(value = ContextElement.Summary.class, name = "Summary")
+})
+public sealed interface ContextElement {
     String content();
     ChatMessage compile();
     int estimatedTokens();

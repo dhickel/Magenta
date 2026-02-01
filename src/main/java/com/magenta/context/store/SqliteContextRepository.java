@@ -1,6 +1,9 @@
 package com.magenta.context.store;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.magenta.context.model.Context;
+import com.magenta.context.model.ContextElement;
 import com.magenta.data.DatabaseService;
 
 import java.sql.Connection;
@@ -11,9 +14,12 @@ import java.util.Optional;
 
 public class SqliteContextRepository implements ContextRepository {
     private final DatabaseService db;
+    private final ObjectMapper mapper;
 
     public SqliteContextRepository(DatabaseService db) {
         this.db = db;
+        this.mapper = new ObjectMapper()
+                .enable(SerializationFeature.INDENT_OUTPUT);
         try {
             ensureTable();
         } catch (SQLException e) {
@@ -30,14 +36,16 @@ public class SqliteContextRepository implements ContextRepository {
 
     @Override
     public void save(String key, Context context) {
-        String data = ContextSerializer.serialize(context);
-        try (Connection conn = db.getAgentConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "INSERT OR REPLACE INTO context_store (key, data) VALUES (?, ?)")) {
-            ps.setString(1, key);
-            ps.setString(2, data);
-            ps.executeUpdate();
-        } catch (SQLException e) {
+        try {
+            String data = mapper.writeValueAsString(context);
+            try (Connection conn = db.getAgentConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                         "INSERT OR REPLACE INTO context_store (key, data) VALUES (?, ?)")) {
+                ps.setString(1, key);
+                ps.setString(2, data);
+                ps.executeUpdate();
+            }
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
@@ -50,10 +58,10 @@ public class SqliteContextRepository implements ContextRepository {
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     String data = rs.getString("data");
-                    return Optional.of(ContextSerializer.deserialize(data));
+                    return Optional.of(mapper.readValue(data, Context.class));
                 }
             }
-        } catch (SQLException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
         return Optional.empty();

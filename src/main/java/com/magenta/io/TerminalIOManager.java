@@ -40,26 +40,23 @@ public class TerminalIOManager extends AbstractIOManager {
         // Initialize pipes (raw I/O, no filtering - IOManager defaults handle that)
         this.inputPipe = this::readRaw;
         this.outputPipe = this::printRaw;
-        this.colorPipe = this::applyColor;
     }
 
 
     /**
      * TerminalIOProxy that delegates all operations to the parent TerminalIOManager.
      * Allows sessions to have their own IOManager instance without closing the shared terminal.
-     * Each proxy maintains its own SecurityFilter (set by the session).
      */
     public static class TerminalIOProxy extends AbstractIOManager {
         private final TerminalIOManager target;
 
         private TerminalIOProxy(TerminalIOManager target) {
-            super(); // Initializes securityFilter to identity()
+            super();
             this.target = target;
 
             // Delegate to target pipes
             this.inputPipe = target.inputPipe();
             this.outputPipe = target.outputPipe();
-            this.colorPipe = target.colorPipe();
         }
 
         // === IOManager methods (delegate to target) ===
@@ -194,34 +191,6 @@ public class TerminalIOManager extends AbstractIOManager {
             colorCode = style.ordinal();
         }
         print(message + "\n", colorCode);
-    }
-
-    public void error(String message) {
-        printWithStyle(message, OutputStyle.ERROR);
-    }
-
-    public void warn(String message) {
-        printWithStyle(message, OutputStyle.WARNING);
-    }
-
-    public void info(String message) {
-        printWithStyle(message, OutputStyle.INFO);
-    }
-
-    public void success(String message) {
-        printWithStyle(message, OutputStyle.SUCCESS);
-    }
-
-    public void agentResponse(String response) {
-        printWithStyle(response, OutputStyle.AGENT);
-    }
-
-    public void agentResponse(String response, Integer agentColor) {
-        if (agentColor != null) {
-            print(response + "\n", agentColor);
-        } else {
-            printWithStyle(response, OutputStyle.AGENT);
-        }
     }
 
     public void securityAlert(String message) {

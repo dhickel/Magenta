@@ -11,29 +11,27 @@ import com.magenta.io.ResponseHandler;
  * NOTE: IOManager is NOT owned by session - managed by SessionManager.
  */
 public abstract class AbstractSession implements Session {
+    protected SessionAlias alias;
     // Session-level resources (IOManager is injected, not owned)
     protected IOManager ioManager;
     protected boolean exitFlag = false;
     protected ResponseHandler responseHandler; // Lazily initialized
 
-    protected AbstractSession(IOManager ioManager) {
+    protected AbstractSession(SessionAlias alias, IOManager ioManager) {
+        this.alias = alias;
         this.ioManager = ioManager;
     }
 
-    @Override
-    public IOManager io() {
-        return ioManager;
-    }
+    public SessionAlias getAlias() { return alias; }
 
     @Override
-    public boolean shouldExit() {
-        return exitFlag;
-    }
+    public IOManager io() { return ioManager; }
 
     @Override
-    public void setExit(boolean exit) {
-        this.exitFlag = exit;
-    }
+    public boolean shouldExit() { return exitFlag; }
+
+    @Override
+    public void setExit(boolean exit) { this.exitFlag = exit; }
 
     @Override
     public void attachIO(IOManager io) {

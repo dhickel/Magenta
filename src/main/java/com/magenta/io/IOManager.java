@@ -1,18 +1,16 @@
 package com.magenta.io;
 
-import com.magenta.security.SecurityFilter;
+import java.util.function.Function;
 
 /**
  * IOManager coordinates I/O for different contexts (Terminal, Internal, etc.).
- * Enforces all I/O through composable pipes with default methods.
+ * Pure I/O layer - no security filtering (that's Session's responsibility).
  *
  * Extension Points (implementations provide):
  * - inputPipe(): Raw input reading
  * - outputPipe(): Raw output writing
- * - colorPipe(): Color formatting (or identity if not supported)
- * - securityFilter(): Security filtering
  *
- * All I/O methods are non-overridable defaults that compose the pipes.
+ * Provides functional composition for message transformations.
  */
 public interface IOManager extends AutoCloseable {
 
@@ -28,66 +26,41 @@ public interface IOManager extends AutoCloseable {
      */
     OutputPipe outputPipe();
 
-    /**
-     * Provides color formatting capability.
-     */
-    ColorPipe colorPipe();
+    // === Primary I/O ===
 
     /**
-     * Provides security filtering.
-     */
-    SecurityFilter securityFilter();
-
-    /**
-     * Sets the security filter.
-     */
-    void setSecurityFilter(SecurityFilter filter);
-
-    // === Primary I/O (non-overridable, forced through pipes) ===
-
-    /**
-     * Read input with security filtering applied.
-     * Retries on filtered input with warning message.
+     * Read raw input string.
+     * Simple delegation to inputPipe, no parsing or filtering.
      */
     default String read(String prompt) {
-        while (true) {
-            Message.Input input = inputPipe().read(prompt);
-            Message filtered = securityFilter().inputFilter().apply(input, this);
-
-            if (filtered instanceof Message.Input validInput) {
-                return validInput.content();
-            } else if (filtered instanceof Message.Filtered f) {
-                // Print warning and retry
-                print(Message.system("[FILTERED] " + f.reason(), OutputStyle.ERROR));
-                continue;  // Loop and ask again
-            } else {
-                // Unexpected message type - pass through
-                return filtered.content();
-            }
-        }
+        return inputPipe().read(prompt).content();
     }
 
     /**
-     * Print message (caller controls newlines).
-     * Applies security filtering automatically.
+     * Print message with functional composition.
+     * Applies transformers in order (e.g., security filter, then coloring).
      */
-    default void print(Message message) {
-        // Only filter Output messages
-        Message toOutput = switch (message) {
-            case Message.Output output -> securityFilter().outputFilter().apply(output);
-            case Message.Filtered filtered -> filtered;  // Already filtered, pass through
-            default -> message;  // Input/System pass through
-        };
+    default void print(Message message, Function<Message, Message>... transformers) {
+        Message current = message;
+        for (Function<Message, Message> transformer : transformers) {
+            current = transformer.apply(current);
 
-        // Handle filtered messages
-        if (toOutput instanceof Message.Filtered f) {
-            // Log but don't print
-            java.lang.System.err.println("[SECURITY] Output filtered: " + f.reason());
-            return;  // Don't print blocked content
+            // Stop if filtered
+            if (current instanceof Message.Filtered f) {
+                java.lang.System.err.println("[SECURITY] Output filtered: " + f.reason());
+                return;
+            }
         }
 
-        // Print the message via pipe
-        outputPipe().print(toOutput);
+        // Print via pipe
+        outputPipe().print(current);
+    }
+
+    /**
+     * Print message without transformations.
+     */
+    default void print(Message message) {
+        outputPipe().print(message);
     }
 
     /**

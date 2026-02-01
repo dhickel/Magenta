@@ -6,7 +6,6 @@ import com.magenta.context.manager.ContextManager;
 import com.magenta.context.policy.TokenLimitPolicy;
 import com.magenta.context.store.SqliteContextRepository;
 import com.magenta.data.DatabaseService;
-import com.magenta.io.Input;
 import com.magenta.io.TerminalIOManager;
 import com.magenta.session.*;
 
@@ -38,7 +37,7 @@ public class Main {
 
         // Initialize SessionManager and run
         try {
-            SessionManager.initialize(terminalIO, initialSession, initialAlias);
+            SessionManager.initialize(terminalIO, initialSession);
             SessionManager sessionManager = SessionManager.getInstance();
 
             terminalIO.outputPipe().print("Starting Magenta...\n");
@@ -83,7 +82,6 @@ public class Main {
                 .agent(ConfigManager.config().baseAgent())
                 .messageHandler(new StreamingChat())
                 .commandHandler(new DefaultCommandHandler())
-                .inputParser(Input::defaultParser)
                 .ioManager(ioManager)
                 .sessionId(SessionId.random())
                 .build();

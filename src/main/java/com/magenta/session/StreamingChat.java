@@ -14,7 +14,7 @@ import java.util.List;
 public class StreamingChat implements MessageHandler<AgentSession> {
 
     @Override
-    public void processMessage(AgentSession session, String message) {
+    public  void processMessage(AgentSession session, String message) {
         if (message.isBlank()) { return; }
         
         Agent agent = session.agent();

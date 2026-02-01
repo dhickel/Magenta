@@ -52,7 +52,6 @@ public class ToolProvider {
             case "todo" -> todoService != null ? new TodoTools(todoService) : null;
             case "knowledge" -> vectorStoreService != null ? new KnowledgeTools(vectorStoreService) : null;
             case "context", "memory" -> new ContextTools(sessionId, contextLimits);
-            case "delegate" -> new DelegateTool(io, this);
             default -> {
                 System.err.println("Warning: Unknown tool: " + toolName);
                 yield null;

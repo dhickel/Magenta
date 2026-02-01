@@ -35,8 +35,8 @@ public class ShellTools {
             .arguments(command)
             .build();
 
-        // Apply security filter
-        Message result = io.securityFilter().toolFilter().apply(request, io);
+        // Apply security filter via SecurityManager
+        Message result = securityManager.createFilter(io).toolFilter().apply(request, io);
 
         if (result.isFiltered()) {
             return "Error: " + result.filterReason();

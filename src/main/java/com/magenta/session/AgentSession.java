@@ -3,50 +3,100 @@ package com.magenta.session;
 import com.magenta.config.Config.AgentConfig;
 import com.magenta.context.policy.ContextLimits;
 import com.magenta.io.*;
+import com.magenta.security.SecurityFilter;
 import com.magenta.security.SecurityManager;
 import com.magenta.tools.ToolProvider;
 
+import java.util.Optional;
 
+/**
+ * AgentSession manages a conversational session with an AI agent.
+ * Simplified architecture:
+ * - Agent owns SecurityFilter and CommandDetector
+ * - Session applies security filtering to I/O
+ * - IOManager is pure I/O, no business logic
+ */
 public class AgentSession extends AbstractSession {
     // Per-agent state
-    private final SecurityManager securityManager;
-    private final ToolProvider toolProvider;
     private final Agent agent;
+    private final ToolProvider toolProvider;
     private final MessageHandler<AgentSession> messageHandler;
     private final CommandHandler commandHandler;
-    private final InputParser inputParser;
     private final SessionId sessionId;
 
     public AgentSession(
-            IOManager ioManager,
-            SecurityManager securityManager,
-            ToolProvider toolProvider,
+            SessionAlias alias,
             AgentConfig agentConfig,
-            MessageHandler<AgentSession> messageHandler,
-            CommandHandler commandHandler,
-            InputParser inputParser,
             SessionId sessionId
     ) {
-        super(ioManager);
-        this.sessionId = sessionId;
-        this.agent = new Agent(agentConfig);
-        this.securityManager = securityManager;
-        this.toolProvider = toolProvider;
-        this.messageHandler = messageHandler;
-        this.commandHandler = commandHandler;
-        this.inputParser = inputParser;
+        this(alias, agentConfig, sessionId, new StreamingChat(), new DefaultCommandHandler());
     }
 
-    // Agent-specific methods
+    public AgentSession(
+            SessionAlias alias,
+            AgentConfig agentConfig,
+            SessionId sessionId,
+            MessageHandler<AgentSession> messageHandler,
+            CommandHandler commandHandler
+    ) {
+        super(alias, null); // IOManager will be attached later
+        this.sessionId = sessionId;
+        this.agent = new Agent(agentConfig);
+        this.messageHandler = messageHandler;
+        this.commandHandler = commandHandler;
+
+        // Create per-agent ToolProvider
+        SecurityManager securityManager = SecurityManager.getInstance();
+        securityManager.setConfig(agentConfig.security());
+        ContextLimits limits = new ContextLimits(
+            agentConfig.model().maxContext(),
+            agentConfig.model().compactThreshold()
+        );
+        this.toolProvider = new ToolProvider(null, null, securityManager, sessionId, limits);
+    }
+
+    @Override
+    public void attachIO(IOManager ioManager) {
+        super.attachIO(ioManager);
+
+        // Configure IOManager for this agent
+        ioManager.setCursor(agent.config().cursor(), agent.config().cursorColor());
+
+        // Set colors config if available and supported
+        if (ioManager instanceof TerminalIOManager terminalIO) {
+            var colors = agent.config().colors();
+            if (colors != null) {
+                terminalIO.setColorsConfig(colors);
+            }
+        }
+    }
+
     @Override
     public void runOnce() {
         String raw = io().read(agent.config().cursor());
-        if (raw == null || raw.isEmpty()) { return; } // No input, skip iteration
+        if (raw == null || raw.isEmpty()) {
+            return; // No input, skip iteration
+        }
 
-        // Parse input and dispatch
-        switch (inputParser.parse(raw)) {
-            case Input.Cmd(Command cmd) -> commandHandler.handle(this, cmd);
-            case Input.Msg(String text) -> messageHandler.processMessage(this, text);
+        // Detect command using agent's detector
+        Optional<Command> cmd = agent.commandDetector().detect(raw);
+
+        if (cmd.isPresent()) {
+            // Handle command
+            commandHandler.handle(this, cmd.get());
+        } else {
+            // Apply security filter to message
+            Message.Input input = Message.input(raw);
+            SecurityFilter filter = securityFilter();
+            Message filtered = filter.inputFilter().apply(input, io());
+
+            if (filtered instanceof Message.Input validInput) {
+                // Process valid message
+                messageHandler.processMessage(this, validInput.content());
+            } else if (filtered instanceof Message.Filtered f) {
+                // Show filtered message
+                io().print(Message.system("[FILTERED] " + f.reason(), OutputStyle.ERROR));
+            }
         }
     }
 
@@ -56,7 +106,6 @@ public class AgentSession extends AbstractSession {
         }
     }
 
-    // Override responseHandler to provide agent-specific color
     @Override
     public ResponseHandler responseHandler() {
         if (responseHandler == null) {
@@ -67,17 +116,22 @@ public class AgentSession extends AbstractSession {
         return responseHandler;
     }
 
-    // Per-agent state accessors
-    public SecurityManager securityManager() {
-        return securityManager;
+    // === Accessors ===
+
+    public Agent agent() {
+        return agent;
+    }
+
+    public SecurityFilter securityFilter() {
+        // Create security filter on-demand when IOManager is available
+        if (ioManager != null) {
+            return agent.createSecurityFilterFor(ioManager);
+        }
+        return SecurityFilter.identity();
     }
 
     public ToolProvider toolProvider() {
         return toolProvider;
-    }
-
-    public Agent agent() {
-        return agent;
     }
 
     public MessageHandler<AgentSession> messageHandler() {
@@ -87,24 +141,29 @@ public class AgentSession extends AbstractSession {
     public CommandHandler commandHandler() {
         return commandHandler;
     }
-    
+
     public SessionId sessionId() {
         return sessionId;
     }
 
+    // === Builder (simplified) ===
 
-    // Builder pattern for encapsulated construction
     public static Builder builder() {
         return new Builder();
     }
 
     public static class Builder {
+        private SessionAlias alias;
         private AgentConfig agentConfig;
+        private SessionId sessionId;
         private MessageHandler<AgentSession> messageHandler;
         private CommandHandler commandHandler;
-        private InputParser inputParser;
         private IOManager ioManager;
-        private SessionId sessionId;
+
+        public Builder alias(SessionAlias alias) {
+            this.alias = alias;
+            return this;
+        }
 
         public Builder agent(AgentConfig agentConfig) {
             this.agentConfig = agentConfig;
@@ -121,15 +180,8 @@ public class AgentSession extends AbstractSession {
             return this;
         }
 
-
         public Builder commandHandler(CommandHandler handler) {
             this.commandHandler = handler;
-            return this;
-        }
-
-
-        public Builder inputParser(InputParser parser) {
-            this.inputParser = parser;
             return this;
         }
 
@@ -141,54 +193,30 @@ public class AgentSession extends AbstractSession {
         public AgentSession build() {
             validate();
 
-        // Create per-agent SecurityManager from agent's security config
-        SecurityManager securityManager = SecurityManager.getInstance();
-        securityManager.setConfig(agentConfig.security());
+            // Use defaults if not provided
+            MessageHandler<AgentSession> handler = messageHandler != null
+                ? messageHandler
+                : new StreamingChat();
+            CommandHandler cmdHandler = commandHandler != null
+                ? commandHandler
+                : new DefaultCommandHandler();
 
-        // Use the validated ioManager from the builder
-        IOManager ioManager = this.ioManager;
+            AgentSession session = new AgentSession(alias, agentConfig, sessionId, handler, cmdHandler);
 
-            // Set security filter on IOManager
-            ioManager.setSecurityFilter(securityManager.createFilter(ioManager));
-
-            // Set colors config on IOManager if available and supported
-            if (ioManager instanceof TerminalIOManager terminalIO) {
-                var colors = agentConfig.colors();
-                if (colors != null) {
-                    terminalIO.setColorsConfig(colors);
-                }
+            // Attach IOManager if provided
+            if (ioManager != null) {
+                session.attachIO(ioManager);
             }
 
-            // Set cursor and cursor color on IOManager
-            ioManager.setCursor(agentConfig.cursor(), agentConfig.cursorColor());
-
-            // Create per-agent ToolProvider
-            ContextLimits limits = new ContextLimits(
-                agentConfig.model().maxContext(),
-                agentConfig.model().compactThreshold()
-            );
-            ToolProvider toolProvider = new ToolProvider(null, null, securityManager, sessionId, limits);
-
-            // Create session with all components
-            return new AgentSession(ioManager, securityManager, toolProvider, agentConfig,
-                    messageHandler, commandHandler, inputParser, sessionId);
+            return session;
         }
 
         private void validate() {
+            if (alias == null) {
+                throw new IllegalStateException("alias is required");
+            }
             if (agentConfig == null) {
                 throw new IllegalStateException("agentConfig is required");
-            }
-            if (messageHandler == null) {
-                throw new IllegalStateException("messageHandler is required");
-            }
-            if (commandHandler == null) {
-                throw new IllegalStateException("commandHandler is required");
-            }
-            if (inputParser == null) {
-                throw new IllegalStateException("inputParser is required");
-            }
-            if (ioManager == null) {
-                throw new IllegalStateException("ioManager is required");
             }
             if (sessionId == null) {
                 throw new IllegalStateException("sessionId is required");
