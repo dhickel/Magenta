@@ -1,5 +1,6 @@
 package com.magenta.tools;
 
+import com.magenta.context.policy.ContextLimits;
 import com.magenta.domain.TodoService;
 import com.magenta.io.IOManager;
 import com.magenta.memory.VectorStoreService;
@@ -16,13 +17,15 @@ public class ToolProvider {
     private final VectorStoreService vectorStoreService;
     private final SecurityManager securityManager;
     private final SessionId sessionId;
+    private final ContextLimits contextLimits;
 
     public ToolProvider(TodoService todoService, VectorStoreService vectorStoreService,
-                       SecurityManager securityManager, SessionId sessionId) {
+                       SecurityManager securityManager, SessionId sessionId, ContextLimits contextLimits) {
         this.todoService = todoService;
         this.vectorStoreService = vectorStoreService;
         this.securityManager = securityManager;
         this.sessionId = sessionId;
+        this.contextLimits = contextLimits;
     }
 
 
@@ -48,7 +51,7 @@ public class ToolProvider {
             case "web" -> new WebTools(securityManager, io);
             case "todo" -> todoService != null ? new TodoTools(todoService) : null;
             case "knowledge" -> vectorStoreService != null ? new KnowledgeTools(vectorStoreService) : null;
-            case "context", "memory" -> new ContextTools(sessionId);
+            case "context", "memory" -> new ContextTools(sessionId, contextLimits);
             case "delegate" -> new DelegateTool(io, this);
             default -> {
                 System.err.println("Warning: Unknown tool: " + toolName);

@@ -1,7 +1,6 @@
 package com.magenta.io;
 
 import com.magenta.config.Config.ColorsConfig;
-import com.magenta.security.SecurityFilter;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReaderBuilder;
 import org.jline.terminal.TerminalBuilder;
@@ -12,37 +11,85 @@ import java.io.IOException;
 import java.io.PrintWriter;
 
 
-public class TerminalIOManager implements IOManager {
+public class TerminalIOManager extends AbstractIOManager {
+
+    private static TerminalIOManager instance;
 
     private final org.jline.terminal.Terminal terminal;
     private final LineReader reader;
     private final PrintWriter writer;
     private final boolean colorEnabled;
     private ColorsConfig colorsConfig;
-    private SecurityFilter securityFilter;
     private String cursor = "magenta> ";
     private Integer cursorColor;
 
-    public TerminalIOManager() throws IOException {
+    public static synchronized TerminalIOManager getInstance() throws IOException {
+        if (instance == null) {
+            instance = new TerminalIOManager();
+        }
+        return instance;
+    }
+
+    private TerminalIOManager() throws IOException {
+        super();
         this.terminal = TerminalBuilder.builder().system(true).build();
         this.reader = LineReaderBuilder.builder().terminal(terminal).build();
         this.writer = terminal.writer();
         this.colorEnabled = !org.jline.terminal.Terminal.TYPE_DUMB.equals(terminal.getType());
-        this.securityFilter = SecurityFilter.identity(); // Default: no filtering
+
+        // Initialize pipes (raw I/O, no filtering - IOManager defaults handle that)
+        this.inputPipe = this::readRaw;
+        this.outputPipe = this::printRaw;
+        this.colorPipe = this::applyColor;
+    }
+
+
+    /**
+     * TerminalIOProxy that delegates all operations to the parent TerminalIOManager.
+     * Allows sessions to have their own IOManager instance without closing the shared terminal.
+     * Each proxy maintains its own SecurityFilter (set by the session).
+     */
+    public static class TerminalIOProxy extends AbstractIOManager {
+        private final TerminalIOManager target;
+
+        private TerminalIOProxy(TerminalIOManager target) {
+            super(); // Initializes securityFilter to identity()
+            this.target = target;
+
+            // Delegate to target pipes
+            this.inputPipe = target.inputPipe();
+            this.outputPipe = target.outputPipe();
+            this.colorPipe = target.colorPipe();
+        }
+
+        // === IOManager methods (delegate to target) ===
+
+        @Override
+        public void setCursor(String cursor, Integer cursorColor) {
+            target.setCursor(cursor, cursorColor);
+        }
+
+        @Override
+        public ResponseHandler createResponseHandler(Integer agentColor, int delayMs) {
+            return target.createResponseHandler(agentColor, delayMs);
+        }
+
+        @Override
+        public void close() {
+            // No-op: don't close the shared terminal
+        }
+    }
+
+    /**
+     * Create a proxy IOManager that delegates to this terminal.
+     * The proxy can be safely closed without affecting the shared terminal.
+     */
+    public IOManager createProxy() {
+        return new TerminalIOProxy(this);
     }
 
     public void setColorsConfig(ColorsConfig colorsConfig) {
         this.colorsConfig = colorsConfig;
-    }
-
-    @Override
-    public SecurityFilter securityFilter() {
-        return securityFilter;
-    }
-
-    @Override
-    public void setSecurityFilter(SecurityFilter filter) {
-        this.securityFilter = filter;
     }
 
     @Override
@@ -51,30 +98,63 @@ public class TerminalIOManager implements IOManager {
         this.cursorColor = cursorColor;
     }
 
-    // === Input (InputPipe) ===
 
-    @Override
-    public String read(String prompt) {
+
+    /**
+     * Raw input reading (no security filtering - handled by IOManager defaults).
+     * Handles terminal-specific commands like /clear locally.
+     */
+    private Message.Input readRaw(String prompt) {
         while (true) {
             String line = readLine();
             if (line == null) {
-                return "/exit"; // EOF or Ctrl-D -> treat as exit command
+                return Message.input("/exit");  // EOF or Ctrl-D
             }
 
-            // Handle terminal-specific commands locally (before filtering/parsing)
+            // Handle terminal-specific commands locally
             if (line.trim().toLowerCase().matches("^/(clear|cls).*")) {
                 terminal.puts(org.jline.utils.InfoCmp.Capability.clear_screen);
                 terminal.flush();
-                continue; // Ask for input again
+                continue;  // Ask for input again
             }
 
-            // Apply security filter to raw input
-            String filtered = securityFilter.inputFilter().apply(line, this);
-
-            return filtered;
+            return Message.input(line);
         }
     }
 
+    /**
+     * Raw output writing (no security filtering - handled by IOManager defaults).
+     * Handles different message types appropriately.
+     */
+    private void printRaw(Message message) {
+        String text = switch (message) {
+            case Message.Output(String content, Integer color) -> {
+                if (color != null) {
+                    yield applyColor(content, color);
+                }
+                yield content;
+            }
+            case Message.System(String content, OutputStyle style) -> {
+                yield styled(content, style);
+            }
+            case Message.Filtered(String orig, String reason, var type, var ts) -> {
+                // Filtered messages shouldn't reach here (IOManager blocks them)
+                // But if they do, display the reason
+                yield styled("[BLOCKED] " + reason, OutputStyle.ERROR);
+            }
+            case Message.Input(String content, var ts) -> {
+                // Input messages shouldn't be printed, but if they are, just show content
+                yield content;
+            }
+        };
+
+        writer.print(text);
+        writer.flush();
+    }
+
+    /**
+     * Read a line from terminal with styled cursor.
+     */
     public String readLine() {
         // Use configured cursor with custom color if set, otherwise use default prompt styling
         String styledCursor = (cursorColor != null)
@@ -83,77 +163,69 @@ public class TerminalIOManager implements IOManager {
         return reader.readLine(styledCursor);
     }
 
+    /**
+     * Read a line from terminal with custom prompt.
+     */
     public String readLine(String prompt) {
         return reader.readLine(styled(prompt, OutputStyle.PROMPT));
     }
 
-    // === Output (OutputPipe) ===
-
-    @Override
-    public void print(String text) {
-        String filtered = securityFilter.outputFilter().apply(text);
-        writer.print(filtered);
-        writer.flush();
-    }
-
-    @Override
-    public void print(String text, int colorCode) {
-        String filtered = securityFilter.outputFilter().apply(text);
-        writer.print(styled(filtered, colorCode));
-        writer.flush();
-    }
-
-    @Override
-    public void println(String text) {
-        String filtered = securityFilter.outputFilter().apply(text);
-        writer.println(filtered);
-        flush();
-    }
-
-    @Override
-    public void println(String text, int colorCode) {
-        String filtered = securityFilter.outputFilter().apply(text);
-        writer.println(styled(filtered, colorCode));
-        flush();
+    /**
+     * Apply color formatting using ANSI codes.
+     * Used by ColorPipe.
+     */
+    private String applyColor(String text, int colorCode) {
+        return styled(text, colorCode);
     }
 
     // === Convenience Output Methods ===
 
-    public void println(String message, OutputStyle style) {
-        writer.println(styled(message, style));
-        flush();
+    public void printWithStyle(String message, OutputStyle style) {
+        // Get color code from config or use default
+        int colorCode = OutputStyle.PROMPT.ordinal(); // Default
+        if (colorsConfig != null) {
+            Integer code = colorsConfig.getColor(style.name());
+            if (code != null) {
+                colorCode = code;
+            } else {
+                colorCode = style.ordinal();
+            }
+        } else {
+            colorCode = style.ordinal();
+        }
+        print(message + "\n", colorCode);
     }
 
     public void error(String message) {
-        println(message, OutputStyle.ERROR);
+        printWithStyle(message, OutputStyle.ERROR);
     }
 
     public void warn(String message) {
-        println(message, OutputStyle.WARNING);
+        printWithStyle(message, OutputStyle.WARNING);
     }
 
     public void info(String message) {
-        println(message, OutputStyle.INFO);
+        printWithStyle(message, OutputStyle.INFO);
     }
 
     public void success(String message) {
-        println(message, OutputStyle.SUCCESS);
+        printWithStyle(message, OutputStyle.SUCCESS);
     }
 
     public void agentResponse(String response) {
-        println(response, OutputStyle.AGENT);
+        printWithStyle(response, OutputStyle.AGENT);
     }
 
     public void agentResponse(String response, Integer agentColor) {
         if (agentColor != null) {
-            println(response, agentColor);
+            print(response + "\n", agentColor);
         } else {
-            println(response, OutputStyle.AGENT);
+            printWithStyle(response, OutputStyle.AGENT);
         }
     }
 
     public void securityAlert(String message) {
-        println(message, OutputStyle.SECURITY);
+        printWithStyle(message, OutputStyle.SECURITY);
     }
 
     // === Formatting ===
@@ -167,7 +239,7 @@ public class TerminalIOManager implements IOManager {
         if (colorsConfig != null) {
             Integer code = colorsConfig.getColor(style.name());
             if (code != null) {
-                return new AttributedString(text, AttributedStyle.DEFAULT.foreground(code)).toAnsi(terminal);
+                return styled(text, code);
             }
         }
 
@@ -195,14 +267,6 @@ public class TerminalIOManager implements IOManager {
         return terminal.getWidth();
     }
 
-    public LineReader reader() {
-        return reader;
-    }
-
-    public PrintWriter writer() {
-        return writer;
-    }
-
     @Override
     public ResponseHandler createResponseHandler(Integer agentColor, int delayMs) {
         return delayMs > 0
@@ -214,4 +278,6 @@ public class TerminalIOManager implements IOManager {
     public void close() throws IOException {
         terminal.close();
     }
+
+
 }

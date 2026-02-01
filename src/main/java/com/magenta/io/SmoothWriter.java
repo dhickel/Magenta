@@ -17,8 +17,8 @@ public class SmoothWriter extends Writer {
     private CountDownLatch finished;
     private volatile boolean done;
 
-    public SmoothWriter(OutputPipe pipe, Integer colorCode, int charDelayMs) {
-        super(pipe, colorCode);
+    public SmoothWriter(IOManager ioManager, Integer colorCode, int charDelayMs) {
+        super(ioManager, colorCode);
         this.charDelayMs = charDelayMs;
         resetState();
     }
@@ -38,15 +38,15 @@ public class SmoothWriter extends Writer {
                     if (token != null) {
                         for (char c : token.toCharArray()) {
                             if (colorCode != null) {
-                                pipe.print(String.valueOf(c), colorCode);
+                                ioManager.print(String.valueOf(c), colorCode);
                             } else {
-                                pipe.print(String.valueOf(c));
+                                ioManager.print(String.valueOf(c));
                             }
                             Thread.sleep(charDelayMs);
                         }
                     }
                 }
-                pipe.println("");
+                ioManager.print("\n");
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } finally {
@@ -80,7 +80,7 @@ public class SmoothWriter extends Writer {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-        pipe.println("Error: " + t.getMessage());
+        ioManager.print("Error: " + t.getMessage() + "\n");
         reset();
     }
 

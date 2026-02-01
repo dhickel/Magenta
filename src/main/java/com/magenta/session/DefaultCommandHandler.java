@@ -15,23 +15,23 @@ public class DefaultCommandHandler implements CommandHandler {
             case Command.Exit() -> session.setExit(true);
             case Command.Help() -> printHelp(io);
             case Command.Clear() -> { /* handled by IOManager */ }
-            case Command.History() -> io.println("History not yet implemented");
+            case Command.History() -> io.outputPipe().print("History not yet implemented\n");
             case Command.Agent(String rawArg) -> switchAgent(session, rawArg);
             case Command.Sessions() -> listSessions(io);
             case Command.Agents() -> listAgents(io);
-            case Command.Unknown(String raw) -> io.println("Unknown command: " + raw);
+            case Command.Unknown(String raw) -> io.outputPipe().print("Unknown command: " + raw + "\n");
         }
     }
 
     private void printHelp(IOManager io) {
-        io.println("Available commands:");
-        io.println("  /exit, /quit, /q - Exit the session");
-        io.println("  /help, /? - Show this help message");
-        io.println("  /clear, /cls - Clear the screen");
-        io.println("  /history - Show conversation history");
-        io.println("  /agent <name> [alias] - Switch to a different agent/session");
-        io.println("  /sessions - List active sessions");
-        io.println("  /agents - List available agent configurations");
+        io.outputPipe().print("Available commands:\n");
+        io.outputPipe().print("  /exit, /quit, /q - Exit the session\n");
+        io.outputPipe().print("  /help, /? - Show this help message\n");
+        io.outputPipe().print("  /clear, /cls - Clear the screen\n");
+        io.outputPipe().print("  /history - Show conversation history\n");
+        io.outputPipe().print("  /agent <name> [alias] - Switch to a different agent/session\n");
+        io.outputPipe().print("  /sessions - List active sessions\n");
+        io.outputPipe().print("  /agents - List available agent configurations\n");
     }
 
     private void switchAgent(Session session, String rawArg) {
@@ -53,9 +53,9 @@ public class DefaultCommandHandler implements CommandHandler {
             sm.switchToSession(alias);
 
         } catch (IllegalArgumentException e) {
-            session.io().println("Error: " + e.getMessage(), 1); 
+            session.io().outputPipe().print("Error: " + e.getMessage() + "\n");
         } catch (IllegalStateException e) {
-            session.io().println("Session switching not available: " + e.getMessage(), 3); 
+            session.io().outputPipe().print("Session switching not available: " + e.getMessage() + "\n");
         }
     }
 
@@ -64,17 +64,17 @@ public class DefaultCommandHandler implements CommandHandler {
             var sessions = SessionManager.getInstance().listActiveSessions();
             var current = SessionManager.getInstance().getCurrentSessionAlias();
 
-            io.println("Active sessions:");
+            io.outputPipe().print("Active sessions:\n");
             if (sessions.isEmpty()) {
-                io.println("  (none)");
+                io.outputPipe().print("  (none)\n");
             } else {
                 for (String session : sessions) {
                     String marker = session.equals(current) ? " *" : "";
-                    io.println("  " + session + marker);
+                    io.outputPipe().print("  " + session + marker + "\n");
                 }
             }
         } catch (IllegalStateException e) {
-            io.println("Session management not available: " + e.getMessage(), 3);
+            io.outputPipe().print("Session management not available: " + e.getMessage() + "\n");
         }
     }
 
@@ -83,13 +83,13 @@ public class DefaultCommandHandler implements CommandHandler {
             var agents = SessionManager.getInstance().listAvailableAgents();
             var currentAlias = SessionManager.getInstance().getCurrentSessionAlias();
 
-            io.println("Available agents (configs):");
+            io.outputPipe().print("Available agents (configs):\n");
             for (String agent : agents) {
                 String marker = agent.equals(currentAlias) ? " (active)" : "";
-                io.println("  " + agent + marker);
+                io.outputPipe().print("  " + agent + marker + "\n");
             }
         } catch (IllegalStateException e) {
-            io.println("Session management not available: " + e.getMessage(), 3);
+            io.outputPipe().print("Session management not available: " + e.getMessage() + "\n");
         }
     }
 }

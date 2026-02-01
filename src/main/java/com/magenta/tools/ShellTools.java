@@ -1,8 +1,10 @@
 package com.magenta.tools;
 
 import com.magenta.io.IOManager;
+import com.magenta.io.Message;
 import com.magenta.security.SecurityManager;
 import dev.langchain4j.agent.tool.Tool;
+import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import org.apache.commons.exec.CommandLine;
 import org.apache.commons.exec.DefaultExecutor;
 import org.apache.commons.exec.PumpStreamHandler;
@@ -27,9 +29,17 @@ public class ShellTools {
             return "Error: Command cannot be empty.";
         }
 
-        // Security check via instance method
-        if (!securityManager.requireToolApproval("shell", command, io)) {
-            return "Error: Command execution denied by user or security policy.";
+        // Create ToolExecutionRequest for security filtering
+        ToolExecutionRequest request = ToolExecutionRequest.builder()
+            .name("shell")
+            .arguments(command)
+            .build();
+
+        // Apply security filter
+        Message result = io.securityFilter().toolFilter().apply(request, io);
+
+        if (result.isFiltered()) {
+            return "Error: " + result.filterReason();
         }
 
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();

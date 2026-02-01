@@ -1,6 +1,7 @@
 package com.magenta.session;
 
 import com.magenta.config.Config.AgentConfig;
+import com.magenta.context.policy.ContextLimits;
 import com.magenta.io.*;
 import com.magenta.security.SecurityManager;
 import com.magenta.tools.ToolProvider;
@@ -40,7 +41,7 @@ public class AgentSession extends AbstractSession {
     @Override
     public void runOnce() {
         String raw = io().read(agent.config().cursor());
-        if (raw == null) { return; } // No input, skip iteration
+        if (raw == null || raw.isEmpty()) { return; } // No input, skip iteration
 
         // Parse input and dispatch
         switch (inputParser.parse(raw)) {
@@ -162,7 +163,11 @@ public class AgentSession extends AbstractSession {
             ioManager.setCursor(agentConfig.cursor(), agentConfig.cursorColor());
 
             // Create per-agent ToolProvider
-            ToolProvider toolProvider = new ToolProvider(null, null, securityManager, sessionId);
+            ContextLimits limits = new ContextLimits(
+                agentConfig.model().maxContext(),
+                agentConfig.model().compactThreshold()
+            );
+            ToolProvider toolProvider = new ToolProvider(null, null, securityManager, sessionId, limits);
 
             // Create session with all components
             return new AgentSession(ioManager, securityManager, toolProvider, agentConfig,

@@ -1,29 +1,24 @@
 package com.magenta.io;
 
-import com.magenta.security.SecurityFilter;
-
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-
-public class InternalIOManager implements IOManager {
+/**
+ * IOManager for agent-to-agent communication using queues.
+ * Does not support colors (uses ColorPipe.identity()).
+ */
+public class InternalIOManager extends AbstractIOManager {
 
     private final Queue<String> inputQueue = new ConcurrentLinkedQueue<>();
     private final Queue<String> outputQueue = new ConcurrentLinkedQueue<>();
-    private SecurityFilter securityFilter;
 
     public InternalIOManager() {
-        this.securityFilter = SecurityFilter.identity(); // Default: no filtering
-    }
+        super();
 
-    @Override
-    public SecurityFilter securityFilter() {
-        return securityFilter;
-    }
-
-    @Override
-    public void setSecurityFilter(SecurityFilter filter) {
-        this.securityFilter = filter;
+        // Initialize pipes (raw I/O, no filtering - IOManager defaults handle that)
+        this.inputPipe = this::readRaw;
+        this.outputPipe = this::printRaw;
+        // colorPipe already initialized to identity() in AbstractIOManager
     }
 
     @Override
@@ -31,39 +26,31 @@ public class InternalIOManager implements IOManager {
         // No-op for internal communication
     }
 
-    // === Input (InputPipe) ===
-
-    @Override
-    public String read(String prompt) {
-        String input = inputQueue.poll();
-        if (input == null) {
-            return null; // No input available
-        }
-        // Apply security filter to raw input
-        String filtered = securityFilter.inputFilter().apply(input, this);
-        return filtered;
+    /**
+     * Raw input reading (no security filtering - handled by IOManager defaults).
+     */
+    private Message.Input readRaw(String prompt) {
+        String raw = inputQueue.poll();
+        return raw != null ? Message.input(raw) : Message.input("");
     }
 
+    /**
+     * Raw output writing (no security filtering - handled by IOManager defaults).
+     */
+    private void printRaw(Message message) {
+        outputQueue.offer(message.content());  // Just queue the content
+    }
 
+    /**
+     * Enqueue input for this manager to read.
+     */
     public void enqueueInput(String input) {
         inputQueue.offer(input);
     }
 
-    // === Output (OutputPipe) ===
-
-    @Override
-    public void print(String text) {
-        String filtered = securityFilter.outputFilter().apply(text);
-        outputQueue.offer(filtered);
-    }
-
-    @Override
-    public void println(String text) {
-        String filtered = securityFilter.outputFilter().apply(text);
-        outputQueue.offer(filtered + "\n");
-    }
-
-
+    /**
+     * Read all queued output.
+     */
     public String readOutput() {
         StringBuilder sb = new StringBuilder();
         String line;
@@ -73,12 +60,16 @@ public class InternalIOManager implements IOManager {
         return sb.toString();
     }
 
-
+    /**
+     * Peek at next output without removing.
+     */
     public String peekOutput() {
         return outputQueue.peek();
     }
 
-
+    /**
+     * Clear all queued output.
+     */
     public void clearOutput() {
         outputQueue.clear();
     }
@@ -86,7 +77,7 @@ public class InternalIOManager implements IOManager {
     @Override
     public ResponseHandler createResponseHandler(Integer agentColor, int delayMs) {
         // Internal communication doesn't use delays or colors
-        return new Writer(this, null);
+        return new Writer(this);
     }
 
     @Override

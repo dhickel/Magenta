@@ -2,6 +2,7 @@ package com.magenta.context.manager;
 
 import com.magenta.context.model.Context;
 import com.magenta.context.model.ContextElement;
+import com.magenta.context.policy.ContextLimits;
 import com.magenta.context.policy.ContextPolicy;
 import com.magenta.context.store.ContextRepository;
 import com.magenta.session.SessionId;
@@ -26,8 +27,8 @@ public abstract class ContextManager {
     }
 
     public abstract Context loadContext(SessionId sessionId);
-    public abstract void saveContext(SessionId sessionId, Context context);
-    public abstract void append(SessionId sessionId, ContextElement element);
+    public abstract void saveContext(SessionId sessionId, Context context, ContextLimits limits);
+    public abstract void append(SessionId sessionId, ContextElement element, ContextLimits limits);
     public abstract Optional<Context> retrieveArchivedContext(String key);
     public abstract void archiveContext(String key, Context context);
 }

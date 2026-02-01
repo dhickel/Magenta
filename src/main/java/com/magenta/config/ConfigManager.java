@@ -10,6 +10,7 @@ public class ConfigManager {
     private static Config configInstance;
     private static Map<Arg, Arg.Value> argsInstance;
 
+    private ConfigManager() {}
 
     public static void initialize(String[] args) throws IOException {
         // Parse arguments (defaults to config.json if not provided)

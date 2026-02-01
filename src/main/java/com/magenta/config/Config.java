@@ -118,6 +118,10 @@ public class Config {
         private String endpointKey;
         @JsonProperty("max_tokens")
         private int maxTokens;
+        @JsonProperty("max_context")
+        private int maxContext;
+        @JsonProperty("compact_threshold")
+        private int compactThreshold;
         @JsonProperty("temperature")
         private double temperature;
 
@@ -126,6 +130,10 @@ public class Config {
         public String modelName() { return modelName; }
 
         public int maxTokens() { return maxTokens; }
+
+        public int maxContext() { return maxContext; }
+
+        public int compactThreshold() { return compactThreshold; }
 
         public double temperature() { return temperature; }
 

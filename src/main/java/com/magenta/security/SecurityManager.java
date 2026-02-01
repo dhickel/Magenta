@@ -2,7 +2,9 @@ package com.magenta.security;
 
 import com.magenta.config.Config.SecurityConfig;
 import com.magenta.io.IOManager;
+import com.magenta.io.Message;
 import com.magenta.io.TerminalIOManager;
+import dev.langchain4j.agent.tool.ToolExecutionRequest;
 
 
 public class SecurityManager {
@@ -76,10 +78,68 @@ public class SecurityManager {
 
     public SecurityFilter createFilter(IOManager io) {
         return new SecurityFilter(
-            (cmd, ioMgr) -> cmd,  // Pass-through for now
-            output -> output,      // Pass-through for now
-            (request, ioMgr) -> request  // Unused - tools call requireToolApproval directly
+            (input, ioMgr) -> filterInput(input, ioMgr),
+            this::filterOutput,
+            (toolReq, ioMgr) -> filterTool(toolReq, ioMgr)
         );
+    }
+
+    private Message filterInput(Message.Input input, IOManager io) {
+        String content = input.content();
+
+        // Check blacklist
+        if (config.blockedCommands() != null) {
+            for (String blocked : config.blockedCommands()) {
+                if (content.contains(blocked)) {
+                    return Message.blocked(content, "Contains blocked pattern: " + blocked, Message.FilterType.INPUT);
+                }
+            }
+        }
+
+        // Input is allowed - return as-is
+        return input;
+    }
+
+    private Message filterOutput(Message.Output output) {
+        // For now, just pass through
+        // Could add: sanitize sensitive data, content policies, etc.
+        return output;
+    }
+
+    private Message filterTool(ToolExecutionRequest request, IOManager io) {
+        String toolName = request.name();
+        String arguments = request.arguments();
+
+        // Check blacklist
+        if (config.blockedCommands() != null) {
+            for (String blocked : config.blockedCommands()) {
+                if (arguments.contains(blocked)) {
+                    return Message.blocked(arguments, "Tool blocked: contains " + blocked, Message.FilterType.TOOL);
+                }
+            }
+        }
+
+        // Check whitelist (auto-allow)
+        if (config.alwaysAllowCommands() != null) {
+            for (String allowed : config.alwaysAllowCommands()) {
+                if (arguments.equals(allowed) || arguments.startsWith(allowed + " ")) {
+                    return Message.system("approved");
+                }
+            }
+        }
+
+        // Check if approval required
+        if (config.approvalRequiredFor() != null && config.approvalRequiredFor().contains(toolName)) {
+            boolean approved = requestUserApproval(toolName, arguments, io);
+            if (approved) {
+                return Message.system("approved");
+            } else {
+                return Message.blocked(arguments, "User denied approval", Message.FilterType.TOOL);
+            }
+        }
+
+        // Default allow
+        return Message.system("approved");
     }
 
     private void printBlocked(String command, String blockedRule, IOManager io) {
@@ -87,7 +147,7 @@ public class SecurityManager {
         if (io instanceof TerminalIOManager term) {
             term.securityAlert(msg);
         } else {
-            io.println(msg);
+            io.print(msg + "\n");
         }
     }
 
@@ -95,11 +155,11 @@ public class SecurityManager {
         if (io instanceof TerminalIOManager term) {
             term.securityAlert("[SECURITY ALERT] Agent wants to execute:");
         } else {
-            io.println("[SECURITY ALERT] Agent wants to execute:");
+            io.print("[SECURITY ALERT] Agent wants to execute:\n");
         }
 
-        io.println("Tool:    " + toolType);
-        io.println("Command: " + command);
+        io.print("Tool:    " + toolType + "\n");
+        io.print("Command: " + command + "\n");
 
         String response = io.read("Allow? [y/N]: ");
         if (response != null) {

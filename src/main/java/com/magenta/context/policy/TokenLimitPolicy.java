@@ -7,18 +7,26 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class TokenLimitPolicy implements ContextPolicy {
-    private final int maxTokens;
-
-    public TokenLimitPolicy(int maxTokens) {
-        this.maxTokens = maxTokens;
-    }
 
     @Override
-    public Context apply(Context context) {
+    public Context apply(Context context, ContextLimits limits) {
         int currentTokens = context.totalEstimatedTokens();
-        if (currentTokens <= maxTokens) {
+        int targetTokens = limits.maxContext();
+
+        // If we exceed the compaction threshold, we aim to reduce to that threshold to free up space.
+        // If we strictly exceed maxContext, we must reduce to at least maxContext.
+        // By setting target to compactThreshold when exceeded, we cover both cases 
+        // (assuming compactThreshold <= maxContext).
+        if (currentTokens > limits.compactThreshold()) {
+            targetTokens = limits.compactThreshold();
+        } else if (currentTokens > limits.maxContext()) {
+            targetTokens = limits.maxContext();
+        } else {
             return context;
         }
+
+        // Safety check: never exceed maxContext
+        targetTokens = Math.min(targetTokens, limits.maxContext());
 
         List<ContextElement> elements = new ArrayList<>(context.getElements());
         List<ContextElement> keptTail = new ArrayList<>();
@@ -35,7 +43,7 @@ public class TokenLimitPolicy implements ContextPolicy {
             if (e == systemElement) continue;
 
             int cost = e.estimatedTokens();
-            if (retainedTokens + cost <= maxTokens) {
+            if (retainedTokens + cost <= targetTokens) {
                 keptTail.add(0, e);
                 retainedTokens += cost;
             } else {

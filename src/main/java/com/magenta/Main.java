@@ -15,21 +15,15 @@ import java.io.IOException;
 public class Main {
 
     public static void main(String[] args) {
+        // Initialize Config Manager
         initConfigManager(args);
 
         // Initialize Database
-        DatabaseService dbService = new DatabaseService();
-        try {
-            dbService.init();
-        } catch (Exception e) {
-            System.err.println("Failed to initialize database: " + e.getMessage());
-            e.printStackTrace();
-            System.exit(1);
-        }
+        DatabaseService dbService = initDbService();
 
         // Initialize Context Manager Singleton
         SqliteContextRepository contextRepo = new SqliteContextRepository(dbService);
-        TokenLimitPolicy contextPolicy = new TokenLimitPolicy(8192); // Default max tokens
+        TokenLimitPolicy contextPolicy = new TokenLimitPolicy(); // Default max tokens
         ContextManager.initialize(contextRepo, contextPolicy);
 
         // Create terminal IO (will be owned by SessionManager)
@@ -47,9 +41,9 @@ public class Main {
             SessionManager.initialize(terminalIO, initialSession, initialAlias);
             SessionManager sessionManager = SessionManager.getInstance();
 
-            terminalIO.println("Starting Magenta...");
+            terminalIO.outputPipe().print("Starting Magenta...\n");
             sessionManager.run();
-            terminalIO.println("Exiting...");
+            terminalIO.outputPipe().print("Exiting...\n");
 
             sessionManager.close();
         } catch (Exception e) {
@@ -63,7 +57,7 @@ public class Main {
 
     private static TerminalIOManager initTerminalIO() {
         try {
-            return new TerminalIOManager();
+            return TerminalIOManager.getInstance();
         } catch (IOException e) {
             System.err.println("Failed to create TerminalIOManager: " + e.getMessage());
             e.printStackTrace();
@@ -93,5 +87,18 @@ public class Main {
                 .ioManager(ioManager)
                 .sessionId(SessionId.random())
                 .build();
+    }
+
+    private static DatabaseService initDbService() {
+        try {
+            DatabaseService dbService = new DatabaseService();
+            dbService.init();
+            return dbService;
+        } catch (Exception e) {
+            System.err.println("Failed to initialize database: " + e.getMessage());
+            e.printStackTrace();
+            System.exit(1);
+            return null;
+        }
     }
 }

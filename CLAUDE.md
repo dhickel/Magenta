@@ -50,29 +50,34 @@ public sealed interface TypeName permits TypeName.Variant1, TypeName.Variant2 {
 
 | Interface | Responsibility | Usage |
 |-----------|---------------|-------|
-| `InputPipe` | Reading input, parsing commands | `Command read(String prompt)` |
-| `OutputPipe` | Writing output | `print()`, `println()` with optional colors |
-| `IOManager` | Coordinates I/O, security filtering, extends InputPipe + OutputPipe | Context-specific "firmware" layer with integrated security |
+| `InputPipe` | Reading input | `String read(String prompt)` |
+| `OutputPipe` | Writing output | `print(String)`, `println(String)` - basic text only |
+| `IOManager` | Coordinates I/O via composition, security filtering | Context-specific "firmware" layer with integrated security |
 | `ResponseHandler` | Streaming response handling | `write()`, `complete()`, `error()` |
 | `SecurityFilter` | I/O and tool filtering | Composable functional filters for input/output/tools |
 
 **How They Compose:**
 
 ```
-IOManager (sealed interface)
-├── extends InputPipe (interface)
-├── extends OutputPipe (interface)
+IOManager (interface)
 ├── extends AutoCloseable (interface)
+├── methods: inputPipe(), outputPipe() (composition, not inheritance)
 ├── has: SecurityFilter (integrated)
 └── factory: createResponseHandler()
 
-IOManager.Terminal implements IOManager
+AbstractIOManager (base)
+├── implements IOManager
+├── has fields: inputPipe, outputPipe, securityFilter
+└── implements: inputPipe(), outputPipe(), securityFilter(), setSecurityFilter()
+
+TerminalIOManager extends AbstractIOManager
 ├── manages: JLine Terminal, LineReader, PrintWriter, SecurityFilter
 ├── handles: Terminal-specific commands (/clear)
 ├── filters: All input/output through SecurityFilter
+├── adds color methods: print(String, int), println(String, int) - NOT on OutputPipe interface
 └── creates: ResponseHandlers that use filtered OutputPipe
 
-IOManager.Internal implements IOManager
+InternalIOManager extends AbstractIOManager
 ├── manages: ConcurrentLinkedQueues, SecurityFilter
 ├── handles: Agent-to-agent communication
 ├── filters: All input/output through SecurityFilter
@@ -130,22 +135,26 @@ SecurityFilter (functional composition)
 **Example - Context-Dependent I/O with Security:**
 ```java
 // Terminal context - user interaction with security
-IOManager.Terminal terminal = new IOManager.Terminal();
+TerminalIOManager terminal = TerminalIOManager.getInstance();
 terminal.setSecurityFilter(securityManager.createFilter(terminal));
 
 // Create ResponseHandler for streaming (security applied automatically)
 ResponseHandler handler = terminal.createResponseHandler(colorCode, delayMs);
 
-// All I/O is transparently filtered
-Command cmd = terminal.read("magenta> "); // Input filtered
-terminal.println("response"); // Output filtered
+// All I/O is transparently filtered through composition
+String input = terminal.inputPipe().read("magenta> "); // Input filtered
+terminal.outputPipe().println("response"); // Output filtered
+
+// Color output - Terminal-specific methods (not on OutputPipe interface)
+terminal.println("colored response", 5); // Color code 5
+terminal.error("error message"); // Convenience method
 
 // Internal context - agent communication
-IOManager.Internal internal = new IOManager.Internal();
+InternalIOManager internal = new InternalIOManager();
 internal.setSecurityFilter(SecurityFilter.identity()); // Or custom filter
 internal.enqueueInput("message from agent A");
-Command cmd = internal.read(""); // No prompt needed, still filtered
-internal.println("response from agent B"); // Filtered
+String msg = internal.inputPipe().read(""); // No prompt needed, still filtered
+internal.outputPipe().println("response from agent B"); // Filtered
 
 // Session owns and manages ResponseHandler lifecycle
 ResponseHandler handler = session.responseHandler(); // Lazily composed from config
@@ -166,7 +175,29 @@ agent.model().generate(agent.conversationHistory(), handler)
 - Use `CompletableFuture` for async operations
 - Let data shape behavior, not deep class hierarchies
 
-### 4. Minimal, Focused Changes
+### 4. Minimal API Surface
+
+**Principle:** Only implement methods we currently need for the task at hand.
+
+**Do NOT:**
+- Add "might be useful later" methods or speculative features
+- Extend interfaces when composition with accessor methods is clearer
+- Create bloated APIs with methods from multiple concerns
+
+**Do:**
+- Prefer composition with accessor methods over extending interfaces
+- Keep interface definitions small and focused on core responsibilities
+- Let concrete implementations add context-specific methods as needed
+- Example: `IOManager` provides `inputPipe()`/`outputPipe()` accessors rather than extending those interfaces
+- Example: `OutputPipe` only has `print(String)` and `println(String)` - color methods are Terminal-specific
+
+**Benefits:**
+- Clear separation between core contract and context-specific features
+- Easier to understand what methods are fundamental vs convenience
+- Less method name collisions and overriding complexity
+- Explicit about which component handles what
+
+### 5. Minimal, Focused Changes
 
 **Do NOT:**
 - Over-abstract or create unnecessary layers
@@ -240,13 +271,14 @@ src/main/java/com/magenta/
 
 | Pattern | Example | Notes |
 |---------|---------|-------|
-| Sealed ADT + Nested | `IOManager`, `Command`, `EndpointConfig` | Exhaustive matching, encapsulated variants |
+| Sealed ADT + Nested | `Command`, `EndpointConfig` | Exhaustive matching, encapsulated variants |
 | Composable Interfaces | `InputPipe`, `OutputPipe`, `ResponseHandler` | Small, focused contracts |
-| Inheritance + Composition | `AbstractSession` → `AgentSession` | Clear shared vs per-agent state separation |
-| Singleton | `ConfigManager`, `SessionManager` | Global state management |
+| Composition over Extension | `IOManager` provides `inputPipe()`/`outputPipe()` | Minimal API surface, clear separation |
+| Inheritance + Composition | `AbstractIOManager` → `TerminalIOManager` | Shared security/pipe fields, context-specific features |
+| Singleton | `ConfigManager`, `SessionManager`, `TerminalIOManager` | Global state management |
 | Builder | `AgentSession.Builder` | Encapsulates complex object construction |
 | Factory | `AgentFactory`, `IOManager.createResponseHandler()`, `SessionManager.getOrCreateAgentSession()` | Create from config or context |
-| Functional Interface | `InteractionMode` | Can use lambda for simple cases, or implement for complex behavior |
+| Functional Interface | `InteractionMode`, `InputPipe`, `OutputPipe` | Can use lambda for simple cases, or implement for complex behavior |
 | Functional Composition | `SecurityFilter.andThen()` | Composable filters with function references |
 | Observer | `TodoService` + PropertyChangeSupport | Reactive updates |
 | Strategy | `ChatModel` | Pluggable behaviors |
@@ -424,8 +456,9 @@ try (AgentSession session = AgentSession.builder()
 4. **Ask before refactoring** - If a change requires moving/restructuring existing code, confirm first
 5. **No speculative features** - Only implement what's explicitly requested
 6. **Simple over clever** - Three similar lines beats a premature abstraction
-7. **Document significant changes** - Store architectural decisions and refactoring summaries in `.internal-dev/notes/`
-8. **Keep documentation up to date** - When editing, refactoring, or adding features, update the corresponding documentation in `docs/`. This includes:
+7. **Minimal API surface** - Only add methods currently needed; prefer composition (accessors) over extension (inheritance)
+8. **Document significant changes** - Store architectural decisions and refactoring summaries in `.internal-dev/notes/`
+9. **Keep documentation up to date** - When editing, refactoring, or adding features, update the corresponding documentation in `docs/`. This includes:
    - Architecture docs if design patterns or component relationships change
    - Component docs if interfaces or behavior changes
    - Guide docs if usage changes

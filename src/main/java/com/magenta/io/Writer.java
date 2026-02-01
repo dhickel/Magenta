@@ -1,9 +1,12 @@
 package com.magenta.io;
 
-
+/**
+ * Basic response handler that writes streaming tokens to an IOManager.
+ * Uses IOManager's default methods which automatically handle security filtering and color.
+ */
 public class Writer implements ResponseHandler {
 
-    protected final OutputPipe pipe;
+    protected final IOManager ioManager;
     protected final Integer colorCode;
     private final StringBuilder buffer = new StringBuilder();
 
@@ -11,12 +14,12 @@ public class Writer implements ResponseHandler {
         buffer.append(token);
     }
 
-    public Writer(OutputPipe pipe) {
-        this(pipe, null);
+    public Writer(IOManager ioManager) {
+        this(ioManager, null);
     }
 
-    public Writer(OutputPipe pipe, Integer colorCode) {
-        this.pipe = pipe;
+    public Writer(IOManager ioManager, Integer colorCode) {
+        this.ioManager = ioManager;
         this.colorCode = colorCode;
     }
 
@@ -24,22 +27,21 @@ public class Writer implements ResponseHandler {
     public void write(String token) {
         appendBuffer(token);
         if (colorCode != null) {
-            pipe.print(token, colorCode);
+            ioManager.print(token, colorCode);
         } else {
-            pipe.print(token);
+            ioManager.print(token);
         }
     }
 
     @Override
     public void complete() {
-        pipe.println("");
+        ioManager.print("\n");
         reset();
     }
 
     @Override
     public void error(Throwable t) {
-        pipe.println("");
-        pipe.println("Error: " + t.getMessage());
+        ioManager.print("\nError: " + t.getMessage() + "\n");
         reset();
     }
 
@@ -47,7 +49,6 @@ public class Writer implements ResponseHandler {
     public String getBuffer() {
         return buffer.toString();
     }
-
 
     protected void reset() {
         buffer.setLength(0);

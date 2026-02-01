@@ -80,12 +80,12 @@ public class SessionManager implements AutoCloseable {
         }
 
         if (currentSession == newSession) {
-            terminalIO.println("Already in session: " + alias, 6); 
+            terminalIO.print("Already in session: " + alias + "\n", 6);
             return;
         }
 
         this.currentSession = newSession;
-        terminalIO.println("Switched to session: " + alias, 6);
+        terminalIO.print("Switched to session: " + alias + "\n", 6);
     }
 
     public List<String> listActiveSessions() {
