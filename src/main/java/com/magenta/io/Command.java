@@ -12,6 +12,7 @@ public sealed interface Command {
     record Agent(String agentName) implements Command {}
     record Sessions() implements Command {}
     record Agents() implements Command {}
+    record Context(String subCommand, String arg) implements Command {}
     record Unknown(String raw) implements Command {}
 
 
@@ -21,7 +22,7 @@ public sealed interface Command {
         }
 
         String cmd = input.substring(1).trim();
-        String[] parts = cmd.split("\\s+", 2);
+        String[] parts = cmd.split("\\s+", 3);
         String commandName = parts[0].toLowerCase();
 
         Command command = switch (commandName) {
@@ -37,6 +38,12 @@ public sealed interface Command {
             }
             case "sessions" -> new Sessions();
             case "agents" -> new Agents();
+            case "context" -> {
+                // /context <subcommand> [arg]
+                String subCmd = parts.length > 1 ? parts[1].toLowerCase() : "status";
+                String arg = parts.length > 2 ? parts[2].trim() : "";
+                yield new Context(subCmd, arg);
+            }
             default -> new Unknown(input);
         };
 
