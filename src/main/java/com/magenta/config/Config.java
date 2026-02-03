@@ -3,7 +3,7 @@ package com.magenta.config;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import com.magenta.model.ChatModel;
+import com.magenta.session.ChatModel;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.ollama.OllamaChatModel;
@@ -38,6 +38,9 @@ public class Config {
     @JsonProperty("prompts")
     public Map<String, String> prompts;
 
+    @JsonProperty("task_templates")
+    public Map<String, com.magenta.task.WorkflowTaskTemplate> taskTemplates;
+
     public void initializeReferences() {
         models.values().forEach(model -> model.config = this);
         agents.forEach((name, agent) -> {
@@ -63,6 +66,10 @@ public class Config {
 
     public int streamDelayMs() {
         return global.getStreamDelayMs();
+    }
+
+    public Map<String, com.magenta.task.WorkflowTaskTemplate> taskTemplates() {
+        return taskTemplates != null ? taskTemplates : Map.of();
     }
 
     public record GlobalConfig(

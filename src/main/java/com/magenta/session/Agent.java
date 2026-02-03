@@ -1,8 +1,8 @@
 package com.magenta.session;
 
 import com.magenta.config.Config.AgentConfig;
-import com.magenta.io.CommandDetector;
-import com.magenta.model.ChatModel;
+import com.magenta.io.terminal.CommandDetector;
+import com.magenta.io.IOManager;
 import com.magenta.security.SecurityFilter;
 import com.magenta.security.SecurityManager;
 
@@ -35,7 +35,7 @@ public record Agent(
      * Create a SecurityFilter bound to a specific IOManager.
      * Call this when the agent is attached to a session with IOManager.
      */
-    public SecurityFilter createSecurityFilterFor(com.magenta.io.IOManager io) {
+    public SecurityFilter createSecurityFilterFor(IOManager io) {
         SecurityManager securityManager = SecurityManager.getInstance();
         securityManager.setConfig(config.security());
         return securityManager.createFilter(io);

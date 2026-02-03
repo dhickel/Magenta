@@ -1,6 +1,6 @@
 package com.magenta.tools;
 
-import com.magenta.domain.TodoService;
+import com.magenta.task.TodoService;
 import dev.langchain4j.agent.tool.Tool;
 
 public class TodoTools {

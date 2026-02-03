@@ -1,0 +1,120 @@
+{
+  "global": {
+    "base_agent": "researcher",
+    "storage_path": "./data",
+    "stream_delay_ms": 10
+  },
+
+  "endpoints": {
+    "local_ollama": {
+      "type": "ollama",
+      "url": "http://localhost:11434",
+      "timeout_seconds": 180
+    }
+  },
+
+  "models": {
+    "research_model": {
+      "endpoint": "local_ollama",
+      "model_name": "mixtral:latest",
+      "max_tokens": 4096,
+      "max_context": 16384,
+      "compact_threshold": 13107,
+      "temperature": 0.8
+    }
+  },
+
+  "securities": {
+    "strict": {
+      "approval_required_for": ["shell", "git"],
+      "always_allow_commands": [],
+      "blocked_commands": ["rm", "delete", "format", "sudo"]
+    }
+  },
+
+  "colors": {
+    "default": {
+      "error": 9,
+      "warning": 11,
+      "success": 10,
+      "info": 14,
+      "agent": 13,
+      "prompt": 15,
+      "security": 11,
+      "command": 12
+    }
+  },
+
+  "prompts": {
+    "researcher_prompt": "You are a thorough research assistant specialized in gathering, analyzing, and synthesizing information from various sources.\n\n# Your Capabilities\n- Fetch and analyze web content\n- Search through documentation and knowledge bases\n- Organize and summarize research findings\n- Archive important information for future reference\n- Semantic search through collected knowledge\n\n# Your Approach\n1. Understand the research question thoroughly\n2. Break down complex topics into manageable parts\n3. Gather information from multiple sources\n4. Cross-reference and verify information\n5. Synthesize findings into clear summaries\n6. Cite sources and provide references\n\n# Research Quality\n- Be thorough and comprehensive\n- Distinguish facts from opinions\n- Note conflicting information\n- Provide context and background\n- Suggest areas for deeper investigation",
+
+    "summarizer_prompt": "You are an expert at distilling complex information into clear, concise summaries while preserving key details and insights.\n\n# Summarization Principles\n- Identify and extract main points\n- Preserve critical details and context\n- Use clear, accessible language\n- Structure information logically\n- Highlight key takeaways\n\n# Output Format\n- Start with a brief overview\n- Use bullet points for clarity\n- Include relevant examples\n- End with actionable insights"
+  },
+
+  "agents": {
+    "researcher": {
+      "model": "research_model",
+      "system_prompt": "researcher_prompt",
+      "tools": ["web", "knowledge", "context", "search", "filesystem"],
+      "security": "strict",
+      "colors": "default",
+      "cursor": "research> ",
+      "cursor_color": 13
+    },
+    "summarizer": {
+      "model": "research_model",
+      "system_prompt": "summarizer_prompt",
+      "tools": ["context", "knowledge", "filesystem"],
+      "security": "strict",
+      "colors": "default",
+      "cursor": "summary> ",
+      "cursor_color": 14
+    }
+  },
+
+  "task_templates": {
+    "research-topic": {
+      "name": "Research Topic",
+      "type": "RESEARCH",
+      "description": "Conduct comprehensive research on a specific topic",
+      "task_prompt": "Research the following topic:\n\n{{topic}}\n\nProvide:\n1. Overview of the topic\n2. Key concepts and terminology\n3. Current state and recent developments\n4. Important resources and references\n5. Summary of findings\n\nFocus on: {{focus_areas}}\n\nUse web searches and knowledge base queries to gather information.",
+      "required_tools": ["web", "knowledge", "context", "search"],
+      "parameter_specs": {
+        "topic": {
+          "type": "string",
+          "required": true,
+          "description": "The topic to research"
+        },
+        "focus_areas": {
+          "type": "string",
+          "required": false,
+          "description": "Specific aspects to focus on (optional)"
+        }
+      }
+    },
+    "summarize-document": {
+      "name": "Summarize Document",
+      "type": "DOCUMENTATION",
+      "description": "Create a concise summary of a document or article",
+      "task_prompt": "Read and summarize the document at: {{document_path}}\n\nProvide:\n1. Brief overview (2-3 sentences)\n2. Main points (bullet list)\n3. Key takeaways\n4. Relevant details\n\nLength: {{length}}\nFocus: {{focus}}",
+      "required_tools": ["filesystem", "context"],
+      "parameter_specs": {
+        "document_path": {
+          "type": "string",
+          "required": true,
+          "description": "Path to the document to summarize"
+        },
+        "length": {
+          "type": "string",
+          "required": false,
+          "description": "Desired summary length (brief/medium/detailed)"
+        },
+        "focus": {
+          "type": "string",
+          "required": false,
+          "description": "What to focus on in the summary"
+        }
+      }
+    }
+  }
+}

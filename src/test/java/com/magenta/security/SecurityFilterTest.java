@@ -3,17 +3,17 @@ package com.magenta.security;
 import com.magenta.config.Config.SecurityConfig;
 import com.magenta.io.IOManager;
 import com.magenta.io.InternalIOManager;
-import com.magenta.io.Message;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for SecurityFilter with Message ADT integration.
+ * Tests for SecurityFilter with Optional-based filtering.
  */
 class SecurityFilterTest {
 
@@ -30,11 +30,9 @@ class SecurityFilterTest {
     void testIdentityFilterPassesThrough() {
         SecurityFilter filter = SecurityFilter.identity();
 
-        Message.Input input = Message.input("test input");
-        Message result = filter.inputFilter().apply(input, io);
+        Optional<String> blocked = filter.inputFilter().apply("test input", io);
 
-        assertTrue(result instanceof Message.Input);
-        assertEquals("test input", result.content());
+        assertTrue(blocked.isEmpty(), "Identity filter should pass through");
     }
 
     @Test
@@ -48,13 +46,11 @@ class SecurityFilterTest {
         securityManager.setConfig(config);
 
         SecurityFilter filter = securityManager.createFilter(io);
-        Message.Input input = Message.input("rm -rf /home");
 
-        Message result = filter.inputFilter().apply(input, io);
+        Optional<String> blocked = filter.inputFilter().apply("rm -rf /home", io);
 
-        assertTrue(result.isFiltered());
-        assertEquals(Message.FilterType.INPUT, result.filterType());
-        assertTrue(result.filterReason().contains("rm -rf"));
+        assertTrue(blocked.isPresent(), "Should block rm -rf");
+        assertTrue(blocked.get().contains("rm -rf"));
     }
 
     @Test
@@ -67,13 +63,10 @@ class SecurityFilterTest {
         securityManager.setConfig(config);
 
         SecurityFilter filter = securityManager.createFilter(io);
-        Message.Input input = Message.input("ls -la");
 
-        Message result = filter.inputFilter().apply(input, io);
+        Optional<String> blocked = filter.inputFilter().apply("ls -la", io);
 
-        assertTrue(result instanceof Message.Input);
-        assertEquals("ls -la", result.content());
-        assertFalse(result.isFiltered());
+        assertTrue(blocked.isEmpty(), "Should allow safe input");
     }
 
     @Test
@@ -86,12 +79,10 @@ class SecurityFilterTest {
         securityManager.setConfig(config);
 
         SecurityFilter filter = securityManager.createFilter(io);
-        Message.Output output = Message.output("test output");
 
-        Message result = filter.outputFilter().apply(output);
+        Optional<String> blocked = filter.outputFilter().apply("test output");
 
-        assertTrue(result instanceof Message.Output);
-        assertEquals("test output", result.content());
+        assertTrue(blocked.isEmpty(), "Output filter should pass through");
     }
 
     @Test
@@ -109,11 +100,10 @@ class SecurityFilterTest {
             .arguments("rm -rf /tmp")
             .build();
 
-        Message result = filter.toolFilter().apply(request, io);
+        Optional<String> blocked = filter.toolFilter().apply(request, io);
 
-        assertTrue(result.isFiltered());
-        assertEquals(Message.FilterType.TOOL, result.filterType());
-        assertTrue(result.filterReason().contains("rm -rf"));
+        assertTrue(blocked.isPresent(), "Should block rm -rf");
+        assertTrue(blocked.get().contains("rm -rf"));
     }
 
     @Test
@@ -131,11 +121,9 @@ class SecurityFilterTest {
             .arguments("ls -la")
             .build();
 
-        Message result = filter.toolFilter().apply(request, io);
+        Optional<String> blocked = filter.toolFilter().apply(request, io);
 
-        assertFalse(result.isFiltered());
-        assertTrue(result instanceof Message.System);
-        assertEquals("approved", result.content());
+        assertTrue(blocked.isEmpty(), "Whitelisted command should be approved");
     }
 
     @Test
@@ -145,11 +133,9 @@ class SecurityFilterTest {
 
         SecurityFilter chained = filter1.andThen(filter2);
 
-        Message.Input input = Message.input("test");
-        Message result = chained.inputFilter().apply(input, io);
+        Optional<String> blocked = chained.inputFilter().apply("test", io);
 
-        assertTrue(result instanceof Message.Input);
-        assertEquals("test", result.content());
+        assertTrue(blocked.isEmpty(), "Chained identity filters should pass through");
     }
 
     @Test
@@ -164,26 +150,8 @@ class SecurityFilterTest {
         SecurityFilter filter = securityManager.createFilter(io);
         var curriedFilter = filter.curriedInputFilter(io);
 
-        Message result = curriedFilter.apply(Message.input("blocked text"));
+        Optional<String> blocked = curriedFilter.apply("blocked text");
 
-        assertTrue(result.isFiltered());
-    }
-
-    @Test
-    void testCurriedOutputFilter() {
-        SecurityConfig config = new SecurityConfig(
-            List.of(),
-            List.of(),
-            List.of()
-        );
-        securityManager.setConfig(config);
-
-        SecurityFilter filter = securityManager.createFilter(io);
-        var curriedFilter = filter.curriedOutputFilter();
-
-        Message result = curriedFilter.apply(Message.output("safe output"));
-
-        assertTrue(result instanceof Message.Output);
-        assertEquals("safe output", result.content());
+        assertTrue(blocked.isPresent(), "Should block text containing 'blocked'");
     }
 }

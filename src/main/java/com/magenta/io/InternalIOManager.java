@@ -1,13 +1,15 @@
 package com.magenta.io;
 
+import com.magenta.io.terminal.Writer;
+
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  * IOManager for agent-to-agent communication using queues.
- * Does not support colors.
+ * Does not support colors or styling.
  */
-public class InternalIOManager extends AbstractIOManager {
+public class InternalIOManager extends IOManager {
 
     private final Queue<String> inputQueue = new ConcurrentLinkedQueue<>();
     private final Queue<String> outputQueue = new ConcurrentLinkedQueue<>();
@@ -15,7 +17,7 @@ public class InternalIOManager extends AbstractIOManager {
     public InternalIOManager() {
         super();
 
-        // Initialize pipes (raw I/O, no filtering - IOManager defaults handle that)
+        // Initialize pipes with String-based I/O
         this.inputPipe = this::readRaw;
         this.outputPipe = this::printRaw;
     }
@@ -26,18 +28,18 @@ public class InternalIOManager extends AbstractIOManager {
     }
 
     /**
-     * Raw input reading (no security filtering - handled by IOManager defaults).
+     * Raw input reading - returns String from queue.
      */
-    private Message.Input readRaw(String prompt) {
+    private String readRaw(String prompt) {
         String raw = inputQueue.poll();
-        return raw != null ? Message.input(raw) : Message.input("");
+        return raw != null ? raw : "";
     }
 
     /**
-     * Raw output writing (no security filtering - handled by IOManager defaults).
+     * Raw output writing - queues String.
      */
-    private void printRaw(Message message) {
-        outputQueue.offer(message.content());  // Just queue the content
+    private void printRaw(String text) {
+        outputQueue.offer(text);
     }
 
     /**

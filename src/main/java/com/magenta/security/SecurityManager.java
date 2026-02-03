@@ -2,9 +2,10 @@ package com.magenta.security;
 
 import com.magenta.config.Config.SecurityConfig;
 import com.magenta.io.IOManager;
-import com.magenta.io.Message;
-import com.magenta.io.TerminalIOManager;
+import com.magenta.io.terminal.TerminalIOManager;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
+
+import java.util.Optional;
 
 
 public class SecurityManager {
@@ -78,35 +79,42 @@ public class SecurityManager {
 
     public SecurityFilter createFilter(IOManager io) {
         return new SecurityFilter(
-            (input, ioMgr) -> filterInput(input, ioMgr),
+            (input, ioMgr) -> filterInput(input),
             this::filterOutput,
             (toolReq, ioMgr) -> filterTool(toolReq, ioMgr)
         );
     }
 
-    private Message filterInput(Message.Input input, IOManager io) {
-        String content = input.content();
-
+    /**
+     * Filter input - returns Optional.empty() if allowed, Optional.of(reason) if blocked.
+     */
+    private Optional<String> filterInput(String content) {
         // Check blacklist
         if (config.blockedCommands() != null) {
             for (String blocked : config.blockedCommands()) {
                 if (content.contains(blocked)) {
-                    return Message.blocked(content, "Contains blocked pattern: " + blocked, Message.FilterType.INPUT);
+                    return Optional.of("Contains blocked pattern: " + blocked);
                 }
             }
         }
 
-        // Input is allowed - return as-is
-        return input;
+        // Input is allowed
+        return Optional.empty();
     }
 
-    private Message filterOutput(Message.Output output) {
+    /**
+     * Filter output - returns Optional.empty() if allowed, Optional.of(reason) if blocked.
+     */
+    private Optional<String> filterOutput(String content) {
         // For now, just pass through
         // Could add: sanitize sensitive data, content policies, etc.
-        return output;
+        return Optional.empty();
     }
 
-    private Message filterTool(ToolExecutionRequest request, IOManager io) {
+    /**
+     * Filter tool - returns Optional.empty() if allowed, Optional.of(reason) if blocked.
+     */
+    private Optional<String> filterTool(ToolExecutionRequest request, IOManager io) {
         String toolName = request.name();
         String arguments = request.arguments();
 
@@ -114,7 +122,7 @@ public class SecurityManager {
         if (config.blockedCommands() != null) {
             for (String blocked : config.blockedCommands()) {
                 if (arguments.contains(blocked)) {
-                    return Message.blocked(arguments, "Tool blocked: contains " + blocked, Message.FilterType.TOOL);
+                    return Optional.of("Tool blocked: contains " + blocked);
                 }
             }
         }
@@ -123,7 +131,7 @@ public class SecurityManager {
         if (config.alwaysAllowCommands() != null) {
             for (String allowed : config.alwaysAllowCommands()) {
                 if (arguments.equals(allowed) || arguments.startsWith(allowed + " ")) {
-                    return Message.system("approved");
+                    return Optional.empty();  // Allowed
                 }
             }
         }
@@ -132,14 +140,14 @@ public class SecurityManager {
         if (config.approvalRequiredFor() != null && config.approvalRequiredFor().contains(toolName)) {
             boolean approved = requestUserApproval(toolName, arguments, io);
             if (approved) {
-                return Message.system("approved");
+                return Optional.empty();  // Allowed
             } else {
-                return Message.blocked(arguments, "User denied approval", Message.FilterType.TOOL);
+                return Optional.of("User denied approval");
             }
         }
 
         // Default allow
-        return Message.system("approved");
+        return Optional.empty();
     }
 
     private void printBlocked(String command, String blockedRule, IOManager io) {
@@ -147,7 +155,7 @@ public class SecurityManager {
         if (io instanceof TerminalIOManager term) {
             term.securityAlert(msg);
         } else {
-            io.print(msg + "\n");
+            io.println(msg);
         }
     }
 
@@ -155,15 +163,15 @@ public class SecurityManager {
         if (io instanceof TerminalIOManager term) {
             term.securityAlert("[SECURITY ALERT] Agent wants to execute:");
         } else {
-            io.print("[SECURITY ALERT] Agent wants to execute:\n");
+            io.println("[SECURITY ALERT] Agent wants to execute:");
         }
 
-        io.print("Tool:    " + toolType + "\n");
-        io.print("Command: " + command + "\n");
+        io.println("Tool:    " + toolType);
+        io.println("Command: " + command);
 
-        String response = io.read("Allow? [y/N]: ");
-        if (response != null) {
-            return response.equalsIgnoreCase("y") || response.equalsIgnoreCase("yes");
+        String answer = io.read("Allow? [y/N]: ").content();
+        if (answer != null && !answer.isEmpty()) {
+            return answer.equalsIgnoreCase("y") || answer.equalsIgnoreCase("yes");
         }
         return false;
     }

@@ -1,29 +1,29 @@
 package com.magenta;
 
+import com.magenta.agent.AgentNetwork;
 import com.magenta.config.Config;
 import com.magenta.config.ConfigManager;
-import com.magenta.context.manager.ContextManager;
-import com.magenta.context.policy.TokenLimitPolicy;
-import com.magenta.context.store.SqliteContextRepository;
-import com.magenta.data.DatabaseService;
-import com.magenta.io.TerminalIOManager;
+import com.magenta.context.ContextManager;
+import com.magenta.io.terminal.TerminalIOManager;
 import com.magenta.session.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 
 public class Main {
+    private static final Logger logger = LoggerFactory.getLogger(Main.class);
 
     public static void main(String[] args) {
+        logger.info("Starting Magenta application...");
         // Initialize Config Manager
         initConfigManager(args);
 
-        // Initialize Database
-        DatabaseService dbService = initDbService();
+        // Initialize AgentNetwork
+        AgentNetwork.initialize();
 
         // Initialize Context Manager Singleton
-        SqliteContextRepository contextRepo = new SqliteContextRepository(dbService);
-        TokenLimitPolicy contextPolicy = new TokenLimitPolicy(); // Default max tokens
-        ContextManager.initialize(contextRepo, contextPolicy);
+        ContextManager.initialize();
 
         // Create terminal IO (will be owned by SessionManager)
         TerminalIOManager terminalIO = initTerminalIO();
@@ -46,20 +46,19 @@ public class Main {
 
             sessionManager.close();
         } catch (Exception e) {
-            System.err.println("Failed to run session: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("Failed to run session: {}", e.getMessage(), e);
             System.exit(1);
         } finally {
-            dbService.close();
+            logger.info("Shutting down...");
         }
     }
 
     private static TerminalIOManager initTerminalIO() {
         try {
+            logger.debug("Initializing TerminalIOManager...");
             return TerminalIOManager.getInstance();
         } catch (IOException e) {
-            System.err.println("Failed to create TerminalIOManager: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("Failed to create TerminalIOManager: {}", e.getMessage(), e);
             System.exit(1);
             return null;
         }
@@ -67,36 +66,28 @@ public class Main {
 
     private static Config initConfigManager(String[] args) {
         try {
+            logger.debug("Initializing ConfigManager...");
             ConfigManager.initialize(args);
+            logger.info("Configuration loaded successfully");
             return ConfigManager.config();
         } catch (Exception e) {
-            System.err.println("Failed to initialize config: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("Failed to initialize config: {}", e.getMessage(), e);
             System.exit(1);
             throw new RuntimeException("Unreachable");
         }
     }
 
     private static AgentSession initDefaultSession(TerminalIOManager ioManager) {
+        String baseAgentName = ConfigManager.config().global().baseAgent();
+        SessionAlias initialAlias = SessionAlias.of(baseAgentName);
+
         return AgentSession.builder()
+                .alias(initialAlias)
                 .agent(ConfigManager.config().baseAgent())
                 .messageHandler(new StreamingChat())
                 .commandHandler(new DefaultCommandHandler())
                 .ioManager(ioManager)
                 .sessionId(SessionId.random())
                 .build();
-    }
-
-    private static DatabaseService initDbService() {
-        try {
-            DatabaseService dbService = new DatabaseService();
-            dbService.init();
-            return dbService;
-        } catch (Exception e) {
-            System.err.println("Failed to initialize database: " + e.getMessage());
-            e.printStackTrace();
-            System.exit(1);
-            return null;
-        }
     }
 }

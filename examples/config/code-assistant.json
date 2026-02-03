@@ -1,0 +1,127 @@
+{
+  "global": {
+    "base_agent": "code-assistant",
+    "storage_path": "./data",
+    "stream_delay_ms": 0
+  },
+
+  "endpoints": {
+    "local_ollama": {
+      "type": "ollama",
+      "url": "http://localhost:11434",
+      "timeout_seconds": 120
+    }
+  },
+
+  "models": {
+    "devstral": {
+      "endpoint": "local_ollama",
+      "model_name": "devstral:latest",
+      "max_tokens": 8192,
+      "max_context": 16384,
+      "compact_threshold": 13107,
+      "temperature": 0.7
+    },
+    "codellama": {
+      "endpoint": "local_ollama",
+      "model_name": "codellama:latest",
+      "max_tokens": 4096,
+      "max_context": 8192,
+      "compact_threshold": 6553,
+      "temperature": 0.5
+    }
+  },
+
+  "securities": {
+    "default": {
+      "approval_required_for": [],
+      "always_allow_commands": ["git status", "git diff", "git log", "git branch"],
+      "blocked_commands": ["rm -rf /", "sudo rm", "format", "mkfs"]
+    }
+  },
+
+  "colors": {
+    "default": {
+      "error": 1,
+      "warning": 3,
+      "success": 2,
+      "info": 6,
+      "agent": 5,
+      "prompt": 7,
+      "security": 3,
+      "command": 4
+    }
+  },
+
+  "prompts": {
+    "code_assistant_prompt": "You are an expert software development assistant with deep knowledge of Java, design patterns, and best practices. You help developers write clean, maintainable code.\n\n# Your Capabilities\n- Read and write files in the project\n- Execute git commands for version control\n- Search through code with regex patterns\n- Analyze code structure and dependencies\n- Execute shell commands when needed\n\n# Your Style\n- Be concise and focused on the task\n- Provide code examples when helpful\n- Explain complex concepts clearly\n- Follow existing code patterns in the project\n- Ask clarifying questions when requirements are unclear\n\n# Best Practices\n- Always read files before modifying them\n- Use git to track changes\n- Write clean, well-documented code\n- Consider edge cases and error handling\n- Test your changes when possible",
+
+    "code_reviewer_prompt": "You are a thorough code reviewer focused on quality, security, and maintainability. Review code carefully and provide constructive feedback.\n\n# Review Focus Areas\n1. Code quality and readability\n2. Potential bugs and edge cases\n3. Security vulnerabilities\n4. Performance considerations\n5. Design patterns and architecture\n6. Test coverage\n\n# Review Style\n- Be constructive and specific\n- Provide examples of improvements\n- Explain the reasoning behind suggestions\n- Recognize good patterns and praise them\n- Prioritize issues by severity"
+  },
+
+  "agents": {
+    "code-assistant": {
+      "model": "devstral",
+      "system_prompt": "code_assistant_prompt",
+      "tools": ["filesystem", "git", "search", "shell", "context"],
+      "security": "default",
+      "colors": "default",
+      "cursor": "code> ",
+      "cursor_color": 5
+    },
+    "reviewer": {
+      "model": "codellama",
+      "system_prompt": "code_reviewer_prompt",
+      "tools": ["filesystem", "git", "search", "context"],
+      "security": "default",
+      "colors": "default",
+      "cursor": "review> ",
+      "cursor_color": 3
+    }
+  },
+
+  "task_templates": {
+    "code-review": {
+      "name": "Code Review",
+      "type": "CODE_ANALYSIS",
+      "description": "Perform a comprehensive code review of a file or directory",
+      "task_prompt": "Review the code at {{file_path}} and provide detailed feedback on:\n1. Code quality and style\n2. Potential bugs or edge cases\n3. Security concerns\n4. Performance issues\n5. Suggestions for improvement\n\nProvide specific examples and explain your reasoning.",
+      "required_tools": ["filesystem", "context"],
+      "parameter_specs": {
+        "file_path": {
+          "type": "string",
+          "required": true,
+          "description": "Path to the file or directory to review"
+        }
+      }
+    },
+    "refactor": {
+      "name": "Refactor Code",
+      "type": "REFACTORING",
+      "description": "Refactor code to improve quality while maintaining functionality",
+      "task_prompt": "Refactor the code at {{file_path}} to:\n1. Improve readability and maintainability\n2. Follow best practices and design patterns\n3. Reduce code duplication\n4. Improve error handling\n\nPreserve all existing functionality. Explain the changes you make.",
+      "required_tools": ["filesystem", "git", "context"],
+      "parameter_specs": {
+        "file_path": {
+          "type": "string",
+          "required": true,
+          "description": "Path to the file to refactor"
+        }
+      }
+    },
+    "implement-feature": {
+      "name": "Implement Feature",
+      "type": "CODE_GENERATION",
+      "description": "Implement a new feature based on requirements",
+      "task_prompt": "Implement the following feature:\n\n{{requirements}}\n\nFollow these guidelines:\n1. Read existing code to understand patterns\n2. Follow the project's coding style\n3. Include error handling\n4. Write clean, maintainable code\n5. Use git to track changes\n\nAsk clarifying questions if the requirements are unclear.",
+      "required_tools": ["filesystem", "git", "search", "shell", "context"],
+      "parameter_specs": {
+        "requirements": {
+          "type": "string",
+          "required": true,
+          "description": "Detailed requirements for the feature"
+        }
+      }
+    }
+  }
+}

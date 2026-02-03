@@ -1,82 +1,124 @@
 package com.magenta.io;
 
-import java.util.function.Function;
+import com.magenta.io.terminal.Command;
+import com.magenta.io.terminal.CommandDetector;
+import com.magenta.security.SecurityFilter;
+
+import java.util.Optional;
 
 /**
- * IOManager coordinates I/O for different contexts (Terminal, Internal, etc.).
- * Pure I/O layer - no security filtering (that's Session's responsibility).
- *
- * Extension Points (implementations provide):
- * - inputPipe(): Raw input reading
- * - outputPipe(): Raw output writing
- *
- * Provides functional composition for message transformations.
+ * Abstract base class for I/O management across different contexts (Terminal, Internal, etc.).
+ * Provides common fields and default implementations, subclasses provide context-specific behavior.
  */
-public interface IOManager extends AutoCloseable {
+public abstract class IOManager implements AutoCloseable {
 
-    // === Extension Points (implementations must provide) ===
+    protected InputPipe inputPipe;
+    protected OutputPipe outputPipe;
 
-    /**
-     * Provides the raw input pipe.
-     */
-    InputPipe inputPipe();
+    protected IOManager() {
+    }
 
-    /**
-     * Provides the raw output pipe.
-     */
-    OutputPipe outputPipe();
+    // === Accessor Methods ===
+
+    public InputPipe inputPipe() {
+        return inputPipe;
+    }
+
+    public OutputPipe outputPipe() {
+        return outputPipe;
+    }
 
     // === Primary I/O ===
 
     /**
-     * Read raw input string.
-     * Simple delegation to inputPipe, no parsing or filtering.
+     * Read raw input and return as ReadResult.Input.
      */
-    default String read(String prompt) {
-        return inputPipe().read(prompt).content();
+    public ReadResult.Input read(String prompt) {
+        String raw = inputPipe.read(prompt);
+        return ReadResult.input(raw);
     }
 
     /**
-     * Print message with functional composition.
-     * Applies transformers in order (e.g., security filter, then coloring).
+     * Read input with composed security filtering and command detection.
+     *
+     * @param prompt The prompt to display
+     * @param securityFilter Security filter to apply
+     * @param commandDetector Command detector
+     * @return ReadResult indicating input, command, or blocked
      */
-    default void print(Message message, Function<Message, Message>... transformers) {
-        Message current = message;
-        for (Function<Message, Message> transformer : transformers) {
-            current = transformer.apply(current);
-
-            // Stop if filtered
-            if (current instanceof Message.Filtered f) {
-                java.lang.System.err.println("[SECURITY] Output filtered: " + f.reason());
-                return;
-            }
+    public ReadResult read(String prompt, SecurityFilter securityFilter, CommandDetector commandDetector) {
+        // 1. Read raw input
+        String raw = inputPipe.read(prompt);
+        if (raw.isEmpty()) {
+            return ReadResult.input(raw);
         }
 
-        // Print via pipe
-        outputPipe().print(current);
+        // 2. Apply security filter
+        Optional<String> blocked = securityFilter.inputFilter().apply(raw, this);
+        if (blocked.isPresent()) {
+            return ReadResult.blocked(raw, blocked.get());
+        }
+
+        // 3. Check for command
+        Optional<Command> cmd = commandDetector.detect(raw);
+        if (cmd.isPresent()) {
+            return ReadResult.cmd(cmd.get());
+        }
+
+        // 4. Regular input
+        return ReadResult.input(raw);
     }
 
-    /**
-     * Print message without transformations.
-     */
-    default void print(Message message) {
-        outputPipe().print(message);
-    }
+    // === Output Methods ===
 
     /**
      * Print text (caller controls newlines).
-     * Convenience method - wraps in Message.output().
      */
-    default void print(String text) {
-        print(Message.output(text));
+    public void print(String text) {
+        outputPipe.print(text);
+    }
+
+    /**
+     * Print text with newline.
+     */
+    public void println(String text) {
+        outputPipe.println(text);
     }
 
     /**
      * Print colored text (caller controls newlines).
-     * Convenience method - wraps in Message.output() with color.
+     * Default ignores color. Terminal implementations override.
      */
-    default void print(String text, int colorCode) {
-        print(Message.output(text, colorCode));
+    public void print(String text, int colorCode) {
+        print(text);
+    }
+
+    /**
+     * Print colored text with newline.
+     */
+    public void println(String text, int colorCode) {
+        print(text + "\n", colorCode);
+    }
+
+    /**
+     * Print styled system message with newline.
+     */
+    public void printStyled(String text, OutputStyle style) {
+        println(text);  // Default ignores style
+    }
+
+    /**
+     * Print error message (convenience).
+     */
+    public void error(String text) {
+        printStyled(text, OutputStyle.ERROR);
+    }
+
+    /**
+     * Print info message (convenience).
+     */
+    public void info(String text) {
+        printStyled(text, OutputStyle.INFO);
     }
 
     // === Configuration ===
@@ -84,15 +126,15 @@ public interface IOManager extends AutoCloseable {
     /**
      * Configure the input cursor/prompt.
      */
-    void setCursor(String cursor, Integer cursorColor);
+    public abstract void setCursor(String cursor, Integer cursorColor);
 
     /**
      * Create a response handler for streaming chat responses.
      */
-    ResponseHandler createResponseHandler(Integer agentColor, int delayMs);
+    public abstract ResponseHandler createResponseHandler(Integer agentColor, int delayMs);
 
     @Override
-    default void close() throws Exception {
-        // Default no-op, implementations can override
+    public void close() throws Exception {
+        // Default no-op, subclasses can override
     }
 }

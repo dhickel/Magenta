@@ -1,19 +1,20 @@
 package com.magenta.io;
 
 /**
- * Functional interface for writing output messages.
+ * Functional interface for writing output.
+ * Takes raw strings - styling handled by IOManager methods.
  */
 @FunctionalInterface
 public interface OutputPipe {
     /**
-     * Print a message (caller controls newlines).
+     * Print text (caller controls newlines).
      */
-    void print(Message message);
+    void print(String text);
 
     /**
-     * Convenience: print a string (wraps in Message.output).
+     * Print text with newline.
      */
-    default void print(String text) {
-        print(Message.output(text));
+    default void println(String text) {
+        print(text + "\n");
     }
 }

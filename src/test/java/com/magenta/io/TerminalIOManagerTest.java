@@ -1,5 +1,6 @@
 package com.magenta.io;
 
+import com.magenta.io.terminal.TerminalIOManager;
 import org.junit.jupiter.api.Test;
 import java.io.IOException;
 

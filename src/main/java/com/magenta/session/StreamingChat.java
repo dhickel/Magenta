@@ -1,10 +1,10 @@
 package com.magenta.session;
 
-import com.magenta.context.manager.ContextManager;
-import com.magenta.context.model.Context;
-import com.magenta.context.model.ContextElement;
-import com.magenta.context.policy.ContextLimits;
-import com.magenta.context.policy.ContextWindowManager;
+import com.magenta.context.ContextManager;
+import com.magenta.context.Context;
+import com.magenta.context.ContextElement;
+import com.magenta.context.ContextLimits;
+import com.magenta.task.TaskWorkflow;
 import dev.langchain4j.data.message.*;
 
 import java.util.List;
@@ -33,7 +33,15 @@ public class StreamingChat implements MessageHandler<AgentSession> {
 
         // Ensure system prompt is set if context is empty
         if (context.getElements().isEmpty() && agent.config().systemPrompt() != null) {
-            cm.append(sessionId, new ContextElement.System(agent.config().systemPrompt()), limits);
+            String systemPrompt = agent.config().systemPrompt();
+
+            // Compose with task prompt if workflow task is active
+            TaskWorkflow task = session.currentWorkflowTask();
+            if (task != null) {
+                systemPrompt = systemPrompt + "\n\n## Current Task\n" + task.getResolvedTaskPrompt();
+            }
+
+            cm.append(sessionId, new ContextElement.System(systemPrompt), limits);
             context = cm.loadContext(sessionId); // Reload after append
         }
 
@@ -45,9 +53,8 @@ public class StreamingChat implements MessageHandler<AgentSession> {
 
         // CRITICAL: Check if compaction needed BEFORE calling model
         // This ensures we don't send too many tokens to the model
-        ContextWindowManager wm = cm.windowManager();
-        if (wm != null && wm.shouldCompact(context, limits)) {
-            wm.forceCompact(context, limits);
+        if (cm.shouldCompact(context, limits)) {
+            cm.forceCompact(context, limits);
         }
 
         // Get history for generation (after potential compaction)
@@ -55,7 +62,7 @@ public class StreamingChat implements MessageHandler<AgentSession> {
 
         // Generate streaming response
         agent.model().generate(history, session.responseHandler())
-                .thenAccept(response -> cm.append(sessionId, new ContextElement.Assistant(response), limits))
+                .thenAccept(response -> cm.append(sessionId, new ContextElement.Agent(response), limits))
                 .join();
     }
 }

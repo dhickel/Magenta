@@ -1,12 +1,15 @@
 package com.magenta.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.Map;
 
 public class ConfigManager {
+    private static final Logger logger = LoggerFactory.getLogger(ConfigManager.class);
     private static Config configInstance;
     private static Map<Arg, Arg.Value> argsInstance;
 
@@ -21,10 +24,18 @@ public class ConfigManager {
                 ? argsInstance.get(Arg.CONFIG).getString()
                 : "config.json";
 
-        // Load and store config
-        ObjectMapper mapper = new ObjectMapper();
-        configInstance = mapper.readValue(new File(configPath), Config.class);
-        configInstance.initializeReferences();
+        logger.info("Loading configuration from: {}", configPath);
+
+        try {
+            // Load and store config
+            ObjectMapper mapper = new ObjectMapper();
+            configInstance = mapper.readValue(new File(configPath), Config.class);
+            configInstance.initializeReferences();
+            logger.info("Configuration loaded successfully");
+        } catch (IOException e) {
+            logger.error("Failed to load or parse configuration from {}: {}", configPath, e.getMessage());
+            throw e;
+        }
     }
 
 

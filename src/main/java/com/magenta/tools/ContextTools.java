@@ -1,10 +1,9 @@
 package com.magenta.tools;
 
-import com.magenta.context.manager.ContextManager;
-import com.magenta.context.model.Context;
-import com.magenta.context.model.ContextElement;
-import com.magenta.context.policy.ContextLimits;
-import com.magenta.context.policy.ContextWindowManager;
+import com.magenta.context.ContextManager;
+import com.magenta.context.Context;
+import com.magenta.context.ContextElement;
+import com.magenta.context.ContextLimits;
 import com.magenta.session.SessionId;
 import dev.langchain4j.agent.tool.Tool;
 
@@ -23,13 +22,7 @@ public class ContextTools {
     public String viewContextStats() {
         ContextManager cm = ContextManager.getInstance();
         Context context = cm.loadContext(sessionId);
-        ContextWindowManager wm = cm.windowManager();
-
-        if (wm == null) {
-            return "Context statistics not available.";
-        }
-
-        var stats = wm.getStats(context, limits);
+        var stats = cm.getStats(context, limits);
         return stats.toSummary();
     }
 
@@ -37,16 +30,11 @@ public class ContextTools {
     public String compactContext() {
         ContextManager cm = ContextManager.getInstance();
         Context context = cm.loadContext(sessionId);
-        ContextWindowManager wm = cm.windowManager();
-
-        if (wm == null) {
-            return "Context compaction not available.";
-        }
 
         int beforeTokens = context.totalEstimatedTokens();
         int beforeElements = context.getElements().size();
 
-        wm.forceCompact(context, limits);
+        cm.forceCompact(context, limits);
 
         int afterTokens = context.totalEstimatedTokens();
         int afterElements = context.getElements().size();

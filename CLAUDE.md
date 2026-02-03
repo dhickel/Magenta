@@ -211,6 +211,65 @@ agent.model().generate(agent.conversationHistory(), handler)
 - Keep solutions simple and focused
 - If refactoring seems necessary, **prompt for confirmation first**
 
+### 6. Simplicity Over Complexity - No Overengineering
+
+**Principle:** Keep architecture reasonably simple, focused on its domain, and avoid predictive assumptions about future needs.
+
+**Do NOT:**
+- Make predictive assumptions about features we might need in the future
+- Add abstraction layers or frameworks "just in case"
+- Implement enterprise patterns when simpler solutions work
+- Over-complicate designs with unnecessary indirection
+- Build elaborate hierarchies or plugin systems for single-use cases
+- Add configurability or extensibility that isn't currently needed
+
+**Do:**
+- Focus on the immediate problem domain
+- Use modern Java patterns (records, sealed interfaces, streams, lambdas)
+- Prefer straightforward implementations over elaborate architectures
+- Choose the simplest solution that solves the current requirement
+- **When uncertain about scope, prompt the user for clarification**
+- Only add complexity when there's a clear, present need
+
+**Examples:**
+
+**Bad (Overengineered):**
+```java
+// Don't create elaborate plugin systems for single use
+public interface MessageProcessor {
+    void processMessage(Message msg);
+}
+public class MessageProcessorFactory {
+    public MessageProcessor create(String type) { /* ... */ }
+}
+public class MessageProcessorRegistry {
+    private Map<String, MessageProcessorFactory> processMessageors;
+    // Complex registration system for one processMessageor...
+}
+```
+
+**Good (Simple):**
+```java
+// Just handle the actual requirement directly
+public void processMessage(Message msg) {
+    // Simple, focused logic
+    io.println(msg.content());
+}
+```
+
+**When to Ask for Clarification:**
+- "Should I also handle X case?" - if it's not in the requirements
+- "Do you want this to be extensible?" - if a simple solution exists
+- "Should this support multiple implementations?" - if only one is needed
+- "Do we need configurability for Y?" - if a constant would work
+
+**Modern Java Over Enterprise Cruft:**
+- Use `record` instead of JavaBeans with getters/setters
+- Use sealed interfaces instead of marker interfaces + instanceof chains
+- Use streams and lambdas instead of verbose iterators
+- Use `var` for local variables when type is obvious
+- Use functional interfaces (`Function`, `Consumer`) instead of custom single-method interfaces (unless domain-specific naming adds clarity)
+
 ## Project Direction
 
 **Current State:** Terminal-based CLI with multi-agent session switching, task management, and tool execution.
@@ -255,16 +314,15 @@ agent.model().generate(agent.conversationHistory(), handler)
 
 ```
 src/main/java/com/magenta/
-├── config/       # Configuration, argument parsing
-├── session/      # Session lifecycle, state management
-├── agent/        # Agent creation, delegation, networking
-├── io/           # I/O abstractions (IOManager, pipes, writers, commands)
-├── model/        # Chat model abstraction (Streaming, Blocking)
-├── tools/        # Tool implementations (@Tool annotated)
-├── domain/       # Business logic (Task, TodoService)
-├── memory/       # Vector store for semantic memory
-├── data/         # Database persistence
-└── security/     # Security/approval management
+├── agent/        # Agent networking (AgentNetwork, AgentMessage, MessageQueue)
+├── config/       # Configuration, argument parsing (Config, ConfigManager, Arg)
+├── context/      # Context management (ContextManager, Context, ContextElement, limits, repository)
+├── data/         # Persistence (DatabaseService, VectorStoreService)
+├── io/           # I/O abstractions (IOManager, TerminalIOManager, InternalIOManager, pipes, writers, commands)
+├── security/     # Security/approval management (SecurityFilter, SecurityManager)
+├── session/      # Session lifecycle, agents, chat models (Session, Agent, ChatModel, handlers)
+├── task/         # Task/workflow management (Task, TodoService, TaskWorkflow)
+└── tools/        # Tool implementations (@Tool annotated)
 ```
 
 ## Key Patterns in Use

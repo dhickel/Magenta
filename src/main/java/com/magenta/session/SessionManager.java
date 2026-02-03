@@ -1,8 +1,9 @@
 package com.magenta.session;
 
+import com.magenta.agent.AgentNetwork;
 import com.magenta.config.Config.AgentConfig;
 import com.magenta.config.ConfigManager;
-import com.magenta.io.TerminalIOManager;
+import com.magenta.io.terminal.TerminalIOManager;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -41,7 +42,9 @@ public class SessionManager implements AutoCloseable {
         this.currentSession = initialSession;
 
         if (initialSession instanceof AgentSession agentSession) {
-            sessions.put(agentSession.getAlias(), agentSession);
+            sessions.put(agentSession.alias(), agentSession);
+            // Register with AgentNetwork
+            AgentNetwork.getInstance().registerAgent(agentSession.sessionMeta());
         }
     }
 
@@ -49,7 +52,7 @@ public class SessionManager implements AutoCloseable {
         if (sessions.containsKey(alias)) {
             throw new IllegalArgumentException("Session alias already exists: " + alias);
         }
-        
+
         AgentConfig config = ConfigManager.config().agents.get(configName);
         if (config == null) {
             throw new IllegalArgumentException("Unknown agent config: " + configName);
@@ -63,8 +66,12 @@ public class SessionManager implements AutoCloseable {
                 .ioManager(terminalIO.createProxy())
                 .sessionId(SessionId.random())
                 .build();
-        
+
         sessions.put(alias, session);
+
+        // Register with AgentNetwork
+        AgentNetwork.getInstance().registerAgent(session.sessionMeta());
+
         return session;
     }
 
@@ -99,7 +106,7 @@ public class SessionManager implements AutoCloseable {
 
     public String getCurrentSessionAlias() {
         if (currentSession instanceof AgentSession agentSession) {
-            return agentSession.getAlias().value();
+            return agentSession.alias().value();
         }
         return "unknown";
     }
@@ -112,6 +119,11 @@ public class SessionManager implements AutoCloseable {
 
     @Override
     public void close() throws Exception {
+        // Unregister all sessions from AgentNetwork
+        for (AgentSession session : sessions.values()) {
+            AgentNetwork.getInstance().unregisterAgent(session.sessionMeta());
+        }
+
         for (AgentSession session : sessions.values()) {
             session.close();
         }

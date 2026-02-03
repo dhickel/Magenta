@@ -1,6 +1,6 @@
 package com.magenta.session;
 
-import com.magenta.io.Command;
+import com.magenta.io.terminal.Command;
 
 /**
  * Functional interface for handling control flow commands.

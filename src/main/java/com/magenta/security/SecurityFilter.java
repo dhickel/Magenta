@@ -1,20 +1,21 @@
 package com.magenta.security;
 
 import com.magenta.io.IOManager;
-import com.magenta.io.Message;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 
+import java.util.Optional;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
 /**
- * Functional security filter that works with Message ADT.
- * Filters accept Messages and return Messages (possibly Filtered).
+ * Functional security filter using Optional for block/pass semantics.
+ * - Optional.empty() = pass through
+ * - Optional.of(reason) = blocked with reason
  */
 public record SecurityFilter(
-    BiFunction<Message.Input, IOManager, Message> inputFilter,
-    Function<Message.Output, Message> outputFilter,
-    BiFunction<ToolExecutionRequest, IOManager, Message> toolFilter
+    BiFunction<String, IOManager, Optional<String>> inputFilter,
+    Function<String, Optional<String>> outputFilter,
+    BiFunction<ToolExecutionRequest, IOManager, Optional<String>> toolFilter
 ) {
 
     /**
@@ -22,9 +23,9 @@ public record SecurityFilter(
      */
     public static SecurityFilter identity() {
         return new SecurityFilter(
-            (input, io) -> input,  // Pass Input through
-            output -> output,       // Pass Output through
-            (req, io) -> Message.system("approved")  // Tools approved by default
+            (input, io) -> Optional.empty(),  // Pass through
+            output -> Optional.empty(),        // Pass through
+            (req, io) -> Optional.empty()      // Pass through
         );
     }
 
@@ -35,45 +36,34 @@ public record SecurityFilter(
     public SecurityFilter andThen(SecurityFilter other) {
         return new SecurityFilter(
             (input, io) -> {
-                Message first = this.inputFilter.apply(input, io);
-                if (first.isFiltered()) return first;
-                return first instanceof Message.Input inp
-                    ? other.inputFilter.apply(inp, io)
-                    : first;
+                Optional<String> first = this.inputFilter.apply(input, io);
+                if (first.isPresent()) return first;
+                return other.inputFilter.apply(input, io);
             },
             output -> {
-                Message first = this.outputFilter.apply(output);
-                if (first.isFiltered()) return first;
-                return first instanceof Message.Output out
-                    ? other.outputFilter.apply(out)
-                    : first;
+                Optional<String> first = this.outputFilter.apply(output);
+                if (first.isPresent()) return first;
+                return other.outputFilter.apply(output);
             },
             (req, io) -> {
-                Message first = this.toolFilter.apply(req, io);
-                if (first.isFiltered()) return first;
+                Optional<String> first = this.toolFilter.apply(req, io);
+                if (first.isPresent()) return first;
                 return other.toolFilter.apply(req, io);
             }
         );
     }
 
     /**
-     * Curry the output filter into a simple function.
-     */
-    public Function<Message.Output, Message> curriedOutputFilter() {
-        return this.outputFilter;
-    }
-
-    /**
      * Curry the input filter with an IOManager.
      */
-    public Function<Message.Input, Message> curriedInputFilter(IOManager io) {
+    public Function<String, Optional<String>> curriedInputFilter(IOManager io) {
         return input -> this.inputFilter.apply(input, io);
     }
 
     /**
      * Curry the tool filter with an IOManager.
      */
-    public Function<ToolExecutionRequest, Message> curriedToolFilter(IOManager io) {
+    public Function<ToolExecutionRequest, Optional<String>> curriedToolFilter(IOManager io) {
         return req -> this.toolFilter.apply(req, io);
     }
 }

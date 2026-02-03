@@ -2,7 +2,7 @@
   "global": {
     "storage_path": "./data",
     "base_agent": "default",
-    "stream_delay_ms": 10
+    "stream_delay_ms": 2
   },
   "colors": {
     "default": {
@@ -35,14 +35,28 @@
   },
   "securities": {
     "default": {
-      "approval_required_for": ["shell", "web_fetch", "file_write"],
-      "always_allow_commands": ["ls", "pwd", "grep", "cat", "echo", "whoami"],
+      "approval_required_for": ["shell", "web_fetch", "file_write", "git"],
+      "always_allow_commands": ["ls", "pwd", "grep", "cat", "echo", "whoami", "git status", "git log", "git diff", "git branch"],
       "blocked_commands": ["rm", "mv", "shutdown", "reboot", ":(){ :|:& };:"]
     }
   },
   "models": {
-    "Devstral2": { "model_name": "devstral2", "endpoint": "local_ollama", "max_tokens": 30000, "temperature": 0.2 },
-    "GLM-4.7": { "model_name": "glf4.7f", "endpoint": "local_ollama", "max_tokens": 15000, "temperature": 0.4 }
+    "Devstral2": {
+      "model_name": "devstral2",
+      "endpoint": "local_ollama",
+      "max_tokens": 30000,
+      "max_context": 28000,
+      "compact_threshold": 24000,
+      "temperature": 0.2
+    },
+    "GLM-4.7": {
+      "model_name": "glf4.7f",
+      "endpoint": "local_ollama",
+      "max_tokens": 15000,
+      "max_context": 12000,
+      "compact_threshold": 10000,
+      "temperature": 0.4
+    }
   },
   "agents": {
     "default": {
@@ -52,7 +66,7 @@
       "colors": "default",
       "cursor": "magenta> ",
       "cursor_color": 5,
-      "tools": ["shell", "files"]
+      "tools": ["shell", "filesystem", "git", "search", "process"]
     },
     "helpful": {
       "system_prompt": "helpful_system",
@@ -61,11 +75,34 @@
       "colors": "default",
       "cursor": "helpful> ",
       "cursor_color": 2,
-      "tools": ["shell", "files"]
+      "tools": ["shell", "filesystem", "git", "search"]
     }
   },
   "prompts" : {
     "default_system": "You are Magenta, a helpful AI assistant.",
     "helpful_system": "You are a very helpful and friendly AI assistant. Always be encouraging and positive!"
+  },
+  "task_templates": {
+    "code-review": {
+      "name": "Code Review",
+      "description": "Review code for quality, bugs, and improvements",
+      "task_prompt": "Review the file at {{file_path}} and provide detailed feedback on:\n1. Code quality and style\n2. Potential bugs or edge cases\n3. Performance considerations\n4. Security concerns\n5. Suggested improvements\n\nProvide specific, actionable feedback.",
+      "required_tools": ["filesystem", "context"],
+      "parameters": {
+        "file_path": {
+          "type": "string",
+          "required": true
+        }
+      },
+      "type": "CODE_ANALYSIS"
+    },
+    "simple-task": {
+      "name": "Simple Task",
+      "description": "A basic task with no parameters",
+      "task_prompt": "You are now in task execution mode. Focus on completing the specific objective given by the user.",
+      "required_tools": ["filesystem", "shell"],
+      "parameters": {},
+      "type": "CUSTOM"
+    }
   }
 }

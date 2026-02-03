@@ -1,7 +1,6 @@
 package com.magenta.tools;
 
 import com.magenta.io.IOManager;
-import com.magenta.io.Message;
 import com.magenta.security.SecurityManager;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -35,11 +34,11 @@ public class ShellTools {
             .arguments(command)
             .build();
 
-        // Apply security filter via SecurityManager
-        Message result = securityManager.createFilter(io).toolFilter().apply(request, io);
+        // Apply security filter via SecurityManager - Optional.empty() = allowed
+        var blocked = securityManager.createFilter(io).toolFilter().apply(request, io);
 
-        if (result.isFiltered()) {
-            return "Error: " + result.filterReason();
+        if (blocked.isPresent()) {
+            return "Error: " + blocked.get();
         }
 
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();

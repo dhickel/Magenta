@@ -1,13 +1,20 @@
 package com.magenta.session;
 
+import com.magenta.agent.NetworkId;
 import com.magenta.config.Config.AgentConfig;
-import com.magenta.context.policy.ContextLimits;
-import com.magenta.io.*;
+import com.magenta.context.ContextLimits;
+import com.magenta.io.IOManager;
+import com.magenta.io.OutputStyle;
+import com.magenta.io.ReadResult;
+import com.magenta.io.ResponseHandler;
+import com.magenta.io.terminal.Command;
+import com.magenta.io.terminal.TerminalIOManager;
 import com.magenta.security.SecurityFilter;
 import com.magenta.security.SecurityManager;
 import com.magenta.tools.ToolProvider;
+import com.magenta.task.TaskWorkflow;
 
-import java.util.Optional;
+import java.util.UUID;
 
 /**
  * AgentSession manages a conversational session with an AI agent.
@@ -16,13 +23,21 @@ import java.util.Optional;
  * - Session applies security filtering to I/O
  * - IOManager is pure I/O, no business logic
  */
-public class AgentSession extends AbstractSession {
+public class AgentSession implements Session {
+    // Session identity
+    private final SessionMeta metaData;
+
+    // Session-level resources (IOManager is injected, not owned)
+    private IOManager ioManager;
+    private boolean exitFlag = false;
+    private ResponseHandler responseHandler;
+
     // Per-agent state
     private final Agent agent;
-    private final ToolProvider toolProvider;
     private final MessageHandler<AgentSession> messageHandler;
     private final CommandHandler commandHandler;
-    private final SessionId sessionId;
+    private final ToolProvider toolProvider;
+    private TaskWorkflow currentTaskWorkflow;
 
     public AgentSession(
             SessionAlias alias,
@@ -39,8 +54,8 @@ public class AgentSession extends AbstractSession {
             MessageHandler<AgentSession> messageHandler,
             CommandHandler commandHandler
     ) {
-        super(alias, null); // IOManager will be attached later
-        this.sessionId = sessionId;
+        this.metaData = new SessionMeta(sessionId, alias, new NetworkId(UUID.randomUUID()));
+        this.ioManager = null;
         this.agent = new Agent(agentConfig);
         this.messageHandler = messageHandler;
         this.commandHandler = commandHandler;
@@ -52,18 +67,40 @@ public class AgentSession extends AbstractSession {
             agentConfig.model().maxContext(),
             agentConfig.model().compactThreshold()
         );
-        this.toolProvider = new ToolProvider(null, null, securityManager, sessionId, limits);
+        this.toolProvider = new ToolProvider(null, null, sessionId, limits);
     }
 
+    // === Session Identity ===
+
+    public SessionAlias alias() { return metaData.sessionAlias(); }
+
+    public SessionId sessionId() { return metaData.sessionId(); }
+
+    public NetworkId networkId() { return metaData.networkId(); }
+
+    public SessionMeta sessionMeta() { return metaData; }
+
+    // === Session Interface ===
+
     @Override
-    public void attachIO(IOManager ioManager) {
-        super.attachIO(ioManager);
+    public IOManager io() { return ioManager; }
+
+    @Override
+    public boolean shouldExit() { return exitFlag; }
+
+    @Override
+    public void setExit(boolean exit) { this.exitFlag = exit; }
+
+    @Override
+    public void attachIO(IOManager io) {
+        this.ioManager = io;
+        this.responseHandler = null; // Clear cached handler
 
         // Configure IOManager for this agent
-        ioManager.setCursor(agent.config().cursor(), agent.config().cursorColor());
+        io.setCursor(agent.config().cursor(), agent.config().cursorColor());
 
         // Set colors config if available and supported
-        if (ioManager instanceof TerminalIOManager terminalIO) {
+        if (io instanceof TerminalIOManager terminalIO) {
             var colors = agent.config().colors();
             if (colors != null) {
                 terminalIO.setColorsConfig(colors);
@@ -73,29 +110,23 @@ public class AgentSession extends AbstractSession {
 
     @Override
     public void runOnce() {
-        String raw = io().read(agent.config().cursor());
-        if (raw == null || raw.isEmpty()) {
-            return; // No input, skip iteration
-        }
+        ReadResult result = io().read(
+            agent.config().cursor(),
+            securityFilter(),
+            agent.commandDetector()
+        );
 
-        // Detect command using agent's detector
-        Optional<Command> cmd = agent.commandDetector().detect(raw);
-
-        if (cmd.isPresent()) {
-            // Handle command
-            commandHandler.handle(this, cmd.get());
-        } else {
-            // Apply security filter to message
-            Message.Input input = Message.input(raw);
-            SecurityFilter filter = securityFilter();
-            Message filtered = filter.inputFilter().apply(input, io());
-
-            if (filtered instanceof Message.Input validInput) {
-                // Process valid message
-                messageHandler.processMessage(this, validInput.content());
-            } else if (filtered instanceof Message.Filtered f) {
-                // Show filtered message
-                io().print(Message.system("[FILTERED] " + f.reason(), OutputStyle.ERROR));
+        switch (result) {
+            case ReadResult.Input(String content, var ts) -> {
+                if (!content.isEmpty()) {
+                    messageHandler.processMessage(this, content);
+                }
+            }
+            case ReadResult.Cmd(Command cmd, var ts) -> {
+                commandHandler.handle(this, cmd);
+            }
+            case ReadResult.Blocked(var original, String reason, var ts) -> {
+                io().printStyled("[FILTERED] " + reason, OutputStyle.ERROR);
             }
         }
     }
@@ -116,6 +147,11 @@ public class AgentSession extends AbstractSession {
         return responseHandler;
     }
 
+    @Override
+    public void close() throws Exception {
+        // Don't close ioManager - we don't own it (SessionManager does)
+    }
+
     // === Accessors ===
 
     public Agent agent() {
@@ -123,7 +159,6 @@ public class AgentSession extends AbstractSession {
     }
 
     public SecurityFilter securityFilter() {
-        // Create security filter on-demand when IOManager is available
         if (ioManager != null) {
             return agent.createSecurityFilterFor(ioManager);
         }
@@ -142,11 +177,15 @@ public class AgentSession extends AbstractSession {
         return commandHandler;
     }
 
-    public SessionId sessionId() {
-        return sessionId;
+    public TaskWorkflow currentWorkflowTask() {
+        return currentTaskWorkflow;
     }
 
-    // === Builder (simplified) ===
+    public void setWorkflowTask(TaskWorkflow task) {
+        this.currentTaskWorkflow = task;
+    }
+
+    // === Builder ===
 
     public static Builder builder() {
         return new Builder();
@@ -193,7 +232,6 @@ public class AgentSession extends AbstractSession {
         public AgentSession build() {
             validate();
 
-            // Use defaults if not provided
             MessageHandler<AgentSession> handler = messageHandler != null
                 ? messageHandler
                 : new StreamingChat();
@@ -203,7 +241,6 @@ public class AgentSession extends AbstractSession {
 
             AgentSession session = new AgentSession(alias, agentConfig, sessionId, handler, cmdHandler);
 
-            // Attach IOManager if provided
             if (ioManager != null) {
                 session.attachIO(ioManager);
             }
