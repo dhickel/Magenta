@@ -12,7 +12,7 @@ import java.util.*;
  * Note: Session tracking is handled by SessionManager, not here.
  */
 public class AgentNetwork {
-    private static AgentNetwork instance;
+    private static volatile AgentNetwork instance;
 
     private final MessageQueue messageQueue;
     private final Set<SessionMeta> registeredAgents = new HashSet<>();
@@ -21,17 +21,23 @@ public class AgentNetwork {
         this.messageQueue = new MessageQueue();
     }
 
-    public static void initialize() {
-        if (instance == null) {
-            instance = new AgentNetwork();
-        }
+    public static AgentNetwork initialize() {
+        return getInstance();
     }
 
     public static AgentNetwork getInstance() {
         if (instance == null) {
-            throw new IllegalStateException("AgentNetwork not initialized. Call initialize() first.");
+            synchronized (AgentNetwork.class) {
+                if (instance == null) {
+                    instance = new AgentNetwork();
+                }
+            }
         }
         return instance;
+    }
+
+    public static boolean isInitialized() {
+        return instance != null;
     }
 
     // === Agent Registration ===

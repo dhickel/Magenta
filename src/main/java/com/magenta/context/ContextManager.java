@@ -11,7 +11,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Handles loading, saving, compacting, and archiving conversation contexts.
  */
 public class ContextManager {
-    private static ContextManager instance;
+    private static volatile ContextManager instance;
 
     private final Map<SessionId, Context> activeContexts = new ConcurrentHashMap<>();
     private final CompactionStrategy compactionStrategy;
@@ -22,18 +22,23 @@ public class ContextManager {
         this.compactionStrategy = new CompactionStrategy.Truncate();
     }
 
-    public static void initialize() {
-        if (instance != null) {
-            throw new IllegalStateException("ContextManager already initialized");
-        }
-        instance = new ContextManager();
+    public static ContextManager initialize() {
+        return getInstance();
     }
 
     public static ContextManager getInstance() {
         if (instance == null) {
-            throw new IllegalStateException("ContextManager not initialized");
+            synchronized (ContextManager.class) {
+                if (instance == null) {
+                    instance = new ContextManager();
+                }
+            }
         }
         return instance;
+    }
+
+    public static boolean isInitialized() {
+        return instance != null;
     }
 
     public Context loadContext(SessionId sessionId) {
