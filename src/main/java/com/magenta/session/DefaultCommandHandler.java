@@ -9,6 +9,7 @@ import com.magenta.context.Context;
 import com.magenta.context.ContextElement;
 import com.magenta.context.ContextLimits;
 import com.magenta.io.terminal.Command;
+import com.magenta.io.terminal.StatusBar;
 import com.magenta.io.IOManager;
 import com.magenta.security.SecurityFilter;
 import com.magenta.task.TaskWorkflow;
@@ -52,6 +53,8 @@ public class DefaultCommandHandler implements CommandHandler {
             case Command.ConfigShow() -> showConfigSummary(io);
             case Command.ConfigShowSection(String section) -> showConfigSection(io, section);
             case Command.ConfigReload() -> reloadConfig(io);
+            case Command.View(String viewName) -> handleView(session, viewName);
+            case Command.Dashboard() -> handleView(session, "dashboard");
             case Command.Unknown(String raw) -> io.outputPipe().print("Unknown command: " + raw + "\n");
         }
     }
@@ -72,6 +75,8 @@ public class DefaultCommandHandler implements CommandHandler {
         io.outputPipe().print("  /messages - Check for messages from other agents\n");
         io.outputPipe().print("  /delegate <agent> <template> - Delegate task to agent\n");
         io.outputPipe().print("  /network - View agent network status\n");
+        io.outputPipe().print("  /view <name> - Switch terminal view (chat, dashboard)\n");
+        io.outputPipe().print("  /dashboard - Show dashboard view (shorthand)\n");
         io.outputPipe().print("  !<command> - Execute bash command with security filtering\n");
     }
 
@@ -784,6 +789,43 @@ public class DefaultCommandHandler implements CommandHandler {
             io.outputPipe().print("  Required Tools: " + String.join(", ", template.requiredTools()) + "\n");
             io.outputPipe().print("  Parameters: " + template.parameterSpecs().size() + "\n\n");
         }
+    }
+
+    private void handleView(Session session, String viewName) {
+        IOManager io = session.io();
+
+        if (!(session instanceof AgentSession agentSession)) {
+            io.outputPipe().print("Views only available in agent sessions\n");
+            return;
+        }
+
+        TerminalView view = switch (viewName.toLowerCase()) {
+            case "chat" -> new TerminalView.Chat();
+            case "dashboard" -> createDashboard();
+            default -> {
+                io.outputPipe().print("Unknown view: " + viewName + "\n");
+                io.outputPipe().print("Available views: chat, dashboard\n");
+                yield null;
+            }
+        };
+
+        if (view != null) {
+            agentSession.setView(view);
+        }
+    }
+
+    private TerminalView createDashboard() {
+        return TerminalView.builder()
+            .header(ViewComponent.title("=== Magenta Dashboard ==="))
+            .header(ViewComponent.blank())
+            .content(new TerminalView.Dashboard())
+            .footer(ViewComponent.separator())
+            .footer(ViewComponent.styled(
+                "Commands: /view chat | /exit-dashboard | /help",
+                org.jline.utils.AttributedStyle.DEFAULT.faint()
+            ))
+            .statusBar(StatusBar::aligned, TerminalView.StatusPosition.BOTTOM_RIGHT)
+            .build();
     }
 
     private void reloadConfig(IOManager io) {

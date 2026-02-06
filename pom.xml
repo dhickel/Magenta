@@ -96,6 +96,20 @@
             <version>1.1.0</version>
         </dependency>
 
+        <!-- ASCII Table for formatted output -->
+        <dependency>
+            <groupId>com.github.freva</groupId>
+            <artifactId>ascii-table</artifactId>
+            <version>1.8.0</version>
+        </dependency>
+
+        <!-- JLine Console UI for interactive prompts -->
+        <dependency>
+            <groupId>org.jline</groupId>
+            <artifactId>jline-console-ui</artifactId>
+            <version>3.30.0</version>
+        </dependency>
+
     </dependencies>
 
     <build>

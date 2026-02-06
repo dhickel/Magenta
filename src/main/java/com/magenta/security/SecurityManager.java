@@ -2,9 +2,11 @@ package com.magenta.security;
 
 import com.magenta.config.Config.SecurityConfig;
 import com.magenta.io.IOManager;
+import com.magenta.io.terminal.InteractivePrompt;
 import com.magenta.io.terminal.TerminalIOManager;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 
+import java.io.IOException;
 import java.util.Optional;
 
 
@@ -150,25 +152,53 @@ public class SecurityManager {
         return Optional.empty();
     }
 
-    private void printBlocked(String command, String blockedRule, IOManager io) {
-        String msg = "[SECURITY] AUTOMATICALLY BLOCKED: " + command + " (Matches rule: " + blockedRule + ")";
+    /**
+     * Resolve the JLine Terminal from an IOManager, if available.
+     * Handles both TerminalIOManager and TerminalIOProxy.
+     */
+    private Optional<org.jline.terminal.Terminal> resolveTerminal(IOManager io) {
         if (io instanceof TerminalIOManager term) {
-            term.securityAlert(msg);
+            return Optional.of(term.terminal());
+        } else if (io instanceof TerminalIOManager.TerminalIOProxy proxy) {
+            return Optional.of(proxy.terminal());
+        }
+        return Optional.empty();
+    }
+
+    private void securityAlert(String message, IOManager io) {
+        if (io instanceof TerminalIOManager term) {
+            term.securityAlert(message);
+        } else if (io instanceof TerminalIOManager.TerminalIOProxy proxy) {
+            proxy.printStyled(message, com.magenta.io.OutputStyle.SECURITY);
         } else {
-            io.println(msg);
+            io.println(message);
         }
     }
 
-    private synchronized boolean requestUserApproval(String toolType, String command, IOManager io) {
-        if (io instanceof TerminalIOManager term) {
-            term.securityAlert("[SECURITY ALERT] Agent wants to execute:");
-        } else {
-            io.println("[SECURITY ALERT] Agent wants to execute:");
-        }
+    private void printBlocked(String command, String blockedRule, IOManager io) {
+        securityAlert("[SECURITY] AUTOMATICALLY BLOCKED: " + command
+            + " (Matches rule: " + blockedRule + ")", io);
+    }
 
+    private synchronized boolean requestUserApproval(String toolType, String command, IOManager io) {
+        securityAlert("[SECURITY ALERT] Agent wants to execute:", io);
         io.println("Tool:    " + toolType);
         io.println("Command: " + command);
 
+        // Use interactive confirm prompt if terminal is available
+        var terminal = resolveTerminal(io);
+        if (terminal.isPresent()) {
+            try {
+                return new InteractivePrompt(terminal.get())
+                    .confirm("Allow execution?")
+                    .defaultNo()
+                    .show();
+            } catch (IOException e) {
+                // Fall through to text-based approval
+            }
+        }
+
+        // Fallback: text-based approval
         String answer = io.read("Allow? [y/N]: ").content();
         if (answer != null && !answer.isEmpty()) {
             return answer.equalsIgnoreCase("y") || answer.equalsIgnoreCase("yes");

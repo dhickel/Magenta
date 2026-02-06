@@ -479,6 +479,98 @@ try (AgentSession session = AgentSession.builder()
 - TerminalIOManager uses the configured cursor for all input prompts
 - InternalIOManager ignores cursor settings (no visible prompts)
 
+## Terminal UI System
+
+Magenta provides advanced terminal UI with composable views, interactive prompts, and context-aware command completion.
+
+### Architecture
+
+**State Ownership:**
+- **TerminalIOManager** - Stateless terminal primitives (singleton, shared)
+- **TerminalIOProxy** - Per-session proxy access to terminal primitives
+- **AgentSession** - Session-specific state (views, completers, handlers)
+- **TerminalView** - Stateless rendering logic (views render session state)
+
+**Key Principle:** Sessions share TerminalIOManager via proxies. Only one session runs at a time (SessionManager controls switching).
+
+### Core Components
+
+| Component | Location | Responsibility |
+|-----------|----------|---------------|
+| `TerminalDisplay` | `io/terminal/` | Drawing primitives (box, line, padding, cursor) |
+| `TableRenderer` | `io/terminal/` | ASCII table formatting via `ascii-table` library |
+| `InteractivePrompt` | `io/terminal/` | JLine ConsoleUI wrapper (checkbox, list, confirm, input) |
+| `StatusBar` | `io/terminal/` | Context usage display, color-coded (green/yellow/red) |
+| `CompletionProvider` | `io/terminal/` | Functional interface for command argument completion |
+| `TerminalView` | `session/` | Sealed ADT: Chat, Dashboard, Table, Composed |
+| `ViewComponent` | `session/` | Reusable UI elements (title, separator, blank, styled) |
+| `MagentaCompleter` | `session/` | JLine Completer delegating to Command.completionProvider() |
+
+### TerminalView (Sealed ADT)
+
+```java
+sealed interface TerminalView permits Chat, Dashboard, Table, Composed {
+    List<AttributedString> render(AgentSession session, TerminalDisplay display);
+    boolean handleInput(AgentSession session, String input);
+    String name();
+}
+```
+
+- **Chat** - Default pass-through (no overlay rendering)
+- **Dashboard** - Context stats, agent info, active tasks
+- **Table\<T\>** - Generic data display with ColumnDef columns
+- **Composed** - ViewBuilder pattern with headers, footers, status bars
+
+### View Composition
+
+```java
+TerminalView dashboard = TerminalView.builder()
+    .header(ViewComponent.title("=== Dashboard ==="))
+    .content(new TerminalView.Dashboard())
+    .footer(ViewComponent.separator())
+    .statusBar(StatusBar::aligned, StatusPosition.BOTTOM_RIGHT)
+    .build();
+
+session.setView(dashboard);
+```
+
+### Command Completion
+
+Each `Command` variant provides completions via `completionProvider()`:
+
+```java
+record View(String viewName) implements Command {
+    @Override
+    public CompletionProvider completionProvider() {
+        return (session) -> List.of(
+            new Candidate("chat", "chat", "views", "Chat view", null, null, true),
+            new Candidate("dashboard", "dashboard", "views", "Dashboard view", null, null, true)
+        );
+    }
+}
+```
+
+`MagentaCompleter` delegates to these providers for context-aware tab completion.
+
+### Draw → Input → Redraw Cycle
+
+```
+AgentSession.runOnce():
+  1. Read input via LineReader
+  2. currentView.handleInput(this, input) → true = handled, false = pass through
+  3. Process command/message (if not handled)
+  4. redraw() → state hash caching prevents redundant renders
+```
+
+**Performance:** State hash caching ensures < 50ms redraw time.
+
+### View Commands
+
+- `/view chat` - Switch to chat view
+- `/view dashboard` - Switch to dashboard view
+- `/dashboard` - Dashboard shorthand
+- `/exit-dashboard` - Return to chat from dashboard
+
 ## .internal-dev Directory
 
 **Purpose:** Store notes, summaries, and living documents that are relevant across sessions between agents.

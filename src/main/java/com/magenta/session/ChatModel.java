@@ -33,8 +33,9 @@ public sealed interface ChatModel permits ChatModel.Streaming, ChatModel.Blockin
 
                 @Override
                 public void onComplete(Response<AiMessage> response) {
+                    String text = handler.getBuffer();
                     handler.complete();
-                    future.complete(handler.getBuffer());
+                    future.complete(text);
                 }
 
                 @Override

@@ -1,31 +1,117 @@
 package com.magenta.io.terminal;
 
+import com.magenta.config.ConfigManager;
+import org.jline.reader.Candidate;
+
+import java.util.List;
 import java.util.Optional;
 
 
 public sealed interface Command {
 
+    /**
+     * Provide completion candidates for this command's arguments.
+     * Default returns no completions. Override for commands with completable args.
+     */
+    default CompletionProvider completionProvider() {
+        return CompletionProvider.NONE;
+    }
+
+    // === Commands without argument completion ===
+
     record Exit() implements Command {}
     record Help() implements Command {}
     record Clear() implements Command {}
-    record History() implements Command {}
-    record HistoryShow(int limit) implements Command {}
-    record HistorySearch(String query) implements Command {}
-    record Agent(String agentName) implements Command {}
     record Sessions() implements Command {}
     record Agents() implements Command {}
-    record Context(String subCommand, String arg) implements Command {}
-    record WorkflowTask(String subCommand, String arg) implements Command {}
     record ConfigShow() implements Command {}
-    record ConfigShowSection(String section) implements Command {}
     record ConfigReload() implements Command {}
+    record Messages() implements Command {}
+    record Network() implements Command {}
     record Bash(String command) implements Command {}
     record Message(String targetAgent, String message) implements Command {}
-    record Messages() implements Command {}
     record Delegate(String targetAgent, String taskTemplateKey) implements Command {}
-    record Network() implements Command {}
     record Unknown(String raw) implements Command {}
 
+    // === Commands with argument completion ===
+
+    record Agent(String agentName) implements Command {
+        @Override
+        public CompletionProvider completionProvider() {
+            return (session) -> ConfigManager.config()
+                .agents
+                .keySet()
+                .stream()
+                .map(name -> new Candidate(name, name, "agents",
+                    "Switch to " + name, null, null, true))
+                .toList();
+        }
+    }
+
+    record History() implements Command {
+        @Override
+        public CompletionProvider completionProvider() {
+            return (session) -> List.of(
+                new Candidate("show", "show", "history", "Show last N messages", null, null, true),
+                new Candidate("search", "search", "history", "Search history", null, null, true)
+            );
+        }
+    }
+
+    record HistoryShow(int limit) implements Command {}
+    record HistorySearch(String query) implements Command {}
+
+    record Context(String subCommand, String arg) implements Command {
+        @Override
+        public CompletionProvider completionProvider() {
+            return (session) -> List.of(
+                new Candidate("status", "status", "context", "Show context statistics", null, null, true),
+                new Candidate("compact", "compact", "context", "Compact conversation history", null, null, true),
+                new Candidate("clear", "clear", "context", "Clear all context", null, null, true),
+                new Candidate("archive", "archive", "context", "Archive context with key", null, null, true),
+                new Candidate("load", "load", "context", "Load archived context", null, null, true)
+            );
+        }
+    }
+
+    record WorkflowTask(String subCommand, String arg) implements Command {
+        @Override
+        public CompletionProvider completionProvider() {
+            return (session) -> List.of(
+                new Candidate("list", "list", "tasks", "List task templates", null, null, true),
+                new Candidate("show", "show", "tasks", "Show task details", null, null, true),
+                new Candidate("run", "run", "tasks", "Run a task template", null, null, true),
+                new Candidate("clear", "clear", "tasks", "Clear active task", null, null, true),
+                new Candidate("status", "status", "tasks", "Show active task status", null, null, true)
+            );
+        }
+    }
+
+    record ConfigShowSection(String section) implements Command {
+        @Override
+        public CompletionProvider completionProvider() {
+            return (session) -> List.of(
+                new Candidate("agents", "agents", "config", "Show agents config", null, null, true),
+                new Candidate("models", "models", "config", "Show models config", null, null, true),
+                new Candidate("endpoints", "endpoints", "config", "Show endpoints config", null, null, true),
+                new Candidate("securities", "securities", "config", "Show security config", null, null, true),
+                new Candidate("colors", "colors", "config", "Show colors config", null, null, true),
+                new Candidate("tasks", "tasks", "config", "Show task templates", null, null, true)
+            );
+        }
+    }
+
+    record View(String viewName) implements Command {
+        @Override
+        public CompletionProvider completionProvider() {
+            return (session) -> List.of(
+                new Candidate("chat", "chat", "views", "Chat view", null, null, true),
+                new Candidate("dashboard", "dashboard", "views", "Dashboard view", null, null, true)
+            );
+        }
+    }
+
+    record Dashboard() implements Command {}
 
     static Optional<Command> tryParse(String input) {
         if (input == null || input.isBlank()) {
@@ -124,6 +210,13 @@ public sealed interface Command {
                     yield new Unknown(input);
                 }
             }
+            case "view" -> {
+                if (parts.length < 2 || parts[1].isBlank()) {
+                    yield new Unknown(input);
+                }
+                yield new View(parts[1].toLowerCase());
+            }
+            case "dashboard" -> new Dashboard();
             default -> new Unknown(input);
         };
 

@@ -1,0 +1,36 @@
+2026-02-02 18:16:22.606 [main] INFO  com.magenta.Main - Starting Magenta application...
+2026-02-02 18:16:22.610 [main] INFO  com.magenta.config.ConfigManager - Loading configuration from: config.json
+2026-02-02 18:16:22.910 [main] INFO  com.magenta.config.ConfigManager - Configuration loaded successfully
+2026-02-02 18:16:22.910 [main] INFO  com.magenta.Main - Configuration loaded successfully
+2026-02-02 18:16:22.987 [main] INFO  com.magenta.Main - Database initialized successfully
+2026-02-02 18:17:32.240 [main] INFO  com.magenta.Main - Starting Magenta application...
+2026-02-02 18:17:32.242 [main] INFO  com.magenta.config.ConfigManager - Loading configuration from: config.json
+2026-02-02 18:17:32.458 [main] INFO  com.magenta.config.ConfigManager - Configuration loaded successfully
+2026-02-02 18:17:32.458 [main] INFO  com.magenta.Main - Configuration loaded successfully
+2026-02-02 18:17:32.545 [main] INFO  com.magenta.Main - Database initialized successfully
+2026-02-02 18:17:54.651 [main] INFO  com.magenta.Main - Starting Magenta application...
+2026-02-02 18:17:54.654 [main] INFO  com.magenta.config.ConfigManager - Loading configuration from: config.json
+2026-02-02 18:17:54.847 [main] INFO  com.magenta.config.ConfigManager - Configuration loaded successfully
+2026-02-02 18:17:54.847 [main] INFO  com.magenta.Main - Configuration loaded successfully
+2026-02-02 18:17:54.908 [main] INFO  com.magenta.Main - Database initialized successfully
+2026-02-02 20:10:46.794 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/hello.txt (11 bytes)
+2026-02-02 20:10:46.797 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-02 20:10:46.802 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/file1.txt (7 bytes)
+2026-02-02 20:10:46.803 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-02 20:10:46.805 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/todelete.txt (3 bytes)
+2026-02-02 20:10:46.806 [main] WARN  com.magenta.tools.FileSystemTools - Deleting: test_sandbox/todelete.txt
+2026-02-02 20:10:46.806 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-02 22:48:27.861 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/hello.txt (11 bytes)
+2026-02-02 22:48:27.863 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-02 22:48:27.866 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/file1.txt (7 bytes)
+2026-02-02 22:48:27.867 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-02 22:48:27.869 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/todelete.txt (3 bytes)
+2026-02-02 22:48:27.869 [main] WARN  com.magenta.tools.FileSystemTools - Deleting: test_sandbox/todelete.txt
+2026-02-02 22:48:27.870 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-02 22:54:21.353 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/hello.txt (11 bytes)
+2026-02-02 22:54:21.356 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-02 22:54:21.362 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/file1.txt (7 bytes)
+2026-02-02 22:54:21.365 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-02 22:54:21.367 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/todelete.txt (3 bytes)
+2026-02-02 22:54:21.368 [main] WARN  com.magenta.tools.FileSystemTools - Deleting: test_sandbox/todelete.txt
+2026-02-02 22:54:21.369 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox

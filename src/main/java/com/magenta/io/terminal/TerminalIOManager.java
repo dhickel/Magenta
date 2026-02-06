@@ -4,6 +4,7 @@ import com.magenta.config.Config.ColorsConfig;
 import com.magenta.io.IOManager;
 import com.magenta.io.OutputStyle;
 import com.magenta.io.ResponseHandler;
+import org.jline.reader.Completer;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReaderBuilder;
 import org.jline.terminal.TerminalBuilder;
@@ -22,6 +23,8 @@ public class TerminalIOManager extends IOManager {
     private final LineReader reader;
     private final PrintWriter writer;
     private final boolean colorEnabled;
+    private final TerminalDisplay terminalDisplay;
+    private volatile Completer activeCompleter;
     private ColorsConfig colorsConfig;
     private String cursor = "magenta> ";
     private Integer cursorColor;
@@ -36,9 +39,18 @@ public class TerminalIOManager extends IOManager {
     private TerminalIOManager() throws IOException {
         super();
         this.terminal = TerminalBuilder.builder().system(true).build();
-        this.reader = LineReaderBuilder.builder().terminal(terminal).build();
+        this.reader = LineReaderBuilder.builder()
+            .terminal(terminal)
+            .completer((reader, line, candidates) -> {
+                if (activeCompleter != null) {
+                    activeCompleter.complete(reader, line, candidates);
+                }
+            })
+            .option(LineReader.Option.AUTO_MENU, true)
+            .build();
         this.writer = terminal.writer();
         this.colorEnabled = !org.jline.terminal.Terminal.TYPE_DUMB.equals(terminal.getType());
+        this.terminalDisplay = new TerminalDisplay(terminal);
 
         // Initialize pipes with String-based I/O
         this.inputPipe = this::readRaw;
@@ -64,6 +76,18 @@ public class TerminalIOManager extends IOManager {
 
         // === IOManager methods (delegate to target) ===
 
+        public TerminalDisplay display() {
+            return target.display();
+        }
+
+        public void setCompleter(Completer completer) {
+            target.setCompleter(completer);
+        }
+
+        public void setColorsConfig(ColorsConfig colorsConfig) {
+            target.setColorsConfig(colorsConfig);
+        }
+
         @Override
         public void setCursor(String cursor, Integer cursorColor) {
             target.setCursor(cursor, cursorColor);
@@ -84,6 +108,13 @@ public class TerminalIOManager extends IOManager {
             return target.createResponseHandler(agentColor, delayMs);
         }
 
+        /**
+         * Access the underlying JLine terminal (e.g., for InteractivePrompt).
+         */
+        public org.jline.terminal.Terminal terminal() {
+            return target.terminal();
+        }
+
         @Override
         public void close() {
             // No-op: don't close the shared terminal
@@ -96,6 +127,26 @@ public class TerminalIOManager extends IOManager {
      */
     public IOManager createProxy() {
         return new TerminalIOProxy(this);
+    }
+
+    /**
+     * Get terminal display utilities.
+     * Used for advanced rendering (boxes, tables, multi-line updates).
+     *
+     * @return TerminalDisplay instance
+     */
+    public TerminalDisplay display() {
+        return terminalDisplay;
+    }
+
+    /**
+     * Set the command completer.
+     * Uses a delegating pattern - no LineReader rebuild needed.
+     *
+     * @param completer New completer (or null to disable completion)
+     */
+    public void setCompleter(Completer completer) {
+        this.activeCompleter = completer;
     }
 
     public void setColorsConfig(ColorsConfig colorsConfig) {

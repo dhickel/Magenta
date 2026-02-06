@@ -8,12 +8,15 @@ import com.magenta.io.OutputStyle;
 import com.magenta.io.ReadResult;
 import com.magenta.io.ResponseHandler;
 import com.magenta.io.terminal.Command;
+import com.magenta.io.terminal.TerminalDisplay;
 import com.magenta.io.terminal.TerminalIOManager;
 import com.magenta.security.SecurityFilter;
 import com.magenta.security.SecurityManager;
 import com.magenta.tools.ToolProvider;
 import com.magenta.task.TaskWorkflow;
+import org.jline.utils.AttributedString;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -37,7 +40,12 @@ public class AgentSession implements Session {
     private final MessageHandler<AgentSession> messageHandler;
     private final CommandHandler commandHandler;
     private final ToolProvider toolProvider;
+    private final ContextLimits contextLimits;
     private TaskWorkflow currentTaskWorkflow;
+
+    // View state
+    private TerminalView currentView = new TerminalView.Chat();
+    private long lastStateHash = 0;
 
     public AgentSession(
             SessionAlias alias,
@@ -63,11 +71,11 @@ public class AgentSession implements Session {
         // Create per-agent ToolProvider
         SecurityManager securityManager = SecurityManager.getInstance();
         securityManager.setConfig(agentConfig.security());
-        ContextLimits limits = new ContextLimits(
+        this.contextLimits = new ContextLimits(
             agentConfig.model().maxContext(),
             agentConfig.model().compactThreshold()
         );
-        this.toolProvider = new ToolProvider(null, null, sessionId, limits);
+        this.toolProvider = new ToolProvider(null, null, sessionId, contextLimits);
     }
 
     // === Session Identity ===
@@ -110,15 +118,21 @@ public class AgentSession implements Session {
 
     @Override
     public void runOnce() {
+        // Read input
         ReadResult result = io().read(
             agent.config().cursor(),
             securityFilter(),
             agent.commandDetector()
         );
 
+        // Process based on result type
         switch (result) {
             case ReadResult.Input(String content, var ts) -> {
-                if (!content.isEmpty()) {
+                // Let view handle input first
+                boolean handled = currentView.handleInput(this, content);
+
+                // If view didn't handle, process normally
+                if (!handled && !content.isEmpty()) {
                     messageHandler.processMessage(this, content);
                 }
             }
@@ -129,6 +143,9 @@ public class AgentSession implements Session {
                 io().printStyled("[FILTERED] " + reason, OutputStyle.ERROR);
             }
         }
+
+        // Redraw after processing
+        redraw();
     }
 
     public void run() {
@@ -183,6 +200,84 @@ public class AgentSession implements Session {
 
     public void setWorkflowTask(TaskWorkflow task) {
         this.currentTaskWorkflow = task;
+    }
+
+    public ContextLimits contextLimits() {
+        return contextLimits;
+    }
+
+    // === View Management ===
+
+    /**
+     * Get current terminal view.
+     */
+    public TerminalView currentView() {
+        return currentView;
+    }
+
+    /**
+     * Switch to a new terminal view.
+     * Triggers immediate redraw.
+     *
+     * @param view New view to display
+     */
+    public void setView(TerminalView view) {
+        this.currentView = view;
+        forceRedraw();
+    }
+
+    /**
+     * Calculate state hash for redraw optimization.
+     * Only redraws if state changed.
+     */
+    private long calculateStateHash() {
+        long hash = currentView.getClass().hashCode();
+        hash = 31 * hash + agent.hashCode();
+        hash = 31 * hash + metaData.sessionId().hashCode();
+
+        // Include context token count
+        try {
+            var cm = com.magenta.context.ContextManager.getInstance();
+            var ctx = cm.loadContext(sessionId());
+            hash = 31 * hash + ctx.totalEstimatedTokens();
+        } catch (IllegalStateException e) {
+            // ContextManager not initialized, skip
+        }
+
+        return hash;
+    }
+
+    /**
+     * Redraw current view with caching.
+     * Only updates display if state has changed since last redraw.
+     */
+    private void redraw() {
+        if (!(ioManager instanceof TerminalIOManager.TerminalIOProxy proxy)) {
+            return; // Not a terminal proxy, skip rendering
+        }
+
+        long stateHash = calculateStateHash();
+        if (stateHash == lastStateHash) {
+            return; // State unchanged, skip redraw
+        }
+
+        TerminalDisplay display = proxy.display();
+        List<AttributedString> lines = currentView.render(this, display);
+
+        if (!lines.isEmpty()) {
+            display.updateLines(lines);
+        }
+
+        lastStateHash = stateHash;
+    }
+
+    /**
+     * Force redraw (bypass cache).
+     * Use when state hash doesn't capture the change.
+     */
+    public void forceRedraw() {
+        lastStateHash = 0;
+        redraw();
     }
 
     // === Builder ===

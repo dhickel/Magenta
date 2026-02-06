@@ -46,6 +46,9 @@ public class SessionManager implements AutoCloseable {
             // Register with AgentNetwork
             AgentNetwork.getInstance().registerAgent(agentSession.sessionMeta());
         }
+
+        // Set up command completion
+        terminalIO.setCompleter(new MagentaCompleter());
     }
 
     public AgentSession createSession(SessionAlias alias, String configName) {

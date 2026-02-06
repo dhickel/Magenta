@@ -29,10 +29,6 @@ public class Main {
         TerminalIOManager terminalIO = initTerminalIO();
 
         // Create initial session
-        // Default session uses base agent name as alias
-        String baseAgentName = ConfigManager.config().global().baseAgent();
-        SessionAlias initialAlias = SessionAlias.of(baseAgentName);
-        
         AgentSession initialSession = initDefaultSession(terminalIO);
 
         // Initialize SessionManager and run

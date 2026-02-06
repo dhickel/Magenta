@@ -1,36 +1,68 @@
-2026-02-02 18:16:22.606 [main] INFO  com.magenta.Main - Starting Magenta application...
-2026-02-02 18:16:22.610 [main] INFO  com.magenta.config.ConfigManager - Loading configuration from: config.json
-2026-02-02 18:16:22.910 [main] INFO  com.magenta.config.ConfigManager - Configuration loaded successfully
-2026-02-02 18:16:22.910 [main] INFO  com.magenta.Main - Configuration loaded successfully
-2026-02-02 18:16:22.987 [main] INFO  com.magenta.Main - Database initialized successfully
-2026-02-02 18:17:32.240 [main] INFO  com.magenta.Main - Starting Magenta application...
-2026-02-02 18:17:32.242 [main] INFO  com.magenta.config.ConfigManager - Loading configuration from: config.json
-2026-02-02 18:17:32.458 [main] INFO  com.magenta.config.ConfigManager - Configuration loaded successfully
-2026-02-02 18:17:32.458 [main] INFO  com.magenta.Main - Configuration loaded successfully
-2026-02-02 18:17:32.545 [main] INFO  com.magenta.Main - Database initialized successfully
-2026-02-02 18:17:54.651 [main] INFO  com.magenta.Main - Starting Magenta application...
-2026-02-02 18:17:54.654 [main] INFO  com.magenta.config.ConfigManager - Loading configuration from: config.json
-2026-02-02 18:17:54.847 [main] INFO  com.magenta.config.ConfigManager - Configuration loaded successfully
-2026-02-02 18:17:54.847 [main] INFO  com.magenta.Main - Configuration loaded successfully
-2026-02-02 18:17:54.908 [main] INFO  com.magenta.Main - Database initialized successfully
-2026-02-02 20:10:46.794 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/hello.txt (11 bytes)
-2026-02-02 20:10:46.797 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
-2026-02-02 20:10:46.802 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/file1.txt (7 bytes)
-2026-02-02 20:10:46.803 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
-2026-02-02 20:10:46.805 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/todelete.txt (3 bytes)
-2026-02-02 20:10:46.806 [main] WARN  com.magenta.tools.FileSystemTools - Deleting: test_sandbox/todelete.txt
-2026-02-02 20:10:46.806 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
-2026-02-02 22:48:27.861 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/hello.txt (11 bytes)
-2026-02-02 22:48:27.863 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
-2026-02-02 22:48:27.866 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/file1.txt (7 bytes)
-2026-02-02 22:48:27.867 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
-2026-02-02 22:48:27.869 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/todelete.txt (3 bytes)
-2026-02-02 22:48:27.869 [main] WARN  com.magenta.tools.FileSystemTools - Deleting: test_sandbox/todelete.txt
-2026-02-02 22:48:27.870 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
-2026-02-02 22:54:21.353 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/hello.txt (11 bytes)
-2026-02-02 22:54:21.356 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
-2026-02-02 22:54:21.362 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/file1.txt (7 bytes)
-2026-02-02 22:54:21.365 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
-2026-02-02 22:54:21.367 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/todelete.txt (3 bytes)
-2026-02-02 22:54:21.368 [main] WARN  com.magenta.tools.FileSystemTools - Deleting: test_sandbox/todelete.txt
-2026-02-02 22:54:21.369 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-06 00:53:01.897 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/hello.txt (11 bytes)
+2026-02-06 00:53:01.915 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-06 00:53:01.920 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/file1.txt (7 bytes)
+2026-02-06 00:53:01.921 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-06 00:53:01.935 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/todelete.txt (3 bytes)
+2026-02-06 00:53:01.936 [main] WARN  com.magenta.tools.FileSystemTools - Deleting: test_sandbox/todelete.txt
+2026-02-06 00:53:01.936 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-06 01:26:16.868 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/hello.txt (11 bytes)
+2026-02-06 01:26:16.870 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-06 01:26:16.875 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/file1.txt (7 bytes)
+2026-02-06 01:26:16.876 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-06 01:26:16.888 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/todelete.txt (3 bytes)
+2026-02-06 01:26:16.889 [main] WARN  com.magenta.tools.FileSystemTools - Deleting: test_sandbox/todelete.txt
+2026-02-06 01:26:16.889 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-06 01:34:20.867 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/hello.txt (11 bytes)
+2026-02-06 01:34:20.870 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-06 01:34:20.875 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/file1.txt (7 bytes)
+2026-02-06 01:34:20.876 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-06 01:34:20.890 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/todelete.txt (3 bytes)
+2026-02-06 01:34:20.890 [main] WARN  com.magenta.tools.FileSystemTools - Deleting: test_sandbox/todelete.txt
+2026-02-06 01:34:20.891 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-06 03:16:35.058 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/hello.txt (11 bytes)
+2026-02-06 03:16:35.060 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-06 03:16:35.064 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/file1.txt (7 bytes)
+2026-02-06 03:16:35.065 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-06 03:16:35.081 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/todelete.txt (3 bytes)
+2026-02-06 03:16:35.081 [main] WARN  com.magenta.tools.FileSystemTools - Deleting: test_sandbox/todelete.txt
+2026-02-06 03:16:35.082 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-06 03:21:45.978 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/hello.txt (11 bytes)
+2026-02-06 03:21:45.980 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-06 03:21:45.985 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/file1.txt (7 bytes)
+2026-02-06 03:21:45.986 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-06 03:21:46.002 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/todelete.txt (3 bytes)
+2026-02-06 03:21:46.003 [main] WARN  com.magenta.tools.FileSystemTools - Deleting: test_sandbox/todelete.txt
+2026-02-06 03:21:46.003 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-06 03:28:03.597 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/hello.txt (11 bytes)
+2026-02-06 03:28:03.599 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-06 03:28:03.605 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/file1.txt (7 bytes)
+2026-02-06 03:28:03.607 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-06 03:28:03.609 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/todelete.txt (3 bytes)
+2026-02-06 03:28:03.610 [main] WARN  com.magenta.tools.FileSystemTools - Deleting: test_sandbox/todelete.txt
+2026-02-06 03:28:03.611 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-06 03:30:56.271 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/hello.txt (11 bytes)
+2026-02-06 03:30:56.273 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-06 03:30:56.278 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/file1.txt (7 bytes)
+2026-02-06 03:30:56.279 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-06 03:30:56.281 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/todelete.txt (3 bytes)
+2026-02-06 03:30:56.281 [main] WARN  com.magenta.tools.FileSystemTools - Deleting: test_sandbox/todelete.txt
+2026-02-06 03:30:56.281 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-06 03:31:05.092 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/hello.txt (11 bytes)
+2026-02-06 03:31:05.095 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-06 03:31:05.102 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/file1.txt (7 bytes)
+2026-02-06 03:31:05.105 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-06 03:31:05.109 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/todelete.txt (3 bytes)
+2026-02-06 03:31:05.109 [main] WARN  com.magenta.tools.FileSystemTools - Deleting: test_sandbox/todelete.txt
+2026-02-06 03:31:05.110 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-06 03:33:00.606 [main] INFO  com.magenta.Main - Starting Magenta application...
+2026-02-06 03:33:00.609 [main] INFO  com.magenta.config.ConfigManager - Loading configuration from: config.json
+2026-02-06 03:33:01.078 [main] INFO  com.magenta.config.ConfigManager - Configuration loaded successfully
+2026-02-06 03:33:01.078 [main] INFO  com.magenta.Main - Configuration loaded successfully
+2026-02-06 03:33:10.888 [main] INFO  com.magenta.Main - Shutting down...
+2026-02-06 03:33:34.660 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/hello.txt (11 bytes)
+2026-02-06 03:33:34.662 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-06 03:33:34.668 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/file1.txt (7 bytes)
+2026-02-06 03:33:34.669 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-06 03:33:34.671 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/todelete.txt (3 bytes)
+2026-02-06 03:33:34.672 [main] WARN  com.magenta.tools.FileSystemTools - Deleting: test_sandbox/todelete.txt
+2026-02-06 03:33:34.672 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
