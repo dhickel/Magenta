@@ -7,14 +7,14 @@ package com.magenta.io;
 @FunctionalInterface
 public interface OutputPipe {
     /**
-     * Print text (caller controls newlines).
+     * Get Output
      */
-    void print(String text);
+    void get(String text);
 
     /**
      * Print text with newline.
      */
     default void println(String text) {
-        print(text + "\n");
+        get(text + "\n");
     }
 }

@@ -1,24 +1,14 @@
 package com.magenta.tools;
 
 import com.magenta.io.IOManager;
-import com.magenta.security.SecurityManager;
+import com.magenta.io.terminal.BashExecutor;
 import dev.langchain4j.agent.tool.Tool;
-import dev.langchain4j.agent.tool.ToolExecutionRequest;
-import org.apache.commons.exec.CommandLine;
-import org.apache.commons.exec.DefaultExecutor;
-import org.apache.commons.exec.PumpStreamHandler;
-import org.apache.commons.exec.ExecuteWatchdog;
-
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 
 public class ShellTools {
 
-    private final SecurityManager securityManager;
     private final IOManager io;
 
-    public ShellTools(SecurityManager securityManager, IOManager io) {
-        this.securityManager = securityManager;
+    public ShellTools(IOManager io) {
         this.io = io;
     }
 
@@ -28,38 +18,10 @@ public class ShellTools {
             return "Error: Command cannot be empty.";
         }
 
-        // Create ToolExecutionRequest for security filtering
-        ToolExecutionRequest request = ToolExecutionRequest.builder()
-            .name("shell")
-            .arguments(command)
-            .build();
-
-        // Apply security filter via SecurityManager - Optional.empty() = allowed
-        var blocked = securityManager.createFilter(io).toolFilter().apply(request, io);
-
-        if (blocked.isPresent()) {
-            return "Error: " + blocked.get();
+        BashExecutor.BashResult result = BashExecutor.execute(command);
+        if (!result.error().isEmpty()) {
+            return "Error executing command: " + result.error() + "\nOutput:\n" + result.output();
         }
-
-        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        PumpStreamHandler streamHandler = new PumpStreamHandler(outputStream);
-
-        CommandLine cmdLine = CommandLine.parse("/bin/bash");
-        cmdLine.addArgument("-c");
-        cmdLine.addArgument(command, false);
-
-        DefaultExecutor executor = new DefaultExecutor();
-        executor.setStreamHandler(streamHandler);
-
-        // Timeout of 60 seconds
-        ExecuteWatchdog watchdog = new ExecuteWatchdog(60000);
-        executor.setWatchdog(watchdog);
-
-        try {
-            int exitValue = executor.execute(cmdLine);
-            return "Exit Code: " + exitValue + "\nOutput:\n" + outputStream.toString();
-        } catch (IOException e) {
-            return "Error executing command: " + e.getMessage() + "\nOutput:\n" + outputStream.toString();
-        }
+        return "Exit Code: " + result.exitCode() + "\nOutput:\n" + result.output();
     }
 }

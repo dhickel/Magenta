@@ -1,18 +1,17 @@
 package com.magenta.session;
 
-import com.magenta.agent.NetworkId;
 import com.magenta.config.Config.AgentConfig;
 import com.magenta.context.ContextLimits;
 import com.magenta.io.IOManager;
 import com.magenta.io.OutputStyle;
 import com.magenta.io.ReadResult;
 import com.magenta.io.ResponseHandler;
-import com.magenta.io.terminal.Command;
 import com.magenta.io.terminal.TerminalDisplay;
 import com.magenta.io.terminal.TerminalIOManager;
+import com.magenta.io.terminal.Command;
+import com.magenta.io.terminal.CommandSet;
 import com.magenta.security.SecurityFilter;
 import com.magenta.security.SecurityManager;
-import com.magenta.tools.ToolProvider;
 import com.magenta.task.TaskWorkflow;
 import org.jline.utils.AttributedString;
 
@@ -22,7 +21,7 @@ import java.util.UUID;
 /**
  * AgentSession manages a conversational session with an AI agent.
  * Simplified architecture:
- * - Agent owns SecurityFilter and CommandDetector
+ * - Agent owns SecurityFilter and command registry
  * - Session applies security filtering to I/O
  * - IOManager is pure I/O, no business logic
  */
@@ -38,8 +37,7 @@ public class AgentSession implements Session {
     // Per-agent state
     private final Agent agent;
     private final MessageHandler<AgentSession> messageHandler;
-    private final CommandHandler commandHandler;
-    private final ToolProvider toolProvider;
+    private final CommandSet commandSet;
     private final ContextLimits contextLimits;
     private TaskWorkflow currentTaskWorkflow;
 
@@ -52,7 +50,7 @@ public class AgentSession implements Session {
             AgentConfig agentConfig,
             SessionId sessionId
     ) {
-        this(alias, agentConfig, sessionId, new StreamingChat(), new DefaultCommandHandler());
+        this(alias, agentConfig, sessionId, new StreamingChat(), CommandSet.empty());
     }
 
     public AgentSession(
@@ -60,22 +58,23 @@ public class AgentSession implements Session {
             AgentConfig agentConfig,
             SessionId sessionId,
             MessageHandler<AgentSession> messageHandler,
-            CommandHandler commandHandler
+            CommandSet sessionCommands
     ) {
-        this.metaData = new SessionMeta(sessionId, alias, new NetworkId(UUID.randomUUID()));
+        this.metaData = new SessionMeta(sessionId, alias, com.magenta.agent.NetworkId.random());
         this.ioManager = null;
         this.agent = new Agent(agentConfig);
         this.messageHandler = messageHandler;
-        this.commandHandler = commandHandler;
+        this.commandSet = SystemCommands.commands()
+            .composedWith(agent.commands())
+            .composedWith(sessionCommands);
 
-        // Create per-agent ToolProvider
+        // Create per-agent context limits
         SecurityManager securityManager = SecurityManager.getInstance();
         securityManager.setConfig(agentConfig.security());
         this.contextLimits = new ContextLimits(
             agentConfig.model().maxContext(),
             agentConfig.model().compactThreshold()
         );
-        this.toolProvider = new ToolProvider(null, null, sessionId, contextLimits);
     }
 
     // === Session Identity ===
@@ -84,7 +83,7 @@ public class AgentSession implements Session {
 
     public SessionId sessionId() { return metaData.sessionId(); }
 
-    public NetworkId networkId() { return metaData.networkId(); }
+    public com.magenta.agent.NetworkId networkId() { return metaData.networkId(); }
 
     public SessionMeta sessionMeta() { return metaData; }
 
@@ -114,6 +113,9 @@ public class AgentSession implements Session {
                 terminalIO.setColorsConfig(colors);
             }
         }
+
+        // Initialize tools with session context
+        agent.initTools(io, sessionId(), contextLimits, alias());
     }
 
     @Override
@@ -122,7 +124,7 @@ public class AgentSession implements Session {
         ReadResult result = io().read(
             agent.config().cursor(),
             securityFilter(),
-            agent.commandDetector()
+            commandSet
         );
 
         // Process based on result type
@@ -136,8 +138,8 @@ public class AgentSession implements Session {
                     messageHandler.processMessage(this, content);
                 }
             }
-            case ReadResult.Cmd(Command cmd, var ts) -> {
-                commandHandler.handle(this, cmd);
+            case ReadResult.Cmd(Command cmd, String raw, var ts) -> {
+                cmd.handle(this, raw);
             }
             case ReadResult.Blocked(var original, String reason, var ts) -> {
                 io().printStyled("[FILTERED] " + reason, OutputStyle.ERROR);
@@ -175,6 +177,14 @@ public class AgentSession implements Session {
         return agent;
     }
 
+    /**
+     * Get the agent configuration name for this session.
+     * @return Agent config name (e.g., "default", "helpful")
+     */
+    public String agentConfigName() {
+        return agent.config().name();
+    }
+
     public SecurityFilter securityFilter() {
         if (ioManager != null) {
             return agent.createSecurityFilterFor(ioManager);
@@ -182,16 +192,16 @@ public class AgentSession implements Session {
         return SecurityFilter.identity();
     }
 
-    public ToolProvider toolProvider() {
-        return toolProvider;
-    }
-
     public MessageHandler<AgentSession> messageHandler() {
         return messageHandler;
     }
 
-    public CommandHandler commandHandler() {
-        return commandHandler;
+    public List<Command> commands() {
+        return commandSet.commands();
+    }
+
+    public CommandSet commandSet() {
+        return commandSet;
     }
 
     public TaskWorkflow currentWorkflowTask() {
@@ -291,7 +301,7 @@ public class AgentSession implements Session {
         private AgentConfig agentConfig;
         private SessionId sessionId;
         private MessageHandler<AgentSession> messageHandler;
-        private CommandHandler commandHandler;
+        private CommandSet commands = CommandSet.empty();
         private IOManager ioManager;
 
         public Builder alias(SessionAlias alias) {
@@ -314,8 +324,8 @@ public class AgentSession implements Session {
             return this;
         }
 
-        public Builder commandHandler(CommandHandler handler) {
-            this.commandHandler = handler;
+        public Builder commands(CommandSet commands) {
+            this.commands = commands != null ? commands : CommandSet.empty();
             return this;
         }
 
@@ -330,11 +340,7 @@ public class AgentSession implements Session {
             MessageHandler<AgentSession> handler = messageHandler != null
                 ? messageHandler
                 : new StreamingChat();
-            CommandHandler cmdHandler = commandHandler != null
-                ? commandHandler
-                : new DefaultCommandHandler();
-
-            AgentSession session = new AgentSession(alias, agentConfig, sessionId, handler, cmdHandler);
+            AgentSession session = new AgentSession(alias, agentConfig, sessionId, handler, commands);
 
             if (ioManager != null) {
                 session.attachIO(ioManager);
@@ -355,4 +361,5 @@ public class AgentSession implements Session {
             }
         }
     }
+
 }

@@ -1,5 +1,6 @@
 package com.magenta.context;
 
+import com.magenta.session.SessionId;
 import dev.langchain4j.data.message.ChatMessage;
 
 import java.util.Collections;
@@ -13,19 +14,19 @@ import java.util.stream.Collectors;
  */
 public class Context {
     private final List<ContextElement> elements;
-    private final String id;
+    private final SessionId id;
 
-    public Context(String id) {
+    public Context(SessionId id) {
         this.id = id;
         this.elements = new CopyOnWriteArrayList<>();
     }
 
-    public Context(String id, List<ContextElement> elements) {
+    public Context(SessionId id, List<ContextElement> elements) {
         this.id = id;
         this.elements = new CopyOnWriteArrayList<>(elements);
     }
 
-    public String getId() {
+    public SessionId getId() {
         return id;
     }
 

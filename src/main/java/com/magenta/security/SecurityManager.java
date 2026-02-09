@@ -39,51 +39,12 @@ public class SecurityManager {
         return config;
     }
 
-    /**
-     * Check if a tool execution should be allowed.
-     * Applies blacklist, whitelist, and user approval logic.
-     *
-     * @param toolType The type of tool (e.g., "shell", "web_fetch")
-     * @param command  The command or arguments being executed
-     * @param io       IOManager for interactive approval prompts
-     * @return true if allowed, false if blocked
-     */
-    public boolean requireToolApproval(String toolType, String command, IOManager io) {
-        // 1. Blacklist (Blocking)
-        if (config.blockedCommands() != null) {
-            for (String blocked : config.blockedCommands()) {
-                if (command.contains(blocked)) {
-                    printBlocked(command, blocked, io);
-                    return false;
-                }
-            }
-        }
-
-        // 2. Whitelist (Auto-Allow)
-        if (config.alwaysAllowCommands() != null) {
-            for (String allowed : config.alwaysAllowCommands()) {
-                // Strict check: command starts with allowed + space or is exact match
-                if (command.equals(allowed) || command.startsWith(allowed + " ")) {
-                    return true;
-                }
-            }
-        }
-
-        // 3. Approval Check
-        if (config.approvalRequiredFor() != null && config.approvalRequiredFor().contains(toolType)) {
-            return requestUserApproval(toolType, command, io);
-        }
-
-        // Default allow if not configured
-        return true;
-    }
-
 
     public SecurityFilter createFilter(IOManager io) {
         return new SecurityFilter(
             (input, ioMgr) -> filterInput(input),
             this::filterOutput,
-            (toolReq, ioMgr) -> filterTool(toolReq, ioMgr)
+                this::filterTool
         );
     }
 

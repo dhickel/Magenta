@@ -11,5 +11,5 @@ public interface InputPipe {
      * @param prompt The prompt to display (may be ignored by some implementations)
      * @return The raw input string
      */
-    String read(String prompt);
+    String take(String prompt);
 }

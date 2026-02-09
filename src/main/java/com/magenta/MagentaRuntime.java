@@ -5,8 +5,8 @@ import com.magenta.config.Config;
 import com.magenta.config.ConfigManager;
 import com.magenta.context.ContextManager;
 import com.magenta.io.terminal.TerminalIOManager;
+import com.magenta.persistence.Database;
 import com.magenta.session.AgentSession;
-import com.magenta.session.DefaultCommandHandler;
 import com.magenta.session.SessionAlias;
 import com.magenta.session.SessionId;
 import com.magenta.session.SessionManager;
@@ -15,6 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.sql.SQLException;
 
 /**
  * Global bootstrap and runtime holder for Magenta.
@@ -25,6 +26,7 @@ public final class MagentaRuntime implements AutoCloseable {
     private static volatile MagentaRuntime instance;
 
     private final Config config;
+    private final Database database;
     private final AgentNetwork agentNetwork;
     private final ContextManager contextManager;
     private final TerminalIOManager terminalIO;
@@ -56,7 +58,8 @@ public final class MagentaRuntime implements AutoCloseable {
     private MagentaRuntime(String[] args) {
         logger.info("Starting Magenta application...");
 
-        this.config = initConfigManager(args);
+        this.config = initConfig(args);
+        this.database = initDatabase();
         this.agentNetwork = AgentNetwork.getInstance();
         this.contextManager = ContextManager.getInstance();
         this.terminalIO = initTerminalIO();
@@ -70,6 +73,10 @@ public final class MagentaRuntime implements AutoCloseable {
 
     public AgentNetwork agentNetwork() {
         return agentNetwork;
+    }
+
+    public Database database() {
+        return database;
     }
 
     public ContextManager contextManager() {
@@ -89,15 +96,24 @@ public final class MagentaRuntime implements AutoCloseable {
     }
 
     public void run() {
-        terminalIO.outputPipe().print("Starting Magenta...\n");
+        terminalIO.print("Starting Magenta...\n");
         sessionManager.run();
-        terminalIO.outputPipe().print("Exiting...\n");
+        terminalIO.print("Exiting...\n");
     }
 
     @Override
     public void close() throws Exception {
         logger.info("Shutting down...");
         sessionManager.close();
+
+        // Close database connection
+        if (database != null) {
+            try {
+                database.close();
+            } catch (SQLException e) {
+                logger.error("Failed to close database: {}", e.getMessage());
+            }
+        }
     }
 
     private static TerminalIOManager initTerminalIO() {
@@ -111,7 +127,7 @@ public final class MagentaRuntime implements AutoCloseable {
         }
     }
 
-    private static Config initConfigManager(String[] args) {
+    private static Config initConfig(String[] args) {
         try {
             logger.debug("Initializing ConfigManager...");
             ConfigManager.initialize(args == null ? new String[0] : args);
@@ -124,18 +140,34 @@ public final class MagentaRuntime implements AutoCloseable {
         }
     }
 
+    private static Database initDatabase() {
+        try {
+            logger.debug("Initializing Database...");
+            Database.initialize();
+            logger.info("Database initialized successfully");
+            return Database.getInstance();
+        } catch (SQLException e) {
+            logger.error("Failed to initialize context database: {}", e.getMessage(), e);
+            System.err.println("Failed to initialize context database: " + e.getMessage());
+            e.printStackTrace();
+            System.exit(1);
+            throw new RuntimeException("Unreachable");
+        }
+    }
+
     private static AgentSession initDefaultSession(TerminalIOManager ioManager) {
         String baseAgentName = ConfigManager.config().global().baseAgent();
         SessionAlias initialAlias = SessionAlias.of(baseAgentName);
 
-        return AgentSession.builder()
+        AgentSession session = AgentSession.builder()
                 .alias(initialAlias)
                 .agent(ConfigManager.config().baseAgent())
                 .messageHandler(new StreamingChat())
-                .commandHandler(new DefaultCommandHandler())
                 .ioManager(ioManager)
                 .sessionId(SessionId.random())
                 .build();
+
+        return session;
     }
 
     private static SessionManager initSessionManager(TerminalIOManager ioManager, AgentSession initialSession) {

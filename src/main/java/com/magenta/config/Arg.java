@@ -7,7 +7,8 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 public enum Arg {
-    CONFIG;
+    CONFIG,
+    DATABASE;
 
 
     public static Map<Arg, Value> parseAll(String[] args) {
@@ -51,6 +52,10 @@ public enum Arg {
             switch (args[i]) {
                 case "--config" -> {
                     argMap.put(Arg.CONFIG, parseString.apply(i));
+                    i++;
+                }
+                case "--database" -> {
+                    argMap.put(Arg.DATABASE, parseString.apply(i));
                     i++;
                 }
                 default -> throw new IllegalStateException("Invalid argument: " + args[i]);

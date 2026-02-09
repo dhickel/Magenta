@@ -1,7 +1,7 @@
 package com.magenta.io;
 
 import com.magenta.io.terminal.Command;
-import com.magenta.io.terminal.CommandDetector;
+import com.magenta.io.terminal.CommandSet;
 import com.magenta.security.SecurityFilter;
 
 import java.util.Optional;
@@ -34,7 +34,7 @@ public abstract class IOManager implements AutoCloseable {
      * Read raw input and return as ReadResult.Input.
      */
     public ReadResult.Input read(String prompt) {
-        String raw = inputPipe.read(prompt);
+        String raw = inputPipe.take(prompt);
         return ReadResult.input(raw);
     }
 
@@ -43,12 +43,12 @@ public abstract class IOManager implements AutoCloseable {
      *
      * @param prompt The prompt to display
      * @param securityFilter Security filter to apply
-     * @param commandDetector Command detector
+     * @param commands Command set for parsing
      * @return ReadResult indicating input, command, or blocked
      */
-    public ReadResult read(String prompt, SecurityFilter securityFilter, CommandDetector commandDetector) {
+    public ReadResult read(String prompt, SecurityFilter securityFilter, CommandSet commands) {
         // 1. Read raw input
-        String raw = inputPipe.read(prompt);
+        String raw = inputPipe.take(prompt);
         if (raw.isEmpty()) {
             return ReadResult.input(raw);
         }
@@ -60,9 +60,9 @@ public abstract class IOManager implements AutoCloseable {
         }
 
         // 3. Check for command
-        Optional<Command> cmd = commandDetector.detect(raw);
+        Optional<Command> cmd = commands.parse(raw);
         if (cmd.isPresent()) {
-            return ReadResult.cmd(cmd.get());
+            return ReadResult.cmd(cmd.get(), raw);
         }
 
         // 4. Regular input
@@ -75,7 +75,7 @@ public abstract class IOManager implements AutoCloseable {
      * Print text (caller controls newlines).
      */
     public void print(String text) {
-        outputPipe.print(text);
+        outputPipe.get(text);
     }
 
     /**

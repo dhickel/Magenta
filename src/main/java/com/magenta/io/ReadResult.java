@@ -14,7 +14,7 @@ public sealed interface ReadResult {
     record Input(String content, LocalDateTime timestamp) implements ReadResult {}
 
     /** Detected command (passed security, matched command syntax). */
-    record Cmd(Command command, LocalDateTime timestamp) implements ReadResult {}
+    record Cmd(Command command, String raw, LocalDateTime timestamp) implements ReadResult {}
 
     /** Blocked by security filter. */
     record Blocked(String original, String reason, LocalDateTime timestamp) implements ReadResult {}
@@ -25,8 +25,8 @@ public sealed interface ReadResult {
         return new Input(content, LocalDateTime.now());
     }
 
-    static Cmd cmd(Command command) {
-        return new Cmd(command, LocalDateTime.now());
+    static Cmd cmd(Command command, String raw) {
+        return new Cmd(command, raw, LocalDateTime.now());
     }
 
     static Blocked blocked(String original, String reason) {
@@ -38,7 +38,7 @@ public sealed interface ReadResult {
     default String content() {
         return switch (this) {
             case Input i -> i.content();
-            case Cmd c -> c.command().toString();
+            case Cmd c -> c.raw();
             case Blocked b -> b.original();
         };
     }

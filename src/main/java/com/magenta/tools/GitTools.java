@@ -1,9 +1,7 @@
 package com.magenta.tools;
 
 import com.magenta.io.IOManager;
-import com.magenta.security.SecurityManager;
 import dev.langchain4j.agent.tool.Tool;
-import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,11 +15,9 @@ import java.util.List;
 public class GitTools {
     private static final Logger logger = LoggerFactory.getLogger(GitTools.class);
 
-    private final SecurityManager securityManager;
     private final IOManager io;
 
-    public GitTools(SecurityManager securityManager, IOManager io) {
-        this.securityManager = securityManager;
+    public GitTools(IOManager io) {
         this.io = io;
     }
 
@@ -29,15 +25,15 @@ public class GitTools {
 
     @Tool("Get git repository status showing modified, staged, and untracked files")
     public String gitStatus() {
-        return executeGitCommandWithSecurity("git status", "status");
+        return executeGitCommand("status");
     }
 
     @Tool("Show git diff for changes. Use 'staged' to show staged changes, or leave empty for unstaged")
     public String gitDiff(String scope) {
         if (scope != null && scope.equalsIgnoreCase("staged")) {
-            return executeGitCommandWithSecurity("git diff --cached", "diff", "--cached");
+            return executeGitCommand("diff", "--cached");
         }
-        return executeGitCommandWithSecurity("git diff", "diff");
+        return executeGitCommand("diff");
     }
 
     @Tool("View git commit history. Specify number of recent commits to display")
@@ -45,17 +41,17 @@ public class GitTools {
         if (limit <= 0) {
             return "Error: Limit must be a positive number. Provide a value greater than 0.";
         }
-        return executeGitCommandWithSecurity("git log -" + limit, "log", "-" + limit, "--oneline", "--decorate");
+        return executeGitCommand("log", "-" + limit, "--oneline", "--decorate");
     }
 
     @Tool("Show the current git branch name")
     public String gitCurrentBranch() {
-        return executeGitCommandWithSecurity("git branch --show-current", "branch", "--show-current");
+        return executeGitCommand("branch", "--show-current");
     }
 
     @Tool("List all git branches (local and remote)")
     public String gitListBranches() {
-        return executeGitCommandWithSecurity("git branch -a", "branch", "-a");
+        return executeGitCommand("branch", "-a");
     }
 
     // ========== Write Operations ==========
@@ -65,7 +61,7 @@ public class GitTools {
         if (pathPattern == null || pathPattern.trim().isEmpty()) {
             return "Error: Path pattern cannot be empty. Use '.' to stage all changes or specify a file path.";
         }
-        return executeGitCommandWithSecurity("git add " + pathPattern, "add", pathPattern);
+        return executeGitCommand("add", pathPattern);
     }
 
     @Tool("Unstage files. Use '.' to unstage all, or specify file pattern")
@@ -73,7 +69,7 @@ public class GitTools {
         if (pathPattern == null || pathPattern.trim().isEmpty()) {
             return "Error: Path pattern cannot be empty. Use '.' to unstage all or specify a file path.";
         }
-        return executeGitCommandWithSecurity("git reset " + pathPattern, "reset", pathPattern);
+        return executeGitCommand("reset", pathPattern);
     }
 
     @Tool("Create a git commit with a message. Files must be staged first with gitAdd")
@@ -81,7 +77,7 @@ public class GitTools {
         if (message == null || message.trim().isEmpty()) {
             return "Error: Commit message cannot be empty. Provide a descriptive message for the commit.";
         }
-        return executeGitCommandWithSecurity("git commit -m \"" + message + "\"", "commit", "-m", message);
+        return executeGitCommand("commit", "-m", message);
     }
 
     @Tool("Create or switch to a git branch. Set create=true to create new branch")
@@ -90,40 +86,16 @@ public class GitTools {
             return "Error: Branch name cannot be empty. Provide a valid branch name.";
         }
         if (create) {
-            return executeGitCommandWithSecurity("git checkout -b " + branchName, "checkout", "-b", branchName);
+            return executeGitCommand("checkout", "-b", branchName);
         } else {
-            return executeGitCommandWithSecurity("git checkout " + branchName, "checkout", branchName);
+            return executeGitCommand("checkout", branchName);
         }
     }
 
     // ========== Helper Methods ==========
 
     /**
-     * Execute a git command with security filtering.
-     * The displayCommand is used for security approval prompts, while args are executed.
-     */
-    private String executeGitCommandWithSecurity(String displayCommand, String... args) {
-        // Create ToolExecutionRequest for security filtering
-        ToolExecutionRequest request = ToolExecutionRequest.builder()
-            .name("git")
-            .arguments(displayCommand)
-            .build();
-
-        // Apply security filter via SecurityManager - Optional.empty() = allowed
-        var blocked = securityManager.createFilter(io).toolFilter().apply(request, io);
-
-        if (blocked.isPresent()) {
-            logger.warn("Git command blocked by security: {}", displayCommand);
-            return "Error: Operation blocked by security policy - " + blocked.get();
-        }
-
-        // Execute the command if approved
-        logger.debug("Executing git command: {}", displayCommand);
-        return executeGitCommand(args);
-    }
-
-    /**
-     * Execute a git command directly without security checks (called after approval).
+     * Execute a git command. Security filtering is handled centrally by StreamingChat.
      */
     private String executeGitCommand(String... args) {
         // Validate git repository exists

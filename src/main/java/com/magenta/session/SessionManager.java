@@ -1,26 +1,23 @@
 package com.magenta.session;
 
-import com.magenta.agent.AgentNetwork;
-import com.magenta.config.Config.AgentConfig;
 import com.magenta.config.ConfigManager;
+import com.magenta.context.ContextManager;
+import com.magenta.io.IOManager;
 import com.magenta.io.terminal.TerminalIOManager;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * SessionManager singleton manages session lifecycle and IO ownership.
+ * SessionManager singleton manages session lifecycle and delegates focus management
+ * to TerminalSession for I/O routing and background execution.
  */
 public class SessionManager implements AutoCloseable {
     private static SessionManager instance;
 
     private final TerminalIOManager terminalIO;
-    private Session currentSession;
-    // Map of Alias -> Session
-    private final Map<SessionAlias, AgentSession> sessions = new HashMap<>();
+    private final TerminalSession terminalSession;
 
     public static void initialize(TerminalIOManager terminalIO, Session initialSession) {
         if (instance != null) {
@@ -38,13 +35,20 @@ public class SessionManager implements AutoCloseable {
 
     private SessionManager(TerminalIOManager terminalIO, Session initialSession) {
         this.terminalIO = terminalIO;
-        initialSession.attachIO(terminalIO.createProxy());
-        this.currentSession = initialSession;
 
+        // Initialize TerminalSession for focus management
+        TerminalSession.initialize(terminalIO);
+        this.terminalSession = TerminalSession.getInstance();
+
+        // Setup initial session
         if (initialSession instanceof AgentSession agentSession) {
-            sessions.put(agentSession.alias(), agentSession);
-            // Register with AgentNetwork
-            AgentNetwork.getInstance().registerAgent(agentSession.sessionMeta());
+            // Register and focus initial session
+            terminalSession.registerSession(agentSession);
+            terminalSession.switchTo(agentSession.alias());
+        } else {
+            throw new UnsupportedOperationException("No non-agent session support implemented");
+            // Non-agent session (legacy support)
+            //initialSession.attachIO(terminalIO.createProxy());
         }
 
         // Set up command completion
@@ -52,53 +56,31 @@ public class SessionManager implements AutoCloseable {
     }
 
     public AgentSession createSession(SessionAlias alias, String configName) {
-        if (sessions.containsKey(alias)) {
-            throw new IllegalArgumentException("Session alias already exists: " + alias);
-        }
-
-        AgentConfig config = ConfigManager.config().agents.get(configName);
-        if (config == null) {
-            throw new IllegalArgumentException("Unknown agent config: " + configName);
-        }
-
-        AgentSession session = AgentSession.builder()
-                .alias(alias)
-                .agent(config)
-                .messageHandler(new StreamingChat())
-                .commandHandler(new DefaultCommandHandler())
-                .ioManager(terminalIO.createProxy())
-                .sessionId(SessionId.random())
-                .build();
-
-        sessions.put(alias, session);
-
-        // Register with AgentNetwork
-        AgentNetwork.getInstance().registerAgent(session.sessionMeta());
-
-        return session;
+        return terminalSession.createSession(alias, configName);
     }
 
     public AgentSession getSession(SessionAlias alias) {
-        return sessions.get(alias);
+        return terminalSession.getSession(alias);
     }
 
     public void switchToSession(SessionAlias alias) {
-        AgentSession newSession = sessions.get(alias);
-        if (newSession == null) {
+        AgentSession current = terminalSession.focused();
+        AgentSession target = terminalSession.getSession(alias);
+
+        if (target == null) {
             throw new IllegalArgumentException("Unknown session alias: " + alias);
         }
 
-        if (currentSession == newSession) {
-            terminalIO.print("Already in session: " + alias + "\n", 6);
+        if (current == target) {
+            terminalIO.println("Already in session: " + alias.value(), 6);
             return;
         }
 
-        this.currentSession = newSession;
-        terminalIO.print("Switched to session: " + alias + "\n", 6);
+        terminalSession.switchTo(alias);
     }
 
     public List<String> listActiveSessions() {
-        return sessions.keySet().stream()
+        return terminalSession.allSessions().keySet().stream()
                 .map(SessionAlias::value)
                 .collect(Collectors.toList());
     }
@@ -108,28 +90,101 @@ public class SessionManager implements AutoCloseable {
     }
 
     public String getCurrentSessionAlias() {
-        if (currentSession instanceof AgentSession agentSession) {
-            return agentSession.alias().value();
-        }
-        return "unknown";
+        SessionAlias alias = terminalSession.focusedAlias();
+        return alias != null ? alias.value() : "unknown";
     }
 
     public void run() {
-        while (!currentSession.shouldExit()) {
-            currentSession.runOnce();
+        AgentSession focused = terminalSession.focused();
+        if (focused == null) { throw new IllegalStateException("No focused session"); }
+
+        while (!focused.shouldExit()) {
+            focused.runOnce();
         }
     }
 
     @Override
     public void close() throws Exception {
-        // Unregister all sessions from AgentNetwork
-        for (AgentSession session : sessions.values()) {
-            AgentNetwork.getInstance().unregisterAgent(session.sessionMeta());
-        }
+        terminalSession.close();
+    }
 
-        for (AgentSession session : sessions.values()) {
-            session.close();
+    // === Display methods for sessions ===
+
+    public void printSessions(IOManager io) {
+        try {
+            var allSessions = terminalSession.allSessions();
+            var currentAlias = getCurrentSessionAlias();
+
+            io.print("Active sessions:\n");
+            io.print("─".repeat(80) + "\n");
+            io.print(String.format("%-15s %-10s %-15s %-10s\n",
+                "Name", "Messages", "Context Tokens", "Current"));
+            io.print("─".repeat(80) + "\n");
+
+            if (allSessions.isEmpty()) {
+                io.print("(none)\n");
+            } else {
+                for (var entry : allSessions.entrySet()) {
+                    SessionAlias alias = entry.getKey();
+                    AgentSession session = entry.getValue();
+
+                    int messageCount = 0;
+                    int contextTokens = 0;
+
+                    if (session != null) {
+                        var cm = ContextManager.getInstance();
+                        var context = cm.loadContext(session.sessionId());
+                        messageCount = context.getElements().size();
+                        contextTokens = context.totalEstimatedTokens();
+                    }
+
+                    String marker = alias.value().equals(currentAlias) ? "*" : "";
+
+                    io.print(String.format("%-15s %-10d %-15s %-10s\n",
+                        alias.value(),
+                        messageCount,
+                        contextTokens > 0 ? contextTokens + " tokens" : "N/A",
+                        marker));
+                }
+            }
+            io.print("─".repeat(80) + "\n");
+        } catch (IllegalStateException e) {
+            io.print("Session management not available: " + e.getMessage() + "\n");
         }
-        terminalIO.close();
+    }
+
+    public void printAgents(IOManager io) {
+        try {
+            var config = ConfigManager.config();
+            var agents = config.agents;
+            var currentAlias = getCurrentSessionAlias();
+
+            io.print("Available agents:\n");
+            io.print("─".repeat(80) + "\n");
+            io.print(String.format("%-15s %-15s %-8s %-12s\n",
+                "Name", "Model", "Tools", "Security"));
+            io.print("─".repeat(80) + "\n");
+
+            for (var entry : agents.entrySet()) {
+                var agent = entry.getValue();
+                int toolCount = agent.tools() != null ? agent.tools().size() : 0;
+                String marker = entry.getKey().equals(currentAlias) ? " *" : "";
+
+                io.print(String.format("%-15s %-15s %-8d %-12s%s\n",
+                    entry.getKey(),
+                    truncate(agent.model().modelName(), 15),
+                    toolCount,
+                    "configured",
+                    marker));
+            }
+            io.print("─".repeat(80) + "\n");
+        } catch (IllegalStateException e) {
+            io.print("Session management not available: " + e.getMessage() + "\n");
+        }
+    }
+
+    private static String truncate(String str, int maxLength) {
+        if (str.length() <= maxLength) return str;
+        return str.substring(0, maxLength - 3) + "...";
     }
 }

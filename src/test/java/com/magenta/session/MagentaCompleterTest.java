@@ -66,22 +66,16 @@ class MagentaCompleterTest {
     }
 
     @Test
-    void testConfigPrefixes() {
+    void testContextPrefix() {
         List<Candidate> candidates = complete("/con");
-        assertTrue(hasCandidate(candidates, "/config"));
         assertTrue(hasCandidate(candidates, "/context"));
     }
 
     @Test
-    void testCfgAlias() {
-        // /cfg is not a registered command prefix in the completer
-        // Only /config is registered
-        List<Candidate> candidates = complete("/cf");
-        // Should not match anything since there's no /cf* in the commands map
-        // Actually /config starts with /c, not /cf
-        // Let me check - /config starts with /c, /cfg would need explicit entry
-        // The COMMANDS map doesn't have /cfg, so it shouldn't appear
-        assertFalse(hasCandidate(candidates, "/cfg"));
+    void testClPrefix() {
+        // Test commands starting with /cl
+        List<Candidate> candidates = complete("/cl");
+        assertTrue(hasCandidate(candidates, "/clear"));
     }
 
     @Test

@@ -7,7 +7,7 @@ import java.util.List;
  * Sealed ADT for context compaction strategies.
  * Each strategy handles reducing context size when limits are approached or exceeded.
  */
-public sealed interface CompactionStrategy {
+public interface CompactionStrategy {
 
     /**
      * Compact the context according to the strategy.

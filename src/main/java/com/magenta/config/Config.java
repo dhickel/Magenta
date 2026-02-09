@@ -3,10 +3,7 @@ package com.magenta.config;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import com.magenta.session.ChatModel;
-import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
-import dev.langchain4j.model.ollama.OllamaChatModel;
 import dev.langchain4j.model.ollama.OllamaStreamingChatModel;
 
 import java.time.Duration;
@@ -150,22 +147,6 @@ public class Config {
             return endpoint;
         }
 
-        public ChatLanguageModel getAsChatModel() {
-            return switch (endpoint()) {
-                case EndpointConfig.Anthropic ep -> throw new UnsupportedOperationException();
-                case EndpointConfig.Ollama ep -> OllamaChatModel.builder()
-                        .baseUrl(ep.url)
-                        .modelName(modelName)
-                        .timeout(Duration.ofSeconds(ep.timeoutSeconds))
-                        .temperature(temperature)
-                        .numCtx(maxTokens)
-                        .build();
-                case EndpointConfig.OpenAI ep -> throw new UnsupportedOperationException();
-                case EndpointConfig.RemoteAgent ep -> throw new UnsupportedOperationException();
-            };
-        }
-
-
         public StreamingChatLanguageModel getAsStreamingChatModel() {
             return switch (endpoint()) {
                 case EndpointConfig.Anthropic ep -> throw new UnsupportedOperationException();
@@ -179,20 +160,6 @@ public class Config {
                 case EndpointConfig.OpenAI ep -> throw new UnsupportedOperationException();
                 case EndpointConfig.RemoteAgent ep -> throw new UnsupportedOperationException();
             };
-        }
-
-        public ChatModel asChatModel(boolean streaming) {
-            return streaming
-                    ? new ChatModel.Streaming(getAsStreamingChatModel())
-                    : new ChatModel.Blocking(getAsChatModel());
-        }
-
-        public ChatModel asStreamingChatModel() {
-            return new ChatModel.Streaming(getAsStreamingChatModel());
-        }
-
-        public ChatModel asBlockingChatModel() {
-            return new ChatModel.Blocking(getAsChatModel());
         }
     }
 

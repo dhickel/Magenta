@@ -85,6 +85,12 @@
         </dependency>
 
         <dependency>
+            <groupId>io.mindspice</groupId>
+            <artifactId>simply-jdbc</artifactId>
+            <version>0.2.1</version>
+        </dependency>
+
+        <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
             <version>2.18.2</version>

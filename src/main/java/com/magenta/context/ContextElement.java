@@ -27,6 +27,19 @@ public sealed interface ContextElement {
     ChatMessage compile();
     int estimatedTokens();
 
+    /**
+     * Get human-readable role name for a context element.
+     */
+    static String roleName(ContextElement element) {
+        return switch (element) {
+            case ContextElement.User ignored -> "User";
+            case ContextElement.Agent ignored -> "Agent";
+            case ContextElement.System ignored -> "System";
+            case ContextElement.Tool ignored -> "Tool";
+            case ContextElement.Summary ignored -> "Summary";
+        };
+    }
+
     record System(String content) implements ContextElement {
         @Override
         public ChatMessage compile() {

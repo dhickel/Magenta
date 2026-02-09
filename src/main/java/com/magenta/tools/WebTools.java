@@ -1,7 +1,5 @@
 package com.magenta.tools;
 
-import com.magenta.io.IOManager;
-import com.magenta.security.SecurityManager;
 import dev.langchain4j.agent.tool.Tool;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -9,20 +7,8 @@ import java.io.IOException;
 
 public class WebTools {
 
-    private final SecurityManager securityManager;
-    private final IOManager io;
-
-    public WebTools(SecurityManager securityManager, IOManager io) {
-        this.securityManager = securityManager;
-        this.io = io;
-    }
-
     @Tool("Fetch and extract the main text content from a given URL. Useful for reading documentation or articles.")
     public String fetchUrl(String url) {
-        // Security check via instance method
-        if (!securityManager.requireToolApproval("web_fetch", url, io)) {
-            return "Error: URL fetch denied by user or security policy.";
-        }
 
         try {
             Document doc = Jsoup.connect(url)
