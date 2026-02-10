@@ -27,7 +27,8 @@ public class SecurityFilterDemo {
         SecurityConfig config = new SecurityConfig(
             List.of("shell"),           // Approval required for shell
             List.of("ls", "pwd"),       // Auto-allow ls and pwd
-            List.of("rm -rf", "sudo")   // Block rm -rf and sudo
+            List.of("rm -rf", "sudo"),  // Block rm -rf and sudo
+            List.of()                   // Allowed file paths
         );
         securityManager.setConfig(config);
 

@@ -3,10 +3,12 @@ package com.magenta.tools;
 import com.magenta.agent.AgentMessage;
 import com.magenta.manager.AgentNetwork;
 import com.magenta.config.Config;
+import com.magenta.config.Config.DelegationTemplate;
 import com.magenta.task.TaskWorkflow;
 import com.magenta.task.WorkflowTaskTemplate;
 import dev.langchain4j.agent.tool.Tool;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -103,8 +105,8 @@ public class AgentTools {
         }
     }
 
-    @Tool("Delegate a workflow task to another agent")
-    public String delegateTask(String targetAgent, String taskTemplateKey) {
+    @Tool("Delegate a workflow task to another agent. Use this for standard workflows defined in config.")
+    public String delegateWorkflowTask(String targetAgent, String taskTemplateKey) {
         try {
             var templates = config.taskTemplates();
             WorkflowTaskTemplate template = templates.get(taskTemplateKey);
@@ -120,6 +122,40 @@ public class AgentTools {
             return "Task '" + task.name() + "' delegated to " + targetAgent;
         } catch (Exception e) {
             return "Error delegating task: " + e.getMessage();
+        }
+    }
+
+    @Tool("Delegate a task to a specialist agent using configured templates. Task type determines target agent and prompt structure.")
+    public String delegateToAgent(String taskType, String contextJson) {
+        try {
+            // Lookup delegation template from config
+            DelegationTemplate template = config.delegationTemplates().get(taskType);
+            if (template == null) {
+                List<String> available = new ArrayList<>(config.delegationTemplates().keySet());
+                return "Error: Unknown task type '" + taskType + "'. Available: " + available;
+            }
+
+            // Resolve prompt with context substitution
+            String resolvedPrompt = template.resolvePrompt(contextJson);
+
+            // Create task workflow
+            TaskWorkflow task = new TaskWorkflow(
+                taskType + "-" + UUID.randomUUID().toString().substring(0, 8),
+                template.title(),
+                template.title(), // Description
+                resolvedPrompt,
+                List.of(), // Tools
+                Map.of(), // Params
+                TaskWorkflow.WorkflowTaskType.CUSTOM
+            );
+
+            // Delegate to configured target agent
+            network.delegateTask(currentAgentAlias, template.targetAgent(), task);
+
+            return String.format("Task delegated to %s agent (Task ID: %s)\nType: %s\nExpected: %s",
+                template.targetAgent(), task.id(), taskType, template.expectedOutput());
+        } catch (Exception e) {
+            return "Error delegating to agent: " + e.getMessage();
         }
     }
 }

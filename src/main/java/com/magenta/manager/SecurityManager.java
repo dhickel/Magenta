@@ -5,19 +5,28 @@ import com.magenta.io.IOManager;
 import com.magenta.io.terminal.InteractivePrompt;
 import com.magenta.io.terminal.TerminalIOManager;
 import com.magenta.security.SecurityFilter;
+import com.magenta.security.SecurityPolicies;
+import com.magenta.security.ToolSecurityPolicy;
+import com.magenta.tools.ToolContext;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 
 import java.io.IOException;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 
 public class SecurityManager {
 
     private volatile SecurityConfig config;
+    private final Map<String, ToolSecurityPolicy> toolPolicies = new ConcurrentHashMap<>();
 
     public SecurityManager() {
         // Default safe config (empty lists to avoid NPEs if not set)
         this.config = new SecurityConfig(
+            java.util.Collections.emptyList(),
             java.util.Collections.emptyList(),
             java.util.Collections.emptyList(),
             java.util.Collections.emptyList()
@@ -26,18 +35,44 @@ public class SecurityManager {
 
     public void setConfig(SecurityConfig config) {
         this.config = config;
+
+        // Apply file access policy if configured
+        if (config.allowedFilePaths() != null && !config.allowedFilePaths().isEmpty()) {
+            List<Path> allowed = config.allowedFilePaths().stream()
+                .map(java.nio.file.Paths::get)
+                .toList();
+
+            ToolSecurityPolicy filePolicy = SecurityPolicies.fileAccessPolicy(allowed);
+
+            // Register for standard file tools
+            registerToolPolicy("readFile", filePolicy);
+            registerToolPolicy("writeFile", filePolicy);
+            registerToolPolicy("deleteFile", filePolicy);
+            registerToolPolicy("deleteDirectoryRecursive", filePolicy);
+            registerToolPolicy("listDirectory", filePolicy);
+            registerToolPolicy("createDirectory", filePolicy);
+            registerToolPolicy("searchReplace", filePolicy);
+            registerToolPolicy("diff", filePolicy);
+        }
     }
 
     public SecurityConfig getConfig() {
         return config;
     }
 
+    public void registerToolPolicy(String toolName, ToolSecurityPolicy policy) {
+        toolPolicies.put(toolName, policy);
+    }
 
     public SecurityFilter createFilter(IOManager io) {
+        return createFilter(io, null);
+    }
+
+    public SecurityFilter createFilter(IOManager io, ToolContext context) {
         return new SecurityFilter(
             (input, ioMgr) -> filterInput(input),
             this::filterOutput,
-                this::filterTool
+            (req, ioMgr) -> filterTool(req, ioMgr, context)
         );
     }
 
@@ -70,7 +105,7 @@ public class SecurityManager {
     /**
      * Filter tool - returns Optional.empty() if allowed, Optional.of(reason) if blocked.
      */
-    private Optional<String> filterTool(ToolExecutionRequest request, IOManager io) {
+    private Optional<String> filterTool(ToolExecutionRequest request, IOManager io, ToolContext context) {
         String toolName = request.name();
         String arguments = request.arguments();
 
@@ -90,6 +125,13 @@ public class SecurityManager {
                     return Optional.empty();  // Allowed
                 }
             }
+        }
+
+        // Tool-specific policy checks
+        ToolSecurityPolicy policy = toolPolicies.get(toolName);
+        if (policy != null && context != null) {
+            Optional<String> policyResult = policy.validate(request, context);
+            if (policyResult.isPresent()) return policyResult;
         }
 
         // Check if approval required

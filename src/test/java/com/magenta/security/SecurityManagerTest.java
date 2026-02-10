@@ -17,6 +17,7 @@ class SecurityManagerTest {
         SecurityConfig config1 = new SecurityConfig(
             List.of("tool1"),
             Collections.emptyList(),
+            Collections.emptyList(),
             Collections.emptyList()
         );
         manager.setConfig(config1);
@@ -27,6 +28,7 @@ class SecurityManagerTest {
         // Update config
         SecurityConfig config2 = new SecurityConfig(
             List.of("tool2"),
+            Collections.emptyList(),
             Collections.emptyList(),
             Collections.emptyList()
         );

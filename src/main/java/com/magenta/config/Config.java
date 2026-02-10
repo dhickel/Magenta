@@ -40,6 +40,9 @@ public class Config {
     @JsonProperty("task_templates")
     public Map<String, com.magenta.task.WorkflowTaskTemplate> taskTemplates;
 
+    @JsonProperty("delegation_templates")
+    public Map<String, DelegationTemplate> delegationTemplates;
+
     public void initializeReferences() {
         models.values().forEach(model -> model.config = this);
         agents.forEach((name, agent) -> {
@@ -71,6 +74,10 @@ public class Config {
         return taskTemplates != null ? taskTemplates : Map.of();
     }
 
+    public Map<String, DelegationTemplate> delegationTemplates() {
+        return delegationTemplates != null ? delegationTemplates : Map.of();
+    }
+
     public record GlobalConfig(
             @JsonProperty("base_agent") String baseAgent,
             @JsonProperty("storage_path") String storagePath,
@@ -84,7 +91,8 @@ public class Config {
     public record SecurityConfig(
             @JsonProperty("approval_required_for") List<String> approvalRequiredFor,
             @JsonProperty("always_allow_commands") List<String> alwaysAllowCommands,
-            @JsonProperty("blocked_commands") List<String> blockedCommands
+            @JsonProperty("blocked_commands") List<String> blockedCommands,
+            @JsonProperty("allowed_file_paths") List<String> allowedFilePaths
     ) { }
 
     /**
@@ -282,6 +290,35 @@ public class Config {
                 @JsonProperty("timeout_seconds") int timeoutSeconds,
                 Map<String, String> capabilities
         ) implements EndpointConfig { }
+    }
+
+    public record DelegationTemplate(
+        @JsonProperty("target_agent") String targetAgent,
+        String title,
+        @JsonProperty("prompt_template") String promptTemplate,
+        @JsonProperty("expected_output") String expectedOutput
+    ) {
+        public String resolvePrompt(String context) {
+            // Simple placeholder replacement - in real implementation this might use a template engine
+            // Or parse the context JSON and replace keys
+            // For now, we'll just append the context if no placeholders, or replace {context}
+            if (promptTemplate.contains("{context}")) {
+                return promptTemplate.replace("{context}", context);
+            }
+            // Basic JSON-like substitution (very simple)
+            String resolved = promptTemplate;
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                Map<String, String> contextMap = mapper.readValue(context, new com.fasterxml.jackson.core.type.TypeReference<Map<String, String>>(){});
+                for (Map.Entry<String, String> entry : contextMap.entrySet()) {
+                    resolved = resolved.replace("{" + entry.getKey() + "}", entry.getValue());
+                }
+                return resolved;
+            } catch (Exception e) {
+                // Not JSON or error, just append
+                return promptTemplate + "\n\nContext:\n" + context;
+            }
+        }
     }
 
 }

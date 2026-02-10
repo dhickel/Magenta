@@ -1,5 +1,14 @@
 package com.magenta.tools;
 
+import com.github.javaparser.JavaParser;
+import com.github.javaparser.ParserConfiguration;
+import com.github.javaparser.ast.CompilationUnit;
+import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
+import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.symbolsolver.JavaSymbolSolver;
+import com.github.javaparser.symbolsolver.resolution.typesolvers.CombinedTypeSolver;
+import com.github.javaparser.symbolsolver.resolution.typesolvers.JavaParserTypeSolver;
+import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeSolver;
 import dev.langchain4j.agent.tool.Tool;
 
 import java.io.IOException;
@@ -7,6 +16,7 @@ import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
@@ -14,9 +24,21 @@ public class SearchTools {
 
     private static final int MAX_RESULTS = 100;
     private final Path projectRoot;
+    private final JavaParser javaParser;
 
     public SearchTools() {
         this.projectRoot = Paths.get(System.getProperty("user.dir")).toAbsolutePath().normalize();
+
+        // Configure JavaParser with symbol solver
+        CombinedTypeSolver typeSolver = new CombinedTypeSolver();
+        typeSolver.add(new ReflectionTypeSolver());
+        typeSolver.add(new JavaParserTypeSolver(projectRoot));
+
+        JavaSymbolSolver symbolSolver = new JavaSymbolSolver(typeSolver);
+        ParserConfiguration config = new ParserConfiguration();
+        config.setSymbolResolver(symbolSolver);
+
+        this.javaParser = new JavaParser(config);
     }
 
     @Tool("Search for text pattern in project files. Use regex pattern and optional file glob (e.g., '*.java')")
@@ -163,6 +185,62 @@ public class SearchTools {
             output.append(file).append("\n");
         }
 
+        return output.toString();
+    }
+
+    @Tool("Find method or class definition by name")
+    public String findDefinition(String symbol) {
+        List<SearchResult> results = new ArrayList<>();
+
+        try {
+            Files.walkFileTree(projectRoot, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                    if (file.toString().endsWith(".java")) {
+                        try {
+                            Optional<CompilationUnit> cu = javaParser.parse(file).getResult();
+                            if (cu.isPresent()) {
+                                cu.get().findAll(ClassOrInterfaceDeclaration.class).stream()
+                                    .filter(c -> c.getNameAsString().equals(symbol))
+                                    .forEach(c -> results.add(new SearchResult(
+                                        projectRoot.relativize(file).toString(),
+                                        c.getBegin().map(p -> p.line).orElse(0),
+                                        "class " + c.getNameAsString()
+                                    )));
+
+                                cu.get().findAll(MethodDeclaration.class).stream()
+                                    .filter(m -> m.getNameAsString().equals(symbol))
+                                    .forEach(m -> results.add(new SearchResult(
+                                        projectRoot.relativize(file).toString(),
+                                        m.getBegin().map(p -> p.line).orElse(0),
+                                        m.getDeclarationAsString()
+                                    )));
+                            }
+                        } catch (Exception e) {
+                            // ignore parse errors
+                        }
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                    return shouldSkipDirectory(dir) ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (IOException e) {
+            return "Error finding definition: " + e.getMessage();
+        }
+
+        if (results.isEmpty()) {
+            return "No definitions found for symbol: " + symbol;
+        }
+
+        StringBuilder output = new StringBuilder();
+        for (SearchResult result : results) {
+            output.append(result.file).append(":").append(result.lineNumber)
+                  .append(": ").append(result.line).append("\n");
+        }
         return output.toString();
     }
 

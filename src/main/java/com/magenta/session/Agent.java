@@ -33,6 +33,30 @@ public final class Agent {
     private final ChatLanguageModel blockingModel;
     private final CommandSet commands;
 
+    private static final ToolRegistry registry = new ToolRegistry();
+
+    static {
+        registry.register("shell", ctx -> new ShellTools(ctx.io()));
+        registry.register("web", ctx -> new WebTools());
+        registry.register("filesystem", ctx -> new FileSystemTools());
+        registry.register("knowledge", ctx -> new KnowledgeTools());
+        registry.register("git", ctx -> new GitTools(ctx.io()));
+        registry.register("context", ctx -> new ContextTools(ctx.sessionId(), ctx.limits(), ctx.magenta().contextManager()));
+        registry.register("search", ctx -> new SearchTools());
+        registry.register("agent", ctx -> new AgentTools(ctx.alias().value(), ctx.magenta().agentNetwork(), ctx.magenta().config()));
+        registry.register("process", ctx -> new ProcessTools());
+        registry.register("todo", ctx -> new TodoTools(new TodoService()));
+        registry.register("planning", ctx -> new PlanningTools(ctx.sessionId().toString()));
+        registry.register("code-execution", ctx -> {
+            CodeExecutionTools tools = new CodeExecutionTools();
+            // Apply security policies if security manager is present in context
+            SecurityManager secMgr = ctx.magenta().securityManager();
+            secMgr.registerToolPolicy("mavenBuild", com.magenta.security.SecurityPolicies.rateLimitPolicy(5));
+            secMgr.registerToolPolicy("runTest", com.magenta.security.SecurityPolicies.rateLimitPolicy(10));
+            return tools;
+        });
+    }
+
     // Tool state - initialized when attached to a session
     private List<ToolSpecification> toolSpecs = List.of();
     private Map<String, ToolExecutor> toolExecutors = Map.of();
@@ -51,6 +75,9 @@ public final class Agent {
     public List<ToolSpecification> toolSpecs() { return toolSpecs; }
     public Map<String, ToolExecutor> toolExecutors() { return toolExecutors; }
 
+    // Expose registry for testing or dynamic registration
+    public static ToolRegistry registry() { return registry; }
+
     /**
      * Initialize tools from config tool names with session context.
      * Call this when the agent is attached to a session with IOManager.
@@ -64,10 +91,10 @@ public final class Agent {
         List<ToolSpecification> specs = new ArrayList<>();
         Map<String, ToolExecutor> executors = new HashMap<>();
 
-        for (String toolName : toolNames) {
-            Object toolInstance = createToolInstance(toolName, io, sessionId, limits, alias, magenta);
-            if (toolInstance == null) continue;
+        ToolContext context = new ToolContext(io, sessionId, limits, alias, magenta);
+        List<Object> toolInstances = registry.instantiateTools(toolNames, context);
 
+        for (Object toolInstance : toolInstances) {
             for (Method method : toolInstance.getClass().getDeclaredMethods()) {
                 if (method.isAnnotationPresent(Tool.class)) {
                     ToolSpecification spec = ToolSpecifications.toolSpecificationFrom(method);
@@ -81,29 +108,18 @@ public final class Agent {
         this.toolExecutors = Map.copyOf(executors);
     }
 
-    private Object createToolInstance(String toolName, IOManager io, SessionId sessionId,
-                                       ContextLimits limits, SessionAlias alias, Magenta magenta) {
-        return switch (toolName) {
-            case "shell" -> new ShellTools(io);
-            case "web" -> new WebTools();
-            case "filesystem" -> new FileSystemTools();
-            case "knowledge" -> new KnowledgeTools();
-            case "git" -> new GitTools(io);
-            case "context" -> new ContextTools(sessionId, limits, magenta.contextManager());
-            case "search" -> new SearchTools();
-            case "agent" -> new AgentTools(alias.value(), magenta.agentNetwork(), magenta.config());
-            case "process" -> new ProcessTools();
-            case "todo" -> new TodoTools(new TodoService());
-            default -> null;
-        };
-    }
-
     /**
      * Create a SecurityFilter bound to a specific IOManager.
      * Call this when the agent is attached to a session with IOManager.
      */
     public SecurityFilter createSecurityFilterFor(IOManager io, SecurityManager securityManager) {
+        // Fallback for calls without context (if any)
         securityManager.setConfig(config.security());
         return securityManager.createFilter(io);
+    }
+
+    public SecurityFilter createSecurityFilterFor(IOManager io, SecurityManager securityManager, ToolContext context) {
+        securityManager.setConfig(config.security());
+        return securityManager.createFilter(io, context);
     }
 }

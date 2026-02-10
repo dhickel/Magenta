@@ -41,7 +41,8 @@ class SecurityFilterTest {
         SecurityConfig config = new SecurityConfig(
             List.of(),
             List.of(),
-            List.of("rm -rf")
+            List.of("rm -rf"),
+            List.of()
         );
         securityManager.setConfig(config);
 
@@ -58,7 +59,8 @@ class SecurityFilterTest {
         SecurityConfig config = new SecurityConfig(
             List.of(),
             List.of(),
-            List.of("rm -rf")
+            List.of("rm -rf"),
+            List.of()
         );
         securityManager.setConfig(config);
 
@@ -72,6 +74,7 @@ class SecurityFilterTest {
     @Test
     void testOutputFilterPassesThrough() {
         SecurityConfig config = new SecurityConfig(
+            List.of(),
             List.of(),
             List.of(),
             List.of()
@@ -90,7 +93,8 @@ class SecurityFilterTest {
         SecurityConfig config = new SecurityConfig(
             List.of(),
             List.of(),
-            List.of("rm -rf")
+            List.of("rm -rf"),
+            List.of()
         );
         securityManager.setConfig(config);
 
@@ -111,6 +115,7 @@ class SecurityFilterTest {
         SecurityConfig config = new SecurityConfig(
             List.of("shell"),
             List.of("ls", "pwd"),
+            List.of(),
             List.of()
         );
         securityManager.setConfig(config);
@@ -143,7 +148,8 @@ class SecurityFilterTest {
         SecurityConfig config = new SecurityConfig(
             List.of(),
             List.of(),
-            List.of("blocked")
+            List.of("blocked"),
+            List.of()
         );
         securityManager.setConfig(config);
 

@@ -7,6 +7,7 @@ import com.magenta.manager.ContextManager;
 import com.magenta.io.ResponseHandler;
 import com.magenta.security.SecurityFilter;
 import com.magenta.task.TaskWorkflow;
+import com.magenta.tools.ToolMetrics;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.*;
@@ -218,8 +219,13 @@ public class StreamingChat implements MessageHandler<AgentSession> {
         }
 
         try {
-            return executor.execute(request, null);
+            long start = System.currentTimeMillis();
+            String result = executor.execute(request, null);
+            long duration = System.currentTimeMillis() - start;
+            ToolMetrics.record(request.name(), duration, true);
+            return result;
         } catch (Exception e) {
+            ToolMetrics.record(request.name(), 0, false);
             logger.error("Tool '{}' execution failed: {}", request.name(), e.getMessage());
             return "Error executing tool: " + e.getMessage();
         }

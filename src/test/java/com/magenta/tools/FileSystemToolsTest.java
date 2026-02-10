@@ -34,7 +34,7 @@ class FileSystemToolsTest {
         String content = "Hello World";
         
         tools.writeFile(filePath, content);
-        String read = tools.readFile(filePath);
+        String read = tools.readFile(filePath, null, null);
         
         assertEquals(content, read);
     }
@@ -56,7 +56,43 @@ class FileSystemToolsTest {
         
         tools.deleteFile(filePath);
         
-        String result = tools.readFile(filePath);
+        String result = tools.readFile(filePath, null, null);
         assertTrue(result.startsWith("Error"));
+    }
+
+    @Test
+    void testReadFileChunk() {
+        String filePath = TEST_DIR + "/chunk.txt";
+        // \n is separator
+        String content = "Line 1\nLine 2\nLine 3\nLine 4";
+        tools.writeFile(filePath, content);
+
+        // Read lines 2-3
+        String chunk = tools.readFile(filePath, 2, 3);
+        // Output format:
+        // === path (lines 2-3 of 4) ===
+        //    2 | Line 2
+        //    3 | Line 3
+
+        assertTrue(chunk.contains("Line 2"));
+        assertTrue(chunk.contains("Line 3"));
+        assertFalse(chunk.contains("Line 1"));
+        assertFalse(chunk.contains("Line 4"));
+    }
+
+    @Test
+    void testSearchReplace() {
+        String filePath = TEST_DIR + "/replace.txt";
+        tools.writeFile(filePath, "Hello World");
+
+        // Preview
+        String preview = tools.searchReplace(filePath, "World", "Java", false, false);
+        assertTrue(preview.contains("Preview"));
+        assertEquals("Hello World", tools.readFile(filePath, null, null));
+
+        // Apply
+        String result = tools.searchReplace(filePath, "World", "Java", false, true);
+        assertTrue(result.contains("Applied"));
+        assertEquals("Hello Java", tools.readFile(filePath, null, null));
     }
 }

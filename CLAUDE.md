@@ -325,6 +325,37 @@ src/main/java/com/magenta/
 └── tools/        # Tool implementations (@Tool annotated)
 ```
 
+## Tool Suite & Capabilities
+
+Magenta provides a comprehensive tool suite for agents:
+
+### 1. File System
+- **Read/Write:** Chunked reading for large files (`readFile(path, startLine, endLine)`)
+- **Manipulation:** `searchReplace` with regex and diff preview
+- **Analysis:** `diff(fileA, fileB)` for unified diffs
+- **Security:** Path restriction policies configured in `config.json`
+
+### 2. Planning & Reasoning
+- **Task Decomposition:** `createPlan`, `completeStep`
+- **Scratchpad:** Key-value memory for agent thoughts (`scratchpadWrite`, `scratchpadRead`)
+- **Status Tracking:** `planStatus` provides progress updates
+
+### 3. Code Execution
+- **Build:** `mavenBuild` with custom goals
+- **Testing:** `runTest` (single method/class) and `runAllTests`
+- **Validation:** `validateCompilation` and `analyzeCode` (checkstyle)
+- **Security:** Rate limiting and approval workflows
+
+### 4. Agent Collaboration
+- **Delegation:** `delegateToAgent` using configurable templates
+- **Communication:** Direct messaging and broadcasting
+- **Task Types:** Configurable via `delegation_templates` in `config.json`
+
+### 5. Search & Navigation
+- **Text Search:** `searchText` with regex support
+- **File Search:** `searchFiles` by glob pattern
+- **Code Navigation:** `findDefinition(symbol)` using JavaParser
+
 ## Key Patterns in Use
 
 | Pattern | Example | Notes |

@@ -14,6 +14,7 @@ import com.magenta.io.terminal.CommandSet;
 import com.magenta.security.SecurityFilter;
 import com.magenta.manager.SecurityManager;
 import com.magenta.task.TaskWorkflow;
+import com.magenta.tools.ToolContext;
 import org.jline.utils.AttributedString;
 
 import java.util.List;
@@ -197,7 +198,8 @@ public class AgentSession implements Session {
 
     public SecurityFilter securityFilter() {
         if (ioManager != null) {
-            return agent.createSecurityFilterFor(ioManager, magenta.securityManager());
+            ToolContext context = new ToolContext(ioManager, sessionId(), contextLimits, alias(), magenta);
+            return agent.createSecurityFilterFor(ioManager, magenta.securityManager(), context);
         }
         return SecurityFilter.identity();
     }
