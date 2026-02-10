@@ -1,14 +1,12 @@
 package com.magenta.persistence;
 
-import com.magenta.config.ConfigManager;
 import com.magenta.context.Context;
 import com.magenta.context.ContextElement;
 import com.magenta.context.ContextLimits;
-import com.magenta.context.ContextManager;
+import com.magenta.manager.ContextManager;
 import com.magenta.session.SessionId;
 import org.junit.jupiter.api.*;
 
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
@@ -27,19 +25,15 @@ class DatabaseContextTest {
     private static ContextManager contextManager;
 
     @BeforeAll
-    static void setUp() throws IOException, SQLException {
+    static void setUp() throws Exception {
         // Create temp database
         tempDbPath = Files.createTempFile("magenta-test-", ".db");
 
-        // Initialize ConfigManager with test database path
-        ConfigManager.initialize(new String[]{"--database", tempDbPath.toString()});
+        // Initialize Database directly (no singleton)
+        database = new Database(tempDbPath.toString());
 
-        // Initialize Database
-        Database.initialize();
-        database = Database.getInstance();
-
-        // Initialize ContextManager
-        contextManager = ContextManager.initialize();
+        // Initialize ContextManager with database
+        contextManager = new ContextManager(database);
     }
 
     @AfterAll

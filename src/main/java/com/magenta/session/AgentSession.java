@@ -1,5 +1,6 @@
 package com.magenta.session;
 
+import com.magenta.Magenta;
 import com.magenta.config.Config.AgentConfig;
 import com.magenta.context.ContextLimits;
 import com.magenta.io.IOManager;
@@ -11,7 +12,7 @@ import com.magenta.io.terminal.TerminalIOManager;
 import com.magenta.io.terminal.Command;
 import com.magenta.io.terminal.CommandSet;
 import com.magenta.security.SecurityFilter;
-import com.magenta.security.SecurityManager;
+import com.magenta.manager.SecurityManager;
 import com.magenta.task.TaskWorkflow;
 import org.jline.utils.AttributedString;
 
@@ -26,6 +27,9 @@ import java.util.UUID;
  * - IOManager is pure I/O, no business logic
  */
 public class AgentSession implements Session {
+    // Services container
+    private final Magenta magenta;
+
     // Session identity
     private final SessionMeta metaData;
 
@@ -46,31 +50,33 @@ public class AgentSession implements Session {
     private long lastStateHash = 0;
 
     public AgentSession(
+            Magenta magenta,
             SessionAlias alias,
             AgentConfig agentConfig,
             SessionId sessionId
     ) {
-        this(alias, agentConfig, sessionId, new StreamingChat(), CommandSet.empty());
+        this(magenta, alias, agentConfig, sessionId, new StreamingChat(), CommandSet.empty());
     }
 
     public AgentSession(
+            Magenta magenta,
             SessionAlias alias,
             AgentConfig agentConfig,
             SessionId sessionId,
             MessageHandler<AgentSession> messageHandler,
             CommandSet sessionCommands
     ) {
+        this.magenta = magenta;
         this.metaData = new SessionMeta(sessionId, alias, com.magenta.agent.NetworkId.random());
         this.ioManager = null;
         this.agent = new Agent(agentConfig);
         this.messageHandler = messageHandler;
-        this.commandSet = SystemCommands.commands()
+        this.commandSet = new SystemCommands(magenta).commands()
             .composedWith(agent.commands())
             .composedWith(sessionCommands);
 
         // Create per-agent context limits
-        SecurityManager securityManager = SecurityManager.getInstance();
-        securityManager.setConfig(agentConfig.security());
+        magenta.securityManager().setConfig(agentConfig.security());
         this.contextLimits = new ContextLimits(
             agentConfig.model().maxContext(),
             agentConfig.model().compactThreshold()
@@ -115,7 +121,7 @@ public class AgentSession implements Session {
         }
 
         // Initialize tools with session context
-        agent.initTools(io, sessionId(), contextLimits, alias());
+        agent.initTools(io, sessionId(), contextLimits, alias(), magenta);
     }
 
     @Override
@@ -159,7 +165,7 @@ public class AgentSession implements Session {
     @Override
     public ResponseHandler responseHandler() {
         if (responseHandler == null) {
-            int streamDelay = com.magenta.config.ConfigManager.config().streamDelayMs();
+            int streamDelay = magenta.config().streamDelayMs();
             Integer agentColor = agent.config().resolveColor();
             responseHandler = ioManager.createResponseHandler(agentColor, streamDelay);
         }
@@ -172,6 +178,10 @@ public class AgentSession implements Session {
     }
 
     // === Accessors ===
+
+    public Magenta magenta() {
+        return magenta;
+    }
 
     public Agent agent() {
         return agent;
@@ -187,7 +197,7 @@ public class AgentSession implements Session {
 
     public SecurityFilter securityFilter() {
         if (ioManager != null) {
-            return agent.createSecurityFilterFor(ioManager);
+            return agent.createSecurityFilterFor(ioManager, magenta.securityManager());
         }
         return SecurityFilter.identity();
     }
@@ -246,12 +256,9 @@ public class AgentSession implements Session {
         hash = 31 * hash + metaData.sessionId().hashCode();
 
         // Include context token count
-        try {
-            var cm = com.magenta.context.ContextManager.getInstance();
-            var ctx = cm.loadContext(sessionId());
+        if (magenta.contextManager() != null) {
+            var ctx = magenta.contextManager().loadContext(sessionId());
             hash = 31 * hash + ctx.totalEstimatedTokens();
-        } catch (IllegalStateException e) {
-            // ContextManager not initialized, skip
         }
 
         return hash;
@@ -297,12 +304,18 @@ public class AgentSession implements Session {
     }
 
     public static class Builder {
+        private Magenta magenta;
         private SessionAlias alias;
         private AgentConfig agentConfig;
         private SessionId sessionId;
         private MessageHandler<AgentSession> messageHandler;
         private CommandSet commands = CommandSet.empty();
         private IOManager ioManager;
+
+        public Builder magenta(Magenta magenta) {
+            this.magenta = magenta;
+            return this;
+        }
 
         public Builder alias(SessionAlias alias) {
             this.alias = alias;
@@ -340,7 +353,7 @@ public class AgentSession implements Session {
             MessageHandler<AgentSession> handler = messageHandler != null
                 ? messageHandler
                 : new StreamingChat();
-            AgentSession session = new AgentSession(alias, agentConfig, sessionId, handler, commands);
+            AgentSession session = new AgentSession(magenta, alias, agentConfig, sessionId, handler, commands);
 
             if (ioManager != null) {
                 session.attachIO(ioManager);
@@ -350,6 +363,9 @@ public class AgentSession implements Session {
         }
 
         private void validate() {
+            if (magenta == null) {
+                throw new IllegalStateException("magenta is required");
+            }
             if (alias == null) {
                 throw new IllegalStateException("alias is required");
             }

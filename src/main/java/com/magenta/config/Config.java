@@ -3,7 +3,9 @@ package com.magenta.config;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
+import dev.langchain4j.model.ollama.OllamaChatModel;
 import dev.langchain4j.model.ollama.OllamaStreamingChatModel;
 
 import java.time.Duration;
@@ -151,6 +153,21 @@ public class Config {
             return switch (endpoint()) {
                 case EndpointConfig.Anthropic ep -> throw new UnsupportedOperationException();
                 case EndpointConfig.Ollama ep -> OllamaStreamingChatModel.builder()
+                        .baseUrl(ep.url)
+                        .modelName(modelName)
+                        .timeout(Duration.ofSeconds(ep.timeoutSeconds))
+                        .temperature(temperature)
+                        .numCtx(maxTokens)
+                        .build();
+                case EndpointConfig.OpenAI ep -> throw new UnsupportedOperationException();
+                case EndpointConfig.RemoteAgent ep -> throw new UnsupportedOperationException();
+            };
+        }
+
+        public ChatLanguageModel getAsChatModel() {
+            return switch (endpoint()) {
+                case EndpointConfig.Anthropic ep -> throw new UnsupportedOperationException();
+                case EndpointConfig.Ollama ep -> OllamaChatModel.builder()
                         .baseUrl(ep.url)
                         .modelName(modelName)
                         .timeout(Duration.ofSeconds(ep.timeoutSeconds))

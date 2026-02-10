@@ -4,7 +4,7 @@ import com.magenta.config.Config.SecurityConfig;
 import com.magenta.io.InternalIOManager;
 import com.magenta.io.IOManager;
 import com.magenta.security.SecurityFilter;
-import com.magenta.security.SecurityManager;
+import com.magenta.manager.SecurityManager;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 
 import java.util.List;
@@ -20,7 +20,7 @@ public class SecurityFilterDemo {
         System.out.println("=== Security Filtering Demo ===\n");
 
         // Setup
-        SecurityManager securityManager = SecurityManager.getInstance();
+        SecurityManager securityManager = new SecurityManager();
         IOManager io = new InternalIOManager();
 
         // Configure security policy

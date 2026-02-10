@@ -1,5 +1,9 @@
-package com.magenta.context;
+package com.magenta.manager;
 
+import com.magenta.context.CompactionStrategy;
+import com.magenta.context.Context;
+import com.magenta.context.ContextElement;
+import com.magenta.context.ContextLimits;
 import com.magenta.io.IOManager;
 import com.magenta.persistence.Database;
 import com.magenta.session.SessionId;
@@ -11,9 +15,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Singleton manager for context lifecycle and persistence.
@@ -40,66 +41,26 @@ import java.util.concurrent.TimeUnit;
  */
 public class ContextManager {
     private static final Logger logger = LoggerFactory.getLogger(ContextManager.class);
-    private static volatile ContextManager instance;
-    private static final int FLUSH_INTERVAL_SECONDS = 30;
 
     private final Map<SessionId, Context> activeContexts = new ConcurrentHashMap<>();
     private final Set<SessionId> dirtyContexts = ConcurrentHashMap.newKeySet();
     private final Map<SessionId, Integer> lastSavedSequence = new ConcurrentHashMap<>();
     private final CompactionStrategy compactionStrategy;
     private final Database database;
-    private final ScheduledExecutorService flushScheduler;
 
-    private ContextManager() {
-        // Use Truncate strategy by default (simple, deterministic)
-        // Can be upgraded to Summarize when model integration is ready
+    /**
+     * Create a ContextManager with optional database for persistence.
+     *
+     * @param database Database instance (nullable for no-persistence mode)
+     */
+    public ContextManager(Database database) {
         this.compactionStrategy = new CompactionStrategy.Truncate();
+        this.database = database;
 
-        if (Database.isInitialized()) {
-            this.database = Database.getInstance();
-        } else {
-            logger.warn("Database not initialized - persistence will be disabled");
-            this.database = null;
+        if (database == null) {
+            logger.warn("Database is null - persistence will be disabled");
         }
-
-        // Start background flush scheduler
-        this.flushScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "ContextManager-Flush");
-            t.setDaemon(true);
-            return t;
-        });
-
-        flushScheduler.scheduleAtFixedRate(
-            this::flushDirtyContexts,
-            FLUSH_INTERVAL_SECONDS,
-            FLUSH_INTERVAL_SECONDS,
-            TimeUnit.SECONDS
-        );
-
-        logger.info("Background context flush started (every {}s)", FLUSH_INTERVAL_SECONDS);
-
-        // Register shutdown hook to flush on JVM exit
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            logger.info("Shutdown hook: flushing all dirty contexts...");
-            flushAll();
-            shutdownFlushScheduler();
-        }, "ContextManager-Shutdown"));
     }
-
-    public static ContextManager initialize() { return getInstance(); }
-
-    public static ContextManager getInstance() {
-        if (instance == null) {
-            synchronized (ContextManager.class) {
-                if (instance == null) {
-                    instance = new ContextManager();
-                }
-            }
-        }
-        return instance;
-    }
-
-    public static boolean isInitialized() { return instance != null; }
 
     // === Auto-save Methods ===
 
@@ -219,24 +180,6 @@ public class ContextManager {
         }
     }
 
-    /**
-     * Shutdown the background flush scheduler.
-     * Called on JVM shutdown or when ContextManager is explicitly closed.
-     */
-    private void shutdownFlushScheduler() {
-        if (flushScheduler != null && !flushScheduler.isShutdown()) {
-            flushScheduler.shutdown();
-            try {
-                if (!flushScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                    flushScheduler.shutdownNow();
-                }
-            } catch (InterruptedException e) {
-                flushScheduler.shutdownNow();
-                Thread.currentThread().interrupt();
-            }
-            logger.info("Background context flush scheduler stopped");
-        }
-    }
 
     /**
      * Load context from cache or database.

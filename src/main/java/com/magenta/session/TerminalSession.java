@@ -1,17 +1,23 @@
 package com.magenta.session;
 
-import com.magenta.agent.AgentNetwork;
+import com.magenta.Magenta;
 import com.magenta.config.Config.AgentConfig;
-import com.magenta.config.ConfigManager;
-import com.magenta.context.ContextManager;
+import com.magenta.manager.SessionManager;
 import com.magenta.io.QueuedIOManager;
+import com.magenta.io.terminal.Command;
+import com.magenta.io.terminal.CommandSet;
 import com.magenta.io.terminal.TerminalIOManager;
+import org.jline.reader.Candidate;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiConsumer;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 /**
- * TerminalSession singleton manages terminal focus and I/O routing for agent sessions.
+ * TerminalSession manages terminal focus and I/O routing for agent sessions.
  * Handles switching between agents while preserving state and enabling background execution.
  *
  * <p>I/O Routing Strategy:
@@ -20,69 +26,35 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>Backgrounded sessions: Use QueuedIOManager (buffered output)</li>
  *   <li>On refocus: Drain queued output, reload context, redraw view</li>
  * </ul>
- *
- * <p>Phase 1: Core infrastructure (synchronous)
- * <p>Phase 2: Context integration
- * <p>Phase 3: Background execution with virtual threads (TODO)
  */
 public final class TerminalSession implements AutoCloseable {
 
-    private static TerminalSession instance;
-
     private final TerminalIOManager terminal;
-    private final Map<SessionAlias, AgentSession> sessions;
+    private final SessionManager sessionManager;
+    private final Magenta magenta;
     private final Map<SessionAlias, QueuedIOManager> queuedIOs;
-    private SessionAlias focusedSession;
+    private volatile SessionAlias focusedSession;
 
-    // TODO Phase 3: ExecutorService for background execution
-    // private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
-
-    private TerminalSession(TerminalIOManager terminal) {
+    public TerminalSession(TerminalIOManager terminal, SessionManager sessionManager, Magenta magenta) {
         this.terminal = terminal;
-        this.sessions = new ConcurrentHashMap<>();
+        this.sessionManager = sessionManager;
+        this.magenta = magenta;
         this.queuedIOs = new ConcurrentHashMap<>();
         this.focusedSession = null;
-    }
-
-    // === Singleton Pattern ===
-
-    public static void initialize(TerminalIOManager terminal) {
-        if (instance != null) {
-            throw new IllegalStateException("TerminalSession already initialized");
-        }
-        instance = new TerminalSession(terminal);
-    }
-
-    public static TerminalSession getInstance() {
-        if (instance == null) {
-            throw new IllegalStateException("TerminalSession not initialized - call initialize() first");
-        }
-        return instance;
     }
 
     // === Focus Management ===
 
     /**
      * Switch focus to the specified session.
-     * <ol>
-     *   <li>Background current session (swap to QueuedIOManager)</li>
-     *   <li>Focus target session (swap to TerminalIOManager)</li>
-     *   <li>Drain queued output and display</li>
-     *   <li>Reload context from ContextManager (Phase 2)</li>
-     *   <li>Redraw view with current state</li>
-     * </ol>
-     *
-     * @param target Session alias to focus
      */
     public void switchTo(SessionAlias target) {
         // 1. Background current session
         if (focusedSession != null && !focusedSession.equals(target)) {
-            AgentSession current = sessions.get(focusedSession);
+            AgentSession current = sessionManager.getSession(focusedSession);
             if (current != null) {
                 // Flush context to database before backgrounding
-                if (ContextManager.isInitialized()) {
-                    ContextManager.getInstance().flushContext(current.sessionId());
-                }
+                magenta.contextManager().flushContext(current.sessionId());
 
                 QueuedIOManager queuedIO = queuedIOs.computeIfAbsent(
                     focusedSession,
@@ -94,7 +66,7 @@ public final class TerminalSession implements AutoCloseable {
         }
 
         // 2. Focus target session
-        AgentSession next = sessions.get(target);
+        AgentSession next = sessionManager.getSession(target);
         if (next == null) {
             throw new IllegalArgumentException("Session not found: " + target);
         }
@@ -110,11 +82,7 @@ public final class TerminalSession implements AutoCloseable {
             }
         }
 
-        // 4. Context is automatically loaded from ContextManager on each message
-        // No explicit reload needed - StreamingChat.processMessage() loads context fresh each time
-        // Optional enhancement: Display recent conversation history here for user context
-
-        // 5. Redraw view
+        // 4. Redraw view
         next.forceRedraw();
 
         focusedSession = target;
@@ -123,20 +91,13 @@ public final class TerminalSession implements AutoCloseable {
 
     /**
      * Register an existing session.
-     * Useful for initial session setup.
-     *
-     * @param session Existing session to register
      */
     public void registerSession(AgentSession session) {
-        if (sessions.containsKey(session.alias())) {
-            throw new IllegalArgumentException("Session already exists: " + session.alias());
-        }
-
-        sessions.put(session.alias(), session);
+        sessionManager.registerSession(session);
         queuedIOs.put(session.alias(), new QueuedIOManager());
 
         // Register with AgentNetwork
-        AgentNetwork.getInstance().registerAgent(session.sessionMeta());
+        magenta.agentNetwork().registerAgent(session.sessionMeta());
 
         terminal.println("Registered session: " + session.alias().value(), 6);
     }
@@ -144,17 +105,9 @@ public final class TerminalSession implements AutoCloseable {
     /**
      * Create a new agent session.
      * Session starts in backgrounded state (uses QueuedIOManager).
-     *
-     * @param alias Session alias
-     * @param agentName Agent configuration name
-     * @return Created session
      */
     public AgentSession createSession(SessionAlias alias, String agentName) {
-        if (sessions.containsKey(alias)) {
-            throw new IllegalArgumentException("Session already exists: " + alias);
-        }
-
-        AgentConfig config = ConfigManager.config().agents.get(agentName);
+        AgentConfig config = magenta.config().agents.get(agentName);
         if (config == null) {
             throw new IllegalArgumentException("Unknown agent config: " + agentName);
         }
@@ -163,39 +116,32 @@ public final class TerminalSession implements AutoCloseable {
         QueuedIOManager queuedIO = new QueuedIOManager();
         queuedIOs.put(alias, queuedIO);
 
-        // Create session
+        // Create session with terminal commands injected
         AgentSession session = AgentSession.builder()
+            .magenta(magenta)
             .alias(alias)
             .agent(config)
             .sessionId(SessionId.random())
             .messageHandler(new StreamingChat())
+            .commands(terminalCommands())
             .ioManager(queuedIO)
             .build();
 
-        sessions.put(alias, session);
+        sessionManager.registerSession(session);
 
         // Register with AgentNetwork
-        AgentNetwork.getInstance().registerAgent(session.sessionMeta());
-
-        // TODO Phase 3: Start background execution
-        // executor.submit(() -> {
-        //     while (!session.shouldExit()) {
-        //         session.runOnce();
-        //     }
-        // });
+        magenta.agentNetwork().registerAgent(session.sessionMeta());
 
         terminal.println("Created session: " + alias.value(), 6);
 
         return session;
     }
 
-    // === Accessors ===
-
     /**
      * Get the currently focused session.
      */
     public AgentSession focused() {
-        return focusedSession != null ? sessions.get(focusedSession) : null;
+        return focusedSession != null ? sessionManager.getSession(focusedSession) : null;
     }
 
     /**
@@ -206,27 +152,11 @@ public final class TerminalSession implements AutoCloseable {
     }
 
     /**
-     * Get a session by alias.
-     */
-    public AgentSession getSession(SessionAlias alias) {
-        return sessions.get(alias);
-    }
-
-    /**
-     * Get all session aliases.
-     */
-    public Map<SessionAlias, AgentSession> allSessions() {
-        return Map.copyOf(sessions);
-    }
-
-    /**
      * Get the terminal IOManager.
      */
     public TerminalIOManager terminal() {
         return terminal;
     }
-
-    // === View Management ===
 
     /**
      * Set the view for the focused session.
@@ -238,24 +168,201 @@ public final class TerminalSession implements AutoCloseable {
         }
     }
 
+    /**
+     * Run the main loop on the focused session.
+     */
+    public void run() {
+        AgentSession session = focused();
+        if (session == null) {
+            throw new IllegalStateException("No focused session");
+        }
+
+        while (!session.shouldExit()) {
+            try {
+                session.runOnce();
+            } catch (Exception e) {
+                terminal.error("Error: " + e.getMessage());
+                org.slf4j.LoggerFactory.getLogger(TerminalSession.class)
+                    .error("Unhandled error in session loop", e);
+            }
+        }
+    }
+
+    // === Terminal-specific commands ===
+
+    /**
+     * Create the terminal-specific command set (agent switching, session listing).
+     * These commands are injected into agent sessions created by TerminalSession.
+     */
+    public CommandSet terminalCommands() {
+        return CommandSet.of(agentCmd(), sessionsCmd(), agentsCmd());
+    }
+
+    private Command agentCmd() {
+        return Command.of("agent", "Switch to different agent",
+            this::agentCompletions,
+            raw -> slash(raw, "agent") && !argString(raw).isBlank(),
+            (session, raw) -> switchAgent(session, argString(raw).split("\\s+")[0]));
+    }
+
+    private Command sessionsCmd() {
+        return Command.of("sessions", "List active sessions", List.of(),
+            raw -> slash(raw, "sessions"),
+            (session, raw) -> printSessions(session.io()));
+    }
+
+    private Command agentsCmd() {
+        return Command.of("agents", "List available agent configurations", List.of(),
+            raw -> slash(raw, "agents"),
+            (session, raw) -> printAgents(session.io()));
+    }
+
+    // === Command helpers ===
+
+    private static boolean slash(String raw, String... names) {
+        if (raw == null || !raw.startsWith("/")) return false;
+        String cmd = raw.substring(1).trim();
+        int idx = cmd.indexOf(' ');
+        String name = idx < 0 ? cmd.toLowerCase() : cmd.substring(0, idx).toLowerCase();
+        for (String n : names) {
+            if (name.equals(n)) return true;
+        }
+        return false;
+    }
+
+    private static String argString(String raw) {
+        if (raw == null || !raw.startsWith("/")) return "";
+        String cmd = raw.substring(1).trim();
+        int idx = cmd.indexOf(' ');
+        return idx < 0 ? "" : cmd.substring(idx + 1).trim();
+    }
+
+    private List<Candidate> agentCompletions() {
+        return magenta.config().agents.keySet().stream()
+            .map(name -> new Candidate(name, name, "agents", "Switch to " + name, null, null, true))
+            .toList();
+    }
+
+    private void switchAgent(Session session, String agentName) {
+        try {
+            var agentConfig = magenta.config().agents.get(agentName);
+            if (agentConfig == null) {
+                session.io().print("Error: Unknown agent: " + agentName + "\n");
+                return;
+            }
+
+            SessionAlias alias = SessionAlias.of(agentName);
+            if (sessionManager.getSession(alias) != null) {
+                switchToSession(alias);
+                return;
+            }
+
+            session.io().print("Creating session for: " + agentName + "\n");
+            createSession(alias, agentName);
+            switchToSession(alias);
+
+        } catch (Exception e) {
+            session.io().print("Error: " + e.getMessage() + "\n");
+        }
+    }
+
+    public void switchToSession(SessionAlias alias) {
+        AgentSession current = focused();
+        AgentSession target = sessionManager.getSession(alias);
+
+        if (target == null) {
+            throw new IllegalArgumentException("Unknown session alias: " + alias);
+        }
+
+        if (current == target) {
+            terminal.println("Already in session: " + alias.value(), 6);
+            return;
+        }
+
+        switchTo(alias);
+    }
+
+    // === Display methods ===
+
+    public void printSessions(com.magenta.io.IOManager io) {
+        var allSessions = sessionManager.allSessions();
+        String currentAlias = focusedSession != null ? focusedSession.value() : "unknown";
+
+        io.print("Active sessions:\n");
+        io.print("─".repeat(80) + "\n");
+        io.print(String.format("%-15s %-10s %-15s %-10s\n",
+            "Name", "Messages", "Context Tokens", "Current"));
+        io.print("─".repeat(80) + "\n");
+
+        if (allSessions.isEmpty()) {
+            io.print("(none)\n");
+        } else {
+            for (var entry : allSessions.entrySet()) {
+                SessionAlias alias = entry.getKey();
+                AgentSession session = entry.getValue();
+
+                int messageCount = 0;
+                int contextTokens = 0;
+
+                if (session != null) {
+                    var cm = magenta.contextManager();
+                    var context = cm.loadContext(session.sessionId());
+                    messageCount = context.getElements().size();
+                    contextTokens = context.totalEstimatedTokens();
+                }
+
+                String marker = alias.value().equals(currentAlias) ? "*" : "";
+
+                io.print(String.format("%-15s %-10d %-15s %-10s\n",
+                    alias.value(),
+                    messageCount,
+                    contextTokens > 0 ? contextTokens + " tokens" : "N/A",
+                    marker));
+            }
+        }
+        io.print("─".repeat(80) + "\n");
+    }
+
+    public void printAgents(com.magenta.io.IOManager io) {
+        var agents = magenta.config().agents;
+        String currentAlias = focusedSession != null ? focusedSession.value() : "unknown";
+
+        io.print("Available agents:\n");
+        io.print("─".repeat(80) + "\n");
+        io.print(String.format("%-15s %-15s %-8s %-12s\n",
+            "Name", "Model", "Tools", "Security"));
+        io.print("─".repeat(80) + "\n");
+
+        for (var entry : agents.entrySet()) {
+            var agent = entry.getValue();
+            int toolCount = agent.tools() != null ? agent.tools().size() : 0;
+            String marker = entry.getKey().equals(currentAlias) ? " *" : "";
+
+            io.print(String.format("%-15s %-15s %-8d %-12s%s\n",
+                entry.getKey(),
+                truncate(agent.model().modelName(), 15),
+                toolCount,
+                "configured",
+                marker));
+        }
+        io.print("─".repeat(80) + "\n");
+    }
+
+    private static String truncate(String str, int maxLength) {
+        if (str.length() <= maxLength) return str;
+        return str.substring(0, maxLength - 3) + "...";
+    }
+
     // === Lifecycle ===
 
     @Override
     public void close() throws Exception {
-        // TODO Phase 3: Shutdown executor
-        // executor.shutdown();
-        // if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
-        //     executor.shutdownNow();
-        // }
-
         // Flush all contexts to database before shutdown
-        if (ContextManager.isInitialized()) {
-            ContextManager.getInstance().flushAll();
-        }
+        magenta.contextManager().flushAll();
 
         // Unregister all sessions
-        for (AgentSession session : sessions.values()) {
-            AgentNetwork.getInstance().unregisterAgent(session.sessionMeta());
+        for (AgentSession session : sessionManager.allSessions().values()) {
+            magenta.agentNetwork().unregisterAgent(session.sessionMeta());
             session.close();
         }
 
@@ -264,7 +371,6 @@ public final class TerminalSession implements AutoCloseable {
             io.close();
         }
 
-        sessions.clear();
         queuedIOs.clear();
         terminal.close();
     }

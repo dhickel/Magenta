@@ -1,7 +1,6 @@
 package com.magenta.persistence;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.magenta.config.ConfigManager;
 import com.magenta.context.Context;
 import com.magenta.context.ContextElement;
 import com.magenta.session.SessionId;
@@ -25,13 +24,12 @@ import java.util.Optional;
  */
 public final class Database implements AutoCloseable {
     private static final Logger logger = LoggerFactory.getLogger(Database.class);
-    private static volatile Database instance;
 
     private final Connection connection;
     private final SimplyJDBC db;
     private final ObjectMapper json;
 
-    private Database(String dbPath) throws SQLException {
+    public Database(String dbPath) throws SQLException {
         this.db = new SimplyJDBC(SjOptions.builder().strictNamedParameters(true).build());
         this.json = new ObjectMapper();
 
@@ -107,27 +105,6 @@ public final class Database implements AutoCloseable {
         logger.info("Database initialized at: {}", dbPath);
     }
 
-    public static void initialize() throws SQLException {
-        if (instance != null) {
-            throw new IllegalStateException("Database already initialized");
-        }
-
-        String dbPath;
-        var args = ConfigManager.args();
-        if (args.containsKey(com.magenta.config.Arg.DATABASE)) {
-            dbPath = args.get(com.magenta.config.Arg.DATABASE).getString();
-        } else {
-            dbPath = ConfigManager.config().baseStoragePath() + "/database.db";
-        }
-        instance = new Database(dbPath);
-    }
-
-    public static Database getInstance() {
-        if (instance == null) { throw new IllegalStateException("Database not initialized"); }
-        return instance;
-    }
-
-    public static boolean isInitialized() { return instance != null; }
 
     // === Helper Methods ===
 

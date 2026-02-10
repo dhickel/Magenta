@@ -154,3 +154,321 @@
 2026-02-08 23:23:29.736 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
 2026-02-08 23:23:29.741 [ContextManager-Shutdown] INFO  com.magenta.context.ContextManager - Shutdown hook: flushing all dirty contexts...
 2026-02-08 23:23:29.741 [ContextManager-Shutdown] INFO  com.magenta.context.ContextManager - Background context flush scheduler stopped
+2026-02-09 10:25:23.359 [main] WARN  com.magenta.context.ContextManager - Database is null - persistence will be disabled
+2026-02-09 10:25:23.378 [main] WARN  com.magenta.context.ContextManager - Database is null - persistence will be disabled
+2026-02-09 10:25:23.567 [main] WARN  com.magenta.context.ContextManager - Database is null - persistence will be disabled
+2026-02-09 10:25:23.920 [main] INFO  com.magenta.persistence.Database - Database initialized at: /tmp/magenta-test-7881081092452299442.db
+2026-02-09 10:25:24.328 [main] DEBUG com.magenta.context.ContextManager - Flushed 1 dirty contexts (2 new elements) to database
+2026-02-09 10:25:24.328 [main] DEBUG com.magenta.context.ContextManager - Flushed 1 dirty contexts (2 new elements) to database
+2026-02-09 10:25:24.331 [main] DEBUG com.magenta.context.ContextManager - Loaded context from database: f1e6a2d0-a034-4476-9b3d-b9e50d15d139 (3 elements)
+2026-02-09 10:25:24.332 [main] DEBUG com.magenta.context.ContextManager - Flushed 1 dirty contexts (1 new elements) to database
+2026-02-09 10:25:24.335 [main] INFO  com.magenta.persistence.Database - Database closed
+2026-02-09 10:25:24.360 [main] WARN  com.magenta.context.ContextManager - Database is null - persistence will be disabled
+2026-02-09 10:25:24.371 [main] WARN  com.magenta.context.ContextManager - Database is null - persistence will be disabled
+2026-02-09 10:25:24.379 [main] WARN  com.magenta.context.ContextManager - Database is null - persistence will be disabled
+2026-02-09 10:25:24.387 [main] WARN  com.magenta.context.ContextManager - Database is null - persistence will be disabled
+2026-02-09 10:25:24.395 [main] WARN  com.magenta.context.ContextManager - Database is null - persistence will be disabled
+2026-02-09 10:25:24.402 [main] WARN  com.magenta.context.ContextManager - Database is null - persistence will be disabled
+2026-02-09 10:25:24.408 [main] WARN  com.magenta.context.ContextManager - Database is null - persistence will be disabled
+2026-02-09 10:25:24.415 [main] WARN  com.magenta.context.ContextManager - Database is null - persistence will be disabled
+2026-02-09 10:25:24.422 [main] WARN  com.magenta.context.ContextManager - Database is null - persistence will be disabled
+2026-02-09 10:25:24.430 [main] WARN  com.magenta.context.ContextManager - Database is null - persistence will be disabled
+2026-02-09 10:25:24.706 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/hello.txt (11 bytes)
+2026-02-09 10:25:24.707 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-09 10:25:24.711 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/file1.txt (7 bytes)
+2026-02-09 10:25:24.712 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-09 10:25:24.713 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/todelete.txt (3 bytes)
+2026-02-09 10:25:24.714 [main] WARN  com.magenta.tools.FileSystemTools - Deleting: test_sandbox/todelete.txt
+2026-02-09 10:25:24.714 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-09 10:33:32.049 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 10:33:32.073 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 10:33:32.277 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 10:33:32.624 [main] INFO  com.magenta.persistence.Database - Database initialized at: /tmp/magenta-test-944371934407546741.db
+2026-02-09 10:33:33.047 [main] INFO  com.magenta.persistence.Database - Database closed
+2026-02-09 10:33:33.067 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 10:33:33.077 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 10:33:33.085 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 10:33:33.093 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 10:33:33.100 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 10:33:33.107 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 10:33:33.114 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 10:33:33.120 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 10:33:33.128 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 10:33:33.136 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 10:33:33.382 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/hello.txt (11 bytes)
+2026-02-09 10:33:33.383 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-09 10:33:33.386 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/file1.txt (7 bytes)
+2026-02-09 10:33:33.387 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-09 10:33:33.389 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/todelete.txt (3 bytes)
+2026-02-09 10:33:33.389 [main] WARN  com.magenta.tools.FileSystemTools - Deleting: test_sandbox/todelete.txt
+2026-02-09 10:33:33.389 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-09 11:20:56.734 [main] INFO  com.magenta.MagentaApp - Starting Magenta application...
+2026-02-09 11:20:56.738 [main] INFO  com.magenta.config.ConfigManager - Loading configuration from: config.json
+2026-02-09 11:20:57.016 [main] INFO  com.magenta.config.ConfigManager - Configuration loaded successfully
+2026-02-09 11:20:57.303 [main] INFO  com.magenta.persistence.Database - Database initialized at: ./data/database.db
+2026-02-09 11:21:05.390 [main] INFO  com.magenta.MagentaApp - Shutting down...
+2026-02-09 11:21:05.499 [main] INFO  com.magenta.manager.ContextManager - Flushed all contexts: 1 contexts, 2 new elements
+2026-02-09 11:21:05.500 [main] INFO  com.magenta.persistence.Database - Database closed
+2026-02-09 11:21:05.500 [main] ERROR com.magenta.Main - Failed to run session: Tools are currently not supported by this model
+java.lang.IllegalArgumentException: Tools are currently not supported by this model
+	at dev.langchain4j.model.chat.StreamingChatLanguageModel.generate(StreamingChatLanguageModel.java:61)
+	at com.magenta.session.StreamingChat.generate(StreamingChat.java:144)
+	at com.magenta.session.StreamingChat.processMessage(StreamingChat.java:82)
+	at com.magenta.session.StreamingChat.processMessage(StreamingChat.java:30)
+	at com.magenta.session.AgentSession.runOnce(AgentSession.java:144)
+	at com.magenta.session.TerminalSession.run(TerminalSession.java:181)
+	at com.magenta.MagentaApp.run(MagentaApp.java:93)
+	at com.magenta.Main.main(Main.java:11)
+2026-02-09 11:25:41.053 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 11:25:41.071 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 11:25:41.225 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 11:25:41.547 [main] INFO  com.magenta.persistence.Database - Database initialized at: /tmp/magenta-test-1284399603911808275.db
+2026-02-09 11:25:41.959 [main] INFO  com.magenta.persistence.Database - Database closed
+2026-02-09 11:25:41.983 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 11:25:41.994 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 11:25:42.004 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 11:25:42.012 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 11:25:42.020 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 11:25:42.028 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 11:25:42.035 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 11:25:42.043 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 11:25:42.050 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 11:25:42.058 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 11:25:42.369 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/hello.txt (11 bytes)
+2026-02-09 11:25:42.371 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-09 11:25:42.374 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/file1.txt (7 bytes)
+2026-02-09 11:25:42.375 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-09 11:25:42.377 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/todelete.txt (3 bytes)
+2026-02-09 11:25:42.377 [main] WARN  com.magenta.tools.FileSystemTools - Deleting: test_sandbox/todelete.txt
+2026-02-09 11:25:42.377 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-09 11:25:54.778 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 11:25:54.795 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 11:25:54.948 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 11:25:55.295 [main] INFO  com.magenta.persistence.Database - Database initialized at: /tmp/magenta-test-7688648109922405037.db
+2026-02-09 11:25:55.693 [main] INFO  com.magenta.persistence.Database - Database closed
+2026-02-09 11:25:55.712 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 11:25:55.721 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 11:25:55.728 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 11:25:55.734 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 11:25:55.740 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 11:25:55.746 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 11:25:55.752 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 11:25:55.758 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 11:25:55.764 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 11:25:55.770 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 11:25:56.005 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/hello.txt (11 bytes)
+2026-02-09 11:25:56.006 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-09 11:25:56.009 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/file1.txt (7 bytes)
+2026-02-09 11:25:56.010 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-09 11:25:56.011 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/todelete.txt (3 bytes)
+2026-02-09 11:25:56.011 [main] WARN  com.magenta.tools.FileSystemTools - Deleting: test_sandbox/todelete.txt
+2026-02-09 11:25:56.011 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-09 11:28:49.794 [main] INFO  com.magenta.MagentaApp - Starting Magenta application...
+2026-02-09 11:28:49.797 [main] INFO  com.magenta.config.ConfigManager - Loading configuration from: config.json
+2026-02-09 11:28:50.118 [main] INFO  com.magenta.config.ConfigManager - Configuration loaded successfully
+2026-02-09 11:28:50.194 [main] INFO  com.magenta.persistence.Database - Database initialized at: ./data/database.db
+2026-02-09 11:30:15.768 [main] WARN  com.magenta.session.StreamingChat - Model does not support tools, falling back to plain generation
+2026-02-09 12:35:02.504 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 12:35:02.522 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 12:35:02.685 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 12:35:03.033 [main] INFO  com.magenta.persistence.Database - Database initialized at: /tmp/magenta-test-2577419716858129505.db
+2026-02-09 12:35:03.430 [main] INFO  com.magenta.persistence.Database - Database closed
+2026-02-09 12:35:03.453 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 12:35:03.462 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 12:35:03.470 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 12:35:03.478 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 12:35:03.485 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 12:35:03.491 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 12:35:03.497 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 12:35:03.504 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 12:35:03.510 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 12:35:03.516 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 12:35:03.778 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/hello.txt (11 bytes)
+2026-02-09 12:35:03.780 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-09 12:35:03.784 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/file1.txt (7 bytes)
+2026-02-09 12:35:03.785 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-09 12:35:03.786 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/todelete.txt (3 bytes)
+2026-02-09 12:35:03.787 [main] WARN  com.magenta.tools.FileSystemTools - Deleting: test_sandbox/todelete.txt
+2026-02-09 12:35:03.787 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-09 14:04:43.100 [main] INFO  com.magenta.MagentaApp - Starting Magenta application...
+2026-02-09 14:04:43.105 [main] INFO  com.magenta.config.ConfigManager - Loading configuration from: config.json
+2026-02-09 14:04:43.350 [main] INFO  com.magenta.config.ConfigManager - Configuration loaded successfully
+2026-02-09 14:04:43.442 [main] INFO  com.magenta.persistence.Database - Database initialized at: ./data/database.db
+2026-02-09 14:05:28.459 [main] WARN  dev.langchain4j.internal.RetryUtils - Exception was thrown on attempt 1 of 3
+java.lang.RuntimeException: java.io.IOException: unexpected end of stream on http://192.168.1.232:11434/...
+	at dev.langchain4j.model.ollama.OllamaClient.chat(OllamaClient.java:105)
+	at dev.langchain4j.model.ollama.OllamaChatModel.lambda$doGenerate$0(OllamaChatModel.java:124)
+	at dev.langchain4j.internal.RetryUtils$RetryPolicy.withRetry(RetryUtils.java:192)
+	at dev.langchain4j.internal.RetryUtils.withRetry(RetryUtils.java:229)
+	at dev.langchain4j.model.ollama.OllamaChatModel.doGenerate(OllamaChatModel.java:124)
+	at dev.langchain4j.model.ollama.OllamaChatModel.generate(OllamaChatModel.java:106)
+	at com.magenta.session.StreamingChat.processMessage(StreamingChat.java:89)
+	at com.magenta.session.StreamingChat.processMessage(StreamingChat.java:34)
+	at com.magenta.session.AgentSession.runOnce(AgentSession.java:144)
+	at com.magenta.session.TerminalSession.run(TerminalSession.java:181)
+	at com.magenta.MagentaApp.run(MagentaApp.java:93)
+	at com.magenta.Main.main(Main.java:11)
+Caused by: java.io.IOException: unexpected end of stream on http://192.168.1.232:11434/...
+	at okhttp3.internal.http1.Http1ExchangeCodec.readResponseHeaders(Http1ExchangeCodec.kt:210)
+	at okhttp3.internal.connection.Exchange.readResponseHeaders(Exchange.kt:110)
+	at okhttp3.internal.http.CallServerInterceptor.intercept(CallServerInterceptor.kt:93)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.connection.ConnectInterceptor.intercept(ConnectInterceptor.kt:34)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.cache.CacheInterceptor.intercept(CacheInterceptor.kt:95)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.http.BridgeInterceptor.intercept(BridgeInterceptor.kt:83)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.http.RetryAndFollowUpInterceptor.intercept(RetryAndFollowUpInterceptor.kt:76)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.connection.RealCall.getResponseWithInterceptorChain$okhttp(RealCall.kt:201)
+	at okhttp3.internal.connection.RealCall.execute(RealCall.kt:154)
+	at retrofit2.OkHttpCall.execute(OkHttpCall.java:204)
+	at dev.langchain4j.model.ollama.OllamaClient.chat(OllamaClient.java:97)
+	... 11 common frames omitted
+Caused by: java.io.EOFException: \n not found: limit=0 content=…
+	at okio.RealBufferedSource.readUtf8LineStrict(RealBufferedSource.kt:335)
+	at okhttp3.internal.http1.HeadersReader.readLine(HeadersReader.kt:29)
+	at okhttp3.internal.http1.Http1ExchangeCodec.readResponseHeaders(Http1ExchangeCodec.kt:180)
+	... 26 common frames omitted
+2026-02-09 14:05:29.092 [main] WARN  dev.langchain4j.internal.RetryUtils - Exception was thrown on attempt 2 of 3
+java.lang.RuntimeException: java.net.ConnectException: Failed to connect to /192.168.1.232:11434
+	at dev.langchain4j.model.ollama.OllamaClient.chat(OllamaClient.java:105)
+	at dev.langchain4j.model.ollama.OllamaChatModel.lambda$doGenerate$0(OllamaChatModel.java:124)
+	at dev.langchain4j.internal.RetryUtils$RetryPolicy.withRetry(RetryUtils.java:192)
+	at dev.langchain4j.internal.RetryUtils.withRetry(RetryUtils.java:229)
+	at dev.langchain4j.model.ollama.OllamaChatModel.doGenerate(OllamaChatModel.java:124)
+	at dev.langchain4j.model.ollama.OllamaChatModel.generate(OllamaChatModel.java:106)
+	at com.magenta.session.StreamingChat.processMessage(StreamingChat.java:89)
+	at com.magenta.session.StreamingChat.processMessage(StreamingChat.java:34)
+	at com.magenta.session.AgentSession.runOnce(AgentSession.java:144)
+	at com.magenta.session.TerminalSession.run(TerminalSession.java:181)
+	at com.magenta.MagentaApp.run(MagentaApp.java:93)
+	at com.magenta.Main.main(Main.java:11)
+Caused by: java.net.ConnectException: Failed to connect to /192.168.1.232:11434
+	at okhttp3.internal.connection.RealConnection.connectSocket(RealConnection.kt:297)
+	at okhttp3.internal.connection.RealConnection.connect(RealConnection.kt:207)
+	at okhttp3.internal.connection.ExchangeFinder.findConnection(ExchangeFinder.kt:226)
+	at okhttp3.internal.connection.ExchangeFinder.findHealthyConnection(ExchangeFinder.kt:106)
+	at okhttp3.internal.connection.ExchangeFinder.find(ExchangeFinder.kt:74)
+	at okhttp3.internal.connection.RealCall.initExchange$okhttp(RealCall.kt:255)
+	at okhttp3.internal.connection.ConnectInterceptor.intercept(ConnectInterceptor.kt:32)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.cache.CacheInterceptor.intercept(CacheInterceptor.kt:95)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.http.BridgeInterceptor.intercept(BridgeInterceptor.kt:83)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.http.RetryAndFollowUpInterceptor.intercept(RetryAndFollowUpInterceptor.kt:76)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.connection.RealCall.getResponseWithInterceptorChain$okhttp(RealCall.kt:201)
+	at okhttp3.internal.connection.RealCall.execute(RealCall.kt:154)
+	at retrofit2.OkHttpCall.execute(OkHttpCall.java:204)
+	at dev.langchain4j.model.ollama.OllamaClient.chat(OllamaClient.java:97)
+	... 11 common frames omitted
+Caused by: java.net.ConnectException: Connection refused
+	at java.base/sun.nio.ch.Net.pollConnect(Native Method)
+	at java.base/sun.nio.ch.Net.pollConnectNow(Net.java:639)
+	at java.base/sun.nio.ch.NioSocketImpl.timedFinishConnect(NioSocketImpl.java:550)
+	at java.base/sun.nio.ch.NioSocketImpl.connect(NioSocketImpl.java:594)
+	at java.base/java.net.SocksSocketImpl.connect(SocksSocketImpl.java:284)
+	at java.base/java.net.Socket.connect(Socket.java:659)
+	at okhttp3.internal.platform.Platform.connectSocket(Platform.kt:128)
+	at okhttp3.internal.connection.RealConnection.connectSocket(RealConnection.kt:295)
+	... 28 common frames omitted
+2026-02-09 14:05:29.959 [main] INFO  com.magenta.MagentaApp - Shutting down...
+2026-02-09 14:05:29.960 [main] INFO  com.magenta.persistence.Database - Database closed
+2026-02-09 14:05:29.960 [main] ERROR com.magenta.Main - Failed to run session: java.lang.RuntimeException: java.net.ConnectException: Failed to connect to /192.168.1.232:11434
+java.lang.RuntimeException: java.lang.RuntimeException: java.net.ConnectException: Failed to connect to /192.168.1.232:11434
+	at dev.langchain4j.internal.RetryUtils$RetryPolicy.withRetry(RetryUtils.java:195)
+	at dev.langchain4j.internal.RetryUtils.withRetry(RetryUtils.java:229)
+	at dev.langchain4j.model.ollama.OllamaChatModel.doGenerate(OllamaChatModel.java:124)
+	at dev.langchain4j.model.ollama.OllamaChatModel.generate(OllamaChatModel.java:106)
+	at com.magenta.session.StreamingChat.processMessage(StreamingChat.java:89)
+	at com.magenta.session.StreamingChat.processMessage(StreamingChat.java:34)
+	at com.magenta.session.AgentSession.runOnce(AgentSession.java:144)
+	at com.magenta.session.TerminalSession.run(TerminalSession.java:181)
+	at com.magenta.MagentaApp.run(MagentaApp.java:93)
+	at com.magenta.Main.main(Main.java:11)
+Caused by: java.lang.RuntimeException: java.net.ConnectException: Failed to connect to /192.168.1.232:11434
+	at dev.langchain4j.model.ollama.OllamaClient.chat(OllamaClient.java:105)
+	at dev.langchain4j.model.ollama.OllamaChatModel.lambda$doGenerate$0(OllamaChatModel.java:124)
+	at dev.langchain4j.internal.RetryUtils$RetryPolicy.withRetry(RetryUtils.java:192)
+	... 9 common frames omitted
+Caused by: java.net.ConnectException: Failed to connect to /192.168.1.232:11434
+	at okhttp3.internal.connection.RealConnection.connectSocket(RealConnection.kt:297)
+	at okhttp3.internal.connection.RealConnection.connect(RealConnection.kt:207)
+	at okhttp3.internal.connection.ExchangeFinder.findConnection(ExchangeFinder.kt:226)
+	at okhttp3.internal.connection.ExchangeFinder.findHealthyConnection(ExchangeFinder.kt:106)
+	at okhttp3.internal.connection.ExchangeFinder.find(ExchangeFinder.kt:74)
+	at okhttp3.internal.connection.RealCall.initExchange$okhttp(RealCall.kt:255)
+	at okhttp3.internal.connection.ConnectInterceptor.intercept(ConnectInterceptor.kt:32)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.cache.CacheInterceptor.intercept(CacheInterceptor.kt:95)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.http.BridgeInterceptor.intercept(BridgeInterceptor.kt:83)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.http.RetryAndFollowUpInterceptor.intercept(RetryAndFollowUpInterceptor.kt:76)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.connection.RealCall.getResponseWithInterceptorChain$okhttp(RealCall.kt:201)
+	at okhttp3.internal.connection.RealCall.execute(RealCall.kt:154)
+	at retrofit2.OkHttpCall.execute(OkHttpCall.java:204)
+	at dev.langchain4j.model.ollama.OllamaClient.chat(OllamaClient.java:97)
+	... 11 common frames omitted
+Caused by: java.net.ConnectException: Connection refused
+	at java.base/sun.nio.ch.Net.pollConnect(Native Method)
+	at java.base/sun.nio.ch.Net.pollConnectNow(Net.java:639)
+	at java.base/sun.nio.ch.NioSocketImpl.timedFinishConnect(NioSocketImpl.java:550)
+	at java.base/sun.nio.ch.NioSocketImpl.connect(NioSocketImpl.java:594)
+	at java.base/java.net.SocksSocketImpl.connect(SocksSocketImpl.java:284)
+	at java.base/java.net.Socket.connect(Socket.java:659)
+	at okhttp3.internal.platform.Platform.connectSocket(Platform.kt:128)
+	at okhttp3.internal.connection.RealConnection.connectSocket(RealConnection.kt:295)
+	... 28 common frames omitted
+2026-02-09 14:06:22.822 [main] INFO  com.magenta.MagentaApp - Starting Magenta application...
+2026-02-09 14:06:22.825 [main] INFO  com.magenta.config.ConfigManager - Loading configuration from: config.json
+2026-02-09 14:06:23.230 [main] INFO  com.magenta.config.ConfigManager - Configuration loaded successfully
+2026-02-09 14:06:23.320 [main] INFO  com.magenta.persistence.Database - Database initialized at: ./data/database.db
+2026-02-09 14:07:40.041 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 14:07:40.062 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 14:07:40.289 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 14:07:40.685 [main] INFO  com.magenta.persistence.Database - Database initialized at: /tmp/magenta-test-8265370899796264034.db
+2026-02-09 14:07:41.174 [main] INFO  com.magenta.persistence.Database - Database closed
+2026-02-09 14:07:41.199 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 14:07:41.210 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 14:07:41.219 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 14:07:41.230 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 14:07:41.237 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 14:07:41.244 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 14:07:41.251 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 14:07:41.258 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 14:07:41.266 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 14:07:41.274 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 14:07:41.554 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/hello.txt (11 bytes)
+2026-02-09 14:07:41.556 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-09 14:07:41.559 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/file1.txt (7 bytes)
+2026-02-09 14:07:41.560 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-09 14:07:41.562 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/todelete.txt (3 bytes)
+2026-02-09 14:07:41.562 [main] WARN  com.magenta.tools.FileSystemTools - Deleting: test_sandbox/todelete.txt
+2026-02-09 14:07:41.562 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-09 14:07:51.913 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 14:07:51.931 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 14:07:52.124 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 14:07:52.459 [main] INFO  com.magenta.persistence.Database - Database initialized at: /tmp/magenta-test-12190249474536540159.db
+2026-02-09 14:07:52.836 [main] INFO  com.magenta.persistence.Database - Database closed
+2026-02-09 14:07:52.856 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 14:07:52.865 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 14:07:52.871 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 14:07:52.878 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 14:07:52.915 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 14:07:52.921 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 14:07:52.926 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 14:07:52.931 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 14:07:52.937 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 14:07:52.943 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-09 14:07:53.162 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/hello.txt (11 bytes)
+2026-02-09 14:07:53.165 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-09 14:07:53.169 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/file1.txt (7 bytes)
+2026-02-09 14:07:53.170 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-09 14:07:53.171 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/todelete.txt (3 bytes)
+2026-02-09 14:07:53.172 [main] WARN  com.magenta.tools.FileSystemTools - Deleting: test_sandbox/todelete.txt
+2026-02-09 14:07:53.172 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox

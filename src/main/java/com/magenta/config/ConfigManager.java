@@ -9,66 +9,66 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Map;
 
+/**
+ * Stateless utility for loading configuration and parsing arguments.
+ * No global state - returns Config directly.
+ */
 public class ConfigManager {
     private static final Logger logger = LoggerFactory.getLogger(ConfigManager.class);
-    private static Config configInstance;
-    private static Map<Arg, Arg.Value> argsInstance;
 
     private ConfigManager() {}
 
-    public static void initialize(String[] args) throws IOException {
-        // Parse arguments (defaults to config.json if not provided)
-        argsInstance = Arg.parseAll(args);
+    /**
+     * Load configuration from command-line arguments.
+     * Parses args, loads config file, resolves references.
+     *
+     * @param args Command-line arguments
+     * @return Loaded and initialized Config
+     */
+    public static Config load(String[] args) throws IOException {
+        Map<Arg, Arg.Value> parsedArgs = Arg.parseAll(args == null ? new String[0] : args);
 
-        // Get config path from args
-        String configPath = argsInstance.containsKey(Arg.CONFIG)
-                ? argsInstance.get(Arg.CONFIG).getString()
+        String configPath = parsedArgs.containsKey(Arg.CONFIG)
+                ? parsedArgs.get(Arg.CONFIG).getString()
                 : "config.json";
 
         logger.info("Loading configuration from: {}", configPath);
 
         try {
-            // Load and store config
             ObjectMapper mapper = new ObjectMapper();
-            configInstance = mapper.readValue(new File(configPath), Config.class);
-            configInstance.initializeReferences();
+            Config config = mapper.readValue(new File(configPath), Config.class);
+            config.initializeReferences();
             logger.info("Configuration loaded successfully");
+            return config;
         } catch (IOException e) {
             logger.error("Failed to load or parse configuration from {}: {}", configPath, e.getMessage());
             throw e;
         }
     }
 
-
-    public static Config config() {
-        if (configInstance == null) {
-            throw new IllegalStateException("Config not initialized. Call ConfigManager.initialize(args) first.");
-        }
-        return configInstance;
+    /**
+     * Parse command-line arguments.
+     *
+     * @param args Command-line arguments
+     * @return Parsed argument map
+     */
+    public static Map<Arg, Arg.Value> parseArgs(String[] args) {
+        return Arg.parseAll(args == null ? new String[0] : args);
     }
 
-
-    public static Map<Arg, Arg.Value> args() {
-        if (argsInstance == null) {
-            throw new IllegalStateException("Args not initialized. Call ConfigManager.initialize(args) first.");
-        }
-        return argsInstance;
-    }
-
-
-    public static Config loadForTest(String filePath) throws IOException {
+    /**
+     * Load config from a specific file path (for testing).
+     */
+    public static Config loadFromFile(String filePath) throws IOException {
         ObjectMapper mapper = new ObjectMapper();
         Config conf = mapper.readValue(new File(filePath), Config.class);
         conf.initializeReferences();
-        configInstance = conf;
         return conf;
     }
 
     // === Display methods for config ===
 
-    public static void printSummary(IOManager io) {
-        var config = config();
-
+    public static void printSummary(IOManager io, Config config) {
         io.print("Configuration Summary:\n");
         io.print("─".repeat(60) + "\n");
         io.print("Agents:     " + config.agents.size() + "\n");
@@ -84,9 +84,7 @@ public class ConfigManager {
         io.print("Sections: agents, models, endpoints, securities, colors, tasks\n");
     }
 
-    public static void printSection(IOManager io, String section) {
-        var config = config();
-
+    public static void printSection(IOManager io, Config config, String section) {
         switch (section.toLowerCase()) {
             case "agents" -> printAgents(io, config);
             case "models" -> printModels(io, config);

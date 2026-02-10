@@ -17,8 +17,6 @@ import java.io.PrintWriter;
 
 public class TerminalIOManager extends IOManager {
 
-    private static TerminalIOManager instance;
-
     private final org.jline.terminal.Terminal terminal;
     private final LineReader reader;
     private final PrintWriter writer;
@@ -29,14 +27,7 @@ public class TerminalIOManager extends IOManager {
     private String cursor = "magenta> ";
     private Integer cursorColor;
 
-    public static synchronized TerminalIOManager getInstance() throws IOException {
-        if (instance == null) {
-            instance = new TerminalIOManager();
-        }
-        return instance;
-    }
-
-    private TerminalIOManager() throws IOException {
+    public TerminalIOManager() throws IOException {
         super();
         this.terminal = TerminalBuilder.builder().system(true).build();
         this.reader = LineReaderBuilder.builder()

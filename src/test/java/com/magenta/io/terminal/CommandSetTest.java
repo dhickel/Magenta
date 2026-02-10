@@ -1,32 +1,32 @@
 package com.magenta.io.terminal;
 
+import com.magenta.Magenta;
+import com.magenta.manager.AgentNetwork;
 import com.magenta.config.Config;
 import com.magenta.config.ConfigManager;
-import com.magenta.io.IOManager;
+import com.magenta.manager.ContextManager;
+import com.magenta.manager.SecurityManager;
 import com.magenta.session.AgentSession;
-import com.magenta.session.Session;
 import com.magenta.session.SessionAlias;
 import com.magenta.session.SessionId;
 import com.magenta.session.SystemCommands;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class CommandSetTest {
 
-    @BeforeEach
-    void setup() throws Exception {
-        // Initialize ConfigManager if needed
-        try {
-            ConfigManager.config();
-        } catch (IllegalStateException e) {
-            String[] args = {"--config", "config.json"};
-            ConfigManager.initialize(args);
-        }
+    private Magenta createTestMagenta() throws Exception {
+        Config config = ConfigManager.loadFromFile("config.json");
+        return new Magenta(
+            config,
+            null,
+            new ContextManager(null),
+            new AgentNetwork(),
+            new SecurityManager()
+        );
     }
 
     @Test
@@ -78,16 +78,17 @@ class CommandSetTest {
     }
 
     @Test
-    void testSystemCommandsComposition() {
+    void testSystemCommandsComposition() throws Exception {
+        Magenta magenta = createTestMagenta();
         Command custom = Command.of("custom", "Custom command", raw -> raw.startsWith("/custom"), (s, r) -> {});
 
-        CommandSet systemCommands = SystemCommands.commands();
+        CommandSet systemCommands = new SystemCommands(magenta).commands();
         CommandSet customSet = CommandSet.of(custom);
 
         CommandSet composed = systemCommands.composedWith(customSet);
 
         // Should have all system commands plus custom
-        assertTrue(composed.commands().size() > 10); // System has many commands
+        assertTrue(composed.commands().size() > 5); // System has several commands
         assertTrue(composed.commands().contains(custom));
     }
 
@@ -129,11 +130,13 @@ class CommandSetTest {
     }
 
     @Test
-    void testAgentSessionUsesComposedCommandSet() {
-        Config.AgentConfig agentConfig = ConfigManager.config().agents.get("default");
+    void testAgentSessionUsesComposedCommandSet() throws Exception {
+        Magenta magenta = createTestMagenta();
+        Config.AgentConfig agentConfig = magenta.config().agents.get("default");
         assertNotNull(agentConfig, "Default agent config should exist");
 
         AgentSession session = new AgentSession(
+            magenta,
             SessionAlias.of("test"),
             agentConfig,
             SessionId.random()

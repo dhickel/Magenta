@@ -1,9 +1,10 @@
-package com.magenta.security;
+package com.magenta.manager;
 
 import com.magenta.config.Config.SecurityConfig;
 import com.magenta.io.IOManager;
 import com.magenta.io.terminal.InteractivePrompt;
 import com.magenta.io.terminal.TerminalIOManager;
+import com.magenta.security.SecurityFilter;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 
 import java.io.IOException;
@@ -12,23 +13,15 @@ import java.util.Optional;
 
 public class SecurityManager {
 
-    private static SecurityManager instance;
-    private SecurityConfig config;
+    private volatile SecurityConfig config;
 
-    private SecurityManager() {
+    public SecurityManager() {
         // Default safe config (empty lists to avoid NPEs if not set)
         this.config = new SecurityConfig(
             java.util.Collections.emptyList(),
             java.util.Collections.emptyList(),
             java.util.Collections.emptyList()
         );
-    }
-
-    public static synchronized SecurityManager getInstance() {
-        if (instance == null) {
-            instance = new SecurityManager();
-        }
-        return instance;
     }
 
     public void setConfig(SecurityConfig config) {

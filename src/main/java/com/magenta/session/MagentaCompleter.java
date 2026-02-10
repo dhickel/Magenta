@@ -11,9 +11,24 @@ import java.util.List;
 /**
  * Context-aware command completer for Magenta.
  * Delegates to Command completion providers for command-specific completions.
- * Stateless - queries SessionManager for current session dynamically.
+ *
+ * When no TerminalSession is provided, falls back to empty completions
+ * for argument-level completion (command name completion always works).
  */
 public class MagentaCompleter implements Completer {
+
+    private volatile TerminalSession terminalSession;
+
+    public MagentaCompleter() {
+    }
+
+    public MagentaCompleter(TerminalSession terminalSession) {
+        this.terminalSession = terminalSession;
+    }
+
+    public void setTerminalSession(TerminalSession terminalSession) {
+        this.terminalSession = terminalSession;
+    }
 
     @Override
     public void complete(LineReader reader, ParsedLine line, List<Candidate> candidates) {
@@ -21,7 +36,7 @@ public class MagentaCompleter implements Completer {
         AgentSession session = currentSession();
         CommandSet commandSet = session != null
             ? session.commandSet()
-            : SystemCommands.commands();
+            : CommandSet.empty();
         commandSet.complete(session, buffer, candidates);
 
         // Add view-specific completions
@@ -54,13 +69,9 @@ public class MagentaCompleter implements Completer {
     }
 
     private AgentSession currentSession() {
-        try {
-            var sm = SessionManager.getInstance();
-            String alias = sm.getCurrentSessionAlias();
-            return sm.getSession(SessionAlias.of(alias));
-        } catch (IllegalStateException e) {
-            return null;
-        }
+        var ts = terminalSession;
+        if (ts == null) return null;
+        return ts.focused();
     }
 
 }

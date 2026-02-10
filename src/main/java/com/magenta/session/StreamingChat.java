@@ -1,9 +1,9 @@
 package com.magenta.session;
 
-import com.magenta.context.ContextManager;
 import com.magenta.context.Context;
 import com.magenta.context.ContextElement;
 import com.magenta.context.ContextLimits;
+import com.magenta.manager.ContextManager;
 import com.magenta.io.ResponseHandler;
 import com.magenta.security.SecurityFilter;
 import com.magenta.task.TaskWorkflow;
@@ -11,6 +11,7 @@ import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.*;
 import dev.langchain4j.model.StreamingResponseHandler;
+import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.output.Response;
 import dev.langchain4j.service.tool.ToolExecutor;
@@ -26,6 +27,9 @@ import java.util.concurrent.CompletableFuture;
  * Streaming chat message handler.
  * Processes user messages through the agent's model with streaming responses.
  * Manages context compaction and tool execution loops.
+ *
+ * Uses blocking model for tool execution rounds (OllamaStreamingChatModel doesn't
+ * support tools), and streaming model for plain text responses.
  */
 public class StreamingChat implements MessageHandler<AgentSession> {
 
@@ -38,7 +42,7 @@ public class StreamingChat implements MessageHandler<AgentSession> {
 
         Agent agent = session.agent();
         SessionId sessionId = session.sessionId();
-        ContextManager cm = ContextManager.getInstance();
+        ContextManager cm = session.magenta().contextManager();
         ContextLimits limits = session.contextLimits();
 
         Context context = cm.loadContext(sessionId);
@@ -69,40 +73,63 @@ public class StreamingChat implements MessageHandler<AgentSession> {
         }
 
         // Tool execution loop
-        StreamingChatLanguageModel model = agent.model();
+        StreamingChatLanguageModel streamingModel = agent.model();
+        ChatLanguageModel blockingModel = agent.blockingModel();
         List<ToolSpecification> toolSpecs = agent.toolSpecs();
         Map<String, ToolExecutor> toolExecutors = agent.toolExecutors();
         SecurityFilter securityFilter = session.securityFilter();
         ResponseHandler handler = session.responseHandler();
+        boolean hasTools = toolSpecs != null && !toolSpecs.isEmpty();
 
         for (int iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
             List<ChatMessage> history = cm.loadContext(sessionId).compile();
 
-            // Generate response (with or without tools)
-            Response<AiMessage> response = generate(model, history, toolSpecs, handler);
-            AiMessage aiMessage = response.content();
+            try {
+                if (hasTools) {
+                    // Use blocking model for tool-capable generation
+                    Response<AiMessage> response = blockingModel.generate(history, toolSpecs);
+                    AiMessage aiMessage = response.content();
 
-            if (aiMessage.hasToolExecutionRequests()) {
-                // Add the AI's tool request message to context
-                cm.append(sessionId, new ContextElement.Agent(aiMessage.text() != null ? aiMessage.text() : ""), limits);
+                    if (aiMessage.hasToolExecutionRequests()) {
+                        // Add the AI's tool request message to context
+                        cm.append(sessionId, new ContextElement.Agent(aiMessage.text() != null ? aiMessage.text() : ""), limits);
 
-                // Execute each tool
-                for (ToolExecutionRequest toolRequest : aiMessage.toolExecutionRequests()) {
-                    String result = executeTool(toolRequest, toolExecutors, securityFilter, session);
+                        // Execute each tool
+                        for (ToolExecutionRequest toolRequest : aiMessage.toolExecutionRequests()) {
+                            String result = executeTool(toolRequest, toolExecutors, securityFilter, session);
+                            cm.append(sessionId, new ContextElement.Tool(toolRequest.name(), result), limits);
+                            logger.debug("Tool '{}' executed, result length: {}", toolRequest.name(), result.length());
+                        }
 
-                    // Add tool result to context
-                    cm.append(sessionId, new ContextElement.Tool(toolRequest.name(), result), limits);
-                    logger.debug("Tool '{}' executed, result length: {}", toolRequest.name(), result.length());
+                        // Loop to let model process tool results
+                        continue;
+                    }
+
+                    // Text response from blocking model — write to handler for display
+                    String text = aiMessage.text() != null ? aiMessage.text() : "";
+                    handler.write(text);
+                    handler.complete();
+                    cm.append(sessionId, new ContextElement.Agent(text), limits);
+                    return;
                 }
 
-                // Loop to let model process tool results
-                continue;
+                // No tools — use streaming model
+                Response<AiMessage> response = generateStreaming(streamingModel, history, handler);
+                AiMessage aiMessage = response.content();
+                String text = aiMessage.text() != null ? aiMessage.text() : handler.getBuffer();
+                cm.append(sessionId, new ContextElement.Agent(text), limits);
+                return;
+            } catch (Exception e) {
+                Throwable cause = unwrapCause(e);
+                if (isConnectionError(cause)) {
+                    logger.warn("Connection error during model call: {}", cause.getMessage());
+                    handler.error(cause);
+                    session.io().error("Connection lost: " + cause.getMessage());
+                    return;
+                }
+                // Non-connection errors — rethrow
+                throw e;
             }
-
-            // Text response - done
-            String text = aiMessage.text() != null ? aiMessage.text() : handler.getBuffer();
-            cm.append(sessionId, new ContextElement.Agent(text), limits);
-            return;
         }
 
         // Max iterations reached
@@ -111,12 +138,11 @@ public class StreamingChat implements MessageHandler<AgentSession> {
     }
 
     /**
-     * Generate a streaming response, blocking until complete.
+     * Generate a streaming response (no tools), blocking until complete.
      */
-    private Response<AiMessage> generate(
+    private Response<AiMessage> generateStreaming(
             StreamingChatLanguageModel model,
             List<ChatMessage> messages,
-            List<ToolSpecification> toolSpecs,
             ResponseHandler handler
     ) {
         CompletableFuture<Response<AiMessage>> future = new CompletableFuture<>();
@@ -140,13 +166,32 @@ public class StreamingChat implements MessageHandler<AgentSession> {
             }
         };
 
-        if (toolSpecs != null && !toolSpecs.isEmpty()) {
-            model.generate(messages, toolSpecs, streamHandler);
-        } else {
-            model.generate(messages, streamHandler);
-        }
-
+        model.generate(messages, streamHandler);
         return future.join();
+    }
+
+    /**
+     * Unwrap nested exception causes to find the root.
+     */
+    private Throwable unwrapCause(Throwable t) {
+        Throwable cause = t;
+        while (cause.getCause() != null && cause.getCause() != cause) {
+            cause = cause.getCause();
+        }
+        return cause;
+    }
+
+    /**
+     * Check if the root cause is a connection/network error.
+     */
+    private boolean isConnectionError(Throwable cause) {
+        return cause instanceof java.net.ConnectException
+            || cause instanceof java.net.SocketException
+            || cause instanceof java.net.SocketTimeoutException
+            || cause instanceof java.io.EOFException
+            || (cause instanceof java.io.IOException
+                && cause.getMessage() != null
+                && cause.getMessage().contains("unexpected end of stream"));
     }
 
     /**

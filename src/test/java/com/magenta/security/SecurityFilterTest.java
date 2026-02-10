@@ -3,6 +3,7 @@ package com.magenta.security;
 import com.magenta.config.Config.SecurityConfig;
 import com.magenta.io.IOManager;
 import com.magenta.io.InternalIOManager;
+import com.magenta.manager.SecurityManager;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,7 +23,7 @@ class SecurityFilterTest {
 
     @BeforeEach
     void setUp() {
-        securityManager = SecurityManager.getInstance();
+        securityManager = new SecurityManager();
         io = new InternalIOManager();
     }
 
@@ -37,7 +38,6 @@ class SecurityFilterTest {
 
     @Test
     void testInputFilterBlocksPattern() {
-        // SecurityConfig(approvalRequiredFor, alwaysAllowCommands, blockedCommands)
         SecurityConfig config = new SecurityConfig(
             List.of(),
             List.of(),

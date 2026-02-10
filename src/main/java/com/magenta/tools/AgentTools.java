@@ -1,8 +1,8 @@
 package com.magenta.tools;
 
 import com.magenta.agent.AgentMessage;
-import com.magenta.agent.AgentNetwork;
-import com.magenta.config.ConfigManager;
+import com.magenta.manager.AgentNetwork;
+import com.magenta.config.Config;
 import com.magenta.task.TaskWorkflow;
 import com.magenta.task.WorkflowTaskTemplate;
 import dev.langchain4j.agent.tool.Tool;
@@ -19,10 +19,12 @@ import java.util.UUID;
 public class AgentTools {
     private final String currentAgentAlias;
     private final AgentNetwork network;
+    private final Config config;
 
-    public AgentTools(String currentAgentAlias) {
+    public AgentTools(String currentAgentAlias, AgentNetwork network, Config config) {
         this.currentAgentAlias = currentAgentAlias;
-        this.network = AgentNetwork.getInstance();
+        this.network = network;
+        this.config = config;
     }
 
     @Tool("Send a direct message to another agent")
@@ -104,7 +106,7 @@ public class AgentTools {
     @Tool("Delegate a workflow task to another agent")
     public String delegateTask(String targetAgent, String taskTemplateKey) {
         try {
-            var templates = ConfigManager.config().taskTemplates();
+            var templates = config.taskTemplates();
             WorkflowTaskTemplate template = templates.get(taskTemplateKey);
             if (template == null) {
                 return "Error: Template not found: " + taskTemplateKey;

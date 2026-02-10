@@ -1,43 +1,27 @@
-package com.magenta.agent;
+package com.magenta.manager;
 
+import com.magenta.agent.AgentMessage;
+import com.magenta.agent.MessageQueue;
 import com.magenta.session.SessionMeta;
 import com.magenta.task.TaskWorkflow;
 
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * AgentNetwork manages message routing between agents.
- * Singleton pattern ensures single network instance per application.
+ * Thread-safe: uses ConcurrentHashMap.newKeySet() for agent registration.
  * Note: Session tracking is handled by SessionManager, not here.
  */
 public class AgentNetwork {
-    private static volatile AgentNetwork instance;
 
     private final MessageQueue messageQueue;
-    private final Set<SessionMeta> registeredAgents = new HashSet<>();
+    private final Set<SessionMeta> registeredAgents = ConcurrentHashMap.newKeySet();
 
-    private AgentNetwork() {
+    public AgentNetwork() {
         this.messageQueue = new MessageQueue();
-    }
-
-    public static AgentNetwork initialize() {
-        return getInstance();
-    }
-
-    public static AgentNetwork getInstance() {
-        if (instance == null) {
-            synchronized (AgentNetwork.class) {
-                if (instance == null) {
-                    instance = new AgentNetwork();
-                }
-            }
-        }
-        return instance;
-    }
-
-    public static boolean isInitialized() {
-        return instance != null;
     }
 
     // === Agent Registration ===
@@ -61,7 +45,7 @@ public class AgentNetwork {
      * List all registered agents in the network.
      */
     public Set<SessionMeta> listRegisteredAgents() {
-        return new HashSet<>(registeredAgents);
+        return Set.copyOf(registeredAgents);
     }
 
     // === Messaging ===

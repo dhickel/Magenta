@@ -1,10 +1,10 @@
 package com.magenta.session;
 
-import com.magenta.agent.AgentNetwork;
-import com.magenta.config.ConfigManager;
+import com.magenta.Magenta;
+import com.magenta.manager.AgentNetwork;
 import com.magenta.context.Context;
 import com.magenta.context.ContextLimits;
-import com.magenta.context.ContextManager;
+import com.magenta.manager.ContextManager;
 import com.magenta.io.IOManager;
 import com.magenta.io.terminal.BashExecutor;
 import com.magenta.io.terminal.Command;
@@ -18,137 +18,98 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
- * System command definitions - simple and focused.
+ * System command definitions - framework-level commands that use Magenta services.
+ * Terminal-specific commands (AGENT, SESSIONS, AGENTS) are injected separately
+ * by TerminalSession via the session commands mechanism.
  */
 public final class SystemCommands {
 
-    private static final SystemCommands INSTANCE = new SystemCommands();
+    private final Magenta magenta;
 
-    private SystemCommands() {
+    public SystemCommands(Magenta magenta) {
+        this.magenta = magenta;
     }
 
     // ===== Commands =====
 
-    public static final Command EXIT = command(
-        "exit",
-        "Exit the session",
-        List.of(),
-        raw -> slash(raw, "exit", "quit", "q"),
-        (session, raw) -> session.setExit(true)
-    );
-
-    public static final Command HELP = command(
-        "help",
-        "Show help message",
-        List.of(),
-        raw -> slash(raw, "help", "?"),
-        (session, raw) -> commands().printHelp(session.io())
-    );
-
-    public static final Command CLEAR = command(
-        "clear",
-        "Clear the screen",
-        List.of(),
-        raw -> slash(raw, "clear", "cls"),
-        (session, raw) -> { /* handled by IOManager */ }
-    );
-
-    public static final Command AGENT = command(
-        "agent",
-        "Switch to different agent",
-        SystemCommands::agentCompletions,
-        raw -> slash(raw, "agent") && !argString(raw).isBlank(),
-        (session, raw) -> INSTANCE.switchAgent(session, argString(raw).split("\\s+")[0])
-    );
-
-    public static final Command SESSIONS = command(
-        "sessions",
-        "List active sessions",
-        List.of(),
-        raw -> slash(raw, "sessions"),
-        (session, raw) -> SessionManager.getInstance().printSessions(session.io())
-    );
-
-    public static final Command AGENTS = command(
-        "agents",
-        "List available agent configurations",
-        List.of(),
-        raw -> slash(raw, "agents"),
-        (session, raw) -> SessionManager.getInstance().printAgents(session.io())
-    );
-
-    public static final Command CONTEXT = command(
-        "context",
-        "Manage context (status, compact, clear, save, archive, load)",
-        SystemCommands::contextCompletions,
-        raw -> slash(raw, "context"),
-        (session, raw) -> INSTANCE.handleContext(session, arg(raw, 1, "status"), arg(raw, 2, ""))
-    );
-
-    public static final Command NETWORK = command(
-        "network",
-        "View agent network status",
-        List.of(),
-        raw -> slash(raw, "network"),
-        (session, raw) -> INSTANCE.showNetwork(session.io())
-    );
-
-    public static final Command VIEW = command(
-        "view",
-        "Switch terminal view (chat, dashboard)",
-        SystemCommands::viewCompletions,
-        raw -> slash(raw, "view") && !argString(raw).isBlank(),
-        (session, raw) -> INSTANCE.handleView(session, argString(raw))
-    );
-
-    public static final Command DASHBOARD = command(
-        "dashboard",
-        "Show dashboard view",
-        List.of(),
-        raw -> slash(raw, "dashboard"),
-        (session, raw) -> INSTANCE.handleView(session, "dashboard")
-    );
-
-    public static final Command BASH = Command.of(
-        "bash",
-        "Execute bash command with security filtering",
-        List.of(),
-        raw -> raw != null && raw.startsWith("!") && raw.length() > 1,
-        (session, raw) -> INSTANCE.executeBash(session, raw.substring(1).trim())
-    );
-
-    /**
-     * Get the system command set.
-     */
-    public static CommandSet commands() {
+    public CommandSet commands() {
         return CommandSet.of(
-            EXIT, HELP, CLEAR, AGENT, SESSIONS, AGENTS, CONTEXT, NETWORK, VIEW, DASHBOARD, BASH
+            exitCmd(), helpCmd(), clearCmd(), contextCmd(), networkCmd(),
+            viewCmd(), dashboardCmd(), bashCmd()
         );
+    }
+
+    private Command exitCmd() {
+        return command("exit", "Exit the session", List.of(),
+            raw -> slash(raw, "exit", "quit", "q"),
+            (session, raw) -> session.setExit(true));
+    }
+
+    private Command helpCmd() {
+        // Capture commands() result lazily to avoid circular reference
+        return command("help", "Show help message", List.of(),
+            raw -> slash(raw, "help", "?"),
+            (session, raw) -> {
+                if (session instanceof AgentSession as) {
+                    as.commandSet().printHelp(session.io());
+                }
+            });
+    }
+
+    private Command clearCmd() {
+        return command("clear", "Clear the screen", List.of(),
+            raw -> slash(raw, "clear", "cls"),
+            (session, raw) -> { /* handled by IOManager */ });
+    }
+
+    private Command contextCmd() {
+        return command("context", "Manage context (status, compact, clear, save, archive, load)",
+            SystemCommands::contextCompletions,
+            raw -> slash(raw, "context"),
+            (session, raw) -> handleContext(session, arg(raw, 1, "status"), arg(raw, 2, "")));
+    }
+
+    private Command networkCmd() {
+        return command("network", "View agent network status", List.of(),
+            raw -> slash(raw, "network"),
+            (session, raw) -> showNetwork(session.io()));
+    }
+
+    private Command viewCmd() {
+        return command("view", "Switch terminal view (chat, dashboard)",
+            SystemCommands::viewCompletions,
+            raw -> slash(raw, "view") && !argString(raw).isBlank(),
+            (session, raw) -> handleView(session, argString(raw)));
+    }
+
+    private Command dashboardCmd() {
+        return command("dashboard", "Show dashboard view", List.of(),
+            raw -> slash(raw, "dashboard"),
+            (session, raw) -> handleView(session, "dashboard"));
+    }
+
+    private Command bashCmd() {
+        return Command.of("bash", "Execute bash command with security filtering", List.of(),
+            raw -> raw != null && raw.startsWith("!") && raw.length() > 1,
+            (session, raw) -> executeBash(session, raw.substring(1).trim()));
     }
 
     // ===== Helpers =====
 
     private static Command command(
-        String name,
-        String description,
-        List<Candidate> completions,
-        Predicate<String> matcher,
-        BiConsumer<Session, String> handler
+        String name, String description, List<Candidate> completions,
+        Predicate<String> matcher, BiConsumer<Session, String> handler
     ) {
         return Command.of(name, description, completions, matcher, handler);
     }
 
     private static Command command(
-        String name,
-        String description,
-        Supplier<List<Candidate>> completions,
-        Predicate<String> matcher,
-        BiConsumer<Session, String> handler
+        String name, String description, Supplier<List<Candidate>> completions,
+        Predicate<String> matcher, BiConsumer<Session, String> handler
     ) {
         return Command.of(name, description, completions, matcher, handler);
     }
 
-    // Simple matching: /name or /name1 or /name2 or ...
     private static boolean slash(String raw, String... names) {
         if (raw == null || !raw.startsWith("/")) return false;
         String cmd = cmdName(raw);
@@ -158,7 +119,6 @@ public final class SystemCommands {
         return false;
     }
 
-    // Extract command name: /foo bar -> foo
     private static String cmdName(String raw) {
         if (raw == null || !raw.startsWith("/")) return "";
         String cmd = raw.substring(1).trim();
@@ -166,7 +126,6 @@ public final class SystemCommands {
         return idx < 0 ? cmd.toLowerCase() : cmd.substring(0, idx).toLowerCase();
     }
 
-    // Extract all args after command: /foo bar baz -> "bar baz"
     private static String argString(String raw) {
         if (raw == null || !raw.startsWith("/")) return "";
         String cmd = raw.substring(1).trim();
@@ -174,22 +133,12 @@ public final class SystemCommands {
         return idx < 0 ? "" : cmd.substring(idx + 1).trim();
     }
 
-    // Extract specific arg by index: arg(raw, 1) = first arg
     private static String arg(String raw, int index, String defaultVal) {
         String[] parts = argString(raw).split("\\s+");
         return index < parts.length ? parts[index] : defaultVal;
     }
 
     // ===== Completions =====
-
-    private static List<Candidate> agentCompletions() {
-        return ConfigManager.config()
-            .agents
-            .keySet()
-            .stream()
-            .map(name -> new Candidate(name, name, "agents", "Switch to " + name, null, null, true))
-            .toList();
-    }
 
     private static List<Candidate> contextCompletions() {
         return List.of(
@@ -211,33 +160,6 @@ public final class SystemCommands {
 
     // ===== Handlers =====
 
-    private void switchAgent(Session session, String agentName) {
-        try {
-            SessionManager sm = SessionManager.getInstance();
-            var config = ConfigManager.config();
-            var agentConfig = config.agents.get(agentName);
-            if (agentConfig == null) {
-                session.io().print("Error: Unknown agent: " + agentName + "\n");
-                return;
-            }
-
-            // Check if already exists
-            SessionAlias alias = SessionAlias.of(agentName);
-            if (sm.getSession(alias) != null) {
-                sm.switchToSession(alias);
-                return;
-            }
-
-            // Create and switch
-            session.io().print("Creating session for: " + agentName + "\n");
-            sm.createSession(alias, agentName);
-            sm.switchToSession(alias);
-
-        } catch (Exception e) {
-            session.io().print("Error: " + e.getMessage() + "\n");
-        }
-    }
-
     private void handleContext(Session session, String subCmd, String arg) {
         if (!(session instanceof AgentSession agentSession)) {
             session.io().print("Context commands only available in agent sessions\n");
@@ -246,7 +168,7 @@ public final class SystemCommands {
 
         IOManager io = session.io();
         SessionId sessionId = agentSession.sessionId();
-        ContextManager cm = ContextManager.getInstance();
+        ContextManager cm = magenta.contextManager();
         Context context = cm.loadContext(sessionId);
         ContextLimits limits = agentSession.contextLimits();
 
@@ -318,7 +240,7 @@ public final class SystemCommands {
 
     private void showNetwork(IOManager io) {
         try {
-            AgentNetwork network = AgentNetwork.getInstance();
+            AgentNetwork network = magenta.agentNetwork();
             var agents = network.listRegisteredAgents();
 
             if (agents.isEmpty()) {

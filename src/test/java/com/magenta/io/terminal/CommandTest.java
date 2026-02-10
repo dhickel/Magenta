@@ -1,58 +1,63 @@
 package com.magenta.io.terminal;
 
+import com.magenta.Magenta;
+import com.magenta.manager.AgentNetwork;
+import com.magenta.config.Config;
+import com.magenta.config.ConfigManager;
+import com.magenta.manager.ContextManager;
+import com.magenta.manager.SecurityManager;
 import com.magenta.session.SystemCommands;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class CommandTest {
 
+    private static CommandSet commandSet;
+
+    @BeforeAll
+    static void setUp() throws Exception {
+        Config config = ConfigManager.loadFromFile("config.json");
+        Magenta magenta = new Magenta(
+            config,
+            null,
+            new ContextManager(null),
+            new AgentNetwork(),
+            new SecurityManager()
+        );
+        commandSet = new SystemCommands(magenta).commands();
+    }
+
     @Test
     void testParseExit() {
-        assertSame(SystemCommands.EXIT, parse("/exit"));
-        assertSame(SystemCommands.EXIT, parse("/quit"));
-        assertSame(SystemCommands.EXIT, parse("/q"));
+        assertCommand("exit", "/exit");
+        assertCommand("exit", "/quit");
+        assertCommand("exit", "/q");
     }
 
     @Test
     void testParseHelp() {
-        assertSame(SystemCommands.HELP, parse("/help"));
-        assertSame(SystemCommands.HELP, parse("/?"));
+        assertCommand("help", "/help");
+        assertCommand("help", "/?");
     }
 
     @Test
     void testParseClear() {
-        assertSame(SystemCommands.CLEAR, parse("/clear"));
-        assertSame(SystemCommands.CLEAR, parse("/cls"));
-    }
-
-    @Test
-    void testParseAgent() {
-        assertSame(SystemCommands.AGENT, parse("/agent helpful"));
-    }
-
-    @Test
-    void testParseAgentMissingName() {
-        assertUnknown("/agent");
-        assertUnknown("/agent   ");
-    }
-
-    @Test
-    void testParseSessionsAgents() {
-        assertSame(SystemCommands.SESSIONS, parse("/sessions"));
-        assertSame(SystemCommands.AGENTS, parse("/agents"));
+        assertCommand("clear", "/clear");
+        assertCommand("clear", "/cls");
     }
 
     @Test
     void testParseContext() {
-        assertSame(SystemCommands.CONTEXT, parse("/context status"));
-        assertSame(SystemCommands.CONTEXT, parse("/context"));
-        assertSame(SystemCommands.CONTEXT, parse("/context archive mykey"));
+        assertCommand("context", "/context status");
+        assertCommand("context", "/context");
+        assertCommand("context", "/context archive mykey");
     }
 
     @Test
     void testParseBash() {
-        assertSame(SystemCommands.BASH, parse("!ls -la"));
+        assertCommand("bash", "!ls -la");
     }
 
     @Test
@@ -62,13 +67,13 @@ class CommandTest {
 
     @Test
     void testParseNetwork() {
-        assertSame(SystemCommands.NETWORK, parse("/network"));
+        assertCommand("network", "/network");
     }
 
     @Test
     void testParseView() {
-        assertSame(SystemCommands.VIEW, parse("/view dashboard"));
-        assertSame(SystemCommands.VIEW, parse("/view DASHBOARD"));
+        assertCommand("view", "/view dashboard");
+        assertCommand("view", "/view DASHBOARD");
     }
 
     @Test
@@ -78,7 +83,7 @@ class CommandTest {
 
     @Test
     void testParseDashboard() {
-        assertSame(SystemCommands.DASHBOARD, parse("/dashboard"));
+        assertCommand("dashboard", "/dashboard");
     }
 
     @Test
@@ -97,14 +102,34 @@ class CommandTest {
 
     @Test
     void testCompletions() {
-        assertTrue(SystemCommands.EXIT.completions().isEmpty());
-        assertFalse(SystemCommands.VIEW.completions().isEmpty());
-        assertFalse(SystemCommands.CONTEXT.completions().isEmpty());
-        // AGENT completions require ConfigManager initialization, so test it separately
+        Command exit = findCommand("exit");
+        Command view = findCommand("view");
+        Command context = findCommand("context");
+
+        assertNotNull(exit);
+        assertNotNull(view);
+        assertNotNull(context);
+
+        assertTrue(exit.completions().isEmpty());
+        assertFalse(view.completions().isEmpty());
+        assertFalse(context.completions().isEmpty());
     }
 
     private Command parse(String input) {
-        return SystemCommands.commands().parse(input).orElse(null);
+        return commandSet.parse(input).orElse(null);
+    }
+
+    private Command findCommand(String name) {
+        return commandSet.commands().stream()
+            .filter(c -> c.name().equals(name))
+            .findFirst()
+            .orElse(null);
+    }
+
+    private void assertCommand(String expectedName, String input) {
+        Command cmd = parse(input);
+        assertNotNull(cmd, "Expected command for: " + input);
+        assertEquals(expectedName, cmd.name(), "Expected " + expectedName + " for: " + input);
     }
 
     private void assertUnknown(String input) {

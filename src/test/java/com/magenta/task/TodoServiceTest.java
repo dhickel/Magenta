@@ -1,12 +1,8 @@
 package com.magenta.task;
 
-import com.magenta.config.ConfigManager;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.io.File;
-import java.nio.file.Files;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -14,24 +10,10 @@ import static org.junit.jupiter.api.Assertions.*;
 class TodoServiceTest {
 
     private TodoService todoService;
-    private String tempStoragePath;
 
     @BeforeEach
-    void setUp() throws Exception {
-        tempStoragePath = Files.createTempDirectory("magenta_test").toString();
-        
-        File configFile = new File(tempStoragePath, "config.json");
-        String json = "{\"global\":{\"storage_path\":\"" + tempStoragePath + "\"}, \"models\":{}, \"agents\":{}}";
-        Files.writeString(configFile.toPath(), json);
-
-        ConfigManager.loadForTest(configFile.getAbsolutePath());
-
+    void setUp() {
         todoService = new TodoService();
-    }
-
-    @AfterEach
-    void tearDown() {
-        // Cleanup if needed
     }
 
     @Test
@@ -39,7 +21,7 @@ class TodoServiceTest {
         Task task = todoService.addTask("Buy milk", null);
         assertNotNull(task.getId());
         assertEquals("Buy milk", task.getDescription());
-        
+
         Optional<Task> found = todoService.findTask(task.getId());
         assertTrue(found.isPresent());
     }
@@ -51,7 +33,7 @@ class TodoServiceTest {
 
         assertEquals(root.getId(), sub.getParentId());
         assertEquals(1, root.getSubTasks().size());
-        
+
         // Test recursive retrieval
         Optional<Task> foundSub = todoService.findTask(sub.getId());
         assertTrue(foundSub.isPresent());
@@ -61,7 +43,7 @@ class TodoServiceTest {
     void testCompleteTask() {
         Task task = todoService.addTask("Sleep", null);
         assertFalse(task.isCompleted());
-        
+
         todoService.completeTask(task.getId());
         assertTrue(task.isCompleted());
     }
@@ -70,7 +52,7 @@ class TodoServiceTest {
     void testRemoveTask() {
         Task task = todoService.addTask("Delete me", null);
         assertTrue(todoService.findTask(task.getId()).isPresent());
-        
+
         todoService.removeTask(task.getId());
         assertFalse(todoService.findTask(task.getId()).isPresent());
     }

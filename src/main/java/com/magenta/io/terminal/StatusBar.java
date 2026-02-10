@@ -1,7 +1,6 @@
 package com.magenta.io.terminal;
 
 import com.magenta.context.Context;
-import com.magenta.context.ContextManager;
 import com.magenta.session.AgentSession;
 import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStringBuilder;
@@ -37,7 +36,7 @@ public interface StatusBar {
      * Color-coded by context usage (green &lt; 50%, yellow 50-80%, red &gt; 80%).
      */
     static AttributedString full(AgentSession session, int width) {
-        ContextManager cm = ContextManager.getInstance();
+        var cm = session.magenta().contextManager();
         Context ctx = cm.loadContext(session.sessionId());
         int currentTokens = ctx.totalEstimatedTokens();
         int maxTokens = session.contextLimits().maxContext();
@@ -59,7 +58,7 @@ public interface StatusBar {
      * Compact status: just the usage percentage (e.g., "42%").
      */
     static AttributedString compact(AgentSession session, int width) {
-        ContextManager cm = ContextManager.getInstance();
+        var cm = session.magenta().contextManager();
         Context ctx = cm.loadContext(session.sessionId());
         int currentTokens = ctx.totalEstimatedTokens();
         int maxTokens = session.contextLimits().maxContext();

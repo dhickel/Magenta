@@ -2,7 +2,7 @@ package com.magenta.session;
 
 import com.magenta.context.Context;
 import com.magenta.context.ContextLimits;
-import com.magenta.context.ContextManager;
+import com.magenta.manager.ContextManager;
 import com.magenta.io.terminal.StatusBar;
 import com.magenta.io.terminal.TableRenderer;
 import com.magenta.io.terminal.TerminalDisplay;
@@ -88,7 +88,7 @@ public sealed interface TerminalView
             lines.add(new AttributedString(""));
 
             // Context stats
-            ContextManager cm = ContextManager.getInstance();
+            ContextManager cm = session.magenta().contextManager();
             Context ctx = cm.loadContext(session.sessionId());
             ContextLimits limits = session.contextLimits();
             int tokens = ctx.totalEstimatedTokens();

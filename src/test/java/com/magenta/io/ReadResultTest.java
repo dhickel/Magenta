@@ -1,7 +1,6 @@
 package com.magenta.io;
 
 import com.magenta.io.terminal.Command;
-import com.magenta.session.SystemCommands;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
@@ -25,7 +24,7 @@ class ReadResultTest {
 
     @Test
     void testCmdCreation() {
-        Command exitCmd = SystemCommands.EXIT;
+        Command exitCmd = Command.of("exit", "Exit", raw -> raw.equals("/exit"), (s, r) -> {});
         ReadResult.Cmd cmd = ReadResult.cmd(exitCmd, "/exit");
         assertEquals(exitCmd, cmd.command());
         assertNotNull(cmd.timestamp());
@@ -47,8 +46,9 @@ class ReadResultTest {
 
     @Test
     void testContentAccessor() {
+        Command helpCmd = Command.of("help", "Help", raw -> raw.equals("/help"), (s, r) -> {});
         ReadResult input = ReadResult.input("test");
-        ReadResult cmd = ReadResult.cmd(SystemCommands.HELP, "/help");
+        ReadResult cmd = ReadResult.cmd(helpCmd, "/help");
         ReadResult blocked = ReadResult.blocked("original", "reason");
 
         assertEquals("test", input.content());
