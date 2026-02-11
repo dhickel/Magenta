@@ -76,11 +76,48 @@
       "cursor": "helpful> ",
       "cursor_color": 2,
       "tools": ["shell", "filesystem", "git", "search"]
+    },
+    "devstral-full": {
+      "system_prompt": "full_capability_system",
+      "model": "Devstral2",
+      "security": "default",
+      "colors": "default",
+      "cursor": "devstral-full> ",
+      "cursor_color": 5,
+      "tools": ["shell", "web", "filesystem", "knowledge", "git", "context", "search", "agent", "process", "todo", "planning", "code-execution"]
+    },
+    "devstral-notools": {
+      "system_prompt": "default_system",
+      "model": "Devstral2",
+      "security": "default",
+      "colors": "default",
+      "cursor": "devstral> ",
+      "cursor_color": 3,
+      "tools": []
+    },
+    "glm-full": {
+      "system_prompt": "full_capability_system",
+      "model": "GLM-4.7",
+      "security": "default",
+      "colors": "default",
+      "cursor": "glm-full> ",
+      "cursor_color": 6,
+      "tools": ["shell", "web", "filesystem", "knowledge", "git", "context", "search", "agent", "process", "todo", "planning", "code-execution"]
+    },
+    "glm-notools": {
+      "system_prompt": "default_system",
+      "model": "GLM-4.7",
+      "security": "default",
+      "colors": "default",
+      "cursor": "glm> ",
+      "cursor_color": 4,
+      "tools": []
     }
   },
   "prompts" : {
     "default_system": "You are Magenta, a helpful AI assistant.",
-    "helpful_system": "You are a very helpful and friendly AI assistant. Always be encouraging and positive!"
+    "helpful_system": "You are a very helpful and friendly AI assistant. Always be encouraging and positive!",
+    "full_capability_system": "You are Magenta, an advanced AI assistant with full tool access. You have capabilities for planning, code execution, file manipulation, web access, agent collaboration, and more. Use your tools thoughtfully and explain your reasoning when making decisions."
   },
   "task_templates": {
     "code-review": {

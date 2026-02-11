@@ -472,3 +472,45 @@ Caused by: java.net.ConnectException: Connection refused
 2026-02-09 14:07:53.171 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/todelete.txt (3 bytes)
 2026-02-09 14:07:53.172 [main] WARN  com.magenta.tools.FileSystemTools - Deleting: test_sandbox/todelete.txt
 2026-02-09 14:07:53.172 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-10 21:18:48.709 [main] INFO  com.magenta.persistence.Database - Database initialized at: /tmp/magenta-test-7969092283874329746.db
+2026-02-10 21:18:49.304 [main] INFO  com.magenta.persistence.Database - Database closed
+2026-02-10 21:18:58.267 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-10 21:18:58.299 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-10 21:18:58.563 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-10 21:18:58.978 [main] INFO  com.magenta.persistence.Database - Database initialized at: /tmp/magenta-test-3851601947272535923.db
+2026-02-10 21:18:59.473 [main] INFO  com.magenta.persistence.Database - Database closed
+2026-02-10 21:18:59.524 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-10 21:18:59.538 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-10 21:18:59.546 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-10 21:18:59.555 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-10 21:18:59.603 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-10 21:18:59.610 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-10 21:18:59.617 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-10 21:18:59.624 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-10 21:18:59.631 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-10 21:18:59.638 [main] WARN  com.magenta.manager.ContextManager - Database is null - persistence will be disabled
+2026-02-10 21:18:59.989 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/chunk.txt (27 bytes)
+2026-02-10 21:18:59.994 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-10 21:19:00.000 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/hello.txt (11 bytes)
+2026-02-10 21:19:00.001 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-10 21:19:00.004 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/replace.txt (11 bytes)
+2026-02-10 21:19:00.026 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-10 21:19:00.028 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/file1.txt (7 bytes)
+2026-02-10 21:19:00.029 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-10 21:19:00.031 [main] INFO  com.magenta.tools.FileSystemTools - Writing file: test_sandbox/todelete.txt (3 bytes)
+2026-02-10 21:19:00.032 [main] WARN  com.magenta.tools.FileSystemTools - Deleting: test_sandbox/todelete.txt
+2026-02-10 21:19:00.032 [main] WARN  com.magenta.tools.FileSystemTools - Recursively deleting directory and all contents: test_sandbox
+2026-02-10 21:25:08.404 [main] INFO  com.magenta.MagentaApp - Starting Magenta application...
+2026-02-10 21:25:08.415 [main] INFO  com.magenta.config.ConfigManager - Loading configuration from: config.json
+2026-02-10 21:25:08.724 [main] INFO  com.magenta.config.ConfigManager - Configuration loaded successfully
+2026-02-10 21:25:08.809 [main] INFO  com.magenta.persistence.Database - Database initialized at: ./data/database.db
+2026-02-10 21:26:21.082 [main] INFO  com.magenta.MagentaApp - Starting Magenta application...
+2026-02-10 21:26:21.085 [main] INFO  com.magenta.config.ConfigManager - Loading configuration from: config.json
+2026-02-10 21:26:21.356 [main] INFO  com.magenta.config.ConfigManager - Configuration loaded successfully
+2026-02-10 21:26:21.446 [main] INFO  com.magenta.persistence.Database - Database initialized at: ./data/database.db
+2026-02-10 21:39:43.504 [main] INFO  com.magenta.MagentaApp - Starting Magenta application...
+2026-02-10 21:39:43.508 [main] INFO  com.magenta.config.ConfigManager - Loading configuration from: config.json
+2026-02-10 21:39:43.747 [main] INFO  com.magenta.config.ConfigManager - Configuration loaded successfully
+2026-02-10 21:39:43.829 [main] INFO  com.magenta.persistence.Database - Database initialized at: ./data/database.db
+2026-02-10 21:41:09.133 [main] INFO  com.magenta.session.StreamingChat - Tool 'writeFile' blocked by security: Tool blocked: contains rm
+2026-02-10 21:41:09.134 [main] DEBUG com.magenta.session.StreamingChat - Tool 'writeFile' executed, result length: 66
