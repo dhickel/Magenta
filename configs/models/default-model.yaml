@@ -1,0 +1,12 @@
+id: "default-model"
+provider: "langchain4j"
+model: "devstral2"
+endpoint: "local_ollama"
+maxTokens: 30000
+maxContext: 28000
+compactThreshold: 24000
+temperature: 0.2
+compactionStrategy: "summarize"
+supportsToolCalling: true
+supportsStreaming: false
+enabled: true

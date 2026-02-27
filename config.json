@@ -1,0 +1,97 @@
+{
+  "global": {
+    "storage_path": "./data",
+    "base_agent": "default",
+    "stream_delay_ms": 2,
+    "tool_display_mode": "simple",
+    "max_tool_iterations": 50,
+    "compaction_agent": "default"
+  },
+  "colors": {
+    "default": {
+      "error": 1,
+      "warning": 3,
+      "success": 2,
+      "info": 6,
+      "agent": 5,
+      "prompt": 15,
+      "security": 9,
+      "command": 5,
+      "tool_call": 6,
+      "tool_result": 8
+    }
+  },
+  "endpoints": {
+    "local_ollama": {
+      "type": "ollama",
+      "url": "http://localhost:11434",
+      "timeout_seconds": 360
+    }
+  },
+  "securities": {
+    "default": {
+      "approval_required_for": [],
+      "always_allow_commands": [
+        "ls",
+        "pwd",
+        "grep",
+        "cat",
+        "echo",
+        "whoami",
+        "git status",
+        "git log",
+        "git diff",
+        "git branch"
+      ],
+      "blocked_commands": [
+        "rm",
+        "mv",
+        "shutdown",
+        "reboot",
+        ":(){ :|:& };:"
+      ],
+      "blocked_tools": []
+    }
+  },
+  "models": {
+    "default": {
+      "model_name": "devstral2",
+      "endpoint": "local_ollama",
+      "max_tokens": 30000,
+      "max_context": 28000,
+      "compact_threshold": 24000,
+      "temperature": 0.2,
+      "compaction_strategy": "summarize"
+    }
+  },
+  "agents": {
+    "default": {
+      "system_prompt": "default_system",
+      "model": "default",
+      "security": "default",
+      "colors": "default",
+      "cursor": "Magenta|> ",
+      "cursor_color": 5,
+      "tools": [
+        "ALL"
+      ]
+    }
+  },
+  "tool_sets": {
+    "ALL": [
+      "shell",
+      "filesystem",
+      "git",
+      "search",
+      "sqlite",
+      "todo",
+      "context",
+      "agent",
+      "process",
+      "planning"
+    ]
+  },
+  "prompts": {
+    "default_system": "You are Magenta, a helpful AI assistant."
+  }
+}

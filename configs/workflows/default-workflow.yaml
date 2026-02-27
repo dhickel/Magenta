@@ -1,0 +1,5 @@
+id: "default-workflow"
+taskIds:
+  - "default-task"
+dependsOnWorkflows: []
+enabled: true

@@ -1,0 +1,49 @@
+instance:
+  workspaceRoot: "."
+  dataRoot: ".magenta"
+  debugJsonl: ".magenta/logs/events.jsonl"
+  localDevMode: true
+  maxTurns: 8
+  maxToolOutputBytes: 32768
+  maxFileReadLines: 200
+  maxSqlRows: 500
+  maxEssenceBodyBytes: 65536
+
+security:
+  mode: "deny-by-default"
+  devYoloOverride: false
+  allowedPaths:
+    - "."
+  allowedCommands: []
+  allowedTools: []
+  rules:
+    - id: allow-read-rg
+      action: allow
+      commandPrefix: ["rg"]
+    - id: prompt-shell-git
+      action: prompt
+      commandPrefix: ["git"]
+    - id: deny-destructive
+      action: deny
+      commandPrefix: ["rm", "-rf"]
+      reason: "Use safe deletion workflow"
+
+models:
+  include:
+    - "models/*.yaml"
+
+prompts:
+  include:
+    - "prompts/**/*.md"
+
+tasks:
+  include:
+    - "tasks/*.yaml"
+
+workflows:
+  include:
+    - "workflows/*.yaml"
+
+agents:
+  include:
+    - "agents/*.yaml"

@@ -1,0 +1,22 @@
+id: "default-agent"
+modelId: "default-model"
+promptIds:
+  - "base.system"
+taskIds:
+  - "default-task"
+workflowIds:
+  - "default-workflow"
+toolIds:
+  - "read_file"
+  - "grep_files"
+  - "search_replace"
+  - "write_file"
+  - "shell_command"
+  - "sqlite_query"
+  - "sqlite_exec"
+  - "essence_create"
+  - "essence_get"
+  - "essence_search"
+  - "essence_update"
+  - "essence_delete"
+enabled: true
