@@ -87,7 +87,7 @@ public final class Magenta {
         } catch (Throwable throwable) {
             if (session != null) {
                 try {
-                    session.sessionConfig().onError().accept(throwable);
+                    session.sessionConfig().onErrorHook().accept(throwable);
                 } catch (Throwable ignored) {
                     // Keep original throwable as the primary failure signal.
                 }

@@ -9,8 +9,10 @@ RuntimeConfig config = RuntimeConfig.loadDefault();
 Magenta magenta = new Magenta(config);
 
 SessionConfig sessionConfig = SessionConfig.builder()
-        .onTokenStream(System.out::print)
-        .onMessageAppended(msg -> {})
+        .onTokenStreamHook(System.out::print)
+        .onStreamingResponseConsumer(token -> uiBus.publish("stream-token", token))
+        .onFullResponseConsumer(text -> uiBus.publish("final", text))
+        .onMessageAppendedHook(msg -> {})
         .build();
 
 Session session = magenta.startBaseSession("terminal", sessionConfig);
@@ -24,9 +26,12 @@ Use when live incremental output is needed.
 
 ```java
 SessionConfig sessionConfig = SessionConfig.builder()
-        .onTokenStream(token -> uiBus.publish("token", token))
-        .onMessageAppended(msg -> uiBus.publish("message", msg))
-        .onAssistantMsg(msg -> uiBus.publish("assistant", msg.content()))
+        .onTokenStreamHook(token -> uiBus.publish("token", token))
+        .onStreamingResponseConsumer(token -> uiBus.publish("stream-token", token))
+        .onFullResponseConsumer(text -> uiBus.publish("assistant-final", text))
+        .emitStreamingCompletionToFullResponse(true)
+        .onMessageAppendedHook(msg -> uiBus.publish("message", msg))
+        .onAssistantMsgHook(msg -> uiBus.publish("assistant", msg.content()))
         .build();
 ```
 
@@ -39,7 +44,7 @@ SessionConfig autonomous = SessionConfig.builder()
         .blockingOnly(false)
         .toolsEnabled(true)
         .toolBridge(agentToolExecutor::execute)
-        .onMessageAppended(eventStore::append)
+        .onMessageAppendedHook(eventStore::append)
         .build();
 ```
 
@@ -107,3 +112,4 @@ Behavior:
 - streaming allowed if model supports it
 - tool loop enabled, but default bridge returns `Tool not handled`
 - no callback side effects by default
+- streaming completion is replayed to full response consumer by default

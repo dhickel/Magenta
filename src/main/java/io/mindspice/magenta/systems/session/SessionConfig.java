@@ -6,49 +6,58 @@ import java.util.function.Function;
 
 public final class SessionConfig {
 
-    private final Consumer<SessionMessage> onMessageAppended;
-    private final Consumer<SessionMessage.UserMsg> onUserMsg;
-    private final Consumer<SessionMessage.AssistantMsg> onAssistantMsg;
-    private final Consumer<SessionMessage.ToolMsg> onToolMsg;
-    private final Consumer<SessionMessage.SystemMsg> onSystemMsg;
-    private final Consumer<SessionMessage.SummaryMsg> onSummaryMsg;
-    private final Consumer<SessionMessage.InboundMsg> onInboundMsg;
-    private final Consumer<SessionInput.MessageInput> onMessageInput;
-    private final Consumer<SessionInput.EventInput> onEventInput;
-    private final Consumer<String> onTokenStream;
+    private final Consumer<SessionMessage> onMessageAppendedHook;
+    private final Consumer<SessionMessage.UserMsg> onUserMsgHook;
+    private final Consumer<SessionMessage.AssistantMsg> onAssistantMsgHook;
+    private final Consumer<SessionMessage.ToolMsg> onToolMsgHook;
+    private final Consumer<SessionMessage.SystemMsg> onSystemMsgHook;
+    private final Consumer<SessionMessage.SummaryMsg> onSummaryMsgHook;
+    private final Consumer<SessionMessage.InboundMsg> onInboundMsgHook;
+    private final Consumer<SessionInput.MessageInput> onMessageInputHook;
+    private final Consumer<SessionInput.EventInput> onEventInputHook;
+    private final Consumer<String> onTokenStreamHook;
+    private final Consumer<String> onStreamingResponseConsumer;
+    private final Consumer<String> onFullResponseConsumer;
     private final Function<ToolRequest, ToolResult> toolBridge;
-    private final Consumer<Throwable> onError;
+    private final Consumer<Throwable> onErrorHook;
+    private final boolean emitStreamingCompletionToFullResponse;
     private final boolean blockingOnly;
     private final boolean toolsEnabled;
 
     private SessionConfig(
-            Consumer<SessionMessage> onMessageAppended,
-            Consumer<SessionMessage.UserMsg> onUserMsg,
-            Consumer<SessionMessage.AssistantMsg> onAssistantMsg,
-            Consumer<SessionMessage.ToolMsg> onToolMsg,
-            Consumer<SessionMessage.SystemMsg> onSystemMsg,
-            Consumer<SessionMessage.SummaryMsg> onSummaryMsg,
-            Consumer<SessionMessage.InboundMsg> onInboundMsg,
-            Consumer<SessionInput.MessageInput> onMessageInput,
-            Consumer<SessionInput.EventInput> onEventInput,
-            Consumer<String> onTokenStream,
+            Consumer<SessionMessage> onMessageAppendedHook,
+            Consumer<SessionMessage.UserMsg> onUserMsgHook,
+            Consumer<SessionMessage.AssistantMsg> onAssistantMsgHook,
+            Consumer<SessionMessage.ToolMsg> onToolMsgHook,
+            Consumer<SessionMessage.SystemMsg> onSystemMsgHook,
+            Consumer<SessionMessage.SummaryMsg> onSummaryMsgHook,
+            Consumer<SessionMessage.InboundMsg> onInboundMsgHook,
+            Consumer<SessionInput.MessageInput> onMessageInputHook,
+            Consumer<SessionInput.EventInput> onEventInputHook,
+            Consumer<String> onTokenStreamHook,
+            Consumer<String> onStreamingResponseConsumer,
+            Consumer<String> onFullResponseConsumer,
             Function<ToolRequest, ToolResult> toolBridge,
-            Consumer<Throwable> onError,
+            Consumer<Throwable> onErrorHook,
+            boolean emitStreamingCompletionToFullResponse,
             boolean blockingOnly,
             boolean toolsEnabled
     ) {
-        this.onMessageAppended = onMessageAppended;
-        this.onUserMsg = onUserMsg;
-        this.onAssistantMsg = onAssistantMsg;
-        this.onToolMsg = onToolMsg;
-        this.onSystemMsg = onSystemMsg;
-        this.onSummaryMsg = onSummaryMsg;
-        this.onInboundMsg = onInboundMsg;
-        this.onMessageInput = onMessageInput;
-        this.onEventInput = onEventInput;
-        this.onTokenStream = onTokenStream;
+        this.onMessageAppendedHook = onMessageAppendedHook;
+        this.onUserMsgHook = onUserMsgHook;
+        this.onAssistantMsgHook = onAssistantMsgHook;
+        this.onToolMsgHook = onToolMsgHook;
+        this.onSystemMsgHook = onSystemMsgHook;
+        this.onSummaryMsgHook = onSummaryMsgHook;
+        this.onInboundMsgHook = onInboundMsgHook;
+        this.onMessageInputHook = onMessageInputHook;
+        this.onEventInputHook = onEventInputHook;
+        this.onTokenStreamHook = onTokenStreamHook;
+        this.onStreamingResponseConsumer = onStreamingResponseConsumer;
+        this.onFullResponseConsumer = onFullResponseConsumer;
         this.toolBridge = toolBridge;
-        this.onError = onError;
+        this.onErrorHook = onErrorHook;
+        this.emitStreamingCompletionToFullResponse = emitStreamingCompletionToFullResponse;
         this.blockingOnly = blockingOnly;
         this.toolsEnabled = toolsEnabled;
     }
@@ -61,57 +70,64 @@ public final class SessionConfig {
         return new Builder();
     }
 
-    public Consumer<SessionMessage> onMessageAppended() {
-        return onMessageAppended;
+    public Consumer<SessionMessage> onMessageAppendedHook() {
+        return onMessageAppendedHook;
     }
 
-    @Deprecated(since = "0.1.0", forRemoval = false)
-    public Consumer<SessionMessage> onMessageStored() {
-        return onMessageAppended;
+    public Consumer<SessionMessage.UserMsg> onUserMsgHook() {
+        return onUserMsgHook;
     }
 
-    public Consumer<SessionMessage.UserMsg> onUserMsg() {
-        return onUserMsg;
+    public Consumer<SessionMessage.AssistantMsg> onAssistantMsgHook() {
+        return onAssistantMsgHook;
     }
 
-    public Consumer<SessionMessage.AssistantMsg> onAssistantMsg() {
-        return onAssistantMsg;
+    public Consumer<SessionMessage.ToolMsg> onToolMsgHook() {
+        return onToolMsgHook;
     }
 
-    public Consumer<SessionMessage.ToolMsg> onToolMsg() {
-        return onToolMsg;
+    public Consumer<SessionMessage.SystemMsg> onSystemMsgHook() {
+        return onSystemMsgHook;
     }
 
-    public Consumer<SessionMessage.SystemMsg> onSystemMsg() {
-        return onSystemMsg;
+    public Consumer<SessionMessage.SummaryMsg> onSummaryMsgHook() {
+        return onSummaryMsgHook;
     }
 
-    public Consumer<SessionMessage.SummaryMsg> onSummaryMsg() {
-        return onSummaryMsg;
+    public Consumer<SessionMessage.InboundMsg> onInboundMsgHook() {
+        return onInboundMsgHook;
     }
 
-    public Consumer<SessionMessage.InboundMsg> onInboundMsg() {
-        return onInboundMsg;
+    public Consumer<SessionInput.MessageInput> onMessageInputHook() {
+        return onMessageInputHook;
     }
 
-    public Consumer<SessionInput.MessageInput> onMessageInput() {
-        return onMessageInput;
+    public Consumer<SessionInput.EventInput> onEventInputHook() {
+        return onEventInputHook;
     }
 
-    public Consumer<SessionInput.EventInput> onEventInput() {
-        return onEventInput;
+    public Consumer<String> onTokenStreamHook() {
+        return onTokenStreamHook;
     }
 
-    public Consumer<String> onTokenStream() {
-        return onTokenStream;
+    public Consumer<String> onStreamingResponseConsumer() {
+        return onStreamingResponseConsumer;
+    }
+
+    public Consumer<String> onFullResponseConsumer() {
+        return onFullResponseConsumer;
     }
 
     public Function<ToolRequest, ToolResult> toolBridge() {
         return toolBridge;
     }
 
-    public Consumer<Throwable> onError() {
-        return onError;
+    public Consumer<Throwable> onErrorHook() {
+        return onErrorHook;
+    }
+
+    public boolean emitStreamingCompletionToFullResponse() {
+        return emitStreamingCompletionToFullResponse;
     }
 
     public boolean blockingOnly() {
@@ -123,88 +139,111 @@ public final class SessionConfig {
     }
 
     public void emitMessageAppended(SessionMessage message) {
-        onMessageAppended.accept(message);
+        onMessageAppendedHook.accept(message);
         switch (message) {
-            case SessionMessage.UserMsg userMsg -> onUserMsg.accept(userMsg);
-            case SessionMessage.AssistantMsg assistantMsg -> onAssistantMsg.accept(assistantMsg);
-            case SessionMessage.ToolMsg toolMsg -> onToolMsg.accept(toolMsg);
-            case SessionMessage.SystemMsg systemMsg -> onSystemMsg.accept(systemMsg);
-            case SessionMessage.SummaryMsg summaryMsg -> onSummaryMsg.accept(summaryMsg);
-            case SessionMessage.InboundMsg inboundMsg -> onInboundMsg.accept(inboundMsg);
+            case SessionMessage.UserMsg userMsg -> onUserMsgHook.accept(userMsg);
+            case SessionMessage.AssistantMsg assistantMsg -> onAssistantMsgHook.accept(assistantMsg);
+            case SessionMessage.ToolMsg toolMsg -> onToolMsgHook.accept(toolMsg);
+            case SessionMessage.SystemMsg systemMsg -> onSystemMsgHook.accept(systemMsg);
+            case SessionMessage.SummaryMsg summaryMsg -> onSummaryMsgHook.accept(summaryMsg);
+            case SessionMessage.InboundMsg inboundMsg -> onInboundMsgHook.accept(inboundMsg);
         }
     }
 
     public void emitInputReceived(SessionInput input) {
         switch (input) {
-            case SessionInput.MessageInput messageInput -> onMessageInput.accept(messageInput);
-            case SessionInput.EventInput eventInput -> onEventInput.accept(eventInput);
+            case SessionInput.MessageInput messageInput -> onMessageInputHook.accept(messageInput);
+            case SessionInput.EventInput eventInput -> onEventInputHook.accept(eventInput);
         }
     }
 
+    public void emitStreamingResponse(String token) {
+        onStreamingResponseConsumer.accept(token);
+    }
+
+    public void emitFullResponse(String fullText, boolean cameFromStreaming) {
+        if (cameFromStreaming && !emitStreamingCompletionToFullResponse) {
+            return;
+        }
+        onFullResponseConsumer.accept(fullText);
+    }
+
     public static final class Builder {
-        private Consumer<SessionMessage> onMessageAppended = msg -> {};
-        private Consumer<SessionMessage.UserMsg> onUserMsg = msg -> {};
-        private Consumer<SessionMessage.AssistantMsg> onAssistantMsg = msg -> {};
-        private Consumer<SessionMessage.ToolMsg> onToolMsg = msg -> {};
-        private Consumer<SessionMessage.SystemMsg> onSystemMsg = msg -> {};
-        private Consumer<SessionMessage.SummaryMsg> onSummaryMsg = msg -> {};
-        private Consumer<SessionMessage.InboundMsg> onInboundMsg = msg -> {};
-        private Consumer<SessionInput.MessageInput> onMessageInput = input -> {};
-        private Consumer<SessionInput.EventInput> onEventInput = input -> {};
-        private Consumer<String> onTokenStream = token -> {};
+        private Consumer<SessionMessage> onMessageAppendedHook = msg -> {};
+        private Consumer<SessionMessage.UserMsg> onUserMsgHook = msg -> {};
+        private Consumer<SessionMessage.AssistantMsg> onAssistantMsgHook = msg -> {};
+        private Consumer<SessionMessage.ToolMsg> onToolMsgHook = msg -> {};
+        private Consumer<SessionMessage.SystemMsg> onSystemMsgHook = msg -> {};
+        private Consumer<SessionMessage.SummaryMsg> onSummaryMsgHook = msg -> {};
+        private Consumer<SessionMessage.InboundMsg> onInboundMsgHook = msg -> {};
+        private Consumer<SessionInput.MessageInput> onMessageInputHook = input -> {};
+        private Consumer<SessionInput.EventInput> onEventInputHook = input -> {};
+        private Consumer<String> onTokenStreamHook = token -> {};
+        private Consumer<String> onStreamingResponseConsumer = token -> {};
+        private Consumer<String> onFullResponseConsumer = text -> {};
         private Function<ToolRequest, ToolResult> toolBridge = req -> ToolResult.notHandled(req.toolCall());
-        private Consumer<Throwable> onError = err -> {};
+        private Consumer<Throwable> onErrorHook = err -> {};
+        private boolean emitStreamingCompletionToFullResponse = true;
         private boolean blockingOnly = false;
         private boolean toolsEnabled = true;
 
-        public Builder onMessageAppended(Consumer<SessionMessage> callback) {
-            this.onMessageAppended = Objects.requireNonNullElse(callback, msg -> {});
+        public Builder onMessageAppendedHook(Consumer<SessionMessage> callback) {
+            this.onMessageAppendedHook = Objects.requireNonNullElse(callback, msg -> {});
             return this;
         }
 
-
-        public Builder onUserMsg(Consumer<SessionMessage.UserMsg> callback) {
-            this.onUserMsg = Objects.requireNonNullElse(callback, msg -> {});
+        public Builder onUserMsgHook(Consumer<SessionMessage.UserMsg> callback) {
+            this.onUserMsgHook = Objects.requireNonNullElse(callback, msg -> {});
             return this;
         }
 
-        public Builder onAssistantMsg(Consumer<SessionMessage.AssistantMsg> callback) {
-            this.onAssistantMsg = Objects.requireNonNullElse(callback, msg -> {});
+        public Builder onAssistantMsgHook(Consumer<SessionMessage.AssistantMsg> callback) {
+            this.onAssistantMsgHook = Objects.requireNonNullElse(callback, msg -> {});
             return this;
         }
 
-        public Builder onToolMsg(Consumer<SessionMessage.ToolMsg> callback) {
-            this.onToolMsg = Objects.requireNonNullElse(callback, msg -> {});
+        public Builder onToolMsgHook(Consumer<SessionMessage.ToolMsg> callback) {
+            this.onToolMsgHook = Objects.requireNonNullElse(callback, msg -> {});
             return this;
         }
 
-        public Builder onSystemMsg(Consumer<SessionMessage.SystemMsg> callback) {
-            this.onSystemMsg = Objects.requireNonNullElse(callback, msg -> {});
+        public Builder onSystemMsgHook(Consumer<SessionMessage.SystemMsg> callback) {
+            this.onSystemMsgHook = Objects.requireNonNullElse(callback, msg -> {});
             return this;
         }
 
-        public Builder onSummaryMsg(Consumer<SessionMessage.SummaryMsg> callback) {
-            this.onSummaryMsg = Objects.requireNonNullElse(callback, msg -> {});
+        public Builder onSummaryMsgHook(Consumer<SessionMessage.SummaryMsg> callback) {
+            this.onSummaryMsgHook = Objects.requireNonNullElse(callback, msg -> {});
             return this;
         }
 
-        public Builder onInboundMsg(Consumer<SessionMessage.InboundMsg> callback) {
-            this.onInboundMsg = Objects.requireNonNullElse(callback, msg -> {});
+        public Builder onInboundMsgHook(Consumer<SessionMessage.InboundMsg> callback) {
+            this.onInboundMsgHook = Objects.requireNonNullElse(callback, msg -> {});
             return this;
         }
 
-        public Builder onMessageInput(Consumer<SessionInput.MessageInput> callback) {
-            this.onMessageInput = Objects.requireNonNullElse(callback, input -> {});
+        public Builder onMessageInputHook(Consumer<SessionInput.MessageInput> callback) {
+            this.onMessageInputHook = Objects.requireNonNullElse(callback, input -> {});
             return this;
         }
 
-        public Builder onEventInput(Consumer<SessionInput.EventInput> callback) {
-            this.onEventInput = Objects.requireNonNullElse(callback, input -> {});
+        public Builder onEventInputHook(Consumer<SessionInput.EventInput> callback) {
+            this.onEventInputHook = Objects.requireNonNullElse(callback, input -> {});
             return this;
         }
 
-        public Builder onTokenStream(Consumer<String> callback) {
-            this.onTokenStream = Objects.requireNonNullElse(callback, token -> {});
+        public Builder onTokenStreamHook(Consumer<String> callback) {
+            this.onTokenStreamHook = Objects.requireNonNullElse(callback, token -> {});
+            return this;
+        }
+
+        public Builder onStreamingResponseConsumer(Consumer<String> callback) {
+            this.onStreamingResponseConsumer = Objects.requireNonNullElse(callback, token -> {});
+            return this;
+        }
+
+        public Builder onFullResponseConsumer(Consumer<String> callback) {
+            this.onFullResponseConsumer = Objects.requireNonNullElse(callback, text -> {});
             return this;
         }
 
@@ -213,8 +252,13 @@ public final class SessionConfig {
             return this;
         }
 
-        public Builder onError(Consumer<Throwable> callback) {
-            this.onError = Objects.requireNonNullElse(callback, err -> {});
+        public Builder onErrorHook(Consumer<Throwable> callback) {
+            this.onErrorHook = Objects.requireNonNullElse(callback, err -> {});
+            return this;
+        }
+
+        public Builder emitStreamingCompletionToFullResponse(boolean enabled) {
+            this.emitStreamingCompletionToFullResponse = enabled;
             return this;
         }
 
@@ -230,18 +274,21 @@ public final class SessionConfig {
 
         public SessionConfig build() {
             return new SessionConfig(
-                    onMessageAppended,
-                    onUserMsg,
-                    onAssistantMsg,
-                    onToolMsg,
-                    onSystemMsg,
-                    onSummaryMsg,
-                    onInboundMsg,
-                    onMessageInput,
-                    onEventInput,
-                    onTokenStream,
+                    onMessageAppendedHook,
+                    onUserMsgHook,
+                    onAssistantMsgHook,
+                    onToolMsgHook,
+                    onSystemMsgHook,
+                    onSummaryMsgHook,
+                    onInboundMsgHook,
+                    onMessageInputHook,
+                    onEventInputHook,
+                    onTokenStreamHook,
+                    onStreamingResponseConsumer,
+                    onFullResponseConsumer,
                     toolBridge,
-                    onError,
+                    onErrorHook,
+                    emitStreamingCompletionToFullResponse,
                     blockingOnly,
                     toolsEnabled
             );

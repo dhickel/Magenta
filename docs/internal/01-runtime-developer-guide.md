@@ -53,23 +53,26 @@ Lifecycle guarantees:
 
 `SessionConfig` fields:
 
-- `onMessageStored: Consumer<SessionMessage>`
-- `onMessageAppended: Consumer<SessionMessage>` (canonical name)
-- `onUserMsg`, `onAssistantMsg`, `onToolMsg`, `onSystemMsg`, `onSummaryMsg`, `onInboundMsg`
-- `onMessageInput: Consumer<SessionInput.MessageInput>`
-- `onEventInput: Consumer<SessionInput.EventInput>`
-- `onTokenStream: Consumer<String>`
+- `onMessageAppendedHook: Consumer<SessionMessage>`
+- `onUserMsgHook`, `onAssistantMsgHook`, `onToolMsgHook`, `onSystemMsgHook`, `onSummaryMsgHook`, `onInboundMsgHook`
+- `onMessageInputHook: Consumer<SessionInput.MessageInput>`
+- `onEventInputHook: Consumer<SessionInput.EventInput>`
+- `onTokenStreamHook: Consumer<String>`
+- `onStreamingResponseConsumer: Consumer<String>`
+- `onFullResponseConsumer: Consumer<String>`
 - `toolBridge: Function<ToolRequest, ToolResult>`
-- `onError: Consumer<Throwable>`
+- `onErrorHook: Consumer<Throwable>`
+- `emitStreamingCompletionToFullResponse: boolean`
 - `blockingOnly: boolean`
 - `toolsEnabled: boolean`
 
 Default behavior:
 
 - no-op message/token/error callbacks
+- no-op output consumers
 - `toolBridge` returns `ToolResult.notHandled(...)`
+- `emitStreamingCompletionToFullResponse = true`
 - `blockingOnly = false`, `toolsEnabled = true`
-- `onMessageStored` remains available as a backward-compatible alias for `onMessageAppended`
 
 ## Turn execution behavior
 
@@ -89,10 +92,14 @@ Default behavior:
    - blocking if `blockingOnly`, or tool loop active, or model streaming unsupported
    - streaming otherwise
 4. Call `OllamaClient`.
-5. Append `AssistantMsg` with parsed tool calls; emit callbacks.
-6. If no tool calls (or tools disabled), return assistant text.
-7. Otherwise call `toolBridge` per tool call, append `ToolMsg`, emit callbacks, and continue loop.
-8. Stop on first no-tool assistant response or when max iterations reached.
+5. In streaming mode, emit `onTokenStreamHook` and `onStreamingResponseConsumer` per token chunk.
+6. Append `AssistantMsg` with parsed tool calls; emit message callbacks.
+7. Emit full response to `onFullResponseConsumer`:
+   - always for blocking turns
+   - for streaming turns when `emitStreamingCompletionToFullResponse` is true
+8. If no tool calls (or tools disabled), return assistant text.
+9. Otherwise call `toolBridge` per tool call, append `ToolMsg`, emit callbacks, and continue loop.
+10. Stop on first no-tool assistant response or when max iterations reached.
 
 Empty/null model text normalization: `"."`.
 
@@ -126,8 +133,8 @@ Terminal streaming:
 
 ```java
 SessionConfig cfg = SessionConfig.builder()
-        .onTokenStream(System.out::print)
-        .onMessageAppended(msg -> eventBus.publish("message", msg))
+        .onTokenStreamHook(System.out::print)
+        .onMessageAppendedHook(msg -> eventBus.publish("message", msg))
         .build();
 ```
 

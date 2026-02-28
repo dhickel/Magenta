@@ -34,7 +34,10 @@ Narrative:
 3. `runUserTurn` delegates to `runSessionTurn` with `SessionInput.UserMessageInput`.
 4. Runtime appends persisted `UserMsg`.
 5. `ModelRunner` executes model request.
-4. Assistant response has no tool calls; loop returns final assistant text.
+6. In streaming mode, each token is emitted to `onTokenStreamHook` and `onStreamingResponseConsumer`.
+7. Assistant response has no tool calls; runtime appends `AssistantMsg`.
+8. Full text is emitted to `onFullResponseConsumer` (stream replay controlled by config boolean).
+9. Loop returns final assistant text.
 
 ```text
 runUserTurn
@@ -44,7 +47,9 @@ runUserTurn
   -> append UserMsg
   -> ModelRunner.runTurn
       -> ollama chat (blocking or streaming)
+      -> stream token callbacks (streaming mode)
       -> append AssistantMsg (no tools)
+      -> full response callback
       <- return assistant text
 ```
 
@@ -77,7 +82,7 @@ Narrative:
 runSessionTurn
   -> try { resume + compact + model loop }
   -> catch (Throwable t)
-      -> onError(t)
+      -> onErrorHook(t)
       -> throw t
 ```
 ## 5) Compaction summarize path with fallback

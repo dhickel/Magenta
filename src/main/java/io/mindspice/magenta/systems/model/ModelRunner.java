@@ -35,9 +35,17 @@ public final class ModelRunner {
             RuntimeConfig.ModelConfig modelConfig = session.modelConfig();
 
             boolean useBlocking = session.sessionConfig().blockingOnly() || toolLoopActive || !modelConfig.supportsStreaming();
+            boolean streamingUsed = !useBlocking;
             ChatResponse response = useBlocking
                     ? ollamaClient.chatBlocking(modelConfig, request)
-                    : ollamaClient.chatStreaming(modelConfig, request, session.sessionConfig().onTokenStream());
+                    : ollamaClient.chatStreaming(
+                            modelConfig,
+                            request,
+                            token -> {
+                                session.sessionConfig().onTokenStreamHook().accept(token);
+                                session.sessionConfig().emitStreamingResponse(token);
+                            }
+                    );
 
             AiMessage aiMessage = response.aiMessage();
             latestText = safeText(aiMessage.text());
@@ -46,6 +54,7 @@ public final class ModelRunner {
             SessionMessage.AssistantMsg assistant = new SessionMessage.AssistantMsg(latestText, toolCalls);
             session.context().append(assistant);
             session.sessionConfig().emitMessageAppended(assistant);
+            session.sessionConfig().emitFullResponse(latestText, streamingUsed);
 
             if (toolCalls.isEmpty() || !session.sessionConfig().toolsEnabled()) {
                 return latestText;

@@ -14,33 +14,32 @@ The callback contract is owned by `SessionConfig` and is intentionally function-
 
 Canonical callbacks:
 
-- `onMessageAppended: Consumer<SessionMessage>`
-- `onUserMsg: Consumer<SessionMessage.UserMsg>`
-- `onAssistantMsg: Consumer<SessionMessage.AssistantMsg>`
-- `onToolMsg: Consumer<SessionMessage.ToolMsg>`
-- `onSystemMsg: Consumer<SessionMessage.SystemMsg>`
-- `onSummaryMsg: Consumer<SessionMessage.SummaryMsg>`
-- `onInboundMsg: Consumer<SessionMessage.InboundMsg>`
-- `onMessageInput: Consumer<SessionInput.MessageInput>`
-- `onEventInput: Consumer<SessionInput.EventInput>`
-- `onTokenStream: Consumer<String>`
+- `onMessageAppendedHook: Consumer<SessionMessage>`
+- `onUserMsgHook: Consumer<SessionMessage.UserMsg>`
+- `onAssistantMsgHook: Consumer<SessionMessage.AssistantMsg>`
+- `onToolMsgHook: Consumer<SessionMessage.ToolMsg>`
+- `onSystemMsgHook: Consumer<SessionMessage.SystemMsg>`
+- `onSummaryMsgHook: Consumer<SessionMessage.SummaryMsg>`
+- `onInboundMsgHook: Consumer<SessionMessage.InboundMsg>`
+- `onMessageInputHook: Consumer<SessionInput.MessageInput>`
+- `onEventInputHook: Consumer<SessionInput.EventInput>`
+- `onTokenStreamHook: Consumer<String>`
+- `onStreamingResponseConsumer: Consumer<String>`
+- `onFullResponseConsumer: Consumer<String>`
 - `toolBridge: Function<ToolRequest, ToolResult>`
-- `onError: Consumer<Throwable>`
+- `onErrorHook: Consumer<Throwable>`
 
 Control flags:
 
 - `blockingOnly: boolean`
 - `toolsEnabled: boolean`
-
-Compatibility alias:
-
-- `onMessageStored(...)` is kept as a backward-compatible alias for `onMessageAppended(...)`.
+- `emitStreamingCompletionToFullResponse: boolean`
 
 ## Message callback semantics
 
 All appended context messages are dispatched through:
 
-1. `onMessageAppended`
+1. `onMessageAppendedHook`
 2. exactly one typed message callback based on `SessionMessage` subtype
 
 Dispatch subtypes:
@@ -60,7 +59,7 @@ Dispatch subtypes:
 
 1. resumes session
 2. compacts context if needed
-3. emits input callback (`onMessageInput` or `onEventInput`)
+3. emits input callback (`onMessageInputHook` or `onEventInputHook`)
 4. appends persisted input message (`UserMsg` or `InboundMsg`)
 5. emits message callbacks for appended message
 6. runs model turn loop
@@ -69,15 +68,16 @@ Dispatch subtypes:
 
 - emits message callbacks for each appended `AssistantMsg`
 - emits message callbacks for each appended `ToolMsg`
-- streams token chunks to `onTokenStream` in streaming mode
+- streams token chunks to `onTokenStreamHook` and `onStreamingResponseConsumer` in streaming mode
+- emits full assistant text to `onFullResponseConsumer` for blocking turns and optionally for streaming turns
 - calls `toolBridge` for each tool call when tools are enabled
 
 ## Error semantics
 
-`onError` is emitted in `Magenta.runSessionTurn(...)` catch handling:
+`onErrorHook` is emitted in `Magenta.runSessionTurn(...)` catch handling:
 
 1. any throwable from resume/compaction/model/tool path is caught
-2. `sessionConfig.onError` is called once with the throwable
+2. `sessionConfig.onErrorHook` is called once with the throwable
 3. original throwable is rethrown
 
 Important behavior:
@@ -91,9 +91,11 @@ Important behavior:
 `SessionConfig.defaults()` configures:
 
 - no-op callbacks
+- no-op output consumers
 - `toolBridge` returns `ToolResult.notHandled(...)`
 - `blockingOnly = false`
 - `toolsEnabled = true`
+- `emitStreamingCompletionToFullResponse = true`
 
 ## Extension boundaries
 

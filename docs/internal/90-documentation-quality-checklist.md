@@ -11,7 +11,7 @@ Use this checklist for each material runtime change.
 ## Contract completeness
 
 - [ ] Lifecycle semantics (`start`/`resume`/`fork`/turn execution) are documented.
-- [ ] Callback semantics (`onMessageStored`, `onTokenStream`, `toolBridge`, `onError`) are documented with current behavior.
+- [ ] Callback semantics (`onMessageAppendedHook`, `onTokenStreamHook`, `onStreamingResponseConsumer`, `onFullResponseConsumer`, `toolBridge`, `onErrorHook`) are documented with current behavior.
 - [ ] Compaction and model mode-selection behavior are documented.
 
 ## Example quality
