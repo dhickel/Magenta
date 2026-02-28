@@ -68,30 +68,36 @@ Out-of-scope dependency rule:
 ## Architecture Targets
 
 Core runtime services:
-- `MagentaInstance`: root owner of runtime services and I/O boundaries.
-- `AgentProvider`: agent lifecycle and configuration ownership.
-- `SessionProvider`: session creation, attach/fork/drop-in lifecycle.
-- `SecurityService`: single authorization ingress for all side effects.
-- `ToolProvider`: tool registry and invocation routing.
-- `AgentManager`: peer messaging, event fanout, delegation orchestration.
-- `MindStore`: filesystem-first cognition persistence.
-- `SchedulerService`: durable wake/sleep and timeout jobs.
-- `ModelGateway`: LangChain4j-backed model interface.
+- `Magenta`: root owner of runtime services and top-level runtime API.
+- `RuntimeConfig`: single-record runtime config loader with nested records for model/agent docs.
+- `SessionManager`: session start/resume/fork lifecycle ownership.
+- `ContextManager`: per-session context creation/load/store/compaction ownership.
+- `ModelRunner`: model turn orchestration, ADT mapping, and tool-loop handling.
+- `OllamaClient`: blocking/streaming model transport.
+- `MindStore` (future phases): filesystem-first cognition persistence.
+- `SchedulerService` (future phases): durable wake/sleep and timeout jobs.
+- `SecurityService` (future phases): single authorization ingress for side effects.
+
+Current implementation status:
+- implemented runtime slice is `Magenta + RuntimeConfig + SessionManager + ContextManager + ModelRunner + OllamaClient`.
+- tool/security behavior currently enters through `SessionConfig.toolBridge` callback wiring.
+- `MindStore`, `SchedulerService`, and `SecurityService` remain future-phase targets.
 
 Design rules:
 - one runtime owner loop,
-- one tool execution path,
-- one security ingress,
+- one tool execution callback bridge path,
+- security as composable wrapper around callbacks,
 - fail-fast startup validation,
 - typed outcomes over string parsing,
 - minimal abstraction until a second concrete implementation exists.
 
 ## Lean Build Constraints
 
-- Runtime core target: `12-16` Java source files in `src/main/java`.
+- Runtime core target: keep core runtime compact; prefer adding data fields/callbacks over new classes.
 - Prefer flat structure and co-located contracts early.
 - Use records for immutable contracts.
 - Use sealed interfaces/classes for closed polymorphism.
+- Define sealed type hierarchies as nested types under a single root sealed contract when practical (for example, `SessionInput` owns all input subtypes/kinds).
 - Use exhaustive pattern matching switches.
 - Use virtual threads/structured concurrency only where they simplify logic.
 - Avoid helper-class explosion and framework-heavy layering.
@@ -116,7 +122,7 @@ configs/
 ```
 
 Rules:
-- `magenta.yaml` wires all include sets and global defaults.
+- `magenta.yaml` wires include sets and runtime defaults.
 - Agents reference reusable IDs (models/prompts/tasks/workflows).
 - Startup resolves and validates full graph before runtime side effects.
 - Merge precedence: `defaults < YAML < env vars < CLI flags`.
@@ -129,6 +135,7 @@ Validation policy (strict fail-fast):
 - reject cycles,
 - reject unsupported capability combinations,
 - reject placeholder capability exposure in enabled runtime paths.
+- parse failures should report file + line/column + parser message.
 
 ## Persistence Contract
 
@@ -256,6 +263,8 @@ Observability requirements:
 
 When architecture/process changes materially:
 - update top-level `AGENTS.md`,
+- update `docs/internal/00-index.md` and impacted runtime docs under `docs/internal/`,
+- run and satisfy `docs/internal/90-documentation-quality-checklist.md`,
 - update relevant `.internal-dev` plan/review/changelog artifacts,
 - record intentional divergence when docs and implementation differ.
 
