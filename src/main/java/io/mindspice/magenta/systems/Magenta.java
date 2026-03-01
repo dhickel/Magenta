@@ -192,17 +192,6 @@ public final class Magenta {
     private String executeTurn(UUID sessionId, SessionInput input) {
         Session session = sessionManager.resume(sessionId);
 
-        contextManager.compactIfNeeded(
-                session.sessionId(),
-                session.context(),
-                session.modelConfig(),
-                messages -> modelRunner.summarize(
-                        compactionModelConfig(),
-                        compactionSystemPrompt(),
-                        messages
-                )
-        );
-
         SessionInput effectiveInput = input == null ? SessionInput.userMessage("") : input;
         session.sessionConfig().emitInputReceived(effectiveInput);
         if (effectiveInput.persist()) {
@@ -211,6 +200,19 @@ public final class Magenta {
             session.sessionConfig().emitMessageAppended(message);
         }
 
-        return modelRunner.runTurn(session, runtimeConfig.maxTurns());
+        return modelRunner.runTurn(
+                session,
+                runtimeConfig.maxTurns(),
+                () -> contextManager.compactIfNeeded(
+                        session.sessionId(),
+                        session.context(),
+                        session.modelConfig(),
+                        messages -> modelRunner.summarize(
+                                compactionModelConfig(),
+                                compactionSystemPrompt(),
+                                messages
+                        )
+                )
+        );
     }
 }

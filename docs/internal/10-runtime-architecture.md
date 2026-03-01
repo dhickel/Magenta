@@ -31,7 +31,7 @@ Provide a lean local runtime with explicit boundaries:
 - Runtime services are constructed once per `Magenta` instance.
 - Session identity is UUID-based.
 - Session context is represented by typed `SessionMessage` ADT only.
-- Compaction runs before each session turn execution.
+- Compaction runs before each model call (initial turn request and tool-loop follow-ups).
 - Turn ingress is typed (`SessionInput`) with user/bus/system/timer kinds.
 - Model transport side effects occur only through `OllamaClient`.
 
@@ -39,7 +39,7 @@ Provide a lean local runtime with explicit boundaries:
 
 ```text
 Config Loaded -> Runtime Constructed -> Session Started/Resumed/Forked
--> Context Compacted (optional) -> Turn Executed -> Messages Appended
+-> Input Appended -> Context Compacted (optional) -> Model Call
 -> Optional Tool Loop -> Final Assistant Text Returned
 ```
 

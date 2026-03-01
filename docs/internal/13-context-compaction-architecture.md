@@ -22,6 +22,7 @@ Keep history mutation and token-budget control explicit, deterministic, and isol
 - Compaction is no-op when estimated tokens are within threshold.
 - Strategy selection is deterministic by `compactionStrategyOrDefault()`.
 - Rolling window preserves first system message when present.
+- Compaction is evaluated before each model call, including tool-loop follow-up calls.
 
 ## State transitions
 

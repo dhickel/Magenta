@@ -83,15 +83,15 @@ Router-backed turn flow:
 1. `SessionInputRouter` validates session liveness and route policy.
 2. `SessionManager` submits to internal turn executor.
 3. Internal turn executor resumes session.
-2. `ContextManager.compactIfNeeded(...)`
-3. Emit input callback (`onMessageInput` or `onEventInput`)
-4. Append persisted input (`UserMsg` for `SessionInput.UserMessageInput`, `InboundMsg` otherwise)
-5. `ModelRunner.runTurn(session, maxTurns)`
+4. Emit input callback (`onMessageInput` or `onEventInput`)
+5. Append persisted input (`UserMsg` for `SessionInput.UserMessageInput`, `InboundMsg` otherwise)
+6. `ModelRunner.runTurn(session, maxTurns, beforeModelCallHook)` where hook calls `ContextManager.compactIfNeeded(...)`
 6. On any throwable, invoke `SessionConfig.onError` and swallow in external ingress path.
 
 `ModelRunner.runTurn` flow:
 
-1. Build request from full typed context snapshot.
+1. Run pre-model-call hook (compaction) every iteration.
+2. Build request from full typed context snapshot.
 3. Choose mode:
    - blocking if `blockingOnly`, or tool loop active, or model streaming unsupported
    - streaming otherwise
@@ -102,7 +102,7 @@ Router-backed turn flow:
    - always for blocking turns
    - for streaming turns when `emitStreamingCompletionToFullResponse` is true
 8. If no tool calls (or tools disabled), return assistant text.
-9. Otherwise call `toolBridge` per tool call, append `ToolMsg`, emit callbacks, and continue loop.
+9. Otherwise call `toolBridge` per tool call, append `ToolMsg`, emit callbacks, and continue loop (with compaction hook applied again before next model request).
 10. Stop on first no-tool assistant response or when max iterations reached.
 
 Empty/null model text normalization: `"."`.

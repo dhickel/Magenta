@@ -27,10 +27,16 @@ public final class ModelRunner {
     }
 
     public String runTurn(Session session, int maxIterations) {
+        return runTurn(session, maxIterations, () -> {});
+    }
+
+    public String runTurn(Session session, int maxIterations, Runnable beforeModelCallHook) {
         boolean toolLoopActive = false;
         String latestText = "";
+        Runnable safeBeforeModelCallHook = beforeModelCallHook == null ? () -> {} : beforeModelCallHook;
 
         for (int i = 0; i < maxIterations; i++) {
+            safeBeforeModelCallHook.run();
             ChatRequest request = ChatRequest.builder().messages(toChatMessages(session.context().snapshot())).build();
             RuntimeConfig.ModelConfig modelConfig = session.modelConfig();
 

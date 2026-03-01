@@ -149,11 +149,15 @@ public final class OllamaClient {
                 case AiMessage ai -> {
                     msg.put("role", "assistant");
                     msg.put("content", ai.text() == null ? "" : ai.text());
+                    if (ai.hasToolExecutionRequests()) {
+                        msg.set("tool_calls", toToolCallsJson(ai.toolExecutionRequests()));
+                    }
                 }
                 case ToolExecutionResultMessage tool -> {
                     msg.put("role", "tool");
                     msg.put("content", tool.text());
                     msg.put("name", tool.toolName());
+                    msg.put("tool_call_id", tool.id());
                 }
                 default -> {
                     msg.put("role", "user");
@@ -170,6 +174,40 @@ public final class OllamaClient {
         root.set("options", options);
 
         return root;
+    }
+
+    private JsonNode toToolCallsJson(List<ToolExecutionRequest> requests) {
+        var toolCalls = json.createArrayNode();
+        if (requests == null || requests.isEmpty()) {
+            return toolCalls;
+        }
+
+        for (ToolExecutionRequest request : requests) {
+            if (request == null || request.name() == null || request.name().isBlank()) {
+                continue;
+            }
+
+            var toolCall = json.createObjectNode();
+            String id = request.id();
+            toolCall.put("id", id == null || id.isBlank() ? UUID.randomUUID().toString() : id);
+            toolCall.put("type", "function");
+
+            var function = json.createObjectNode();
+            function.put("name", request.name());
+            String args = request.arguments();
+            if (args == null || args.isBlank()) {
+                function.set("arguments", json.createObjectNode());
+            } else {
+                try {
+                    function.set("arguments", json.readTree(args));
+                } catch (IOException e) {
+                    function.put("arguments", args);
+                }
+            }
+            toolCall.set("function", function);
+            toolCalls.add(toolCall);
+        }
+        return toolCalls;
     }
 
     private ChatResponse toChatResponse(RuntimeConfig.ModelConfig modelCfg, JsonNode body, String streamedContent) {
