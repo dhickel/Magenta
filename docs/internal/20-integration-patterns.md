@@ -12,12 +12,18 @@ SessionConfig sessionConfig = SessionConfig.builder()
         .onTokenStreamHook(System.out::print)
         .onStreamingResponseConsumer(token -> uiBus.publish("stream-token", token))
         .onFullResponseConsumer(text -> uiBus.publish("final", text))
+        .onErrorHook(err -> uiBus.publish("turn-error", err.getMessage()))
         .onMessageAppendedHook(msg -> {})
         .build();
 
 Session session = magenta.startBaseSession("terminal", sessionConfig);
-String finalText = magenta.runUserTurn(session.sessionId(), "Summarize this repository structure.");
-System.out.println("\nFinal: " + finalText);
+Consumer<SessionInput> input = magenta.sessionInputConsumer(
+        session.sessionId(),
+        SessionRoutePolicy.defaults(),
+        InputRouteReportLevel.ERROR,
+        report -> uiBus.publish("route-report", report)
+);
+input.accept(SessionInput.userMessage("Summarize this repository structure."));
 ```
 
 Use when live incremental output is needed.
@@ -77,8 +83,16 @@ SessionRoutePolicy policy = new SessionRoutePolicy(
         Set.of("agent-b", "system")
 );
 
+Consumer<InputRouteReport> routeReportHook = report ->
+        auditBus.publish("route-report", report);
+
 Consumer<SessionInput.MessageInput> msgAdapter = magenta.sessionManager()
-        .messageConsumerFor(session.sessionId(), policy);
+        .messageConsumerFor(
+                session.sessionId(),
+                policy,
+                InputRouteReportLevel.FAILURE,
+                routeReportHook
+        );
 
 msgAdapter.accept(new SessionInput.BusMessageInput(
         "Task complete. Review results.",
@@ -89,7 +103,7 @@ msgAdapter.accept(new SessionInput.BusMessageInput(
 ));
 ```
 
-Use when session-owned adapters are needed with policy gating before turn execution.
+Use when session-owned adapters are needed with policy + liveness gating and routing diagnostics.
 ## 6) Blocking-only deterministic mode
 
 ```java

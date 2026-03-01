@@ -1,14 +1,15 @@
 package io.mindspice.magenta.systems;
 
-import io.mindspice.magenta.systems.config.RuntimeConfig.AgentConfig;
 import io.mindspice.magenta.systems.config.RuntimeConfig;
-import io.mindspice.magenta.systems.config.RuntimeConfig.ModelConfig;
 import io.mindspice.magenta.systems.model.ModelRunner;
 import io.mindspice.magenta.systems.model.OllamaClient;
 import io.mindspice.magenta.systems.session.ContextManager;
+import io.mindspice.magenta.systems.session.InputRouteReport;
+import io.mindspice.magenta.systems.session.InputRouteReportLevel;
 import io.mindspice.magenta.systems.session.Session;
 import io.mindspice.magenta.systems.session.SessionConfig;
 import io.mindspice.magenta.systems.session.SessionInput;
+import io.mindspice.magenta.systems.session.SessionInputRouter;
 import io.mindspice.magenta.systems.session.SessionMessage;
 import io.mindspice.magenta.systems.session.SessionManager;
 import io.mindspice.magenta.systems.session.SessionRoutePolicy;
@@ -26,13 +27,13 @@ public final class Magenta {
     private final ContextManager contextManager;
     private final SessionManager sessionManager;
     private final ModelRunner modelRunner;
-    private final ConcurrentMap<UUID, SessionRoutePolicy> routePolicies = new ConcurrentHashMap<>();
+    private final ConcurrentMap<UUID, SessionInputRouter> routePolicies = new ConcurrentHashMap<>();
 
     public Magenta(RuntimeConfig runtimeConfig) {
         this.runtimeConfig = Objects.requireNonNull(runtimeConfig, "runtimeConfig");
         this.contextManager = new ContextManager();
         this.modelRunner = new ModelRunner(new OllamaClient());
-        this.sessionManager = new SessionManager(runtimeConfig, contextManager, this::runSessionTurn);
+        this.sessionManager = new SessionManager(runtimeConfig, contextManager, this::executeTurn);
     }
 
     public Session startBaseSession(String alias, SessionConfig sessionConfig) {
@@ -55,54 +56,33 @@ public final class Magenta {
         return sessionManager.fork(sourceSessionId, alias, sessionConfigOverride);
     }
 
-    public String runUserTurn(UUID sessionId, String userInput) {
-        return runSessionTurn(sessionId, SessionInput.userMessage(userInput));
+    public Consumer<SessionInput> sessionInputConsumer(
+            UUID sessionId,
+            SessionRoutePolicy policy,
+            InputRouteReportLevel reportLevel,
+            Consumer<InputRouteReport> reportCallback
+    ) {
+        return sessionManager.inputRouterFor(
+                sessionId,
+                Objects.requireNonNull(policy, "policy"),
+                reportLevel,
+                reportCallback
+        );
     }
 
-    public String runSessionTurn(UUID sessionId, SessionInput input) {
-        Session session = null;
-        try {
-            session = sessionManager.resume(sessionId);
-
-            contextManager.compactIfNeeded(
-                    session.sessionId(),
-                    session.context(),
-                    session.modelConfig(),
-                    messages -> modelRunner.summarize(
-                            compactionModelConfig(),
-                            compactionSystemPrompt(),
-                            messages
-                    )
-            );
-
-            SessionInput effectiveInput = input == null ? SessionInput.userMessage("") : input;
-            session.sessionConfig().emitInputReceived(effectiveInput);
-            if (effectiveInput.persist()) {
-                SessionMessage message = toSessionMessage(effectiveInput);
-                session.context().append(message);
-                session.sessionConfig().emitMessageAppended(message);
-            }
-
-            return modelRunner.runTurn(session, runtimeConfig.maxTurns());
-        } catch (Throwable throwable) {
-            if (session != null) {
-                try {
-                    session.sessionConfig().onErrorHook().accept(throwable);
-                } catch (Throwable ignored) {
-                    // Keep original throwable as the primary failure signal.
-                }
-            }
-            throw throwable;
-        }
-    }
-
-    public Consumer<SessionInput> sessionInputConsumer(UUID sessionId) {
-        return input -> runSessionTurn(sessionId, input);
-    }
-
-    public void registerSessionRoute(UUID sessionId, SessionRoutePolicy policy) {
-        sessionManager.resume(sessionId);
-        routePolicies.put(sessionId, policy == null ? SessionRoutePolicy.defaults() : policy);
+    public void registerSessionRoute(
+            UUID sessionId,
+            SessionRoutePolicy policy,
+            InputRouteReportLevel reportLevel,
+            Consumer<InputRouteReport> reportCallback
+    ) {
+        SessionInputRouter router = sessionManager.inputRouterFor(
+                sessionId,
+                Objects.requireNonNull(policy, "policy"),
+                reportLevel,
+                reportCallback
+        );
+        routePolicies.put(sessionId, router);
     }
 
     public void unregisterSessionRoute(UUID sessionId) {
@@ -115,15 +95,26 @@ public final class Magenta {
         }
 
         int delivered = 0;
-        for (Map.Entry<UUID, SessionRoutePolicy> entry : routePolicies.entrySet()) {
-            SessionRoutePolicy policy = entry.getValue();
-            if (policy == null || !policy.allows(input)) {
+        for (Map.Entry<UUID, SessionInputRouter> entry : routePolicies.entrySet()) {
+            SessionInputRouter router = entry.getValue();
+            if (router == null) {
                 continue;
             }
-            runSessionTurn(entry.getKey(), input);
-            delivered++;
+            if (router.route(input)) {
+                delivered++;
+                continue;
+            }
+
+            if (!sessionManager.isActive(entry.getKey())) {
+                routePolicies.remove(entry.getKey(), router);
+            }
         }
         return delivered;
+    }
+
+    public void closeSession(UUID sessionId) {
+        unregisterSessionRoute(sessionId);
+        sessionManager.close(sessionId);
     }
 
     public SessionManager sessionManager() {
@@ -196,5 +187,30 @@ public final class Magenta {
             sb.append(prompt);
         }
         return sb.toString();
+    }
+
+    private String executeTurn(UUID sessionId, SessionInput input) {
+        Session session = sessionManager.resume(sessionId);
+
+        contextManager.compactIfNeeded(
+                session.sessionId(),
+                session.context(),
+                session.modelConfig(),
+                messages -> modelRunner.summarize(
+                        compactionModelConfig(),
+                        compactionSystemPrompt(),
+                        messages
+                )
+        );
+
+        SessionInput effectiveInput = input == null ? SessionInput.userMessage("") : input;
+        session.sessionConfig().emitInputReceived(effectiveInput);
+        if (effectiveInput.persist()) {
+            SessionMessage message = toSessionMessage(effectiveInput);
+            session.context().append(message);
+            session.sessionConfig().emitMessageAppended(message);
+        }
+
+        return modelRunner.runTurn(session, runtimeConfig.maxTurns());
     }
 }

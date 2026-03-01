@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class SessionManagerIntegrationTest {
@@ -38,7 +39,12 @@ class SessionManagerIntegrationTest {
                 java.util.Set.of("bus-A")
         );
 
-        Consumer<SessionInput.MessageInput> consumer = manager.messageConsumerFor(session.sessionId(), policy);
+        Consumer<SessionInput.MessageInput> consumer = manager.messageConsumerFor(
+                session.sessionId(),
+                policy,
+                InputRouteReportLevel.ERROR,
+                report -> {}
+        );
         consumer.accept(new SessionInput.UserMessageInput("skip", "user", "", java.util.Map.of(), true));
         consumer.accept(new SessionInput.BusMessageInput("take", "bus-A", "", java.util.Map.of(), true));
 
@@ -85,5 +91,59 @@ class SessionManagerIntegrationTest {
         assertThatThrownBy(() -> manager.resume(session.sessionId()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Session not found");
+    }
+
+    @Test
+    void inputRouterDropsClosedSessionInputWithoutThrowing() {
+        RuntimeConfig config = TestRuntimeConfigs.basicRuntimeConfig();
+        ContextManager contextManager = new ContextManager();
+        AtomicInteger submitted = new AtomicInteger();
+        List<InputRouteReport> reports = new ArrayList<>();
+
+        SessionManager manager = new SessionManager(config, contextManager, (sessionId, input) -> {
+            submitted.incrementAndGet();
+            return "ok";
+        });
+
+        Session session = manager.start("agent-default", "router-close", SessionConfig.defaults());
+        SessionInputRouter router = manager.inputRouterFor(
+                session.sessionId(),
+                SessionRoutePolicy.defaults(),
+                InputRouteReportLevel.ERROR,
+                reports::add
+        );
+
+        manager.close(session.sessionId());
+        router.accept(new SessionInput.BusMessageInput("late", "bus", "", java.util.Map.of(), true));
+
+        assertThat(submitted).hasValue(0);
+        assertThat(reports).singleElement().extracting(InputRouteReport::outcome).isEqualTo(InputRouteOutcome.SESSION_INACTIVE);
+    }
+
+    @Test
+    void consumerIngressSwallowsExecutionFailureAndEmitsSessionOnError() {
+        RuntimeConfig config = TestRuntimeConfigs.basicRuntimeConfig();
+        ContextManager contextManager = new ContextManager();
+        AtomicInteger onErrorCalls = new AtomicInteger();
+
+        SessionManager manager = new SessionManager(config, contextManager, (sessionId, input) -> {
+            throw new IllegalStateException("simulated-execution-failure");
+        });
+
+        SessionConfig cfg = SessionConfig.builder()
+                .onErrorHook(err -> onErrorCalls.incrementAndGet())
+                .build();
+        Session session = manager.start("agent-default", "router-error", cfg);
+        Consumer<SessionInput.MessageInput> consumer = manager.messageConsumerFor(
+                session.sessionId(),
+                SessionRoutePolicy.defaults(),
+                InputRouteReportLevel.ERROR,
+                report -> {}
+        );
+
+        assertThatCode(() -> consumer.accept(
+                new SessionInput.UserMessageInput("hello", "user", "", java.util.Map.of(), true)
+        )).doesNotThrowAnyException();
+        assertThat(onErrorCalls).hasValue(1);
     }
 }

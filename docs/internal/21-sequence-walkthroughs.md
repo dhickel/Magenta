@@ -29,19 +29,20 @@ Caller
 
 Narrative:
 
-1. `runUserTurn` resumes session.
-2. Context compaction check runs (no-op if within threshold).
-3. `runUserTurn` delegates to `runSessionTurn` with `SessionInput.UserMessageInput`.
+1. Caller submits `SessionInput.UserMessageInput` through a router-backed consumer.
+2. Router checks liveness + policy and forwards approved input.
+3. Session resumes and context compaction check runs (no-op if within threshold).
 4. Runtime appends persisted `UserMsg`.
 5. `ModelRunner` executes model request.
 6. In streaming mode, each token is emitted to `onTokenStreamHook` and `onStreamingResponseConsumer`.
 7. Assistant response has no tool calls; runtime appends `AssistantMsg`.
 8. Full text is emitted to `onFullResponseConsumer` (stream replay controlled by config boolean).
-9. Loop returns final assistant text.
+9. Loop returns final assistant text internally.
 
 ```text
-runUserTurn
-  -> runSessionTurn(SessionInput.UserMessageInput)
+router consumer.accept
+  -> SessionInputRouter (liveness + policy)
+  -> SessionManager submit
   -> SessionManager.resume
   -> ContextManager.compactIfNeeded
   -> append UserMsg
@@ -74,16 +75,16 @@ exit: no tool calls OR maxIterations reached
 
 Narrative:
 
-1. `runSessionTurn` wraps resume/compaction/model execution in catch-all handling.
+1. SessionManager submit wraps internal turn execution in catch-all handling.
 2. On exception, runtime calls `sessionConfig.onError`.
-3. Runtime rethrows the original exception.
+3. External consumer ingress swallows the exception.
 
 ```text
-runSessionTurn
+SessionManager.submit
   -> try { resume + compact + model loop }
   -> catch (Throwable t)
       -> onErrorHook(t)
-      -> throw t
+      -> swallow
 ```
 ## 5) Compaction summarize path with fallback
 

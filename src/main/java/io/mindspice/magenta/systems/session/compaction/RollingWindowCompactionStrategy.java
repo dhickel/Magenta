@@ -10,7 +10,7 @@ import java.util.UUID;
 public final class RollingWindowCompactionStrategy implements CompactionStrategy {
 
     @Override
-    public List<SessionMessage> run(UUID sessionId, List<SessionMessage> context, int targetTokens) {
+    public List<SessionMessage> run(UUID sessionId, List<SessionMessage> context, int targetTokens, String tokenizerEncoding) {
         if (context.isEmpty()) {
             return context;
         }
@@ -23,11 +23,11 @@ public final class RollingWindowCompactionStrategy implements CompactionStrategy
         }
 
         List<SessionMessage> kept = new ArrayList<>();
-        int tokenCount = system == null ? 0 : SessionTokenEstimator.estimateText(system.content());
+        int tokenCount = system == null ? 0 : SessionTokenEstimator.estimateMessage(system, tokenizerEncoding);
 
         for (int i = context.size() - 1; i >= start; i--) {
             SessionMessage message = context.get(i);
-            int messageTokens = SessionTokenEstimator.estimateText(message.content());
+            int messageTokens = SessionTokenEstimator.estimateMessage(message, tokenizerEncoding);
             if (tokenCount + messageTokens > targetTokens) {
                 break;
             }

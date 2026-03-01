@@ -20,9 +20,9 @@ public final class SummarizeCompactionStrategy implements CompactionStrategy {
     }
 
     @Override
-    public List<SessionMessage> run(UUID sessionId, List<SessionMessage> context, int targetTokens) {
+    public List<SessionMessage> run(UUID sessionId, List<SessionMessage> context, int targetTokens, String tokenizerEncoding) {
         if (context.size() <= SUMMARY_RECENT_MESSAGES + 1) {
-            return fallback.run(sessionId, context, targetTokens);
+            return fallback.run(sessionId, context, targetTokens, tokenizerEncoding);
         }
 
         SessionMessage system = null;
@@ -34,7 +34,7 @@ public final class SummarizeCompactionStrategy implements CompactionStrategy {
 
         int summaryEnd = Math.max(start, context.size() - SUMMARY_RECENT_MESSAGES);
         if (summaryEnd <= start) {
-            return fallback.run(sessionId, context, targetTokens);
+            return fallback.run(sessionId, context, targetTokens, tokenizerEncoding);
         }
 
         List<SessionMessage> toSummarize = context.subList(start, summaryEnd);
@@ -42,7 +42,7 @@ public final class SummarizeCompactionStrategy implements CompactionStrategy {
 
         String summary = summarizer.apply(toSummarize);
         if (summary == null || summary.isBlank()) {
-            return fallback.run(sessionId, context, targetTokens);
+            return fallback.run(sessionId, context, targetTokens, tokenizerEncoding);
         }
 
         List<SessionMessage> output = new ArrayList<>();
@@ -52,8 +52,8 @@ public final class SummarizeCompactionStrategy implements CompactionStrategy {
         output.add(new SessionMessage.SummaryMsg(summary.trim(), "session:" + sessionId));
         output.addAll(recent);
 
-        if (SessionTokenEstimator.estimate(output) > targetTokens) {
-            return fallback.run(sessionId, output, targetTokens);
+        if (SessionTokenEstimator.estimate(output, tokenizerEncoding) > targetTokens) {
+            return fallback.run(sessionId, output, targetTokens, tokenizerEncoding);
         }
         return output;
     }

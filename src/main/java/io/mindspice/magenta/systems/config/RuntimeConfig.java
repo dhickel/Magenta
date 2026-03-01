@@ -1,5 +1,6 @@
 package io.mindspice.magenta.systems.config;
 
+import com.knuddels.jtokkit.api.EncodingType;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonLocation;
@@ -13,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +37,7 @@ public record RuntimeConfig(
             .findAndRegisterModules()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, true);
     private static final Path DEFAULT_PATH = Path.of("configs", "magenta.yaml");
+    private static final String DEFAULT_TOKENIZER_ENCODING = "cl100k_base";
 
     public RuntimeConfig {
         modelsById = Map.copyOf(modelsById);
@@ -104,10 +107,12 @@ public record RuntimeConfig(
     private static Map<String, ModelConfig> loadModels(Path root, List<String> patterns) {
         List<Path> files = resolveIncludes(root, patterns);
         Map<String, ModelConfig> output = new LinkedHashMap<>();
+        Map<String, Path> sourcesById = new HashMap<>();
         for (Path file : files) {
             try {
                 ModelConfig cfg = MAPPER.readValue(file.toFile(), ModelConfig.class);
-                output.put(cfg.id(), cfg);
+                validateTokenizerEncoding(cfg.id(), cfg.tokenizerEncodingOrDefault());
+                putUniqueOrThrow("model", cfg.id(), cfg, file, output, sourcesById);
             } catch (JsonProcessingException e) {
                 throw parseException(file, e);
             } catch (IOException e) {
@@ -120,10 +125,11 @@ public record RuntimeConfig(
     private static Map<String, AgentConfig> loadAgents(Path root, List<String> patterns) {
         List<Path> files = resolveIncludes(root, patterns);
         Map<String, AgentConfig> output = new LinkedHashMap<>();
+        Map<String, Path> sourcesById = new HashMap<>();
         for (Path file : files) {
             try {
                 AgentConfig cfg = MAPPER.readValue(file.toFile(), AgentConfig.class);
-                output.put(cfg.id(), cfg);
+                putUniqueOrThrow("agent", cfg.id(), cfg, file, output, sourcesById);
             } catch (JsonProcessingException e) {
                 throw parseException(file, e);
             } catch (IOException e) {
@@ -136,6 +142,7 @@ public record RuntimeConfig(
     private static Map<String, String> loadPrompts(Path root, List<String> patterns) {
         List<Path> files = resolveIncludes(root, patterns);
         Map<String, String> output = new LinkedHashMap<>();
+        Map<String, Path> sourcesById = new HashMap<>();
         Path promptsRoot = root.resolve("prompts").normalize();
 
         for (Path file : files) {
@@ -144,12 +151,34 @@ public record RuntimeConfig(
                     ? toPromptId(promptsRoot.relativize(normalized))
                     : toPromptId(root.relativize(normalized));
             try {
-                output.put(id, Files.readString(file));
+                putUniqueOrThrow("prompt", id, Files.readString(file), file, output, sourcesById);
             } catch (IOException e) {
                 throw new IllegalStateException("Failed to read prompt: " + file, e);
             }
         }
         return output;
+    }
+
+    private static <T> void putUniqueOrThrow(
+            String type,
+            String id,
+            T value,
+            Path sourceFile,
+            Map<String, T> output,
+            Map<String, Path> sourcesById
+    ) {
+        if (id == null || id.isBlank()) {
+            throw new IllegalStateException("Invalid " + type + " id in " + sourceFile.toAbsolutePath() + ": blank or missing");
+        }
+
+        Path prior = sourcesById.putIfAbsent(id, sourceFile.toAbsolutePath());
+        if (prior != null) {
+            throw new IllegalStateException(
+                    "Duplicate " + type + " id '" + id + "' in "
+                            + prior + " and " + sourceFile.toAbsolutePath()
+            );
+        }
+        output.put(id, value);
     }
 
     private static String toPromptId(Path relativePath) {
@@ -189,6 +218,18 @@ public record RuntimeConfig(
                 .map(AgentConfig::id)
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("No enabled agents found in configs/agents"));
+    }
+
+    private static void validateTokenizerEncoding(String modelId, String tokenizerEncoding) {
+        String normalized = tokenizerEncoding.trim().replace('-', '_').toUpperCase();
+        try {
+            EncodingType.valueOf(normalized);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalStateException(
+                    "Unsupported tokenizerEncoding for model '" + modelId + "': " + tokenizerEncoding,
+                    e
+            );
+        }
     }
 
     private static void validate(
@@ -241,6 +282,7 @@ public record RuntimeConfig(
             @JsonProperty("compactThreshold") int compactThreshold,
             @JsonProperty("temperature") double temperature,
             @JsonProperty("compactionStrategy") String compactionStrategy,
+            @JsonProperty("tokenizerEncoding") String tokenizerEncoding,
             @JsonProperty("supportsToolCalling") boolean supportsToolCalling,
             @JsonProperty("supportsStreaming") boolean supportsStreaming,
             @JsonProperty("enabled") boolean enabled
@@ -255,12 +297,18 @@ public record RuntimeConfig(
         public String compactionStrategyOrDefault() {
             return compactionStrategy == null || compactionStrategy.isBlank() ? "rolling_window" : compactionStrategy;
         }
+
+        public String tokenizerEncodingOrDefault() {
+            return tokenizerEncoding == null || tokenizerEncoding.isBlank() ? DEFAULT_TOKENIZER_ENCODING : tokenizerEncoding;
+        }
     }
 
     public record AgentConfig(
             @JsonProperty("id") String id,
             @JsonProperty("modelId") String modelId,
             @JsonProperty("promptIds") List<String> promptIds,
+            @JsonProperty("taskIds") List<String> taskIds,
+            @JsonProperty("workflowIds") List<String> workflowIds,
             @JsonProperty("toolIds") List<String> toolIds,
             @JsonProperty("enabled") boolean enabled
     ) {
@@ -268,6 +316,8 @@ public record RuntimeConfig(
             Objects.requireNonNull(id, "agent.id");
             Objects.requireNonNull(modelId, "agent.modelId");
             promptIds = promptIds == null ? List.of() : List.copyOf(promptIds);
+            taskIds = taskIds == null ? List.of() : List.copyOf(taskIds);
+            workflowIds = workflowIds == null ? List.of() : List.copyOf(workflowIds);
             toolIds = toolIds == null ? List.of() : List.copyOf(toolIds);
         }
     }
@@ -276,26 +326,76 @@ public record RuntimeConfig(
     private static final class RootDocument {
         @JsonProperty("instance")
         private InstanceConfig instance;
+        @JsonProperty("security")
+        private SecurityConfig security;
         @JsonProperty("models")
         private IncludeSet models;
         @JsonProperty("agents")
         private IncludeSet agents;
         @JsonProperty("prompts")
         private IncludeSet prompts;
+        @JsonProperty("tasks")
+        private IncludeSet tasks;
+        @JsonProperty("workflows")
+        private IncludeSet workflows;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = false)
     private static final class InstanceConfig {
+        @JsonProperty("workspaceRoot")
+        private String workspaceRoot;
+        @JsonProperty("dataRoot")
+        private String dataRoot;
+        @JsonProperty("debugJsonl")
+        private String debugJsonl;
+        @JsonProperty("localDevMode")
+        private Boolean localDevMode;
         @JsonProperty("baseAgentId")
         private String baseAgentId;
         @JsonProperty("compactionAgentId")
         private String compactionAgentId;
         @JsonProperty("maxTurns")
         private Integer maxTurns;
+        @JsonProperty("maxToolOutputBytes")
+        private Integer maxToolOutputBytes;
+        @JsonProperty("maxFileReadLines")
+        private Integer maxFileReadLines;
+        @JsonProperty("maxSqlRows")
+        private Integer maxSqlRows;
+        @JsonProperty("maxEssenceBodyBytes")
+        private Integer maxEssenceBodyBytes;
 
         private String baseAgentId() { return baseAgentId; }
         private String compactionAgentId() { return compactionAgentId; }
         private Integer maxTurns() { return maxTurns; }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    private static final class SecurityConfig {
+        @JsonProperty("mode")
+        private String mode;
+        @JsonProperty("devYoloOverride")
+        private Boolean devYoloOverride;
+        @JsonProperty("allowedPaths")
+        private List<String> allowedPaths;
+        @JsonProperty("allowedCommands")
+        private List<String> allowedCommands;
+        @JsonProperty("allowedTools")
+        private List<String> allowedTools;
+        @JsonProperty("rules")
+        private List<SecurityRuleConfig> rules;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    private static final class SecurityRuleConfig {
+        @JsonProperty("id")
+        private String id;
+        @JsonProperty("action")
+        private String action;
+        @JsonProperty("commandPrefix")
+        private List<String> commandPrefix;
+        @JsonProperty("reason")
+        private String reason;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = false)

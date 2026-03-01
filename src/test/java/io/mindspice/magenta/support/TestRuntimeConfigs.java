@@ -22,6 +22,7 @@ public final class TestRuntimeConfigs {
                 500,
                 0.0,
                 "rolling_window",
+                "cl100k_base",
                 false,
                 false,
                 true
@@ -31,6 +32,8 @@ public final class TestRuntimeConfigs {
                 "agent-default",
                 "model-default",
                 List.of("base.system", "agents.default"),
+                List.of(),
+                List.of(),
                 List.of("read_file"),
                 true
         );
@@ -39,6 +42,8 @@ public final class TestRuntimeConfigs {
                 "agent-compaction",
                 "model-default",
                 List.of("base.system"),
+                List.of(),
+                List.of(),
                 List.of(),
                 true
         );

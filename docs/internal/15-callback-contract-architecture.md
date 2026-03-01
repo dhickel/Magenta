@@ -55,14 +55,16 @@ Dispatch subtypes:
 
 ## Turn-path callback behavior
 
-`Magenta.runSessionTurn(...)`:
+Router-backed submit path:
 
-1. resumes session
-2. compacts context if needed
-3. emits input callback (`onMessageInputHook` or `onEventInputHook`)
-4. appends persisted input message (`UserMsg` or `InboundMsg`)
-5. emits message callbacks for appended message
-6. runs model turn loop
+1. `SessionInputRouter` validates liveness and policy
+2. `SessionManager` submits approved input to internal turn executor
+3. turn executor resumes session
+4. compacts context if needed
+5. emits input callback (`onMessageInputHook` or `onEventInputHook`)
+6. appends persisted input message (`UserMsg` or `InboundMsg`)
+7. emits message callbacks for appended message
+8. runs model turn loop
 
 `ModelRunner.runTurn(...)`:
 
@@ -74,17 +76,16 @@ Dispatch subtypes:
 
 ## Error semantics
 
-`onErrorHook` is emitted in `Magenta.runSessionTurn(...)` catch handling:
+`onErrorHook` is emitted from `SessionManager` ingress submit catch handling:
 
-1. any throwable from resume/compaction/model/tool path is caught
+1. any throwable from internal turn execution path is caught
 2. `sessionConfig.onErrorHook` is called once with the throwable
-3. original throwable is rethrown
+3. throwable is swallowed for external consumer/router ingress
 
 Important behavior:
 
 - callback is notification-only
-- runtime does not swallow the original failure
-- caller can still apply top-level error policy around runtime calls
+- router/consumer ingress does not throw external exceptions
 
 ## Defaults
 

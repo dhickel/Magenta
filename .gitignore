@@ -36,3 +36,6 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+# Internal development workspace artifacts (local-only)
+.internal-dev/

@@ -50,11 +50,13 @@ Config Loaded -> Runtime Constructed -> Session Started/Resumed/Forked
 - Model transport failures surface as exceptions.
 - Tool bridge failures surface as exceptions unless caller guards bridge logic.
 - Turn path exceptions emit `SessionConfig.onError` before propagation.
+- External routed input uses `SessionInputRouter` and reports inactive/policy-denied outcomes without throwing by default.
 
 ## Extension points
 
 - `SessionConfig` callbacks for output/tool integration.
-- `Magenta` route policy registry for external input fanout.
+- `Magenta` route registry stores `SessionInputRouter` adapters for external input fanout.
+- `SessionInputRouter` report callbacks (`ALL`/`FAILURE`/`ERROR`) for routing observability.
 - Compaction strategy selection via `ModelConfig.compactionStrategy`.
 - Summarizer function injection from runtime/model path into compaction strategy.
 
@@ -69,5 +71,5 @@ Transport owns provider protocol execution.
 ## Known constraints
 
 - In-memory session manager only.
-- Compaction threshold/token counting is heuristic.
+- Compaction threshold/token counting depends on configured tokenizer encoding (`jtokkit`, default `cl100k_base`).
 - Security enforcement is not centralized in this implementation slice.

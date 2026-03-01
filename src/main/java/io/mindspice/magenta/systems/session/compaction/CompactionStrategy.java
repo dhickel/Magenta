@@ -7,7 +7,7 @@ import java.util.UUID;
 import java.util.function.Function;
 
 public interface CompactionStrategy {
-    List<SessionMessage> run(UUID sessionId, List<SessionMessage> context, int targetTokens);
+    List<SessionMessage> run(UUID sessionId, List<SessionMessage> context, int targetTokens, String tokenizerEncoding);
 
     static CompactionStrategy forName(String name, Function<List<SessionMessage>, String> summarizer) {
         if ("summarize".equalsIgnoreCase(name)) {

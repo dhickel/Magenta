@@ -38,16 +38,18 @@ Core design rule: prefer data and callback seams over class proliferation.
 - `resumeSession(sessionId)`
 - `forkSession(sourceSessionId, alias)`
 - `forkSession(sourceSessionId, alias, sessionConfigOverride)`
-- `runSessionTurn(sessionId, sessionInput)`
-- `runUserTurn(sessionId, userInput)`
+- `sessionInputConsumer(sessionId, policy, reportLevel, callback)`
+- `registerSessionRoute(sessionId, policy, reportLevel, callback)`
+- `publishToSessions(input)`
+- `closeSession(sessionId)`
 
 Lifecycle guarantees:
 
 - `start*` validates enabled agent/model references and creates a new UUID session.
 - `resume` is UUID-only and in-memory only.
 - `fork` clones context into a new session ID; config inherits unless override provided.
-- `runSessionTurn` resumes session first, compacts if needed, appends persisted input, then runs model turn loop.
-- `runUserTurn` is a compatibility helper that delegates to `runSessionTurn` with `SessionInput.UserMessageInput`.
+- external input must flow through router-backed consumers.
+- router ingress is non-throwing; routing decisions are reported via callback and execution errors go to `SessionConfig.onError`.
 
 ## Callback contract (`SessionConfig`)
 
@@ -76,14 +78,16 @@ Default behavior:
 
 ## Turn execution behavior
 
-`runSessionTurn` flow:
+Router-backed turn flow:
 
-1. `SessionManager.resume(sessionId)`
+1. `SessionInputRouter` validates session liveness and route policy.
+2. `SessionManager` submits to internal turn executor.
+3. Internal turn executor resumes session.
 2. `ContextManager.compactIfNeeded(...)`
 3. Emit input callback (`onMessageInput` or `onEventInput`)
 4. Append persisted input (`UserMsg` for `SessionInput.UserMessageInput`, `InboundMsg` otherwise)
 5. `ModelRunner.runTurn(session, maxTurns)`
-6. On any throwable, invoke `SessionConfig.onError` and rethrow.
+6. On any throwable, invoke `SessionConfig.onError` and swallow in external ingress path.
 
 `ModelRunner.runTurn` flow:
 
@@ -122,10 +126,11 @@ Summarize fallback cases:
 
 - Session registry is in-memory only.
 - `ContextManager.storeContext(...)` is currently a no-op seam.
-- Token estimation is heuristic (`length / 4` minimum 1), not tokenizer-accurate.
+- Token estimation uses `jtokkit` with model `tokenizerEncoding` (default `cl100k_base`).
 - Only Ollama transport is implemented.
 - Tool loop is callback-owned policy; runtime does not enforce authorization.
-- Session route registry is in-memory only.
+- Session route registry is in-memory only and stores `SessionInputRouter` wrappers.
+- Routed input adapters can outlive session lifecycle references; inactive-session inputs are reported and dropped.
 
 ## Integration examples
 

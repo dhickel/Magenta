@@ -12,6 +12,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.BiFunction;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 public final class SessionManager {
@@ -93,14 +94,60 @@ public final class SessionManager {
         sessionsById.remove(sessionId);
     }
 
-    public Consumer<SessionInput.MessageInput> messageConsumerFor(UUID sessionId, SessionRoutePolicy policy) {
-        SessionRoutePolicy effectivePolicy = policy == null ? SessionRoutePolicy.defaults() : policy;
-        return input -> submitIfAllowed(sessionId, effectivePolicy, input);
+    public Consumer<SessionInput.MessageInput> messageConsumerFor(
+            UUID sessionId,
+            SessionRoutePolicy policy,
+            InputRouteReportLevel reportLevel,
+            Consumer<InputRouteReport> reportCallback
+    ) {
+        SessionInputRouter router = inputRouterFor(
+                sessionId,
+                policy,
+                reportLevel,
+                reportCallback
+        );
+        return input -> router.accept(input);
     }
 
-    public Consumer<SessionInput.EventInput> eventConsumerFor(UUID sessionId, SessionRoutePolicy policy) {
-        SessionRoutePolicy effectivePolicy = policy == null ? SessionRoutePolicy.defaults() : policy;
-        return input -> submitIfAllowed(sessionId, effectivePolicy, input);
+    public Consumer<SessionInput.EventInput> eventConsumerFor(
+            UUID sessionId,
+            SessionRoutePolicy policy,
+            InputRouteReportLevel reportLevel,
+            Consumer<InputRouteReport> reportCallback
+    ) {
+        SessionInputRouter router = inputRouterFor(
+                sessionId,
+                policy,
+                reportLevel,
+                reportCallback
+        );
+        return input -> router.accept(input);
+    }
+
+    public SessionInputRouter inputRouterFor(
+            UUID sessionId,
+            SessionRoutePolicy policy,
+            InputRouteReportLevel reportLevel,
+            Consumer<InputRouteReport> reportCallback
+    ) {
+        Session session = resume(sessionId);
+        SessionHandle handle = new SessionHandle(session.sessionId(), isActiveSupplier(session.sessionId()));
+        return new SessionInputRouter(
+                handle,
+                Objects.requireNonNull(policy, "policy"),
+                input -> submit(session.sessionId(), input),
+                Objects.requireNonNull(reportCallback, "reportCallback"),
+                Objects.requireNonNull(reportLevel, "reportLevel")
+        );
+    }
+
+    public SessionHandle handleFor(UUID sessionId) {
+        Session session = resume(sessionId);
+        return new SessionHandle(session.sessionId(), isActiveSupplier(session.sessionId()));
+    }
+
+    public boolean isActive(UUID sessionId) {
+        return sessionId != null && sessionsById.containsKey(sessionId);
     }
 
     private RuntimeConfig.AgentConfig requireAgent(String agentId) {
@@ -145,18 +192,37 @@ public final class SessionManager {
         return alias.trim();
     }
 
-    private void submitIfAllowed(UUID sessionId, SessionRoutePolicy policy, SessionInput input) {
-        resume(sessionId);
-        if (!allows(policy, input)) {
-            return;
+    private void submit(UUID sessionId, SessionInput input) {
+        Session session = null;
+        try {
+            session = resume(sessionId);
+            if (input == null) {
+                return;
+            }
+            turnSubmitter.apply(sessionId, input);
+        } catch (IllegalStateException e) {
+            String message = e.getMessage();
+            if (message != null && message.contains("Session not found")) {
+                throw e;
+            }
+            emitOnError(session, e);
+        } catch (Throwable throwable) {
+            emitOnError(session, throwable);
         }
-        turnSubmitter.apply(sessionId, input);
     }
 
-    private boolean allows(SessionRoutePolicy policy, SessionInput input) {
-        if (input == null) {
-            return false;
+    private BooleanSupplier isActiveSupplier(UUID sessionId) {
+        return () -> isActive(sessionId);
+    }
+
+    private void emitOnError(Session session, Throwable throwable) {
+        if (session == null) {
+            return;
         }
-        return policy.allows(input);
+        try {
+            session.sessionConfig().onErrorHook().accept(throwable);
+        } catch (Throwable ignored) {
+            // Secondary callback failures must not escape external ingress path.
+        }
     }
 }

@@ -8,12 +8,11 @@ Keep history mutation and token-budget control explicit, deterministic, and isol
 
 - `Context`: synchronized append/replace state container.
 - `ContextManager`: create/copy/load/store contexts and trigger compaction.
-- `SessionTokenEstimator`: heuristic token estimate.
+- `SessionTokenEstimator`: tokenizer-backed token estimate (`jtokkit`) using model `tokenizerEncoding` (default `cl100k_base`).
 - `CompactionStrategy`: strategy contract and selection.
 
 ## Explicit non-goals
 
-- tokenizer-accurate token counting
 - automatic persistence in this slice
 - compaction side effects outside context replacement
 
@@ -53,10 +52,9 @@ over-threshold context
 ## Extension points
 
 - Add alternative `CompactionStrategy` implementations and wire via `forName(...)`.
-- Replace estimator when tokenizer-backed estimator is introduced.
 - Implement durable persistence behind `storeContext`/`loadContext` seams.
 
 ## Known constraints
 
-- Heuristic token estimator can mis-size real provider context usage.
+- Tokenizer accuracy depends on selecting the model-appropriate encoding.
 - `CompactionStrategy.forName(...)` defaults unknown names to rolling-window instead of failing.

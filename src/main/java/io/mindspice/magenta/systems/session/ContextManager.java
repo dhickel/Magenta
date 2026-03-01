@@ -44,13 +44,14 @@ public final class ContextManager {
             Function<List<SessionMessage>, String> summarizer
     ) {
         List<SessionMessage> snapshot = context.snapshot();
-        int tokens = SessionTokenEstimator.estimate(snapshot);
+        String tokenizerEncoding = modelConfig.tokenizerEncodingOrDefault();
+        int tokens = SessionTokenEstimator.estimate(snapshot, tokenizerEncoding);
         if (tokens <= modelConfig.compactThreshold()) {
             return;
         }
 
         CompactionStrategy strategy = CompactionStrategy.forName(modelConfig.compactionStrategyOrDefault(), summarizer);
-        List<SessionMessage> compacted = strategy.run(sessionId, snapshot, modelConfig.compactThreshold());
+        List<SessionMessage> compacted = strategy.run(sessionId, snapshot, modelConfig.compactThreshold(), tokenizerEncoding);
         context.replaceAll(compacted);
     }
 }

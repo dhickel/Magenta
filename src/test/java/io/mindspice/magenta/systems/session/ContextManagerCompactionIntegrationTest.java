@@ -31,6 +31,7 @@ class ContextManagerCompactionIntegrationTest {
                 60,
                 0.0,
                 "summarize",
+                "cl100k_base",
                 false,
                 false,
                 true
@@ -76,6 +77,7 @@ class ContextManagerCompactionIntegrationTest {
                 60,
                 0.0,
                 "summarize",
+                "cl100k_base",
                 false,
                 false,
                 true
@@ -91,7 +93,7 @@ class ContextManagerCompactionIntegrationTest {
     }
 
     @Test
-    void rollingWindowCanExceedTargetTokensWhenAssistantContainsLargeToolArgs() {
+    void rollingWindowRespectsTargetTokensWhenAssistantContainsLargeToolArgs() {
         ContextManager contextManager = new ContextManager();
         Context context = new Context();
         context.append(new SessionMessage.SystemMsg("system"));
@@ -110,12 +112,13 @@ class ContextManagerCompactionIntegrationTest {
                 5,
                 0.0,
                 "rolling_window",
+                "cl100k_base",
                 false,
                 false,
                 true
         );
 
         contextManager.compactIfNeeded(UUID.randomUUID(), context, modelConfig, messages -> "unused");
-        assertThat(SessionTokenEstimator.estimate(context.snapshot())).isGreaterThan(5);
+        assertThat(SessionTokenEstimator.estimate(context.snapshot())).isLessThanOrEqualTo(5);
     }
 }

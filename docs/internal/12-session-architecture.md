@@ -10,6 +10,7 @@ Represent each conversation as explicit session state with clear lifecycle opera
 - `Session`: immutable session envelope with mutable `Context` reference.
 - `SessionConfig`: runtime callback contract for integration behavior.
 - `SessionMessage`: sealed ADT for message history.
+- `SessionHandle` + `SessionInputRouter`: external input routing wrapper with liveness/policy checks.
 
 ## Explicit non-goals
 
@@ -52,9 +53,10 @@ fork(sessionId, alias, overrideConfig?)
 ## Extension points
 
 - `SessionConfig` callback wiring for UI/eventing/tool execution.
+- `SessionInputRouter` report callback for input route decisions (`APPROVED`, `DENIED_POLICY`, `SESSION_INACTIVE`).
 - Future persistence can be attached via context load/store seams.
 
 ## Known constraints
 
-- `SessionConfig.onError` is emitted from `Magenta.runSessionTurn` and errors still propagate.
+- `SessionConfig.onError` is emitted from SessionManager submission handling when internal turn execution fails.
 - Session registry lifetime matches `Magenta` process lifetime.
