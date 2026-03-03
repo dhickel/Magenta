@@ -217,6 +217,7 @@ Tool execution contract:
 - Never expose mock/placeholder tools as active production capability.
 - Never split execution paths around security.
 - Never favor abstraction-first rewrites over stable behavior contracts.
+- Never reshape production APIs or architecture just to satisfy stale tests; update tests to reflect intentional code design.
 - Keep edit/search/replace tooling harness-verified and deterministic.
 - Preserve prior SQL robustness lessons (CTE-aware classification and quote/comment-aware statement splitting).
 

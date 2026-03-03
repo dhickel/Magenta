@@ -6,8 +6,10 @@ import io.mindspice.magenta.runtime.routing.InputRoutingEvent;
 import io.mindspice.magenta.runtime.routing.OutputRoutePolicy;
 import io.mindspice.magenta.runtime.routing.OutputRoutingEvent;
 import io.mindspice.magenta.runtime.session.config.SessionConfig;
+import io.mindspice.magenta.runtime.session.config.SessionParams;
 import io.mindspice.magenta.runtime.session.SessionHandle;
 import io.mindspice.magenta.runtime.session.SessionInput;
+import io.mindspice.magenta.runtime.tools.ToolResult;
 import io.mindspice.magenta.support.TestRuntimeConfigs;
 import org.junit.jupiter.api.Test;
 
@@ -27,7 +29,11 @@ class MagentaRoutingIntegrationTest {
 
         SessionHandle started = magenta.startBaseSession(
                 "started",
-                SessionConfig.builder().streamingEnabled(false).build()
+                new SessionConfig(
+                        new SessionParams(false, true, false),
+                        request -> ToolResult.notHandled(request.toolCall()),
+                        ignored -> {}
+                )
         );
         SessionHandle resumed = magenta.resumeSession(started.sessionId());
         SessionHandle forked = magenta.forkSession(started.sessionId(), "forked");
@@ -54,7 +60,14 @@ class MagentaRoutingIntegrationTest {
     @Test
     void inputRouteUpdateReplacesPolicyAndDenialsAreReported() {
         Magenta magenta = new Magenta(TestRuntimeConfigs.basicRuntimeConfig());
-        SessionHandle handle = magenta.startBaseSession("route-update", SessionConfig.defaults());
+        SessionHandle handle = magenta.startBaseSession(
+                "route-update",
+                new SessionConfig(
+                        SessionParams.ofStreaming(true),
+                        request -> ToolResult.notHandled(request.toolCall()),
+                        ignored -> {}
+                )
+        );
 
         List<InputRoutingEvent> reports = new ArrayList<>();
         magenta.registerInputRoute(handle, InputRoutePolicy.defaults(), InputRoutingEvent.Level.ALL, reports::add);
@@ -65,7 +78,7 @@ class MagentaRoutingIntegrationTest {
                 reports::add
         );
 
-        magenta.getMessageInputConsumer(handle).accept(new SessionInput.UserMessageInput("deny", "user", "", java.util.Map.of(), true));
+        magenta.getMessageInputConsumer(handle).accept(new SessionInput.UserMsg("deny", "user", true));
 
         assertThat(reports)
                 .extracting(InputRoutingEvent::outcome)
@@ -75,7 +88,14 @@ class MagentaRoutingIntegrationTest {
     @Test
     void closeSessionPrunesRoutesAndBlocksFurtherRouteRegistrationOnInactiveHandle() {
         Magenta magenta = new Magenta(TestRuntimeConfigs.basicRuntimeConfig());
-        SessionHandle handle = magenta.startBaseSession("close-prune", SessionConfig.defaults());
+        SessionHandle handle = magenta.startBaseSession(
+                "close-prune",
+                new SessionConfig(
+                        SessionParams.ofStreaming(true),
+                        request -> ToolResult.notHandled(request.toolCall()),
+                        ignored -> {}
+                )
+        );
 
         magenta.registerInputRoute(handle, InputRoutePolicy.defaults(), InputRoutingEvent.Level.ERROR, event -> {});
         UUID routeId = magenta.registerOutputRoute(handle, OutputRoutePolicy.defaults(), event -> {});
@@ -97,7 +117,11 @@ class MagentaRoutingIntegrationTest {
         Magenta magenta = new Magenta(TestRuntimeConfigs.basicRuntimeConfig());
         SessionHandle handle = magenta.startBaseSession(
                 "no-stream",
-                SessionConfig.builder().streamingEnabled(false).build()
+                new SessionConfig(
+                        new SessionParams(false, true, false),
+                        request -> ToolResult.notHandled(request.toolCall()),
+                        ignored -> {}
+                )
         );
 
         assertThatThrownBy(() -> magenta.registerOutputRoute(

@@ -10,11 +10,13 @@ import io.mindspice.magenta.runtime.routing.OutputRoutePolicy;
 import io.mindspice.magenta.runtime.routing.OutputRoutingEvent;
 import io.mindspice.magenta.runtime.routing.SessionRouter;
 import io.mindspice.magenta.runtime.session.Session;
+import io.mindspice.magenta.runtime.session.config.SessionParams;
 import io.mindspice.magenta.runtime.session.config.SessionConfig;
 import io.mindspice.magenta.runtime.session.SessionHandle;
 import io.mindspice.magenta.runtime.session.SessionInput;
 import io.mindspice.magenta.runtime.session.SessionManager;
 import io.mindspice.magenta.runtime.session.SessionMessage;
+import io.mindspice.magenta.runtime.tools.ToolResult;
 
 import java.util.Objects;
 import java.util.UUID;
@@ -40,7 +42,7 @@ public final class Magenta {
     }
 
     public SessionHandle startBaseSession(String alias) {
-        return startBaseSession(alias, SessionConfig.defaults());
+        return startBaseSession(alias, defaultSessionConfig());
     }
 
     public SessionHandle startBaseSession(String alias, SessionConfig sessionConfig) {
@@ -49,7 +51,7 @@ public final class Magenta {
     }
 
     public SessionHandle startSession(String agentId, String alias) {
-        return startSession(agentId, alias, SessionConfig.defaults());
+        return startSession(agentId, alias, defaultSessionConfig());
     }
 
     public SessionHandle startSession(String agentId, String alias, SessionConfig sessionConfig) {
@@ -130,22 +132,22 @@ public final class Magenta {
 
     private SessionMessage toSessionMessage(SessionInput input) {
         return switch (input) {
-            case SessionInput.UserMessageInput userMessageInput -> new SessionMessage.UserMsg(userMessageInput.text());
+            case SessionInput.UserMsg userMessage -> new SessionMessage.UserMsg(userMessage.text());
             case SessionInput.MessageInput messageInput -> new SessionMessage.InboundMsg(
                     "message",
                     messageInput.kind().name(),
                     messageInput.sourceId(),
                     messageInput.text(),
-                    messageInput.correlationId(),
-                    messageInput.metadata()
+                    "",
+                    java.util.Map.of()
             );
             case SessionInput.EventInput eventInput -> new SessionMessage.InboundMsg(
                     "event",
                     eventInput.kind().name(),
                     eventInput.sourceId(),
                     eventInput.text(),
-                    eventInput.correlationId(),
-                    eventInput.metadata()
+                    "",
+                    java.util.Map.of()
             );
         };
     }
@@ -195,7 +197,8 @@ public final class Magenta {
             sessionRouter.emit(handle, new OutputRoutingEvent.MessageAppended(message, "session-context", java.util.Set.of("input")));
         }
 
-        boolean shouldStream = session.sessionConfig().streamingEnabled() && sessionRouter.hasPartialTokenListeners(handle);
+        boolean shouldStream = session.sessionConfig().params().streamingEnabled()
+                && sessionRouter.hasPartialTokenListeners(handle);
         return modelRunner.runTurn(
                 session,
                 runtimeConfig.maxTurns(),
@@ -211,6 +214,14 @@ public final class Magenta {
                                 messages
                         )
                 )
+        );
+    }
+
+    private SessionConfig defaultSessionConfig() {
+        return new SessionConfig(
+                SessionParams.ofStreaming(true),
+                request -> ToolResult.notHandled(request.toolCall()),
+                ignored -> {}
         );
     }
 }

@@ -21,22 +21,22 @@ class SessionRouterTest {
     @Test
     void inputRouteReplacesPriorPolicyAndReportsDenials() {
         UUID sessionId = UUID.randomUUID();
-        SessionHandle handle = new SessionHandle(sessionId, () -> true, new SessionParams(false, true, false, true));
+        SessionHandle handle = new SessionHandle(sessionId, () -> true, new SessionParams(false, true, true));
         List<SessionInput> submitted = new ArrayList<>();
         List<InputRoutingEvent> reports = new ArrayList<>();
 
         SessionRouter router = new SessionRouter(id -> id.equals(sessionId) ? handle : null, (id, input) -> submitted.add(input));
         router.registerInputRoute(handle, InputRoutePolicy.defaults(), InputRoutingEvent.Level.ALL, reports::add);
 
-        router.getMessageInputConsumer(handle).accept(new SessionInput.UserMessageInput("u-1", "user", "", java.util.Map.of(), true));
+        router.getMessageInputConsumer(handle).accept(new SessionInput.UserMsg("u-1", "user", true));
         router.updateInputRoute(
                 handle,
                 new InputRoutePolicy(Set.of(SessionInput.MessageInputKind.BUS_MESSAGE), Set.of(), Set.of("bus-A")),
                 InputRoutingEvent.Level.ALL,
                 reports::add
         );
-        router.getMessageInputConsumer(handle).accept(new SessionInput.UserMessageInput("u-2", "user", "", java.util.Map.of(), true));
-        router.getMessageInputConsumer(handle).accept(new SessionInput.BusMessageInput("b-1", "bus-A", "", java.util.Map.of(), true));
+        router.getMessageInputConsumer(handle).accept(new SessionInput.UserMsg("u-2", "user", true));
+        router.getMessageInputConsumer(handle).accept(new SessionInput.AgentMsg("b-1", "bus-A", true));
 
         assertThat(submitted).hasSize(2);
         assertThat(submitted.get(0).text()).isEqualTo("u-1");
@@ -49,7 +49,7 @@ class SessionRouterTest {
     @Test
     void streamingDisabledSessionRejectsPartialRoute() {
         UUID sessionId = UUID.randomUUID();
-        SessionHandle handle = new SessionHandle(sessionId, () -> true, new SessionParams(false, true, false, false));
+        SessionHandle handle = new SessionHandle(sessionId, () -> true, new SessionParams(false, true, false));
         SessionRouter router = new SessionRouter(id -> id.equals(sessionId) ? handle : null, (id, input) -> {});
 
         assertThatThrownBy(() -> router.registerOutputRoute(
@@ -63,7 +63,7 @@ class SessionRouterTest {
     @Test
     void outputPolicyFiltersByKindSourceAndTag() {
         UUID sessionId = UUID.randomUUID();
-        SessionHandle handle = new SessionHandle(sessionId, () -> true, new SessionParams(false, true, false, true));
+        SessionHandle handle = new SessionHandle(sessionId, () -> true, new SessionParams(false, true, true));
         List<OutputRoutingEvent> received = new ArrayList<>();
 
         SessionRouter router = new SessionRouter(id -> id.equals(sessionId) ? handle : null, (id, input) -> {});
@@ -91,7 +91,7 @@ class SessionRouterTest {
     @Test
     void listenerFailureDoesNotPreventOtherListeners() {
         UUID sessionId = UUID.randomUUID();
-        SessionHandle handle = new SessionHandle(sessionId, () -> true, new SessionParams(false, true, false, true));
+        SessionHandle handle = new SessionHandle(sessionId, () -> true, new SessionParams(false, true, true));
         AtomicInteger successCalls = new AtomicInteger();
         List<String> diagnostics = new ArrayList<>();
 
@@ -110,7 +110,7 @@ class SessionRouterTest {
     @Test
     void closePruneRemovesRoutesAndPreventsFurtherDelivery() {
         UUID sessionId = UUID.randomUUID();
-        SessionHandle handle = new SessionHandle(sessionId, () -> true, new SessionParams(false, true, false, true));
+        SessionHandle handle = new SessionHandle(sessionId, () -> true, new SessionParams(false, true, true));
         AtomicInteger outputs = new AtomicInteger();
 
         SessionRouter router = new SessionRouter(id -> id.equals(sessionId) ? handle : null, (id, input) -> {});

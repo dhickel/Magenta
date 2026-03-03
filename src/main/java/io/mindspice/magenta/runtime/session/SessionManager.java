@@ -4,6 +4,8 @@ import io.mindspice.magenta.runtime.config.RuntimeConfig;
 import io.mindspice.magenta.runtime.context.Context;
 import io.mindspice.magenta.runtime.context.ContextManager;
 import io.mindspice.magenta.runtime.session.config.SessionConfig;
+import io.mindspice.magenta.runtime.session.config.SessionParams;
+import io.mindspice.magenta.runtime.tools.ToolResult;
 
 import java.time.Instant;
 import java.util.Comparator;
@@ -52,7 +54,13 @@ public final class SessionManager {
                 model,
                 agent.toolIds(),
                 context,
-                sessionConfig == null ? SessionConfig.defaults() : sessionConfig,
+                sessionConfig == null
+                        ? new SessionConfig(
+                        SessionParams.ofStreaming(true),
+                        request -> ToolResult.notHandled(request.toolCall()),
+                        ignored -> {}
+                )
+                        : sessionConfig,
                 Instant.now()
         );
 
@@ -99,7 +107,7 @@ public final class SessionManager {
         return new SessionHandle(
                 session.sessionId(),
                 isActiveSupplier(session.sessionId()),
-                session.sessionConfig().toView()
+                session.sessionConfig().params()
         );
     }
 

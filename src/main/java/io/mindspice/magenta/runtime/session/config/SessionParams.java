@@ -6,10 +6,10 @@ public record SessionParams(
         boolean streamingEnabled
 ) {
     public static SessionParams ofBlocking(boolean toolsEnabled) {
-        return new SessionParams(true, toolsEnabled,false);
+        return new SessionParams(true, toolsEnabled, false);
     }
 
     public static SessionParams ofStreaming(boolean toolsEnabled) {
-        return new SessionParams(false, toolsEnabled, false);
+        return new SessionParams(false, toolsEnabled, true);
     }
 }

@@ -1,23 +1,19 @@
 package io.mindspice.magenta.runtime.session;
 
-import java.util.Map;
-
 public sealed interface SessionInput permits SessionInput.MessageInput, SessionInput.EventInput {
     String text();
     String sourceId();
-    String correlationId();
-    Map<String, String> metadata();
     boolean persist();
 
-    static SessionInput.UserMessageInput userMessage(String text) {
-        return new SessionInput.UserMessageInput(text, "user", "", Map.of(), true);
+    static UserMsg userMessage(String text) {
+        return new UserMsg(text, "user", true);
     }
 
-    sealed interface MessageInput extends SessionInput permits SessionInput.UserMessageInput, SessionInput.BusMessageInput {
+    sealed interface MessageInput extends SessionInput permits UserMsg, AgentMsg {
         MessageInputKind kind();
     }
 
-    sealed interface EventInput extends SessionInput permits SessionInput.SystemEventInput, SessionInput.TimerWakeEventInput {
+    sealed interface EventInput extends SessionInput permits SysEvent, WakeEvent {
         EventInputKind kind();
     }
 
@@ -31,18 +27,14 @@ public sealed interface SessionInput permits SessionInput.MessageInput, SessionI
         TIMER_WAKE
     }
 
-    record UserMessageInput(
+    record UserMsg(
             String text,
             String sourceId,
-            String correlationId,
-            Map<String, String> metadata,
             boolean persist
     ) implements MessageInput {
-        public UserMessageInput {
+        public UserMsg {
             text = text == null ? "" : text;
             sourceId = sourceId == null ? "user" : sourceId;
-            correlationId = correlationId == null ? "" : correlationId;
-            metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
         }
 
         @Override
@@ -51,18 +43,14 @@ public sealed interface SessionInput permits SessionInput.MessageInput, SessionI
         }
     }
 
-    record BusMessageInput(
+    record AgentMsg(
             String text,
             String sourceId,
-            String correlationId,
-            Map<String, String> metadata,
             boolean persist
     ) implements MessageInput {
-        public BusMessageInput {
+        public AgentMsg {
             text = text == null ? "" : text;
             sourceId = sourceId == null ? "" : sourceId;
-            correlationId = correlationId == null ? "" : correlationId;
-            metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
         }
 
         @Override
@@ -71,18 +59,14 @@ public sealed interface SessionInput permits SessionInput.MessageInput, SessionI
         }
     }
 
-    record SystemEventInput(
+    record SysEvent(
             String text,
             String sourceId,
-            String correlationId,
-            Map<String, String> metadata,
             boolean persist
     ) implements EventInput {
-        public SystemEventInput {
+        public SysEvent {
             text = text == null ? "" : text;
             sourceId = sourceId == null ? "system" : sourceId;
-            correlationId = correlationId == null ? "" : correlationId;
-            metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
         }
 
         @Override
@@ -91,18 +75,14 @@ public sealed interface SessionInput permits SessionInput.MessageInput, SessionI
         }
     }
 
-    record TimerWakeEventInput(
+    record WakeEvent(
             String text,
             String sourceId,
-            String correlationId,
-            Map<String, String> metadata,
             boolean persist
     ) implements EventInput {
-        public TimerWakeEventInput {
+        public WakeEvent {
             text = text == null ? "" : text;
             sourceId = sourceId == null ? "scheduler" : sourceId;
-            correlationId = correlationId == null ? "" : correlationId;
-            metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
         }
 
         @Override

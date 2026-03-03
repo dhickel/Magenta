@@ -49,7 +49,7 @@ public final class ModelRunner {
             ChatRequest request = ChatRequest.builder().messages(toChatMessages(session.context().snapshot())).build();
             RuntimeConfig.ModelConfig modelConfig = session.modelConfig();
 
-            boolean useBlocking = session.sessionConfig().blockingOnly()
+            boolean useBlocking = session.sessionConfig().params().blockingOnly()
                     || toolLoopActive
                     || !streamTokens
                     || !modelConfig.supportsStreaming();
@@ -72,7 +72,7 @@ public final class ModelRunner {
             safeOutputEmitter.accept(new OutputRoutingEvent.MessageAppended(assistant, "session-context", Set.of("assistant")));
             safeOutputEmitter.accept(new OutputRoutingEvent.AssistantFinal(latestText, "model", Set.of("assistant")));
 
-            if (toolCalls.isEmpty() || !session.sessionConfig().toolsEnabled()) {
+            if (toolCalls.isEmpty() || !session.sessionConfig().params().toolsEnabled()) {
                 return latestText;
             }
 
