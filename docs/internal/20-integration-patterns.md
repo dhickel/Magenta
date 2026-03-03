@@ -35,7 +35,7 @@ magenta.getMessageInputConsumer(handle).accept(SessionInput.userMessage("Summari
 magenta.registerOutputRoute(
         handle,
         OutputRoutePolicy.builder()
-                .eventKinds(Set.of(OutputRoutingEvent.Kind.FINAL))
+                .allowedOutputTags(Set.of(SessionOutput.FinalOutput.FILTER_TAG))
                 .build(),
         event -> uiBus.publish("assistant-final", event)
 );

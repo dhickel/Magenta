@@ -49,7 +49,7 @@ Symptoms:
 Checks:
 
 1. confirm output route is registered and not filtered out by `OutputRoutePolicy`
-2. for partial tokens, ensure session `streamingEnabled=true`
+2. for streamed output, ensure session `streamingEnabled=true`
 3. confirm listener callback is non-throwing
 
 ## Tool bridge failures

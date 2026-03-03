@@ -11,13 +11,13 @@ import dev.langchain4j.model.chat.response.ChatResponse;
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
 import io.mindspice.magenta.runtime.routing.OutputRoutingEvent;
 import io.mindspice.magenta.runtime.session.Session;
-import io.mindspice.magenta.runtime.session.SessionMessage;
+import io.mindspice.magenta.runtime.context.ContextElement;
+import io.mindspice.magenta.runtime.session.SessionOutput;
 import io.mindspice.magenta.runtime.tools.ToolRequest;
 import io.mindspice.magenta.runtime.tools.ToolResult;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.function.Consumer;
 
 public final class ModelRunner {
@@ -59,34 +59,34 @@ public final class ModelRunner {
                             modelConfig,
                             request,
                             token -> safeOutputEmitter.accept(
-                                    new OutputRoutingEvent.PartialToken(token, "model", Set.of("assistant"))
+                                    new OutputRoutingEvent(session.sessionId(), new SessionOutput.StreamedOutput(token))
                             )
                     );
 
             AiMessage aiMessage = response.aiMessage();
             latestText = safeText(aiMessage.text());
-            List<SessionMessage.ToolCall> toolCalls = toToolCalls(aiMessage.toolExecutionRequests());
+            List<ContextElement.ToolCall> toolCalls = toToolCalls(aiMessage.toolExecutionRequests());
 
-            SessionMessage.AssistantMsg assistant = new SessionMessage.AssistantMsg(latestText, toolCalls);
+            ContextElement.AssistantMsg assistant = new ContextElement.AssistantMsg(latestText, toolCalls);
             session.context().append(assistant);
-            safeOutputEmitter.accept(new OutputRoutingEvent.MessageAppended(assistant, "session-context", Set.of("assistant")));
-            safeOutputEmitter.accept(new OutputRoutingEvent.AssistantFinal(latestText, "model", Set.of("assistant")));
+            safeOutputEmitter.accept(new OutputRoutingEvent(session.sessionId(), new SessionOutput.ContextMessageOutput(assistant)));
+            safeOutputEmitter.accept(new OutputRoutingEvent(session.sessionId(), new SessionOutput.FinalOutput(latestText)));
 
             if (toolCalls.isEmpty() || !session.sessionConfig().params().toolsEnabled()) {
                 return latestText;
             }
 
-            for (SessionMessage.ToolCall toolCall : toolCalls) {
+            for (ContextElement.ToolCall toolCall : toolCalls) {
                 ToolRequest toolRequest = new ToolRequest(session.sessionId().toString(), session.agentId(), toolCall);
                 ToolResult toolResult = session.sessionConfig().toolBridge().apply(toolRequest);
-                SessionMessage.ToolMsg toolMessage = new SessionMessage.ToolMsg(
+                ContextElement.ToolMsg toolMessage = new ContextElement.ToolMsg(
                         toolResult.toolCallId(),
                         toolResult.toolName(),
                         safeText(toolResult.content())
                 );
                 session.context().append(toolMessage);
-                safeOutputEmitter.accept(new OutputRoutingEvent.MessageAppended(toolMessage, "session-context", Set.of("tool")));
-                safeOutputEmitter.accept(new OutputRoutingEvent.ToolMessageAppended(toolMessage, "tool-bridge", Set.of("tool")));
+                safeOutputEmitter.accept(new OutputRoutingEvent(session.sessionId(), new SessionOutput.ContextMessageOutput(toolMessage)));
+                safeOutputEmitter.accept(new OutputRoutingEvent(session.sessionId(), new SessionOutput.ToolMessageOutput(toolMessage)));
             }
 
             toolLoopActive = true;
@@ -95,24 +95,24 @@ public final class ModelRunner {
         return latestText;
     }
 
-    public String summarize(RuntimeConfig.ModelConfig modelConfig, String systemPrompt, List<SessionMessage> messages) {
+    public String summarize(RuntimeConfig.ModelConfig modelConfig, String systemPrompt, List<ContextElement> messages) {
         StringBuilder input = new StringBuilder();
         input.append("Summarize the following conversation context. Return summary text only.\n\n");
-        for (SessionMessage message : messages) {
+        for (ContextElement message : messages) {
             String role = switch (message) {
-                case SessionMessage.SystemMsg ignored -> "system";
-                case SessionMessage.UserMsg ignored -> "user";
-                case SessionMessage.AssistantMsg ignored -> "assistant";
-                case SessionMessage.ToolMsg ignored -> "tool";
-                case SessionMessage.SummaryMsg ignored -> "summary";
-                case SessionMessage.InboundMsg ignored -> "inbound";
+                case ContextElement.SystemMsg ignored -> "system";
+                case ContextElement.UserMsg ignored -> "user";
+                case ContextElement.AssistantMsg ignored -> "assistant";
+                case ContextElement.ToolMsg ignored -> "tool";
+                case ContextElement.SummaryMsg ignored -> "summary";
+                case ContextElement.InboundMsg ignored -> "inbound";
             };
             input.append(role).append(": ").append(message.content()).append("\n");
         }
 
-        List<SessionMessage> summaryMessages = List.of(
-                new SessionMessage.SystemMsg(systemPrompt),
-                new SessionMessage.UserMsg(input.toString())
+        List<ContextElement> summaryMessages = List.of(
+                new ContextElement.SystemMsg(systemPrompt),
+                new ContextElement.UserMsg(input.toString())
         );
 
         ChatRequest request = ChatRequest.builder().messages(toChatMessages(summaryMessages)).build();
@@ -120,14 +120,14 @@ public final class ModelRunner {
         return safeText(response.aiMessage().text());
     }
 
-    private List<ChatMessage> toChatMessages(List<SessionMessage> context) {
+    private List<ChatMessage> toChatMessages(List<ContextElement> context) {
         List<ChatMessage> output = new ArrayList<>();
-        for (SessionMessage message : context) {
+        for (ContextElement message : context) {
             switch (message) {
-                case SessionMessage.SystemMsg systemMsg -> output.add(SystemMessage.from(systemMsg.content()));
-                case SessionMessage.UserMsg userMsg -> output.add(UserMessage.from(userMsg.content()));
-                case SessionMessage.InboundMsg inboundMsg -> output.add(UserMessage.from(inboundMsg.content()));
-                case SessionMessage.AssistantMsg assistantMsg -> {
+                case ContextElement.SystemMsg systemMsg -> output.add(SystemMessage.from(systemMsg.content()));
+                case ContextElement.UserMsg userMsg -> output.add(UserMessage.from(userMsg.content()));
+                case ContextElement.InboundMsg inboundMsg -> output.add(UserMessage.from(inboundMsg.content()));
+                case ContextElement.AssistantMsg assistantMsg -> {
                     List<ToolExecutionRequest> requests = assistantMsg.toolCalls().stream()
                             .map(tc -> ToolExecutionRequest.builder().id(tc.id()).name(tc.name()).arguments(tc.argumentsJson()).build())
                             .toList();
@@ -137,22 +137,22 @@ public final class ModelRunner {
                         output.add(AiMessage.from(safeText(assistantMsg.content()), requests));
                     }
                 }
-                case SessionMessage.ToolMsg toolMsg -> output.add(ToolExecutionResultMessage.from(
+                case ContextElement.ToolMsg toolMsg -> output.add(ToolExecutionResultMessage.from(
                         toolMsg.toolCallId(),
                         toolMsg.toolName(),
                         safeText(toolMsg.content())
                 ));
-                case SessionMessage.SummaryMsg summaryMsg -> output.add(SystemMessage.from("Context Summary: " + summaryMsg.content()));
+                case ContextElement.SummaryMsg summaryMsg -> output.add(SystemMessage.from("Context Summary: " + summaryMsg.content()));
             }
         }
         return output;
     }
 
-    private List<SessionMessage.ToolCall> toToolCalls(List<ToolExecutionRequest> requests) {
+    private List<ContextElement.ToolCall> toToolCalls(List<ToolExecutionRequest> requests) {
         if (requests == null || requests.isEmpty()) {
             return List.of();
         }
-        return requests.stream().map(r -> new SessionMessage.ToolCall(r.id(), r.name(), r.arguments())).toList();
+        return requests.stream().map(r -> new ContextElement.ToolCall(r.id(), r.name(), r.arguments())).toList();
     }
 
     private String safeText(String text) {

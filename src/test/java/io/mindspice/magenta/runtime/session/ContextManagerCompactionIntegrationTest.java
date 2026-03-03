@@ -2,6 +2,7 @@ package io.mindspice.magenta.runtime.session;
 
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
 import io.mindspice.magenta.runtime.context.Context;
+import io.mindspice.magenta.runtime.context.ContextElement;
 import io.mindspice.magenta.runtime.context.ContextManager;
 import org.junit.jupiter.api.Test;
 
@@ -18,9 +19,9 @@ class ContextManagerCompactionIntegrationTest {
     void summarizeCompactionCreatesSummaryAndRetainsRecentMessages() {
         ContextManager contextManager = new ContextManager();
         Context context = new Context();
-        context.append(new SessionMessage.SystemMsg("system"));
+        context.append(new ContextElement.SystemMsg("system"));
         for (int i = 0; i < 10; i++) {
-            context.append(new SessionMessage.UserMsg("message-" + i + "-xxxxxxxxxxxxxxxxxxxxxxxx"));
+            context.append(new ContextElement.UserMsg("message-" + i + "-xxxxxxxxxxxxxxxxxxxxxxxx"));
         }
 
         RuntimeConfig.ModelConfig modelConfig = new RuntimeConfig.ModelConfig(
@@ -39,7 +40,7 @@ class ContextManagerCompactionIntegrationTest {
                 true
         );
 
-        AtomicReference<List<SessionMessage>> summarizedInput = new AtomicReference<>(List.of());
+        AtomicReference<List<ContextElement>> summarizedInput = new AtomicReference<>(List.of());
         contextManager.compactIfNeeded(
                 UUID.randomUUID(),
                 context,
@@ -50,11 +51,11 @@ class ContextManagerCompactionIntegrationTest {
                 }
         );
 
-        List<SessionMessage> compacted = context.snapshot();
+        List<ContextElement> compacted = context.snapshot();
         assertThat(summarizedInput.get()).hasSize(4);
-        assertThat(compacted.getFirst()).isEqualTo(new SessionMessage.SystemMsg("system"));
-        assertThat(compacted.get(1)).isInstanceOf(SessionMessage.SummaryMsg.class);
-        SessionMessage.SummaryMsg summary = (SessionMessage.SummaryMsg) compacted.get(1);
+        assertThat(compacted.getFirst()).isEqualTo(new ContextElement.SystemMsg("system"));
+        assertThat(compacted.get(1)).isInstanceOf(ContextElement.SummaryMsg.class);
+        ContextElement.SummaryMsg summary = (ContextElement.SummaryMsg) compacted.get(1);
         assertThat(summary.content()).isEqualTo("summary text");
         assertThat(summary.sourceTag()).startsWith("session:");
         assertThat(compacted).hasSize(8);
@@ -64,9 +65,9 @@ class ContextManagerCompactionIntegrationTest {
     void summarizeCompactionFallsBackToRollingWindowWhenSummaryIsBlank() {
         ContextManager contextManager = new ContextManager();
         Context context = new Context();
-        context.append(new SessionMessage.SystemMsg("system"));
+        context.append(new ContextElement.SystemMsg("system"));
         for (int i = 0; i < 10; i++) {
-            context.append(new SessionMessage.UserMsg("message-" + i + "-xxxxxxxxxxxxxxxxxxxxxxxx"));
+            context.append(new ContextElement.UserMsg("message-" + i + "-xxxxxxxxxxxxxxxxxxxxxxxx"));
         }
 
         RuntimeConfig.ModelConfig modelConfig = new RuntimeConfig.ModelConfig(
@@ -87,10 +88,10 @@ class ContextManagerCompactionIntegrationTest {
 
         contextManager.compactIfNeeded(UUID.randomUUID(), context, modelConfig, messages -> "   ");
 
-        List<SessionMessage> compacted = context.snapshot();
+        List<ContextElement> compacted = context.snapshot();
         assertThat(compacted).isNotEmpty();
-        assertThat(compacted.getFirst()).isEqualTo(new SessionMessage.SystemMsg("system"));
-        assertThat(compacted.stream().anyMatch(SessionMessage.SummaryMsg.class::isInstance)).isFalse();
+        assertThat(compacted.getFirst()).isEqualTo(new ContextElement.SystemMsg("system"));
+        assertThat(compacted.stream().anyMatch(ContextElement.SummaryMsg.class::isInstance)).isFalse();
         assertThat(compacted.size()).isLessThan(11);
     }
 
@@ -98,10 +99,10 @@ class ContextManagerCompactionIntegrationTest {
     void rollingWindowRespectsTargetTokensWhenAssistantContainsLargeToolArgs() {
         ContextManager contextManager = new ContextManager();
         Context context = new Context();
-        context.append(new SessionMessage.SystemMsg("system"));
-        context.append(new SessionMessage.AssistantMsg(
+        context.append(new ContextElement.SystemMsg("system"));
+        context.append(new ContextElement.AssistantMsg(
                 "",
-                List.of(new SessionMessage.ToolCall("id-1", "read_file", "{\"blob\":\"" + "x".repeat(1000) + "\"}"))
+                List.of(new ContextElement.ToolCall("id-1", "read_file", "{\"blob\":\"" + "x".repeat(1000) + "\"}"))
         ));
 
         RuntimeConfig.ModelConfig modelConfig = new RuntimeConfig.ModelConfig(

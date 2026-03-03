@@ -15,7 +15,8 @@ import io.mindspice.magenta.runtime.session.config.SessionConfig;
 import io.mindspice.magenta.runtime.session.SessionHandle;
 import io.mindspice.magenta.runtime.session.SessionInput;
 import io.mindspice.magenta.runtime.session.SessionManager;
-import io.mindspice.magenta.runtime.session.SessionMessage;
+import io.mindspice.magenta.runtime.context.ContextElement;
+import io.mindspice.magenta.runtime.session.SessionOutput;
 import io.mindspice.magenta.runtime.tools.ToolResult;
 
 import java.util.Objects;
@@ -130,20 +131,20 @@ public final class Magenta {
         return runtimeConfig;
     }
 
-    private SessionMessage toSessionMessage(SessionInput input) {
+    private ContextElement toContextElement(SessionInput input) {
         return switch (input) {
-            case SessionInput.UserMsg userMessage -> new SessionMessage.UserMsg(userMessage.text());
-            case SessionInput.MessageInput messageInput -> new SessionMessage.InboundMsg(
+            case SessionInput.UserMsg userMessage -> new ContextElement.UserMsg(userMessage.text());
+            case SessionInput.MessageInput messageInput -> new ContextElement.InboundMsg(
                     "message",
-                    messageInput.kind().name(),
+                    "",
                     messageInput.sourceId(),
                     messageInput.text(),
                     "",
                     java.util.Map.of()
             );
-            case SessionInput.EventInput eventInput -> new SessionMessage.InboundMsg(
+            case SessionInput.EventInput eventInput -> new ContextElement.InboundMsg(
                     "event",
-                    eventInput.kind().name(),
+                    "",
                     eventInput.sourceId(),
                     eventInput.text(),
                     "",
@@ -191,14 +192,14 @@ public final class Magenta {
         SessionHandle handle = sessionManager.handleFor(sessionId);
 
         SessionInput effectiveInput = input == null ? SessionInput.userMessage("") : input;
-        if (effectiveInput.persist()) {
-            SessionMessage message = toSessionMessage(effectiveInput);
+        if (effectiveInput.addToContext()) {
+            ContextElement message = toContextElement(effectiveInput);
             session.context().append(message);
-            sessionRouter.emit(handle, new OutputRoutingEvent.MessageAppended(message, "session-context", java.util.Set.of("input")));
+            sessionRouter.emit(handle, new OutputRoutingEvent(sessionId, new SessionOutput.ContextMessageOutput(message)));
         }
 
         boolean shouldStream = session.sessionConfig().params().streamingEnabled()
-                && sessionRouter.hasPartialTokenListeners(handle);
+                && sessionRouter.hasStreamedOutputListeners(handle);
         return modelRunner.runTurn(
                 session,
                 runtimeConfig.maxTurns(),

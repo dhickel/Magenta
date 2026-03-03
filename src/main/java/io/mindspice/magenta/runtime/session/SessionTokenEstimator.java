@@ -4,6 +4,7 @@ import com.knuddels.jtokkit.Encodings;
 import com.knuddels.jtokkit.api.Encoding;
 import com.knuddels.jtokkit.api.EncodingRegistry;
 import com.knuddels.jtokkit.api.EncodingType;
+import io.mindspice.magenta.runtime.context.ContextElement;
 
 import java.util.List;
 import java.util.Map;
@@ -16,26 +17,26 @@ public final class SessionTokenEstimator {
 
     private SessionTokenEstimator() {}
 
-    public static int estimate(List<SessionMessage> messages) {
+    public static int estimate(List<ContextElement> messages) {
         return estimate(messages, DEFAULT_ENCODING);
     }
 
-    public static int estimate(List<SessionMessage> messages, String encodingName) {
+    public static int estimate(List<ContextElement> messages, String encodingName) {
         int total = 0;
-        for (SessionMessage message : messages) {
+        for (ContextElement message : messages) {
             total += estimateMessage(message, encodingName);
         }
         return total;
     }
 
-    public static int estimateMessage(SessionMessage message) {
+    public static int estimateMessage(ContextElement message) {
         return estimateMessage(message, DEFAULT_ENCODING);
     }
 
-    public static int estimateMessage(SessionMessage message, String encodingName) {
+    public static int estimateMessage(ContextElement message, String encodingName) {
         int total = estimateText(message.content(), encodingName);
-        if (message instanceof SessionMessage.AssistantMsg assistant) {
-            for (SessionMessage.ToolCall call : assistant.toolCalls()) {
+        if (message instanceof ContextElement.AssistantMsg assistant) {
+            for (ContextElement.ToolCall call : assistant.toolCalls()) {
                 total += estimateText(call.name() + call.argumentsJson(), encodingName);
             }
         }

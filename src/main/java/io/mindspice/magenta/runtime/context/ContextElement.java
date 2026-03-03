@@ -1,34 +1,34 @@
-package io.mindspice.magenta.runtime.session;
+package io.mindspice.magenta.runtime.context;
 
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-public sealed interface SessionMessage permits SessionMessage.SystemMsg, SessionMessage.UserMsg,
-        SessionMessage.AssistantMsg, SessionMessage.ToolMsg, SessionMessage.SummaryMsg, SessionMessage.InboundMsg {
+public sealed interface ContextElement permits ContextElement.SystemMsg, ContextElement.UserMsg,
+        ContextElement.AssistantMsg, ContextElement.ToolMsg, ContextElement.SummaryMsg, ContextElement.InboundMsg {
 
     String content();
 
-    record SystemMsg(String content) implements SessionMessage {
+    record SystemMsg(String content) implements ContextElement {
         public SystemMsg {
             content = content == null ? "" : content;
         }
     }
 
-    record UserMsg(String content) implements SessionMessage {
+    record UserMsg(String content) implements ContextElement {
         public UserMsg {
             content = content == null ? "" : content;
         }
     }
 
-    record AssistantMsg(String content, List<ToolCall> toolCalls) implements SessionMessage {
+    record AssistantMsg(String content, List<ToolCall> toolCalls) implements ContextElement {
         public AssistantMsg {
             content = content == null ? "" : content;
             toolCalls = toolCalls == null ? List.of() : List.copyOf(toolCalls);
         }
     }
 
-    record ToolMsg(String toolCallId, String toolName, String content) implements SessionMessage {
+    record ToolMsg(String toolCallId, String toolName, String content) implements ContextElement {
         public ToolMsg {
             toolCallId = toolCallId == null ? "" : toolCallId;
             toolName = toolName == null ? "" : toolName;
@@ -36,7 +36,7 @@ public sealed interface SessionMessage permits SessionMessage.SystemMsg, Session
         }
     }
 
-    record SummaryMsg(String content, String sourceTag) implements SessionMessage {
+    record SummaryMsg(String content, String sourceTag) implements ContextElement {
         public SummaryMsg {
             content = content == null ? "" : content;
             sourceTag = sourceTag == null ? "" : sourceTag;
@@ -50,7 +50,7 @@ public sealed interface SessionMessage permits SessionMessage.SystemMsg, Session
             String content,
             String correlationId,
             Map<String, String> metadata
-    ) implements SessionMessage {
+    ) implements ContextElement {
         public InboundMsg {
             inputDomain = inputDomain == null ? "" : inputDomain;
             inputKind = inputKind == null ? "" : inputKind;

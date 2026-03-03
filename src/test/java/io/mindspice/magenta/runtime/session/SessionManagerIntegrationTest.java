@@ -1,6 +1,7 @@
 package io.mindspice.magenta.runtime.session;
 
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
+import io.mindspice.magenta.runtime.context.ContextElement;
 import io.mindspice.magenta.runtime.context.ContextManager;
 import io.mindspice.magenta.runtime.session.config.SessionConfig;
 import io.mindspice.magenta.runtime.session.config.SessionParams;
@@ -34,7 +35,7 @@ class SessionManagerIntegrationTest {
 
         assertThat(session.context().snapshot())
                 .first()
-                .isEqualTo(new SessionMessage.SystemMsg("Base prompt\n\nAgent prompt"));
+                .isEqualTo(new ContextElement.SystemMsg("Base prompt\n\nAgent prompt"));
 
         SessionHandle handle = manager.handleFor(session.sessionId());
         assertThat(handle.sessionId()).isEqualTo(session.sessionId());
@@ -57,7 +58,7 @@ class SessionManagerIntegrationTest {
                         ignored -> {}
                 )
         );
-        source.context().append(new SessionMessage.UserMsg("from-source"));
+        source.context().append(new ContextElement.UserMsg("from-source"));
 
         SessionConfig overrideConfig = new SessionConfig(
                 new SessionParams(true, true, false),
@@ -66,12 +67,12 @@ class SessionManagerIntegrationTest {
         );
         Session fork = manager.fork(source.sessionId(), "fork", overrideConfig);
 
-        source.context().append(new SessionMessage.UserMsg("source-after-fork"));
+        source.context().append(new ContextElement.UserMsg("source-after-fork"));
 
         assertThat(fork.sessionConfig()).isSameAs(overrideConfig);
         assertThat(fork.context().snapshot())
-                .contains(new SessionMessage.UserMsg("from-source"))
-                .doesNotContain(new SessionMessage.UserMsg("source-after-fork"));
+                .contains(new ContextElement.UserMsg("from-source"))
+                .doesNotContain(new ContextElement.UserMsg("source-after-fork"));
     }
 
     @Test

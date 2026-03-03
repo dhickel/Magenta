@@ -24,14 +24,14 @@ messageConsumer.accept(userInput)
   -> SessionRouter (liveness + input policy)
   -> SessionManager.submitFromRoute
   -> Magenta.executeTurn
-      -> append input message (if persist)
-      -> SessionRouter.emit(MessageAppended)
+      -> append input message (if addToContext)
+      -> SessionRouter.emit(ContextMessageOutput)
       -> compute shouldStream
       -> ModelRunner.runTurn(...)
           -> ollama chat (blocking or streaming)
-          -> emit PartialToken events (if streaming)
+          -> emit StreamedOutput events (if streaming)
           -> append AssistantMsg
-          -> emit MessageAppended + AssistantFinal
+          -> emit ContextMessageOutput + FinalOutput
           -> return
 ```
 
@@ -41,7 +41,7 @@ messageConsumer.accept(userInput)
 iteration 1: AssistantMsg(toolCalls)
            -> toolBridge call(s)
            -> append ToolMsg
-           -> emit MessageAppended + ToolMessageAppended
+           -> emit ContextMessageOutput + ToolMessageOutput
 iteration 2+: context includes ToolMsg results
 exit: no tool calls OR maxIterations reached
 ```
@@ -50,12 +50,12 @@ exit: no tool calls OR maxIterations reached
 
 ```text
 SessionConfig.streamingEnabled == false
-  -> partial output route registration rejected
+  -> streamed output route registration rejected
   -> turn executes blocking
 
 SessionConfig.streamingEnabled == true
-  -> Magenta checks SessionRouter.hasPartialTokenListeners(handle)
-  -> turn streams only when listeners exist
+  -> Magenta checks SessionRouter.hasStreamedOutputListeners(handle)
+  -> turn streams only when streamed-output listeners exist
 ```
 
 ## 5) Error handling

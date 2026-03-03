@@ -48,6 +48,7 @@ import io.mindspice.magenta.runtime.routing.*;
 import io.mindspice.magenta.runtime.session.config.SessionConfig;
 import io.mindspice.magenta.runtime.session.SessionHandle;
 import io.mindspice.magenta.runtime.session.SessionInput;
+import io.mindspice.magenta.runtime.session.SessionOutput;
 
 import java.nio.file.Path;
 import java.util.Scanner;
@@ -82,11 +83,11 @@ public final class QuickStartChatLoop {
         magenta.registerOutputRoute(
                 handle,
                 OutputRoutePolicy.builder()
-                        .eventKinds(Set.of(OutputRoutingEvent.Kind.FINAL))
+                        .allowedOutputTags(Set.of(SessionOutput.FinalOutput.FILTER_TAG))
                         .build(),
                 event -> {
-                    if (event instanceof OutputRoutingEvent.AssistantFinal finalEvent) {
-                        System.out.println("assistant> " + finalEvent.text());
+                    if (event.output() instanceof SessionOutput.FinalOutput finalOutput) {
+                        System.out.println("assistant> " + finalOutput.text());
                     }
                 }
         );
@@ -149,7 +150,7 @@ mvn -q -DskipTests exec:java \
 - One runtime owner (`Magenta`) for lifecycle + routing.
 - One chat session (`SessionHandle`) started from base agent config.
 - Input attached through route policy (`registerInputRoute` + `getMessageInputConsumer`).
-- Output attached through route policy (`registerOutputRoute` with `AssistantFinal` events only).
+- Output attached through route policy (`registerOutputRoute` with `FinalOutput` events only).
 - No tool execution path (`toolsEnabled(false)`).
 
 ## 6) API contract notes for dogfooding

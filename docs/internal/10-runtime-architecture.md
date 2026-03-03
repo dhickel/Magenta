@@ -24,8 +24,8 @@ Lean local runtime with a single IO boundary and explicit ownership:
 - Public interaction is handle-first (`SessionHandle`).
 - Exactly one active input route per session.
 - Multiple output routes per session are supported.
-- `AssistantFinal` is always emitted per completed assistant step.
-- `PartialToken` is emitted only through output routes (no callback bypass path).
+- `FinalOutput` is always emitted per completed assistant step.
+- `StreamedOutput` is emitted only through output routes (no callback bypass path).
 - Turn ingress failures call `SessionConfig.onError` and do not escape external input consumers.
 
 ## Failure behavior
@@ -38,7 +38,7 @@ Lean local runtime with a single IO boundary and explicit ownership:
 
 ## Extension points
 
-- output filtering via `OutputRoutePolicy` (kind/source/tag allowlists)
+- output filtering via `OutputRoutePolicy` (output-kind allowlist)
 - tool execution policy via wrapped `SessionConfig.toolBridge`
 - compaction behavior via model compaction settings + summarizer seam
 

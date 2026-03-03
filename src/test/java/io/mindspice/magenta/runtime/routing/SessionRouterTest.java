@@ -3,7 +3,8 @@ package io.mindspice.magenta.runtime.routing;
 import io.mindspice.magenta.runtime.session.config.SessionParams;
 import io.mindspice.magenta.runtime.session.SessionHandle;
 import io.mindspice.magenta.runtime.session.SessionInput;
-import io.mindspice.magenta.runtime.session.SessionMessage;
+import io.mindspice.magenta.runtime.context.ContextElement;
+import io.mindspice.magenta.runtime.session.SessionOutput;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -31,7 +32,7 @@ class SessionRouterTest {
         router.getMessageInputConsumer(handle).accept(new SessionInput.UserMsg("u-1", "user", true));
         router.updateInputRoute(
                 handle,
-                new InputRoutePolicy(Set.of(SessionInput.MessageInputKind.BUS_MESSAGE), Set.of(), Set.of("bus-A")),
+                new InputRoutePolicy(Set.of(SessionInput.AgentMsg.FILTER_FOR), Set.of("bus-A")),
                 InputRoutingEvent.Level.ALL,
                 reports::add
         );
@@ -54,14 +55,16 @@ class SessionRouterTest {
 
         assertThatThrownBy(() -> router.registerOutputRoute(
                 handle,
-                OutputRoutePolicy.builder().eventKinds(Set.of(OutputRoutingEvent.Kind.PARTIAL)).build(),
+                OutputRoutePolicy.builder()
+                        .allowedOutputTags(Set.of(SessionOutput.StreamedOutput.FILTER_TAG))
+                        .build(),
                 event -> {}
         )).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("streamingEnabled=true");
     }
 
     @Test
-    void outputPolicyFiltersByKindSourceAndTag() {
+    void outputPolicyFiltersByTag() {
         UUID sessionId = UUID.randomUUID();
         SessionHandle handle = new SessionHandle(sessionId, () -> true, new SessionParams(false, true, true));
         List<OutputRoutingEvent> received = new ArrayList<>();
@@ -70,21 +73,16 @@ class SessionRouterTest {
         router.registerOutputRoute(
                 handle,
                 OutputRoutePolicy.builder()
-                        .eventKinds(Set.of(OutputRoutingEvent.Kind.FINAL))
-                        .sourceAllowlist(Set.of("model"))
-                        .tagAllowlist(Set.of("assistant"))
+                        .allowedOutputTags(Set.of(SessionOutput.FinalOutput.FILTER_TAG))
                         .build(),
                 received::add
         );
 
-        router.emit(handle, new OutputRoutingEvent.PartialToken("tok", "model", Set.of("assistant")));
-        router.emit(handle, new OutputRoutingEvent.AssistantFinal("final", "model", Set.of("assistant")));
-        router.emit(handle, new OutputRoutingEvent.AssistantFinal("wrong-source", "router", Set.of("assistant")));
-        router.emit(handle, new OutputRoutingEvent.AssistantFinal("wrong-tag", "model", Set.of("other")));
+        router.emit(handle, new OutputRoutingEvent(sessionId, new SessionOutput.StreamedOutput("chunk")));
+        router.emit(handle, new OutputRoutingEvent(sessionId, new SessionOutput.FinalOutput("final")));
 
         assertThat(received).singleElement()
-                .isInstanceOf(OutputRoutingEvent.AssistantFinal.class)
-                .extracting("text")
+                .extracting(event -> event.output().text())
                 .isEqualTo("final");
     }
 
@@ -101,7 +99,7 @@ class SessionRouterTest {
 
         assertThatCode(() -> router.emit(
                 handle,
-                new OutputRoutingEvent.MessageAppended(new SessionMessage.UserMsg("x"), "session-context", Set.of("input"))
+                new OutputRoutingEvent(sessionId, new SessionOutput.ContextMessageOutput(new ContextElement.UserMsg("x")))
         )).doesNotThrowAnyException();
         assertThat(successCalls).hasValue(1);
         assertThat(diagnostics).anyMatch(msg -> msg.contains("output_route_listener_failure"));
@@ -122,7 +120,7 @@ class SessionRouterTest {
         assertThatThrownBy(() -> router.getMessageInputConsumer(handle).accept(SessionInput.userMessage("after-prune")))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Input route not registered");
-        router.emit(handle, new OutputRoutingEvent.AssistantFinal("after-prune", "model", Set.of("assistant")));
+        router.emit(handle, new OutputRoutingEvent(sessionId, new SessionOutput.FinalOutput("after-prune")));
         assertThat(outputs).hasValue(0);
     }
 }

@@ -5,18 +5,16 @@ import io.mindspice.magenta.runtime.session.SessionInput;
 import java.util.Set;
 
 public record InputRoutePolicy(
-        Set<SessionInput.MessageInputKind> allowedMessageKinds,
-        Set<SessionInput.EventInputKind> allowedEventKinds,
+        Set<FilterTag<SessionInput>> inputFilters,
         Set<String> allowedSourceIds
 ) {
     public InputRoutePolicy {
-        allowedMessageKinds = allowedMessageKinds == null ? Set.of() : Set.copyOf(allowedMessageKinds);
-        allowedEventKinds = allowedEventKinds == null ? Set.of() : Set.copyOf(allowedEventKinds);
+        inputFilters = inputFilters == null ? Set.of() : Set.copyOf(inputFilters);
         allowedSourceIds = allowedSourceIds == null ? Set.of() : Set.copyOf(allowedSourceIds);
     }
 
     public static InputRoutePolicy defaults() {
-        return new InputRoutePolicy(Set.of(), Set.of(), Set.of());
+        return new InputRoutePolicy(Set.of(), Set.of());
     }
 
     public boolean allows(SessionInput input) {
@@ -28,9 +26,10 @@ public record InputRoutePolicy(
             return false;
         }
 
-        return switch (input) {
-            case SessionInput.MessageInput messageInput -> allowedMessageKinds.isEmpty() || allowedMessageKinds.contains(messageInput.kind());
-            case SessionInput.EventInput eventInput -> allowedEventKinds.isEmpty() || allowedEventKinds.contains(eventInput.kind());
-        };
+        return matches(inputFilters, input);
+    }
+
+    private static <T> boolean matches(Set<FilterTag<T>> allowedTags, T value) {
+        return allowedTags.isEmpty() || allowedTags.stream().anyMatch(tag -> tag.passes(value));
     }
 }

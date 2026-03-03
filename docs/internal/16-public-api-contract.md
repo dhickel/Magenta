@@ -34,7 +34,7 @@ Applications should treat these types as the supported API surface for v1 chat/r
 
 - Input routes: exactly one active input route per session; `register` replaces existing route.
 - Output routes: zero to many routes per session; each route is identified by UUID.
-- Partial-token listeners require `SessionConfig.streamingEnabled == true`.
+- Streamed-output listeners require `SessionConfig.streamingEnabled == true`.
 
 ## Compaction-agent contract
 

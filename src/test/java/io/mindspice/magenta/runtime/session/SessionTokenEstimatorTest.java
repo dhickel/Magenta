@@ -4,6 +4,7 @@ import com.knuddels.jtokkit.Encodings;
 import com.knuddels.jtokkit.api.Encoding;
 import com.knuddels.jtokkit.api.EncodingRegistry;
 import com.knuddels.jtokkit.api.EncodingType;
+import io.mindspice.magenta.runtime.context.ContextElement;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -33,9 +34,9 @@ class SessionTokenEstimatorTest {
 
     @Test
     void estimateMessageIncludesAssistantToolCallPayloads() {
-        SessionMessage.AssistantMsg assistant = new SessionMessage.AssistantMsg(
+        ContextElement.AssistantMsg assistant = new ContextElement.AssistantMsg(
                 "",
-                List.of(new SessionMessage.ToolCall("id-1", "read_file", "{\"path\":\"/tmp/data.txt\"}"))
+                List.of(new ContextElement.ToolCall("id-1", "read_file", "{\"path\":\"/tmp/data.txt\"}"))
         );
 
         int expected = SessionTokenEstimator.estimateText("", "cl100k_base")

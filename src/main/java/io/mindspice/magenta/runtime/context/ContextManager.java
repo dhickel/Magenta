@@ -2,7 +2,6 @@ package io.mindspice.magenta.runtime.context;
 
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
 import io.mindspice.magenta.runtime.context.compaction.CompactionStrategy;
-import io.mindspice.magenta.runtime.session.SessionMessage;
 import io.mindspice.magenta.runtime.session.SessionTokenEstimator;
 
 import java.util.List;
@@ -15,7 +14,7 @@ public final class ContextManager {
     public Context newContext(String systemPrompt) {
         Context context = new Context();
         if (systemPrompt != null && !systemPrompt.isBlank()) {
-            context.append(new SessionMessage.SystemMsg(systemPrompt));
+            context.append(new ContextElement.SystemMsg(systemPrompt));
         }
         return context;
     }
@@ -42,9 +41,9 @@ public final class ContextManager {
             UUID sessionId,
             Context context,
             RuntimeConfig.ModelConfig modelConfig,
-            Function<List<SessionMessage>, String> summarizer
+            Function<List<ContextElement>, String> summarizer
     ) {
-        List<SessionMessage> snapshot = context.snapshot();
+        List<ContextElement> snapshot = context.snapshot();
         String tokenizerEncoding = modelConfig.tokenizerEncodingOrDefault();
         int tokens = SessionTokenEstimator.estimate(snapshot, tokenizerEncoding);
         if (tokens <= modelConfig.compactThreshold()) {
@@ -52,7 +51,7 @@ public final class ContextManager {
         }
 
         CompactionStrategy strategy = CompactionStrategy.forName(modelConfig.compactionStrategyOrDefault(), summarizer);
-        List<SessionMessage> compacted = strategy.run(sessionId, snapshot, modelConfig.compactThreshold(), tokenizerEncoding);
+        List<ContextElement> compacted = strategy.run(sessionId, snapshot, modelConfig.compactThreshold(), tokenizerEncoding);
         context.replaceAll(compacted);
     }
 }

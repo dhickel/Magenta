@@ -2,6 +2,7 @@ package io.mindspice.magenta.runtime.routing;
 
 import io.mindspice.magenta.runtime.session.SessionHandle;
 import io.mindspice.magenta.runtime.session.SessionInput;
+import io.mindspice.magenta.runtime.session.SessionOutput;
 
 import java.util.Map;
 import java.util.Objects;
@@ -87,8 +88,8 @@ public final class SessionRouter {
     ) {
         SessionHandle activeHandle = requireActiveHandle(handle);
         OutputRoutePolicy effectivePolicy = Objects.requireNonNullElse(outputPolicy, OutputRoutePolicy.defaults());
-        if (!activeHandle.configView().streamingEnabled() && effectivePolicy.requestsPartialTokens()) {
-            throw new IllegalArgumentException("Partial output routes require streamingEnabled=true for session " + activeHandle.sessionId());
+        if (!activeHandle.configView().streamingEnabled() && effectivePolicy.requestsStreamedOutput()) {
+            throw new IllegalArgumentException("Streamed output routes require streamingEnabled=true for session " + activeHandle.sessionId());
         }
 
         UUID routeId = UUID.randomUUID();
@@ -112,7 +113,7 @@ public final class SessionRouter {
         }
     }
 
-    public boolean hasPartialTokenListeners(SessionHandle handle) {
+    public boolean hasStreamedOutputListeners(SessionHandle handle) {
         SessionHandle validated = requireKnownHandle(handle);
         if (!validated.configView().streamingEnabled()) {
             return false;
@@ -124,7 +125,7 @@ public final class SessionRouter {
         }
 
         for (OutputRoute route : routes.values()) {
-            if (route.policy().requestsPartialTokens()) {
+            if (route.policy().requestsStreamedOutput()) {
                 return true;
             }
         }
@@ -154,6 +155,14 @@ public final class SessionRouter {
                         + validated.sessionId() + " routeId=" + entry.getKey() + " error=" + throwable.getClass().getSimpleName());
             }
         }
+    }
+
+    public void emit(SessionHandle handle, SessionOutput output) {
+        SessionHandle validated = requireKnownHandle(handle);
+        if (output == null) {
+            return;
+        }
+        emit(validated, new OutputRoutingEvent(validated.sessionId(), output));
     }
 
     public void pruneSession(UUID sessionId) {

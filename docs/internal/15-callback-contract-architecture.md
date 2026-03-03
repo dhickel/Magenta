@@ -27,19 +27,20 @@ Only `toolBridge` and `onError` are callbacks in this phase.
 ## Output routing contract
 
 - Multiple output routes per session.
-- Each route has `OutputRoutePolicy` filtering by event kind/source/tag.
+- Each route has `OutputRoutePolicy` filtering by `SessionOutput` `FilterTag` selectors.
 - Emitted event types:
-  - `PartialToken`
-  - `AssistantFinal`
-  - `MessageAppended`
-  - `ToolMessageAppended`
+  - `OutputRoutingEvent(sessionId, StreamedOutput)`
+  - `OutputRoutingEvent(sessionId, FinalOutput)`
+  - `OutputRoutingEvent(sessionId, ContextMessageOutput)`
+  - `OutputRoutingEvent(sessionId, ToolMessageOutput)`
 - Listener failures are isolated and emitted via router diagnostics.
 
 ## Streaming contract
 
 - Session-level gate: `SessionConfig.streamingEnabled`.
-- If disabled, routes requesting partial tokens are rejected.
-- If enabled, turn streaming occurs only when partial listeners exist.
+- If disabled, routes requesting streamed output are rejected.
+- If enabled, turn streaming occurs only when streamed-output listeners exist.
+- Streamed payloads are provider chunks, not guaranteed to align to single-token boundaries.
 - No parallel callback bypass path for streamed tokens.
 
 ## Error semantics

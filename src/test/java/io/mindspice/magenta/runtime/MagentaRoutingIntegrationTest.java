@@ -4,11 +4,11 @@ import io.mindspice.magenta.Magenta;
 import io.mindspice.magenta.runtime.routing.InputRoutePolicy;
 import io.mindspice.magenta.runtime.routing.InputRoutingEvent;
 import io.mindspice.magenta.runtime.routing.OutputRoutePolicy;
-import io.mindspice.magenta.runtime.routing.OutputRoutingEvent;
 import io.mindspice.magenta.runtime.session.config.SessionConfig;
 import io.mindspice.magenta.runtime.session.config.SessionParams;
 import io.mindspice.magenta.runtime.session.SessionHandle;
 import io.mindspice.magenta.runtime.session.SessionInput;
+import io.mindspice.magenta.runtime.session.SessionOutput;
 import io.mindspice.magenta.runtime.tools.ToolResult;
 import io.mindspice.magenta.support.TestRuntimeConfigs;
 import org.junit.jupiter.api.Test;
@@ -73,7 +73,7 @@ class MagentaRoutingIntegrationTest {
         magenta.registerInputRoute(handle, InputRoutePolicy.defaults(), InputRoutingEvent.Level.ALL, reports::add);
         magenta.updateInputRoute(
                 handle,
-                new InputRoutePolicy(Set.of(SessionInput.MessageInputKind.BUS_MESSAGE), Set.of(), Set.of("bus-A")),
+                new InputRoutePolicy(Set.of(SessionInput.AgentMsg.FILTER_FOR), Set.of("bus-A")),
                 InputRoutingEvent.Level.ALL,
                 reports::add
         );
@@ -126,7 +126,9 @@ class MagentaRoutingIntegrationTest {
 
         assertThatThrownBy(() -> magenta.registerOutputRoute(
                 handle,
-                OutputRoutePolicy.builder().eventKinds(Set.of(OutputRoutingEvent.Kind.PARTIAL)).build(),
+                OutputRoutePolicy.builder()
+                        .allowedOutputTags(Set.of(SessionOutput.StreamedOutput.FILTER_TAG))
+                        .build(),
                 event -> {}
         )).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("streamingEnabled=true");

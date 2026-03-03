@@ -59,12 +59,17 @@ Output routing (multiple routes per session):
 - `registerOutputRoute(handle, outputPolicy, outputListener) -> routeId`
 - `unregisterOutputRoute(handle, routeId)`
 
-Output event ADT (`OutputRoutingEvent`):
+Output wrapper event (`OutputRoutingEvent`):
 
-- `PartialToken`
-- `AssistantFinal`
-- `MessageAppended`
-- `ToolMessageAppended`
+- `sessionId`
+- `output` (`SessionOutput`)
+
+`SessionOutput` kinds:
+
+- `StreamedOutput`
+- `FinalOutput`
+- `ContextMessageOutput`
+- `ToolMessageOutput`
 
 ## SessionConfig contract
 
@@ -91,19 +96,20 @@ Defaults:
 1. Caller submits typed input through `SessionRouter` consumer.
 2. Router enforces handle liveness + input policy and emits `InputRoutingEvent`.
 3. `SessionManager` submits to turn execution and catches internal failures to emit `SessionConfig.onError`.
-4. `Magenta` appends persisted input to context and emits `MessageAppended`.
+4. `Magenta` appends persisted input to context and emits `ContextMessageOutput`.
 5. `Magenta` computes stream mode:
-   - `sessionConfig.streamingEnabled && sessionRouter.hasPartialTokenListeners(handle)`
+   - `sessionConfig.streamingEnabled && sessionRouter.hasStreamedOutputListeners(handle)`
 6. `ModelRunner` executes the turn:
-   - streaming emits only `PartialToken`
-   - final assistant text always emits `AssistantFinal`
-   - appended messages emit `MessageAppended`/`ToolMessageAppended`
+   - streaming emits `StreamedOutput` chunks
+   - final assistant text always emits `FinalOutput`
+   - appended messages emit `ContextMessageOutput`/`ToolMessageOutput`
 7. Tool calls use `SessionConfig.toolBridge`.
 
 ## Streaming contract
 
-- If `streamingEnabled == false`, registering output routes that request partial tokens throws validation error.
-- If `streamingEnabled == true`, partial streaming is still per-turn and only enabled when partial listeners exist.
+- If `streamingEnabled == false`, registering output routes that request streamed output throws validation error.
+- If `streamingEnabled == true`, streamed output is still per-turn and only enabled when streamed-output listeners exist.
+- `StreamedOutput` payload is provider chunk content from Ollama; chunk boundaries are provider-defined and are not guaranteed to be one token.
 - `Session` and `ModelRunner` stay router-agnostic.
 
 ## Known constraints

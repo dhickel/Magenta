@@ -100,6 +100,9 @@ Design rules:
 - Use sealed interfaces/classes for closed polymorphism.
 - Define sealed type hierarchies as nested types under a single root sealed contract when practical (for example, `SessionInput` owns all input subtypes/kinds).
 - Use exhaustive pattern matching switches.
+- For ADTs, use sealed variants as the identity source; do not add parallel enum identity tags for those variants.
+- If identity modeling is needed for a non-enum domain concept, prefer introducing/refining an ADT instead of adding an enum mirror.
+- Exception: simple policy/state flags may remain enums when they do not duplicate ADT variant identity.
 - Use virtual threads/structured concurrency only where they simplify logic.
 - Avoid helper-class explosion and framework-heavy layering.
 - Prefer cohesive classes over micro-abstractions; keep related behavior co-located unless extraction has clear justification.
