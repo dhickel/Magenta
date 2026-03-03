@@ -32,7 +32,7 @@ Lean local runtime with a single IO boundary and explicit ownership:
 
 - startup config failures are fail-fast
 - unknown/inactive handles raise deterministic validation errors
-- input policy denials emit `InputRouteReport` and skip turn execution
+- input policy denials emit `InputRoutingEvent` and skip turn execution
 - output listener failures are isolated and reported through router diagnostics
 - session close prunes all input/output routes
 

@@ -3,7 +3,7 @@ package io.mindspice.magenta.runtime.routing;
 import java.util.Set;
 
 public record OutputRoutePolicy(
-        Set<SessionOutputEvent.Kind> eventKinds,
+        Set<OutputRoutingEvent.Kind> eventKinds,
         Set<String> sourceAllowlist,
         Set<String> tagAllowlist
 ) {
@@ -22,7 +22,7 @@ public record OutputRoutePolicy(
         return builder().build();
     }
 
-    public boolean allows(SessionOutputEvent event) {
+    public boolean allows(OutputRoutingEvent event) {
         if (event == null) {
             return false;
         }
@@ -42,15 +42,15 @@ public record OutputRoutePolicy(
     }
 
     public boolean requestsPartialTokens() {
-        return eventKinds.isEmpty() || eventKinds.contains(SessionOutputEvent.Kind.PARTIAL);
+        return eventKinds.isEmpty() || eventKinds.contains(OutputRoutingEvent.Kind.PARTIAL);
     }
 
     public static final class Builder {
-        private Set<SessionOutputEvent.Kind> eventKinds = Set.of();
+        private Set<OutputRoutingEvent.Kind> eventKinds = Set.of();
         private Set<String> sourceAllowlist = Set.of();
         private Set<String> tagAllowlist = Set.of();
 
-        public Builder eventKinds(Set<SessionOutputEvent.Kind> eventKinds) {
+        public Builder eventKinds(Set<OutputRoutingEvent.Kind> eventKinds) {
             this.eventKinds = eventKinds == null ? Set.of() : Set.copyOf(eventKinds);
             return this;
         }

@@ -2,11 +2,9 @@ package io.mindspice.magenta.runtime;
 
 import io.mindspice.magenta.Magenta;
 import io.mindspice.magenta.runtime.routing.InputRoutePolicy;
-import io.mindspice.magenta.runtime.routing.InputRouteReport;
-import io.mindspice.magenta.runtime.routing.InputRouteReportLevel;
-import io.mindspice.magenta.runtime.routing.InputRouteOutcome;
+import io.mindspice.magenta.runtime.routing.InputRoutingEvent;
 import io.mindspice.magenta.runtime.routing.OutputRoutePolicy;
-import io.mindspice.magenta.runtime.routing.SessionOutputEvent;
+import io.mindspice.magenta.runtime.routing.OutputRoutingEvent;
 import io.mindspice.magenta.runtime.session.SessionConfig;
 import io.mindspice.magenta.runtime.session.SessionHandle;
 import io.mindspice.magenta.runtime.session.SessionInput;
@@ -58,20 +56,20 @@ class MagentaRoutingIntegrationTest {
         Magenta magenta = new Magenta(TestRuntimeConfigs.basicRuntimeConfig());
         SessionHandle handle = magenta.startBaseSession("route-update", SessionConfig.defaults());
 
-        List<InputRouteReport> reports = new ArrayList<>();
-        magenta.registerInputRoute(handle, InputRoutePolicy.defaults(), InputRouteReportLevel.ALL, reports::add);
+        List<InputRoutingEvent> reports = new ArrayList<>();
+        magenta.registerInputRoute(handle, InputRoutePolicy.defaults(), InputRoutingEvent.Level.ALL, reports::add);
         magenta.updateInputRoute(
                 handle,
                 new InputRoutePolicy(Set.of(SessionInput.MessageInputKind.BUS_MESSAGE), Set.of(), Set.of("bus-A")),
-                InputRouteReportLevel.ALL,
+                InputRoutingEvent.Level.ALL,
                 reports::add
         );
 
         magenta.getMessageInputConsumer(handle).accept(new SessionInput.UserMessageInput("deny", "user", "", java.util.Map.of(), true));
 
         assertThat(reports)
-                .extracting(InputRouteReport::outcome)
-                .contains(InputRouteOutcome.DENIED_POLICY);
+                .extracting(InputRoutingEvent::outcome)
+                .contains(InputRoutingEvent.OutCome.DENIED_POLICY);
     }
 
     @Test
@@ -79,14 +77,14 @@ class MagentaRoutingIntegrationTest {
         Magenta magenta = new Magenta(TestRuntimeConfigs.basicRuntimeConfig());
         SessionHandle handle = magenta.startBaseSession("close-prune", SessionConfig.defaults());
 
-        magenta.registerInputRoute(handle, InputRoutePolicy.defaults(), InputRouteReportLevel.ERROR, report -> {});
+        magenta.registerInputRoute(handle, InputRoutePolicy.defaults(), InputRoutingEvent.Level.ERROR, event -> {});
         UUID routeId = magenta.registerOutputRoute(handle, OutputRoutePolicy.defaults(), event -> {});
         assertThat(routeId).isNotNull();
 
         magenta.closeSession(handle);
 
         assertThatThrownBy(() -> magenta.registerInputRoute(
-                handle, InputRoutePolicy.defaults(), InputRouteReportLevel.ERROR, report -> {}
+                handle, InputRoutePolicy.defaults(), InputRoutingEvent.Level.ERROR, event -> {}
         )).isInstanceOf(IllegalStateException.class).hasMessageContaining("Unknown session handle");
 
         assertThatThrownBy(() -> magenta.registerOutputRoute(handle, OutputRoutePolicy.defaults(), event -> {}))
@@ -104,7 +102,7 @@ class MagentaRoutingIntegrationTest {
 
         assertThatThrownBy(() -> magenta.registerOutputRoute(
                 handle,
-                OutputRoutePolicy.builder().eventKinds(Set.of(SessionOutputEvent.Kind.PARTIAL)).build(),
+                OutputRoutePolicy.builder().eventKinds(Set.of(OutputRoutingEvent.Kind.PARTIAL)).build(),
                 event -> {}
         )).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("streamingEnabled=true");

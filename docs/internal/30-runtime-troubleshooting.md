@@ -31,13 +31,13 @@ Checks:
 Symptoms:
 
 - no turn executed after input submit
-- `DENIED_POLICY` or `SESSION_INACTIVE` reports
+- `DENIED_POLICY` or `SESSION_INACTIVE` input routing events
 
 Checks:
 
 1. confirm input route is registered for that handle
 2. verify `InputRoutePolicy` allows kind/source
-3. use `InputRouteReportLevel.ALL` temporarily for diagnostics
+3. use `InputRoutingEventLevel.ALL` temporarily for diagnostics
 
 ## Output routing issues
 

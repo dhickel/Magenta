@@ -19,8 +19,8 @@ Applications should treat these types as the supported API surface for v1 chat/r
 - `SessionHandle`
 - `SessionConfigView`
 - `SessionInput`
-- `InputRoutePolicy`, `InputRouteReportLevel`, `InputRouteReport`
-- `OutputRoutePolicy`, `SessionOutputEvent`
+- `InputRoutePolicy`, `InputRoutingEventLevel`, `InputRoutingEvent`
+- `OutputRoutePolicy`, `OutputRoutingEvent`
 
 ## Lifecycle contract
 

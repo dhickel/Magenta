@@ -14,8 +14,8 @@ import java.util.function.Function;
 
 public final class SessionRouter {
 
-    private static final Consumer<InputRouteReport> NOOP_INPUT_REPORTER = report -> {};
-    private static final Consumer<SessionOutputEvent> NOOP_OUTPUT_LISTENER = event -> {};
+    private static final Consumer<InputRoutingEvent> NOOP_INPUT_ROUTING_EVENT_LISTENER = event -> {};
+    private static final Consumer<OutputRoutingEvent> NOOP_OUTPUT_LISTENER = event -> {};
     private static final Consumer<String> NOOP_DIAGNOSTICS = message -> {};
 
     private final Function<UUID, SessionHandle> handleResolver;
@@ -41,8 +41,8 @@ public final class SessionRouter {
     public void registerInputRoute(
             SessionHandle handle,
             InputRoutePolicy policy,
-            InputRouteReportLevel reportLevel,
-            Consumer<InputRouteReport> reportCallback
+            InputRoutingEvent.Level routingEventLevel,
+            Consumer<InputRoutingEvent> routingEventListener
     ) {
         SessionHandle activeHandle = requireActiveHandle(handle);
         inputRoutesBySession.put(
@@ -50,8 +50,8 @@ public final class SessionRouter {
                 new InputRoute(
                         activeHandle,
                         Objects.requireNonNullElse(policy, InputRoutePolicy.defaults()),
-                        Objects.requireNonNullElse(reportLevel, InputRouteReportLevel.ERROR),
-                        Objects.requireNonNullElse(reportCallback, NOOP_INPUT_REPORTER)
+                        Objects.requireNonNullElse(routingEventLevel, InputRoutingEvent.Level.ERROR),
+                        Objects.requireNonNullElse(routingEventListener, NOOP_INPUT_ROUTING_EVENT_LISTENER)
                 )
         );
     }
@@ -59,10 +59,10 @@ public final class SessionRouter {
     public void updateInputRoute(
             SessionHandle handle,
             InputRoutePolicy policy,
-            InputRouteReportLevel reportLevel,
-            Consumer<InputRouteReport> reportCallback
+            InputRoutingEvent.Level routingEventLevel,
+            Consumer<InputRoutingEvent> routingEventListener
     ) {
-        registerInputRoute(handle, policy, reportLevel, reportCallback);
+        registerInputRoute(handle, policy, routingEventLevel, routingEventListener);
     }
 
     public void unregisterInputRoute(SessionHandle handle) {
@@ -83,7 +83,7 @@ public final class SessionRouter {
     public UUID registerOutputRoute(
             SessionHandle handle,
             OutputRoutePolicy outputPolicy,
-            Consumer<SessionOutputEvent> outputListener
+            Consumer<OutputRoutingEvent> outputListener
     ) {
         SessionHandle activeHandle = requireActiveHandle(handle);
         OutputRoutePolicy effectivePolicy = Objects.requireNonNullElse(outputPolicy, OutputRoutePolicy.defaults());
@@ -131,7 +131,7 @@ public final class SessionRouter {
         return false;
     }
 
-    public void emit(SessionHandle handle, SessionOutputEvent event) {
+    public void emit(SessionHandle handle, OutputRoutingEvent event) {
         SessionHandle validated = requireKnownHandle(handle);
         if (event == null) {
             return;
@@ -176,35 +176,35 @@ public final class SessionRouter {
 
         SessionHandle handle = route.handle();
         if (!handle.isActive()) {
-            emitInputReport(route, input, InputRouteOutcome.SESSION_INACTIVE, "Session is inactive");
+            emitInputRoutingEvent(route, input, InputRoutingEvent.OutCome.SESSION_INACTIVE, "Session is inactive");
             return;
         }
         if (!route.policy().allows(input)) {
-            emitInputReport(route, input, InputRouteOutcome.DENIED_POLICY, "Input denied by route policy");
+            emitInputRoutingEvent(route, input, InputRoutingEvent.OutCome.DENIED_POLICY, "Input denied by route policy");
             return;
         }
 
-        emitInputReport(route, input, InputRouteOutcome.APPROVED, "Input approved by route policy");
+        emitInputRoutingEvent(route, input, InputRoutingEvent.OutCome.APPROVED, "Input approved by route policy");
         inputSubmitter.accept(sessionId, input);
     }
 
-    private void emitInputReport(InputRoute route, SessionInput input, InputRouteOutcome outcome, String reason) {
-        if (!shouldEmit(route.reportLevel(), outcome)) {
+    private void emitInputRoutingEvent(InputRoute route, SessionInput input, InputRoutingEvent.OutCome outcome, String reason) {
+        if (!shouldEmitInputRoutingEvent(route.routingEventLevel(), outcome)) {
             return;
         }
 
         try {
-            route.reportCallback().accept(new InputRouteReport(route.handle().sessionId(), input, outcome, reason));
+            route.routingEventListener().accept(new InputRoutingEvent(route.handle().sessionId(), input, outcome, reason));
         } catch (Throwable ignored) {
-            // Route reporting is observability-only.
+            // Input routing events are observability-only.
         }
     }
 
-    private boolean shouldEmit(InputRouteReportLevel level, InputRouteOutcome outcome) {
+    private boolean shouldEmitInputRoutingEvent(InputRoutingEvent.Level level, InputRoutingEvent.OutCome outcome) {
         return switch (level) {
             case ALL -> true;
-            case FAILURE -> outcome == InputRouteOutcome.DENIED_POLICY || outcome == InputRouteOutcome.SESSION_INACTIVE;
-            case ERROR -> outcome == InputRouteOutcome.SESSION_INACTIVE;
+            case FAILURE -> outcome == InputRoutingEvent.OutCome.DENIED_POLICY || outcome == InputRoutingEvent.OutCome.SESSION_INACTIVE;
+            case ERROR -> outcome == InputRoutingEvent.OutCome.SESSION_INACTIVE;
         };
     }
 
@@ -236,9 +236,9 @@ public final class SessionRouter {
     private record InputRoute(
             SessionHandle handle,
             InputRoutePolicy policy,
-            InputRouteReportLevel reportLevel,
-            Consumer<InputRouteReport> reportCallback
+            InputRoutingEvent.Level routingEventLevel,
+            Consumer<InputRoutingEvent> routingEventListener
     ) {}
 
-    private record OutputRoute(OutputRoutePolicy policy, Consumer<SessionOutputEvent> listener) {}
+    private record OutputRoute(OutputRoutePolicy policy, Consumer<OutputRoutingEvent> listener) {}
 }

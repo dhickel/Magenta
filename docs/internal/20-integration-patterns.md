@@ -16,8 +16,8 @@ SessionHandle handle = magenta.startBaseSession(
 magenta.registerInputRoute(
         handle,
         InputRoutePolicy.defaults(),
-        InputRouteReportLevel.ERROR,
-        report -> uiBus.publish("route-report", report)
+        InputRoutingEventLevel.ERROR,
+        event -> uiBus.publish("input-routing-event", event)
 );
 
 magenta.registerOutputRoute(
@@ -35,7 +35,7 @@ magenta.getMessageInputConsumer(handle).accept(SessionInput.userMessage("Summari
 magenta.registerOutputRoute(
         handle,
         OutputRoutePolicy.builder()
-                .eventKinds(Set.of(SessionOutputEvent.Kind.FINAL))
+                .eventKinds(Set.of(OutputRoutingEvent.Kind.FINAL))
                 .build(),
         event -> uiBus.publish("assistant-final", event)
 );

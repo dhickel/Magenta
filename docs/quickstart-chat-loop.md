@@ -44,10 +44,7 @@ package example;
 
 import io.mindspice.magenta.Magenta;
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
-import io.mindspice.magenta.runtime.routing.InputRoutePolicy;
-import io.mindspice.magenta.runtime.routing.InputRouteReportLevel;
-import io.mindspice.magenta.runtime.routing.OutputRoutePolicy;
-import io.mindspice.magenta.runtime.routing.SessionOutputEvent;
+import io.mindspice.magenta.runtime.routing.*;
 import io.mindspice.magenta.runtime.session.SessionConfig;
 import io.mindspice.magenta.runtime.session.SessionHandle;
 import io.mindspice.magenta.runtime.session.SessionInput;
@@ -78,17 +75,17 @@ public final class QuickStartChatLoop {
         magenta.registerInputRoute(
                 handle,
                 InputRoutePolicy.defaults(),
-                InputRouteReportLevel.ERROR,
-                report -> System.err.println("[route] " + report.outcome() + " - " + report.reason())
+                InputRoutingEvent.Level.ERROR,
+                event -> System.err.println("[route] " + event.outcome() + " - " + event.reason())
         );
 
         magenta.registerOutputRoute(
                 handle,
                 OutputRoutePolicy.builder()
-                        .eventKinds(Set.of(SessionOutputEvent.Kind.FINAL))
+                        .eventKinds(Set.of(OutputRoutingEvent.Kind.FINAL))
                         .build(),
                 event -> {
-                    if (event instanceof SessionOutputEvent.AssistantFinal finalEvent) {
+                    if (event instanceof OutputRoutingEvent.AssistantFinal finalEvent) {
                         System.out.println("assistant> " + finalEvent.text());
                     }
                 }

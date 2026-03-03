@@ -5,11 +5,11 @@ import io.mindspice.magenta.runtime.session.SessionMessage;
 import java.util.Objects;
 import java.util.Set;
 
-public sealed interface SessionOutputEvent permits
-        SessionOutputEvent.PartialToken,
-        SessionOutputEvent.AssistantFinal,
-        SessionOutputEvent.MessageAppended,
-        SessionOutputEvent.ToolMessageAppended {
+public sealed interface OutputRoutingEvent permits
+        OutputRoutingEvent.PartialToken,
+        OutputRoutingEvent.AssistantFinal,
+        OutputRoutingEvent.MessageAppended,
+        OutputRoutingEvent.ToolMessageAppended {
 
     Kind kind();
     String source();
@@ -22,7 +22,7 @@ public sealed interface SessionOutputEvent permits
         TOOL_MESSAGE_APPENDED
     }
 
-    record PartialToken(String token, String source, Set<String> tags) implements SessionOutputEvent {
+    record PartialToken(String token, String source, Set<String> tags) implements OutputRoutingEvent {
         public PartialToken {
             token = token == null ? "" : token;
             source = source == null ? "model" : source;
@@ -35,7 +35,7 @@ public sealed interface SessionOutputEvent permits
         }
     }
 
-    record AssistantFinal(String text, String source, Set<String> tags) implements SessionOutputEvent {
+    record AssistantFinal(String text, String source, Set<String> tags) implements OutputRoutingEvent {
         public AssistantFinal {
             text = text == null ? "" : text;
             source = source == null ? "model" : source;
@@ -48,7 +48,7 @@ public sealed interface SessionOutputEvent permits
         }
     }
 
-    record MessageAppended(SessionMessage message, String source, Set<String> tags) implements SessionOutputEvent {
+    record MessageAppended(SessionMessage message, String source, Set<String> tags) implements OutputRoutingEvent {
         public MessageAppended {
             Objects.requireNonNull(message, "message");
             source = source == null ? "session-context" : source;
@@ -61,7 +61,7 @@ public sealed interface SessionOutputEvent permits
         }
     }
 
-    record ToolMessageAppended(SessionMessage.ToolMsg message, String source, Set<String> tags) implements SessionOutputEvent {
+    record ToolMessageAppended(SessionMessage.ToolMsg message, String source, Set<String> tags) implements OutputRoutingEvent {
         public ToolMessageAppended {
             Objects.requireNonNull(message, "message");
             source = source == null ? "tool-bridge" : source;

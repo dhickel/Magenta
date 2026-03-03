@@ -5,15 +5,27 @@ import io.mindspice.magenta.runtime.session.SessionInput;
 import java.util.Objects;
 import java.util.UUID;
 
-public record InputRouteReport(
+public record InputRoutingEvent(
         UUID sessionId,
         SessionInput input,
-        InputRouteOutcome outcome,
+        OutCome outcome,
         String reason
 ) {
-    public InputRouteReport {
+    public InputRoutingEvent {
         Objects.requireNonNull(sessionId, "sessionId");
         Objects.requireNonNull(outcome, "outcome");
         reason = reason == null ? "" : reason;
+    }
+
+    public enum Level {
+        ALL,
+        FAILURE,
+        ERROR
+    }
+
+    public enum OutCome {
+        APPROVED,
+        DENIED_POLICY,
+        SESSION_INACTIVE
     }
 }

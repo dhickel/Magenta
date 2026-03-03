@@ -21,7 +21,7 @@ Only `toolBridge` and `onError` are callbacks in this phase.
 
 - One active input route per session (`register` replaces previous route).
 - Policy enforcement uses `InputRoutePolicy`.
-- Route outcomes are reported as `InputRouteReport` with `APPROVED`, `DENIED_POLICY`, or `SESSION_INACTIVE`.
+- Route outcomes are emitted as `InputRoutingEvent` with `APPROVED`, `DENIED_POLICY`, or `SESSION_INACTIVE`.
 - Unknown/inactive handles produce deterministic validation errors.
 
 ## Output routing contract
@@ -33,7 +33,7 @@ Only `toolBridge` and `onError` are callbacks in this phase.
   - `AssistantFinal`
   - `MessageAppended`
   - `ToolMessageAppended`
-- Listener failures are isolated and reported via router diagnostics.
+- Listener failures are isolated and emitted via router diagnostics.
 
 ## Streaming contract
 
@@ -45,7 +45,7 @@ Only `toolBridge` and `onError` are callbacks in this phase.
 ## Error semantics
 
 - Input submit path catches internal turn failures and calls `SessionConfig.onError`.
-- Router reporting/listener callbacks are observability only and must not break ingress/turn execution.
+- Router event/listener callbacks are observability only and must not break ingress/turn execution.
 
 ## Defaults
 

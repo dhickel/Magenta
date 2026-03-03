@@ -48,7 +48,7 @@ RuntimeConfig.load(...) -> Magenta
 
 Input routing (single active route per session):
 
-- `registerInputRoute(handle, policy, reportLevel, reportCallback)`
+- `registerInputRoute(handle, policy, routingEventLevel, routingEventListener)`
 - `updateInputRoute(handle, ...)`
 - `unregisterInputRoute(handle)`
 - `getMessageInputConsumer(handle)`
@@ -59,7 +59,7 @@ Output routing (multiple routes per session):
 - `registerOutputRoute(handle, outputPolicy, outputListener) -> routeId`
 - `unregisterOutputRoute(handle, routeId)`
 
-Output event ADT (`SessionOutputEvent`):
+Output event ADT (`OutputRoutingEvent`):
 
 - `PartialToken`
 - `AssistantFinal`
@@ -89,7 +89,7 @@ Defaults:
 ## Turn flow
 
 1. Caller submits typed input through `SessionRouter` consumer.
-2. Router enforces handle liveness + input policy and emits `InputRouteReport`.
+2. Router enforces handle liveness + input policy and emits `InputRoutingEvent`.
 3. `SessionManager` submits to turn execution and catches internal failures to emit `SessionConfig.onError`.
 4. `Magenta` appends persisted input to context and emits `MessageAppended`.
 5. `Magenta` computes stream mode:

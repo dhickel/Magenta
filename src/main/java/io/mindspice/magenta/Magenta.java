@@ -5,10 +5,9 @@ import io.mindspice.magenta.runtime.context.ContextManager;
 import io.mindspice.magenta.runtime.model.ModelRunner;
 import io.mindspice.magenta.runtime.model.OllamaClient;
 import io.mindspice.magenta.runtime.routing.InputRoutePolicy;
-import io.mindspice.magenta.runtime.routing.InputRouteReport;
-import io.mindspice.magenta.runtime.routing.InputRouteReportLevel;
+import io.mindspice.magenta.runtime.routing.InputRoutingEvent;
 import io.mindspice.magenta.runtime.routing.OutputRoutePolicy;
-import io.mindspice.magenta.runtime.routing.SessionOutputEvent;
+import io.mindspice.magenta.runtime.routing.OutputRoutingEvent;
 import io.mindspice.magenta.runtime.routing.SessionRouter;
 import io.mindspice.magenta.runtime.session.Session;
 import io.mindspice.magenta.runtime.session.SessionConfig;
@@ -75,19 +74,19 @@ public final class Magenta {
     public void registerInputRoute(
             SessionHandle handle,
             InputRoutePolicy policy,
-            InputRouteReportLevel reportLevel,
-            Consumer<InputRouteReport> reportCallback
+            InputRoutingEvent.Level routingEventLevel,
+            Consumer<InputRoutingEvent> routingEventListener
     ) {
-        sessionRouter.registerInputRoute(handle, policy, reportLevel, reportCallback);
+        sessionRouter.registerInputRoute(handle, policy, routingEventLevel, routingEventListener);
     }
 
     public void updateInputRoute(
             SessionHandle handle,
             InputRoutePolicy policy,
-            InputRouteReportLevel reportLevel,
-            Consumer<InputRouteReport> reportCallback
+            InputRoutingEvent.Level routingEventLevel,
+            Consumer<InputRoutingEvent> routingEventListener
     ) {
-        sessionRouter.updateInputRoute(handle, policy, reportLevel, reportCallback);
+        sessionRouter.updateInputRoute(handle, policy, routingEventLevel, routingEventListener);
     }
 
     public void unregisterInputRoute(SessionHandle handle) {
@@ -105,7 +104,7 @@ public final class Magenta {
     public UUID registerOutputRoute(
             SessionHandle handle,
             OutputRoutePolicy outputPolicy,
-            Consumer<SessionOutputEvent> outputListener
+            Consumer<OutputRoutingEvent> outputListener
     ) {
         return sessionRouter.registerOutputRoute(handle, outputPolicy, outputListener);
     }
@@ -193,7 +192,7 @@ public final class Magenta {
         if (effectiveInput.persist()) {
             SessionMessage message = toSessionMessage(effectiveInput);
             session.context().append(message);
-            sessionRouter.emit(handle, new SessionOutputEvent.MessageAppended(message, "session-context", java.util.Set.of("input")));
+            sessionRouter.emit(handle, new OutputRoutingEvent.MessageAppended(message, "session-context", java.util.Set.of("input")));
         }
 
         boolean shouldStream = session.sessionConfig().streamingEnabled() && sessionRouter.hasPartialTokenListeners(handle);

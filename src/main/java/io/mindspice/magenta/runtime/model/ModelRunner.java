@@ -9,7 +9,7 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
-import io.mindspice.magenta.runtime.routing.SessionOutputEvent;
+import io.mindspice.magenta.runtime.routing.OutputRoutingEvent;
 import io.mindspice.magenta.runtime.session.Session;
 import io.mindspice.magenta.runtime.session.SessionMessage;
 import io.mindspice.magenta.runtime.tools.ToolRequest;
@@ -36,13 +36,13 @@ public final class ModelRunner {
             Session session,
             int maxIterations,
             boolean streamTokens,
-            Consumer<SessionOutputEvent> outputEmitter,
+            Consumer<OutputRoutingEvent> outputEmitter,
             Runnable beforeModelCallHook
     ) {
         boolean toolLoopActive = false;
         String latestText = "";
         Runnable safeBeforeModelCallHook = beforeModelCallHook == null ? () -> {} : beforeModelCallHook;
-        Consumer<SessionOutputEvent> safeOutputEmitter = outputEmitter == null ? ignored -> {} : outputEmitter;
+        Consumer<OutputRoutingEvent> safeOutputEmitter = outputEmitter == null ? ignored -> {} : outputEmitter;
 
         for (int i = 0; i < maxIterations; i++) {
             safeBeforeModelCallHook.run();
@@ -59,7 +59,7 @@ public final class ModelRunner {
                             modelConfig,
                             request,
                             token -> safeOutputEmitter.accept(
-                                    new SessionOutputEvent.PartialToken(token, "model", Set.of("assistant"))
+                                    new OutputRoutingEvent.PartialToken(token, "model", Set.of("assistant"))
                             )
                     );
 
@@ -69,8 +69,8 @@ public final class ModelRunner {
 
             SessionMessage.AssistantMsg assistant = new SessionMessage.AssistantMsg(latestText, toolCalls);
             session.context().append(assistant);
-            safeOutputEmitter.accept(new SessionOutputEvent.MessageAppended(assistant, "session-context", Set.of("assistant")));
-            safeOutputEmitter.accept(new SessionOutputEvent.AssistantFinal(latestText, "model", Set.of("assistant")));
+            safeOutputEmitter.accept(new OutputRoutingEvent.MessageAppended(assistant, "session-context", Set.of("assistant")));
+            safeOutputEmitter.accept(new OutputRoutingEvent.AssistantFinal(latestText, "model", Set.of("assistant")));
 
             if (toolCalls.isEmpty() || !session.sessionConfig().toolsEnabled()) {
                 return latestText;
@@ -85,8 +85,8 @@ public final class ModelRunner {
                         safeText(toolResult.content())
                 );
                 session.context().append(toolMessage);
-                safeOutputEmitter.accept(new SessionOutputEvent.MessageAppended(toolMessage, "session-context", Set.of("tool")));
-                safeOutputEmitter.accept(new SessionOutputEvent.ToolMessageAppended(toolMessage, "tool-bridge", Set.of("tool")));
+                safeOutputEmitter.accept(new OutputRoutingEvent.MessageAppended(toolMessage, "session-context", Set.of("tool")));
+                safeOutputEmitter.accept(new OutputRoutingEvent.ToolMessageAppended(toolMessage, "tool-bridge", Set.of("tool")));
             }
 
             toolLoopActive = true;

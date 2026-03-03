@@ -11,7 +11,7 @@ Keep model execution (`ModelRunner`) separate from provider transport (`OllamaCl
 - map `SessionMessage` context to LangChain4j messages
 - execute blocking or streaming turn mode from caller-provided option
 - append assistant/tool results to context
-- emit typed `SessionOutputEvent` through provided callback
+- emit typed `OutputRoutingEvent` through provided callback
 - provide summarization for compaction
 
 `OllamaClient`:
@@ -31,8 +31,8 @@ Keep model execution (`ModelRunner`) separate from provider transport (`OllamaCl
 
 ## Event emission contract
 
-- Streaming token chunks emit `SessionOutputEvent.PartialToken`.
-- Assistant completion always emits `SessionOutputEvent.AssistantFinal`.
+- Streaming token chunks emit `OutputRoutingEvent.PartialToken`.
+- Assistant completion always emits `OutputRoutingEvent.AssistantFinal`.
 - Context append operations emit `MessageAppended`; tool appends also emit `ToolMessageAppended`.
 
 ## Failure behavior
