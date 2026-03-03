@@ -2,6 +2,7 @@ package io.mindspice.magenta.runtime.session;
 
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
 import io.mindspice.magenta.runtime.context.Context;
+import io.mindspice.magenta.runtime.session.config.SessionConfig;
 
 import java.time.Instant;
 import java.util.List;

@@ -45,7 +45,7 @@ package example;
 import io.mindspice.magenta.Magenta;
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
 import io.mindspice.magenta.runtime.routing.*;
-import io.mindspice.magenta.runtime.session.SessionConfig;
+import io.mindspice.magenta.runtime.session.config.SessionConfig;
 import io.mindspice.magenta.runtime.session.SessionHandle;
 import io.mindspice.magenta.runtime.session.SessionInput;
 

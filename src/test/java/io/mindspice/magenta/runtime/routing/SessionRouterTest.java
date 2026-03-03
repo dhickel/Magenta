@@ -1,6 +1,6 @@
 package io.mindspice.magenta.runtime.routing;
 
-import io.mindspice.magenta.runtime.session.SessionConfigView;
+import io.mindspice.magenta.runtime.session.config.SessionParams;
 import io.mindspice.magenta.runtime.session.SessionHandle;
 import io.mindspice.magenta.runtime.session.SessionInput;
 import io.mindspice.magenta.runtime.session.SessionMessage;
@@ -21,7 +21,7 @@ class SessionRouterTest {
     @Test
     void inputRouteReplacesPriorPolicyAndReportsDenials() {
         UUID sessionId = UUID.randomUUID();
-        SessionHandle handle = new SessionHandle(sessionId, () -> true, new SessionConfigView(false, true, false, true));
+        SessionHandle handle = new SessionHandle(sessionId, () -> true, new SessionParams(false, true, false, true));
         List<SessionInput> submitted = new ArrayList<>();
         List<InputRoutingEvent> reports = new ArrayList<>();
 
@@ -49,7 +49,7 @@ class SessionRouterTest {
     @Test
     void streamingDisabledSessionRejectsPartialRoute() {
         UUID sessionId = UUID.randomUUID();
-        SessionHandle handle = new SessionHandle(sessionId, () -> true, new SessionConfigView(false, true, false, false));
+        SessionHandle handle = new SessionHandle(sessionId, () -> true, new SessionParams(false, true, false, false));
         SessionRouter router = new SessionRouter(id -> id.equals(sessionId) ? handle : null, (id, input) -> {});
 
         assertThatThrownBy(() -> router.registerOutputRoute(
@@ -63,7 +63,7 @@ class SessionRouterTest {
     @Test
     void outputPolicyFiltersByKindSourceAndTag() {
         UUID sessionId = UUID.randomUUID();
-        SessionHandle handle = new SessionHandle(sessionId, () -> true, new SessionConfigView(false, true, false, true));
+        SessionHandle handle = new SessionHandle(sessionId, () -> true, new SessionParams(false, true, false, true));
         List<OutputRoutingEvent> received = new ArrayList<>();
 
         SessionRouter router = new SessionRouter(id -> id.equals(sessionId) ? handle : null, (id, input) -> {});
@@ -91,7 +91,7 @@ class SessionRouterTest {
     @Test
     void listenerFailureDoesNotPreventOtherListeners() {
         UUID sessionId = UUID.randomUUID();
-        SessionHandle handle = new SessionHandle(sessionId, () -> true, new SessionConfigView(false, true, false, true));
+        SessionHandle handle = new SessionHandle(sessionId, () -> true, new SessionParams(false, true, false, true));
         AtomicInteger successCalls = new AtomicInteger();
         List<String> diagnostics = new ArrayList<>();
 
@@ -110,7 +110,7 @@ class SessionRouterTest {
     @Test
     void closePruneRemovesRoutesAndPreventsFurtherDelivery() {
         UUID sessionId = UUID.randomUUID();
-        SessionHandle handle = new SessionHandle(sessionId, () -> true, new SessionConfigView(false, true, false, true));
+        SessionHandle handle = new SessionHandle(sessionId, () -> true, new SessionParams(false, true, false, true));
         AtomicInteger outputs = new AtomicInteger();
 
         SessionRouter router = new SessionRouter(id -> id.equals(sessionId) ? handle : null, (id, input) -> {});

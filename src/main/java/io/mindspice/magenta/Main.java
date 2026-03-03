@@ -1,7 +1,7 @@
 package io.mindspice.magenta;
 
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
-import io.mindspice.magenta.runtime.session.SessionConfig;
+import io.mindspice.magenta.runtime.session.config.SessionConfig;
 
 public class Main {
 

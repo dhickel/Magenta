@@ -1,5 +1,7 @@
 package io.mindspice.magenta.runtime.session;
 
+import io.mindspice.magenta.runtime.session.config.SessionConfig;
+import io.mindspice.magenta.runtime.session.config.SessionParams;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -25,7 +27,7 @@ class SessionConfigTest {
                 .streamingEnabled(false)
                 .build();
 
-        SessionConfigView view = config.toView();
+        SessionParams view = config.toView();
         assertThat(view.blockingOnly()).isTrue();
         assertThat(view.toolsEnabled()).isFalse();
         assertThat(view.bypassSecurity()).isTrue();

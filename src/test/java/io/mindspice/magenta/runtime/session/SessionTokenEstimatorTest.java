@@ -4,8 +4,6 @@ import com.knuddels.jtokkit.Encodings;
 import com.knuddels.jtokkit.api.Encoding;
 import com.knuddels.jtokkit.api.EncodingRegistry;
 import com.knuddels.jtokkit.api.EncodingType;
-import io.mindspice.magenta.runtime.session.SessionMessage;
-import io.mindspice.magenta.runtime.session.SessionTokenEstimator;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

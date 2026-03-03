@@ -10,7 +10,7 @@ import io.mindspice.magenta.runtime.routing.OutputRoutePolicy;
 import io.mindspice.magenta.runtime.routing.OutputRoutingEvent;
 import io.mindspice.magenta.runtime.routing.SessionRouter;
 import io.mindspice.magenta.runtime.session.Session;
-import io.mindspice.magenta.runtime.session.SessionConfig;
+import io.mindspice.magenta.runtime.session.config.SessionConfig;
 import io.mindspice.magenta.runtime.session.SessionHandle;
 import io.mindspice.magenta.runtime.session.SessionInput;
 import io.mindspice.magenta.runtime.session.SessionManager;
