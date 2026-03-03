@@ -2,61 +2,48 @@
 
 ## Design intent
 
-Represent each conversation as explicit session state with clear lifecycle operations and typed history.
+Represent conversation state as typed session data with explicit lifecycle operations and safe external handles.
 
 ## Responsibilities
 
-- `SessionManager`: start/resume/fork/list/close and in-memory registry ownership.
-- `Session`: immutable session envelope with mutable `Context` reference.
-- `SessionConfig`: runtime callback contract for integration behavior.
-- `SessionMessage`: sealed ADT for message history.
-- `SessionHandle` + `SessionInputRouter`: external input routing wrapper with liveness/policy checks.
-
-## Explicit non-goals
-
-- alias-based lookup/routing
-- persistent session registry
-- remote session management
+- `SessionManager`: `start`/`resume`/`fork`/`list`/`close`.
+- `Session`: immutable identity/config envelope + mutable `Context` reference.
+- `SessionHandle`: external session reference (`sessionId`, liveness predicate, `SessionConfigView`).
+- `SessionConfig`: execution controls (`blockingOnly`, `toolsEnabled`, `bypassSecurity`, `streamingEnabled`, `toolBridge`, `onError`).
 
 ## Invariants
 
-- Session IDs are generated UUIDs.
-- `resume` and `fork` require existing session ID.
-- Forked sessions copy source context snapshot.
-- System prompt for started sessions is resolved from configured prompt IDs.
-- If no alias is supplied, alias defaults to `session-<first8-uuid>`.
+- Session IDs are UUIDs.
+- `resume`/`fork` require existing session IDs.
+- `fork` copies source context snapshot.
+- started sessions resolve system prompts from configured prompt IDs.
+- blank alias normalizes to `session-<first8-uuid>`.
 
 ## Lifecycle transitions
 
 ```text
 start(agentId, alias, config)
 -> validate agent/model
--> resolve system prompt
--> load or create context
--> create Session and register in map
+-> resolve prompts
+-> create/load context
+-> register session
 
 resume(sessionId)
--> map lookup or fail
+-> lookup or fail
 
 fork(sessionId, alias, overrideConfig?)
 -> resume source
--> copy source context
--> start new session with same agent
+-> copy context
+-> start new session
 ```
 
 ## Failure behavior
 
-- start fails for missing/disabled agent or model.
-- start fails if prompt ID is missing.
-- resume/fork fail for unknown session ID.
-
-## Extension points
-
-- `SessionConfig` callback wiring for UI/eventing/tool execution.
-- `SessionInputRouter` report callback for input route decisions (`APPROVED`, `DENIED_POLICY`, `SESSION_INACTIVE`).
-- Future persistence can be attached via context load/store seams.
+- missing/disabled agent/model/prompt fails startup for that session operation
+- unknown session ID fails `resume`/`fork`
+- internal turn exceptions trigger `SessionConfig.onError` at submit ingress
 
 ## Known constraints
 
-- `SessionConfig.onError` is emitted from SessionManager submission handling when internal turn execution fails.
-- Session registry lifetime matches `Magenta` process lifetime.
+- session registry lifetime is process lifetime
+- durable session persistence is future-phase

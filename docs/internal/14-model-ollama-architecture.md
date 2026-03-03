@@ -2,72 +2,45 @@
 
 ## Design intent
 
-Separate execution policy (`ModelRunner`) from provider transport (`OllamaClient`).
+Keep model execution (`ModelRunner`) separate from provider transport (`OllamaClient`), with router awareness only at orchestration layer (`Magenta`).
 
 ## Responsibilities
 
 `ModelRunner`:
 
-- map typed context to LangChain4j `ChatMessage` inputs
-- choose blocking vs streaming mode
+- map `SessionMessage` context to LangChain4j messages
+- execute blocking or streaming turn mode from caller-provided option
 - append assistant/tool results to context
-- drive iterative tool loop
-- provide summarization operation for compaction
+- emit typed `SessionOutputEvent` through provided callback
+- provide summarization for compaction
 
 `OllamaClient`:
 
 - build `/api/chat` payloads
-- perform blocking and streaming HTTP requests
-- parse response text and tool calls
-- return normalized `ChatResponse`
+- execute blocking and streaming HTTP requests
+- parse chat responses/tool calls
 
-## Explicit non-goals
+## Mode selection
 
-- retries/backoff policy
-- cross-provider abstraction
-- centralized tool authorization
+`ModelRunner` uses blocking when any is true:
 
-## Invariants
+- `sessionConfig.blockingOnly`
+- tool loop is active
+- turn option disables streaming
+- model reports `supportsStreaming = false`
 
-- Persisted turn input is appended before model request per turn by `Magenta`.
-- Every assistant response is appended as `AssistantMsg`.
-- Tool calls are converted to `ToolRequest` and bridged through callback.
-- `safeText(...)` normalizes null/blank content to `"."`.
-- Streaming mode is disabled once tool loop becomes active.
+## Event emission contract
 
-## Turn-loop transitions
-
-```text
-request from context snapshot
--> choose blocking/streaming
--> call OllamaClient
--> append AssistantMsg
--> if no tool calls or tools disabled: return
--> for each tool call: bridge + append ToolMsg
--> next iteration (maxIterations bound)
-```
-
-Mode selection condition:
-
-```text
-useBlocking = session.blockingOnly
-           || toolLoopActive
-           || !model.supportsStreaming
-```
+- Streaming token chunks emit `SessionOutputEvent.PartialToken`.
+- Assistant completion always emits `SessionOutputEvent.AssistantFinal`.
+- Context append operations emit `MessageAppended`; tool appends also emit `ToolMessageAppended`.
 
 ## Failure behavior
 
-- HTTP non-2xx responses throw with status + body.
-- transport/parsing/interrupt errors throw `IllegalStateException`.
-- bridge exceptions currently bubble to caller.
-
-## Extension points
-
-- add model providers by implementing additional client classes and selecting at runtime owner level.
-- augment `SessionConfig` bridge behavior (policy wrappers, telemetry, retry) without changing `ModelRunner` contract.
+- HTTP/transport/parsing errors surface as exceptions
+- tool bridge exceptions propagate to submit path, where session ingress emits `onError`
 
 ## Known constraints
 
-- Tool schemas are not sent to provider in current payload builder.
-- Endpoint handling uses direct URL when scheme is present; otherwise env/default fallback.
-- Runtime turn errors are emitted via `SessionConfig.onError` in `Magenta` before rethrow.
+- tool schemas are not sent in current payload builder
+- single provider transport implementation (`OllamaClient`)

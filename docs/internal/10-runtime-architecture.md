@@ -2,74 +2,48 @@
 
 ## Design intent
 
-Provide a lean local runtime with explicit boundaries:
+Lean local runtime with a single IO boundary and explicit ownership:
 
-- config graph loading and validation
+- config load/validation
 - session lifecycle
+- routed input/output
 - context compaction
-- model turn orchestration
-- callback-based integration
+- model/tool orchestration
 
-## Responsibilities
+## Service ownership
 
-- `Magenta`: composition root and top-level API.
-- `RuntimeConfig`: load and validate runtime configuration graph.
-- `SessionManager`: session lifecycle owner.
-- `ContextManager`: context state and compaction orchestration.
-- `ModelRunner`: turn loop and tool loop orchestration.
-- `OllamaClient`: HTTP transport for chat requests.
+- `Magenta`: composition root and orchestration owner.
+- `SessionManager`: lifecycle + in-memory session registry.
+- `SessionRouter`: input policy enforcement and output event fanout.
+- `ContextManager`: context state and compaction.
+- `ModelRunner`: model/tool loop execution.
+- `OllamaClient`: provider transport.
 
-## Explicit non-goals
+## Invariants
 
-- durable session persistence
-- built-in tool policy/authorization service
-- multi-provider abstraction layer
-- distributed runtime ownership
-
-## Runtime invariants
-
-- Runtime services are constructed once per `Magenta` instance.
-- Session identity is UUID-based.
-- Session context is represented by typed `SessionMessage` ADT only.
-- Compaction runs before each model call (initial turn request and tool-loop follow-ups).
-- Turn ingress is typed (`SessionInput`) with user/bus/system/timer kinds.
-- Model transport side effects occur only through `OllamaClient`.
-
-## State transitions
-
-```text
-Config Loaded -> Runtime Constructed -> Session Started/Resumed/Forked
--> Input Appended -> Context Compacted (optional) -> Model Call
--> Optional Tool Loop -> Final Assistant Text Returned
-```
+- Public interaction is handle-first (`SessionHandle`).
+- Exactly one active input route per session.
+- Multiple output routes per session are supported.
+- `AssistantFinal` is always emitted per completed assistant step.
+- `PartialToken` is emitted only through output routes (no callback bypass path).
+- Turn ingress failures call `SessionConfig.onError` and do not escape external input consumers.
 
 ## Failure behavior
 
-- Config parse/validation errors fail fast at startup.
-- Unknown session IDs fail fast on `resume`/`fork`/turn execution.
-- Model transport failures surface as exceptions.
-- Tool bridge failures surface as exceptions unless caller guards bridge logic.
-- Turn path exceptions emit `SessionConfig.onError` before propagation.
-- External routed input uses `SessionInputRouter` and reports inactive/policy-denied outcomes without throwing by default.
+- startup config failures are fail-fast
+- unknown/inactive handles raise deterministic validation errors
+- input policy denials emit `InputRouteReport` and skip turn execution
+- output listener failures are isolated and reported through router diagnostics
+- session close prunes all input/output routes
 
 ## Extension points
 
-- `SessionConfig` callbacks for output/tool integration.
-- `Magenta` route registry stores `SessionInputRouter` adapters for external input fanout.
-- `SessionInputRouter` report callbacks (`ALL`/`FAILURE`/`ERROR`) for routing observability.
-- Compaction strategy selection via `ModelConfig.compactionStrategy`.
-- Summarizer function injection from runtime/model path into compaction strategy.
-
-## Integration boundary summary
-
-```text
-Caller code owns policy + side effects (callbacks).
-Runtime owns orchestration + typed state transitions.
-Transport owns provider protocol execution.
-```
+- output filtering via `OutputRoutePolicy` (kind/source/tag allowlists)
+- tool execution policy via wrapped `SessionConfig.toolBridge`
+- compaction behavior via model compaction settings + summarizer seam
 
 ## Known constraints
 
-- In-memory session manager only.
-- Compaction threshold/token counting depends on configured tokenizer encoding (`jtokkit`, default `cl100k_base`).
-- Security enforcement is not centralized in this implementation slice.
+- in-memory session/routing only
+- single provider transport (`OllamaClient`)
+- centralized `SecurityService` not yet wired

@@ -1,62 +1,47 @@
 # Integration Patterns
 
-Implementation-oriented patterns for embedding the current runtime.
+Implementation-oriented patterns for embedding the runtime.
 
-## 1) Terminal streaming runner
+## 1) Terminal streaming via output routes
 
 ```java
 RuntimeConfig config = RuntimeConfig.loadDefault();
 Magenta magenta = new Magenta(config);
 
-SessionConfig sessionConfig = SessionConfig.builder()
-        .onTokenStreamHook(System.out::print)
-        .onStreamingResponseConsumer(token -> uiBus.publish("stream-token", token))
-        .onFullResponseConsumer(text -> uiBus.publish("final", text))
-        .onErrorHook(err -> uiBus.publish("turn-error", err.getMessage()))
-        .onMessageAppendedHook(msg -> {})
-        .build();
+SessionHandle handle = magenta.startBaseSession(
+        "terminal",
+        SessionConfig.builder().streamingEnabled(true).build()
+);
 
-Session session = magenta.startBaseSession("terminal", sessionConfig);
-Consumer<SessionInput> input = magenta.sessionInputConsumer(
-        session.sessionId(),
-        SessionRoutePolicy.defaults(),
+magenta.registerInputRoute(
+        handle,
+        InputRoutePolicy.defaults(),
         InputRouteReportLevel.ERROR,
         report -> uiBus.publish("route-report", report)
 );
-input.accept(SessionInput.userMessage("Summarize this repository structure."));
+
+magenta.registerOutputRoute(
+        handle,
+        OutputRoutePolicy.defaults(),
+        event -> uiBus.publish("session-output", event)
+);
+
+magenta.getMessageInputConsumer(handle).accept(SessionInput.userMessage("Summarize this repository."));
 ```
 
-Use when live incremental output is needed.
-
-## 2) UI event fanout pattern
+## 2) Final-only UI updates
 
 ```java
-SessionConfig sessionConfig = SessionConfig.builder()
-        .onTokenStreamHook(token -> uiBus.publish("token", token))
-        .onStreamingResponseConsumer(token -> uiBus.publish("stream-token", token))
-        .onFullResponseConsumer(text -> uiBus.publish("assistant-final", text))
-        .emitStreamingCompletionToFullResponse(true)
-        .onMessageAppendedHook(msg -> uiBus.publish("message", msg))
-        .onAssistantMsgHook(msg -> uiBus.publish("assistant", msg.content()))
-        .build();
+magenta.registerOutputRoute(
+        handle,
+        OutputRoutePolicy.builder()
+                .eventKinds(Set.of(SessionOutputEvent.Kind.FINAL))
+                .build(),
+        event -> uiBus.publish("assistant-final", event)
+);
 ```
 
-Use when frontend state should mirror canonical runtime message writes.
-
-## 3) Autonomous execution mode
-
-```java
-SessionConfig autonomous = SessionConfig.builder()
-        .blockingOnly(false)
-        .toolsEnabled(true)
-        .toolBridge(agentToolExecutor::execute)
-        .onMessageAppendedHook(eventStore::append)
-        .build();
-```
-
-Use when tool loop automation is desired and caller owns policy and execution control.
-
-## 4) Security-wrapped tool bridge
+## 3) Tool bridge with policy wrapper
 
 ```java
 SessionConfig secured = SessionConfig.builder()
@@ -71,59 +56,22 @@ SessionConfig secured = SessionConfig.builder()
         .build();
 ```
 
-Use when deterministic authorization is required before any side effect.
-
-## 5) External input delivery
-
-```java
-Session session = magenta.startBaseSession("agent-a", SessionConfig.defaults());
-SessionRoutePolicy policy = new SessionRoutePolicy(
-        Set.of(SessionInput.MessageInputKind.BUS_MESSAGE),
-        Set.of(SessionInput.EventInputKind.SYSTEM_EVENT),
-        Set.of("agent-b", "system")
-);
-
-Consumer<InputRouteReport> routeReportHook = report ->
-        auditBus.publish("route-report", report);
-
-Consumer<SessionInput.MessageInput> msgAdapter = magenta.sessionManager()
-        .messageConsumerFor(
-                session.sessionId(),
-                policy,
-                InputRouteReportLevel.FAILURE,
-                routeReportHook
-        );
-
-msgAdapter.accept(new SessionInput.BusMessageInput(
-        "Task complete. Review results.",
-        "agent-b",
-        "corr-123",
-        Map.of("topic", "review"),
-        true
-));
-```
-
-Use when session-owned adapters are needed with policy + liveness gating and routing diagnostics.
-## 6) Blocking-only deterministic mode
+## 4) Blocking deterministic mode
 
 ```java
 SessionConfig deterministic = SessionConfig.builder()
         .blockingOnly(true)
         .toolsEnabled(false)
+        .streamingEnabled(false)
         .build();
 ```
 
-Use when reproducibility and simple control flow matter more than stream UX.
-
-## 7) Safe defaults baseline
+## 5) Session close hygiene
 
 ```java
-SessionConfig baseline = SessionConfig.defaults();
+magenta.unregisterOutputRoute(handle, routeId);
+magenta.unregisterInputRoute(handle);
+magenta.closeSession(handle);
 ```
 
-Behavior:
-
-- streaming allowed if model supports it
-- tool loop enabled, but default bridge returns `Tool not handled`
-- no callback side effects by default
-- streaming completion is replayed to full response consumer by default
+Session close also auto-prunes any remaining routes.

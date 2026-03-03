@@ -17,7 +17,7 @@
 
 - config hot reload
 - dynamic runtime graph mutation
-- env var / CLI precedence merging
+- env var / CLI precedence merging (declared target, not yet implemented in this runtime slice)
 
 ## Invariants
 
@@ -53,5 +53,5 @@ read magenta.yaml
 
 ## Known constraints
 
-- Duplicate IDs are overwritten by last-loaded file due to map `put` behavior.
+- Duplicate IDs fail fast with explicit source file diagnostics.
 - Include resolution walks full config tree per pattern.

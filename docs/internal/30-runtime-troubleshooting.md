@@ -1,75 +1,70 @@
 # Runtime Troubleshooting
 
-## Parse and validation failures
+## Config parse and validation failures
 
 Symptoms:
 
-- startup fails before runtime creation
-- error includes `Config parse failure at ... (line=..., column=...)`
+- startup fails before `Magenta` construction
+- error includes parse location (file + line + column)
 
 Checks:
 
-1. Confirm file path exists under `configs/`.
-2. Fix YAML shape/unknown keys at reported line/column.
-3. Verify include patterns match expected files.
-4. Verify enabled agents reference enabled models and existing prompts.
+1. verify files and include paths under `configs/`
+2. fix unknown keys / unresolved IDs
+3. verify enabled agents reference enabled models/prompts
 
-## Session lifecycle errors
+## Session handle and lifecycle errors
 
 Symptoms:
 
-- `Session not found: <uuid>` on resume/fork/run turn
+- `Session not found: <uuid>` from lifecycle calls
+- `Unknown session handle: <uuid>` from router calls
 
 Checks:
 
-1. Ensure UUID is from active `SessionManager` instance.
-2. Avoid using aliases as resume keys.
-3. Remember process restart clears in-memory session registry.
+1. ensure handle belongs to current process/runtime instance
+2. avoid using handles after `closeSession`
+3. remember in-memory registry is cleared on process restart
 
-## Model transport failures
+## Input routing issues
 
 Symptoms:
 
-- `Ollama chat failed with status ...`
-- `Ollama streaming request failed`
+- no turn executed after input submit
+- `DENIED_POLICY` or `SESSION_INACTIVE` reports
 
 Checks:
 
-1. Verify endpoint URL and Ollama availability.
-2. Validate model ID exists in Ollama server.
-3. For non-URL endpoint values, check `MAGENTA_OLLAMA_URL` or default host.
-4. Retry with blocking-only config to isolate streaming issues.
+1. confirm input route is registered for that handle
+2. verify `InputRoutePolicy` allows kind/source
+3. use `InputRouteReportLevel.ALL` temporarily for diagnostics
 
-## Callback and tool bridge failures
+## Output routing issues
 
 Symptoms:
 
-- runtime turn throws during tool loop
-- unhandled tool requests become `Tool not handled: <name>` content
+- no streaming tokens delivered
+- listener stops receiving after callback failure
 
 Checks:
 
-1. Verify `toolsEnabled` and bridge function wiring.
-2. Ensure bridge handles null/invalid arguments defensively.
-3. Wrap bridge in policy + error handling if failures must not abort turn.
+1. confirm output route is registered and not filtered out by `OutputRoutePolicy`
+2. for partial tokens, ensure session `streamingEnabled=true`
+3. confirm listener callback is non-throwing
 
-## onError callback behavior
+## Tool bridge failures
 
 Symptoms:
 
-- runtime throws and `onError` callback fires
+- turn fails in tool loop
+- tool output content defaults to not-handled
 
 Checks:
 
-1. Confirm callback is set on the session's `SessionConfig`.
-2. Verify callback code is non-throwing and side-effect safe.
-3. Remember runtime rethrows after callback; caller-level handling is still required.
+1. verify `toolsEnabled=true` and `toolBridge` wiring
+2. validate bridge input parsing and error handling
+3. wrap bridge with policy guards where needed
 
-## Common implementation mistakes and corrections
+## onError behavior
 
-- Mistake: assuming `onError` swallows failures.
-  Correction: `onError` is notification-only; runtime still propagates original exception.
-- Mistake: assuming duplicate config IDs are rejected.
-  Correction: avoid duplicate IDs in include sets; current loader map behavior overwrites previous entry.
-- Mistake: assuming persistent resume across process restarts.
-  Correction: treat resume as in-memory only until durable session storage is implemented.
+`SessionConfig.onError` is notification-only; ingress swallows turn exceptions after callback.

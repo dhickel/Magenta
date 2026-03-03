@@ -1,6 +1,6 @@
 # Internal Docs Index
 
-Canonical runtime documentation for engineers working in `src/main/java/io/mindspice/magenta/systems`.
+Canonical runtime documentation for engineers working in `src/main/java/io/mindspice/magenta`.
 
 ## Start here
 
@@ -13,7 +13,8 @@ Canonical runtime documentation for engineers working in `src/main/java/io/minds
 - `12-session-architecture.md`: lifecycle semantics and session integration boundaries.
 - `13-context-compaction-architecture.md`: context mutation/compaction behavior and fallback rules.
 - `14-model-ollama-architecture.md`: model turn loop and Ollama transport behavior.
-- `15-callback-contract-architecture.md`: callback lifecycle, dispatch semantics, and error emission behavior.
+- `15-callback-contract-architecture.md`: session/router contract semantics, output event model, and error emission behavior.
+- `16-public-api-contract.md`: supported runtime API surface and stability policy.
 
 ## Implementation walkthroughs and operations
 
@@ -24,3 +25,7 @@ Canonical runtime documentation for engineers working in `src/main/java/io/minds
 ## Maintenance policy
 
 - `90-documentation-quality-checklist.md`: required checklist for runtime documentation updates.
+
+## External usage docs
+
+- `../quickstart-chat-loop.md`: detailed single-session chat quick start via `Magenta`.

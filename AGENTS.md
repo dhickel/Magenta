@@ -79,8 +79,9 @@ Core runtime services:
 - `SecurityService` (future phases): single authorization ingress for side effects.
 
 Current implementation status:
-- implemented runtime slice is `Magenta + RuntimeConfig + SessionManager + ContextManager + ModelRunner + OllamaClient`.
+- implemented runtime slice is `Magenta + RuntimeConfig + SessionManager + SessionRouter + ContextManager + ModelRunner + OllamaClient`.
 - tool/security behavior currently enters through `SessionConfig.toolBridge` callback wiring.
+- runtime external API is handle-first (`SessionHandle`) with routed input/output through `SessionRouter`.
 - `MindStore`, `SchedulerService`, and `SecurityService` remain future-phase targets.
 
 Design rules:

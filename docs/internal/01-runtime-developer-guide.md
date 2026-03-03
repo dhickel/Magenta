@@ -1,180 +1,118 @@
 # Magenta2 Runtime Developer Guide
 
-Primary implementation guide for the currently implemented runtime slice.
+Primary implementation guide for the current runtime slice.
 
-## Scope
-
-This guide covers implemented runtime behavior for:
+## Implemented services
 
 - `RuntimeConfig`
 - `Magenta`
 - `SessionManager`
 - `ContextManager`
+- `SessionRouter`
 - `ModelRunner`
 - `OllamaClient`
-- `SessionConfig` callback integration
 
-Future target services (`MindStore`, `SchedulerService`, `SecurityService`) are not implemented in this slice and are documented as future architecture targets only.
+Future targets (`MindStore`, `SchedulerService`, `SecurityService`) are not implemented in this slice.
 
 ## Runtime at a glance
 
 ```text
 RuntimeConfig.load(...) -> Magenta
-  -> SessionManager (start/resume/fork)
+  -> SessionManager (start/resume/fork/close)
+  -> SessionRouter (input + output route registry)
   -> ContextManager (state + compaction)
-  -> ModelRunner (turn loop)
+  -> ModelRunner (turn + tool loop)
       -> OllamaClient (HTTP transport)
-  -> SessionConfig callbacks (token stream, message sink, tool bridge, error sink)
 ```
 
-Core design rule: prefer data and callback seams over class proliferation.
+## Public API (handle-first)
 
-## Public API and lifecycle contracts
+`Magenta` lifecycle returns `SessionHandle`:
 
-`Magenta` is the runtime entry surface:
-
+- `startBaseSession(alias)`
 - `startBaseSession(alias, sessionConfig)`
+- `startSession(agentId, alias)`
 - `startSession(agentId, alias, sessionConfig)`
 - `resumeSession(sessionId)`
 - `forkSession(sourceSessionId, alias)`
 - `forkSession(sourceSessionId, alias, sessionConfigOverride)`
-- `sessionInputConsumer(sessionId, policy, reportLevel, callback)`
-- `registerSessionRoute(sessionId, policy, reportLevel, callback)`
-- `publishToSessions(input)`
-- `closeSession(sessionId)`
+- `closeSession(handle)`
 
-Lifecycle guarantees:
+`SessionHandle` fields:
 
-- `start*` validates enabled agent/model references and creates a new UUID session.
-- `resume` is UUID-only and in-memory only.
-- `fork` clones context into a new session ID; config inherits unless override provided.
-- external input must flow through router-backed consumers.
-- router ingress is non-throwing; routing decisions are reported via callback and execution errors go to `SessionConfig.onError`.
+- `sessionId`
+- `isActiveSupplier` (via `isActive()`)
+- immutable `SessionConfigView`
 
-## Callback contract (`SessionConfig`)
+## Routing API
+
+Input routing (single active route per session):
+
+- `registerInputRoute(handle, policy, reportLevel, reportCallback)`
+- `updateInputRoute(handle, ...)`
+- `unregisterInputRoute(handle)`
+- `getMessageInputConsumer(handle)`
+- `getEventInputConsumer(handle)`
+
+Output routing (multiple routes per session):
+
+- `registerOutputRoute(handle, outputPolicy, outputListener) -> routeId`
+- `unregisterOutputRoute(handle, routeId)`
+
+Output event ADT (`SessionOutputEvent`):
+
+- `PartialToken`
+- `AssistantFinal`
+- `MessageAppended`
+- `ToolMessageAppended`
+
+## SessionConfig contract
 
 `SessionConfig` fields:
 
-- `onMessageAppendedHook: Consumer<SessionMessage>`
-- `onUserMsgHook`, `onAssistantMsgHook`, `onToolMsgHook`, `onSystemMsgHook`, `onSummaryMsgHook`, `onInboundMsgHook`
-- `onMessageInputHook: Consumer<SessionInput.MessageInput>`
-- `onEventInputHook: Consumer<SessionInput.EventInput>`
-- `onTokenStreamHook: Consumer<String>`
-- `onStreamingResponseConsumer: Consumer<String>`
-- `onFullResponseConsumer: Consumer<String>`
-- `toolBridge: Function<ToolRequest, ToolResult>`
-- `onErrorHook: Consumer<Throwable>`
-- `emitStreamingCompletionToFullResponse: boolean`
-- `blockingOnly: boolean`
-- `toolsEnabled: boolean`
+- `blockingOnly`
+- `toolsEnabled`
+- `bypassSecurity`
+- `streamingEnabled`
+- `toolBridge`
+- `onError`
 
-Default behavior:
+Defaults:
 
-- no-op message/token/error callbacks
-- no-op output consumers
-- `toolBridge` returns `ToolResult.notHandled(...)`
-- `emitStreamingCompletionToFullResponse = true`
-- `blockingOnly = false`, `toolsEnabled = true`
+- `blockingOnly = false`
+- `toolsEnabled = true`
+- `bypassSecurity = false`
+- `streamingEnabled = true`
+- `toolBridge = ToolResult.notHandled(...)`
+- `onError = no-op`
 
-## Turn execution behavior
+## Turn flow
 
-Router-backed turn flow:
+1. Caller submits typed input through `SessionRouter` consumer.
+2. Router enforces handle liveness + input policy and emits `InputRouteReport`.
+3. `SessionManager` submits to turn execution and catches internal failures to emit `SessionConfig.onError`.
+4. `Magenta` appends persisted input to context and emits `MessageAppended`.
+5. `Magenta` computes stream mode:
+   - `sessionConfig.streamingEnabled && sessionRouter.hasPartialTokenListeners(handle)`
+6. `ModelRunner` executes the turn:
+   - streaming emits only `PartialToken`
+   - final assistant text always emits `AssistantFinal`
+   - appended messages emit `MessageAppended`/`ToolMessageAppended`
+7. Tool calls use `SessionConfig.toolBridge`.
 
-1. `SessionInputRouter` validates session liveness and route policy.
-2. `SessionManager` submits to internal turn executor.
-3. Internal turn executor resumes session.
-4. Emit input callback (`onMessageInput` or `onEventInput`)
-5. Append persisted input (`UserMsg` for `SessionInput.UserMessageInput`, `InboundMsg` otherwise)
-6. `ModelRunner.runTurn(session, maxTurns, beforeModelCallHook)` where hook calls `ContextManager.compactIfNeeded(...)`
-6. On any throwable, invoke `SessionConfig.onError` and swallow in external ingress path.
+## Streaming contract
 
-`ModelRunner.runTurn` flow:
+- If `streamingEnabled == false`, registering output routes that request partial tokens throws validation error.
+- If `streamingEnabled == true`, partial streaming is still per-turn and only enabled when partial listeners exist.
+- `Session` and `ModelRunner` stay router-agnostic.
 
-1. Run pre-model-call hook (compaction) every iteration.
-2. Build request from full typed context snapshot.
-3. Choose mode:
-   - blocking if `blockingOnly`, or tool loop active, or model streaming unsupported
-   - streaming otherwise
-4. Call `OllamaClient`.
-5. In streaming mode, emit `onTokenStreamHook` and `onStreamingResponseConsumer` per token chunk.
-6. Append `AssistantMsg` with parsed tool calls; emit message callbacks.
-7. Emit full response to `onFullResponseConsumer`:
-   - always for blocking turns
-   - for streaming turns when `emitStreamingCompletionToFullResponse` is true
-8. If no tool calls (or tools disabled), return assistant text.
-9. Otherwise call `toolBridge` per tool call, append `ToolMsg`, emit callbacks, and continue loop (with compaction hook applied again before next model request).
-10. Stop on first no-tool assistant response or when max iterations reached.
+## Known constraints
 
-Empty/null model text normalization: `"."`.
-
-## Compaction behavior
-
-Trigger: estimated tokens > `model.compactThreshold`.
-
-Strategy:
-
-- `summarize`: summarize older messages, keep recent tail, insert `SummaryMsg`, fallback when needed
-- default fallback: `rolling_window`
-
-Summarize fallback cases:
-
-- context too small to summarize
-- summarizer returns null/blank
-- summarized output still exceeds target tokens
-
-## Known constraints (implemented behavior)
-
-- Session registry is in-memory only.
+- Session and routing registries are in-memory only.
 - `ContextManager.storeContext(...)` is currently a no-op seam.
-- Token estimation uses `jtokkit` with model `tokenizerEncoding` (default `cl100k_base`).
-- Only Ollama transport is implemented.
-- Tool loop is callback-owned policy; runtime does not enforce authorization.
-- Session route registry is in-memory only and stores `SessionInputRouter` wrappers.
-- Routed input adapters can outlive session lifecycle references; inactive-session inputs are reported and dropped.
+- Security service centralization is future-phase; `toolBridge` remains in `SessionConfig`.
 
-## Integration examples
+## Related docs
 
-Terminal streaming:
-
-```java
-SessionConfig cfg = SessionConfig.builder()
-        .onTokenStreamHook(System.out::print)
-        .onMessageAppendedHook(msg -> eventBus.publish("message", msg))
-        .build();
-```
-
-Blocking deterministic mode:
-
-```java
-SessionConfig cfg = SessionConfig.builder()
-        .blockingOnly(true)
-        .toolsEnabled(false)
-        .build();
-```
-
-Security-wrapped tool bridge:
-
-```java
-SessionConfig cfg = SessionConfig.builder()
-        .toolsEnabled(true)
-        .toolBridge(req -> {
-            if (!policyAllows(req.toolCall())) {
-                return ToolResult.handled(req.toolCall().id(), req.toolCall().name(), "Denied by policy");
-            }
-            String out = executeTool(req.toolCall().name(), req.toolCall().argumentsJson());
-            return ToolResult.handled(req.toolCall().id(), req.toolCall().name(), out);
-        })
-        .build();
-```
-
-See `20-integration-patterns.md` and `21-sequence-walkthroughs.md` for fuller flows.
-
-## Documentation maintenance
-
-When runtime behavior changes:
-
-1. Update this guide and any affected deep-dive docs.
-2. Update `docs/internal/00-index.md` if docs are added/removed.
-3. Run the checklist in `90-documentation-quality-checklist.md`.
-4. Add `.internal-dev/changelogs/<date>-<topic>.md` entry.
-5. Record code-doc mismatches explicitly if they remain unresolved.
+- Internal API contract: `16-public-api-contract.md`
+- External usage guide: `../quickstart-chat-loop.md`

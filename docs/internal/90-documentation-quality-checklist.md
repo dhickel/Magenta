@@ -11,7 +11,8 @@ Use this checklist for each material runtime change.
 ## Contract completeness
 
 - [ ] Lifecycle semantics (`start`/`resume`/`fork`/turn execution) are documented.
-- [ ] Callback semantics (`onMessageAppendedHook`, `onTokenStreamHook`, `onStreamingResponseConsumer`, `onFullResponseConsumer`, `toolBridge`, `onErrorHook`) are documented with current behavior.
+- [ ] Session contract semantics (`SessionHandle`, `SessionConfig`, `SessionConfigView`) are documented.
+- [ ] Routing semantics (`SessionRouter`, input/output policies, event model, streaming gating) are documented.
 - [ ] Compaction and model mode-selection behavior are documented.
 
 ## Example quality

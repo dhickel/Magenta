@@ -1,6 +1,6 @@
 package io.mindspice.magenta.support;
 
-import io.mindspice.magenta.systems.config.RuntimeConfig;
+import io.mindspice.magenta.runtime.config.RuntimeConfig;
 
 import java.nio.file.Path;
 import java.util.List;

@@ -1,115 +1,59 @@
-# Callback Contract Architecture
+# Routing and Callback Contract Architecture
 
 ## Design intent
 
-Provide a small, explicit callback surface for runtime integration without introducing additional service layers.
+Use one concrete routing service (`SessionRouter`) as the external IO boundary, while keeping `ModelRunner` and `Session` decoupled from router internals.
 
-The callback contract is owned by `SessionConfig` and is intentionally function-first:
+## SessionConfig contract
 
-- callbacks are plain Java `Consumer`/`Function` values
-- runtime owns orchestration and invokes callbacks at stable points
-- caller code owns side effects and policy
+`SessionConfig` remains intentionally small:
 
-## Contract surface (`SessionConfig`)
+- `blockingOnly`
+- `toolsEnabled`
+- `bypassSecurity`
+- `streamingEnabled`
+- `toolBridge`
+- `onError`
 
-Canonical callbacks:
+Only `toolBridge` and `onError` are callbacks in this phase.
 
-- `onMessageAppendedHook: Consumer<SessionMessage>`
-- `onUserMsgHook: Consumer<SessionMessage.UserMsg>`
-- `onAssistantMsgHook: Consumer<SessionMessage.AssistantMsg>`
-- `onToolMsgHook: Consumer<SessionMessage.ToolMsg>`
-- `onSystemMsgHook: Consumer<SessionMessage.SystemMsg>`
-- `onSummaryMsgHook: Consumer<SessionMessage.SummaryMsg>`
-- `onInboundMsgHook: Consumer<SessionMessage.InboundMsg>`
-- `onMessageInputHook: Consumer<SessionInput.MessageInput>`
-- `onEventInputHook: Consumer<SessionInput.EventInput>`
-- `onTokenStreamHook: Consumer<String>`
-- `onStreamingResponseConsumer: Consumer<String>`
-- `onFullResponseConsumer: Consumer<String>`
-- `toolBridge: Function<ToolRequest, ToolResult>`
-- `onErrorHook: Consumer<Throwable>`
+## Input routing contract
 
-Control flags:
+- One active input route per session (`register` replaces previous route).
+- Policy enforcement uses `InputRoutePolicy`.
+- Route outcomes are reported as `InputRouteReport` with `APPROVED`, `DENIED_POLICY`, or `SESSION_INACTIVE`.
+- Unknown/inactive handles produce deterministic validation errors.
 
-- `blockingOnly: boolean`
-- `toolsEnabled: boolean`
-- `emitStreamingCompletionToFullResponse: boolean`
+## Output routing contract
 
-## Message callback semantics
+- Multiple output routes per session.
+- Each route has `OutputRoutePolicy` filtering by event kind/source/tag.
+- Emitted event types:
+  - `PartialToken`
+  - `AssistantFinal`
+  - `MessageAppended`
+  - `ToolMessageAppended`
+- Listener failures are isolated and reported via router diagnostics.
 
-All appended context messages are dispatched through:
+## Streaming contract
 
-1. `onMessageAppendedHook`
-2. exactly one typed message callback based on `SessionMessage` subtype
-
-Dispatch subtypes:
-
-- `UserMsg`
-- `AssistantMsg`
-- `ToolMsg`
-- `SystemMsg`
-- `SummaryMsg`
-- `InboundMsg`
-
-`SessionMessage.content()` is the canonical text representation for logging/context/token estimation.
-
-## Turn-path callback behavior
-
-Router-backed submit path:
-
-1. `SessionInputRouter` validates liveness and policy
-2. `SessionManager` submits approved input to internal turn executor
-3. turn executor resumes session
-4. compacts context if needed
-5. emits input callback (`onMessageInputHook` or `onEventInputHook`)
-6. appends persisted input message (`UserMsg` or `InboundMsg`)
-7. emits message callbacks for appended message
-8. runs model turn loop
-
-`ModelRunner.runTurn(...)`:
-
-- emits message callbacks for each appended `AssistantMsg`
-- emits message callbacks for each appended `ToolMsg`
-- streams token chunks to `onTokenStreamHook` and `onStreamingResponseConsumer` in streaming mode
-- emits full assistant text to `onFullResponseConsumer` for blocking turns and optionally for streaming turns
-- calls `toolBridge` for each tool call when tools are enabled
+- Session-level gate: `SessionConfig.streamingEnabled`.
+- If disabled, routes requesting partial tokens are rejected.
+- If enabled, turn streaming occurs only when partial listeners exist.
+- No parallel callback bypass path for streamed tokens.
 
 ## Error semantics
 
-`onErrorHook` is emitted from `SessionManager` ingress submit catch handling:
-
-1. any throwable from internal turn execution path is caught
-2. `sessionConfig.onErrorHook` is called once with the throwable
-3. throwable is swallowed for external consumer/router ingress
-
-Important behavior:
-
-- callback is notification-only
-- router/consumer ingress does not throw external exceptions
+- Input submit path catches internal turn failures and calls `SessionConfig.onError`.
+- Router reporting/listener callbacks are observability only and must not break ingress/turn execution.
 
 ## Defaults
 
-`SessionConfig.defaults()` configures:
+`SessionConfig.defaults()` sets:
 
-- no-op callbacks
-- no-op output consumers
-- `toolBridge` returns `ToolResult.notHandled(...)`
 - `blockingOnly = false`
 - `toolsEnabled = true`
-- `emitStreamingCompletionToFullResponse = true`
-
-## Extension boundaries
-
-In scope for callback contract evolution:
-
-- add new typed callbacks when new `SessionMessage` variants are added
-- add small data fields to callback inputs
-- keep compatibility aliases during rename transitions
-
-Out of scope for callback contract:
-
-- scheduler ownership
-- bus persistence/durability
-- centralized security policy service
-
-Those concerns should stay in runtime/service boundaries and feed into session turns via `SessionInput`.
+- `bypassSecurity = false`
+- `streamingEnabled = true`
+- `toolBridge = ToolResult.notHandled(...)`
+- `onError = no-op`
