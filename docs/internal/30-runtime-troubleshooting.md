@@ -18,7 +18,7 @@ Checks:
 Symptoms:
 
 - `Session not found: <uuid>` from lifecycle calls
-- `Unknown session handle: <uuid>` from router calls
+- routing calls fail after close because session handle is inactive
 
 Checks:
 
@@ -31,13 +31,13 @@ Checks:
 Symptoms:
 
 - no turn executed after input submit
-- `DENIED_POLICY` or `SESSION_INACTIVE` input routing events
+- final input routing events report `DENIED_POLICY` or `SESSION_INACTIVE`
 
 Checks:
 
-1. confirm input route is registered for that handle
-2. verify `InputRoutePolicy` allows the configured input filters and source
-3. use `InputRoutingEvent.Level.ALL` temporarily for diagnostics
+1. confirm at least one input route is registered for that handle
+2. verify `InputRoutePolicy` allows the input filter/source
+3. set `routingEventLevel=ALL` temporarily for diagnostics
 
 ## Output routing issues
 
@@ -48,8 +48,8 @@ Symptoms:
 
 Checks:
 
-1. confirm output route is registered and not filtered out by `OutputRoutePolicy`
-2. for streamed output, ensure session `streamingEnabled=true`
+1. confirm output route is registered and not filtered by `OutputRoutePolicy`
+2. for streamed output listeners, ensure session `streamingEnabled=true`
 3. confirm listener callback is non-throwing
 
 ## Tool bridge failures
@@ -68,3 +68,4 @@ Checks:
 ## onError behavior
 
 `SessionConfig.onError` is notification-only; ingress swallows turn exceptions after callback.
+`SessionException` includes the originating `SessionHandle` for multi-session consumers.

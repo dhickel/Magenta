@@ -31,10 +31,6 @@ agents:
     - "agents/*.yaml"
 ```
 
-Why this matters:
-- `RuntimeConfig.load(...)` fails fast if either agent ID does not resolve to an enabled agent.
-- Compaction uses the configured compaction agent's model + prompts when summarization is needed.
-
 ## 3) Add a chat loop class
 
 Create `src/main/java/example/QuickStartChatLoop.java`:
@@ -45,11 +41,11 @@ package example;
 import io.mindspice.magenta.Magenta;
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
 import io.mindspice.magenta.runtime.routing.*;
-import io.mindspice.magenta.runtime.session.config.SessionConfig;
-import io.mindspice.magenta.runtime.session.config.SessionParams;
 import io.mindspice.magenta.runtime.session.SessionHandle;
 import io.mindspice.magenta.runtime.session.SessionInput;
 import io.mindspice.magenta.runtime.session.SessionOutput;
+import io.mindspice.magenta.runtime.session.config.SessionConfig;
+import io.mindspice.magenta.runtime.session.config.SessionParams;
 import io.mindspice.magenta.runtime.tools.ToolResult;
 
 import java.nio.file.Path;
@@ -68,21 +64,18 @@ public final class QuickStartChatLoop {
         this.magenta = new Magenta(runtimeConfig);
 
         SessionConfig sessionConfig = new SessionConfig(
-                SessionParams.ofBlocking(false), // blocking + final-only output route, tools disabled
+                SessionParams.ofBlocking(false),
                 request -> ToolResult.notHandled(request.toolCall()),
+                RoutingEventLevel.FINAL,
+                event -> System.err.println("[route] " + event),
                 error -> System.err.println("[session-error] " + error.getMessage())
         );
 
         this.handle = magenta.startBaseSession("quickstart", sessionConfig);
 
-        magenta.registerInputRoute(
-                handle,
-                InputRoutePolicy.defaults(),
-                InputRoutingEvent.Level.ERROR,
-                event -> System.err.println("[route] " + event.outcome() + " - " + event.reason())
-        );
+        magenta.addInputRoute(handle, InputRoutePolicy.defaults());
 
-        magenta.registerOutputRoute(
+        magenta.addOutputRoute(
                 handle,
                 OutputRoutePolicy.builder()
                         .allowedOutputTags(Set.of(SessionOutput.FinalOutput.FILTER_TAG))
@@ -94,7 +87,7 @@ public final class QuickStartChatLoop {
                 }
         );
 
-        this.messageIn = magenta.getMessageInputConsumer(handle);
+        this.messageIn = magenta.messageInputConsumer(handle);
     }
 
     public void runConsoleLoop() {
@@ -139,23 +132,10 @@ mvn -q -DskipTests compile
 mvn -q -DskipTests exec:java -Dexec.mainClass=example.QuickStartChatLoop
 ```
 
-If you pass a custom config path:
-
-```bash
-mvn -q -DskipTests exec:java \
-  -Dexec.mainClass=example.QuickStartChatLoop \
-  -Dexec.args="/absolute/path/to/configs/magenta.yaml"
-```
-
 ## 5) What this quick start establishes
 
 - One runtime owner (`Magenta`) for lifecycle + routing.
 - One chat session (`SessionHandle`) started from base agent config.
-- Input attached through route policy (`registerInputRoute` + `getMessageInputConsumer`).
-- Output attached through route policy (`registerOutputRoute` with `FinalOutput` events only).
+- Input attached through route policy (`addInputRoute` + `messageInputConsumer`).
+- Output attached through route policy (`addOutputRoute` with `FinalOutput` events only).
 - No tool execution path (`SessionParams.ofBlocking(false)` sets `toolsEnabled=false`).
-
-## 6) API contract notes for dogfooding
-
-- Treat `Magenta` + routed handle/input/output types as the supported integration surface.
-- `Magenta` intentionally does not expose internal runtime service getters; compose services directly only for advanced custom wiring.

@@ -3,6 +3,9 @@ package io.mindspice.magenta.runtime.session;
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
 import io.mindspice.magenta.runtime.context.ContextElement;
 import io.mindspice.magenta.runtime.context.ContextManager;
+import io.mindspice.magenta.runtime.routing.InputRoutingEvent;
+import io.mindspice.magenta.runtime.routing.RoutingEvent;
+import io.mindspice.magenta.runtime.routing.RoutingEventLevel;
 import io.mindspice.magenta.runtime.session.config.SessionConfig;
 import io.mindspice.magenta.runtime.session.config.SessionParams;
 import io.mindspice.magenta.runtime.tools.ToolResult;
@@ -11,6 +14,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -39,15 +43,16 @@ class SessionManagerIntegrationTest {
                 .isEqualTo(new ContextElement.SystemMsg("Base prompt\n\nAgent prompt"));
 
         SessionHandle handle = manager.handleFor(session.sessionId());
+        SessionSettingsView settings = manager.settingsFor(handle);
         assertThat(handle.sessionId()).isEqualTo(session.sessionId());
         assertThat(handle.isActive()).isTrue();
-        assertThat(handle.settingsView().streamingEnabled()).isFalse();
-        assertThat(handle.settingsView().agentId()).isEqualTo("agent-default");
-        assertThat(handle.settingsView().agentModelId()).isEqualTo("model-default");
-        assertThat(handle.settingsView().agentPromptIds()).containsExactly("base.system", "agents.default");
-        assertThat(handle.settingsView().agentToolIds()).containsExactly("read_file");
-        assertThat(handle.settingsView().resolvedSystemPrompt()).isEqualTo("Base prompt\n\nAgent prompt");
-        assertThat(handle.settingsView().modelName()).isEqualTo("test-model");
+        assertThat(settings.streamingEnabled()).isFalse();
+        assertThat(settings.agentId()).isEqualTo("agent-default");
+        assertThat(settings.agentModelId()).isEqualTo("model-default");
+        assertThat(settings.agentPromptIds()).containsExactly("base.system", "agents.default");
+        assertThat(settings.agentToolIds()).containsExactly("read_file");
+        assertThat(settings.resolvedSystemPrompt()).isEqualTo("Base prompt\n\nAgent prompt");
+        assertThat(settings.modelName()).isEqualTo("test-model");
     }
 
     @Test
@@ -67,12 +72,13 @@ class SessionManagerIntegrationTest {
         );
 
         SessionHandle handle = manager.handleFor(session.sessionId());
-        Instant createdAt = handle.settingsView().createdAt();
+        SessionSettingsView settings = manager.settingsFor(handle);
+        Instant createdAt = settings.createdAt();
         manager.close(session.sessionId());
 
         assertThat(handle.isActive()).isFalse();
-        assertThat(handle.settingsView().createdAt()).isEqualTo(createdAt);
-        assertThatThrownBy(() -> handle.settingsView().agentPromptIds().add("new.prompt"))
+        assertThat(settings.createdAt()).isEqualTo(createdAt);
+        assertThatThrownBy(() -> settings.agentPromptIds().add("new.prompt"))
                 .isInstanceOf(UnsupportedOperationException.class);
     }
 
@@ -138,6 +144,7 @@ class SessionManagerIntegrationTest {
         RuntimeConfig config = TestRuntimeConfigs.basicRuntimeConfig();
         ContextManager contextManager = new ContextManager();
         AtomicInteger onErrorCalls = new AtomicInteger();
+        AtomicReference<SessionHandle> errorHandle = new AtomicReference<>();
 
         SessionManager manager = new SessionManager(config, contextManager, (sessionId, input) -> {
             throw new IllegalStateException("simulated-execution-failure");
@@ -146,14 +153,61 @@ class SessionManagerIntegrationTest {
         SessionConfig cfg = new SessionConfig(
                 SessionParams.ofStreaming(true),
                 request -> ToolResult.notHandled(request.toolCall()),
-                ignored -> onErrorCalls.incrementAndGet()
+                error -> {
+                    onErrorCalls.incrementAndGet();
+                    errorHandle.set(error.sessionHandle());
+                }
         );
         Session session = manager.start("agent-default", "router-error", cfg);
+        SessionHandle handle = manager.handleFor(session.sessionId());
 
         assertThatCode(() -> manager.submitFromRoute(
-                session.sessionId(),
+                handle,
                 new SessionInput.UserMsg("hello", "user", true)
         )).doesNotThrowAnyException();
         assertThat(onErrorCalls).hasValue(1);
+        assertThat(errorHandle.get().sessionId()).isEqualTo(session.sessionId());
+    }
+
+    @Test
+    void inputRoutingObserverRespectsConfiguredTraceLevel() {
+        RuntimeConfig config = TestRuntimeConfigs.basicRuntimeConfig();
+        ContextManager contextManager = new ContextManager();
+        SessionManager manager = new SessionManager(config, contextManager, (sessionId, input) -> "ok");
+        AtomicInteger callbackCalls = new AtomicInteger();
+
+        Session session = manager.start(
+                "agent-default",
+                "trace",
+                new SessionConfig(
+                        SessionParams.ofStreaming(true),
+                        request -> ToolResult.notHandled(request.toolCall()),
+                        RoutingEventLevel.FINAL,
+                        event -> callbackCalls.incrementAndGet(),
+                        ignored -> {}
+                )
+        );
+
+        SessionHandle handle = manager.handleFor(session.sessionId());
+        manager.onRoutingEvent(new RoutingEvent.InputResult(
+                handle,
+                java.util.Optional.empty(),
+                InputRoutingEvent.OutCome.DENIED_POLICY,
+                InputRoutingEvent.Phase.ATTEMPT,
+                "attempt",
+                "UserMsg",
+                "user"
+        ));
+        manager.onRoutingEvent(new RoutingEvent.InputResult(
+                handle,
+                java.util.Optional.empty(),
+                InputRoutingEvent.OutCome.DENIED_POLICY,
+                InputRoutingEvent.Phase.FINAL,
+                "final",
+                "UserMsg",
+                "user"
+        ));
+
+        assertThat(callbackCalls).hasValue(1);
     }
 }

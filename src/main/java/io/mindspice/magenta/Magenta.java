@@ -1,25 +1,29 @@
 package io.mindspice.magenta;
 
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
+import io.mindspice.magenta.runtime.context.ContextElement;
 import io.mindspice.magenta.runtime.context.ContextManager;
 import io.mindspice.magenta.runtime.model.ModelRunner;
 import io.mindspice.magenta.runtime.model.OllamaClient;
 import io.mindspice.magenta.runtime.routing.InputRoutePolicy;
-import io.mindspice.magenta.runtime.routing.InputRoutingEvent;
 import io.mindspice.magenta.runtime.routing.OutputRoutePolicy;
 import io.mindspice.magenta.runtime.routing.OutputRoutingEvent;
+import io.mindspice.magenta.runtime.routing.Route;
+import io.mindspice.magenta.runtime.routing.RouteHandle;
 import io.mindspice.magenta.runtime.routing.SessionRouter;
 import io.mindspice.magenta.runtime.session.Session;
-import io.mindspice.magenta.runtime.session.config.SessionParams;
-import io.mindspice.magenta.runtime.session.config.SessionConfig;
 import io.mindspice.magenta.runtime.session.SessionHandle;
 import io.mindspice.magenta.runtime.session.SessionInput;
 import io.mindspice.magenta.runtime.session.SessionManager;
-import io.mindspice.magenta.runtime.context.ContextElement;
 import io.mindspice.magenta.runtime.session.SessionOutput;
+import io.mindspice.magenta.runtime.session.SessionSettingsView;
+import io.mindspice.magenta.runtime.session.config.SessionConfig;
+import io.mindspice.magenta.runtime.session.config.SessionParams;
 import io.mindspice.magenta.runtime.tools.ToolResult;
 
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -39,7 +43,7 @@ public final class Magenta {
         this.contextManager = new ContextManager();
         this.modelRunner = new ModelRunner(new OllamaClient());
         this.sessionManager = new SessionManager(runtimeConfig, contextManager, this::executeTurn);
-        this.sessionRouter = new SessionRouter(sessionManager::handleFor, sessionManager::submitFromRoute);
+        this.sessionRouter = new SessionRouter(sessionManager::submitFromRoute, sessionManager::onRoutingEvent, ignored -> {});
     }
 
     public SessionHandle startBaseSession(String alias) {
@@ -60,67 +64,64 @@ public final class Magenta {
         return sessionManager.handleFor(session.sessionId());
     }
 
-    public SessionHandle resumeSession(UUID sessionId) {
-        return sessionManager.handleFor(sessionId);
+    public SessionHandle resumeSession(SessionHandle handle) {
+        Objects.requireNonNull(handle, "handle");
+        return sessionManager.handleFor(handle.sessionId());
     }
 
-    public SessionHandle forkSession(UUID sourceSessionId, String alias) {
-        Session session = sessionManager.fork(sourceSessionId, alias);
+    public SessionHandle forkSession(SessionHandle sourceHandle, String alias) {
+        Objects.requireNonNull(sourceHandle, "sourceHandle");
+        Session session = sessionManager.fork(sourceHandle.sessionId(), alias);
         return sessionManager.handleFor(session.sessionId());
     }
 
-    public SessionHandle forkSession(UUID sourceSessionId, String alias, SessionConfig sessionConfigOverride) {
-        Session session = sessionManager.fork(sourceSessionId, alias, sessionConfigOverride);
+    public SessionHandle forkSession(SessionHandle sourceHandle, String alias, SessionConfig sessionConfigOverride) {
+        Objects.requireNonNull(sourceHandle, "sourceHandle");
+        Session session = sessionManager.fork(sourceHandle.sessionId(), alias, sessionConfigOverride);
         return sessionManager.handleFor(session.sessionId());
     }
 
-    public void registerInputRoute(
-            SessionHandle handle,
-            InputRoutePolicy policy,
-            InputRoutingEvent.Level routingEventLevel,
-            Consumer<InputRoutingEvent> routingEventListener
-    ) {
-        sessionRouter.registerInputRoute(handle, policy, routingEventLevel, routingEventListener);
+    public SessionSettingsView settingsFor(SessionHandle handle) {
+        return sessionManager.settingsFor(handle);
     }
 
-    public void updateInputRoute(
-            SessionHandle handle,
-            InputRoutePolicy policy,
-            InputRoutingEvent.Level routingEventLevel,
-            Consumer<InputRoutingEvent> routingEventListener
-    ) {
-        sessionRouter.updateInputRoute(handle, policy, routingEventLevel, routingEventListener);
+    public RouteHandle addInputRoute(SessionHandle handle, InputRoutePolicy policy) {
+        return sessionRouter.addInputRoute(handle, policy);
     }
 
-    public void unregisterInputRoute(SessionHandle handle) {
-        sessionRouter.unregisterInputRoute(handle);
+    public RouteHandle addOutputRoute(SessionHandle handle, OutputRoutePolicy outputPolicy, Consumer<OutputRoutingEvent> outputListener) {
+        SessionSettingsView settings = settingsFor(handle);
+        if (!settings.streamingEnabled() && outputPolicy.requestsStreamedOutput()) {
+            throw new IllegalArgumentException("Streamed output routes require streamingEnabled=true for session " + handle.sessionId());
+        }
+        return sessionRouter.addOutputRoute(handle, outputPolicy, outputListener);
     }
 
-    public Consumer<SessionInput.MessageInput> getMessageInputConsumer(SessionHandle handle) {
-        return sessionRouter.getMessageInputConsumer(handle);
+    public void removeRoute(RouteHandle routeHandle) {
+        sessionRouter.removeRoute(routeHandle);
     }
 
-    public Consumer<SessionInput.EventInput> getEventInputConsumer(SessionHandle handle) {
-        return sessionRouter.getEventInputConsumer(handle);
+    public Route route(RouteHandle routeHandle) {
+        return sessionRouter.route(routeHandle);
     }
 
-    public UUID registerOutputRoute(
-            SessionHandle handle,
-            OutputRoutePolicy outputPolicy,
-            Consumer<OutputRoutingEvent> outputListener
-    ) {
-        return sessionRouter.registerOutputRoute(handle, outputPolicy, outputListener);
+    public Set<Route> routes(SessionHandle handle) {
+        return sessionRouter.routes(handle);
     }
 
-    public void unregisterOutputRoute(SessionHandle handle, UUID routeId) {
-        sessionRouter.unregisterOutputRoute(handle, routeId);
+    public Consumer<SessionInput.MessageInput> messageInputConsumer(SessionHandle handle) {
+        return sessionRouter.messageInputConsumer(handle);
+    }
+
+    public Consumer<SessionInput.EventInput> eventInputConsumer(SessionHandle handle) {
+        return sessionRouter.eventInputConsumer(handle);
     }
 
     public void closeSession(SessionHandle handle) {
         if (handle == null) {
             return;
         }
-        sessionRouter.pruneSession(handle.sessionId());
+        sessionRouter.pruneSession(handle);
         sessionManager.close(handle.sessionId());
     }
 
@@ -140,7 +141,7 @@ public final class Magenta {
                     messageInput.sourceId(),
                     messageInput.text(),
                     "",
-                    java.util.Map.of()
+                    Map.of()
             );
             case SessionInput.EventInput eventInput -> new ContextElement.InboundMsg(
                     "event",
@@ -148,7 +149,7 @@ public final class Magenta {
                     eventInput.sourceId(),
                     eventInput.text(),
                     "",
-                    java.util.Map.of()
+                    Map.of()
             );
         };
     }
@@ -195,13 +196,13 @@ public final class Magenta {
         if (effectiveInput.addToContext()) {
             ContextElement message = toContextElement(effectiveInput);
             session.context().append(message);
-            sessionRouter.emit(handle, new OutputRoutingEvent(sessionId, new SessionOutput.ContextMessageOutput(message)));
+            sessionRouter.emit(handle, new OutputRoutingEvent(handle, new SessionOutput.ContextMessageOutput(message)));
         }
 
-        boolean shouldStream = session.sessionConfig().params().streamingEnabled()
-                && sessionRouter.hasStreamedOutputListeners(handle);
+        boolean shouldStream = settingsFor(handle).streamingEnabled() && sessionRouter.hasStreamedOutputListeners(handle);
         return modelRunner.runTurn(
                 session,
+                handle,
                 runtimeConfig.maxTurns(),
                 shouldStream,
                 event -> sessionRouter.emit(handle, event),
@@ -219,10 +220,6 @@ public final class Magenta {
     }
 
     private SessionConfig defaultSessionConfig() {
-        return new SessionConfig(
-                SessionParams.ofStreaming(true),
-                request -> ToolResult.notHandled(request.toolCall()),
-                ignored -> {}
-        );
+        return new SessionConfig(SessionParams.ofStreaming(true), request -> ToolResult.notHandled(request.toolCall()), ignored -> {});
     }
 }

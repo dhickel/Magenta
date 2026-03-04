@@ -12,6 +12,7 @@ import io.mindspice.magenta.runtime.config.RuntimeConfig;
 import io.mindspice.magenta.runtime.routing.OutputRoutingEvent;
 import io.mindspice.magenta.runtime.session.Session;
 import io.mindspice.magenta.runtime.context.ContextElement;
+import io.mindspice.magenta.runtime.session.SessionHandle;
 import io.mindspice.magenta.runtime.session.SessionOutput;
 import io.mindspice.magenta.runtime.tools.ToolRequest;
 import io.mindspice.magenta.runtime.tools.ToolResult;
@@ -29,11 +30,19 @@ public final class ModelRunner {
     }
 
     public String runTurn(Session session, int maxIterations) {
-        return runTurn(session, maxIterations, false, event -> {}, () -> {});
+        return runTurn(
+                session,
+                new SessionHandle(session.sessionId(), () -> true),
+                maxIterations,
+                false,
+                event -> {},
+                () -> {}
+        );
     }
 
     public String runTurn(
             Session session,
+            SessionHandle handle,
             int maxIterations,
             boolean streamTokens,
             Consumer<OutputRoutingEvent> outputEmitter,
@@ -59,7 +68,7 @@ public final class ModelRunner {
                             modelConfig,
                             request,
                             token -> safeOutputEmitter.accept(
-                                    new OutputRoutingEvent(session.sessionId(), new SessionOutput.StreamedOutput(token))
+                                    new OutputRoutingEvent(handle, new SessionOutput.StreamedOutput(token))
                             )
                     );
 
@@ -69,8 +78,8 @@ public final class ModelRunner {
 
             ContextElement.AssistantMsg assistant = new ContextElement.AssistantMsg(latestText, toolCalls);
             session.context().append(assistant);
-            safeOutputEmitter.accept(new OutputRoutingEvent(session.sessionId(), new SessionOutput.ContextMessageOutput(assistant)));
-            safeOutputEmitter.accept(new OutputRoutingEvent(session.sessionId(), new SessionOutput.FinalOutput(latestText)));
+            safeOutputEmitter.accept(new OutputRoutingEvent(handle, new SessionOutput.ContextMessageOutput(assistant)));
+            safeOutputEmitter.accept(new OutputRoutingEvent(handle, new SessionOutput.FinalOutput(latestText)));
 
             if (toolCalls.isEmpty() || !session.sessionConfig().params().toolsEnabled()) {
                 return latestText;
@@ -85,8 +94,8 @@ public final class ModelRunner {
                         safeText(toolResult.content())
                 );
                 session.context().append(toolMessage);
-                safeOutputEmitter.accept(new OutputRoutingEvent(session.sessionId(), new SessionOutput.ContextMessageOutput(toolMessage)));
-                safeOutputEmitter.accept(new OutputRoutingEvent(session.sessionId(), new SessionOutput.ToolMessageOutput(toolMessage)));
+                safeOutputEmitter.accept(new OutputRoutingEvent(handle, new SessionOutput.ContextMessageOutput(toolMessage)));
+                safeOutputEmitter.accept(new OutputRoutingEvent(handle, new SessionOutput.ToolMessageOutput(toolMessage)));
             }
 
             toolLoopActive = true;

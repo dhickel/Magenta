@@ -13,30 +13,27 @@ SessionHandle handle = magenta.startBaseSession(
         new SessionConfig(
                 SessionParams.ofStreaming(true),
                 request -> ToolResult.notHandled(request.toolCall()),
+                RoutingEventLevel.FINAL,
+                event -> uiBus.publish("input-routing-event", event),
                 error -> System.err.println("session error: " + error.getMessage())
         )
 );
 
-magenta.registerInputRoute(
-        handle,
-        InputRoutePolicy.defaults(),
-        InputRoutingEvent.Level.ERROR,
-        event -> uiBus.publish("input-routing-event", event)
-);
+magenta.addInputRoute(handle, InputRoutePolicy.defaults());
 
-magenta.registerOutputRoute(
+RouteHandle outputRoute = magenta.addOutputRoute(
         handle,
         OutputRoutePolicy.defaults(),
         event -> uiBus.publish("session-output", event)
 );
 
-magenta.getMessageInputConsumer(handle).accept(SessionInput.userMessage("Summarize this repository."));
+magenta.messageInputConsumer(handle).accept(SessionInput.userMessage("Summarize this repository."));
 ```
 
 ## 2) Final-only UI updates
 
 ```java
-magenta.registerOutputRoute(
+RouteHandle finalOnlyRoute = magenta.addOutputRoute(
         handle,
         OutputRoutePolicy.builder()
                 .allowedOutputTags(Set.of(SessionOutput.FinalOutput.FILTER_TAG))
@@ -49,7 +46,7 @@ magenta.registerOutputRoute(
 
 ```java
 SessionConfig secured = new SessionConfig(
-        SessionParams.ofStreaming(true), // tools enabled by default in this mode
+        SessionParams.ofStreaming(true),
         req -> {
             if (!securityPolicy.allowed(req)) {
                 return ToolResult.handled(req.toolCall().id(), req.toolCall().name(), "Denied");
@@ -57,6 +54,8 @@ SessionConfig secured = new SessionConfig(
             String output = toolExecutor.run(req.toolCall().name(), req.toolCall().argumentsJson());
             return ToolResult.handled(req.toolCall().id(), req.toolCall().name(), output);
         },
+        RoutingEventLevel.NONE,
+        ignored -> {},
         error -> System.err.println("session error: " + error.getMessage())
 );
 ```
@@ -65,8 +64,10 @@ SessionConfig secured = new SessionConfig(
 
 ```java
 SessionConfig deterministic = new SessionConfig(
-        SessionParams.ofBlocking(false), // blocking + tools disabled + streaming disabled
+        SessionParams.ofBlocking(false),
         request -> ToolResult.notHandled(request.toolCall()),
+        RoutingEventLevel.NONE,
+        ignored -> {},
         error -> System.err.println("session error: " + error.getMessage())
 );
 ```
@@ -74,8 +75,7 @@ SessionConfig deterministic = new SessionConfig(
 ## 5) Session close hygiene
 
 ```java
-magenta.unregisterOutputRoute(handle, routeId);
-magenta.unregisterInputRoute(handle);
+magenta.removeRoute(outputRoute);
 magenta.closeSession(handle);
 ```
 

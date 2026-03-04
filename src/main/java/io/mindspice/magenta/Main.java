@@ -2,8 +2,10 @@ package io.mindspice.magenta;
 
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
 import io.mindspice.magenta.runtime.routing.InputRoutePolicy;
-import io.mindspice.magenta.runtime.routing.InputRoutingEvent;
 import io.mindspice.magenta.runtime.routing.OutputRoutePolicy;
+import io.mindspice.magenta.runtime.routing.RouteHandle;
+import io.mindspice.magenta.runtime.routing.RoutingEvent;
+import io.mindspice.magenta.runtime.routing.RoutingEventLevel;
 import io.mindspice.magenta.runtime.session.SessionInput;
 import io.mindspice.magenta.runtime.session.SessionOutput;
 import io.mindspice.magenta.runtime.session.config.SessionConfig;
@@ -27,18 +29,15 @@ public class Main {
                 new SessionConfig(
                         SessionParams.ofStreaming(false),
                         request -> ToolResult.notHandled(request.toolCall()),
+                        RoutingEventLevel.FINAL,
+                        event -> System.err.println("[route] " + routingMessage(event)),
                         error -> System.err.println("[session-error] " + Arrays.toString(error.getStackTrace()))
                 )
         );
 
-        magenta.registerInputRoute(
-                handle,
-                InputRoutePolicy.defaults(),
-                InputRoutingEvent.Level.FAILURE,
-                event -> System.err.println("[route] " + event.outcome() + " - " + event.reason())
-        );
+        magenta.addInputRoute(handle, InputRoutePolicy.defaults());
 
-        magenta.registerOutputRoute(
+        RouteHandle outputRouteHandle = magenta.addOutputRoute(
                 handle,
                 OutputRoutePolicy.builder()
                         .allowedOutputTags(Set.of(SessionOutput.FinalOutput.FILTER_TAG))
@@ -50,11 +49,12 @@ public class Main {
                 }
         );
 
-        Consumer<SessionInput.MessageInput> messageIn = magenta.getMessageInputConsumer(handle);
-        Consumer<SessionInput.EventInput> eventIn = magenta.getEventInputConsumer(handle);
+        Consumer<SessionInput.MessageInput> messageIn = magenta.messageInputConsumer(handle);
+        Consumer<SessionInput.EventInput> eventIn = magenta.eventInputConsumer(handle);
 
         System.out.println("Magenta chat REPL started.");
         System.out.println("sessionId=" + handle.sessionId());
+        System.out.println("outputRouteId=" + outputRouteHandle.routeId());
         System.out.println("Commands: /help, /session, /event <text>, /exit");
 
         try (Scanner scanner = new Scanner(System.in)) {
@@ -96,5 +96,17 @@ public class Main {
         } finally {
             magenta.closeSession(handle);
         }
+    }
+
+    private static String routingMessage(RoutingEvent event) {
+        return switch (event) {
+            case RoutingEvent.InputResult input ->
+                    "input " + input.outcome() + " phase=" + input.phase() + " reason=" + input.reason();
+            case RoutingEvent.OutputResult output ->
+                    "output kind=" + output.outputType()
+                            + " matched=" + output.matchedRoutes().size()
+                            + " delivered=" + output.deliveredRoutes().size()
+                            + " failed=" + output.failedRoutes().size();
+        };
     }
 }

@@ -4,128 +4,121 @@ import io.mindspice.magenta.runtime.session.SessionHandle;
 import io.mindspice.magenta.runtime.session.SessionInput;
 import io.mindspice.magenta.runtime.session.SessionOutput;
 
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
-import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
-import java.util.function.Function;
 
 public final class SessionRouter {
 
-    private static final Consumer<InputRoutingEvent> NOOP_INPUT_ROUTING_EVENT_LISTENER = event -> {};
-    private static final Consumer<OutputRoutingEvent> NOOP_OUTPUT_LISTENER = event -> {};
-    private static final Consumer<String> NOOP_DIAGNOSTICS = message -> {};
-
-    private final Function<UUID, SessionHandle> handleResolver;
-    private final BiConsumer<UUID, SessionInput> inputSubmitter;
-    private final Consumer<String> diagnosticsSink;
-    private final ConcurrentMap<UUID, InputRoute> inputRoutesBySession = new ConcurrentHashMap<>();
-    private final ConcurrentMap<UUID, ConcurrentMap<UUID, OutputRoute>> outputRoutesBySession = new ConcurrentHashMap<>();
-
-    public SessionRouter(Function<UUID, SessionHandle> handleResolver, BiConsumer<UUID, SessionInput> inputSubmitter) {
-        this(handleResolver, inputSubmitter, NOOP_DIAGNOSTICS);
+    private sealed interface RouteBinding permits InputRouteBinding, OutputRouteBinding {
+        Route route();
     }
+
+    private record InputRouteBinding(Route.InputRoute route) implements RouteBinding {}
+
+    private record OutputRouteBinding(Route.OutputRoute route, Consumer<OutputRoutingEvent> listener) implements RouteBinding {}
+
+    private final BiConsumer<SessionHandle, SessionInput> inputSubmitter;
+    private final Consumer<RoutingEvent> routingObserver;
+    private final Consumer<String> diagnosticsSink;
+    private final Map<SessionHandle, LinkedHashSet<RouteBinding>> routesBySession = new HashMap<>();
 
     public SessionRouter(
-            Function<UUID, SessionHandle> handleResolver,
-            BiConsumer<UUID, SessionInput> inputSubmitter,
+            BiConsumer<SessionHandle, SessionInput> inputSubmitter,
+            Consumer<RoutingEvent> routingObserver,
             Consumer<String> diagnosticsSink
     ) {
-        this.handleResolver = Objects.requireNonNull(handleResolver, "handleResolver");
-        this.inputSubmitter = Objects.requireNonNull(inputSubmitter, "inputSubmitter");
-        this.diagnosticsSink = Objects.requireNonNullElse(diagnosticsSink, NOOP_DIAGNOSTICS);
+        this.inputSubmitter = inputSubmitter;
+        this.routingObserver = routingObserver;
+        this.diagnosticsSink = diagnosticsSink;
     }
 
-    public void registerInputRoute(
-            SessionHandle handle,
-            InputRoutePolicy policy,
-            InputRoutingEvent.Level routingEventLevel,
-            Consumer<InputRoutingEvent> routingEventListener
-    ) {
-        SessionHandle activeHandle = requireActiveHandle(handle);
-        inputRoutesBySession.put(
-                activeHandle.sessionId(),
-                new InputRoute(
-                        activeHandle,
-                        Objects.requireNonNullElse(policy, InputRoutePolicy.defaults()),
-                        Objects.requireNonNullElse(routingEventLevel, InputRoutingEvent.Level.ERROR),
-                        Objects.requireNonNullElse(routingEventListener, NOOP_INPUT_ROUTING_EVENT_LISTENER)
-                )
-        );
-    }
-
-    public void updateInputRoute(
-            SessionHandle handle,
-            InputRoutePolicy policy,
-            InputRoutingEvent.Level routingEventLevel,
-            Consumer<InputRoutingEvent> routingEventListener
-    ) {
-        registerInputRoute(handle, policy, routingEventLevel, routingEventListener);
-    }
-
-    public void unregisterInputRoute(SessionHandle handle) {
-        SessionHandle validated = requireKnownHandle(handle);
-        inputRoutesBySession.remove(validated.sessionId());
-    }
-
-    public Consumer<SessionInput.MessageInput> getMessageInputConsumer(SessionHandle handle) {
-        SessionHandle validated = requireKnownHandle(handle);
-        return input -> routeInput(validated.sessionId(), input);
-    }
-
-    public Consumer<SessionInput.EventInput> getEventInputConsumer(SessionHandle handle) {
-        SessionHandle validated = requireKnownHandle(handle);
-        return input -> routeInput(validated.sessionId(), input);
-    }
-
-    public UUID registerOutputRoute(
-            SessionHandle handle,
-            OutputRoutePolicy outputPolicy,
-            Consumer<OutputRoutingEvent> outputListener
-    ) {
-        SessionHandle activeHandle = requireActiveHandle(handle);
-        OutputRoutePolicy effectivePolicy = Objects.requireNonNullElse(outputPolicy, OutputRoutePolicy.defaults());
-        if (!activeHandle.settingsView().streamingEnabled() && effectivePolicy.requestsStreamedOutput()) {
-            throw new IllegalArgumentException("Streamed output routes require streamingEnabled=true for session " + activeHandle.sessionId());
+    public RouteHandle addInputRoute(SessionHandle handle, InputRoutePolicy policy) {
+        if (!handle.isActive()) {
+            throw new IllegalStateException("Session handle is inactive: " + handle.sessionId());
         }
-
+        LinkedHashSet<RouteBinding> routes = routesBySession.computeIfAbsent(handle, ignored -> new LinkedHashSet<>());
         UUID routeId = UUID.randomUUID();
-        outputRoutesBySession
-                .computeIfAbsent(activeHandle.sessionId(), ignored -> new ConcurrentHashMap<>())
-                .put(routeId, new OutputRoute(effectivePolicy, Objects.requireNonNullElse(outputListener, NOOP_OUTPUT_LISTENER)));
-        return routeId;
+        RouteHandle routeHandle = new RouteHandle(routeId, () -> isRouteActive(routeId, handle));
+        routes.add(new InputRouteBinding(new Route.InputRoute(routeHandle, handle, policy)));
+        return routeHandle;
     }
 
-    public void unregisterOutputRoute(SessionHandle handle, UUID routeId) {
-        SessionHandle validated = requireKnownHandle(handle);
-        if (routeId == null) {
-            return;
+    public RouteHandle addOutputRoute(SessionHandle handle, OutputRoutePolicy policy, Consumer<OutputRoutingEvent> outputListener) {
+        if (!handle.isActive()) {
+            throw new IllegalStateException("Session handle is inactive: " + handle.sessionId());
         }
-        Map<UUID, OutputRoute> routes = outputRoutesBySession.get(validated.sessionId());
-        if (routes != null) {
-            routes.remove(routeId);
-            if (routes.isEmpty()) {
-                outputRoutesBySession.remove(validated.sessionId(), routes);
+        LinkedHashSet<RouteBinding> routes = routesBySession.computeIfAbsent(handle, ignored -> new LinkedHashSet<>());
+        UUID routeId = UUID.randomUUID();
+        RouteHandle routeHandle = new RouteHandle(routeId, () -> isRouteActive(routeId, handle));
+        routes.add(new OutputRouteBinding(new Route.OutputRoute(routeHandle, handle, policy), outputListener));
+        return routeHandle;
+    }
+
+    public void removeRoute(RouteHandle routeHandle) {
+        SessionHandle emptySetOwner = null;
+
+        for (Map.Entry<SessionHandle, LinkedHashSet<RouteBinding>> entry : routesBySession.entrySet()) {
+            LinkedHashSet<RouteBinding> routes = entry.getValue();
+            boolean removed = routes.removeIf(binding -> binding.route().handle().equals(routeHandle));
+            if (removed && routes.isEmpty()) {
+                emptySetOwner = entry.getKey();
+            }
+            if (removed) {
+                break;
             }
         }
+
+        if (emptySetOwner != null) {
+            routesBySession.remove(emptySetOwner);
+        }
+    }
+
+    public Route route(RouteHandle routeHandle) {
+        for (LinkedHashSet<RouteBinding> routes : routesBySession.values()) {
+            for (RouteBinding binding : routes) {
+                if (binding.route().handle().equals(routeHandle)) {
+                    return binding.route();
+                }
+            }
+        }
+        throw new IllegalStateException("Route not registered: " + routeHandle.routeId());
+    }
+
+    public Set<Route> routes(SessionHandle handle) {
+        LinkedHashSet<RouteBinding> routes = routesBySession.get(handle);
+        if (routes == null || routes.isEmpty()) {
+            return Set.of();
+        }
+        LinkedHashSet<Route> snapshot = new LinkedHashSet<>();
+        for (RouteBinding binding : routes) {
+            snapshot.add(binding.route());
+        }
+        return Set.copyOf(snapshot);
+    }
+
+    public Consumer<SessionInput.MessageInput> messageInputConsumer(SessionHandle handle) {
+        return input -> routeInput(handle, input);
+    }
+
+    public Consumer<SessionInput.EventInput> eventInputConsumer(SessionHandle handle) {
+        return input -> routeInput(handle, input);
     }
 
     public boolean hasStreamedOutputListeners(SessionHandle handle) {
-        SessionHandle validated = requireKnownHandle(handle);
-        if (!validated.settingsView().streamingEnabled()) {
-            return false;
-        }
-
-        Map<UUID, OutputRoute> routes = outputRoutesBySession.get(validated.sessionId());
+        LinkedHashSet<RouteBinding> routes = routesBySession.get(handle);
         if (routes == null || routes.isEmpty()) {
             return false;
         }
 
-        for (OutputRoute route : routes.values()) {
-            if (route.policy().requestsStreamedOutput()) {
+        for (RouteBinding binding : routes) {
+            if (binding instanceof OutputRouteBinding outputBinding
+                && outputBinding.route().policy().requestsStreamedOutput()) {
                 return true;
             }
         }
@@ -133,121 +126,141 @@ public final class SessionRouter {
     }
 
     public void emit(SessionHandle handle, OutputRoutingEvent event) {
-        SessionHandle validated = requireKnownHandle(handle);
-        if (event == null) {
-            return;
-        }
-
-        Map<UUID, OutputRoute> routes = outputRoutesBySession.get(validated.sessionId());
+        LinkedHashSet<RouteBinding> routes = routesBySession.get(handle);
         if (routes == null || routes.isEmpty()) {
             return;
         }
 
-        for (Map.Entry<UUID, OutputRoute> entry : routes.entrySet()) {
-            OutputRoute route = entry.getValue();
-            if (!route.policy().allows(event)) {
+        Set<RouteHandle> matchedRoutes = new LinkedHashSet<>();
+        Set<RouteHandle> deliveredRoutes = new LinkedHashSet<>();
+        Set<RouteHandle> failedRoutes = new LinkedHashSet<>();
+        for (RouteBinding binding : Set.copyOf(routes)) {
+            if (!(binding instanceof OutputRouteBinding outputBinding)) {
                 continue;
             }
+            if (!outputBinding.route().policy().allows(event)) {
+                continue;
+            }
+            matchedRoutes.add(outputBinding.route().handle());
+
             try {
-                route.listener().accept(event);
+                outputBinding.listener().accept(event);
+                deliveredRoutes.add(outputBinding.route().handle());
             } catch (Throwable throwable) {
+                failedRoutes.add(outputBinding.route().handle());
                 diagnosticsSink.accept("output_route_listener_failure sessionId="
-                        + validated.sessionId() + " routeId=" + entry.getKey() + " error=" + throwable.getClass().getSimpleName());
+                        + handle.sessionId() + " routeId=" + outputBinding.route().handle().routeId()
+                        + " error=" + throwable.getClass().getSimpleName());
             }
         }
+        emitRoutingEvent(new RoutingEvent.OutputResult(
+                handle,
+                event.output().getClass().getSimpleName(),
+                matchedRoutes,
+                deliveredRoutes,
+                failedRoutes
+        ));
     }
 
     public void emit(SessionHandle handle, SessionOutput output) {
-        SessionHandle validated = requireKnownHandle(handle);
-        if (output == null) {
-            return;
-        }
-        emit(validated, new OutputRoutingEvent(validated.sessionId(), output));
+        emit(handle, new OutputRoutingEvent(handle, output));
     }
 
-    public void pruneSession(UUID sessionId) {
-        if (sessionId == null) {
-            return;
-        }
-        inputRoutesBySession.remove(sessionId);
-        outputRoutesBySession.remove(sessionId);
+    public void pruneSession(SessionHandle handle) {
+        routesBySession.remove(handle);
     }
 
-    private void routeInput(UUID sessionId, SessionInput input) {
-        if (input == null) {
-            return;
+    private boolean isRouteActive(UUID routeId, SessionHandle sessionHandle) {
+        if (!sessionHandle.isActive()) {
+            return false;
         }
-
-        InputRoute route = inputRoutesBySession.get(sessionId);
-        if (route == null) {
-            throw new IllegalStateException("Input route not registered for session: " + sessionId);
+        LinkedHashSet<RouteBinding> routes = routesBySession.get(sessionHandle);
+        if (routes == null) {
+            return false;
         }
-
-        SessionHandle handle = route.handle();
-        if (!handle.isActive()) {
-            emitInputRoutingEvent(route, input, InputRoutingEvent.OutCome.SESSION_INACTIVE, "Session is inactive");
-            return;
+        for (RouteBinding binding : routes) {
+            if (binding.route().handle().routeId().equals(routeId)) {
+                return true;
+            }
         }
-        if (!route.policy().allows(input)) {
-            emitInputRoutingEvent(route, input, InputRoutingEvent.OutCome.DENIED_POLICY, "Input denied by route policy");
-            return;
-        }
-
-        emitInputRoutingEvent(route, input, InputRoutingEvent.OutCome.APPROVED, "Input approved by route policy");
-        inputSubmitter.accept(sessionId, input);
+        return false;
     }
 
-    private void emitInputRoutingEvent(InputRoute route, SessionInput input, InputRoutingEvent.OutCome outcome, String reason) {
-        if (!shouldEmitInputRoutingEvent(route.routingEventLevel(), outcome)) {
+    private void routeInput(SessionHandle handle, SessionInput input) {
+        LinkedHashSet<RouteBinding> routes = routesBySession.get(handle);
+        if (routes == null || routes.isEmpty()) {
+            throw new IllegalStateException("Input route not registered for session: " + handle.sessionId());
+        }
+
+        boolean sawInputRoute = false;
+        for (RouteBinding binding : routes) {
+            if (!(binding instanceof InputRouteBinding inputBinding)) {
+                continue;
+            }
+            sawInputRoute = true;
+            RouteHandle routeHandle = inputBinding.route().handle();
+            String inputType = input.getClass().getSimpleName();
+            String sourceId = input.sourceId();
+
+            if (!handle.isActive()) {
+                emitRoutingEvent(new RoutingEvent.InputResult(
+                        handle,
+                        Optional.of(routeHandle),
+                        InputRoutingEvent.OutCome.SESSION_INACTIVE,
+                        InputRoutingEvent.Phase.FINAL,
+                        "Session is inactive",
+                        inputType,
+                        sourceId
+                ));
+                return;
+            }
+
+            if (!inputBinding.route().policy().allows(input)) {
+                emitRoutingEvent(new RoutingEvent.InputResult(
+                        handle,
+                        Optional.of(routeHandle),
+                        InputRoutingEvent.OutCome.DENIED_POLICY,
+                        InputRoutingEvent.Phase.ATTEMPT,
+                        "Input denied by route policy",
+                        inputType,
+                        sourceId
+                ));
+                continue;
+            }
+
+            emitRoutingEvent(new RoutingEvent.InputResult(
+                    handle,
+                    Optional.of(routeHandle),
+                    InputRoutingEvent.OutCome.APPROVED,
+                    InputRoutingEvent.Phase.FINAL,
+                    "Input approved by route policy",
+                    inputType,
+                    sourceId
+            ));
+            inputSubmitter.accept(handle, input);
             return;
         }
 
+        if (!sawInputRoute) {
+            throw new IllegalStateException("Input route not registered for session: " + handle.sessionId());
+        }
+
+        emitRoutingEvent(new RoutingEvent.InputResult(
+                handle,
+                Optional.empty(),
+                InputRoutingEvent.OutCome.DENIED_POLICY,
+                InputRoutingEvent.Phase.FINAL,
+                "Input denied after all input routes were evaluated",
+                input.getClass().getSimpleName(),
+                input.sourceId()
+        ));
+    }
+
+    private void emitRoutingEvent(RoutingEvent event) {
         try {
-            route.routingEventListener().accept(new InputRoutingEvent(route.handle().sessionId(), input, outcome, reason));
+            routingObserver.accept(event);
         } catch (Throwable ignored) {
-            // Input routing events are observability-only.
+            // Routing callbacks are observability-only.
         }
     }
-
-    private boolean shouldEmitInputRoutingEvent(InputRoutingEvent.Level level, InputRoutingEvent.OutCome outcome) {
-        return switch (level) {
-            case ALL -> true;
-            case FAILURE -> outcome == InputRoutingEvent.OutCome.DENIED_POLICY || outcome == InputRoutingEvent.OutCome.SESSION_INACTIVE;
-            case ERROR -> outcome == InputRoutingEvent.OutCome.SESSION_INACTIVE;
-        };
-    }
-
-    private SessionHandle requireActiveHandle(SessionHandle handle) {
-        SessionHandle resolved = requireKnownHandle(handle);
-        if (!resolved.isActive()) {
-            throw new IllegalStateException("Session handle is inactive: " + resolved.sessionId());
-        }
-        return resolved;
-    }
-
-    private SessionHandle requireKnownHandle(SessionHandle handle) {
-        if (handle == null || handle.sessionId() == null) {
-            throw new IllegalArgumentException("Session handle is required");
-        }
-
-        SessionHandle resolved;
-        try {
-            resolved = handleResolver.apply(handle.sessionId());
-        } catch (IllegalStateException e) {
-            throw new IllegalStateException("Unknown session handle: " + handle.sessionId());
-        }
-        if (resolved == null) {
-            throw new IllegalStateException("Unknown session handle: " + handle.sessionId());
-        }
-        return resolved;
-    }
-
-    private record InputRoute(
-            SessionHandle handle,
-            InputRoutePolicy policy,
-            InputRoutingEvent.Level routingEventLevel,
-            Consumer<InputRoutingEvent> routingEventListener
-    ) {}
-
-    private record OutputRoute(OutputRoutePolicy policy, Consumer<OutputRoutingEvent> listener) {}
 }

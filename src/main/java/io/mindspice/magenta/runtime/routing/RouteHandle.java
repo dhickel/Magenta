@@ -1,4 +1,4 @@
-package io.mindspice.magenta.runtime.session;
+package io.mindspice.magenta.runtime.routing;
 
 import org.jspecify.annotations.NonNull;
 
@@ -6,11 +6,10 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 
-public record SessionHandle(
-        @NonNull UUID sessionId,
+public record RouteHandle(
+        @NonNull UUID routeId,
         @NonNull BooleanSupplier isActiveSupplier
 ) {
-
     public boolean isActive() {
         return isActiveSupplier.getAsBoolean();
     }
@@ -18,12 +17,12 @@ public record SessionHandle(
     @Override
     public boolean equals(Object o) {
         if (this == o) { return true; }
-        if (!(o instanceof SessionHandle that)) { return false; }
-        return Objects.equals(sessionId, that.sessionId);
+        if (!(o instanceof RouteHandle that)) { return false; }
+        return Objects.equals(routeId, that.routeId);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(sessionId);
+        return Objects.hashCode(routeId);
     }
 }

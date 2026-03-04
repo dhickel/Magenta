@@ -4,11 +4,14 @@ import io.mindspice.magenta.Magenta;
 import io.mindspice.magenta.runtime.routing.InputRoutePolicy;
 import io.mindspice.magenta.runtime.routing.InputRoutingEvent;
 import io.mindspice.magenta.runtime.routing.OutputRoutePolicy;
-import io.mindspice.magenta.runtime.session.config.SessionConfig;
-import io.mindspice.magenta.runtime.session.config.SessionParams;
+import io.mindspice.magenta.runtime.routing.RouteHandle;
+import io.mindspice.magenta.runtime.routing.RoutingEvent;
+import io.mindspice.magenta.runtime.routing.RoutingEventLevel;
 import io.mindspice.magenta.runtime.session.SessionHandle;
 import io.mindspice.magenta.runtime.session.SessionInput;
 import io.mindspice.magenta.runtime.session.SessionOutput;
+import io.mindspice.magenta.runtime.session.config.SessionConfig;
+import io.mindspice.magenta.runtime.session.config.SessionParams;
 import io.mindspice.magenta.runtime.tools.ToolResult;
 import io.mindspice.magenta.support.TestRuntimeConfigs;
 import org.junit.jupiter.api.Test;
@@ -16,7 +19,6 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -24,7 +26,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class MagentaRoutingIntegrationTest {
 
     @Test
-    void lifecycleApisReturnHandleWithSettingsSnapshotAndActivePredicate() {
+    void lifecycleApisReturnActiveHandleAndSettingsLookup() {
         Magenta magenta = new Magenta(TestRuntimeConfigs.basicRuntimeConfig());
 
         SessionHandle started = magenta.startBaseSession(
@@ -35,21 +37,21 @@ class MagentaRoutingIntegrationTest {
                         ignored -> {}
                 )
         );
-        SessionHandle resumed = magenta.resumeSession(started.sessionId());
-        SessionHandle forked = magenta.forkSession(started.sessionId(), "forked");
+        SessionHandle resumed = magenta.resumeSession(started);
+        SessionHandle forked = magenta.forkSession(started, "forked");
         SessionHandle defaultBase = magenta.startBaseSession("default-base");
         SessionHandle defaultAgent = magenta.startSession("agent-default", "default-agent");
 
         assertThat(started.isActive()).isTrue();
         assertThat(resumed.sessionId()).isEqualTo(started.sessionId());
-        assertThat(started.settingsView().streamingEnabled()).isFalse();
+        assertThat(magenta.settingsFor(started).streamingEnabled()).isFalse();
         assertThat(forked.isActive()).isTrue();
         assertThat(defaultBase.isActive()).isTrue();
         assertThat(defaultAgent.isActive()).isTrue();
-        assertThat(defaultBase.settingsView().toolsEnabled()).isTrue();
-        assertThat(defaultBase.settingsView().streamingEnabled()).isTrue();
-        assertThat(defaultAgent.settingsView().toolsEnabled()).isTrue();
-        assertThat(defaultAgent.settingsView().streamingEnabled()).isTrue();
+        assertThat(magenta.settingsFor(defaultBase).toolsEnabled()).isTrue();
+        assertThat(magenta.settingsFor(defaultBase).streamingEnabled()).isTrue();
+        assertThat(magenta.settingsFor(defaultAgent).toolsEnabled()).isTrue();
+        assertThat(magenta.settingsFor(defaultAgent).streamingEnabled()).isTrue();
 
         magenta.closeSession(started);
         magenta.closeSession(defaultBase);
@@ -58,35 +60,31 @@ class MagentaRoutingIntegrationTest {
     }
 
     @Test
-    void inputRouteUpdateReplacesPolicyAndDenialsAreReported() {
+    void multipleInputRoutesShortCircuitAndEmitFinalDenial() {
+        List<RoutingEvent> reports = new ArrayList<>();
         Magenta magenta = new Magenta(TestRuntimeConfigs.basicRuntimeConfig());
         SessionHandle handle = magenta.startBaseSession(
                 "route-update",
                 new SessionConfig(
                         SessionParams.ofStreaming(true),
                         request -> ToolResult.notHandled(request.toolCall()),
+                        RoutingEventLevel.FINAL,
+                        reports::add,
                         ignored -> {}
                 )
         );
 
-        List<InputRoutingEvent> reports = new ArrayList<>();
-        magenta.registerInputRoute(handle, InputRoutePolicy.defaults(), InputRoutingEvent.Level.ALL, reports::add);
-        magenta.updateInputRoute(
-                handle,
-                new InputRoutePolicy(Set.of(SessionInput.AgentMsg.FILTER_FOR), Set.of("bus-A")),
-                InputRoutingEvent.Level.ALL,
-                reports::add
-        );
-
-        magenta.getMessageInputConsumer(handle).accept(new SessionInput.UserMsg("deny", "user", true));
+        magenta.addInputRoute(handle, new InputRoutePolicy(Set.of(SessionInput.AgentMsg.FILTER_FOR), Set.of("bus-A")));
+        magenta.messageInputConsumer(handle).accept(new SessionInput.UserMsg("deny", "user", true));
 
         assertThat(reports)
-                .extracting(InputRoutingEvent::outcome)
+                .filteredOn(event -> event instanceof RoutingEvent.InputResult)
+                .extracting(event -> ((RoutingEvent.InputResult) event).outcome())
                 .contains(InputRoutingEvent.OutCome.DENIED_POLICY);
     }
 
     @Test
-    void closeSessionPrunesRoutesAndBlocksFurtherRouteRegistrationOnInactiveHandle() {
+    void closeSessionPrunesRoutesAndMakesRouteHandlesInactive() {
         Magenta magenta = new Magenta(TestRuntimeConfigs.basicRuntimeConfig());
         SessionHandle handle = magenta.startBaseSession(
                 "close-prune",
@@ -97,23 +95,16 @@ class MagentaRoutingIntegrationTest {
                 )
         );
 
-        magenta.registerInputRoute(handle, InputRoutePolicy.defaults(), InputRoutingEvent.Level.ERROR, event -> {});
-        UUID routeId = magenta.registerOutputRoute(handle, OutputRoutePolicy.defaults(), event -> {});
-        assertThat(routeId).isNotNull();
+        magenta.addInputRoute(handle, InputRoutePolicy.defaults());
+        RouteHandle routeHandle = magenta.addOutputRoute(handle, OutputRoutePolicy.defaults(), event -> {});
+        assertThat(routeHandle.isActive()).isTrue();
 
         magenta.closeSession(handle);
-
-        assertThatThrownBy(() -> magenta.registerInputRoute(
-                handle, InputRoutePolicy.defaults(), InputRoutingEvent.Level.ERROR, event -> {}
-        )).isInstanceOf(IllegalStateException.class).hasMessageContaining("Unknown session handle");
-
-        assertThatThrownBy(() -> magenta.registerOutputRoute(handle, OutputRoutePolicy.defaults(), event -> {}))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Unknown session handle");
+        assertThat(routeHandle.isActive()).isFalse();
     }
 
     @Test
-    void streamingDisabledSessionRejectsPartialListeners() {
+    void streamingDisabledSessionRejectsStreamedListeners() {
         Magenta magenta = new Magenta(TestRuntimeConfigs.basicRuntimeConfig());
         SessionHandle handle = magenta.startBaseSession(
                 "no-stream",
@@ -124,7 +115,7 @@ class MagentaRoutingIntegrationTest {
                 )
         );
 
-        assertThatThrownBy(() -> magenta.registerOutputRoute(
+        assertThatThrownBy(() -> magenta.addOutputRoute(
                 handle,
                 OutputRoutePolicy.builder()
                         .allowedOutputTags(Set.of(SessionOutput.StreamedOutput.FILTER_TAG))

@@ -3,6 +3,9 @@ package io.mindspice.magenta.runtime.session;
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
 import io.mindspice.magenta.runtime.context.Context;
 import io.mindspice.magenta.runtime.context.ContextManager;
+import io.mindspice.magenta.runtime.routing.InputRoutingEvent;
+import io.mindspice.magenta.runtime.routing.RoutingEvent;
+import io.mindspice.magenta.runtime.routing.RoutingEventLevel;
 import io.mindspice.magenta.runtime.session.config.SessionConfig;
 import io.mindspice.magenta.runtime.session.config.SessionParams;
 import io.mindspice.magenta.runtime.tools.ToolResult;
@@ -103,11 +106,22 @@ public final class SessionManager {
     }
 
     public SessionHandle handleFor(UUID sessionId) {
+        return new SessionHandle(
+                resume(sessionId).sessionId(),
+                isActiveSupplier(sessionId)
+        );
+    }
+
+    public SessionSettingsView settingsFor(SessionHandle handle) {
+        return settingsFor(handle.sessionId());
+    }
+
+    public SessionSettingsView settingsFor(UUID sessionId) {
         Session session = resume(sessionId);
         RuntimeConfig.AgentConfig agent = requireAgent(session.agentId());
         RuntimeConfig.ModelConfig model = session.modelConfig();
         SessionParams params = session.sessionConfig().params();
-        SessionSettingsView snapshot = new SessionSettingsView(
+        return new SessionSettingsView(
                 session.sessionId(),
                 session.alias(),
                 session.agentId(),
@@ -136,15 +150,34 @@ public final class SessionManager {
                 model.supportsStreaming(),
                 model.enabled()
         );
-        return new SessionHandle(
-                session.sessionId(),
-                isActiveSupplier(session.sessionId()),
-                snapshot
-        );
     }
 
-    public void submitFromRoute(UUID sessionId, SessionInput input) {
-        submit(sessionId, input);
+    public void submitFromRoute(SessionHandle handle, SessionInput input) {
+        submit(handle.sessionId(), input);
+    }
+
+    public void onRoutingEvent(RoutingEvent event) {
+        Session session = sessionsById.get(event.sessionHandle().sessionId());
+        if (session == null) {
+            return;
+        }
+        SessionConfig config = session.sessionConfig();
+        RoutingEventLevel level = config.routingEventLevel();
+        if (level == RoutingEventLevel.NONE) {
+            return;
+        }
+        if (level == RoutingEventLevel.FINAL
+            && event instanceof RoutingEvent.InputResult inputResult
+            && inputResult.phase() != InputRoutingEvent.Phase.FINAL) {
+            return;
+        }
+        try {
+            if (config.onRouting() != null) {
+                config.onRouting().accept(event);
+            }
+        } catch (Throwable ignored) {
+            // Routing callbacks are observability-only.
+        }
     }
 
     public boolean isActive(UUID sessionId) {
@@ -221,7 +254,8 @@ public final class SessionManager {
             return;
         }
         try {
-            session.sessionConfig().onError().accept(throwable);
+            SessionHandle handle = new SessionHandle(session.sessionId(), isActiveSupplier(session.sessionId()));
+            session.sessionConfig().onError().accept(new SessionException(handle, throwable));
         } catch (Throwable ignored) {
             // Secondary callback failures must not escape external ingress path.
         }

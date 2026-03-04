@@ -18,8 +18,8 @@ Future targets (`MindStore`, `SchedulerService`, `SecurityService`) are not impl
 
 ```text
 RuntimeConfig.load(...) -> Magenta
-  -> SessionManager (start/resume/fork/close)
-  -> SessionRouter (input + output route registry)
+  -> SessionManager (start/resume/fork/close + settings lookup)
+  -> SessionRouter (route table keyed by SessionHandle)
   -> ContextManager (state + compaction)
   -> ModelRunner (turn + tool loop)
       -> OllamaClient (HTTP transport)
@@ -27,49 +27,56 @@ RuntimeConfig.load(...) -> Magenta
 
 ## Public API (handle-first)
 
-`Magenta` lifecycle returns `SessionHandle`:
+Lifecycle methods return `SessionHandle`:
 
 - `startBaseSession(alias)`
 - `startBaseSession(alias, sessionConfig)`
 - `startSession(agentId, alias)`
 - `startSession(agentId, alias, sessionConfig)`
-- `resumeSession(sessionId)`
-- `forkSession(sourceSessionId, alias)`
-- `forkSession(sourceSessionId, alias, sessionConfigOverride)`
+- `resumeSession(handle)`
+- `forkSession(sourceHandle, alias)`
+- `forkSession(sourceHandle, alias, sessionConfigOverride)`
 - `closeSession(handle)`
 
-`SessionHandle` fields:
+`SessionHandle` is intentionally lightweight:
 
 - `sessionId`
 - `isActiveSupplier` (via `isActive()`)
-- immutable `SessionSettingsView` (`handle.settingsView()`) containing flattened session + agent + model settings snapshot
+
+Session settings are looked up explicitly:
+
+- `settingsFor(handle) -> SessionSettingsView`
 
 ## Routing API
 
-Input routing (single active route per session):
+Route identity and lookup:
 
-- `registerInputRoute(handle, policy, routingEventLevel, routingEventListener)`
-- `updateInputRoute(handle, ...)`
-- `unregisterInputRoute(handle)`
-- `getMessageInputConsumer(handle)`
-- `getEventInputConsumer(handle)`
+- `RouteHandle` (`routeId`, `isActive()`)
+- `Route` ADT:
+  - `Route.InputRoute`
+  - `Route.OutputRoute`
 
-Output routing (multiple routes per session):
+Route operations:
 
-- `registerOutputRoute(handle, outputPolicy, outputListener) -> routeId`
-- `unregisterOutputRoute(handle, routeId)`
+- `addInputRoute(handle, policy) -> RouteHandle`
+- `addOutputRoute(handle, outputPolicy, outputListener) -> RouteHandle`
+- `removeRoute(routeHandle)`
+- `route(routeHandle) -> Route`
+- `routes(handle) -> Set<Route>`
+- `messageInputConsumer(handle)`
+- `eventInputConsumer(handle)`
 
-Output wrapper event (`OutputRoutingEvent`):
+Input routing behavior:
 
-- `sessionId`
-- `output` (`SessionOutput`)
+- multiple input routes per session
+- insertion-order evaluation
+- first approval short-circuits submit
+- final deny is emitted after route exhaustion
 
-`SessionOutput` kinds:
+Output routing behavior:
 
-- `StreamedOutput`
-- `FinalOutput`
-- `ContextMessageOutput`
-- `ToolMessageOutput`
+- fanout to all matching output routes
+- listener failures are isolated and diagnostics-only
 
 ## SessionConfig contract
 
@@ -77,30 +84,27 @@ Output wrapper event (`OutputRoutingEvent`):
 
 - `params` (`SessionParams`: `blockingOnly`, `toolsEnabled`, `streamingEnabled`)
 - `toolBridge`
-- `onError`
-
-There is no `SessionConfig` builder in the current API; construct it directly with `new SessionConfig(...)`.
+- `routingEventLevel` (`NONE`, `FINAL`, `ALL`)
+- `onRouting`
+- `onError` (`Consumer<SessionException>`)
 
 ## Turn flow
 
-1. Caller submits typed input through `SessionRouter` consumer.
-2. Router enforces handle liveness + input policy and emits `InputRoutingEvent`.
-3. `SessionManager` submits to turn execution and catches internal failures to emit `SessionConfig.onError`.
+1. Caller submits typed input through `messageInputConsumer(handle)` / `eventInputConsumer(handle)`.
+2. Router applies input route policies and emits input routing trace events.
+3. Approved input is submitted through `SessionManager`.
 4. `Magenta` appends persisted input to context and emits `ContextMessageOutput`.
 5. `Magenta` computes stream mode:
-   - `sessionConfig.params().streamingEnabled() && sessionRouter.hasStreamedOutputListeners(handle)`
-6. `ModelRunner` executes the turn:
-   - streaming emits `StreamedOutput` chunks
-   - final assistant text always emits `FinalOutput`
-   - appended messages emit `ContextMessageOutput`/`ToolMessageOutput`
+   - `settingsFor(handle).streamingEnabled() && sessionRouter.hasStreamedOutputListeners(handle)`
+6. `ModelRunner` executes the turn and emits routed outputs.
 7. Tool calls use `SessionConfig.toolBridge`.
 
 ## Streaming contract
 
-- If `streamingEnabled == false`, registering output routes that request streamed output throws validation error.
-- If `streamingEnabled == true`, streamed output is still per-turn and only enabled when streamed-output listeners exist.
-- `StreamedOutput` payload is provider chunk content from Ollama; chunk boundaries are provider-defined and are not guaranteed to be one token.
-- `Session` and `ModelRunner` stay router-agnostic.
+- Session-level gate: `SessionConfig.params().streamingEnabled()`.
+- Streamed output listeners can only be added when session streaming is enabled.
+- Streamed payload is provider chunk content from Ollama.
+- `Session` and `ModelRunner` remain router-agnostic.
 
 ## Known constraints
 

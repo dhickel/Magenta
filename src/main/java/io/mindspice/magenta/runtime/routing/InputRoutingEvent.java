@@ -1,31 +1,37 @@
 package io.mindspice.magenta.runtime.routing;
 
-import io.mindspice.magenta.runtime.session.SessionInput;
+import io.mindspice.magenta.runtime.session.SessionHandle;
 
+import java.util.Optional;
 import java.util.Objects;
-import java.util.UUID;
 
 public record InputRoutingEvent(
-        UUID sessionId,
-        SessionInput input,
+        SessionHandle sessionHandle,
+        Optional<RouteHandle> routeHandle,
         OutCome outcome,
-        String reason
+        Phase phase,
+        String reason,
+        String inputType,
+        String inputSourceId
 ) {
     public InputRoutingEvent {
-        Objects.requireNonNull(sessionId, "sessionId");
+        Objects.requireNonNull(sessionHandle, "sessionHandle");
+        routeHandle = routeHandle == null ? Optional.empty() : routeHandle;
         Objects.requireNonNull(outcome, "outcome");
+        Objects.requireNonNull(phase, "phase");
         reason = reason == null ? "" : reason;
-    }
-
-    public enum Level {
-        ALL,
-        FAILURE,
-        ERROR
+        inputType = inputType == null ? "" : inputType;
+        inputSourceId = inputSourceId == null ? "" : inputSourceId;
     }
 
     public enum OutCome {
         APPROVED,
         DENIED_POLICY,
         SESSION_INACTIVE
+    }
+
+    public enum Phase {
+        ATTEMPT,
+        FINAL
     }
 }

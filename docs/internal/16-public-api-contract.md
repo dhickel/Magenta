@@ -11,47 +11,55 @@ This contract defines the intended external runtime API for application develope
 
 ## Supported interaction contract
 
-Applications should treat these types as the supported API surface for v1 chat/runtime usage:
+Applications should treat these types as supported API surface for v1 chat/runtime usage:
 
 - `Magenta`
 - `RuntimeConfig`
 - `SessionConfig`
 - `SessionHandle`
-- `SessionSettingsView` (via `SessionHandle.settingsView()`)
+- `SessionSettingsView` (via `Magenta.settingsFor(handle)`)
 - `SessionParams` (via `SessionConfig.params()`)
 - `SessionInput`
-- `InputRoutePolicy`, `InputRoutingEvent.Level`, `InputRoutingEvent`
+- `RouteHandle`
+- `Route` (`Route.InputRoute`, `Route.OutputRoute`)
+- `InputRoutePolicy`, `InputRoutingEvent`
 - `OutputRoutePolicy`, `OutputRoutingEvent`
+- `RoutingEvent`, `RoutingEventLevel`
+- `SessionException`
 
 ## Lifecycle contract
 
-- Start: `startBaseSession(alias)` / `startBaseSession(alias, sessionConfig)` or
-  `startSession(agentId, alias)` / `startSession(agentId, alias, sessionConfig)` returns `SessionHandle`.
-- Reattach: `resumeSession(sessionId)` returns a fresh `SessionHandle` for in-memory sessions.
-- Fork: `forkSession(...)` clones context into a new session id.
+- Start: `startBaseSession(...)` / `startSession(...)` returns `SessionHandle`.
+- Reattach: `resumeSession(handle)` returns a fresh `SessionHandle`.
+- Fork: `forkSession(sourceHandle, ...)` clones context into a new session id.
 - Close: `closeSession(handle)` deactivates handle and prunes routes.
 
 ## Route contract
 
-- Input routes: exactly one active input route per session; `register` replaces existing route.
-- Output routes: zero to many routes per session; each route is identified by UUID.
-- Streamed-output listeners require `SessionConfig.streamingEnabled == true`.
+- Route table is keyed by `SessionHandle` identity (`sessionId` equality).
+- Input routes: multiple per session; evaluated in insertion order with first-approve short-circuit.
+- Output routes: zero to many routes per session; fanout to all matching output routes.
+- Route identity for remove/lookup is `RouteHandle`.
+- Streamed-output listeners require `SessionConfig.params().streamingEnabled() == true`.
+
+## Callback contract
+
+- `onRouting`: optional session-level observability callback for input/output routing results, controlled by `RoutingEventLevel`.
+- `onError`: `Consumer<SessionException>` including `SessionHandle`.
+- Output listeners are delivery callbacks, not diagnostics callbacks.
 
 ## Compaction-agent contract
 
 - `RuntimeConfig.compactionAgentId` must resolve to an enabled agent during config load.
 - Compaction does not create a separate session or long-lived compaction runtime object.
 - On compaction, `Magenta` resolves compaction model/prompt data from loaded config and calls `ModelRunner.summarize(...)` directly.
-- Because the graph is validated at startup and stored immutably, compaction-agent existence is guaranteed post-start.
 
 ## Facade boundary policy
 
 - `Magenta` is the supported orchestration facade for normal runtime usage.
 - Internal service classes (`SessionManager`, `SessionRouter`, `ContextManager`, `ModelRunner`) are not exposed through `Magenta`.
-- Advanced consumers can compose services directly by constructing their own runtime wiring, but that path is intentionally outside the default facade contract.
 
 ## Stability notes
 
 - Package moves and internal service structure may still change in this rewrite phase.
-- External consumers should prefer `Magenta` + handle/routing APIs as the compatibility target.
-- The handle-first routed API is the compatibility target for upcoming chat-facing dogfooding.
+- External consumers should prefer `Magenta` + handle/route APIs as the compatibility target.
