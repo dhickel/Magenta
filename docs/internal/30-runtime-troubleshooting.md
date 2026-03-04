@@ -36,8 +36,8 @@ Symptoms:
 Checks:
 
 1. confirm input route is registered for that handle
-2. verify `InputRoutePolicy` allows kind/source
-3. use `InputRoutingEventLevel.ALL` temporarily for diagnostics
+2. verify `InputRoutePolicy` allows the configured input filters and source
+3. use `InputRoutingEvent.Level.ALL` temporarily for diagnostics
 
 ## Output routing issues
 

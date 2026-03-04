@@ -9,6 +9,7 @@ import io.mindspice.magenta.runtime.tools.ToolResult;
 import io.mindspice.magenta.support.TestRuntimeConfigs;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -18,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class SessionManagerIntegrationTest {
 
     @Test
-    void startResolvesPromptsAndReturnsHandleWithConfigView() {
+    void startResolvesPromptsAndReturnsHandleWithSettingsView() {
         RuntimeConfig config = TestRuntimeConfigs.basicRuntimeConfig();
         ContextManager contextManager = new ContextManager();
         SessionManager manager = new SessionManager(config, contextManager, (sessionId, input) -> "ok");
@@ -40,7 +41,39 @@ class SessionManagerIntegrationTest {
         SessionHandle handle = manager.handleFor(session.sessionId());
         assertThat(handle.sessionId()).isEqualTo(session.sessionId());
         assertThat(handle.isActive()).isTrue();
-        assertThat(handle.configView().streamingEnabled()).isFalse();
+        assertThat(handle.settingsView().streamingEnabled()).isFalse();
+        assertThat(handle.settingsView().agentId()).isEqualTo("agent-default");
+        assertThat(handle.settingsView().agentModelId()).isEqualTo("model-default");
+        assertThat(handle.settingsView().agentPromptIds()).containsExactly("base.system", "agents.default");
+        assertThat(handle.settingsView().agentToolIds()).containsExactly("read_file");
+        assertThat(handle.settingsView().resolvedSystemPrompt()).isEqualTo("Base prompt\n\nAgent prompt");
+        assertThat(handle.settingsView().modelName()).isEqualTo("test-model");
+    }
+
+    @Test
+    void settingsViewIsStableSnapshotAndReadOnly() {
+        RuntimeConfig config = TestRuntimeConfigs.basicRuntimeConfig();
+        ContextManager contextManager = new ContextManager();
+        SessionManager manager = new SessionManager(config, contextManager, (sessionId, input) -> "ok");
+
+        Session session = manager.start(
+                "agent-default",
+                "stable",
+                new SessionConfig(
+                        new SessionParams(false, true, true),
+                        request -> ToolResult.notHandled(request.toolCall()),
+                        ignored -> {}
+                )
+        );
+
+        SessionHandle handle = manager.handleFor(session.sessionId());
+        Instant createdAt = handle.settingsView().createdAt();
+        manager.close(session.sessionId());
+
+        assertThat(handle.isActive()).isFalse();
+        assertThat(handle.settingsView().createdAt()).isEqualTo(createdAt);
+        assertThatThrownBy(() -> handle.settingsView().agentPromptIds().add("new.prompt"))
+                .isInstanceOf(UnsupportedOperationException.class);
     }
 
     @Test

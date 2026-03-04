@@ -46,9 +46,11 @@ import io.mindspice.magenta.Magenta;
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
 import io.mindspice.magenta.runtime.routing.*;
 import io.mindspice.magenta.runtime.session.config.SessionConfig;
+import io.mindspice.magenta.runtime.session.config.SessionParams;
 import io.mindspice.magenta.runtime.session.SessionHandle;
 import io.mindspice.magenta.runtime.session.SessionInput;
 import io.mindspice.magenta.runtime.session.SessionOutput;
+import io.mindspice.magenta.runtime.tools.ToolResult;
 
 import java.nio.file.Path;
 import java.util.Scanner;
@@ -65,11 +67,11 @@ public final class QuickStartChatLoop {
         RuntimeConfig runtimeConfig = RuntimeConfig.load(configPath);
         this.magenta = new Magenta(runtimeConfig);
 
-        SessionConfig sessionConfig = SessionConfig.builder()
-                .toolsEnabled(false)      // Quick start is chat only.
-                .streamingEnabled(false)  // Keep output simple: final response only.
-                .onError(error -> System.err.println("[session-error] " + error.getMessage()))
-                .build();
+        SessionConfig sessionConfig = new SessionConfig(
+                SessionParams.ofBlocking(false), // blocking + final-only output route, tools disabled
+                request -> ToolResult.notHandled(request.toolCall()),
+                error -> System.err.println("[session-error] " + error.getMessage())
+        );
 
         this.handle = magenta.startBaseSession("quickstart", sessionConfig);
 
@@ -151,7 +153,7 @@ mvn -q -DskipTests exec:java \
 - One chat session (`SessionHandle`) started from base agent config.
 - Input attached through route policy (`registerInputRoute` + `getMessageInputConsumer`).
 - Output attached through route policy (`registerOutputRoute` with `FinalOutput` events only).
-- No tool execution path (`toolsEnabled(false)`).
+- No tool execution path (`SessionParams.ofBlocking(false)` sets `toolsEnabled=false`).
 
 ## 6) API contract notes for dogfooding
 

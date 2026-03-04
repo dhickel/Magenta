@@ -24,7 +24,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class MagentaRoutingIntegrationTest {
 
     @Test
-    void lifecycleApisReturnHandleWithConfigSnapshotAndActivePredicate() {
+    void lifecycleApisReturnHandleWithSettingsSnapshotAndActivePredicate() {
         Magenta magenta = new Magenta(TestRuntimeConfigs.basicRuntimeConfig());
 
         SessionHandle started = magenta.startBaseSession(
@@ -42,14 +42,14 @@ class MagentaRoutingIntegrationTest {
 
         assertThat(started.isActive()).isTrue();
         assertThat(resumed.sessionId()).isEqualTo(started.sessionId());
-        assertThat(started.configView().streamingEnabled()).isFalse();
+        assertThat(started.settingsView().streamingEnabled()).isFalse();
         assertThat(forked.isActive()).isTrue();
         assertThat(defaultBase.isActive()).isTrue();
         assertThat(defaultAgent.isActive()).isTrue();
-        assertThat(defaultBase.configView().toolsEnabled()).isTrue();
-        assertThat(defaultBase.configView().streamingEnabled()).isTrue();
-        assertThat(defaultAgent.configView().toolsEnabled()).isTrue();
-        assertThat(defaultAgent.configView().streamingEnabled()).isTrue();
+        assertThat(defaultBase.settingsView().toolsEnabled()).isTrue();
+        assertThat(defaultBase.settingsView().streamingEnabled()).isTrue();
+        assertThat(defaultAgent.settingsView().toolsEnabled()).isTrue();
+        assertThat(defaultAgent.settingsView().streamingEnabled()).isTrue();
 
         magenta.closeSession(started);
         magenta.closeSession(defaultBase);

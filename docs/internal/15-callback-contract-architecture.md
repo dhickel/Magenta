@@ -8,10 +8,7 @@ Use one concrete routing service (`SessionRouter`) as the external IO boundary, 
 
 `SessionConfig` remains intentionally small:
 
-- `blockingOnly`
-- `toolsEnabled`
-- `bypassSecurity`
-- `streamingEnabled`
+- `params` (`blockingOnly`, `toolsEnabled`, `streamingEnabled`)
 - `toolBridge`
 - `onError`
 
@@ -50,11 +47,8 @@ Only `toolBridge` and `onError` are callbacks in this phase.
 
 ## Defaults
 
-`SessionConfig.defaults()` sets:
+`Magenta` session-start overloads without explicit `SessionConfig` use an internal default config:
 
-- `blockingOnly = false`
-- `toolsEnabled = true`
-- `bypassSecurity = false`
-- `streamingEnabled = true`
+- `params = SessionParams.ofStreaming(true)` (`blockingOnly=false`, `toolsEnabled=true`, `streamingEnabled=true`)
 - `toolBridge = ToolResult.notHandled(...)`
 - `onError = no-op`

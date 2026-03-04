@@ -24,7 +24,7 @@ Keep model execution (`ModelRunner`) separate from provider transport (`OllamaCl
 
 `ModelRunner` uses blocking when any is true:
 
-- `sessionConfig.blockingOnly`
+- `sessionConfig.params().blockingOnly()`
 - tool loop is active
 - turn option disables streaming
 - model reports `supportsStreaming = false`

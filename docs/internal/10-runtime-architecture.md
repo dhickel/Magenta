@@ -38,7 +38,7 @@ Lean local runtime with a single IO boundary and explicit ownership:
 
 ## Extension points
 
-- output filtering via `OutputRoutePolicy` (output-kind allowlist)
+- output filtering via `OutputRoutePolicy` (output filter-tag allowlist)
 - tool execution policy via wrapped `SessionConfig.toolBridge`
 - compaction behavior via model compaction settings + summarizer seam
 

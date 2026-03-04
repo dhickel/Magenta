@@ -1,21 +1,15 @@
 package io.mindspice.magenta.runtime.session;
 
-import io.mindspice.magenta.runtime.session.config.SessionParams;
+import org.jspecify.annotations.NonNull;
 
-import java.util.Objects;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 
 public record SessionHandle(
-        UUID sessionId,
-        BooleanSupplier isActiveSupplier,
-        SessionParams configView
+        @NonNull UUID sessionId,
+        @NonNull BooleanSupplier isActiveSupplier,
+        @NonNull SessionSettingsView settingsView
 ) {
-    public SessionHandle {
-        Objects.requireNonNull(sessionId, "sessionId");
-        Objects.requireNonNull(configView, "configView");
-        isActiveSupplier = isActiveSupplier == null ? () -> false : isActiveSupplier;
-    }
 
     public boolean isActive() {
         return isActiveSupplier.getAsBoolean();

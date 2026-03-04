@@ -11,7 +11,7 @@ Use this checklist for each material runtime change.
 ## Contract completeness
 
 - [ ] Lifecycle semantics (`start`/`resume`/`fork`/turn execution) are documented.
-- [ ] Session contract semantics (`SessionHandle`, `SessionConfig`, `SessionConfigView`) are documented.
+- [ ] Session contract semantics (`SessionHandle`, `SessionSettingsView`, `SessionConfig`, `SessionParams`) are documented.
 - [ ] Routing semantics (`SessionRouter`, input/output policies, event model, streaming gating) are documented.
 - [ ] Compaction and model mode-selection behavior are documented.
 

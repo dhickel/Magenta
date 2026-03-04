@@ -10,13 +10,17 @@ Magenta magenta = new Magenta(config);
 
 SessionHandle handle = magenta.startBaseSession(
         "terminal",
-        SessionConfig.builder().streamingEnabled(true).build()
+        new SessionConfig(
+                SessionParams.ofStreaming(true),
+                request -> ToolResult.notHandled(request.toolCall()),
+                error -> System.err.println("session error: " + error.getMessage())
+        )
 );
 
 magenta.registerInputRoute(
         handle,
         InputRoutePolicy.defaults(),
-        InputRoutingEventLevel.ERROR,
+        InputRoutingEvent.Level.ERROR,
         event -> uiBus.publish("input-routing-event", event)
 );
 
@@ -44,26 +48,27 @@ magenta.registerOutputRoute(
 ## 3) Tool bridge with policy wrapper
 
 ```java
-SessionConfig secured = SessionConfig.builder()
-        .toolsEnabled(true)
-        .toolBridge(req -> {
+SessionConfig secured = new SessionConfig(
+        SessionParams.ofStreaming(true), // tools enabled by default in this mode
+        req -> {
             if (!securityPolicy.allowed(req)) {
                 return ToolResult.handled(req.toolCall().id(), req.toolCall().name(), "Denied");
             }
             String output = toolExecutor.run(req.toolCall().name(), req.toolCall().argumentsJson());
             return ToolResult.handled(req.toolCall().id(), req.toolCall().name(), output);
-        })
-        .build();
+        },
+        error -> System.err.println("session error: " + error.getMessage())
+);
 ```
 
 ## 4) Blocking deterministic mode
 
 ```java
-SessionConfig deterministic = SessionConfig.builder()
-        .blockingOnly(true)
-        .toolsEnabled(false)
-        .streamingEnabled(false)
-        .build();
+SessionConfig deterministic = new SessionConfig(
+        SessionParams.ofBlocking(false), // blocking + tools disabled + streaming disabled
+        request -> ToolResult.notHandled(request.toolCall()),
+        error -> System.err.println("session error: " + error.getMessage())
+);
 ```
 
 ## 5) Session close hygiene

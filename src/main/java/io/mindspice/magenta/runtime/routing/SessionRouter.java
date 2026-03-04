@@ -88,7 +88,7 @@ public final class SessionRouter {
     ) {
         SessionHandle activeHandle = requireActiveHandle(handle);
         OutputRoutePolicy effectivePolicy = Objects.requireNonNullElse(outputPolicy, OutputRoutePolicy.defaults());
-        if (!activeHandle.configView().streamingEnabled() && effectivePolicy.requestsStreamedOutput()) {
+        if (!activeHandle.settingsView().streamingEnabled() && effectivePolicy.requestsStreamedOutput()) {
             throw new IllegalArgumentException("Streamed output routes require streamingEnabled=true for session " + activeHandle.sessionId());
         }
 
@@ -115,7 +115,7 @@ public final class SessionRouter {
 
     public boolean hasStreamedOutputListeners(SessionHandle handle) {
         SessionHandle validated = requireKnownHandle(handle);
-        if (!validated.configView().streamingEnabled()) {
+        if (!validated.settingsView().streamingEnabled()) {
             return false;
         }
 

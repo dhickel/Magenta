@@ -1,7 +1,7 @@
 id: "default-model"
 provider: "langchain4j"
 model: "devstral2"
-endpoint: "local_ollama"
+endpoint: "http://192.168.1.112:11434"
 maxTokens: 30000
 maxContext: 28000
 compactThreshold: 24000

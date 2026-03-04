@@ -104,10 +104,42 @@ public final class SessionManager {
 
     public SessionHandle handleFor(UUID sessionId) {
         Session session = resume(sessionId);
+        RuntimeConfig.AgentConfig agent = requireAgent(session.agentId());
+        RuntimeConfig.ModelConfig model = session.modelConfig();
+        SessionParams params = session.sessionConfig().params();
+        SessionSettingsView snapshot = new SessionSettingsView(
+                session.sessionId(),
+                session.alias(),
+                session.agentId(),
+                session.createdAt(),
+                params.blockingOnly(),
+                params.toolsEnabled(),
+                params.streamingEnabled(),
+                agent.modelId(),
+                agent.promptIds(),
+                agent.taskIds(),
+                agent.workflowIds(),
+                agent.toolIds(),
+                agent.enabled(),
+                resolveSystemPrompt(agent.promptIds()),
+                model.id(),
+                model.provider(),
+                model.model(),
+                model.endpoint(),
+                model.maxTokens(),
+                model.maxContext(),
+                model.compactThreshold(),
+                model.temperature(),
+                model.compactionStrategyOrDefault(),
+                model.tokenizerEncodingOrDefault(),
+                model.supportsToolCalling(),
+                model.supportsStreaming(),
+                model.enabled()
+        );
         return new SessionHandle(
                 session.sessionId(),
                 isActiveSupplier(session.sessionId()),
-                session.sessionConfig().params()
+                snapshot
         );
     }
 

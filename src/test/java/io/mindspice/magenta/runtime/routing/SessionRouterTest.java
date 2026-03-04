@@ -1,12 +1,13 @@
 package io.mindspice.magenta.runtime.routing;
 
-import io.mindspice.magenta.runtime.session.config.SessionParams;
 import io.mindspice.magenta.runtime.session.SessionHandle;
 import io.mindspice.magenta.runtime.session.SessionInput;
 import io.mindspice.magenta.runtime.context.ContextElement;
 import io.mindspice.magenta.runtime.session.SessionOutput;
+import io.mindspice.magenta.runtime.session.SessionSettingsView;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -22,7 +23,7 @@ class SessionRouterTest {
     @Test
     void inputRouteReplacesPriorPolicyAndReportsDenials() {
         UUID sessionId = UUID.randomUUID();
-        SessionHandle handle = new SessionHandle(sessionId, () -> true, new SessionParams(false, true, true));
+        SessionHandle handle = new SessionHandle(sessionId, () -> true, settingsView(sessionId, true));
         List<SessionInput> submitted = new ArrayList<>();
         List<InputRoutingEvent> reports = new ArrayList<>();
 
@@ -50,7 +51,7 @@ class SessionRouterTest {
     @Test
     void streamingDisabledSessionRejectsPartialRoute() {
         UUID sessionId = UUID.randomUUID();
-        SessionHandle handle = new SessionHandle(sessionId, () -> true, new SessionParams(false, true, false));
+        SessionHandle handle = new SessionHandle(sessionId, () -> true, settingsView(sessionId, false));
         SessionRouter router = new SessionRouter(id -> id.equals(sessionId) ? handle : null, (id, input) -> {});
 
         assertThatThrownBy(() -> router.registerOutputRoute(
@@ -66,7 +67,7 @@ class SessionRouterTest {
     @Test
     void outputPolicyFiltersByTag() {
         UUID sessionId = UUID.randomUUID();
-        SessionHandle handle = new SessionHandle(sessionId, () -> true, new SessionParams(false, true, true));
+        SessionHandle handle = new SessionHandle(sessionId, () -> true, settingsView(sessionId, true));
         List<OutputRoutingEvent> received = new ArrayList<>();
 
         SessionRouter router = new SessionRouter(id -> id.equals(sessionId) ? handle : null, (id, input) -> {});
@@ -89,7 +90,7 @@ class SessionRouterTest {
     @Test
     void listenerFailureDoesNotPreventOtherListeners() {
         UUID sessionId = UUID.randomUUID();
-        SessionHandle handle = new SessionHandle(sessionId, () -> true, new SessionParams(false, true, true));
+        SessionHandle handle = new SessionHandle(sessionId, () -> true, settingsView(sessionId, true));
         AtomicInteger successCalls = new AtomicInteger();
         List<String> diagnostics = new ArrayList<>();
 
@@ -108,7 +109,7 @@ class SessionRouterTest {
     @Test
     void closePruneRemovesRoutesAndPreventsFurtherDelivery() {
         UUID sessionId = UUID.randomUUID();
-        SessionHandle handle = new SessionHandle(sessionId, () -> true, new SessionParams(false, true, true));
+        SessionHandle handle = new SessionHandle(sessionId, () -> true, settingsView(sessionId, true));
         AtomicInteger outputs = new AtomicInteger();
 
         SessionRouter router = new SessionRouter(id -> id.equals(sessionId) ? handle : null, (id, input) -> {});
@@ -122,5 +123,37 @@ class SessionRouterTest {
                 .hasMessageContaining("Input route not registered");
         router.emit(handle, new OutputRoutingEvent(sessionId, new SessionOutput.FinalOutput("after-prune")));
         assertThat(outputs).hasValue(0);
+    }
+
+    private SessionSettingsView settingsView(UUID sessionId, boolean streamingEnabled) {
+        return new SessionSettingsView(
+                sessionId,
+                "alias",
+                "agent",
+                Instant.now(),
+                false,
+                true,
+                streamingEnabled,
+                "model-default",
+                List.of("base.system"),
+                List.of(),
+                List.of(),
+                List.of("read_file"),
+                true,
+                "System prompt",
+                "model-default",
+                "test-provider",
+                "test-model",
+                "http://localhost:11434",
+                4096,
+                4096,
+                500,
+                0.0,
+                "rolling_window",
+                "cl100k_base",
+                false,
+                streamingEnabled,
+                true
+        );
     }
 }

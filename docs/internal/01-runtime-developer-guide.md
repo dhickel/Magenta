@@ -42,7 +42,7 @@ RuntimeConfig.load(...) -> Magenta
 
 - `sessionId`
 - `isActiveSupplier` (via `isActive()`)
-- immutable `SessionConfigView`
+- immutable `SessionSettingsView` (`handle.settingsView()`) containing flattened session + agent + model settings snapshot
 
 ## Routing API
 
@@ -75,21 +75,11 @@ Output wrapper event (`OutputRoutingEvent`):
 
 `SessionConfig` fields:
 
-- `blockingOnly`
-- `toolsEnabled`
-- `bypassSecurity`
-- `streamingEnabled`
+- `params` (`SessionParams`: `blockingOnly`, `toolsEnabled`, `streamingEnabled`)
 - `toolBridge`
 - `onError`
 
-Defaults:
-
-- `blockingOnly = false`
-- `toolsEnabled = true`
-- `bypassSecurity = false`
-- `streamingEnabled = true`
-- `toolBridge = ToolResult.notHandled(...)`
-- `onError = no-op`
+There is no `SessionConfig` builder in the current API; construct it directly with `new SessionConfig(...)`.
 
 ## Turn flow
 
@@ -98,7 +88,7 @@ Defaults:
 3. `SessionManager` submits to turn execution and catches internal failures to emit `SessionConfig.onError`.
 4. `Magenta` appends persisted input to context and emits `ContextMessageOutput`.
 5. `Magenta` computes stream mode:
-   - `sessionConfig.streamingEnabled && sessionRouter.hasStreamedOutputListeners(handle)`
+   - `sessionConfig.params().streamingEnabled() && sessionRouter.hasStreamedOutputListeners(handle)`
 6. `ModelRunner` executes the turn:
    - streaming emits `StreamedOutput` chunks
    - final assistant text always emits `FinalOutput`

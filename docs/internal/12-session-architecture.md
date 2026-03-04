@@ -8,8 +8,8 @@ Represent conversation state as typed session data with explicit lifecycle opera
 
 - `SessionManager`: `start`/`resume`/`fork`/`list`/`close`.
 - `Session`: immutable identity/config envelope + mutable `Context` reference.
-- `SessionHandle`: external session reference (`sessionId`, liveness predicate, `SessionConfigView`).
-- `SessionConfig`: execution controls (`blockingOnly`, `toolsEnabled`, `bypassSecurity`, `streamingEnabled`, `toolBridge`, `onError`).
+- `SessionHandle`: external session reference (`sessionId`, liveness predicate, immutable `SessionSettingsView` snapshot).
+- `SessionConfig`: execution controls (`params` with `blockingOnly`/`toolsEnabled`/`streamingEnabled`, plus `toolBridge`, `onError`).
 
 ## Invariants
 
