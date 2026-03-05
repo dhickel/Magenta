@@ -115,6 +115,13 @@ Output routing behavior:
 - `ContextManager.storeContext(...)` is currently a no-op seam.
 - Security policy state is session-scoped and currently in-memory.
 
+## Test execution contract
+
+- Functional and policy tests run in the Surefire `test` phase (`*Test`).
+- Integration tests run in Failsafe `integration-test` + `verify` phases (`*IT`, `*IntegrationTest`).
+- Tool-related changes must include functionality + policy + integration-path tests for affected tool IDs.
+- Merge readiness requires `mvn verify`, not `mvn test` alone.
+
 ## Related docs
 
 - Internal API contract: `16-public-api-contract.md`

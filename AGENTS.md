@@ -260,6 +260,17 @@ Minimum gates:
 - Mind concurrency and corruption-isolation tests,
 - end-to-end delegation/wake-sleep workflows.
 
+Tool test gate (mandatory for every tool addition/change):
+- each built-in tool must have functionality tests that cover success, argument validation, and deterministic failure payload shape (`status`, `code`, key `data` fields),
+- each built-in tool must have policy tests that validate authorization outcomes in security (`allowed`, `denied`, `validation_error`, `override_allowed`) for relevant tool risk surfaces,
+- each built-in tool must have at least one integration-path test through the runtime tool security path proving allowed execution and denied non-execution side effects,
+- historical tool failures must get regression tests before merge.
+
+Build/CI gate:
+- `mvn verify` is the required test gate for merge readiness (not `mvn test` alone),
+- `maven-surefire-plugin` runs `*Test` classes only,
+- `maven-failsafe-plugin` runs `*IT`/`*IntegrationTest` suites.
+
 Observability requirements:
 - structured JSONL event logging,
 - stable event shape with correlation IDs,

@@ -3,6 +3,8 @@ package io.mindspice.magenta.runtime.security;
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
 import io.mindspice.magenta.runtime.context.ContextElement;
 import io.mindspice.magenta.runtime.tools.ToolRequest;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -13,6 +15,38 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class SecurityManagerTest {
+
+    @ParameterizedTest
+    @ValueSource(strings = {"read_file", "write_file", "grep_files", "search_replace"})
+    void deniesAllFileToolsWhenPathOutsideAllowedRoots(String toolName) {
+        SecurityManager manager = new SecurityManager(
+                RuntimeConfig.SecurityPolicyConfig.defaults(),
+                Path.of(".").toAbsolutePath().normalize(),
+                null
+        );
+        UUID sessionId = UUID.randomUUID();
+        manager.initializePolicy(sessionId);
+        SecurityManager.ToolPolicy policy = new SecurityManager.ToolPolicy(
+                RuntimeConfig.SecurityMode.APPROVE_ALL,
+                false,
+                Set.of(),
+                Set.of(),
+                List.of("./configs"),
+                Set.of(),
+                new SecurityManager.WebAccessPolicy(false, false),
+                List.of()
+        );
+        manager.setToolPolicy(sessionId, policy);
+
+        SecurityManager.Decision decision = manager.authorize(
+                request(sessionId, toolName, "{\"path\":\"./pom.xml\"}"),
+                Set.of(toolName)
+        );
+
+        assertThat(decision.allowed()).isFalse();
+        assertThat(decision.code()).isEqualTo(SecurityManager.DecisionCode.DENIED);
+        assertThat(decision.reason()).contains("outside allowed roots");
+    }
 
     @Test
     void yoloOverrideShortCircuitsToAllowed() {
@@ -130,6 +164,41 @@ class SecurityManagerTest {
 
         assertThat(decision.allowed()).isFalse();
         assertThat(decision.reason()).contains("outside allowed roots");
+    }
+
+    @Test
+    void shellCommandMustMatchAllowedCommandsWhenConfigured() {
+        SecurityManager manager = new SecurityManager(
+                RuntimeConfig.SecurityPolicyConfig.defaults(),
+                Path.of(".").toAbsolutePath().normalize(),
+                null
+        );
+        UUID sessionId = UUID.randomUUID();
+        manager.initializePolicy(sessionId);
+        SecurityManager.ToolPolicy policy = new SecurityManager.ToolPolicy(
+                RuntimeConfig.SecurityMode.APPROVE_ALL,
+                false,
+                Set.of(),
+                Set.of(),
+                List.of("."),
+                Set.of("echo"),
+                new SecurityManager.WebAccessPolicy(false, false),
+                List.of()
+        );
+        manager.setToolPolicy(sessionId, policy);
+
+        SecurityManager.Decision denied = manager.authorize(
+                request(sessionId, "shell_command", "{\"cmd\":\"ls -la\"}"),
+                Set.of("shell_command")
+        );
+        SecurityManager.Decision allowed = manager.authorize(
+                request(sessionId, "shell_command", "{\"cmd\":\"echo hello\"}"),
+                Set.of("shell_command")
+        );
+
+        assertThat(denied.allowed()).isFalse();
+        assertThat(denied.reason()).contains("allowedCommands");
+        assertThat(allowed.allowed()).isTrue();
     }
 
     private ToolRequest request(UUID sessionId, String toolName, String argsJson) {

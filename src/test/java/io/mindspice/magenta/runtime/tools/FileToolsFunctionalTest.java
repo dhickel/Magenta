@@ -1,0 +1,126 @@
+package io.mindspice.magenta.runtime.tools;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class FileToolsFunctionalTest {
+
+    @TempDir
+    Path tempDir;
+
+    @Test
+    void grepFilesSupportsCaseInsensitivePatternAndFileGlob() throws Exception {
+        Files.writeString(tempDir.resolve("a.txt"), "Hello world\n");
+        Files.writeString(tempDir.resolve("b.md"), "hello markdown\n");
+
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+        String args = ToolTestSupport.MAPPER.writeValueAsString(Map.of(
+                "pattern", "hello",
+                "rootPath", ".",
+                "filePattern", "*.txt",
+                "caseSensitive", false
+        ));
+
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request("grep_files", args)));
+        assertThat(payload.path("status").asText()).isEqualTo("ok");
+        assertThat(payload.path("data").path("matchCount").asInt()).isEqualTo(1);
+        assertThat(payload.path("data").path("matches").get(0).path("path").asText()).isEqualTo("a.txt");
+    }
+
+    @Test
+    void grepFilesRejectsInvalidRegex() throws Exception {
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+        String args = ToolTestSupport.MAPPER.writeValueAsString(Map.of(
+                "pattern", "[abc",
+                "regex", true
+        ));
+
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request("grep_files", args)));
+        assertThat(payload.path("status").asText()).isEqualTo("failed");
+        assertThat(payload.path("code").asText()).isEqualTo("validation_error");
+    }
+
+    @Test
+    void writeFileEnforcesOverwriteGuardAndSnapshotMatching() throws Exception {
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+
+        JsonNode firstWrite = ToolTestSupport.payload(manager.execute(ToolTestSupport.request(
+                "write_file",
+                "{\"path\":\"note.txt\",\"content\":\"alpha\"}"
+        )));
+        assertThat(firstWrite.path("status").asText()).isEqualTo("ok");
+        String snapshotId = firstWrite.path("data").path("snapshotId").asText();
+
+        JsonNode overwriteGuard = ToolTestSupport.payload(manager.execute(ToolTestSupport.request(
+                "write_file",
+                "{\"path\":\"note.txt\",\"content\":\"beta\"}"
+        )));
+        assertThat(overwriteGuard.path("code").asText()).isEqualTo("overwrite_guard");
+
+        JsonNode snapshotMismatch = ToolTestSupport.payload(manager.execute(ToolTestSupport.request(
+                "write_file",
+                "{\"path\":\"note.txt\",\"content\":\"beta\",\"overwrite\":true,\"expectedSnapshotId\":\"bad\"}"
+        )));
+        assertThat(snapshotMismatch.path("code").asText()).isEqualTo("snapshot_mismatch");
+
+        JsonNode overwrite = ToolTestSupport.payload(manager.execute(ToolTestSupport.request(
+                "write_file",
+                ToolTestSupport.MAPPER.writeValueAsString(Map.of(
+                        "path", "note.txt",
+                        "content", "gamma",
+                        "overwrite", true,
+                        "expectedSnapshotId", snapshotId
+                ))
+        )));
+        assertThat(overwrite.path("status").asText()).isEqualTo("ok");
+        assertThat(Files.readString(tempDir.resolve("note.txt"))).isEqualTo("gamma");
+    }
+
+    @Test
+    void readFileRejectsInvalidLineRange() throws Exception {
+        Files.writeString(tempDir.resolve("sample.txt"), "one\ntwo\n");
+
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request(
+                "read_file",
+                "{\"path\":\"sample.txt\",\"startLine\":3,\"endLine\":2}"
+        )));
+
+        assertThat(payload.path("status").asText()).isEqualTo("failed");
+        assertThat(payload.path("code").asText()).isEqualTo("validation_error");
+    }
+
+    @Test
+    void searchReplaceReturnsConflictForExpectedTextMismatch() throws Exception {
+        Files.writeString(tempDir.resolve("sample.txt"), "alpha\nbeta\n");
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+
+        JsonNode read = ToolTestSupport.payload(manager.execute(ToolTestSupport.request("read_file", "{\"path\":\"sample.txt\"}")));
+        String snapshotId = read.path("data").path("snapshotId").asText();
+        String anchor = read.path("data").path("lines").get(0).path("anchor").asText();
+
+        String args = ToolTestSupport.MAPPER.writeValueAsString(Map.of(
+                "path", "sample.txt",
+                "snapshotId", snapshotId,
+                "edits", List.of(Map.of(
+                        "startAnchor", anchor,
+                        "endAnchor", anchor,
+                        "expectedText", "wrong",
+                        "replacement", "omega"
+                ))
+        ));
+
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request("search_replace", args)));
+        assertThat(payload.path("status").asText()).isEqualTo("failed");
+        assertThat(payload.path("code").asText()).isEqualTo("anchor_mismatch");
+        assertThat(payload.path("data").path("conflicts").get(0).path("reason").asText()).isEqualTo("expected_text_mismatch");
+    }
+}

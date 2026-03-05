@@ -1,0 +1,53 @@
+package io.mindspice.magenta.runtime.tools;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Path;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class ShellToolsFunctionalTest {
+
+    @TempDir
+    Path tempDir;
+
+    @Test
+    void shellCommandReturnsFailureForNonZeroExit() throws Exception {
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request(
+                "shell_command",
+                "{\"cmd\":\"exit 7\"}"
+        )));
+
+        assertThat(payload.path("status").asText()).isEqualTo("failed");
+        assertThat(payload.path("code").asText()).isEqualTo("command_failed");
+        assertThat(payload.path("data").path("exitCode").asInt()).isEqualTo(7);
+    }
+
+    @Test
+    void shellCommandReturnsTimeoutCode() throws Exception {
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request(
+                "shell_command",
+                "{\"cmd\":\"sleep 1\",\"timeoutMs\":10}"
+        )));
+
+        assertThat(payload.path("status").asText()).isEqualTo("failed");
+        assertThat(payload.path("code").asText()).isEqualTo("command_timeout");
+        assertThat(payload.path("data").path("timedOut").asBoolean()).isTrue();
+    }
+
+    @Test
+    void shellCommandRejectsNonPositiveTimeout() throws Exception {
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request(
+                "shell_command",
+                "{\"cmd\":\"echo ok\",\"timeoutMs\":0}"
+        )));
+
+        assertThat(payload.path("status").asText()).isEqualTo("failed");
+        assertThat(payload.path("code").asText()).isEqualTo("validation_error");
+    }
+}
