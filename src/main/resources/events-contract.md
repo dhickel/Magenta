@@ -17,6 +17,7 @@ Core event types:
 - `tool_call`
 - `tool_result`
 - `policy_denied`
+- `security_decision`
 - `session_end`
 
 Additional audit event type:

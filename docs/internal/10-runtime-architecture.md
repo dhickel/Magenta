@@ -18,6 +18,8 @@ Lean local runtime with a single IO boundary and explicit ownership:
 - `ContextManager`: context state and compaction.
 - `ModelRunner`: model/tool loop execution.
 - `OllamaClient`: provider transport.
+- `SecurityManager`: session tool policy decisions + authorization.
+- `ToolManager`: stateless tool dispatch fallback.
 
 ## Invariants
 
@@ -39,11 +41,12 @@ Lean local runtime with a single IO boundary and explicit ownership:
 ## Extension points
 
 - output filtering via `OutputRoutePolicy` (output filter-tag allowlist)
-- tool execution policy via wrapped `SessionConfig.toolBridge`
+- tool execution policy via runtime-wrapped `SessionConfig.toolBridge`
+- single mutable session tool policy (`setToolPolicy(...)`)
 - compaction behavior via model compaction settings + summarizer seam
 
 ## Known constraints
 
 - in-memory session/routing only
 - single provider transport (`OllamaClient`)
-- centralized `SecurityService` not yet wired
+- security ingress currently scoped to tool execution path

@@ -11,8 +11,10 @@ Primary implementation guide for the current runtime slice.
 - `SessionRouter`
 - `ModelRunner`
 - `OllamaClient`
+- `SecurityManager`
+- `ToolManager`
 
-Future targets (`MindStore`, `SchedulerService`, `SecurityService`) are not implemented in this slice.
+Future targets (`MindStore`, `SchedulerService`, full cross-domain `SecurityService`) are not implemented in this slice.
 
 ## Runtime at a glance
 
@@ -86,6 +88,7 @@ Output routing behavior:
 - `toolBridge`
 - `routingEventLevel` (`NONE`, `FINAL`, `ALL`)
 - `onRouting`
+- `onSecurity`
 - `onError` (`Consumer<SessionException>`)
 
 ## Turn flow
@@ -97,7 +100,7 @@ Output routing behavior:
 5. `Magenta` computes stream mode:
    - `settingsFor(handle).streamingEnabled() && sessionRouter.hasStreamedOutputListeners(handle)`
 6. `ModelRunner` executes the turn and emits routed outputs.
-7. Tool calls use `SessionConfig.toolBridge`.
+7. Tool calls use `SessionConfig.toolBridge`, wrapped by `SecurityManager`.
 
 ## Streaming contract
 
@@ -110,7 +113,7 @@ Output routing behavior:
 
 - Session and routing registries are in-memory only.
 - `ContextManager.storeContext(...)` is currently a no-op seam.
-- Security service centralization is future-phase; `toolBridge` remains in `SessionConfig`.
+- Security policy state is session-scoped and currently in-memory.
 
 ## Related docs
 

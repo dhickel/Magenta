@@ -1,6 +1,5 @@
 package io.mindspice.magenta.runtime.config;
 
-import com.knuddels.jtokkit.api.EncodingType;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonLocation;
@@ -8,6 +7,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import com.knuddels.jtokkit.api.EncodingType;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -17,6 +17,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -25,12 +26,17 @@ import java.util.stream.Stream;
 
 public record RuntimeConfig(
         Path rootDir,
+        Path workspaceRoot,
         String baseAgentId,
         String compactionAgentId,
         int maxTurns,
+        int maxToolOutputBytes,
+        int maxFileReadLines,
+        int maxSqlRows,
         Map<String, ModelConfig> modelsById,
         Map<String, AgentConfig> agentsById,
-        Map<String, String> promptsById
+        Map<String, String> promptsById,
+        SecurityPolicyConfig security
 ) {
 
     private static final ObjectMapper MAPPER = new ObjectMapper(new YAMLFactory())
@@ -38,11 +44,25 @@ public record RuntimeConfig(
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, true);
     private static final Path DEFAULT_PATH = Path.of("configs", "magenta.yaml");
     private static final String DEFAULT_TOKENIZER_ENCODING = "cl100k_base";
+    private static final int DEFAULT_MAX_TOOL_OUTPUT_BYTES = 32_768;
+    private static final int DEFAULT_MAX_FILE_READ_LINES = 200;
+    private static final int DEFAULT_MAX_SQL_ROWS = 500;
 
     public RuntimeConfig {
+        workspaceRoot = workspaceRoot == null ? Path.of("").toAbsolutePath().normalize() : workspaceRoot.toAbsolutePath().normalize();
+        if (maxToolOutputBytes <= 0) {
+            throw new IllegalStateException("instance.maxToolOutputBytes must be > 0");
+        }
+        if (maxFileReadLines <= 0) {
+            throw new IllegalStateException("instance.maxFileReadLines must be > 0");
+        }
+        if (maxSqlRows <= 0) {
+            throw new IllegalStateException("instance.maxSqlRows must be > 0");
+        }
         modelsById = Map.copyOf(modelsById);
         agentsById = Map.copyOf(agentsById);
         promptsById = Map.copyOf(promptsById);
+        security = Objects.requireNonNull(security, "security");
     }
 
     public static RuntimeConfig loadDefault() {
@@ -83,10 +103,38 @@ public record RuntimeConfig(
         int maxTurns = Optional.ofNullable(root.instance)
                 .map(InstanceConfig::maxTurns)
                 .orElse(8);
+        Path workspaceRoot = resolveWorkspaceRoot(configRoot, Optional.ofNullable(root.instance)
+                .map(InstanceConfig::workspaceRoot)
+                .orElse("."));
+        int maxToolOutputBytes = Optional.ofNullable(root.instance)
+                .map(InstanceConfig::maxToolOutputBytes)
+                .orElse(DEFAULT_MAX_TOOL_OUTPUT_BYTES);
+        int maxFileReadLines = Optional.ofNullable(root.instance)
+                .map(InstanceConfig::maxFileReadLines)
+                .orElse(DEFAULT_MAX_FILE_READ_LINES);
+        int maxSqlRows = Optional.ofNullable(root.instance)
+                .map(InstanceConfig::maxSqlRows)
+                .orElse(DEFAULT_MAX_SQL_ROWS);
 
         validate(models, agents, prompts, baseAgentId, compactionAgentId);
+        validateInstanceLimits(maxToolOutputBytes, maxFileReadLines, maxSqlRows);
 
-        return new RuntimeConfig(configRoot, baseAgentId, compactionAgentId, maxTurns, models, agents, prompts);
+        SecurityPolicyConfig securityConfig = toSecurityPolicyConfig(root.security);
+
+        return new RuntimeConfig(
+                configRoot,
+                workspaceRoot,
+                baseAgentId,
+                compactionAgentId,
+                maxTurns,
+                maxToolOutputBytes,
+                maxFileReadLines,
+                maxSqlRows,
+                models,
+                agents,
+                prompts,
+                securityConfig
+        );
     }
 
     private static IllegalStateException parseException(Path path, JsonProcessingException e) {
@@ -98,6 +146,29 @@ public record RuntimeConfig(
                 "Config parse failure at " + path.toAbsolutePath() + " (" + lineCol + "): " + e.getOriginalMessage(),
                 e
         );
+    }
+
+    private static Path resolveWorkspaceRoot(Path configRoot, String workspaceRootText) {
+        String effective = workspaceRootText == null || workspaceRootText.isBlank()
+                ? "."
+                : workspaceRootText.trim();
+        Path workspacePath = Path.of(effective);
+        if (!workspacePath.isAbsolute()) {
+            workspacePath = configRoot.resolve(workspacePath);
+        }
+        return workspacePath.toAbsolutePath().normalize();
+    }
+
+    private static void validateInstanceLimits(int maxToolOutputBytes, int maxFileReadLines, int maxSqlRows) {
+        if (maxToolOutputBytes <= 0) {
+            throw new IllegalStateException("instance.maxToolOutputBytes must be > 0");
+        }
+        if (maxFileReadLines <= 0) {
+            throw new IllegalStateException("instance.maxFileReadLines must be > 0");
+        }
+        if (maxSqlRows <= 0) {
+            throw new IllegalStateException("instance.maxSqlRows must be > 0");
+        }
     }
 
     private static List<String> includePatterns(IncludeSet includeSet) {
@@ -272,6 +343,168 @@ public record RuntimeConfig(
         }
     }
 
+    private static SecurityPolicyConfig toSecurityPolicyConfig(RawSecurityConfig rawConfig) {
+        if (rawConfig == null) {
+            return SecurityPolicyConfig.defaults();
+        }
+
+        return new SecurityPolicyConfig(
+                parseSecurityMode(rawConfig.mode),
+                Boolean.TRUE.equals(rawConfig.devYoloOverride),
+                normalizeList(rawConfig.allowedPaths),
+                normalizeList(rawConfig.allowedCommands),
+                normalizeList(rawConfig.allowedTools),
+                normalizeList(rawConfig.deniedTools),
+                toWebAccessConfig(rawConfig.webAccess),
+                toRuleConfigs(rawConfig.rules)
+        );
+    }
+
+    private static WebAccessConfig toWebAccessConfig(RawWebAccessConfig rawWebAccessConfig) {
+        if (rawWebAccessConfig == null) {
+            return new WebAccessConfig(false, false);
+        }
+        return new WebAccessConfig(
+                Boolean.TRUE.equals(rawWebAccessConfig.localEnabled),
+                Boolean.TRUE.equals(rawWebAccessConfig.externalEnabled)
+        );
+    }
+
+    private static List<SecurityRuleConfig> toRuleConfigs(List<RawSecurityRuleConfig> rawRules) {
+        if (rawRules == null || rawRules.isEmpty()) {
+            return List.of();
+        }
+        return rawRules.stream()
+                .map(rawRule -> new SecurityRuleConfig(
+                        normalizeOrDefault(rawRule.id, "rule"),
+                        parseRuleAction(rawRule.action),
+                        normalizeList(rawRule.commandPrefix),
+                        normalizeOrDefault(rawRule.reason, "")
+                ))
+                .toList();
+    }
+
+    private static SecurityMode parseSecurityMode(String value) {
+        String normalized = normalizeToken(value);
+        return switch (normalized) {
+            case "approveall", "allowall" -> SecurityMode.APPROVE_ALL;
+            case "denyall" -> SecurityMode.DENY_ALL;
+            case "blacklist" -> SecurityMode.BLACKLIST;
+            case "whitelist", "denybydefault" -> SecurityMode.WHITELIST;
+            case "prompt", "requireapproval" -> SecurityMode.PROMPT;
+            case "" -> SecurityMode.BLACKLIST;
+            default -> throw new IllegalStateException("Unsupported security mode: " + value);
+        };
+    }
+
+    private static SecurityRuleAction parseRuleAction(String value) {
+        String normalized = normalizeToken(value);
+        return switch (normalized) {
+            case "allow" -> SecurityRuleAction.ALLOW;
+            case "deny" -> SecurityRuleAction.DENY;
+            case "prompt" -> SecurityRuleAction.PROMPT;
+            case "" -> SecurityRuleAction.DENY;
+            default -> throw new IllegalStateException("Unsupported security rule action: " + value);
+        };
+    }
+
+    private static String normalizeToken(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.toLowerCase(Locale.ROOT)
+                .replace("_", "")
+                .replace("-", "")
+                .replace(" ", "");
+    }
+
+    private static String normalizeOrDefault(String value, String defaultValue) {
+        if (value == null || value.isBlank()) {
+            return defaultValue;
+        }
+        return value.trim();
+    }
+
+    private static List<String> normalizeList(List<String> raw) {
+        if (raw == null || raw.isEmpty()) {
+            return List.of();
+        }
+        return raw.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(v -> !v.isEmpty())
+                .distinct()
+                .toList();
+    }
+
+    public enum SecurityMode {
+        APPROVE_ALL,
+        DENY_ALL,
+        BLACKLIST,
+        WHITELIST,
+        PROMPT
+    }
+
+    public enum SecurityRuleAction {
+        ALLOW,
+        DENY,
+        PROMPT
+    }
+
+    public record SecurityPolicyConfig(
+            SecurityMode mode,
+            boolean devYoloOverride,
+            List<String> allowedPaths,
+            List<String> allowedCommands,
+            List<String> allowedTools,
+            List<String> deniedTools,
+            WebAccessConfig webAccess,
+            List<SecurityRuleConfig> rules
+    ) {
+        public SecurityPolicyConfig {
+            mode = mode == null ? SecurityMode.BLACKLIST : mode;
+            allowedPaths = allowedPaths == null ? List.of() : List.copyOf(allowedPaths);
+            allowedCommands = allowedCommands == null ? List.of() : List.copyOf(allowedCommands);
+            allowedTools = allowedTools == null ? List.of() : List.copyOf(allowedTools);
+            deniedTools = deniedTools == null ? List.of() : List.copyOf(deniedTools);
+            webAccess = webAccess == null ? new WebAccessConfig(false, false) : webAccess;
+            rules = rules == null ? List.of() : List.copyOf(rules);
+        }
+
+        public static SecurityPolicyConfig defaults() {
+            return new SecurityPolicyConfig(
+                    SecurityMode.BLACKLIST,
+                    false,
+                    List.of("."),
+                    List.of(),
+                    List.of(),
+                    List.of(),
+                    new WebAccessConfig(false, false),
+                    List.of()
+            );
+        }
+    }
+
+    public record WebAccessConfig(
+            boolean localEnabled,
+            boolean externalEnabled
+    ) {
+    }
+
+    public record SecurityRuleConfig(
+            String id,
+            SecurityRuleAction action,
+            List<String> commandPrefix,
+            String reason
+    ) {
+        public SecurityRuleConfig {
+            id = id == null || id.isBlank() ? "rule" : id.trim();
+            action = action == null ? SecurityRuleAction.DENY : action;
+            commandPrefix = commandPrefix == null ? List.of() : List.copyOf(commandPrefix);
+            reason = reason == null ? "" : reason;
+        }
+    }
+
     public record ModelConfig(
             @JsonProperty("id") String id,
             @JsonProperty("provider") String provider,
@@ -327,7 +560,7 @@ public record RuntimeConfig(
         @JsonProperty("instance")
         private InstanceConfig instance;
         @JsonProperty("security")
-        private SecurityConfig security;
+        private RawSecurityConfig security;
         @JsonProperty("models")
         private IncludeSet models;
         @JsonProperty("agents")
@@ -366,12 +599,22 @@ public record RuntimeConfig(
         private Integer maxEssenceBodyBytes;
 
         private String baseAgentId() { return baseAgentId; }
+
         private String compactionAgentId() { return compactionAgentId; }
+
         private Integer maxTurns() { return maxTurns; }
+
+        private String workspaceRoot() { return workspaceRoot; }
+
+        private Integer maxToolOutputBytes() { return maxToolOutputBytes; }
+
+        private Integer maxFileReadLines() { return maxFileReadLines; }
+
+        private Integer maxSqlRows() { return maxSqlRows; }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = false)
-    private static final class SecurityConfig {
+    private static final class RawSecurityConfig {
         @JsonProperty("mode")
         private String mode;
         @JsonProperty("devYoloOverride")
@@ -382,12 +625,24 @@ public record RuntimeConfig(
         private List<String> allowedCommands;
         @JsonProperty("allowedTools")
         private List<String> allowedTools;
+        @JsonProperty("deniedTools")
+        private List<String> deniedTools;
+        @JsonProperty("webAccess")
+        private RawWebAccessConfig webAccess;
         @JsonProperty("rules")
-        private List<SecurityRuleConfig> rules;
+        private List<RawSecurityRuleConfig> rules;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = false)
-    private static final class SecurityRuleConfig {
+    private static final class RawWebAccessConfig {
+        @JsonProperty("localEnabled")
+        private Boolean localEnabled;
+        @JsonProperty("externalEnabled")
+        private Boolean externalEnabled;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    private static final class RawSecurityRuleConfig {
         @JsonProperty("id")
         private String id;
         @JsonProperty("action")

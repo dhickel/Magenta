@@ -10,12 +10,16 @@ instance:
   maxEssenceBodyBytes: 65536
 
 security:
-  mode: "deny-by-default"
+  mode: "BLACKLIST"
   devYoloOverride: false
   allowedPaths:
     - "."
   allowedCommands: []
   allowedTools: []
+  deniedTools: []
+  webAccess:
+    localEnabled: false
+    externalEnabled: false
   rules:
     - id: allow-read-rg
       action: allow

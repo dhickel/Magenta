@@ -10,6 +10,7 @@ Use one concrete routing service (`SessionRouter`) as the external IO boundary, 
 
 - `toolBridge`: tool execution callback
 - `onRouting`: optional session-scoped routing observability callback for both input and output routing results
+- `onSecurity`: optional session-scoped security decision callback for tool authorization outcomes
 - `onError`: session-scoped execution error callback (`SessionException`)
 
 ## Input routing contract
@@ -45,7 +46,8 @@ Use one concrete routing service (`SessionRouter`) as the external IO boundary, 
 `Magenta` default session config uses:
 
 - `params = SessionParams.ofStreaming(true)`
-- `toolBridge = ToolResult.notHandled(...)`
+- `toolBridge = ToolManager.execute(...)` (empty manager defaults to not-handled)
 - `routingEventLevel = NONE`
 - `onRouting = unset`
+- `onSecurity = no-op`
 - `onError = no-op`

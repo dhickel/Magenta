@@ -50,15 +50,20 @@ public final class TestRuntimeConfigs {
 
         return new RuntimeConfig(
                 Path.of("configs"),
+                Path.of(".").toAbsolutePath().normalize(),
                 "agent-default",
                 "agent-compaction",
                 8,
+                32_768,
+                200,
+                500,
                 Map.of(modelConfig.id(), modelConfig),
                 Map.of(baseAgent.id(), baseAgent, compactionAgent.id(), compactionAgent),
                 Map.of(
                         "base.system", "Base prompt",
                         "agents.default", "Agent prompt"
-                )
+                ),
+                RuntimeConfig.SecurityPolicyConfig.defaults()
         );
     }
 }

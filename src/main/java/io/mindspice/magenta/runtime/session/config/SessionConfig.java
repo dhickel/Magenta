@@ -2,6 +2,7 @@ package io.mindspice.magenta.runtime.session.config;
 
 import io.mindspice.magenta.runtime.routing.RoutingEvent;
 import io.mindspice.magenta.runtime.routing.RoutingEventLevel;
+import io.mindspice.magenta.runtime.security.SecurityManager;
 import io.mindspice.magenta.runtime.session.SessionException;
 import io.mindspice.magenta.runtime.tools.ToolRequest;
 import io.mindspice.magenta.runtime.tools.ToolResult;
@@ -15,7 +16,24 @@ public final class SessionConfig {
     private final Function<ToolRequest, ToolResult> toolBridge;
     private final RoutingEventLevel routingEventLevel;
     private final Consumer<RoutingEvent> onRouting;
+    private final Consumer<SecurityManager.SecurityEvent> onSecurity;
     private final Consumer<SessionException> onError;
+
+    public SessionConfig(
+            @NonNull SessionParams params,
+            @NonNull Function<ToolRequest, ToolResult> toolBridge,
+            @NonNull RoutingEventLevel routingEventLevel,
+            @NonNull Consumer<RoutingEvent> onRouting,
+            @NonNull Consumer<SecurityManager.SecurityEvent> onSecurity,
+            @NonNull Consumer<SessionException> onError
+    ) {
+        this.params = params;
+        this.toolBridge = toolBridge;
+        this.routingEventLevel = routingEventLevel;
+        this.onRouting = onRouting;
+        this.onSecurity = onSecurity;
+        this.onError = onError;
+    }
 
     public SessionConfig(
             @NonNull SessionParams params,
@@ -24,11 +42,7 @@ public final class SessionConfig {
             @NonNull Consumer<RoutingEvent> onRouting,
             @NonNull Consumer<SessionException> onError
     ) {
-        this.params = params;
-        this.toolBridge = toolBridge;
-        this.routingEventLevel = routingEventLevel;
-        this.onRouting = onRouting;
-        this.onError = onError;
+        this(params, toolBridge, routingEventLevel, onRouting, ignored -> {}, onError);
     }
 
     public SessionConfig(
@@ -36,7 +50,7 @@ public final class SessionConfig {
             @NonNull Function<ToolRequest, ToolResult> toolBridge,
             @NonNull Consumer<SessionException> onError
     ) {
-        this(params, toolBridge, RoutingEventLevel.NONE, null, onError);
+        this(params, toolBridge, RoutingEventLevel.NONE, null, ignored -> {}, onError);
     }
 
     public Function<ToolRequest, ToolResult> toolBridge() { return toolBridge; }
@@ -44,6 +58,8 @@ public final class SessionConfig {
     public RoutingEventLevel routingEventLevel() { return routingEventLevel; }
 
     public Consumer<RoutingEvent> onRouting() { return onRouting; }
+
+    public Consumer<SecurityManager.SecurityEvent> onSecurity() { return onSecurity; }
 
     public Consumer<SessionException> onError() { return onError; }
 

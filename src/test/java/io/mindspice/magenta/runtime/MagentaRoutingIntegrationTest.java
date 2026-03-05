@@ -7,6 +7,7 @@ import io.mindspice.magenta.runtime.routing.OutputRoutePolicy;
 import io.mindspice.magenta.runtime.routing.RouteHandle;
 import io.mindspice.magenta.runtime.routing.RoutingEvent;
 import io.mindspice.magenta.runtime.routing.RoutingEventLevel;
+import io.mindspice.magenta.runtime.security.SecurityManager;
 import io.mindspice.magenta.runtime.session.SessionHandle;
 import io.mindspice.magenta.runtime.session.SessionInput;
 import io.mindspice.magenta.runtime.session.SessionOutput;
@@ -123,5 +124,27 @@ class MagentaRoutingIntegrationTest {
                 event -> {}
         )).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("streamingEnabled=true");
+    }
+
+    @Test
+    void setToolPolicyReplacesSingleSessionPolicy() {
+        Magenta magenta = new Magenta(TestRuntimeConfigs.basicRuntimeConfig());
+        SessionHandle handle = magenta.startBaseSession("policy-mutate");
+
+        assertThat(magenta.toolPolicy(handle).mode()).isEqualTo(io.mindspice.magenta.runtime.config.RuntimeConfig.SecurityMode.BLACKLIST);
+
+        SecurityManager.ToolPolicy denyAll = new SecurityManager.ToolPolicy(
+                io.mindspice.magenta.runtime.config.RuntimeConfig.SecurityMode.DENY_ALL,
+                false,
+                Set.of(),
+                Set.of(),
+                List.of("."),
+                Set.of(),
+                new SecurityManager.WebAccessPolicy(false, false),
+                List.of()
+        );
+        magenta.setToolPolicy(handle, denyAll);
+
+        assertThat(magenta.toolPolicy(handle).mode()).isEqualTo(io.mindspice.magenta.runtime.config.RuntimeConfig.SecurityMode.DENY_ALL);
     }
 }

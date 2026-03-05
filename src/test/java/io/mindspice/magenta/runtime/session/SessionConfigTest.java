@@ -22,6 +22,7 @@ class SessionConfigTest {
         assertThat(config.params().toolsEnabled()).isTrue();
         assertThat(config.params().streamingEnabled()).isTrue();
         assertThat(config.routingEventLevel()).isEqualTo(RoutingEventLevel.NONE);
+        assertThat(config.onSecurity()).isNotNull();
     }
 
     @Test

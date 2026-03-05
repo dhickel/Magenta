@@ -74,15 +74,17 @@ Core runtime services:
 - `ContextManager`: per-session context creation/load/store/compaction ownership.
 - `ModelRunner`: model turn orchestration, ADT mapping, and tool-loop handling.
 - `OllamaClient`: blocking/streaming model transport.
+- `SecurityManager`: session-scoped tool policy authorization and audit decision ownership.
+- `ToolManager`: stateless tool execution dispatch with deterministic fallback.
 - `MindStore` (future phases): filesystem-first cognition persistence.
 - `SchedulerService` (future phases): durable wake/sleep and timeout jobs.
-- `SecurityService` (future phases): single authorization ingress for side effects.
+- `SecurityService` (future phases): broader side-effect ingress unification beyond current tool path.
 
 Current implementation status:
-- implemented runtime slice is `Magenta + RuntimeConfig + SessionManager + SessionRouter + ContextManager + ModelRunner + OllamaClient`.
-- tool/security behavior currently enters through `SessionConfig.toolBridge` callback wiring.
+- implemented runtime slice is `Magenta + RuntimeConfig + SessionManager + SessionRouter + ContextManager + ModelRunner + OllamaClient + SecurityManager + ToolManager`.
+- tool/security behavior enters through runtime-wrapped `SessionConfig.toolBridge` callback wiring.
 - runtime external API is handle-first (`SessionHandle`) with routed input/output through `SessionRouter`.
-- `MindStore`, `SchedulerService`, and `SecurityService` remain future-phase targets.
+- `MindStore`, `SchedulerService`, and full cross-domain `SecurityService` remain future-phase targets.
 
 Design rules:
 - one runtime owner loop,

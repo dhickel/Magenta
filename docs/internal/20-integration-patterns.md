@@ -45,19 +45,20 @@ RouteHandle finalOnlyRoute = magenta.addOutputRoute(
 ## 3) Tool bridge with policy wrapper
 
 ```java
-SessionConfig secured = new SessionConfig(
-        SessionParams.ofStreaming(true),
-        req -> {
-            if (!securityPolicy.allowed(req)) {
-                return ToolResult.handled(req.toolCall().id(), req.toolCall().name(), "Denied");
-            }
-            String output = toolExecutor.run(req.toolCall().name(), req.toolCall().argumentsJson());
-            return ToolResult.handled(req.toolCall().id(), req.toolCall().name(), output);
-        },
-        RoutingEventLevel.NONE,
-        ignored -> {},
-        error -> System.err.println("session error: " + error.getMessage())
+Magenta magenta = new Magenta(config, ToolManager.empty(), approvalRequest -> SecurityManager.ApprovalResponse.DENY);
+SessionHandle handle = magenta.startBaseSession("secured");
+SecurityManager.ToolPolicy current = magenta.toolPolicy(handle);
+SecurityManager.ToolPolicy promptPolicy = new SecurityManager.ToolPolicy(
+        RuntimeConfig.SecurityMode.PROMPT,
+        current.devYoloOverride(),
+        current.allowedTools(),
+        current.deniedTools(),
+        current.allowedPaths(),
+        current.allowedCommands(),
+        current.webAccess(),
+        current.commandRules()
 );
+magenta.setToolPolicy(handle, promptPolicy);
 ```
 
 ## 4) Blocking deterministic mode

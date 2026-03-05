@@ -29,10 +29,15 @@ class RuntimeConfigIntegrationTest {
         assertThat(loaded.baseAgentId()).isEqualTo("agent-default");
         assertThat(loaded.compactionAgentId()).isEqualTo("agent-compaction");
         assertThat(loaded.maxTurns()).isEqualTo(3);
+        assertThat(loaded.workspaceRoot()).isEqualTo(configRoot.toAbsolutePath().normalize());
+        assertThat(loaded.maxToolOutputBytes()).isEqualTo(32_768);
+        assertThat(loaded.maxFileReadLines()).isEqualTo(200);
+        assertThat(loaded.maxSqlRows()).isEqualTo(500);
         assertThat(loaded.modelsById()).containsKey("model-default");
         assertThat(loaded.modelsById().get("model-default").tokenizerEncodingOrDefault()).isEqualTo("cl100k_base");
         assertThat(loaded.agentsById()).containsKeys("agent-default", "agent-compaction");
         assertThat(loaded.promptsById()).containsKey("base.system");
+        assertThat(loaded.security().mode()).isEqualTo(RuntimeConfig.SecurityMode.BLACKLIST);
     }
 
     @Test
@@ -40,9 +45,14 @@ class RuntimeConfigIntegrationTest {
         RuntimeConfig loaded = RuntimeConfig.loadDefault();
         assertThat(loaded).isNotNull();
         assertThat(loaded.maxTurns()).isEqualTo(8);
+        assertThat(loaded.workspaceRoot()).isNotNull();
+        assertThat(loaded.maxToolOutputBytes()).isGreaterThan(0);
+        assertThat(loaded.maxFileReadLines()).isGreaterThan(0);
+        assertThat(loaded.maxSqlRows()).isGreaterThan(0);
         assertThat(loaded.modelsById()).isNotEmpty();
         assertThat(loaded.agentsById()).isNotEmpty();
         assertThat(loaded.promptsById()).isNotEmpty();
+        assertThat(loaded.security().mode()).isEqualTo(RuntimeConfig.SecurityMode.BLACKLIST);
     }
 
     @Test
@@ -145,6 +155,26 @@ class RuntimeConfigIntegrationTest {
                 .hasMessageContaining("Unsupported tokenizerEncoding")
                 .hasMessageContaining("model-default")
                 .hasMessageContaining("not_real");
+    }
+
+    @Test
+    void invalidSecurityModeFailsFast() throws IOException {
+        Path configRoot = createConfigRoot("cfg-invalid-security-mode");
+        writeDefaultMagentaYaml(configRoot);
+        writeModel(configRoot.resolve("models/default.yaml"), "model-default", "dev");
+        writeAgent(configRoot.resolve("agents/default.yaml"), "agent-default", "model-default", "base.system");
+        writeAgent(configRoot.resolve("agents/compaction.yaml"), "agent-compaction", "model-default", "base.system");
+        Files.writeString(configRoot.resolve("prompts/base/system.md"), "system prompt");
+
+        Path magentaYaml = configRoot.resolve("magenta.yaml");
+        Files.writeString(magentaYaml, Files.readString(magentaYaml) + """
+                security:
+                  mode: "nope"
+                """);
+
+        assertThatThrownBy(() -> RuntimeConfig.load(magentaYaml))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Unsupported security mode");
     }
 
     private Path createConfigRoot(String name) throws IOException {
