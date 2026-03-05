@@ -81,6 +81,27 @@ class ToolSecurityIntegrationIT {
     }
 
     @Test
+    void deniedWhenToolNotInAgentToolSetDoesNotExecute() {
+        ToolManager toolManager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+        SecurityManager securityManager = securityManager(tempDir);
+        UUID sessionId = UUID.randomUUID();
+        securityManager.initializePolicy(sessionId);
+        securityManager.setToolPolicy(sessionId, toolPolicy(
+                RuntimeConfig.SecurityMode.APPROVE_ALL,
+                List.of("."),
+                Set.of()
+        ));
+
+        ToolRequest request = ToolTestSupport.request(sessionId, "write_file", "{\"path\":\"agent-denied.txt\",\"content\":\"blocked\"}");
+        SecuredExecution execution = executeSecured(securityManager, toolManager, request, Set.of("read_file"));
+
+        assertThat(execution.decision().allowed()).isFalse();
+        assertThat(execution.decision().reason()).contains("agent settings");
+        assertThat(execution.result()).isNull();
+        assertThat(Files.exists(tempDir.resolve("agent-denied.txt"))).isFalse();
+    }
+
+    @Test
     void allowedSqliteExecWritesDatabaseInsideAllowedPath() throws Exception {
         ToolManager toolManager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
         SecurityManager securityManager = securityManager(tempDir);

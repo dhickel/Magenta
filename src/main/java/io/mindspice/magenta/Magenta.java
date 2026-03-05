@@ -2,6 +2,7 @@ package io.mindspice.magenta;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import dev.langchain4j.agent.tool.ToolSpecification;
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
 import io.mindspice.magenta.runtime.context.ContextElement;
 import io.mindspice.magenta.runtime.context.ContextManager;
@@ -20,6 +21,7 @@ import io.mindspice.magenta.runtime.session.SessionInput;
 import io.mindspice.magenta.runtime.session.SessionManager;
 import io.mindspice.magenta.runtime.session.SessionOutput;
 import io.mindspice.magenta.runtime.session.SessionSettingsView;
+import io.mindspice.magenta.runtime.session.SessionTokenEstimator;
 import io.mindspice.magenta.runtime.session.config.SessionConfig;
 import io.mindspice.magenta.runtime.session.config.SessionParams;
 import io.mindspice.magenta.runtime.tools.ToolManager;
@@ -29,9 +31,11 @@ import io.mindspice.magenta.runtime.tools.ToolResult;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.List;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * Primary runtime facade for session lifecycle and routed IO orchestration.
@@ -170,6 +174,35 @@ public final class Magenta {
         return securityManager.toolPolicy(handle.sessionId());
     }
 
+    public SessionContextUsage contextUsage(SessionHandle handle) {
+        Objects.requireNonNull(handle, "handle");
+        Session session = sessionManager.resume(handle.sessionId());
+        RuntimeConfig.ModelConfig modelConfig = session.modelConfig();
+        var snapshot = session.context().snapshot();
+        int maxContext = modelConfig.maxContext();
+        int estimatedTokens = SessionTokenEstimator.estimate(
+                snapshot,
+                modelConfig.tokenizerEncodingOrDefault()
+        );
+        double percent = maxContext <= 0 ? 0.0 : (estimatedTokens * 100.0) / maxContext;
+
+        return new SessionContextUsage(
+                session.sessionId(),
+                modelConfig.id(),
+                modelConfig.model(),
+                modelConfig.tokenizerEncodingOrDefault(),
+                estimatedTokens,
+                maxContext,
+                percent,
+                snapshot.size()
+        );
+    }
+
+    public Supplier<SessionContextUsage> contextUsageSupplier(SessionHandle handle) {
+        Objects.requireNonNull(handle, "handle");
+        return () -> contextUsage(handle);
+    }
+
     /**
      * Returns immutable runtime configuration metadata loaded at startup.
      */
@@ -245,6 +278,10 @@ public final class Magenta {
         }
 
         boolean shouldStream = settingsFor(handle).streamingEnabled() && sessionRouter.hasStreamedOutputListeners(handle);
+        List<ToolSpecification> toolSpecifications = session.sessionConfig().params().toolsEnabled()
+                && session.modelConfig().supportsToolCalling()
+                ? toolManager.toolSpecificationsFor(session.toolIds())
+                : List.of();
         return modelRunner.runTurn(
                 session,
                 handle,
@@ -260,7 +297,8 @@ public final class Magenta {
                                 compactionSystemPrompt(),
                                 messages
                         )
-                )
+                ),
+                toolSpecifications
         );
     }
 
@@ -325,6 +363,24 @@ public final class Magenta {
             return MAPPER.writeValueAsString(root);
         } catch (Exception ignored) {
             return "{\"status\":\"failed\",\"code\":\"security_denied\",\"message\":\"Tool request denied\"}";
+        }
+    }
+
+    public record SessionContextUsage(
+            UUID sessionId,
+            String modelId,
+            String modelName,
+            String tokenizerEncoding,
+            int estimatedContextTokens,
+            int maxContextTokens,
+            double percentOfMaxContext,
+            int messageCount
+    ) {
+        public SessionContextUsage {
+            Objects.requireNonNull(sessionId, "sessionId");
+            modelId = modelId == null ? "" : modelId;
+            modelName = modelName == null ? "" : modelName;
+            tokenizerEncoding = tokenizerEncoding == null ? "" : tokenizerEncoding;
         }
     }
 }

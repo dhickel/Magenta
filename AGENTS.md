@@ -65,6 +65,21 @@ Out-of-scope dependency rule:
 - `Knowledge`: local or external reference material; external sources must be summarized.
 - `Mind`: per-agent persistent filesystem workspace for cognition artifacts.
 
+## LangChain4j Reference Policy
+
+Primary LangChain4j references:
+- Docs: `https://docs.langchain4j.dev/`
+- Doc chatbot: `https://chat.langchain4j.dev/`
+- Examples: `https://github.com/langchain4j/langchain4j-examples`
+
+Knowledge capture requirements:
+- When LangChain4j pages/resources are requested, capture summarized outputs in `.internal-dev/knowledge/langchain4j/`.
+- Use clear, task-retrievable file names and maintain/update `.internal-dev/knowledge/langchain4j/00-index.md`.
+
+Lookup order for LangChain4j work:
+- First check local knowledge in `.internal-dev/knowledge/langchain4j/`.
+- If needed information is missing or stale, consult the official references above and then write/update the local knowledge notes.
+
 ## Architecture Targets
 
 Core runtime services:
@@ -82,6 +97,7 @@ Core runtime services:
 
 Current implementation status:
 - implemented runtime slice is `Magenta + RuntimeConfig + SessionManager + SessionRouter + ContextManager + ModelRunner + OllamaClient + SecurityManager + ToolManager`.
+- terminal entrypoint is JLine-based through internal `io.mindspice.magenta.ui` package (`TerminalUiRuntime`/`TerminalUiBootstrap`) and still wired through handle-first route + callback contracts.
 - tool/security behavior enters through runtime-wrapped `SessionConfig.toolBridge` callback wiring.
 - runtime external API is handle-first (`SessionHandle`) with routed input/output through `SessionRouter`.
 - `MindStore`, `SchedulerService`, and full cross-domain `SecurityService` remain future-phase targets.
@@ -221,6 +237,7 @@ Tool execution contract:
 - Never terminate autonomous loops from ambiguous empty model output.
 - Never expose mock/placeholder tools as active production capability.
 - Never split execution paths around security.
+- Ensure edit/runtime paths catch exceptions and propagate them through `onError` callbacks to support async error handling and prevent runtime crashes.
 - Never favor abstraction-first rewrites over stable behavior contracts.
 - Never reshape production APIs or architecture just to satisfy stale tests; update tests to reflect intentional code design.
 - Keep edit/search/replace tooling harness-verified and deterministic.

@@ -20,6 +20,7 @@ Canonical runtime documentation for engineers working in `src/main/java/io/minds
 
 - `20-integration-patterns.md`: implementation-grade integration examples.
 - `21-sequence-walkthroughs.md`: startup and turn execution flows with diagrams.
+- `22-terminal-ui-core-architecture.md`: JLine terminal UI package contract, slash command ADT, and prompt/approval flow.
 - `30-runtime-troubleshooting.md`: diagnosis and correction guidance.
 
 ## Maintenance policy

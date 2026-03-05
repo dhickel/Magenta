@@ -101,6 +101,7 @@ Output routing behavior:
    - `settingsFor(handle).streamingEnabled() && sessionRouter.hasStreamedOutputListeners(handle)`
 6. `ModelRunner` executes the turn and emits routed outputs.
 7. Tool calls use `SessionConfig.toolBridge`, wrapped by `SecurityManager`.
+8. Tool specs are discovered from annotation-registered tools and passed to model requests when enabled and supported.
 
 ## Streaming contract
 

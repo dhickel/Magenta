@@ -43,5 +43,5 @@ Keep model execution (`ModelRunner`) separate from provider transport (`OllamaCl
 
 ## Known constraints
 
-- tool schemas are not sent in current payload builder
+- tool schemas are sent only when session tools are enabled, model tool-calling is supported, and tool specs are discoverable
 - single provider transport implementation (`OllamaClient`)

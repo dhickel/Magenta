@@ -1,6 +1,7 @@
 package io.mindspice.magenta.runtime.model;
 
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
+import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
@@ -36,7 +37,8 @@ public final class ModelRunner {
                 maxIterations,
                 false,
                 event -> {},
-                () -> {}
+                () -> {},
+                List.of()
         );
     }
 
@@ -46,17 +48,26 @@ public final class ModelRunner {
             int maxIterations,
             boolean streamTokens,
             Consumer<OutputRoutingEvent> outputEmitter,
-            Runnable beforeModelCallHook
+            Runnable beforeModelCallHook,
+            List<ToolSpecification> toolSpecifications
     ) {
         boolean toolLoopActive = false;
         String latestText = "";
         Runnable safeBeforeModelCallHook = beforeModelCallHook == null ? () -> {} : beforeModelCallHook;
         Consumer<OutputRoutingEvent> safeOutputEmitter = outputEmitter == null ? ignored -> {} : outputEmitter;
+        List<ToolSpecification> safeToolSpecifications = toolSpecifications == null ? List.of() : List.copyOf(toolSpecifications);
 
         for (int i = 0; i < maxIterations; i++) {
             safeBeforeModelCallHook.run();
-            ChatRequest request = ChatRequest.builder().messages(toChatMessages(session.context().snapshot())).build();
+            ChatRequest.Builder requestBuilder = ChatRequest.builder()
+                    .messages(toChatMessages(session.context().snapshot()));
             RuntimeConfig.ModelConfig modelConfig = session.modelConfig();
+            if (session.sessionConfig().params().toolsEnabled()
+                && modelConfig.supportsToolCalling()
+                && !safeToolSpecifications.isEmpty()) {
+                requestBuilder.toolSpecifications(safeToolSpecifications);
+            }
+            ChatRequest request = requestBuilder.build();
 
             boolean useBlocking = session.sessionConfig().params().blockingOnly()
                     || toolLoopActive

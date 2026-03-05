@@ -1,5 +1,5 @@
 instance:
-  workspaceRoot: "."
+  workspaceRoot: "/home/hickelpickle/Code/Java/Magenta2/agent-sandbox"
   dataRoot: ".magenta"
   debugJsonl: ".magenta/logs/events.jsonl"
   localDevMode: true

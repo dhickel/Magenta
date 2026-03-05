@@ -2,13 +2,27 @@ package io.mindspice.magenta.runtime.model;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
+import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.request.ChatRequest;
+import dev.langchain4j.model.chat.request.json.JsonAnyOfSchema;
+import dev.langchain4j.model.chat.request.json.JsonArraySchema;
+import dev.langchain4j.model.chat.request.json.JsonBooleanSchema;
+import dev.langchain4j.model.chat.request.json.JsonEnumSchema;
+import dev.langchain4j.model.chat.request.json.JsonIntegerSchema;
+import dev.langchain4j.model.chat.request.json.JsonNullSchema;
+import dev.langchain4j.model.chat.request.json.JsonNumberSchema;
+import dev.langchain4j.model.chat.request.json.JsonObjectSchema;
+import dev.langchain4j.model.chat.request.json.JsonReferenceSchema;
+import dev.langchain4j.model.chat.request.json.JsonSchemaElement;
+import dev.langchain4j.model.chat.request.json.JsonStringSchema;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.output.TokenUsage;
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
@@ -166,6 +180,9 @@ public final class OllamaClient {
             messages.add(msg);
         }
         root.set("messages", messages);
+        if (request.toolSpecifications() != null && !request.toolSpecifications().isEmpty()) {
+            root.set("tools", toToolSpecificationsJson(request.toolSpecifications()));
+        }
 
         var options = json.createObjectNode();
         options.put("temperature", modelCfg.temperature());
@@ -173,6 +190,119 @@ public final class OllamaClient {
         root.set("options", options);
 
         return root;
+    }
+
+    private ArrayNode toToolSpecificationsJson(List<ToolSpecification> specifications) {
+        ArrayNode tools = json.createArrayNode();
+        if (specifications == null || specifications.isEmpty()) {
+            return tools;
+        }
+
+        for (ToolSpecification specification : specifications) {
+            if (specification == null || specification.name() == null || specification.name().isBlank()) {
+                continue;
+            }
+
+            ObjectNode toolNode = json.createObjectNode();
+            toolNode.put("type", "function");
+
+            ObjectNode functionNode = json.createObjectNode();
+            functionNode.put("name", specification.name());
+            if (specification.description() != null && !specification.description().isBlank()) {
+                functionNode.put("description", specification.description());
+            }
+            if (specification.parameters() != null) {
+                functionNode.set("parameters", toJsonSchemaElement(specification.parameters()));
+            }
+            toolNode.set("function", functionNode);
+            tools.add(toolNode);
+        }
+        return tools;
+    }
+
+    private JsonNode toJsonSchemaElement(JsonSchemaElement element) {
+        if (element == null) {
+            return json.createObjectNode();
+        }
+        return switch (element) {
+            case JsonObjectSchema objectSchema -> toJsonObjectSchema(objectSchema);
+            case JsonArraySchema arraySchema -> {
+                ObjectNode node = baseTypedNode("array", arraySchema.description());
+                if (arraySchema.items() != null) {
+                    node.set("items", toJsonSchemaElement(arraySchema.items()));
+                }
+                yield node;
+            }
+            case JsonStringSchema stringSchema -> baseTypedNode("string", stringSchema.description());
+            case JsonIntegerSchema integerSchema -> baseTypedNode("integer", integerSchema.description());
+            case JsonNumberSchema numberSchema -> baseTypedNode("number", numberSchema.description());
+            case JsonBooleanSchema booleanSchema -> baseTypedNode("boolean", booleanSchema.description());
+            case JsonEnumSchema enumSchema -> {
+                ObjectNode node = baseTypedNode("string", enumSchema.description());
+                ArrayNode enumValues = json.createArrayNode();
+                if (enumSchema.enumValues() != null) {
+                    enumSchema.enumValues().forEach(enumValues::add);
+                }
+                node.set("enum", enumValues);
+                yield node;
+            }
+            case JsonAnyOfSchema anyOfSchema -> {
+                ObjectNode node = json.createObjectNode();
+                if (anyOfSchema.description() != null && !anyOfSchema.description().isBlank()) {
+                    node.put("description", anyOfSchema.description());
+                }
+                ArrayNode anyOf = json.createArrayNode();
+                if (anyOfSchema.anyOf() != null) {
+                    anyOfSchema.anyOf().forEach(entry -> anyOf.add(toJsonSchemaElement(entry)));
+                }
+                node.set("anyOf", anyOf);
+                yield node;
+            }
+            case JsonReferenceSchema referenceSchema -> {
+                ObjectNode node = json.createObjectNode();
+                node.put("$ref", referenceSchema.reference());
+                if (referenceSchema.description() != null && !referenceSchema.description().isBlank()) {
+                    node.put("description", referenceSchema.description());
+                }
+                yield node;
+            }
+            case JsonNullSchema nullSchema -> baseTypedNode("null", nullSchema.description());
+            default -> json.createObjectNode();
+        };
+    }
+
+    private ObjectNode toJsonObjectSchema(JsonObjectSchema objectSchema) {
+        ObjectNode node = baseTypedNode("object", objectSchema.description());
+
+        ObjectNode properties = json.createObjectNode();
+        if (objectSchema.properties() != null) {
+            objectSchema.properties().forEach((name, child) -> properties.set(name, toJsonSchemaElement(child)));
+        }
+        node.set("properties", properties);
+
+        if (objectSchema.required() != null && !objectSchema.required().isEmpty()) {
+            ArrayNode required = json.createArrayNode();
+            objectSchema.required().forEach(required::add);
+            node.set("required", required);
+        }
+        if (objectSchema.additionalProperties() != null) {
+            node.put("additionalProperties", objectSchema.additionalProperties());
+        }
+        if (objectSchema.definitions() != null && !objectSchema.definitions().isEmpty()) {
+            ObjectNode definitions = json.createObjectNode();
+            objectSchema.definitions().forEach((name, child) -> definitions.set(name, toJsonSchemaElement(child)));
+            node.set("definitions", definitions);
+        }
+        return node;
+    }
+
+    private ObjectNode baseTypedNode(String type, String description) {
+        ObjectNode node = json.createObjectNode();
+        node.put("type", type);
+        if (description != null && !description.isBlank()) {
+            node.put("description", description);
+        }
+        return node;
     }
 
     private JsonNode toToolCallsJson(List<ToolExecutionRequest> requests) {

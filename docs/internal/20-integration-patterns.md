@@ -81,3 +81,15 @@ magenta.closeSession(handle);
 ```
 
 Session close also auto-prunes any remaining routes.
+
+## 6) Internal JLine terminal UI bootstrap
+
+```java
+RuntimeConfig runtimeConfig = RuntimeConfig.loadDefault();
+ToolApprovalPromptAdapter approval = new ToolApprovalPromptAdapter();
+Magenta magenta = new Magenta(runtimeConfig, null, approval);
+
+TerminalUiConfig uiConfig = TerminalUiConfig.defaults();
+TerminalUiRuntime runtime = TerminalUiBootstrap.bootstrap(magenta, uiConfig, approval);
+runtime.runLoop();
+```

@@ -39,3 +39,6 @@ build/
 
 # Internal development workspace artifacts (local-only)
 .internal-dev/
+
+# Local test workspace
+/agent-sandbox/

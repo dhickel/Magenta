@@ -1,11 +1,15 @@
 package io.mindspice.magenta.runtime.model;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.model.chat.request.ChatRequest;
+import dev.langchain4j.model.chat.request.json.JsonIntegerSchema;
+import dev.langchain4j.model.chat.request.json.JsonObjectSchema;
+import dev.langchain4j.model.chat.request.json.JsonStringSchema;
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
 import io.mindspice.magenta.runtime.model.OllamaClient;
 import org.junit.jupiter.api.Test;
@@ -54,6 +58,47 @@ class OllamaClientPayloadSerializationTest {
         assertThat(message.path("role").asText()).isEqualTo("tool");
         assertThat(message.path("name").asText()).isEqualTo("search_replace");
         assertThat(message.path("tool_call_id").asText()).isEqualTo("call-77");
+    }
+
+    @Test
+    void serializesToolSpecificationsIntoOllamaToolsPayload() throws Exception {
+        OllamaClient client = new OllamaClient();
+        ToolSpecification readFileSpec = ToolSpecification.builder()
+                .name("read_file")
+                .description("Read a file")
+                .parameters(JsonObjectSchema.builder()
+                        .addStringProperty("path", "Target path")
+                        .addProperty("startLine", JsonIntegerSchema.builder().description("Optional start line").build())
+                        .required(List.of("path"))
+                        .build())
+                .build();
+        ToolSpecification sqliteExecSpec = ToolSpecification.builder()
+                .name("sqlite_exec")
+                .parameters(JsonObjectSchema.builder()
+                        .addStringProperty("dbPath", "Database path")
+                        .addProperty("sql", JsonStringSchema.builder().description("SQL text").build())
+                        .required(List.of("dbPath", "sql"))
+                        .build())
+                .build();
+
+        ChatRequest chatRequest = ChatRequest.builder()
+                .messages(List.of(AiMessage.from("ready")))
+                .toolSpecifications(readFileSpec, sqliteExecSpec)
+                .build();
+
+        JsonNode payload = invokeToOllamaPayload(client, modelConfig(), chatRequest, false);
+        JsonNode tools = payload.path("tools");
+
+        assertThat(tools.isArray()).isTrue();
+        assertThat(tools).hasSize(2);
+
+        JsonNode first = tools.get(0);
+        assertThat(first.path("type").asText()).isEqualTo("function");
+        assertThat(first.path("function").path("name").asText()).isEqualTo("read_file");
+        assertThat(first.path("function").path("description").asText()).isEqualTo("Read a file");
+        assertThat(first.path("function").path("parameters").path("type").asText()).isEqualTo("object");
+        assertThat(first.path("function").path("parameters").path("properties").path("path").path("type").asText())
+                .isEqualTo("string");
     }
 
     private static JsonNode invokeToOllamaPayload(

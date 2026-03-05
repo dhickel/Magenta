@@ -2,6 +2,7 @@ package io.mindspice.magenta.runtime.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.langchain4j.agent.tool.ToolSpecification;
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
 import io.mindspice.magenta.runtime.context.ContextElement;
 import org.junit.jupiter.api.Test;
@@ -140,6 +141,69 @@ class ToolManagerBuiltInsTest {
 
         assertThat(payload.path("status").asText()).isEqualTo("failed");
         assertThat(payload.path("code").asText()).isEqualTo("output_too_large");
+    }
+
+    @Test
+    void toolSpecificationsAreFilteredByRequestedToolIds() {
+        ToolManager manager = ToolManager.withBuiltIns(runtimeConfig(tempDir));
+        List<ToolSpecification> specifications = manager.toolSpecificationsFor(List.of(
+                "read_file",
+                "essence_create",
+                "shell_command",
+                "read_file"
+        ));
+
+        assertThat(specifications).extracting(ToolSpecification::name)
+                .containsExactly("read_file", "shell_command");
+    }
+
+    @Test
+    void invalidJsonArgumentsFailValidationBeforeInvocation() throws Exception {
+        ToolManager manager = ToolManager.withBuiltIns(runtimeConfig(tempDir));
+        ToolResult result = manager.execute(request("read_file", "{bad json"));
+
+        JsonNode payload = MAPPER.readTree(result.content());
+        assertThat(payload.path("status").asText()).isEqualTo("failed");
+        assertThat(payload.path("code").asText()).isEqualTo("validation_error");
+    }
+
+    @Test
+    void discoveredBuiltInToolSpecificationsCoverExpectedSurface() {
+        ToolManager manager = ToolManager.withBuiltIns(runtimeConfig(tempDir));
+        List<ToolSpecification> specifications = manager.toolSpecificationsFor(null);
+
+        assertThat(specifications).extracting(ToolSpecification::name).containsExactlyInAnyOrder(
+                "read_file",
+                "grep_files",
+                "search_replace",
+                "write_file",
+                "shell_command",
+                "sqlite_query",
+                "sqlite_exec"
+        );
+    }
+
+    @Test
+    void annotationGeneratedParameterNamesUseSemanticNamesNotArgIndexes() {
+        ToolManager manager = ToolManager.withBuiltIns(runtimeConfig(tempDir));
+        ToolSpecification readFile = manager.toolSpecificationsFor(List.of("read_file")).getFirst();
+
+        assertThat(readFile.parameters()).isNotNull();
+        assertThat(readFile.parameters().properties().keySet()).containsExactly("path", "startLine", "endLine");
+        assertThat(readFile.parameters().required()).containsExactly("path");
+        assertThat(readFile.parameters().properties().keySet()).doesNotContain("arg0", "arg1", "arg2");
+    }
+
+    @Test
+    void annotationBindingRejectsWrongArgumentType() throws Exception {
+        Files.writeString(tempDir.resolve("sample.txt"), "alpha\n");
+        ToolManager manager = ToolManager.withBuiltIns(runtimeConfig(tempDir));
+        ToolResult result = manager.execute(request("read_file", "{\"path\":\"sample.txt\",\"startLine\":\"one\"}"));
+
+        JsonNode payload = MAPPER.readTree(result.content());
+        assertThat(payload.path("status").asText()).isEqualTo("failed");
+        assertThat(payload.path("code").asText()).isEqualTo("validation_error");
+        assertThat(payload.path("message").asText()).contains("startLine");
     }
 
     private RuntimeConfig runtimeConfig(Path workspaceRoot) {
