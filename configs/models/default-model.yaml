@@ -9,5 +9,5 @@ temperature: 0.2
 compactionStrategy: "summarize"
 tokenizerEncoding: "cl100k_base"
 supportsToolCalling: true
-supportsStreaming: false
+supportsStreaming: true
 enabled: true

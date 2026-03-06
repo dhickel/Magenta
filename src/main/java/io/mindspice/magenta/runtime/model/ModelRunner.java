@@ -89,7 +89,6 @@ public final class ModelRunner {
 
             ContextElement.AssistantMsg assistant = new ContextElement.AssistantMsg(latestText, toolCalls);
             session.context().append(assistant);
-            safeOutputEmitter.accept(new OutputRoutingEvent(handle, new SessionOutput.ContextMessageOutput(assistant)));
             safeOutputEmitter.accept(new OutputRoutingEvent(handle, new SessionOutput.FinalOutput(latestText)));
 
             if (toolCalls.isEmpty() || !session.sessionConfig().params().toolsEnabled()) {
@@ -97,6 +96,7 @@ public final class ModelRunner {
             }
 
             for (ContextElement.ToolCall toolCall : toolCalls) {
+                safeOutputEmitter.accept(new OutputRoutingEvent(handle, new SessionOutput.ToolCallOutput(toolCall)));
                 ToolRequest toolRequest = new ToolRequest(session.sessionId().toString(), session.agentId(), toolCall);
                 ToolResult toolResult = session.sessionConfig().toolBridge().apply(toolRequest);
                 ContextElement.ToolMsg toolMessage = new ContextElement.ToolMsg(
@@ -105,7 +105,6 @@ public final class ModelRunner {
                         safeText(toolResult.content())
                 );
                 session.context().append(toolMessage);
-                safeOutputEmitter.accept(new OutputRoutingEvent(handle, new SessionOutput.ContextMessageOutput(toolMessage)));
                 safeOutputEmitter.accept(new OutputRoutingEvent(handle, new SessionOutput.ToolMessageOutput(toolMessage)));
             }
 
@@ -176,9 +175,6 @@ public final class ModelRunner {
     }
 
     private String safeText(String text) {
-        if (text == null || text.isBlank()) {
-            return ".";
-        }
-        return text;
+        return text == null ? "" : text;
     }
 }

@@ -11,7 +11,7 @@ public sealed interface SessionOutput permits SessionOutput.StreamOutput, Sessio
 
     sealed interface StreamOutput extends SessionOutput permits StreamedOutput, FinalOutput {}
 
-    sealed interface MessageOutput extends SessionOutput permits ContextMessageOutput, ToolMessageOutput {}
+    sealed interface MessageOutput extends SessionOutput permits ToolCallOutput, ToolMessageOutput {}
 
     record StreamedOutput(String text) implements StreamOutput {
         public static final FilterTag<SessionOutput> FILTER_TAG = value -> value instanceof StreamedOutput;
@@ -29,16 +29,16 @@ public sealed interface SessionOutput permits SessionOutput.StreamOutput, Sessio
         }
     }
 
-    record ContextMessageOutput(ContextElement message) implements MessageOutput {
-        public static final FilterTag<SessionOutput> FILTER_TAG = value -> value instanceof ContextMessageOutput;
+    record ToolCallOutput(ContextElement.ToolCall toolCall) implements MessageOutput {
+        public static final FilterTag<SessionOutput> FILTER_TAG = value -> value instanceof ToolCallOutput;
 
-        public ContextMessageOutput {
-            Objects.requireNonNull(message, "message");
+        public ToolCallOutput {
+            Objects.requireNonNull(toolCall, "toolCall");
         }
 
         @Override
         public String text() {
-            return message.content();
+            return toolCall.argumentsJson();
         }
     }
 

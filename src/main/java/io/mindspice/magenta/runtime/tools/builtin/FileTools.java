@@ -90,9 +90,14 @@ public final class FileTools {
             boolean truncated = requestedEnd > cappedEnd;
 
             ArrayNode lineNodes = MAPPER.createArrayNode();
+            StringBuilder renderedText = new StringBuilder();
             for (int lineNo = from; lineNo <= cappedEnd && lineNo <= totalLines; lineNo++) {
                 String line = lines.get(lineNo - 1);
                 String hash = hashLineToken(line);
+                if (!renderedText.isEmpty()) {
+                    renderedText.append('\n');
+                }
+                renderedText.append(line);
 
                 ObjectNode lineNode = MAPPER.createObjectNode();
                 lineNode.put("lineNumber", lineNo);
@@ -107,6 +112,7 @@ public final class FileTools {
             data.put("snapshotId", snapshotId(normalized));
             data.put("totalLines", totalLines);
             data.put("returnedLines", lineNodes.size());
+            data.put("bytesRead", renderedText.toString().getBytes(StandardCharsets.UTF_8).length);
             data.put("truncated", truncated);
             data.set("lines", lineNodes);
             return ToolPayloads.success(request, "File read completed", data);
@@ -389,6 +395,68 @@ public final class FileTools {
             return ToolPayloads.success(request, "File written", data);
         } catch (Exception e) {
             return ToolPayloads.failure(request, "io_error", "Failed to write file: " + e.getMessage(), null, true);
+        }
+    }
+
+    public ToolResult deleteFile(ToolRequest request) {
+        JsonNode args = readArgsOrNull(request);
+        if (args == null || !args.isObject()) {
+            return ToolPayloads.failure(request, "validation_error", "Tool arguments must be a JSON object", null, true);
+        }
+
+        String pathText = readFirstString(args, List.of("path", "filePath", "targetPath"));
+        String expectedSnapshotId = readFirstString(args, List.of("expectedSnapshotId", "snapshotId"));
+        if (isBlank(pathText)) {
+            return ToolPayloads.failure(request, "validation_error", "Missing required argument: path", null, true);
+        }
+
+        Path path;
+        try {
+            path = ToolPathSupport.resolveWorkspacePath(settings.workspaceRoot(), pathText);
+        } catch (IllegalArgumentException e) {
+            return ToolPayloads.failure(request, "validation_error", e.getMessage(), null, true);
+        }
+
+        try {
+            if (!Files.exists(path)) {
+                return ToolPayloads.failure(
+                        request,
+                        "not_found",
+                        "File not found: " + ToolPathSupport.displayPath(settings.workspaceRoot(), path),
+                        null,
+                        true
+                );
+            }
+            if (!Files.isRegularFile(path)) {
+                return ToolPayloads.failure(
+                        request,
+                        "validation_error",
+                        "Path is not a regular file: " + ToolPathSupport.displayPath(settings.workspaceRoot(), path),
+                        null,
+                        true
+                );
+            }
+
+            String normalizedBefore = normalizedFileContent(path);
+            String currentSnapshotId = snapshotId(normalizedBefore);
+            if (!isBlank(expectedSnapshotId) && !Objects.equals(expectedSnapshotId, currentSnapshotId)) {
+                ObjectNode data = MAPPER.createObjectNode();
+                data.put("path", ToolPathSupport.displayPath(settings.workspaceRoot(), path));
+                data.put("providedSnapshotId", expectedSnapshotId);
+                data.put("currentSnapshotId", currentSnapshotId);
+                return ToolPayloads.failure(request, "snapshot_mismatch", "Snapshot mismatch", data, true);
+            }
+
+            long bytesDeleted = Files.size(path);
+            Files.delete(path);
+
+            ObjectNode data = MAPPER.createObjectNode();
+            data.put("path", ToolPathSupport.displayPath(settings.workspaceRoot(), path));
+            data.put("bytesDeleted", bytesDeleted);
+            data.put("snapshotIdBefore", currentSnapshotId);
+            return ToolPayloads.success(request, "File deleted", data);
+        } catch (Exception e) {
+            return ToolPayloads.failure(request, "io_error", "Failed to delete file: " + e.getMessage(), null, true);
         }
     }
 

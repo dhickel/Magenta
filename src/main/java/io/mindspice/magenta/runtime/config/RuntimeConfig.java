@@ -36,7 +36,8 @@ public record RuntimeConfig(
         Map<String, ModelConfig> modelsById,
         Map<String, AgentConfig> agentsById,
         Map<String, String> promptsById,
-        SecurityPolicyConfig security
+        SecurityPolicyConfig security,
+        TerminalConfig terminal
 ) {
 
     private static final ObjectMapper MAPPER = new ObjectMapper(new YAMLFactory())
@@ -63,6 +64,7 @@ public record RuntimeConfig(
         agentsById = Map.copyOf(agentsById);
         promptsById = Map.copyOf(promptsById);
         security = Objects.requireNonNull(security, "security");
+        terminal = terminal == null ? TerminalConfig.defaults() : terminal;
     }
 
     public static RuntimeConfig loadDefault() {
@@ -120,6 +122,7 @@ public record RuntimeConfig(
         validateInstanceLimits(maxToolOutputBytes, maxFileReadLines, maxSqlRows);
 
         SecurityPolicyConfig securityConfig = toSecurityPolicyConfig(root.security);
+        TerminalConfig terminalConfig = toTerminalConfig(root.terminal);
 
         return new RuntimeConfig(
                 configRoot,
@@ -133,7 +136,8 @@ public record RuntimeConfig(
                 models,
                 agents,
                 prompts,
-                securityConfig
+                securityConfig,
+                terminalConfig
         );
     }
 
@@ -360,6 +364,67 @@ public record RuntimeConfig(
         );
     }
 
+    private static TerminalConfig toTerminalConfig(RawTerminalConfig rawConfig) {
+        if (rawConfig == null) {
+            return TerminalConfig.defaults();
+        }
+        return new TerminalConfig(
+                toTerminalRenderingConfig(rawConfig.rendering),
+                toTerminalSecurityConfig(rawConfig.security),
+                toTerminalToolsConfig(rawConfig.tools)
+        );
+    }
+
+    private static TerminalRenderingConfig toTerminalRenderingConfig(RawTerminalRenderingConfig rawConfig) {
+        if (rawConfig == null) {
+            return TerminalRenderingConfig.defaults();
+        }
+        TerminalRenderingConfig defaults = TerminalRenderingConfig.defaults();
+        return new TerminalRenderingConfig(
+                rawConfig.colorEnabled == null ? defaults.colorEnabled() : rawConfig.colorEnabled,
+                rawConfig.showTimestamps == null ? defaults.showTimestamps() : rawConfig.showTimestamps,
+                rawConfig.showStatusBar == null ? defaults.showStatusBar() : rawConfig.showStatusBar,
+                toTerminalColorConfig(rawConfig.colors)
+        );
+    }
+
+    private static TerminalColorConfig toTerminalColorConfig(RawTerminalColorConfig rawConfig) {
+        if (rawConfig == null) {
+            return TerminalColorConfig.defaults();
+        }
+        TerminalColorConfig defaults = TerminalColorConfig.defaults();
+        return new TerminalColorConfig(
+                parseTerminalColor(rawConfig.system, defaults.system()),
+                parseTerminalColor(rawConfig.user, defaults.user()),
+                parseTerminalColor(rawConfig.assistant, defaults.assistant()),
+                parseTerminalColor(rawConfig.info, defaults.info()),
+                parseTerminalColor(rawConfig.warn, defaults.warn()),
+                parseTerminalColor(rawConfig.error, defaults.error()),
+                parseTerminalColor(rawConfig.muted, defaults.muted()),
+                parseTerminalColor(rawConfig.defaultColor, defaults.defaultColor())
+        );
+    }
+
+    private static TerminalSecurityConfig toTerminalSecurityConfig(RawTerminalSecurityConfig rawConfig) {
+        if (rawConfig == null) {
+            return TerminalSecurityConfig.defaults();
+        }
+        TerminalSecurityConfig defaults = TerminalSecurityConfig.defaults();
+        return new TerminalSecurityConfig(
+                parseTerminalSecurityVisibility(rawConfig.eventVisibility, defaults.eventVisibility())
+        );
+    }
+
+    private static TerminalToolsConfig toTerminalToolsConfig(RawTerminalToolsConfig rawConfig) {
+        if (rawConfig == null) {
+            return TerminalToolsConfig.defaults();
+        }
+        TerminalToolsConfig defaults = TerminalToolsConfig.defaults();
+        return new TerminalToolsConfig(
+                parseTerminalToolOutputFormat(rawConfig.outputFormat, defaults.outputFormat())
+        );
+    }
+
     private static WebAccessConfig toWebAccessConfig(RawWebAccessConfig rawWebAccessConfig) {
         if (rawWebAccessConfig == null) {
             return new WebAccessConfig(false, false);
@@ -408,6 +473,50 @@ public record RuntimeConfig(
         };
     }
 
+    private static TerminalColor parseTerminalColor(String value, TerminalColor fallback) {
+        String normalized = normalizeToken(value);
+        return switch (normalized) {
+            case "" -> fallback;
+            case "default" -> TerminalColor.DEFAULT;
+            case "black" -> TerminalColor.BLACK;
+            case "red" -> TerminalColor.RED;
+            case "green" -> TerminalColor.GREEN;
+            case "yellow" -> TerminalColor.YELLOW;
+            case "blue" -> TerminalColor.BLUE;
+            case "magenta" -> TerminalColor.MAGENTA;
+            case "cyan" -> TerminalColor.CYAN;
+            case "white" -> TerminalColor.WHITE;
+            case "bright", "gray", "grey" -> TerminalColor.BRIGHT;
+            default -> throw new IllegalStateException("Unsupported terminal color token: " + value);
+        };
+    }
+
+    private static TerminalSecurityVisibility parseTerminalSecurityVisibility(
+            String value,
+            TerminalSecurityVisibility fallback
+    ) {
+        String normalized = normalizeToken(value);
+        return switch (normalized) {
+            case "" -> fallback;
+            case "denialsonly", "deniedonly", "denyonly" -> TerminalSecurityVisibility.DENIALS_ONLY;
+            case "all" -> TerminalSecurityVisibility.ALL;
+            case "off", "none" -> TerminalSecurityVisibility.OFF;
+            default -> throw new IllegalStateException("Unsupported terminal security event visibility: " + value);
+        };
+    }
+
+    private static TerminalToolOutputFormat parseTerminalToolOutputFormat(
+            String value,
+            TerminalToolOutputFormat fallback
+    ) {
+        String normalized = normalizeToken(value);
+        return switch (normalized) {
+            case "" -> fallback;
+            case "compactsummary", "compact" -> TerminalToolOutputFormat.COMPACT_SUMMARY;
+            default -> throw new IllegalStateException("Unsupported terminal tool output format: " + value);
+        };
+    }
+
     private static String normalizeToken(String value) {
         if (value == null) {
             return "";
@@ -435,6 +544,123 @@ public record RuntimeConfig(
                 .filter(v -> !v.isEmpty())
                 .distinct()
                 .toList();
+    }
+
+    public enum TerminalColor {
+        DEFAULT,
+        BLACK,
+        RED,
+        GREEN,
+        YELLOW,
+        BLUE,
+        MAGENTA,
+        CYAN,
+        WHITE,
+        BRIGHT
+    }
+
+    public enum TerminalSecurityVisibility {
+        DENIALS_ONLY,
+        ALL,
+        OFF
+    }
+
+    public enum TerminalToolOutputFormat {
+        COMPACT_SUMMARY
+    }
+
+    public record TerminalConfig(
+            TerminalRenderingConfig rendering,
+            TerminalSecurityConfig security,
+            TerminalToolsConfig tools
+    ) {
+        public TerminalConfig {
+            rendering = rendering == null ? TerminalRenderingConfig.defaults() : rendering;
+            security = security == null ? TerminalSecurityConfig.defaults() : security;
+            tools = tools == null ? TerminalToolsConfig.defaults() : tools;
+        }
+
+        public static TerminalConfig defaults() {
+            return new TerminalConfig(
+                    TerminalRenderingConfig.defaults(),
+                    TerminalSecurityConfig.defaults(),
+                    TerminalToolsConfig.defaults()
+            );
+        }
+    }
+
+    public record TerminalRenderingConfig(
+            boolean colorEnabled,
+            boolean showTimestamps,
+            boolean showStatusBar,
+            TerminalColorConfig colors
+    ) {
+        public TerminalRenderingConfig {
+            colors = colors == null ? TerminalColorConfig.defaults() : colors;
+        }
+
+        public static TerminalRenderingConfig defaults() {
+            return new TerminalRenderingConfig(true, false, true, TerminalColorConfig.defaults());
+        }
+    }
+
+    public record TerminalColorConfig(
+            TerminalColor system,
+            TerminalColor user,
+            TerminalColor assistant,
+            TerminalColor info,
+            TerminalColor warn,
+            TerminalColor error,
+            TerminalColor muted,
+            TerminalColor defaultColor
+    ) {
+        public TerminalColorConfig {
+            system = system == null ? TerminalColor.MAGENTA : system;
+            user = user == null ? TerminalColor.CYAN : user;
+            assistant = assistant == null ? TerminalColor.GREEN : assistant;
+            info = info == null ? TerminalColor.BLUE : info;
+            warn = warn == null ? TerminalColor.YELLOW : warn;
+            error = error == null ? TerminalColor.RED : error;
+            muted = muted == null ? TerminalColor.BRIGHT : muted;
+            defaultColor = defaultColor == null ? TerminalColor.DEFAULT : defaultColor;
+        }
+
+        public static TerminalColorConfig defaults() {
+            return new TerminalColorConfig(
+                    TerminalColor.MAGENTA,
+                    TerminalColor.CYAN,
+                    TerminalColor.GREEN,
+                    TerminalColor.BLUE,
+                    TerminalColor.YELLOW,
+                    TerminalColor.RED,
+                    TerminalColor.BRIGHT,
+                    TerminalColor.DEFAULT
+            );
+        }
+    }
+
+    public record TerminalSecurityConfig(
+            TerminalSecurityVisibility eventVisibility
+    ) {
+        public TerminalSecurityConfig {
+            eventVisibility = eventVisibility == null ? TerminalSecurityVisibility.DENIALS_ONLY : eventVisibility;
+        }
+
+        public static TerminalSecurityConfig defaults() {
+            return new TerminalSecurityConfig(TerminalSecurityVisibility.DENIALS_ONLY);
+        }
+    }
+
+    public record TerminalToolsConfig(
+            TerminalToolOutputFormat outputFormat
+    ) {
+        public TerminalToolsConfig {
+            outputFormat = outputFormat == null ? TerminalToolOutputFormat.COMPACT_SUMMARY : outputFormat;
+        }
+
+        public static TerminalToolsConfig defaults() {
+            return new TerminalToolsConfig(TerminalToolOutputFormat.COMPACT_SUMMARY);
+        }
     }
 
     public enum SecurityMode {
@@ -561,6 +787,8 @@ public record RuntimeConfig(
         private InstanceConfig instance;
         @JsonProperty("security")
         private RawSecurityConfig security;
+        @JsonProperty("terminal")
+        private RawTerminalConfig terminal;
         @JsonProperty("models")
         private IncludeSet models;
         @JsonProperty("agents")
@@ -631,6 +859,60 @@ public record RuntimeConfig(
         private RawWebAccessConfig webAccess;
         @JsonProperty("rules")
         private List<RawSecurityRuleConfig> rules;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    private static final class RawTerminalConfig {
+        @JsonProperty("rendering")
+        private RawTerminalRenderingConfig rendering;
+        @JsonProperty("security")
+        private RawTerminalSecurityConfig security;
+        @JsonProperty("tools")
+        private RawTerminalToolsConfig tools;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    private static final class RawTerminalRenderingConfig {
+        @JsonProperty("colorEnabled")
+        private Boolean colorEnabled;
+        @JsonProperty("showTimestamps")
+        private Boolean showTimestamps;
+        @JsonProperty("showStatusBar")
+        private Boolean showStatusBar;
+        @JsonProperty("colors")
+        private RawTerminalColorConfig colors;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    private static final class RawTerminalColorConfig {
+        @JsonProperty("system")
+        private String system;
+        @JsonProperty("user")
+        private String user;
+        @JsonProperty("assistant")
+        private String assistant;
+        @JsonProperty("info")
+        private String info;
+        @JsonProperty("warn")
+        private String warn;
+        @JsonProperty("error")
+        private String error;
+        @JsonProperty("muted")
+        private String muted;
+        @JsonProperty("default")
+        private String defaultColor;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    private static final class RawTerminalSecurityConfig {
+        @JsonProperty("eventVisibility")
+        private String eventVisibility;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    private static final class RawTerminalToolsConfig {
+        @JsonProperty("outputFormat")
+        private String outputFormat;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = false)

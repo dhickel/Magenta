@@ -32,6 +32,25 @@ security:
       commandPrefix: ["rm", "-rf"]
       reason: "Use safe deletion workflow"
 
+terminal:
+  rendering:
+    colorEnabled: true
+    showTimestamps: false
+    showStatusBar: true
+    colors:
+      system: "magenta"
+      user: "cyan"
+      assistant: "green"
+      info: "blue"
+      warn: "yellow"
+      error: "red"
+      muted: "bright"
+      default: "default"
+  security:
+    eventVisibility: "denials_only"
+  tools:
+    outputFormat: "compact_summary"
+
 models:
   include:
     - "models/*.yaml"

@@ -5,6 +5,7 @@ import org.jline.terminal.Terminal;
 import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStringBuilder;
 import org.jline.utils.AttributedStyle;
+import org.jline.utils.Status;
 
 import java.io.PrintWriter;
 import java.time.Instant;
@@ -22,20 +23,34 @@ public final class UiRenderer {
     private final Terminal terminal;
     private final PrintWriter writer;
     private final TerminalUiConfig.Rendering rendering;
+    private final Status bottomStatus;
+    private List<AttributedString> currentStatusLines = List.of();
+    private boolean streamWriteInProgress = false;
 
     public UiRenderer(Terminal terminal, TerminalUiConfig.Rendering rendering) {
         this.terminal = Objects.requireNonNull(terminal, "terminal");
         this.writer = terminal.writer();
         this.rendering = Objects.requireNonNull(rendering, "rendering");
+        this.bottomStatus = rendering.showStatusBar() ? Status.getStatus(terminal) : null;
+        if (this.bottomStatus != null) {
+            this.bottomStatus.setBorder(false);
+        }
     }
 
     public synchronized void renderStatus(UiStatusBar status) {
+        if (bottomStatus == null) {
+            return;
+        }
         if (!rendering.showStatusBar()) {
+            bottomStatus.hide();
             return;
         }
         int width = terminalWidth();
-        printStyled(joinLeftRight(status.topLeft(), status.topRight(), width), UiStyle.MUTED, false);
-        printStyled(joinLeftRight(status.bottomLeft(), status.bottomRight(), width), UiStyle.MUTED, false);
+        currentStatusLines = List.of(
+                attributed(joinLeftRight(status.topLeft(), status.topRight(), width), UiStyle.MUTED, true),
+                attributed(joinLeftRight(status.bottomLeft(), status.bottomRight(), width), UiStyle.MUTED, true)
+        );
+        bottomStatus.update(currentStatusLines);
     }
 
     public synchronized void renderBlock(UiRenderBlock block) {
@@ -102,6 +117,10 @@ public final class UiRenderer {
     }
 
     public synchronized void printStreamToken(String token) {
+        if (!streamWriteInProgress) {
+            suspendStatusForOutput();
+            streamWriteInProgress = true;
+        }
         AttributedString attributed = attributed(token, UiStyle.ASSISTANT, false);
         attributed.print(terminal);
         writer.flush();
@@ -110,9 +129,20 @@ public final class UiRenderer {
     public synchronized void finishStreamLine() {
         writer.println();
         writer.flush();
+        if (streamWriteInProgress) {
+            streamWriteInProgress = false;
+            restoreStatusAfterOutput();
+        }
+    }
+
+    public synchronized void close() {
+        if (bottomStatus != null) {
+            bottomStatus.close();
+        }
     }
 
     private void printStyled(String text, UiStyle style, boolean padTitle) {
+        suspendStatusForOutput();
         String payload = prefixTimestamp(text);
         if (padTitle) {
             payload = "[" + payload + "]";
@@ -120,6 +150,7 @@ public final class UiRenderer {
         AttributedString attributed = attributed(payload, style, true);
         attributed.println(terminal);
         writer.flush();
+        restoreStatusAfterOutput();
     }
 
     private AttributedString attributed(String text, UiStyle style, boolean reset) {
@@ -137,15 +168,35 @@ public final class UiRenderer {
     }
 
     private AttributedStyle styleFor(UiStyle style) {
-        return switch (style) {
-            case SYSTEM -> AttributedStyle.DEFAULT.foreground(AttributedStyle.MAGENTA);
-            case USER -> AttributedStyle.DEFAULT.foreground(AttributedStyle.CYAN);
-            case ASSISTANT -> AttributedStyle.DEFAULT.foreground(AttributedStyle.GREEN);
-            case INFO -> AttributedStyle.DEFAULT.foreground(AttributedStyle.BLUE);
-            case WARN -> AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW);
-            case ERROR -> AttributedStyle.DEFAULT.foreground(AttributedStyle.RED);
-            case MUTED -> AttributedStyle.DEFAULT.foreground(AttributedStyle.BRIGHT);
-            case DEFAULT -> AttributedStyle.DEFAULT;
+        TerminalUiConfig.ColorPalette palette = rendering.colors();
+        TerminalUiConfig.ColorName color = switch (style) {
+            case SYSTEM -> palette.system();
+            case USER -> palette.user();
+            case ASSISTANT -> palette.assistant();
+            case INFO -> palette.info();
+            case WARN -> palette.warn();
+            case ERROR -> palette.error();
+            case MUTED -> palette.muted();
+            case DEFAULT -> palette.defaultColor();
+        };
+        if (color == TerminalUiConfig.ColorName.DEFAULT) {
+            return AttributedStyle.DEFAULT;
+        }
+        return AttributedStyle.DEFAULT.foreground(toAnsiColor(color));
+    }
+
+    private int toAnsiColor(TerminalUiConfig.ColorName colorName) {
+        return switch (colorName) {
+            case BLACK -> AttributedStyle.BLACK;
+            case RED -> AttributedStyle.RED;
+            case GREEN -> AttributedStyle.GREEN;
+            case YELLOW -> AttributedStyle.YELLOW;
+            case BLUE -> AttributedStyle.BLUE;
+            case MAGENTA -> AttributedStyle.MAGENTA;
+            case CYAN -> AttributedStyle.CYAN;
+            case WHITE -> AttributedStyle.WHITE;
+            case BRIGHT -> AttributedStyle.BRIGHT;
+            case DEFAULT -> AttributedStyle.WHITE;
         };
     }
 
@@ -206,5 +257,22 @@ public final class UiRenderer {
 
     private String safe(String text) {
         return text == null ? "" : text;
+    }
+
+    private void suspendStatusForOutput() {
+        if (!rendering.showStatusBar() || bottomStatus == null) {
+            return;
+        }
+        bottomStatus.suspend();
+    }
+
+    private void restoreStatusAfterOutput() {
+        if (!rendering.showStatusBar() || bottomStatus == null) {
+            return;
+        }
+        bottomStatus.restore();
+        if (!currentStatusLines.isEmpty()) {
+            bottomStatus.update(currentStatusLines);
+        }
     }
 }

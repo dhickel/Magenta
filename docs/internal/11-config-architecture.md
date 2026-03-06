@@ -11,6 +11,7 @@
 - Load model and agent YAML docs.
 - Load prompt markdown content and derive prompt IDs.
 - Resolve `baseAgentId`, `compactionAgentId`, and `maxTurns` defaults.
+- Load terminal UI defaults from `terminal.rendering`, `terminal.security`, and `terminal.tools`.
 - Validate runtime graph before runtime startup.
 
 ## Explicit non-goals
@@ -26,6 +27,7 @@
 - Enabled agents must reference enabled models.
 - All agent prompt IDs must resolve.
 - Unknown YAML keys fail deserialization.
+- Unsupported terminal config tokens (color names, security visibility, tool output format) fail startup.
 
 ## State transitions
 

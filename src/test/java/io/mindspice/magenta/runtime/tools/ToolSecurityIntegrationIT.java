@@ -102,6 +102,50 @@ class ToolSecurityIntegrationIT {
     }
 
     @Test
+    void allowedFileDeleteExecutesAfterAuthorization() throws Exception {
+        Files.writeString(tempDir.resolve("remove.txt"), "delete me");
+        ToolManager toolManager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+        SecurityManager securityManager = securityManager(tempDir);
+        UUID sessionId = UUID.randomUUID();
+        securityManager.initializePolicy(sessionId);
+        securityManager.setToolPolicy(sessionId, toolPolicy(
+                RuntimeConfig.SecurityMode.APPROVE_ALL,
+                List.of("."),
+                Set.of()
+        ));
+
+        ToolRequest request = ToolTestSupport.request(sessionId, "delete_file", "{\"path\":\"remove.txt\"}");
+        SecuredExecution execution = executeSecured(securityManager, toolManager, request, Set.of("delete_file"));
+
+        assertThat(execution.decision().allowed()).isTrue();
+        assertThat(execution.result()).isNotNull();
+        assertThat(ToolTestSupport.payload(execution.result()).path("status").asText()).isEqualTo("ok");
+        assertThat(Files.exists(tempDir.resolve("remove.txt"))).isFalse();
+    }
+
+    @Test
+    void deniedFileDeleteDoesNotExecuteSideEffects() throws Exception {
+        Files.writeString(tempDir.resolve("blocked-remove.txt"), "keep me");
+        ToolManager toolManager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+        SecurityManager securityManager = securityManager(tempDir);
+        UUID sessionId = UUID.randomUUID();
+        securityManager.initializePolicy(sessionId);
+        securityManager.setToolPolicy(sessionId, toolPolicy(
+                RuntimeConfig.SecurityMode.APPROVE_ALL,
+                List.of("./configs"),
+                Set.of()
+        ));
+
+        ToolRequest request = ToolTestSupport.request(sessionId, "delete_file", "{\"path\":\"blocked-remove.txt\"}");
+        SecuredExecution execution = executeSecured(securityManager, toolManager, request, Set.of("delete_file"));
+
+        assertThat(execution.decision().allowed()).isFalse();
+        assertThat(execution.decision().code()).isEqualTo(SecurityManager.DecisionCode.DENIED);
+        assertThat(execution.result()).isNull();
+        assertThat(Files.exists(tempDir.resolve("blocked-remove.txt"))).isTrue();
+    }
+
+    @Test
     void allowedSqliteExecWritesDatabaseInsideAllowedPath() throws Exception {
         ToolManager toolManager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
         SecurityManager securityManager = securityManager(tempDir);

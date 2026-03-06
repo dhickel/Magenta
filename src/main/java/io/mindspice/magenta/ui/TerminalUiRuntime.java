@@ -96,8 +96,8 @@ public final class TerminalUiRuntime {
                 continue;
             }
 
-            renderer.printUser("you> " + line);
             session.messageIn().accept(SessionInput.userMessage(line));
+            renderStatus();
         }
 
         close();
@@ -116,6 +116,12 @@ public final class TerminalUiRuntime {
 
         try {
             magenta.closeSession(session.handle());
+        } catch (Exception ignored) {
+            // best effort close
+        }
+
+        try {
+            renderer.close();
         } catch (Exception ignored) {
             // best effort close
         }
@@ -264,7 +270,9 @@ public final class TerminalUiRuntime {
         String topRight = "ctx: " + usage.estimatedContextTokens() + "/" + usage.maxContextTokens()
                           + " (" + String.format(Locale.ROOT, "%.1f", usage.percentOfMaxContext()) + "%)";
         String bottomLeft = "session: " + settings.alias() + " [" + shortSessionId(usage.sessionId().toString()) + "]";
-        String bottomRight = "tools=" + settings.toolsEnabled() + " stream=" + settings.streamingEnabled()
+        String bottomRight = "tools=" + settings.toolsEnabled()
+                             + " stream=session:" + settings.streamingEnabled()
+                             + ",model:" + settings.modelSupportsStreaming()
                              + " security=" + policy.mode().name();
 
         renderer.renderStatus(new UiStatusBar(topLeft, topRight, bottomLeft, bottomRight));
@@ -281,7 +289,4 @@ public final class TerminalUiRuntime {
         return new AtomicReference<>(SlashCommandRegistry.empty());
     }
 
-    static AtomicBoolean streamFlag() {
-        return new AtomicBoolean(false);
-    }
 }

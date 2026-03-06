@@ -11,6 +11,9 @@ public record TerminalUiConfig(
         Session session,
         Rendering rendering,
         Behavior behavior,
+        Observability observability,
+        Security security,
+        ToolOutput toolOutput,
         Prompts prompts,
         TerminalUiCallbacks callbacks
 ) {
@@ -19,15 +22,21 @@ public record TerminalUiConfig(
         session = Objects.requireNonNull(session, "session");
         rendering = Objects.requireNonNull(rendering, "rendering");
         behavior = Objects.requireNonNull(behavior, "behavior");
+        observability = observability == null ? new Observability(false) : observability;
+        security = security == null ? new Security(SecurityEventVisibility.DENIALS_ONLY) : security;
+        toolOutput = toolOutput == null ? new ToolOutput(ToolOutputFormat.COMPACT_SUMMARY) : toolOutput;
         prompts = Objects.requireNonNull(prompts, "prompts");
         callbacks = callbacks == null ? TerminalUiCallbacks.defaults() : callbacks;
     }
 
     public static TerminalUiConfig defaults() {
         return new TerminalUiConfig(
-                new Session("terminal", SessionParams.ofStreaming(true), RoutingEventLevel.FINAL),
-                new Rendering(true, false, true),
+                new Session("terminal", SessionParams.ofStreaming(true), RoutingEventLevel.NONE),
+                Rendering.defaults(),
                 new Behavior(Set.of("/exit", "/quit"), "you> ", "cli-system"),
+                new Observability(false),
+                new Security(SecurityEventVisibility.DENIALS_ONLY),
+                new ToolOutput(ToolOutputFormat.COMPACT_SUMMARY),
                 new Prompts(true, 240),
                 TerminalUiCallbacks.defaults()
         );
@@ -41,15 +50,71 @@ public record TerminalUiConfig(
         public Session {
             alias = alias == null || alias.isBlank() ? "terminal" : alias.trim();
             params = params == null ? SessionParams.ofStreaming(true) : params;
-            routingEventLevel = routingEventLevel == null ? RoutingEventLevel.FINAL : routingEventLevel;
+            routingEventLevel = routingEventLevel == null ? RoutingEventLevel.NONE : routingEventLevel;
         }
     }
 
     public record Rendering(
             boolean colorEnabled,
             boolean showTimestamps,
-            boolean showStatusBar
+            boolean showStatusBar,
+            ColorPalette colors
     ) {
+        public Rendering {
+            colors = colors == null ? ColorPalette.defaults() : colors;
+        }
+
+        public static Rendering defaults() {
+            return new Rendering(true, false, true, ColorPalette.defaults());
+        }
+    }
+
+    public record ColorPalette(
+            ColorName system,
+            ColorName user,
+            ColorName assistant,
+            ColorName info,
+            ColorName warn,
+            ColorName error,
+            ColorName muted,
+            ColorName defaultColor
+    ) {
+        public ColorPalette {
+            system = system == null ? ColorName.MAGENTA : system;
+            user = user == null ? ColorName.CYAN : user;
+            assistant = assistant == null ? ColorName.GREEN : assistant;
+            info = info == null ? ColorName.BLUE : info;
+            warn = warn == null ? ColorName.YELLOW : warn;
+            error = error == null ? ColorName.RED : error;
+            muted = muted == null ? ColorName.BRIGHT : muted;
+            defaultColor = defaultColor == null ? ColorName.DEFAULT : defaultColor;
+        }
+
+        public static ColorPalette defaults() {
+            return new ColorPalette(
+                    ColorName.MAGENTA,
+                    ColorName.CYAN,
+                    ColorName.GREEN,
+                    ColorName.BLUE,
+                    ColorName.YELLOW,
+                    ColorName.RED,
+                    ColorName.BRIGHT,
+                    ColorName.DEFAULT
+            );
+        }
+    }
+
+    public enum ColorName {
+        DEFAULT,
+        BLACK,
+        RED,
+        GREEN,
+        YELLOW,
+        BLUE,
+        MAGENTA,
+        CYAN,
+        WHITE,
+        BRIGHT
     }
 
     public record Behavior(
@@ -74,6 +139,37 @@ public record TerminalUiConfig(
             }
             return exitCommands.contains(input.trim().toLowerCase(Locale.ROOT));
         }
+    }
+
+    public record Observability(
+            boolean routingLogsEnabled
+    ) {
+    }
+
+    public record Security(
+            SecurityEventVisibility eventVisibility
+    ) {
+        public Security {
+            eventVisibility = eventVisibility == null ? SecurityEventVisibility.DENIALS_ONLY : eventVisibility;
+        }
+    }
+
+    public enum SecurityEventVisibility {
+        DENIALS_ONLY,
+        ALL,
+        OFF
+    }
+
+    public record ToolOutput(
+            ToolOutputFormat format
+    ) {
+        public ToolOutput {
+            format = format == null ? ToolOutputFormat.COMPACT_SUMMARY : format;
+        }
+    }
+
+    public enum ToolOutputFormat {
+        COMPACT_SUMMARY
     }
 
     public record Prompts(

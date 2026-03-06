@@ -93,6 +93,7 @@ public final class OllamaClient {
 
             StringBuilder completeText = new StringBuilder();
             JsonNode finalNode = null;
+            JsonNode streamedToolCalls = null;
 
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
                 String line;
@@ -107,6 +108,10 @@ public final class OllamaClient {
                         completeText.append(partial);
                         tokenCallback.accept(partial);
                     }
+                    JsonNode toolCalls = message.path("tool_calls");
+                    if (toolCalls.isArray() && !toolCalls.isEmpty()) {
+                        streamedToolCalls = toolCalls.deepCopy();
+                    }
                     if (node.path("done").asBoolean(false)) {
                         finalNode = node;
                         break;
@@ -118,6 +123,17 @@ public final class OllamaClient {
                 finalNode = json.createObjectNode()
                         .put("model", modelConfig.model())
                         .set("message", json.createObjectNode().put("content", completeText.toString()));
+            }
+            if ((finalNode.path("message").path("tool_calls").isMissingNode()
+                 || finalNode.path("message").path("tool_calls").isEmpty())
+                && streamedToolCalls != null) {
+                ObjectNode finalMessage = finalNode.path("message").isObject()
+                        ? (ObjectNode) finalNode.path("message")
+                        : json.createObjectNode();
+                finalMessage.set("tool_calls", streamedToolCalls);
+                if (!finalNode.path("message").isObject()) {
+                    ((ObjectNode) finalNode).set("message", finalMessage);
+                }
             }
 
             return toChatResponse(modelConfig, finalNode, completeText.toString());
@@ -342,13 +358,13 @@ public final class OllamaClient {
     private ChatResponse toChatResponse(RuntimeConfig.ModelConfig modelCfg, JsonNode body, String streamedContent) {
         JsonNode message = body.path("message");
         String text = streamedContent == null
-                ? message.path("content").asText(".")
-                : (streamedContent.isBlank() ? "." : streamedContent);
+                ? message.path("content").asText("")
+                : streamedContent;
 
         List<ToolExecutionRequest> toolRequests = parseToolRequests(message.path("tool_calls"));
         AiMessage aiMessage = toolRequests.isEmpty()
-                ? AiMessage.from(text.isBlank() ? "." : text)
-                : AiMessage.from(text.isBlank() ? "." : text, toolRequests);
+                ? AiMessage.from(text)
+                : AiMessage.from(text, toolRequests);
 
         return ChatResponse.builder()
                 .aiMessage(aiMessage)

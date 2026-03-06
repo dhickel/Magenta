@@ -19,6 +19,7 @@ public final class AnnotatedBuiltInToolCatalog {
     private static final String GREP_FILES = "grep_files";
     private static final String SEARCH_REPLACE = "search_replace";
     private static final String WRITE_FILE = "write_file";
+    private static final String DELETE_FILE = "delete_file";
     private static final String SHELL_COMMAND = "shell_command";
     private static final String SQLITE_QUERY = "sqlite_query";
     private static final String SQLITE_EXEC = "sqlite_exec";
@@ -106,6 +107,20 @@ public final class AnnotatedBuiltInToolCatalog {
         putBooleanIfPresent(args, "overwrite", overwrite);
         putTextIfPresent(args, "expectedSnapshotId", expectedSnapshotId);
         return fileTools.writeFile(rewriteRequest(request, WRITE_FILE, args));
+    }
+
+    @Tool(name = DELETE_FILE, value = {
+            "Delete one file with optional snapshot guard validation."
+    })
+    public ToolResult deleteFile(
+            @ToolMemoryId ToolRequest request,
+            @P("Target file path") String path,
+            @P(value = "Optional snapshot id required to match current file state before delete", required = false) String expectedSnapshotId
+    ) {
+        ObjectNode args = objectArgs();
+        args.put("path", path);
+        putTextIfPresent(args, "expectedSnapshotId", expectedSnapshotId);
+        return fileTools.deleteFile(rewriteRequest(request, DELETE_FILE, args));
     }
 
     @Tool(name = SHELL_COMMAND, value = {

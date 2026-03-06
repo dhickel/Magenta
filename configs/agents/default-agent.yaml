@@ -11,6 +11,7 @@ toolIds:
   - "grep_files"
   - "search_replace"
   - "write_file"
+  - "delete_file"
   - "shell_command"
   - "sqlite_query"
   - "sqlite_exec"

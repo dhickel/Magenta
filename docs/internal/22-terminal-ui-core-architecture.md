@@ -51,6 +51,15 @@ This package is internal-facing and composes existing `Magenta` lifecycle, route
   - percentage of max context
   - tools/streaming/security mode summary
 
+## Terminal config contract
+
+- Runtime `magenta.yaml` supports a top-level `terminal` section:
+  - `terminal.rendering`: `colorEnabled`, `showTimestamps`, `showStatusBar`, and named ANSI `colors`.
+  - `terminal.security.eventVisibility`: `denials_only` (default), `all`, or `off`.
+  - `terminal.tools.outputFormat`: currently `compact_summary`.
+- Terminal tool output is compact by default and designed for operator scanning (key metrics, not full payload dumps).
+- Security event rendering defaults to denied/validation decisions only to reduce approval noise.
+
 ## Facade reads used by terminal UI
 
 `Magenta` provides:

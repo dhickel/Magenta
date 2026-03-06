@@ -17,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SecurityManagerTest {
 
     @ParameterizedTest
-    @ValueSource(strings = {"read_file", "write_file", "grep_files", "search_replace"})
+    @ValueSource(strings = {"read_file", "write_file", "delete_file", "grep_files", "search_replace"})
     void deniesAllFileToolsWhenPathOutsideAllowedRoots(String toolName) {
         SecurityManager manager = new SecurityManager(
                 RuntimeConfig.SecurityPolicyConfig.defaults(),

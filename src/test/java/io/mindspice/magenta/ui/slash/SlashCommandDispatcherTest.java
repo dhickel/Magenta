@@ -36,7 +36,10 @@ class SlashCommandDispatcherTest {
                 .streams(new ByteArrayInputStream(new byte[0]), outputStream)
                 .build()) {
 
-            UiRenderer renderer = new UiRenderer(terminal, new TerminalUiConfig.Rendering(false, false, false));
+            UiRenderer renderer = new UiRenderer(
+                    terminal,
+                    new TerminalUiConfig.Rendering(false, false, false, TerminalUiConfig.ColorPalette.defaults())
+            );
             SlashCommandDispatcher dispatcher = new SlashCommandDispatcher(registry, renderer);
 
             dispatcher.dispatchIfCommand("/zero");

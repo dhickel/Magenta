@@ -191,6 +191,7 @@ Mandatory built-in tools:
 - `grep_files`: recursive pattern search with bounded output.
 - `search_replace`: structured block replacement with conflict diagnostics.
 - `write_file`: bounded deterministic write with overwrite guard.
+- `delete_file`: bounded deterministic file deletion with optional snapshot guard.
 - `shell_command`: policy-gated command execution with timeout.
 - `sqlite_query`: bounded read-only SQL.
 - `sqlite_exec`: mutating SQL with accurate statement classification.
@@ -287,6 +288,31 @@ Build/CI gate:
 - `mvn verify` is the required test gate for merge readiness (not `mvn test` alone),
 - `maven-surefire-plugin` runs `*Test` classes only,
 - `maven-failsafe-plugin` runs `*IT`/`*IntegrationTest` suites.
+
+### Terminal UI Smoke Test Loop
+
+Use this loop for manual terminal validation of prompt handling, output rendering, tool interaction, and streaming behavior.
+
+1. Build once:
+   - `mvn verify`
+2. Default run (current config behavior):
+   - `java -jar target/Magenta2-1.0-SNAPSHOT.jar`
+   - Verify the status strip is pinned at the bottom (below prompt area), not printed as chat transcript lines.
+   - Run `/session` and verify terminal metadata renders.
+   - Send a plain prompt and verify assistant output appears.
+   - Send a tool prompt: `Use available tools to run a shell command \`pwd\` and then summarize the result briefly.`
+   - Verify tool output renders as a `tool>` block and security event prints.
+   - If model config does not support streaming, verify fallback notice appears: `stream-fallback> No streamed chunks were received for this response.`
+3. Streaming-enabled run (temporary config copy):
+   - Copy `configs/` to a temp directory and set `supportsStreaming: true` in the temp `models/default-model.yaml`.
+   - Run: `java -jar target/Magenta2-1.0-SNAPSHOT.jar <temp-config-path>/magenta.yaml`
+   - Send a plain response prompt (example: `Write a 3 sentence answer about testing.`).
+   - Verify chunked assistant output appears without fallback notice.
+4. Optional route-observability check:
+   - `MAGENTA_UI_ROUTE_LOGS=true java -jar target/Magenta2-1.0-SNAPSHOT.jar`
+   - Verify route logs are structured multi-line blocks with `sessionId`, active status, and separated `matchedRoutes`/`deliveredRoutes`/`failedRoutes`.
+5. Exit check:
+   - Run `/exit` and confirm clean shutdown.
 
 Observability requirements:
 - structured JSONL event logging,

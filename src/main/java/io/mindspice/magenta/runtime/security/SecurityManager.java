@@ -19,7 +19,7 @@ import java.util.concurrent.ConcurrentMap;
 public final class SecurityManager {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final Set<String> FILE_TOOLS = Set.of("read_file", "write_file", "grep_files", "search_replace");
+    private static final Set<String> FILE_TOOLS = Set.of("read_file", "write_file", "delete_file", "grep_files", "search_replace");
 
     private final ToolPolicy defaultPolicy;
     private final ApprovalCallback approvalCallback;

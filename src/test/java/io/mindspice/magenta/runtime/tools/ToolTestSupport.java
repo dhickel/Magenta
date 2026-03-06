@@ -33,7 +33,8 @@ final class ToolTestSupport {
                 Map.of(),
                 Map.of(),
                 Map.of(),
-                RuntimeConfig.SecurityPolicyConfig.defaults()
+                RuntimeConfig.SecurityPolicyConfig.defaults(),
+                RuntimeConfig.TerminalConfig.defaults()
         );
     }
 

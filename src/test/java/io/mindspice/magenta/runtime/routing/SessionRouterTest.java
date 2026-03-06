@@ -75,7 +75,11 @@ class SessionRouterTest {
 
         assertThatCode(() -> router.emit(
                 handle,
-                new OutputRoutingEvent(handle, new SessionOutput.ContextMessageOutput(new ContextElement.UserMsg("x")))
+                new OutputRoutingEvent(handle, new SessionOutput.ToolMessageOutput(new ContextElement.ToolMsg(
+                        "call-1",
+                        "tool-a",
+                        "x"
+                )))
         )).doesNotThrowAnyException();
         assertThat(successCalls).hasValue(1);
         assertThat(diagnostics).anyMatch(msg -> msg.contains("output_route_listener_failure"));

@@ -4,11 +4,14 @@ import io.mindspice.magenta.Magenta;
 import io.mindspice.magenta.runtime.routing.InputRoutePolicy;
 import io.mindspice.magenta.runtime.routing.OutputRoutePolicy;
 import io.mindspice.magenta.runtime.routing.RoutingEventLevel;
+import io.mindspice.magenta.runtime.security.SecurityManager;
 import io.mindspice.magenta.runtime.session.SessionOutput;
 import io.mindspice.magenta.runtime.session.config.SessionConfig;
 import io.mindspice.magenta.runtime.tools.ToolManager;
 import io.mindspice.magenta.ui.prompt.JlinePromptService;
+import io.mindspice.magenta.ui.render.UiRenderBlock;
 import io.mindspice.magenta.ui.render.UiRenderer;
+import io.mindspice.magenta.ui.render.UiStyle;
 import io.mindspice.magenta.ui.slash.SlashCommandRegistry;
 import io.mindspice.magenta.ui.slash.SlashCompleter;
 import org.jline.reader.LineReader;
@@ -17,8 +20,8 @@ import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class TerminalUiBootstrap {
@@ -45,56 +48,69 @@ public final class TerminalUiBootstrap {
         UiRenderer renderer = new UiRenderer(terminal, config.rendering());
         JlinePromptService promptService = new JlinePromptService(lineReader, renderer, config.prompts());
         approvalAdapter.setPromptService(promptService);
+        RoutingEventPrinter routePrinter = new RoutingEventPrinter(renderer);
 
         SessionConfig sessionConfig = new SessionConfig(
                 config.session().params(),
                 ToolManager.withBuiltIns(magenta.runtimeConfig())::execute,
                 config.session().routingEventLevel(),
                 event -> {
+                    if (config.observability().routingLogsEnabled()) {
+                        routePrinter.print(event);
+                    }
                     if (config.session().routingEventLevel() != RoutingEventLevel.NONE) {
                         config.callbacks().onRouting().accept(event);
                     }
                 },
-                event -> config.callbacks().onSecurity().accept(event),
+                event -> {
+                    if (shouldRenderSecurityEvent(config.security().eventVisibility(), event)) {
+                        renderer.renderBlock(new UiRenderBlock(
+                                "security> " + event.decisionCode() + " " + event.toolName(),
+                                List.of(
+                                        "mode=" + event.mode(),
+                                        "reason=" + event.reason()
+                                ),
+                                securityStyle(event)
+                        ));
+                    }
+                    config.callbacks().onSecurity().accept(event);
+                },
                 error -> {
-                    renderer.printError("session-error: " + error.getCause().getMessage());
+                    String detail = error.getCause() == null ? "unknown" : String.valueOf(error.getCause().getMessage());
+                    renderer.renderBlock(new UiRenderBlock(
+                            "error> session",
+                            List.of(
+                                    "sessionId=" + error.sessionHandle().sessionId(),
+                                    "message=" + detail
+                            ),
+                            UiStyle.ERROR
+                    ));
                     config.callbacks().onError().accept(error);
                 }
         );
 
         var handle = magenta.startBaseSession(config.session().alias(), sessionConfig);
         magenta.addInputRoute(handle, InputRoutePolicy.defaults());
+        var settings = magenta.settingsFor(handle);
+        boolean streamingExpected = settings.streamingEnabled()
+                                    && settings.modelSupportsStreaming()
+                                    && !settings.blockingOnly();
 
-        AtomicBoolean streamInProgress = TerminalUiRuntime.streamFlag();
+        AssistantOutputWriter outputWriter = new AssistantOutputWriter(
+                new TerminalAssistantOutputTarget(renderer),
+                streamingExpected
+        );
         var outputRoute = magenta.addOutputRoute(
                 handle,
                 OutputRoutePolicy.builder()
                         .allowedOutputTags(Set.of(
                                 SessionOutput.StreamedOutput.FILTER_TAG,
-                                SessionOutput.FinalOutput.FILTER_TAG
+                                SessionOutput.FinalOutput.FILTER_TAG,
+                                SessionOutput.ToolCallOutput.FILTER_TAG,
+                                SessionOutput.ToolMessageOutput.FILTER_TAG
                         ))
                         .build(),
-                event -> {
-                    switch (event.output()) {
-                        case SessionOutput.StreamedOutput stream -> {
-                            if (!streamInProgress.get()) {
-                                renderer.printStreamToken("assistant> ");
-                            }
-                            streamInProgress.set(true);
-                            renderer.printStreamToken(stream.text());
-                        }
-                        case SessionOutput.FinalOutput finalOutput -> {
-                            if (streamInProgress.getAndSet(false)) {
-                                renderer.finishStreamLine();
-                            } else {
-                                renderer.printAssistant("assistant> " + finalOutput.text());
-                            }
-                        }
-                        default -> {
-                            // not subscribed
-                        }
-                    }
-                }
+                event -> outputWriter.onOutput(event.output())
         );
 
         TerminalUiSession uiSession = new TerminalUiSession(
@@ -126,5 +142,24 @@ public final class TerminalUiBootstrap {
                 uiSession,
                 slashRegistry
         );
+    }
+
+    private static boolean shouldRenderSecurityEvent(
+            TerminalUiConfig.SecurityEventVisibility visibility,
+            SecurityManager.SecurityEvent event
+    ) {
+        return switch (visibility) {
+            case OFF -> false;
+            case ALL -> true;
+            case DENIALS_ONLY -> event.decisionCode() == SecurityManager.DecisionCode.DENIED
+                                 || event.decisionCode() == SecurityManager.DecisionCode.VALIDATION_ERROR;
+        };
+    }
+
+    private static UiStyle securityStyle(SecurityManager.SecurityEvent event) {
+        return switch (event.decisionCode()) {
+            case DENIED, VALIDATION_ERROR -> UiStyle.ERROR;
+            case ALLOWED, OVERRIDE_ALLOWED -> UiStyle.INFO;
+        };
     }
 }

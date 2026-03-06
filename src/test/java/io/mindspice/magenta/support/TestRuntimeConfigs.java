@@ -63,7 +63,8 @@ public final class TestRuntimeConfigs {
                         "base.system", "Base prompt",
                         "agents.default", "Agent prompt"
                 ),
-                RuntimeConfig.SecurityPolicyConfig.defaults()
+                RuntimeConfig.SecurityPolicyConfig.defaults(),
+                RuntimeConfig.TerminalConfig.defaults()
         );
     }
 }

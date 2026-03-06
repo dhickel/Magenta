@@ -139,3 +139,12 @@ mvn -q -DskipTests exec:java -Dexec.mainClass=example.QuickStartChatLoop
 - Input attached through route policy (`addInputRoute` + `messageInputConsumer`).
 - Output attached through route policy (`addOutputRoute` with `FinalOutput` events only).
 - No tool execution path (`SessionParams.ofBlocking(false)` sets `toolsEnabled=false`).
+
+## 6) Terminal Debug Visibility Knobs
+
+For terminal UI debugging (when running `Main` / packaged jar), use:
+
+- `MAGENTA_UI_ROUTE_LOGS=true` to emit detailed route delivery logs.
+- `terminal.security.eventVisibility: "all"` in `configs/magenta.yaml` to show every security decision.
+- `terminal.security.eventVisibility: "denials_only"` (default) to show only denied/validation decisions.
+- `terminal.rendering.colors` to tune terminal style colors for high-contrast debugging sessions.

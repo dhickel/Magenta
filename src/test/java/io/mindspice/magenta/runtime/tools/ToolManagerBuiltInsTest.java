@@ -177,6 +177,7 @@ class ToolManagerBuiltInsTest {
                 "grep_files",
                 "search_replace",
                 "write_file",
+                "delete_file",
                 "shell_command",
                 "sqlite_query",
                 "sqlite_exec"
@@ -219,7 +220,8 @@ class ToolManagerBuiltInsTest {
                 Map.of(),
                 Map.of(),
                 Map.of(),
-                RuntimeConfig.SecurityPolicyConfig.defaults()
+                RuntimeConfig.SecurityPolicyConfig.defaults(),
+                RuntimeConfig.TerminalConfig.defaults()
         );
     }
 

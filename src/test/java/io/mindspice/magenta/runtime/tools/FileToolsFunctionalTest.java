@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -85,6 +86,59 @@ class FileToolsFunctionalTest {
     }
 
     @Test
+    void deleteFileDeletesWithSnapshotGuard() throws Exception {
+        Files.writeString(tempDir.resolve("delete-me.txt"), "goodbye");
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+
+        JsonNode read = ToolTestSupport.payload(manager.execute(ToolTestSupport.request(
+                "read_file",
+                "{\"path\":\"delete-me.txt\"}"
+        )));
+        String snapshotId = read.path("data").path("snapshotId").asText();
+
+        JsonNode deleted = ToolTestSupport.payload(manager.execute(ToolTestSupport.request(
+                "delete_file",
+                ToolTestSupport.MAPPER.writeValueAsString(Map.of(
+                        "path", "delete-me.txt",
+                        "expectedSnapshotId", snapshotId
+                ))
+        )));
+
+        assertThat(deleted.path("status").asText()).isEqualTo("ok");
+        assertThat(deleted.path("data").path("bytesDeleted").asLong()).isGreaterThan(0L);
+        assertThat(Files.exists(tempDir.resolve("delete-me.txt"))).isFalse();
+    }
+
+    @Test
+    void deleteFileFailsWhenSnapshotMismatches() throws Exception {
+        Files.writeString(tempDir.resolve("guarded.txt"), "v1");
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request(
+                "delete_file",
+                "{\"path\":\"guarded.txt\",\"expectedSnapshotId\":\"bad\"}"
+        )));
+
+        assertThat(payload.path("status").asText()).isEqualTo("failed");
+        assertThat(payload.path("code").asText()).isEqualTo("snapshot_mismatch");
+        assertThat(payload.path("data").path("currentSnapshotId").asText()).isNotBlank();
+        assertThat(Files.exists(tempDir.resolve("guarded.txt"))).isTrue();
+    }
+
+    @Test
+    void deleteFileRequiresPathArgument() throws Exception {
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request(
+                "delete_file",
+                "{}"
+        )));
+
+        assertThat(payload.path("status").asText()).isEqualTo("failed");
+        assertThat(payload.path("code").asText()).isEqualTo("validation_error");
+    }
+
+    @Test
     void readFileRejectsInvalidLineRange() throws Exception {
         Files.writeString(tempDir.resolve("sample.txt"), "one\ntwo\n");
 
@@ -96,6 +150,20 @@ class FileToolsFunctionalTest {
 
         assertThat(payload.path("status").asText()).isEqualTo("failed");
         assertThat(payload.path("code").asText()).isEqualTo("validation_error");
+    }
+
+    @Test
+    void readFileReturnsBytesReadMetric() throws Exception {
+        Files.writeString(tempDir.resolve("sample.txt"), "one\ntwo\n");
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request(
+                "read_file",
+                "{\"path\":\"sample.txt\",\"startLine\":1,\"endLine\":2}"
+        )));
+
+        assertThat(payload.path("status").asText()).isEqualTo("ok");
+        assertThat(payload.path("data").path("bytesRead").asInt()).isEqualTo("one\ntwo".getBytes(StandardCharsets.UTF_8).length);
     }
 
     @Test

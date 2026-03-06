@@ -274,7 +274,6 @@ public final class Magenta {
         if (effectiveInput.addToContext()) {
             ContextElement message = toContextElement(effectiveInput);
             session.context().append(message);
-            sessionRouter.emit(handle, new OutputRoutingEvent(handle, new SessionOutput.ContextMessageOutput(message)));
         }
 
         boolean shouldStream = settingsFor(handle).streamingEnabled() && sessionRouter.hasStreamedOutputListeners(handle);

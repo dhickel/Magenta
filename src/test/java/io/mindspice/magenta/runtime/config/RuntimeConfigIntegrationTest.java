@@ -38,6 +38,7 @@ class RuntimeConfigIntegrationTest {
         assertThat(loaded.agentsById()).containsKeys("agent-default", "agent-compaction");
         assertThat(loaded.promptsById()).containsKey("base.system");
         assertThat(loaded.security().mode()).isEqualTo(RuntimeConfig.SecurityMode.BLACKLIST);
+        assertThat(loaded.terminal().security().eventVisibility()).isEqualTo(RuntimeConfig.TerminalSecurityVisibility.DENIALS_ONLY);
     }
 
     @Test
@@ -53,6 +54,41 @@ class RuntimeConfigIntegrationTest {
         assertThat(loaded.agentsById()).isNotEmpty();
         assertThat(loaded.promptsById()).isNotEmpty();
         assertThat(loaded.security().mode()).isEqualTo(RuntimeConfig.SecurityMode.BLACKLIST);
+        assertThat(loaded.terminal().tools().outputFormat()).isEqualTo(RuntimeConfig.TerminalToolOutputFormat.COMPACT_SUMMARY);
+    }
+
+    @Test
+    void terminalSectionParsesRenderingSecurityAndTools() throws IOException {
+        Path configRoot = createConfigRoot("cfg-terminal");
+        writeDefaultMagentaYaml(configRoot);
+        writeModel(configRoot.resolve("models/default.yaml"), "model-default", "dev");
+        writeAgent(configRoot.resolve("agents/default.yaml"), "agent-default", "model-default", "base.system");
+        writeAgent(configRoot.resolve("agents/compaction.yaml"), "agent-compaction", "model-default", "base.system");
+        Files.writeString(configRoot.resolve("prompts/base/system.md"), "system prompt");
+
+        Path magentaYaml = configRoot.resolve("magenta.yaml");
+        Files.writeString(magentaYaml, Files.readString(magentaYaml) + """
+                terminal:
+                  rendering:
+                    colorEnabled: false
+                    showTimestamps: true
+                    showStatusBar: false
+                    colors:
+                      info: "white"
+                      error: "yellow"
+                  security:
+                    eventVisibility: "all"
+                  tools:
+                    outputFormat: "compact_summary"
+                """);
+
+        RuntimeConfig loaded = RuntimeConfig.load(magentaYaml);
+        assertThat(loaded.terminal().rendering().colorEnabled()).isFalse();
+        assertThat(loaded.terminal().rendering().showTimestamps()).isTrue();
+        assertThat(loaded.terminal().rendering().showStatusBar()).isFalse();
+        assertThat(loaded.terminal().rendering().colors().info()).isEqualTo(RuntimeConfig.TerminalColor.WHITE);
+        assertThat(loaded.terminal().rendering().colors().error()).isEqualTo(RuntimeConfig.TerminalColor.YELLOW);
+        assertThat(loaded.terminal().security().eventVisibility()).isEqualTo(RuntimeConfig.TerminalSecurityVisibility.ALL);
     }
 
     @Test
@@ -175,6 +211,28 @@ class RuntimeConfigIntegrationTest {
         assertThatThrownBy(() -> RuntimeConfig.load(magentaYaml))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Unsupported security mode");
+    }
+
+    @Test
+    void invalidTerminalColorFailsFast() throws IOException {
+        Path configRoot = createConfigRoot("cfg-invalid-terminal-color");
+        writeDefaultMagentaYaml(configRoot);
+        writeModel(configRoot.resolve("models/default.yaml"), "model-default", "dev");
+        writeAgent(configRoot.resolve("agents/default.yaml"), "agent-default", "model-default", "base.system");
+        writeAgent(configRoot.resolve("agents/compaction.yaml"), "agent-compaction", "model-default", "base.system");
+        Files.writeString(configRoot.resolve("prompts/base/system.md"), "system prompt");
+
+        Path magentaYaml = configRoot.resolve("magenta.yaml");
+        Files.writeString(magentaYaml, Files.readString(magentaYaml) + """
+                terminal:
+                  rendering:
+                    colors:
+                      info: "ultraviolet"
+                """);
+
+        assertThatThrownBy(() -> RuntimeConfig.load(magentaYaml))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Unsupported terminal color token");
     }
 
     private Path createConfigRoot(String name) throws IOException {
