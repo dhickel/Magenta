@@ -71,7 +71,7 @@ public final class TerminalUiRuntime {
                 List.of(
                         "sessionId=" + session.handle().sessionId(),
                         "workspaceRoot=" + runtimeConfig.workspaceRoot(),
-                        "Commands: /help, /session, /approve-demo, /tool-approval <on|off>, /event <text>, /exit"
+                        "Commands: /help, /session, /approve-demo, /tool-approval <on|off>, /yolo <on|off>, /event <text>, /exit"
                 ),
                 UiStyle.SYSTEM
         ));
@@ -176,7 +176,8 @@ public final class TerminalUiRuntime {
                                             List.of("messages", String.valueOf(usage.messageCount())),
                                             List.of("toolsEnabled", String.valueOf(settings.toolsEnabled())),
                                             List.of("streamingEnabled", String.valueOf(settings.streamingEnabled())),
-                                            List.of("securityMode", policy.mode().name())
+                                            List.of("securityMode", policy.mode().name()),
+                                            List.of("yoloOverride", String.valueOf(policy.devYoloOverride()))
                                     )
                             ));
                         }
@@ -234,6 +235,36 @@ public final class TerminalUiRuntime {
                         }
                 ),
                 SlashCommandSpec.one(
+                        "yolo",
+                        List.of(),
+                        "Toggle full security override for the session",
+                        "/yolo <on|off>",
+                        List.of("on|off"),
+                        value -> {
+                            String mode = value.trim().toLowerCase(Locale.ROOT);
+                            boolean enabled = "on".equals(mode);
+                            boolean disabled = "off".equals(mode);
+                            if (!enabled && !disabled) {
+                                renderer.printError("usage: /yolo <on|off>");
+                                return;
+                            }
+
+                            SecurityManager.ToolPolicy current = magenta.toolPolicy(session.handle());
+                            SecurityManager.ToolPolicy next = new SecurityManager.ToolPolicy(
+                                    current.mode(),
+                                    enabled,
+                                    current.allowedTools(),
+                                    current.deniedTools(),
+                                    current.allowedPaths(),
+                                    current.allowedCommands(),
+                                    current.webAccess(),
+                                    current.commandRules()
+                            );
+                            magenta.setToolPolicy(session.handle(), next);
+                            renderer.printWarn("yolo override => " + (enabled ? "ON (full security bypass for this session)" : "OFF"));
+                        }
+                ),
+                SlashCommandSpec.one(
                         "event",
                         List.of(),
                         "Send system event input",
@@ -273,7 +304,8 @@ public final class TerminalUiRuntime {
         String bottomRight = "tools=" + settings.toolsEnabled()
                              + " stream=session:" + settings.streamingEnabled()
                              + ",model:" + settings.modelSupportsStreaming()
-                             + " security=" + policy.mode().name();
+                             + " security=" + policy.mode().name()
+                             + " yolo=" + (policy.devYoloOverride() ? "on" : "off");
 
         renderer.renderStatus(new UiStatusBar(topLeft, topRight, bottomLeft, bottomRight));
     }

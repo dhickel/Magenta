@@ -218,6 +218,31 @@ class SecurityManagerTest {
     }
 
     @Test
+    void yoloOverrideAllowsShellOperators() {
+        SecurityManager manager = manager(null);
+        UUID sessionId = UUID.randomUUID();
+        manager.initializePolicy(sessionId);
+        manager.setToolPolicy(sessionId, new SecurityManager.ToolPolicy(
+                RuntimeConfig.SecurityMode.BLACKLIST,
+                true,
+                Set.of(),
+                Set.of(),
+                List.of("."),
+                Set.of(),
+                new SecurityManager.WebAccessPolicy(false, false),
+                List.of()
+        ));
+
+        SecurityManager.Decision decision = manager.authorize(
+                request(sessionId, "shell_command", "{\"cmd\":\"echo ok | cat > out.txt\"}"),
+                Set.of("shell_command")
+        );
+
+        assertThat(decision.allowed()).isTrue();
+        assertThat(decision.code()).isEqualTo(SecurityManager.DecisionCode.OVERRIDE_ALLOWED);
+    }
+
+    @Test
     void shellCommandUnmatchedRulesDoNotImplicitlyPrompt() {
         SecurityManager manager = manager(ignored -> SecurityManager.ApprovalResponse.DENY);
         UUID sessionId = UUID.randomUUID();
