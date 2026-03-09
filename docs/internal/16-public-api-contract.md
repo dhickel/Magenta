@@ -27,6 +27,7 @@ Applications should treat these types as supported API surface for v1 chat/runti
 - `RoutingEvent`, `RoutingEventLevel`
 - `SessionException`
 - `SecurityManager.ToolPolicy` (via `Magenta.toolPolicy(handle)` / `Magenta.setToolPolicy(handle, ...)`)
+- `ToolRequest` / `ToolResult` via `Magenta.executeTool(request)` for canonical tool bridge reuse
 
 ## Lifecycle contract
 
@@ -35,6 +36,8 @@ Applications should treat these types as supported API surface for v1 chat/runti
 - Fork: `forkSession(sourceHandle, ...)` clones context into a new session id.
 - Close: `closeSession(handle)` deactivates handle and prunes routes.
 - Tool policy: `toolPolicy(handle)` reads active session tool policy and `setToolPolicy(handle, policy)` atomically replaces it.
+- Tool bridge execution: `executeTool(request)` executes through Magenta-owned built-ins/tool manager.
+- Tool security policy includes `allowedPaths` roots, command allow/rule sets, tool allow/deny sets, and web access toggles.
 
 ## Route contract
 
@@ -47,7 +50,7 @@ Applications should treat these types as supported API surface for v1 chat/runti
 ## Callback contract
 
 - `onRouting`: optional session-level observability callback for input/output routing results, controlled by `RoutingEventLevel`.
-- `onSecurity`: optional session-level observability callback for tool security decisions.
+- `onSecurity`: optional session-level observability callback for tool security decisions (allow/deny/validation/override).
 - `onError`: `Consumer<SessionException>` including `SessionHandle`.
 - Output listeners are delivery callbacks, not diagnostics callbacks.
 

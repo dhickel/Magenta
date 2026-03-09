@@ -188,6 +188,8 @@ Backend portability requirement:
 
 Mandatory built-in tools:
 - `read_file`: bounded file reads with line anchors.
+- `list_directory`: bounded directory listing for non-content discovery.
+- `file_metadata`: bounded file/directory stat inspection without full content read.
 - `grep_files`: recursive pattern search with bounded output.
 - `search_replace`: structured block replacement with conflict diagnostics.
 - `write_file`: bounded deterministic write with overwrite guard.
@@ -218,7 +220,8 @@ Required rules:
 ## Security and Tooling Rules
 
 Non-negotiable rules:
-- every side effect routes through `SecurityService`.
+- every side effect in current runtime paths routes through `SecurityManager` authorization on the tool bridge path.
+- future broader side-effect ingress should converge into `SecurityService` when that phase is implemented.
 - deny-by-default baseline.
 - developer override (`yolo`) must be explicit and auditable.
 - no shell/file mutation bypass paths.
@@ -226,7 +229,9 @@ Non-negotiable rules:
 
 Policy expectations:
 - explicit decision codes (`allowed`, `denied`, `validation_error`, `override_allowed`).
-- deterministic path/command checks.
+- deterministic descriptor-driven path/command/url checks (no hardcoded tool-name key scanning in security core).
+- `allowedPaths` represents approved path roots and must be enforced against resolved real targets.
+- out-of-approved-root path requests require explicit approval callback decision.
 - all denials and overrides logged as structured events.
 
 Tool execution contract:
@@ -242,7 +247,7 @@ Tool execution contract:
 - Never favor abstraction-first rewrites over stable behavior contracts.
 - Never reshape production APIs or architecture just to satisfy stale tests; update tests to reflect intentional code design.
 - Keep edit/search/replace tooling harness-verified and deterministic.
-- Preserve prior SQL robustness lessons (CTE-aware classification and quote/comment-aware statement splitting).
+- Preserve SQL robustness lessons with parser-based fail-closed classification for safety-sensitive tool gating.
 
 ## Scope Boundaries
 

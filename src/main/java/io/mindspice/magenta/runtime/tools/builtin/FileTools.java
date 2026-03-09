@@ -33,6 +33,7 @@ public final class FileTools {
     private static final ObjectMapper MAPPER = ToolPayloads.mapper();
     private static final Pattern ANCHOR_PATTERN = Pattern.compile("^(\\d+):([0-9a-z]{2})$");
     private static final int DEFAULT_MAX_GREP_MATCHES = 200;
+    private static final int DEFAULT_MAX_LIST_ENTRIES = 200;
 
     private final ToolExecutionSettings settings;
 
@@ -121,6 +122,135 @@ public final class FileTools {
         }
     }
 
+    public ToolResult listDirectory(ToolRequest request) {
+        JsonNode args = readArgsOrNull(request);
+        if (args == null || !args.isObject()) {
+            return ToolPayloads.failure(request, "validation_error", "Tool arguments must be a JSON object", null, true);
+        }
+
+        String pathText = readFirstString(args, List.of("path", "rootPath", "targetPath"));
+        if (isBlank(pathText)) {
+            pathText = ".";
+        }
+        int maxEntries = intValue(args.get("maxEntries"), DEFAULT_MAX_LIST_ENTRIES);
+        if (maxEntries <= 0) {
+            return ToolPayloads.failure(request, "validation_error", "maxEntries must be > 0", null, true);
+        }
+        maxEntries = Math.min(maxEntries, DEFAULT_MAX_LIST_ENTRIES);
+        boolean includeHidden = boolValue(args.get("includeHidden"), false);
+
+        Path path;
+        try {
+            path = ToolPathSupport.resolveWorkspacePath(settings.workspaceRoot(), pathText);
+        } catch (IllegalArgumentException e) {
+            return ToolPayloads.failure(request, "validation_error", e.getMessage(), null, true);
+        }
+
+        if (!Files.exists(path)) {
+            return ToolPayloads.failure(
+                    request,
+                    "not_found",
+                    "Path not found: " + ToolPathSupport.displayPath(settings.workspaceRoot(), path),
+                    null,
+                    true
+            );
+        }
+        if (!Files.isDirectory(path)) {
+            return ToolPayloads.failure(
+                    request,
+                    "validation_error",
+                    "Path is not a directory: " + ToolPathSupport.displayPath(settings.workspaceRoot(), path),
+                    null,
+                    true
+            );
+        }
+
+        ArrayNode entries = MAPPER.createArrayNode();
+        boolean truncated = false;
+
+        try (var stream = Files.list(path)) {
+            List<Path> listed = stream.sorted(Comparator.comparing(p -> p.getFileName().toString().toLowerCase(Locale.ROOT))).toList();
+            for (Path entry : listed) {
+                String name = entry.getFileName() == null ? entry.toString() : entry.getFileName().toString();
+                if (!includeHidden && name.startsWith(".")) {
+                    continue;
+                }
+                if (entries.size() >= maxEntries) {
+                    truncated = true;
+                    break;
+                }
+
+                ObjectNode node = MAPPER.createObjectNode();
+                node.put("name", name);
+                node.put("path", ToolPathSupport.displayPath(settings.workspaceRoot(), entry));
+                node.put("directory", Files.isDirectory(entry));
+                node.put("regularFile", Files.isRegularFile(entry));
+                node.put("symbolicLink", Files.isSymbolicLink(entry));
+                node.put("sizeBytes", safeSize(entry));
+                node.put("lastModifiedMs", safeLastModifiedMs(entry));
+                entries.add(node);
+            }
+        } catch (Exception e) {
+            return ToolPayloads.failure(request, "io_error", "Failed to list directory: " + e.getMessage(), null, true);
+        }
+
+        ObjectNode data = MAPPER.createObjectNode();
+        data.put("path", ToolPathSupport.displayPath(settings.workspaceRoot(), path));
+        data.put("entryCount", entries.size());
+        data.put("truncated", truncated);
+        data.set("entries", entries);
+        return ToolPayloads.success(request, "Directory listed", data);
+    }
+
+    public ToolResult fileMetadata(ToolRequest request) {
+        JsonNode args = readArgsOrNull(request);
+        if (args == null || !args.isObject()) {
+            return ToolPayloads.failure(request, "validation_error", "Tool arguments must be a JSON object", null, true);
+        }
+
+        String pathText = readFirstString(args, List.of("path", "filePath", "targetPath"));
+        if (isBlank(pathText)) {
+            return ToolPayloads.failure(request, "validation_error", "Missing required argument: path", null, true);
+        }
+
+        Path path;
+        try {
+            path = ToolPathSupport.resolveWorkspacePath(settings.workspaceRoot(), pathText);
+        } catch (IllegalArgumentException e) {
+            return ToolPayloads.failure(request, "validation_error", e.getMessage(), null, true);
+        }
+
+        if (!Files.exists(path, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+            return ToolPayloads.failure(
+                    request,
+                    "not_found",
+                    "Path not found: " + ToolPathSupport.displayPath(settings.workspaceRoot(), path),
+                    null,
+                    true
+            );
+        }
+
+        try {
+            ObjectNode data = MAPPER.createObjectNode();
+            data.put("path", ToolPathSupport.displayPath(settings.workspaceRoot(), path));
+            data.put("directory", Files.isDirectory(path));
+            data.put("regularFile", Files.isRegularFile(path));
+            data.put("symbolicLink", Files.isSymbolicLink(path));
+            data.put("sizeBytes", safeSize(path));
+            data.put("lastModifiedMs", safeLastModifiedMs(path));
+            data.put("readable", Files.isReadable(path));
+            data.put("writable", Files.isWritable(path));
+            data.put("executable", Files.isExecutable(path));
+            if (Files.isSymbolicLink(path)) {
+                Path target = Files.readSymbolicLink(path);
+                data.put("symlinkTarget", target.toString());
+            }
+            return ToolPayloads.success(request, "Metadata collected", data);
+        } catch (Exception e) {
+            return ToolPayloads.failure(request, "io_error", "Failed to read metadata: " + e.getMessage(), null, true);
+        }
+    }
+
     public ToolResult grepFiles(ToolRequest request) {
         JsonNode args = readArgsOrNull(request);
         if (args == null || !args.isObject()) {
@@ -173,8 +303,19 @@ public final class FileTools {
 
         String filePatternText = readFirstString(args, List.of("filePattern"));
         java.nio.file.PathMatcher fileMatcher = null;
+        java.nio.file.PathMatcher fileNameMatcher = null;
         if (!isBlank(filePatternText)) {
-            fileMatcher = rootPath.getFileSystem().getPathMatcher("glob:" + filePatternText);
+            String normalizedPattern = filePatternText.trim().replace('\\', '/');
+            try {
+                fileMatcher = rootPath.getFileSystem().getPathMatcher("glob:" + normalizedPattern);
+                // For basename filters (for example "fractal.lisp" or "*.lisp"),
+                // also match each file name so nested files are included.
+                if (!normalizedPattern.contains("/")) {
+                    fileNameMatcher = rootPath.getFileSystem().getPathMatcher("glob:" + normalizedPattern);
+                }
+            } catch (IllegalArgumentException e) {
+                return ToolPayloads.failure(request, "validation_error", "Invalid filePattern glob", null, true);
+            }
         }
 
         ArrayNode matches = MAPPER.createArrayNode();
@@ -191,7 +332,9 @@ public final class FileTools {
                 }
 
                 Path relativeToRoot = rootPath.relativize(path);
-                if (fileMatcher != null && !fileMatcher.matches(relativeToRoot)) {
+                if (fileMatcher != null
+                        && !fileMatcher.matches(relativeToRoot)
+                        && (fileNameMatcher == null || !fileNameMatcher.matches(relativeToRoot.getFileName()))) {
                     continue;
                 }
 
@@ -607,6 +750,22 @@ public final class FileTools {
         node.put("startAnchor", startAnchor == null ? "" : startAnchor);
         node.put("endAnchor", endAnchor == null ? "" : endAnchor);
         return node;
+    }
+
+    private long safeSize(Path path) {
+        try {
+            return Files.size(path);
+        } catch (Exception ignored) {
+            return -1L;
+        }
+    }
+
+    private long safeLastModifiedMs(Path path) {
+        try {
+            return Files.getLastModifiedTime(path).toMillis();
+        } catch (Exception ignored) {
+            return -1L;
+        }
     }
 
     private static boolean isBlank(String text) {

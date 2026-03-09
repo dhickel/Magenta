@@ -8,10 +8,15 @@ import dev.langchain4j.agent.tool.ToolMemoryId;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.agent.tool.ToolSpecifications;
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
+import io.mindspice.magenta.runtime.persistence.DatabaseService;
+import io.mindspice.magenta.runtime.persistence.ToolCommand;
+import io.mindspice.magenta.runtime.persistence.ToolCommandResult;
+import io.mindspice.magenta.runtime.security.ToolSecurityDescriptor;
 import io.mindspice.magenta.runtime.tools.builtin.AnnotatedBuiltInToolCatalog;
 import io.mindspice.magenta.runtime.tools.builtin.FileTools;
 import io.mindspice.magenta.runtime.tools.builtin.ShellTools;
 import io.mindspice.magenta.runtime.tools.builtin.SqliteTools;
+import io.mindspice.magenta.runtime.tools.builtin.TodoTools;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -35,6 +40,7 @@ public final class ToolManager {
 
     private final Map<String, Function<ToolRequest, ToolResult>> handlersByTool;
     private final Map<String, ToolSpecification> toolSpecificationsByName;
+    private final Map<String, ToolSecurityDescriptor> securityDescriptorsByName;
     private final ToolExecutionSettings settings;
 
     public ToolManager(Map<String, Function<ToolRequest, ToolResult>> handlersByTool) {
@@ -46,6 +52,7 @@ public final class ToolManager {
                         DEFAULT_MAX_SQL_ROWS
                 ),
                 handlersByTool,
+                Map.of(),
                 Map.of()
         );
     }
@@ -53,11 +60,13 @@ public final class ToolManager {
     private ToolManager(
             ToolExecutionSettings settings,
             Map<String, Function<ToolRequest, ToolResult>> handlersByTool,
-            Map<String, ToolSpecification> toolSpecificationsByName
+            Map<String, ToolSpecification> toolSpecificationsByName,
+            Map<String, ToolSecurityDescriptor> securityDescriptorsByName
     ) {
         this.settings = settings;
         this.handlersByTool = handlersByTool == null ? Map.of() : Map.copyOf(handlersByTool);
         this.toolSpecificationsByName = toolSpecificationsByName == null ? Map.of() : Map.copyOf(toolSpecificationsByName);
+        this.securityDescriptorsByName = securityDescriptorsByName == null ? Map.of() : Map.copyOf(securityDescriptorsByName);
     }
 
     public static ToolManager empty() {
@@ -65,7 +74,25 @@ public final class ToolManager {
     }
 
     public static ToolManager withBuiltIns(RuntimeConfig runtimeConfig) {
+        DatabaseService databaseService = new DatabaseService(runtimeConfig.workspaceRoot());
+        return withBuiltIns(runtimeConfig, databaseService::execute, AnnotatedBuiltInToolCatalog.DelegationSupport.unsupported());
+    }
+
+    public static ToolManager withBuiltIns(
+            RuntimeConfig runtimeConfig,
+            AnnotatedBuiltInToolCatalog.DelegationSupport delegationSupport
+    ) {
+        DatabaseService databaseService = new DatabaseService(runtimeConfig.workspaceRoot());
+        return withBuiltIns(runtimeConfig, databaseService::execute, delegationSupport);
+    }
+
+    public static ToolManager withBuiltIns(
+            RuntimeConfig runtimeConfig,
+            Function<ToolCommand, ToolCommandResult> toolCommandBridge,
+            AnnotatedBuiltInToolCatalog.DelegationSupport delegationSupport
+    ) {
         Objects.requireNonNull(runtimeConfig, "runtimeConfig");
+        Objects.requireNonNull(toolCommandBridge, "toolCommandBridge");
 
         ToolExecutionSettings settings = new ToolExecutionSettings(
                 runtimeConfig.workspaceRoot(),
@@ -77,10 +104,23 @@ public final class ToolManager {
         FileTools fileTools = new FileTools(settings);
         ShellTools shellTools = new ShellTools(settings);
         SqliteTools sqliteTools = new SqliteTools(settings);
-        AnnotatedBuiltInToolCatalog catalog = new AnnotatedBuiltInToolCatalog(fileTools, shellTools, sqliteTools);
+        TodoTools todoTools = new TodoTools(settings, toolCommandBridge);
+        AnnotatedBuiltInToolCatalog catalog = new AnnotatedBuiltInToolCatalog(
+                fileTools,
+                shellTools,
+                sqliteTools,
+                todoTools,
+                runtimeConfig.agentsById(),
+                delegationSupport
+        );
         AnnotatedRegistry annotatedRegistry = discoverAnnotatedRegistry(catalog);
 
-        return new ToolManager(settings, annotatedRegistry.handlersByName(), annotatedRegistry.specificationsByName());
+        return new ToolManager(
+                settings,
+                annotatedRegistry.handlersByName(),
+                annotatedRegistry.specificationsByName(),
+                catalog.securityDescriptorsByName()
+        );
     }
 
     public ToolResult execute(ToolRequest request) {
@@ -166,6 +206,10 @@ public final class ToolManager {
             }
         }
         return List.copyOf(output);
+    }
+
+    public Map<String, ToolSecurityDescriptor> securityDescriptorsByName() {
+        return securityDescriptorsByName;
     }
 
     private static AnnotatedRegistry discoverAnnotatedRegistry(Object toolCatalog) {

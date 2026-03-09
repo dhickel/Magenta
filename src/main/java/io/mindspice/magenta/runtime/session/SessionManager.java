@@ -47,8 +47,8 @@ public final class SessionManager {
 
         UUID sessionId = UUID.randomUUID();
         String effectiveAlias = normalizeAlias(alias, sessionId);
-        String systemPrompt = resolveSystemPrompt(agent.promptIds());
-        Context context = contextManager.loadContext(existingContextOrNull, systemPrompt);
+        List<String> systemPrompts = resolveSystemPrompts(agent.promptIds());
+        Context context = contextManager.loadContext(sessionId, existingContextOrNull, systemPrompts);
 
         Session session = new Session(
                 sessionId,
@@ -72,6 +72,7 @@ public final class SessionManager {
             throw new IllegalStateException("Session ID collision: " + sessionId);
         }
 
+        contextManager.initializeSessionPersistence(session);
         return session;
     }
 
@@ -201,22 +202,27 @@ public final class SessionManager {
     }
 
     private String resolveSystemPrompt(List<String> promptIds) {
-        if (promptIds == null || promptIds.isEmpty()) {
+        List<String> prompts = resolveSystemPrompts(promptIds);
+        if (prompts.isEmpty()) {
             return "";
         }
+        return String.join("\n\n", prompts);
+    }
 
-        StringBuilder sb = new StringBuilder();
+    private List<String> resolveSystemPrompts(List<String> promptIds) {
+        if (promptIds == null || promptIds.isEmpty()) {
+            return List.of();
+        }
+
+        java.util.ArrayList<String> prompts = new java.util.ArrayList<>();
         for (String promptId : promptIds) {
             String prompt = runtimeConfig.promptsById().get(promptId);
             if (prompt == null) {
                 throw new IllegalStateException("Prompt ID not found: " + promptId);
             }
-            if (!sb.isEmpty()) {
-                sb.append("\n\n");
-            }
-            sb.append(prompt);
+            prompts.add(prompt);
         }
-        return sb.toString();
+        return List.copyOf(prompts);
     }
 
     private String normalizeAlias(String alias, UUID sessionId) {

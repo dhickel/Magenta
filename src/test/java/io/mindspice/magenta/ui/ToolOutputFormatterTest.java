@@ -17,10 +17,10 @@ class ToolOutputFormatterTest {
                 "{\"status\":\"ok\",\"code\":\"ok\",\"message\":\"done\",\"data\":{\"bytesRead\":128,\"returnedLines\":5,\"totalLines\":99,\"path\":\"src/Main.java\"}}"
         );
 
-        assertThat(call.title()).isEqualTo("tool-call> READ FILE");
-        assertThat(call.lines().getFirst()).contains("path=src/Main.java");
-        assertThat(result.title()).isEqualTo("tool-result> READ FILE OK");
-        assertThat(result.lines().getFirst()).contains("bytes=128").contains("lines=5/99");
+        assertThat(call.title()).isEqualTo("[Tool] Read File");
+        assertThat(call.lines()).containsExactly("Path: src/Main.java");
+        assertThat(result.title()).isEqualTo("[Tool] Read File OK");
+        assertThat(result.lines()).containsExactly("Path: src/Main.java", "Lines: 5/99");
         assertThat(result.style()).isEqualTo(UiStyle.INFO);
     }
 
@@ -37,10 +37,10 @@ class ToolOutputFormatterTest {
                 "{\"status\":\"failed\",\"code\":\"snapshot_mismatch\",\"message\":\"Snapshot mismatch\"}"
         );
 
-        assertThat(success.title()).isEqualTo("tool-result> SQL EXEC OK");
-        assertThat(success.lines().getFirst()).contains("rowsAffected=7").contains("statements=2");
-        assertThat(failed.title()).isEqualTo("tool-result> WRITE FILE FAILED");
-        assertThat(failed.lines().getFirst()).contains("code=snapshot_mismatch");
+        assertThat(success.title()).isEqualTo("[Tool] SQL Exec OK");
+        assertThat(success.lines()).containsExactly("Database: data/app.db", "Rows Affected: 7");
+        assertThat(failed.title()).isEqualTo("[Tool] Write File FAILED");
+        assertThat(failed.lines()).contains("Code: snapshot_mismatch", "Message: Snapshot mismatch");
         assertThat(failed.style()).isEqualTo(UiStyle.ERROR);
     }
 
@@ -54,9 +54,59 @@ class ToolOutputFormatterTest {
                 "{\"status\":\"ok\",\"code\":\"ok\",\"message\":\"done\",\"data\":{\"bytesDeleted\":64,\"path\":\"tmp/remove.txt\"}}"
         );
 
-        assertThat(call.title()).isEqualTo("tool-call> DELETE FILE");
-        assertThat(call.lines().getFirst()).contains("path=tmp/remove.txt");
-        assertThat(result.title()).isEqualTo("tool-result> DELETE FILE OK");
-        assertThat(result.lines().getFirst()).contains("bytes=64").contains("path=tmp/remove.txt");
+        assertThat(call.title()).isEqualTo("[Tool] Delete File");
+        assertThat(call.lines()).containsExactly("Path: tmp/remove.txt");
+        assertThat(result.title()).isEqualTo("[Tool] Delete File OK");
+        assertThat(result.lines()).containsExactly("Path: tmp/remove.txt", "Bytes Deleted: 64");
+    }
+
+    @Test
+    void shellCallUsesCmdArgumentAndFailureShowsCommandContext() {
+        ToolOutputFormatter formatter = new ToolOutputFormatter();
+
+        ToolOutputFormatter.FormattedToolCall call = formatter.formatCall(
+                "shell_command",
+                "{\"cmd\":\"python generate_random_number.py\"}"
+        );
+        ToolOutputFormatter.FormattedToolResult failed = formatter.formatResult(
+                "shell_command",
+                "{\"status\":\"failed\",\"code\":\"command_failed\",\"message\":\"Command failed\",\"data\":{\"command\":\"python generate_random_number.py\",\"exitCode\":1}}"
+        );
+
+        assertThat(call.title()).isEqualTo("[Tool] Shell");
+        assertThat(call.lines()).containsExactly("Command: python generate_random_number.py");
+        assertThat(failed.title()).isEqualTo("[Tool] Shell FAILED");
+        assertThat(failed.lines()).contains("Code: command_failed", "Command: python generate_random_number.py");
+    }
+
+    @Test
+    void searchReplaceFailureIncludesConflictReason() {
+        ToolOutputFormatter formatter = new ToolOutputFormatter();
+
+        ToolOutputFormatter.FormattedToolResult failed = formatter.formatResult(
+                "search_replace",
+                "{\"status\":\"failed\",\"code\":\"anchor_mismatch\",\"message\":\"Anchor format must be line:hh\",\"data\":{\"path\":\"generate_random_number.py\",\"conflicts\":[{\"reason\":\"invalid_anchor\"}]}}"
+        );
+
+        assertThat(failed.title()).isEqualTo("[Tool] Search Replace FAILED");
+        assertThat(failed.lines()).contains(
+                "Code: anchor_mismatch",
+                "Path: generate_random_number.py",
+                "Conflict: invalid_anchor",
+                "Message: Anchor format must be line:hh"
+        );
+    }
+
+    @Test
+    void grepResultIncludesScannedAndMatchCounts() {
+        ToolOutputFormatter formatter = new ToolOutputFormatter();
+
+        ToolOutputFormatter.FormattedToolResult result = formatter.formatResult(
+                "grep_files",
+                "{\"status\":\"ok\",\"code\":\"ok\",\"message\":\"done\",\"data\":{\"rootPath\":\".\",\"scannedFiles\":8,\"matchCount\":0}}"
+        );
+
+        assertThat(result.title()).isEqualTo("[Tool] Grep Files OK");
+        assertThat(result.lines()).containsExactly("Root: .", "Scanned: 8", "Matches: 0");
     }
 }

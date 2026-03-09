@@ -65,6 +65,45 @@ Checks:
 2. validate bridge input parsing and error handling
 3. wrap bridge with policy guards where needed
 
+## Security denial surprises
+
+Symptoms:
+
+- tool requests denied with `validation_error` or `denied` despite tool being enabled
+- path operations prompt/deny when using symlinked directories
+
+Checks:
+
+1. verify active `SecurityManager.ToolPolicy` for the session (`allowedPaths`, tool allow/deny, command rules).
+2. confirm tool argument key matches descriptor-defined keys for that tool.
+3. for path tools, confirm resolved target remains inside approved `allowedPaths` roots.
+4. if out-of-root behavior is expected, ensure approval callback is configured and operational.
+
+## Shell policy validation failures
+
+Symptoms:
+
+- `shell_command` returns security `validation_error` for command structure
+
+Checks:
+
+1. remove command chaining/operators (`;`, pipes, redirects, substitutions) for strict security mode.
+2. verify command rules match parsed command prefix tokens (quote-aware parsing).
+3. if rules are configured and no rule matches in `BLACKLIST`, expect mode fallback (allowed unless another gate blocks it).
+4. add an explicit catch-all `PROMPT` rule (`commandPrefix: []`) when interactive approval is required for all shell commands.
+
+## SQLite tool gating failures
+
+Symptoms:
+
+- `sqlite_query` / `sqlite_exec` fails with `invalid_sql_kind`
+
+Checks:
+
+1. validate SQL parses cleanly (parser failures are fail-closed).
+2. `sqlite_query` supports one read statement only.
+3. `sqlite_exec` rejects read statements, `ATTACH`/`DETACH`, `PRAGMA`, and unknown statement classes.
+
 ## onError behavior
 
 `SessionConfig.onError` is notification-only; ingress swallows turn exceptions after callback.

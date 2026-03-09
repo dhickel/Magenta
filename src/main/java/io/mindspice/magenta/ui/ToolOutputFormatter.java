@@ -4,27 +4,29 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta.ui.render.UiStyle;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 final class ToolOutputFormatter {
 
     private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
+    private static final int MAX_COMPACT_LEN = 220;
 
     FormattedToolCall formatCall(String toolName, String argumentsJson) {
-        String label = label(toolName);
+        String normalizedToolName = normalizeToolName(toolName);
+        String label = label(normalizedToolName);
         JsonNode args = parseJson(argumentsJson);
-        String target = target(toolName, args);
-        String summary = switch (toolName) {
-            case "read_file", "write_file", "delete_file", "search_replace", "grep_files" -> "path=" + target;
-            case "shell_command" -> "cmd=" + target;
-            case "sqlite_query", "sqlite_exec" -> "db=" + target;
-            default -> "target=" + target;
-        };
-        return new FormattedToolCall("tool-call> " + label, List.of(summary), UiStyle.INFO);
+        return new FormattedToolCall(
+                "[Tool] " + label,
+                List.of(callSummary(normalizedToolName, args)),
+                UiStyle.INFO
+        );
     }
 
     FormattedToolResult formatResult(String toolName, String content) {
-        String label = label(toolName);
+        String normalizedToolName = normalizeToolName(toolName);
+        String label = label(normalizedToolName);
         JsonNode root = parseJson(content);
         String status = text(root, "status", "ok");
         boolean failed = "failed".equalsIgnoreCase(status);
@@ -32,77 +34,140 @@ final class ToolOutputFormatter {
         String message = text(root, "message", "");
         JsonNode data = root == null ? null : root.get("data");
 
-        String summary = failed ? failureSummary(code, message) : successSummary(toolName, data);
+        List<String> summaries = failed
+                ? failureSummaries(normalizedToolName, code, message, data)
+                : successSummaries(normalizedToolName, data);
         UiStyle style = failed ? UiStyle.ERROR : UiStyle.INFO;
-        String title = "tool-result> " + label + (failed ? " FAILED" : " OK");
-        return new FormattedToolResult(title, List.of(summary), style, failed);
+        String title = "[Tool] " + label + (failed ? " FAILED" : " OK");
+        return new FormattedToolResult(title, summaries, style, failed);
     }
 
-    private String successSummary(String toolName, JsonNode data) {
+    private List<String> successSummaries(String toolName, JsonNode data) {
         if (data == null || !data.isObject()) {
-            return "completed";
+            return List.of("Completed");
         }
         return switch (toolName) {
-            case "read_file" -> "bytes=" + intValue(data, "bytesRead")
-                                + " lines=" + intValue(data, "returnedLines")
-                                + "/" + intValue(data, "totalLines")
-                                + " path=" + text(data, "path", "n/a");
-            case "write_file" -> "bytes=" + intValue(data, "bytesWritten")
-                                 + " overwrite=" + boolValue(data, "overwrote")
-                                 + " path=" + text(data, "path", "n/a");
-            case "delete_file" -> "bytes=" + intValue(data, "bytesDeleted")
-                                  + " path=" + text(data, "path", "n/a");
-            case "sqlite_query" -> "rows=" + intValue(data, "rowCount")
-                                   + " truncated=" + boolValue(data, "truncated")
-                                   + " db=" + text(data, "dbPath", "n/a");
-            case "sqlite_exec" -> "rowsAffected=" + intValue(data, "rowsAffected")
-                                  + " statements=" + intValue(data, "statementCount")
-                                  + " db=" + text(data, "dbPath", "n/a");
-            case "shell_command" -> "exit=" + intValue(data, "exitCode")
-                                    + " durationMs=" + intValue(data, "durationMs")
-                                    + " timedOut=" + boolValue(data, "timedOut");
-            default -> "completed";
+            case "read_file" -> List.of(
+                    "Path: " + text(data, "path", "n/a"),
+                    "Lines: " + intValue(data, "returnedLines") + "/" + intValue(data, "totalLines")
+                            + (boolValue(data, "truncated") ? " (truncated)" : "")
+            );
+            case "write_file" -> List.of(
+                    "Path: " + text(data, "path", "n/a"),
+                    "Bytes: " + intValue(data, "bytesWritten")
+                            + (boolValue(data, "overwrote") ? " (overwrote existing file)" : "")
+            );
+            case "delete_file" -> List.of(
+                    "Path: " + text(data, "path", "n/a"),
+                    "Bytes Deleted: " + intValue(data, "bytesDeleted")
+            );
+            case "list_directory" -> List.of(
+                    "Path: " + text(data, "path", "n/a"),
+                    "Entries: " + intValue(data, "entryCount")
+                            + (boolValue(data, "truncated") ? " (truncated)" : "")
+            );
+            case "file_metadata" -> List.of(
+                    "Path: " + text(data, "path", "n/a"),
+                    "Type: " + metadataType(data)
+            );
+            case "grep_files" -> List.of(
+                    "Root: " + text(data, "rootPath", "n/a"),
+                    "Scanned: " + intValue(data, "scannedFiles"),
+                    "Matches: " + intValue(data, "matchCount")
+                            + (boolValue(data, "truncated") ? " (truncated)" : "")
+            );
+            case "search_replace" -> List.of(
+                    "Path: " + text(data, "path", "n/a"),
+                    "Applied Edits: " + intValue(data, "appliedEdits")
+            );
+            case "sqlite_query" -> List.of(
+                    "Database: " + text(data, "dbPath", "n/a"),
+                    "Rows: " + intValue(data, "rowCount")
+                            + (boolValue(data, "truncated") ? " (truncated)" : "")
+            );
+            case "sqlite_exec" -> List.of(
+                    "Database: " + text(data, "dbPath", "n/a"),
+                    "Rows Affected: " + intValue(data, "rowsAffected")
+            );
+            case "shell_command" -> List.of(
+                    "Command: " + compact(text(data, "command", "n/a")),
+                    "Exit: " + intValue(data, "exitCode")
+                            + (boolValue(data, "timedOut") ? " (timed out)" : "")
+            );
+            default -> List.of("Completed");
         };
     }
 
-    private String failureSummary(String code, String message) {
-        if (message.isBlank()) {
-            return "code=" + code;
+    private List<String> failureSummaries(String toolName, String code, String message, JsonNode data) {
+        List<String> lines = new ArrayList<>();
+        lines.add("Code: " + code);
+
+        String location = switch (toolName) {
+            case "read_file", "write_file", "delete_file", "search_replace", "file_metadata", "list_directory" ->
+                    text(data, "path", "");
+            case "grep_files" -> text(data, "rootPath", "");
+            case "sqlite_query", "sqlite_exec" -> text(data, "dbPath", "");
+            case "shell_command" -> text(data, "command", "");
+            default -> "";
+        };
+        if (!location.isBlank()) {
+            String locationLabel = switch (toolName) {
+                case "shell_command" -> "Command";
+                case "sqlite_query", "sqlite_exec" -> "Database";
+                case "grep_files" -> "Root";
+                default -> "Path";
+            };
+            lines.add(locationLabel + ": " + compact(location));
         }
-        return "code=" + code + " message=" + compact(message);
+
+        if ("search_replace".equals(toolName)) {
+            String conflictReason = searchReplaceConflictReason(data);
+            if (!conflictReason.isBlank()) {
+                lines.add("Conflict: " + conflictReason);
+            }
+        }
+
+        if (!message.isBlank()) {
+            lines.add("Message: " + compact(message));
+        }
+        return lines;
     }
 
     private String label(String toolName) {
         return switch (toolName) {
-            case "read_file" -> "READ FILE";
-            case "write_file" -> "WRITE FILE";
-            case "delete_file" -> "DELETE FILE";
-            case "search_replace" -> "SEARCH REPLACE";
-            case "grep_files" -> "GREP FILES";
-            case "shell_command" -> "SHELL";
-            case "sqlite_query" -> "SQL QUERY";
-            case "sqlite_exec" -> "SQL EXEC";
-            default -> toolName == null || toolName.isBlank() ? "TOOL" : toolName.toUpperCase();
+            case "read_file" -> "Read File";
+            case "write_file" -> "Write File";
+            case "delete_file" -> "Delete File";
+            case "list_directory" -> "List Directory";
+            case "file_metadata" -> "File Metadata";
+            case "search_replace" -> "Search Replace";
+            case "grep_files" -> "Grep Files";
+            case "shell_command" -> "Shell";
+            case "sqlite_query" -> "SQL Query";
+            case "sqlite_exec" -> "SQL Exec";
+            default -> fallbackLabel(toolName);
         };
     }
 
-    private String target(String toolName, JsonNode args) {
-        if (args == null || !args.isObject()) {
-            return "n/a";
-        }
-        String key = switch (toolName) {
-            case "read_file", "write_file", "delete_file", "search_replace", "grep_files" -> "path";
-            case "shell_command" -> "command";
-            case "sqlite_query", "sqlite_exec" -> "dbPath";
-            default -> "target";
+    private String callSummary(String toolName, JsonNode args) {
+        return switch (toolName) {
+            case "shell_command" -> "Command: " + firstString(args, List.of("cmd", "command"), "n/a");
+            case "sqlite_query", "sqlite_exec" -> "Database: " + firstString(args, List.of("dbPath", "path"), "n/a");
+            case "grep_files" -> "Root: " + firstString(args, List.of("rootPath", "path", "targetPath"), ".");
+            default -> "Path: " + firstString(args, List.of("path", "filePath", "targetPath"), "n/a");
         };
-        if (!key.isBlank() && args.hasNonNull(key)) {
-            return compact(args.get(key).asText(""));
+    }
+
+    private String firstString(JsonNode args, List<String> keys, String fallback) {
+        if (args == null || !args.isObject()) {
+            return fallback;
         }
-        if (args.hasNonNull("target")) {
-            return compact(args.get("target").asText(""));
+        for (String key : keys) {
+            if (args.hasNonNull(key)) {
+                return compact(args.get(key).asText(""));
+            }
         }
-        return "n/a";
+        return fallback;
     }
 
     private JsonNode parseJson(String text) {
@@ -123,6 +188,37 @@ final class ToolOutputFormatter {
         return node.get(key).asText(fallback);
     }
 
+    private String metadataType(JsonNode node) {
+        if (node == null || !node.isObject()) {
+            return "unknown";
+        }
+        if (boolValue(node, "directory")) {
+            return "directory";
+        }
+        if (boolValue(node, "regularFile")) {
+            return "file";
+        }
+        if (boolValue(node, "symbolicLink")) {
+            return "symlink";
+        }
+        return "unknown";
+    }
+
+    private String searchReplaceConflictReason(JsonNode data) {
+        if (data == null || !data.isObject()) {
+            return "";
+        }
+        JsonNode conflicts = data.get("conflicts");
+        if (conflicts == null || !conflicts.isArray() || conflicts.isEmpty()) {
+            return "";
+        }
+        JsonNode first = conflicts.get(0);
+        if (first == null || !first.isObject()) {
+            return "";
+        }
+        return compact(text(first, "reason", ""));
+    }
+
     private int intValue(JsonNode node, String key) {
         if (node == null || !node.isObject() || !node.has(key) || !node.get(key).isNumber()) {
             return 0;
@@ -139,10 +235,35 @@ final class ToolOutputFormatter {
             return "";
         }
         String singleLine = value.replace('\n', ' ').trim();
-        if (singleLine.length() <= 220) {
+        if (singleLine.length() <= MAX_COMPACT_LEN) {
             return singleLine;
         }
-        return singleLine.substring(0, 217) + "...";
+        return singleLine.substring(0, MAX_COMPACT_LEN - 3) + "...";
+    }
+
+    private String fallbackLabel(String toolName) {
+        if (toolName == null || toolName.isBlank()) {
+            return "Tool";
+        }
+        String[] parts = toolName.trim().replace('-', '_').split("_");
+        StringBuilder out = new StringBuilder();
+        for (String part : parts) {
+            if (part.isBlank()) {
+                continue;
+            }
+            if (!out.isEmpty()) {
+                out.append(' ');
+            }
+            out.append(part.substring(0, 1).toUpperCase(Locale.ROOT));
+            if (part.length() > 1) {
+                out.append(part.substring(1).toLowerCase(Locale.ROOT));
+            }
+        }
+        return out.isEmpty() ? "Tool" : out.toString();
+    }
+
+    private String normalizeToolName(String toolName) {
+        return toolName == null ? "" : toolName.trim();
     }
 
     record FormattedToolCall(String title, List<String> lines, UiStyle style) {}

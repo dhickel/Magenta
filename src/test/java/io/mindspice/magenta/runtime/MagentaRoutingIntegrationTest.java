@@ -1,6 +1,7 @@
 package io.mindspice.magenta.runtime;
 
 import io.mindspice.magenta.Magenta;
+import io.mindspice.magenta.runtime.config.RuntimeConfig;
 import io.mindspice.magenta.runtime.routing.InputRoutePolicy;
 import io.mindspice.magenta.runtime.routing.InputRoutingEvent;
 import io.mindspice.magenta.runtime.routing.OutputRoutePolicy;
@@ -17,14 +18,76 @@ import io.mindspice.magenta.runtime.tools.ToolResult;
 import io.mindspice.magenta.support.TestRuntimeConfigs;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class MagentaRoutingIntegrationTest {
+
+    @Test
+    void constructorFailsWhenEnabledAgentReferencesUnresolvedToolId() {
+        RuntimeConfig.ModelConfig modelConfig = new RuntimeConfig.ModelConfig(
+                "model-default",
+                "test-provider",
+                "test-model",
+                "http://localhost:11434",
+                4096,
+                4096,
+                500,
+                0.0,
+                "rolling_window",
+                "cl100k_base",
+                true,
+                false,
+                true
+        );
+        RuntimeConfig.AgentConfig baseAgent = new RuntimeConfig.AgentConfig(
+                "agent-default",
+                "model-default",
+                List.of("base.system"),
+                List.of(),
+                List.of(),
+                List.of("missing_tool"),
+                true
+        );
+        RuntimeConfig.AgentConfig compactionAgent = new RuntimeConfig.AgentConfig(
+                "agent-compaction",
+                "model-default",
+                List.of("base.system"),
+                List.of(),
+                List.of(),
+                List.of(),
+                true
+        );
+        RuntimeConfig config = new RuntimeConfig(
+                Path.of("configs"),
+                Path.of(".").toAbsolutePath().normalize(),
+                "agent-default",
+                "agent-compaction",
+                8,
+                32_768,
+                200,
+                500,
+                Map.of("model-default", modelConfig),
+                Map.of(
+                        "agent-default", baseAgent,
+                        "agent-compaction", compactionAgent
+                ),
+                Map.of("base.system", "Base prompt"),
+                RuntimeConfig.SecurityPolicyConfig.defaults(),
+                RuntimeConfig.TerminalConfig.defaults()
+        );
+
+        assertThatThrownBy(() -> new Magenta(config))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("unresolved tool id")
+                .hasMessageContaining("missing_tool");
+    }
 
     @Test
     void lifecycleApisReturnActiveHandleAndSettingsLookup() {

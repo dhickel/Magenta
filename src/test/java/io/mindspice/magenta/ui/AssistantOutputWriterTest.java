@@ -27,14 +27,13 @@ class AssistantOutputWriterTest {
     }
 
     @Test
-    void finalOnlyResponsePrintsFallbackAndFinalText() {
+    void finalOnlyResponsePrintsOnlyFinalText() {
         RecordingTarget target = new RecordingTarget();
         AssistantOutputWriter writer = new AssistantOutputWriter(target, true);
 
         writer.onOutput(new SessionOutput.FinalOutput("Hello"));
 
-        assertThat(target.fallbackNotices).singleElement()
-                .isEqualTo("No streamed chunks were received for this response.");
+        assertThat(target.fallbackNotices).isEmpty();
         assertThat(target.assistantFinals).singleElement().isEqualTo("assistant> Hello");
         assertThat(target.finishedStreamLines).isZero();
     }

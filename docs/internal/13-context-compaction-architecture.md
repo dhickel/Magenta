@@ -7,13 +7,13 @@ Keep history mutation and token-budget control explicit, deterministic, and isol
 ## Responsibilities
 
 - `Context`: synchronized append/replace state container.
-- `ContextManager`: create/copy/load/store contexts and trigger compaction.
+- `ContextManager`: create/copy/load/store contexts, attach mutation persistence bridge, and trigger compaction.
 - `SessionTokenEstimator`: tokenizer-backed token estimate (`jtokkit`) using model `tokenizerEncoding` (default `cl100k_base`).
 - `CompactionStrategy`: strategy contract and selection.
+- `DatabaseService` (via `SessionContextCommand` bridge): durable context message/session metadata persistence.
 
 ## Explicit non-goals
 
-- automatic persistence in this slice
 - compaction side effects outside context replacement
 
 ## Invariants
@@ -21,8 +21,9 @@ Keep history mutation and token-budget control explicit, deterministic, and isol
 - `Context.snapshot()` returns immutable copy.
 - Compaction is no-op when estimated tokens are within threshold.
 - Strategy selection is deterministic by `compactionStrategyOrDefault()`.
-- Rolling window preserves first system message when present.
+- Rolling window preserves all leading system prompt messages when present.
 - Compaction is evaluated before each model call, including tool-loop follow-up calls.
+- Context mutation persistence uses ordered per-session message IDs.
 
 ## State transitions
 
@@ -48,14 +49,15 @@ over-threshold context
 ## Failure behavior
 
 - Summarization failure is handled through fallback strategy, not silent drop.
-- `storeContext` currently performs validation only (`Objects.requireNonNull`) and does no persistence.
+- Persistence bridge failures fail the active mutation path; no silent persistence drops.
 
 ## Extension points
 
 - Add alternative `CompactionStrategy` implementations and wire via `forName(...)`.
-- Implement durable persistence behind `storeContext`/`loadContext` seams.
+- Expand persistence bridge ADTs (`SessionContextCommand`) for additional query/use-cases.
 
 ## Known constraints
 
 - Tokenizer accuracy depends on selecting the model-appropriate encoding.
 - `CompactionStrategy.forName(...)` defaults unknown names to rolling-window instead of failing.
+- Context compaction reassigns new sequential IDs for the replacement active context; previous active IDs are tracked in dropped-id metadata.

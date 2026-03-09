@@ -50,6 +50,38 @@ class FileToolsFunctionalTest {
     }
 
     @Test
+    void grepFilesDefaultsRootPathToWorkspaceDot() throws Exception {
+        Files.writeString(tempDir.resolve("a.txt"), "hello world\n");
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+        String args = ToolTestSupport.MAPPER.writeValueAsString(Map.of(
+                "pattern", "hello"
+        ));
+
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request("grep_files", args)));
+        assertThat(payload.path("status").asText()).isEqualTo("ok");
+        assertThat(payload.path("data").path("rootPath").asText()).isEqualTo(".");
+        assertThat(payload.path("data").path("matchCount").asInt()).isEqualTo(1);
+    }
+
+    @Test
+    void grepFilesBasenameFilePatternMatchesNestedFiles() throws Exception {
+        Files.createDirectories(tempDir.resolve("nested"));
+        Files.writeString(tempDir.resolve("nested/fractal.lisp"), "(defun draw-fractal ())\n");
+
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+        String args = ToolTestSupport.MAPPER.writeValueAsString(Map.of(
+                "pattern", "draw-fractal",
+                "rootPath", ".",
+                "filePattern", "fractal.lisp"
+        ));
+
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request("grep_files", args)));
+        assertThat(payload.path("status").asText()).isEqualTo("ok");
+        assertThat(payload.path("data").path("matchCount").asInt()).isEqualTo(1);
+        assertThat(payload.path("data").path("matches").get(0).path("path").asText()).isEqualTo("nested/fractal.lisp");
+    }
+
+    @Test
     void writeFileEnforcesOverwriteGuardAndSnapshotMatching() throws Exception {
         ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
 
@@ -190,5 +222,101 @@ class FileToolsFunctionalTest {
         assertThat(payload.path("status").asText()).isEqualTo("failed");
         assertThat(payload.path("code").asText()).isEqualTo("anchor_mismatch");
         assertThat(payload.path("data").path("conflicts").get(0).path("reason").asText()).isEqualTo("expected_text_mismatch");
+    }
+
+    @Test
+    void searchReplaceRejectsInvalidAnchorFormat() throws Exception {
+        Files.writeString(tempDir.resolve("sample.txt"), "alpha\nbeta\n");
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+
+        JsonNode read = ToolTestSupport.payload(manager.execute(ToolTestSupport.request("read_file", "{\"path\":\"sample.txt\"}")));
+        String snapshotId = read.path("data").path("snapshotId").asText();
+
+        String args = ToolTestSupport.MAPPER.writeValueAsString(Map.of(
+                "path", "sample.txt",
+                "snapshotId", snapshotId,
+                "edits", List.of(Map.of(
+                        "startAnchor", "1:abc",
+                        "endAnchor", "1:abc",
+                        "replacement", "omega"
+                ))
+        ));
+
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request("search_replace", args)));
+        assertThat(payload.path("status").asText()).isEqualTo("failed");
+        assertThat(payload.path("code").asText()).isEqualTo("anchor_mismatch");
+        assertThat(payload.path("message").asText()).isEqualTo("Anchor format must be line:hh");
+        assertThat(payload.path("data").path("conflicts").get(0).path("reason").asText()).isEqualTo("invalid_anchor");
+    }
+
+    @Test
+    void listDirectoryReturnsBoundedEntries() throws Exception {
+        Files.writeString(tempDir.resolve("a.txt"), "a");
+        Files.writeString(tempDir.resolve("b.txt"), "b");
+        Files.writeString(tempDir.resolve(".hidden"), "h");
+
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request(
+                "list_directory",
+                "{\"path\":\".\",\"maxEntries\":1,\"includeHidden\":false}"
+        )));
+
+        assertThat(payload.path("status").asText()).isEqualTo("ok");
+        assertThat(payload.path("data").path("entryCount").asInt()).isEqualTo(1);
+        assertThat(payload.path("data").path("truncated").asBoolean()).isTrue();
+        assertThat(payload.path("data").path("entries").get(0).path("name").asText()).doesNotStartWith(".");
+    }
+
+    @Test
+    void listDirectoryRejectsNonPositiveMaxEntries() throws Exception {
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request(
+                "list_directory",
+                "{\"path\":\".\",\"maxEntries\":0}"
+        )));
+
+        assertThat(payload.path("status").asText()).isEqualTo("failed");
+        assertThat(payload.path("code").asText()).isEqualTo("validation_error");
+    }
+
+    @Test
+    void listDirectoryRejectsFilePath() throws Exception {
+        Files.writeString(tempDir.resolve("not-a-dir.txt"), "x");
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request(
+                "list_directory",
+                "{\"path\":\"not-a-dir.txt\"}"
+        )));
+
+        assertThat(payload.path("status").asText()).isEqualTo("failed");
+        assertThat(payload.path("code").asText()).isEqualTo("validation_error");
+    }
+
+    @Test
+    void fileMetadataReturnsStatFields() throws Exception {
+        Files.writeString(tempDir.resolve("meta.txt"), "metadata");
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request(
+                "file_metadata",
+                "{\"path\":\"meta.txt\"}"
+        )));
+
+        assertThat(payload.path("status").asText()).isEqualTo("ok");
+        assertThat(payload.path("data").path("regularFile").asBoolean()).isTrue();
+        assertThat(payload.path("data").path("sizeBytes").asLong()).isGreaterThan(0L);
+        assertThat(payload.path("data").path("readable").asBoolean()).isTrue();
+    }
+
+    @Test
+    void fileMetadataRequiresPathArgument() throws Exception {
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request(
+                "file_metadata",
+                "{}"
+        )));
+
+        assertThat(payload.path("status").asText()).isEqualTo("failed");
+        assertThat(payload.path("code").asText()).isEqualTo("validation_error");
     }
 }

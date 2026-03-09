@@ -15,6 +15,7 @@ Canonical runtime documentation for engineers working in `src/main/java/io/minds
 - `14-model-ollama-architecture.md`: model turn loop and Ollama transport behavior.
 - `15-callback-contract-architecture.md`: session/router contract semantics, output event model, and error emission behavior.
 - `16-public-api-contract.md`: supported runtime API surface and stability policy.
+- `17-tools-security-architecture.md`: built-in tool surface, descriptor-driven security integration, and policy semantics.
 
 ## Implementation walkthroughs and operations
 

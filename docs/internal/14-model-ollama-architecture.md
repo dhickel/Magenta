@@ -44,4 +44,5 @@ Keep model execution (`ModelRunner`) separate from provider transport (`OllamaCl
 ## Known constraints
 
 - tool schemas are sent only when session tools are enabled, model tool-calling is supported, and tool specs are discoverable
+- schema quality depends on annotated tool parameter typing; nested typed records/lists produce stricter provider schemas than raw JSON nodes
 - single provider transport implementation (`OllamaClient`)

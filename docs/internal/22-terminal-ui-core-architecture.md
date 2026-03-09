@@ -72,4 +72,4 @@ This package is internal-facing and composes existing `Magenta` lifecycle, route
 
 - Session ingress/egress remains route-based (`SessionRouter`) through `Magenta` facade APIs.
 - Tool execution remains security-wrapped through runtime-owned `SessionConfig.toolBridge` path.
-- Approval prompts are callback-based and deny-by-default on prompt failures/interruption.
+- Approval prompts are callback-based, include tool reason + argument preview, and deny-by-default on prompt failures/interruption.

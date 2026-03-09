@@ -101,7 +101,16 @@ Output routing behavior:
    - `settingsFor(handle).streamingEnabled() && sessionRouter.hasStreamedOutputListeners(handle)`
 6. `ModelRunner` executes the turn and emits routed outputs.
 7. Tool calls use `SessionConfig.toolBridge`, wrapped by `SecurityManager`.
-8. Tool specs are discovered from annotation-registered tools and passed to model requests when enabled and supported.
+8. Security authorization is descriptor-driven per tool (`ToolSecurityDescriptor`) and decision events emit through `onSecurity`.
+9. Tool specs are discovered from annotation-registered tools and passed to model requests when enabled and supported.
+
+## Tool and security notes
+
+- Built-in tools include file edit/read tools, directory/metadata discovery (`list_directory`, `file_metadata`), shell execution, and SQLite tools.
+- `allowedPaths` policy is treated as approved roots for path-bearing tools and evaluated against resolved targets.
+- Out-of-root path requests require explicit approval callback decision.
+- Shell command policy parsing is quote/escape aware and rejects chained operators under security validation.
+- SQLite tool SQL gating is parser-based and fail-closed on unsupported or parse-failed statements.
 
 ## Streaming contract
 
@@ -125,5 +134,9 @@ Output routing behavior:
 
 ## Related docs
 
+- Runtime architecture: `10-runtime-architecture.md`
 - Internal API contract: `16-public-api-contract.md`
+- Tool/security deep dive: `17-tools-security-architecture.md`
+- Integration patterns: `20-integration-patterns.md`
+- Troubleshooting: `30-runtime-troubleshooting.md`
 - External usage guide: `../quickstart-chat-loop.md`

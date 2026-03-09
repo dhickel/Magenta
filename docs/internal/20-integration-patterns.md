@@ -14,23 +14,55 @@ SessionHandle handle = magenta.startBaseSession(
                 SessionParams.ofStreaming(true),
                 request -> ToolResult.notHandled(request.toolCall()),
                 RoutingEventLevel.FINAL,
-                event -> uiBus.publish("input-routing-event", event),
+                event -> uiBus.publish("routing-event", event),
+                security -> uiBus.publish("security-event", security),
                 error -> System.err.println("session error: " + error.getMessage())
         )
 );
 
 magenta.addInputRoute(handle, InputRoutePolicy.defaults());
-
-RouteHandle outputRoute = magenta.addOutputRoute(
-        handle,
-        OutputRoutePolicy.defaults(),
-        event -> uiBus.publish("session-output", event)
-);
-
-magenta.messageInputConsumer(handle).accept(SessionInput.userMessage("Summarize this repository."));
+magenta.addOutputRoute(handle, OutputRoutePolicy.defaults(), event -> uiBus.publish("session-output", event));
 ```
 
-## 2) Final-only UI updates
+## 2) Session tool policy update (approved roots + command rules)
+
+```java
+SessionHandle handle = magenta.startBaseSession("secured");
+SecurityManager.ToolPolicy current = magenta.toolPolicy(handle);
+
+SecurityManager.ToolPolicy hardened = new SecurityManager.ToolPolicy(
+        RuntimeConfig.SecurityMode.APPROVE_ALL,
+        current.devYoloOverride(),
+        current.allowedTools(),
+        current.deniedTools(),
+        List.of("."),                      // approved roots
+        Set.of("rg", "git"),             // first-token allow-list
+        current.webAccess(),
+        List.of(
+                new SecurityManager.CommandRule("allow-rg", RuntimeConfig.SecurityRuleAction.ALLOW, List.of("rg"), ""),
+                new SecurityManager.CommandRule("prompt-git", RuntimeConfig.SecurityRuleAction.PROMPT, List.of("git"), "review required")
+        )
+);
+
+magenta.setToolPolicy(handle, hardened);
+```
+
+## 3) Security-aware custom callback wiring
+
+```java
+SessionConfig sessionConfig = new SessionConfig(
+        SessionParams.ofStreaming(true),
+        request -> ToolResult.notHandled(request.toolCall()),
+        RoutingEventLevel.ALL,
+        routingEvent -> routingAudit.write(routingEvent),
+        securityEvent -> securityAudit.write(securityEvent),
+        sessionException -> errorAudit.write(sessionException)
+);
+
+SessionHandle handle = magenta.startBaseSession("audited", sessionConfig);
+```
+
+## 4) Final-only UI updates
 
 ```java
 RouteHandle finalOnlyRoute = magenta.addOutputRoute(
@@ -42,47 +74,7 @@ RouteHandle finalOnlyRoute = magenta.addOutputRoute(
 );
 ```
 
-## 3) Tool bridge with policy wrapper
-
-```java
-Magenta magenta = new Magenta(config, ToolManager.empty(), approvalRequest -> SecurityManager.ApprovalResponse.DENY);
-SessionHandle handle = magenta.startBaseSession("secured");
-SecurityManager.ToolPolicy current = magenta.toolPolicy(handle);
-SecurityManager.ToolPolicy promptPolicy = new SecurityManager.ToolPolicy(
-        RuntimeConfig.SecurityMode.PROMPT,
-        current.devYoloOverride(),
-        current.allowedTools(),
-        current.deniedTools(),
-        current.allowedPaths(),
-        current.allowedCommands(),
-        current.webAccess(),
-        current.commandRules()
-);
-magenta.setToolPolicy(handle, promptPolicy);
-```
-
-## 4) Blocking deterministic mode
-
-```java
-SessionConfig deterministic = new SessionConfig(
-        SessionParams.ofBlocking(false),
-        request -> ToolResult.notHandled(request.toolCall()),
-        RoutingEventLevel.NONE,
-        ignored -> {},
-        error -> System.err.println("session error: " + error.getMessage())
-);
-```
-
-## 5) Session close hygiene
-
-```java
-magenta.removeRoute(outputRoute);
-magenta.closeSession(handle);
-```
-
-Session close also auto-prunes any remaining routes.
-
-## 6) Internal JLine terminal UI bootstrap
+## 5) Internal JLine terminal UI bootstrap
 
 ```java
 RuntimeConfig runtimeConfig = RuntimeConfig.loadDefault();
@@ -93,3 +85,12 @@ TerminalUiConfig uiConfig = TerminalUiConfig.defaults();
 TerminalUiRuntime runtime = TerminalUiBootstrap.bootstrap(magenta, uiConfig, approval);
 runtime.runLoop();
 ```
+
+## 6) Session close hygiene
+
+```java
+magenta.removeRoute(finalOnlyRoute);
+magenta.closeSession(handle);
+```
+
+Session close also prunes any remaining routes and clears session security policy state.

@@ -40,6 +40,10 @@ messageConsumer.accept(userInput)
 ```text
 iteration 1: AssistantMsg(toolCalls)
            -> toolBridge call(s)
+           -> SecurityManager.authorize
+              (descriptor-driven validate path/command/url + policy decision)
+           -> allowed: ToolManager.execute + normalize
+           -> denied: structured failure payload (no tool execution)
            -> append ToolMsg
            -> emit ContextMessageOutput + ToolMessageOutput
 iteration 2+: context includes ToolMsg results

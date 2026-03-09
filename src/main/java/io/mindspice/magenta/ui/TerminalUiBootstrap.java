@@ -7,7 +7,6 @@ import io.mindspice.magenta.runtime.routing.RoutingEventLevel;
 import io.mindspice.magenta.runtime.security.SecurityManager;
 import io.mindspice.magenta.runtime.session.SessionOutput;
 import io.mindspice.magenta.runtime.session.config.SessionConfig;
-import io.mindspice.magenta.runtime.tools.ToolManager;
 import io.mindspice.magenta.ui.prompt.JlinePromptService;
 import io.mindspice.magenta.ui.render.UiRenderBlock;
 import io.mindspice.magenta.ui.render.UiRenderer;
@@ -21,6 +20,7 @@ import org.jline.terminal.TerminalBuilder;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -52,7 +52,7 @@ public final class TerminalUiBootstrap {
 
         SessionConfig sessionConfig = new SessionConfig(
                 config.session().params(),
-                ToolManager.withBuiltIns(magenta.runtimeConfig())::execute,
+                magenta::executeTool,
                 config.session().routingEventLevel(),
                 event -> {
                     if (config.observability().routingLogsEnabled()) {
@@ -65,11 +65,8 @@ public final class TerminalUiBootstrap {
                 event -> {
                     if (shouldRenderSecurityEvent(config.security().eventVisibility(), event)) {
                         renderer.renderBlock(new UiRenderBlock(
-                                "security> " + event.decisionCode() + " " + event.toolName(),
-                                List.of(
-                                        "mode=" + event.mode(),
-                                        "reason=" + event.reason()
-                                ),
+                                "",
+                                List.of(securityDisplayLine(event)),
                                 securityStyle(event)
                         ));
                     }
@@ -161,5 +158,59 @@ public final class TerminalUiBootstrap {
             case DENIED, VALIDATION_ERROR -> UiStyle.ERROR;
             case ALLOWED, OVERRIDE_ALLOWED -> UiStyle.INFO;
         };
+    }
+
+    private static String securityDisplayLine(SecurityManager.SecurityEvent event) {
+        String outcome = switch (event.decisionCode()) {
+            case ALLOWED -> "Allowed";
+            case OVERRIDE_ALLOWED -> "Allowed (Override)";
+            case DENIED -> "Denied";
+            case VALIDATION_ERROR -> "Validation Error";
+        };
+        String tool = formatToolName(event.toolName());
+        String reason = compact(singleLine(event.reason()));
+        if (reason.isBlank()) {
+            return "  [Security] " + outcome + " | " + tool;
+        }
+        return "  [Security] " + outcome + " | " + tool + " | " + reason;
+    }
+
+    private static String formatToolName(String toolName) {
+        if (toolName == null || toolName.isBlank()) {
+            return "Tool";
+        }
+        String normalized = toolName.trim().replace('-', '_');
+        String[] parts = normalized.split("_");
+        StringBuilder out = new StringBuilder();
+        for (String part : parts) {
+            if (part.isBlank()) {
+                continue;
+            }
+            if (!out.isEmpty()) {
+                out.append(' ');
+            }
+            out.append(part.substring(0, 1).toUpperCase(Locale.ROOT));
+            if (part.length() > 1) {
+                out.append(part.substring(1).toLowerCase(Locale.ROOT));
+            }
+        }
+        return out.isEmpty() ? "Tool" : out.toString();
+    }
+
+    private static String singleLine(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return value.replace('\n', ' ').trim();
+    }
+
+    private static String compact(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        if (value.length() <= 180) {
+            return value;
+        }
+        return value.substring(0, 177) + "...";
     }
 }

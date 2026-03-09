@@ -41,7 +41,7 @@ terminal:
       system: "magenta"
       user: "cyan"
       assistant: "green"
-      info: "blue"
+      info: "cyan"
       warn: "yellow"
       error: "red"
       muted: "bright"

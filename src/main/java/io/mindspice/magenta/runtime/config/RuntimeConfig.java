@@ -618,7 +618,7 @@ public record RuntimeConfig(
             system = system == null ? TerminalColor.MAGENTA : system;
             user = user == null ? TerminalColor.CYAN : user;
             assistant = assistant == null ? TerminalColor.GREEN : assistant;
-            info = info == null ? TerminalColor.BLUE : info;
+            info = info == null ? TerminalColor.CYAN : info;
             warn = warn == null ? TerminalColor.YELLOW : warn;
             error = error == null ? TerminalColor.RED : error;
             muted = muted == null ? TerminalColor.BRIGHT : muted;
@@ -630,7 +630,7 @@ public record RuntimeConfig(
                     TerminalColor.MAGENTA,
                     TerminalColor.CYAN,
                     TerminalColor.GREEN,
-                    TerminalColor.BLUE,
+                    TerminalColor.CYAN,
                     TerminalColor.YELLOW,
                     TerminalColor.RED,
                     TerminalColor.BRIGHT,

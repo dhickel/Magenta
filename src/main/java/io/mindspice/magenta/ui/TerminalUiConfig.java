@@ -83,7 +83,7 @@ public record TerminalUiConfig(
             system = system == null ? ColorName.MAGENTA : system;
             user = user == null ? ColorName.CYAN : user;
             assistant = assistant == null ? ColorName.GREEN : assistant;
-            info = info == null ? ColorName.BLUE : info;
+            info = info == null ? ColorName.CYAN : info;
             warn = warn == null ? ColorName.YELLOW : warn;
             error = error == null ? ColorName.RED : error;
             muted = muted == null ? ColorName.BRIGHT : muted;
@@ -95,7 +95,7 @@ public record TerminalUiConfig(
                     ColorName.MAGENTA,
                     ColorName.CYAN,
                     ColorName.GREEN,
-                    ColorName.BLUE,
+                    ColorName.CYAN,
                     ColorName.YELLOW,
                     ColorName.RED,
                     ColorName.BRIGHT,

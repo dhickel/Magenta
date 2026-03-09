@@ -2,7 +2,11 @@ package io.mindspice.magenta.runtime.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.langchain4j.agent.tool.ToolSpecification;
+import dev.langchain4j.model.chat.request.json.JsonArraySchema;
+import dev.langchain4j.model.chat.request.json.JsonObjectSchema;
+import dev.langchain4j.model.chat.request.json.JsonSchemaElement;
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
 import io.mindspice.magenta.runtime.context.ContextElement;
 import org.junit.jupiter.api.Test;
@@ -127,6 +131,117 @@ class ToolManagerBuiltInsTest {
     }
 
     @Test
+    void todoCrudRoundTripIsSessionScoped() throws Exception {
+        ToolManager manager = ToolManager.withBuiltIns(runtimeConfig(tempDir));
+        String sessionA = UUID.randomUUID().toString();
+        String sessionB = UUID.randomUUID().toString();
+
+        ToolResult created = manager.execute(request(sessionA, "todo_create", "{\"title\":\"ship\"}"));
+        JsonNode createdPayload = MAPPER.readTree(created.content());
+        assertThat(createdPayload.path("status").asText()).isEqualTo("ok");
+        String todoId = createdPayload.path("data").path("todo").path("todoId").asText();
+        assertThat(todoId).isNotBlank();
+
+        ToolResult listedA = manager.execute(request(sessionA, "todo_list", "{}"));
+        ToolResult listedB = manager.execute(request(sessionB, "todo_list", "{}"));
+        JsonNode listedAPayload = MAPPER.readTree(listedA.content());
+        JsonNode listedBPayload = MAPPER.readTree(listedB.content());
+
+        assertThat(listedAPayload.path("data").path("todos")).hasSize(1);
+        assertThat(listedAPayload.path("data").path("todos").get(0).path("todoId").asText()).isEqualTo(todoId);
+        assertThat(listedBPayload.path("data").path("todos")).isEmpty();
+
+        ToolResult updated = manager.execute(request(
+                sessionA,
+                "todo_update",
+                "{\"todoId\":\"" + todoId + "\",\"status\":\"done\"}"
+        ));
+        JsonNode updatedPayload = MAPPER.readTree(updated.content());
+        assertThat(updatedPayload.path("status").asText()).isEqualTo("ok");
+        assertThat(updatedPayload.path("data").path("todo").path("status").asText()).isEqualTo("done");
+
+        ToolResult deleted = manager.execute(request(sessionA, "todo_delete", "{\"todoId\":\"" + todoId + "\"}"));
+        JsonNode deletedPayload = MAPPER.readTree(deleted.content());
+        assertThat(deletedPayload.path("status").asText()).isEqualTo("ok");
+        assertThat(deletedPayload.path("data").path("deleted").asBoolean()).isTrue();
+    }
+
+    @Test
+    void listAgentsReturnsEnabledByDefaultAndIncludesDisabledWhenRequested() throws Exception {
+        ToolManager manager = ToolManager.withBuiltIns(runtimeConfigWithAgents(tempDir));
+
+        ToolResult enabledOnly = manager.execute(request("list_agents", "{}"));
+        ToolResult withDisabled = manager.execute(request("list_agents", "{\"includeDisabled\":true}"));
+
+        JsonNode enabledOnlyPayload = MAPPER.readTree(enabledOnly.content());
+        JsonNode withDisabledPayload = MAPPER.readTree(withDisabled.content());
+
+        assertThat(enabledOnlyPayload.path("status").asText()).isEqualTo("ok");
+        assertThat(enabledOnlyPayload.path("data").path("agents")).hasSize(1);
+        assertThat(enabledOnlyPayload.path("data").path("agents").get(0).path("agentId").asText()).isEqualTo("agent-enabled");
+
+        assertThat(withDisabledPayload.path("status").asText()).isEqualTo("ok");
+        assertThat(withDisabledPayload.path("data").path("agents")).hasSize(2);
+    }
+
+    @Test
+    void todoCreateMissingTitleFailsValidation() throws Exception {
+        ToolManager manager = ToolManager.withBuiltIns(runtimeConfig(tempDir));
+        ToolResult result = manager.execute(request("todo_create", "{}"));
+        JsonNode payload = MAPPER.readTree(result.content());
+
+        assertThat(payload.path("status").asText()).isEqualTo("failed");
+        assertThat(payload.path("code").asText()).isEqualTo("validation_error");
+    }
+
+    @Test
+    void delegateAgentInvokesDelegationSupport() throws Exception {
+        RuntimeConfig config = runtimeConfigWithAgents(tempDir);
+        ToolManager manager = ToolManager.withBuiltIns(
+                config,
+                (request, targetAgentId, prompt, timeoutMs) -> {
+                    JsonNode args;
+                    try {
+                        args = MAPPER.readTree(request.toolCall().argumentsJson());
+                    } catch (Exception e) {
+                        throw new IllegalStateException("Failed to parse delegate_agent args", e);
+                    }
+                    ObjectNode data = MAPPER.createObjectNode();
+                    data.put("targetAgentId", targetAgentId);
+                    data.put("prompt", prompt);
+                    data.put("timeoutMs", timeoutMs == null ? -1 : timeoutMs);
+                    data.put("requestTarget", args.path("targetAgentId").asText());
+                    return ToolPayloads.success(request, "Delegation completed", data);
+                }
+        );
+
+        ToolResult result = manager.execute(request(
+                "delegate_agent",
+                "{\"targetAgentId\":\"agent-enabled\",\"prompt\":\"review this\",\"timeoutMs\":1234}"
+        ));
+        JsonNode payload = MAPPER.readTree(result.content());
+
+        assertThat(payload.path("status").asText()).isEqualTo("ok");
+        assertThat(payload.path("data").path("targetAgentId").asText()).isEqualTo("agent-enabled");
+        assertThat(payload.path("data").path("prompt").asText()).isEqualTo("review this");
+        assertThat(payload.path("data").path("timeoutMs").asInt()).isEqualTo(1234);
+        assertThat(payload.path("data").path("requestTarget").asText()).isEqualTo("agent-enabled");
+    }
+
+    @Test
+    void delegateAgentFailsAsUnsupportedWithoutDelegationSupportBridge() throws Exception {
+        ToolManager manager = ToolManager.withBuiltIns(runtimeConfigWithAgents(tempDir));
+        ToolResult result = manager.execute(request(
+                "delegate_agent",
+                "{\"targetAgentId\":\"agent-enabled\",\"prompt\":\"review this\"}"
+        ));
+
+        JsonNode payload = MAPPER.readTree(result.content());
+        assertThat(payload.path("status").asText()).isEqualTo("failed");
+        assertThat(payload.path("code").asText()).isEqualTo("unsupported");
+    }
+
+    @Test
     void outputIsBoundedToConfiguredMax() throws Exception {
         ToolManager manager = new ToolManager(Map.of(
                 "oversized", request -> ToolResult.handled(
@@ -174,13 +289,21 @@ class ToolManagerBuiltInsTest {
 
         assertThat(specifications).extracting(ToolSpecification::name).containsExactlyInAnyOrder(
                 "read_file",
+                "list_directory",
+                "file_metadata",
                 "grep_files",
                 "search_replace",
                 "write_file",
                 "delete_file",
                 "shell_command",
                 "sqlite_query",
-                "sqlite_exec"
+                "sqlite_exec",
+                "todo_create",
+                "todo_list",
+                "todo_update",
+                "todo_delete",
+                "list_agents",
+                "delegate_agent"
         );
     }
 
@@ -207,6 +330,37 @@ class ToolManagerBuiltInsTest {
         assertThat(payload.path("message").asText()).contains("startLine");
     }
 
+    @Test
+    void searchReplaceSchemaIncludesTypedEditObject() {
+        ToolManager manager = ToolManager.withBuiltIns(runtimeConfig(tempDir));
+        ToolSpecification searchReplace = manager.toolSpecificationsFor(List.of("search_replace")).getFirst();
+
+        JsonSchemaElement editsElement = searchReplace.parameters().properties().get("edits");
+        assertThat(editsElement).isInstanceOf(JsonArraySchema.class);
+        JsonSchemaElement itemSchema = ((JsonArraySchema) editsElement).items();
+        assertThat(itemSchema).isInstanceOf(JsonObjectSchema.class);
+        JsonObjectSchema editObject = (JsonObjectSchema) itemSchema;
+        assertThat(editObject.properties().keySet()).contains("startAnchor", "endAnchor", "replacement", "expectedText");
+        assertThat(editObject.required()).contains("startAnchor", "endAnchor", "replacement");
+    }
+
+    @Test
+    void grepAndSearchReplaceDescriptionsIncludeUsageGuardrails() {
+        ToolManager manager = ToolManager.withBuiltIns(runtimeConfig(tempDir));
+        ToolSpecification grep = manager.toolSpecificationsFor(List.of("grep_files")).getFirst();
+        ToolSpecification shell = manager.toolSpecificationsFor(List.of("shell_command")).getFirst();
+        ToolSpecification searchReplace = manager.toolSpecificationsFor(List.of("search_replace")).getFirst();
+
+        assertThat(grep.description()).contains("rootPath is optional");
+        assertThat(grep.description()).contains("filePattern");
+        assertThat(grep.description()).contains("basename filters");
+        assertThat(grep.description()).contains("file contents");
+        assertThat(shell.description()).contains("single command invocation");
+        assertThat(shell.description()).contains("operators/chaining");
+        assertThat(searchReplace.description()).contains("line:hh");
+        assertThat(searchReplace.description()).contains("do not invent anchors");
+    }
+
     private RuntimeConfig runtimeConfig(Path workspaceRoot) {
         return new RuntimeConfig(
                 workspaceRoot,
@@ -225,9 +379,52 @@ class ToolManagerBuiltInsTest {
         );
     }
 
+    private RuntimeConfig runtimeConfigWithAgents(Path workspaceRoot) {
+        RuntimeConfig.AgentConfig enabled = new RuntimeConfig.AgentConfig(
+                "agent-enabled",
+                "model-default",
+                List.of("base.system"),
+                List.of(),
+                List.of(),
+                List.of("delegate_agent"),
+                true
+        );
+        RuntimeConfig.AgentConfig disabled = new RuntimeConfig.AgentConfig(
+                "agent-disabled",
+                "model-default",
+                List.of("base.system"),
+                List.of(),
+                List.of(),
+                List.of("delegate_agent"),
+                false
+        );
+        return new RuntimeConfig(
+                workspaceRoot,
+                workspaceRoot,
+                "agent-enabled",
+                "agent-enabled",
+                8,
+                32_768,
+                200,
+                500,
+                Map.of(),
+                Map.of(
+                        enabled.id(), enabled,
+                        disabled.id(), disabled
+                ),
+                Map.of(),
+                RuntimeConfig.SecurityPolicyConfig.defaults(),
+                RuntimeConfig.TerminalConfig.defaults()
+        );
+    }
+
     private ToolRequest request(String toolName, String argsJson) {
+        return request(UUID.randomUUID().toString(), toolName, argsJson);
+    }
+
+    private ToolRequest request(String sessionId, String toolName, String argsJson) {
         return new ToolRequest(
-                UUID.randomUUID().toString(),
+                sessionId,
                 "agent-default",
                 new ContextElement.ToolCall("call-1", toolName, argsJson)
         );

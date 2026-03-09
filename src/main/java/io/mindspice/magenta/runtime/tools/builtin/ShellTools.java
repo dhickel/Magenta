@@ -68,8 +68,9 @@ public final class ShellTools {
                 );
 
                 boolean finished = process.waitFor(timeoutMs, TimeUnit.MILLISECONDS);
+                TimeoutTermination timeoutTermination = TimeoutTermination.notTimedOut();
                 if (!finished) {
-                    process.destroyForcibly();
+                    timeoutTermination = terminateProcessTree(process);
                 }
 
                 stdoutCapture = stdoutFuture.get();
@@ -91,6 +92,10 @@ public final class ShellTools {
                 data.put("stderrTruncated", stderrCapture.truncated());
                 data.put("stdoutBytes", stdoutCapture.bytesSeen());
                 data.put("stderrBytes", stderrCapture.bytesSeen());
+                data.put("descendantProcesses", timeoutTermination.descendantCount());
+                data.put("descendantsKilled", timeoutTermination.descendantsKilled());
+                data.put("killEscalated", timeoutTermination.escalated());
+                data.put("allProcessesTerminated", timeoutTermination.allTerminated());
 
                 if (succeeded) {
                     return ToolPayloads.success(request, "Command completed", data);
@@ -105,6 +110,66 @@ public final class ShellTools {
             }
             return ToolPayloads.failure(request, "command_error", "Failed to execute command: " + e.getMessage(), null, true);
         }
+    }
+
+    private TimeoutTermination terminateProcessTree(Process process) {
+        ProcessHandle root = process.toHandle();
+        List<ProcessHandle> descendants = root.descendants().toList();
+
+        int descendantCount = descendants.size();
+        int descendantsKilled = 0;
+        for (ProcessHandle handle : descendants) {
+            if (handle.isAlive()) {
+                if (handle.destroy()) {
+                    descendantsKilled++;
+                }
+            }
+        }
+        if (root.isAlive()) {
+            root.destroy();
+        }
+
+        boolean allTerminated = waitForTermination(root, descendants, 250);
+        boolean escalated = false;
+        if (!allTerminated) {
+            escalated = true;
+            for (ProcessHandle handle : descendants) {
+                if (handle.isAlive()) {
+                    handle.destroyForcibly();
+                }
+            }
+            if (root.isAlive()) {
+                root.destroyForcibly();
+            }
+            allTerminated = waitForTermination(root, descendants, 500);
+        }
+
+        return new TimeoutTermination(descendantCount, descendantsKilled, escalated, allTerminated);
+    }
+
+    private boolean waitForTermination(ProcessHandle root, List<ProcessHandle> descendants, long timeoutMs) {
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
+        while (System.nanoTime() < deadline) {
+            boolean anyAlive = root.isAlive();
+            if (!anyAlive) {
+                for (ProcessHandle handle : descendants) {
+                    if (handle.isAlive()) {
+                        anyAlive = true;
+                        break;
+                    }
+                }
+            }
+            if (!anyAlive) {
+                return true;
+            }
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return !root.isAlive() && descendants.stream().noneMatch(ProcessHandle::isAlive);
     }
 
     private JsonNode readArgsOrNull(ToolRequest request) {
@@ -162,5 +227,11 @@ public final class ShellTools {
     }
 
     private record StreamCapture(String text, int bytesSeen, boolean truncated) {
+    }
+
+    private record TimeoutTermination(int descendantCount, int descendantsKilled, boolean escalated, boolean allTerminated) {
+        static TimeoutTermination notTimedOut() {
+            return new TimeoutTermination(0, 0, false, true);
+        }
     }
 }

@@ -87,4 +87,76 @@ class SqliteToolsFunctionalTest {
         assertThat(query.path("status").asText()).isEqualTo("ok");
         assertThat(query.path("data").path("rows").get(0).path("c").asInt()).isEqualTo(1);
     }
+
+    @Test
+    void sqliteQueryRejectsPragmaStatements() throws Exception {
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request(
+                "sqlite_query",
+                "{\"dbPath\":\"db.sqlite\",\"sql\":\"PRAGMA foreign_keys = ON\"}"
+        )));
+
+        assertThat(payload.path("status").asText()).isEqualTo("failed");
+        assertThat(payload.path("code").asText()).isEqualTo("invalid_sql_kind");
+    }
+
+    @Test
+    void sqliteExecRejectsAttachDetachStatements() throws Exception {
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request(
+                "sqlite_exec",
+                "{\"dbPath\":\"db.sqlite\",\"sql\":\"ATTACH DATABASE 'other.sqlite' AS other\"}"
+        )));
+
+        assertThat(payload.path("status").asText()).isEqualTo("failed");
+        assertThat(payload.path("code").asText()).isEqualTo("invalid_sql_kind");
+    }
+
+    @Test
+    void sqliteExecRejectsDetachStatements() throws Exception {
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request(
+                "sqlite_exec",
+                "{\"dbPath\":\"db.sqlite\",\"sql\":\"DETACH DATABASE other\"}"
+        )));
+
+        assertThat(payload.path("status").asText()).isEqualTo("failed");
+        assertThat(payload.path("code").asText()).isEqualTo("invalid_sql_kind");
+    }
+
+    @Test
+    void sqliteExecRejectsUnknownUnsupportedStatements() throws Exception {
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request(
+                "sqlite_exec",
+                "{\"dbPath\":\"db.sqlite\",\"sql\":\"VACUUM\"}"
+        )));
+
+        assertThat(payload.path("status").asText()).isEqualTo("failed");
+        assertThat(payload.path("code").asText()).isEqualTo("invalid_sql_kind");
+    }
+
+    @Test
+    void sqliteQueryFailsClosedOnParseErrors() throws Exception {
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request(
+                "sqlite_query",
+                "{\"dbPath\":\"db.sqlite\",\"sql\":\"SELECT FROM\"}"
+        )));
+
+        assertThat(payload.path("status").asText()).isEqualTo("failed");
+        assertThat(payload.path("code").asText()).isEqualTo("invalid_sql_kind");
+    }
+
+    @Test
+    void sqliteExecFailsClosedOnParseErrors() throws Exception {
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request(
+                "sqlite_exec",
+                "{\"dbPath\":\"db.sqlite\",\"sql\":\"INSERT INTO\"}"
+        )));
+
+        assertThat(payload.path("status").asText()).isEqualTo("failed");
+        assertThat(payload.path("code").asText()).isEqualTo("invalid_sql_kind");
+    }
 }

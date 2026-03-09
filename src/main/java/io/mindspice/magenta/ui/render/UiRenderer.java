@@ -147,6 +147,9 @@ public final class UiRenderer {
         if (padTitle) {
             payload = "[" + payload + "]";
         }
+        if (shouldOffset(style)) {
+            payload = withTwoSpaceOffset(payload);
+        }
         AttributedString attributed = attributed(payload, style, true);
         attributed.println(terminal);
         writer.flush();
@@ -257,6 +260,18 @@ public final class UiRenderer {
 
     private String safe(String text) {
         return text == null ? "" : text;
+    }
+
+    private boolean shouldOffset(UiStyle style) {
+        return style != UiStyle.USER && style != UiStyle.ASSISTANT;
+    }
+
+    private String withTwoSpaceOffset(String text) {
+        String safe = safe(text);
+        if (safe.startsWith("  ")) {
+            return safe;
+        }
+        return "  " + safe;
     }
 
     private void suspendStatusForOutput() {

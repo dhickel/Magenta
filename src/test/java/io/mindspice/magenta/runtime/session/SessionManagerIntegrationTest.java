@@ -39,8 +39,10 @@ class SessionManagerIntegrationTest {
         );
 
         assertThat(session.context().snapshot())
-                .first()
-                .isEqualTo(new ContextElement.SystemMsg("Base prompt\n\nAgent prompt"));
+                .startsWith(
+                        new ContextElement.SystemMsg("Base prompt"),
+                        new ContextElement.SystemMsg("Agent prompt")
+                );
 
         SessionHandle handle = manager.handleFor(session.sessionId());
         SessionSettingsView settings = manager.settingsFor(handle);

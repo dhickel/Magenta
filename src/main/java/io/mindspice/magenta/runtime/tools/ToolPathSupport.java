@@ -27,7 +27,8 @@ public final class ToolPathSupport {
     public static String displayPath(Path workspaceRoot, Path path) {
         Path normalized = path.toAbsolutePath().normalize();
         if (normalized.startsWith(workspaceRoot)) {
-            return workspaceRoot.relativize(normalized).toString().replace('\\', '/');
+            String relative = workspaceRoot.relativize(normalized).toString().replace('\\', '/');
+            return relative.isBlank() ? "." : relative;
         }
         return normalized.toString().replace('\\', '/');
     }

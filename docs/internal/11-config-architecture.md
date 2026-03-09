@@ -12,6 +12,7 @@
 - Load prompt markdown content and derive prompt IDs.
 - Resolve `baseAgentId`, `compactionAgentId`, and `maxTurns` defaults.
 - Load terminal UI defaults from `terminal.rendering`, `terminal.security`, and `terminal.tools`.
+- Load security policy defaults from `security` (mode, tools, command rules, approved roots, web access).
 - Validate runtime graph before runtime startup.
 
 ## Explicit non-goals
@@ -28,6 +29,7 @@
 - All agent prompt IDs must resolve.
 - Unknown YAML keys fail deserialization.
 - Unsupported terminal config tokens (color names, security visibility, tool output format) fail startup.
+- Security mode/action tokens map to closed enums and fail startup on unknown values.
 
 ## State transitions
 
@@ -46,6 +48,7 @@ read magenta.yaml
 - Missing `configs/magenta.yaml`: startup exception.
 - Parse errors: include file path and line/column details.
 - Graph errors: explicit illegal-state message (missing/disabled refs).
+- Invalid security mode/rule tokens: startup parse failure with source location.
 
 ## Extension points
 
@@ -57,3 +60,4 @@ read magenta.yaml
 
 - Duplicate IDs fail fast with explicit source file diagnostics.
 - Include resolution walks full config tree per pattern.
+- `allowedPaths` is configured as path roots; target path resolution and authorization semantics are enforced at runtime by `SecurityManager`.

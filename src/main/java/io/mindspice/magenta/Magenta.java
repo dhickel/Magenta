@@ -8,6 +8,11 @@ import io.mindspice.magenta.runtime.context.ContextElement;
 import io.mindspice.magenta.runtime.context.ContextManager;
 import io.mindspice.magenta.runtime.model.ModelRunner;
 import io.mindspice.magenta.runtime.model.OllamaClient;
+import io.mindspice.magenta.runtime.persistence.DatabaseService;
+import io.mindspice.magenta.runtime.persistence.SessionContextCommand;
+import io.mindspice.magenta.runtime.persistence.SessionContextResult;
+import io.mindspice.magenta.runtime.persistence.ToolCommand;
+import io.mindspice.magenta.runtime.persistence.ToolCommandResult;
 import io.mindspice.magenta.runtime.routing.InputRoutePolicy;
 import io.mindspice.magenta.runtime.routing.OutputRoutePolicy;
 import io.mindspice.magenta.runtime.routing.OutputRoutingEvent;
@@ -25,6 +30,7 @@ import io.mindspice.magenta.runtime.session.SessionTokenEstimator;
 import io.mindspice.magenta.runtime.session.config.SessionConfig;
 import io.mindspice.magenta.runtime.session.config.SessionParams;
 import io.mindspice.magenta.runtime.tools.ToolManager;
+import io.mindspice.magenta.runtime.tools.ToolPayloads;
 import io.mindspice.magenta.runtime.tools.ToolRequest;
 import io.mindspice.magenta.runtime.tools.ToolResult;
 
@@ -33,9 +39,12 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * Primary runtime facade for session lifecycle and routed IO orchestration.
@@ -43,6 +52,8 @@ import java.util.function.Supplier;
 public final class Magenta {
 
     private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
+    private static final int DEFAULT_DELEGATION_TIMEOUT_MS = 30_000;
+    private static final int MAX_DELEGATION_TIMEOUT_MS = 180_000;
 
     private final RuntimeConfig runtimeConfig;
     private final ContextManager contextManager;
@@ -62,12 +73,27 @@ public final class Magenta {
             SecurityManager.ApprovalCallback approvalCallback
     ) {
         this.runtimeConfig = Objects.requireNonNull(runtimeConfig, "runtimeConfig");
-        this.toolManager = toolManager == null ? ToolManager.withBuiltIns(runtimeConfig) : toolManager;
-        this.securityManager = new SecurityManager(runtimeConfig.security(), runtimeConfig.workspaceRoot(), approvalCallback);
-        this.contextManager = new ContextManager();
+        DatabaseService databaseService = new DatabaseService(runtimeConfig.workspaceRoot());
+        Function<ToolCommand, ToolCommandResult> toolCommandBridge = databaseService::execute;
+        Function<SessionContextCommand, SessionContextResult> sessionContextBridge = databaseService::execute;
+        this.toolManager = toolManager == null
+                ? ToolManager.withBuiltIns(runtimeConfig, toolCommandBridge, this::delegateAgentTool)
+                : toolManager;
+        validateEnabledAgentToolSurface();
+        this.securityManager = new SecurityManager(
+                runtimeConfig.security(),
+                runtimeConfig.workspaceRoot(),
+                approvalCallback,
+                this.toolManager.securityDescriptorsByName()
+        );
+        this.contextManager = new ContextManager(sessionContextBridge);
         this.modelRunner = new ModelRunner(new OllamaClient());
         this.sessionManager = new SessionManager(runtimeConfig, contextManager, this::executeTurn);
         this.sessionRouter = new SessionRouter(sessionManager::submitFromRoute, sessionManager::onRoutingEvent, ignored -> {});
+    }
+
+    public ToolResult executeTool(ToolRequest request) {
+        return toolManager.execute(request);
     }
 
     public SessionHandle startBaseSession(String alias) {
@@ -307,6 +333,113 @@ public final class Magenta {
                 toolManager::execute,
                 ignored -> {}
         );
+    }
+
+    private void validateEnabledAgentToolSurface() {
+        Set<String> availableToolIds = toolManager.toolSpecificationsFor(null).stream()
+                .map(ToolSpecification::name)
+                .collect(Collectors.toUnmodifiableSet());
+        if (availableToolIds.isEmpty()) {
+            return;
+        }
+
+        for (RuntimeConfig.AgentConfig agent : runtimeConfig.agentsById().values()) {
+            if (!agent.enabled()) {
+                continue;
+            }
+            for (String toolId : agent.toolIds()) {
+                if (!availableToolIds.contains(toolId)) {
+                    throw new IllegalStateException(
+                            "Enabled agent references unresolved tool id: " + agent.id() + " -> " + toolId
+                    );
+                }
+            }
+        }
+    }
+
+    private ToolResult delegateAgentTool(
+            ToolRequest request,
+            String targetAgentIdRaw,
+            String promptRaw,
+            Integer timeoutMsRaw
+    ) {
+        if (request == null || request.toolCall() == null) {
+            return new ToolResult(
+                    "",
+                    "",
+                    ToolPayloads.payload("failed", "validation_error", "Missing tool request", null),
+                    true
+            );
+        }
+
+        String targetAgentId = targetAgentIdRaw == null ? "" : targetAgentIdRaw.trim();
+        if (targetAgentId.isEmpty()) {
+            return ToolPayloads.failure(request, "validation_error", "targetAgentId is required", null, true);
+        }
+
+        String prompt = promptRaw == null ? "" : promptRaw.trim();
+        if (prompt.isEmpty()) {
+            return ToolPayloads.failure(request, "validation_error", "prompt is required", null, true);
+        }
+
+        int timeoutMs = timeoutMsRaw == null ? DEFAULT_DELEGATION_TIMEOUT_MS : timeoutMsRaw;
+        if (timeoutMs <= 0) {
+            return ToolPayloads.failure(request, "validation_error", "timeoutMs must be > 0", null, true);
+        }
+        timeoutMs = Math.min(timeoutMs, MAX_DELEGATION_TIMEOUT_MS);
+
+        UUID parentSessionId;
+        try {
+            parentSessionId = UUID.fromString(request.sessionId());
+        } catch (Exception ignored) {
+            return ToolPayloads.failure(request, "validation_error", "Invalid parent session id", null, true);
+        }
+
+        RuntimeConfig.AgentConfig targetAgent = runtimeConfig.agentsById().get(targetAgentId);
+        if (targetAgent == null || !targetAgent.enabled()) {
+            return ToolPayloads.failure(request, "target_agent_not_found", "Target agent not found or disabled", null, true);
+        }
+
+        long startedAt = System.nanoTime();
+        String alias = "delegate-" + targetAgentId + "-" + UUID.randomUUID().toString().substring(0, 8);
+        SessionHandle delegated = null;
+
+        try {
+            delegated = startSession(targetAgentId, alias);
+            UUID delegatedSessionId = delegated.sessionId();
+            securityManager.copyPolicy(parentSessionId, delegatedSessionId);
+
+            String output;
+            try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+                var task = executor.submit(() -> executeTurn(delegatedSessionId, SessionInput.userMessage(prompt)));
+                output = task.get(timeoutMs, TimeUnit.MILLISECONDS);
+            } catch (TimeoutException e) {
+                ObjectNode data = MAPPER.createObjectNode();
+                data.put("targetAgentId", targetAgentId);
+                data.put("delegatedSessionId", delegatedSessionId.toString());
+                data.put("timeoutMs", timeoutMs);
+                return ToolPayloads.failure(request, "delegate_timeout", "Delegated session timed out", data, true);
+            }
+
+            long durationMs = (System.nanoTime() - startedAt) / 1_000_000L;
+            ObjectNode data = MAPPER.createObjectNode();
+            data.put("targetAgentId", targetAgentId);
+            data.put("delegatedSessionId", delegatedSessionId.toString());
+            data.put("delegatedAlias", alias);
+            data.put("durationMs", durationMs);
+            data.put("timeoutMs", timeoutMs);
+            data.put("output", output == null ? "" : output);
+            return ToolPayloads.success(request, "Delegation completed", data);
+        } catch (Exception e) {
+            ObjectNode data = MAPPER.createObjectNode();
+            data.put("targetAgentId", targetAgentId);
+            data.put("errorType", e.getClass().getSimpleName());
+            return ToolPayloads.failure(request, "delegate_error", "Delegation failed: " + e.getMessage(), data, true);
+        } finally {
+            if (delegated != null && delegated.isActive()) {
+                closeSession(delegated);
+            }
+        }
     }
 
     private SessionConfig securedSessionConfig(String agentId, SessionConfig originalOrNull) {

@@ -7,16 +7,14 @@ import java.util.Objects;
 public final class AssistantOutputWriter {
 
     private final AssistantOutputTarget target;
-    private final boolean emitFallbackNotice;
     private boolean streamInProgress = false;
 
     public AssistantOutputWriter(AssistantOutputTarget target) {
-        this(target, true);
+        this(target, false);
     }
 
     public AssistantOutputWriter(AssistantOutputTarget target, boolean emitFallbackNotice) {
         this.target = Objects.requireNonNull(target, "target");
-        this.emitFallbackNotice = emitFallbackNotice;
     }
 
     public void onOutput(SessionOutput output) {
@@ -33,9 +31,6 @@ public final class AssistantOutputWriter {
                 if (streamInProgress) {
                     target.finishAssistantStreamLine();
                 } else {
-                    if (emitFallbackNotice && hasFinalText) {
-                        target.printStreamFallbackNotice("No streamed chunks were received for this response.");
-                    }
                     if (hasFinalText) {
                         target.printAssistantFinal("assistant> " + finalOutput.text());
                     }

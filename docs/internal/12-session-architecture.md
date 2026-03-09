@@ -10,6 +10,7 @@ Represent conversation state as typed session data with explicit lifecycle opera
 - `Session`: immutable identity/config envelope + mutable `Context` reference.
 - `SessionHandle`: external session reference (`sessionId`, liveness predicate, immutable `SessionSettingsView` snapshot).
 - `SessionConfig`: execution controls (`params` with `blockingOnly`/`toolsEnabled`/`streamingEnabled`, plus `toolBridge`, `onError`).
+- `ContextManager`: session-context load/create and mutation persistence bridge wiring.
 
 ## Invariants
 
@@ -46,4 +47,4 @@ fork(sessionId, alias, overrideConfig?)
 ## Known constraints
 
 - session registry lifetime is process lifetime
-- durable session persistence is future-phase
+- durable context/message persistence exists for active sessions; durable session lifecycle restore remains future-phase

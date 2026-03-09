@@ -6,6 +6,7 @@ import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;
 import org.jline.reader.UserInterruptException;
 
+import java.util.Locale;
 import java.util.Objects;
 
 public final class JlinePromptService implements PromptService {
@@ -33,9 +34,9 @@ public final class JlinePromptService implements PromptService {
     }
 
     private UiPromptResponse promptConfirm(UiPromptRequest.ConfirmPrompt request) {
-        String suffix = request.defaultYes() ? " [Y/n] " : " [y/N] ";
+        String suffix = confirmSuffix(request);
         try {
-            String raw = safeRead("confirm" + suffix);
+            String raw = safeRead(confirmPromptLabel(request.title()) + suffix);
             if (raw == null) {
                 return new UiPromptResponse.Cancelled("interrupted");
             }
@@ -48,6 +49,21 @@ public final class JlinePromptService implements PromptService {
         } catch (Exception ignored) {
             return new UiPromptResponse.Cancelled("prompt_failed");
         }
+    }
+
+    private String confirmSuffix(UiPromptRequest.ConfirmPrompt request) {
+        return " [y/n] ";
+    }
+
+    private String confirmPromptLabel(String title) {
+        if (title == null || title.isBlank()) {
+            return "confirm";
+        }
+        return title.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private boolean isToolApprovalPrompt(String title) {
+        return title != null && title.trim().equalsIgnoreCase("Tool Approval");
     }
 
     private UiPromptResponse promptSelect(UiPromptRequest.SelectPrompt request) {

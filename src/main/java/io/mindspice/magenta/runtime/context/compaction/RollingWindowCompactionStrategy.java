@@ -15,15 +15,17 @@ public final class RollingWindowCompactionStrategy implements CompactionStrategy
             return context;
         }
 
-        ContextElement system = null;
+        List<ContextElement> leadingSystem = new ArrayList<>();
         int start = 0;
-        if (context.getFirst() instanceof ContextElement.SystemMsg sys) {
-            system = sys;
-            start = 1;
+        while (start < context.size() && context.get(start) instanceof ContextElement.SystemMsg) {
+            leadingSystem.add(context.get(start));
+            start++;
         }
 
         List<ContextElement> kept = new ArrayList<>();
-        int tokenCount = system == null ? 0 : SessionTokenEstimator.estimateMessage(system, tokenizerEncoding);
+        int tokenCount = leadingSystem.stream()
+                .mapToInt(message -> SessionTokenEstimator.estimateMessage(message, tokenizerEncoding))
+                .sum();
 
         for (int i = context.size() - 1; i >= start; i--) {
             ContextElement message = context.get(i);
@@ -36,9 +38,7 @@ public final class RollingWindowCompactionStrategy implements CompactionStrategy
         }
 
         List<ContextElement> output = new ArrayList<>();
-        if (system != null) {
-            output.add(system);
-        }
+        output.addAll(leadingSystem);
         output.addAll(kept);
         return output;
     }

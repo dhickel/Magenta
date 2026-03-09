@@ -51,3 +51,9 @@ Use one concrete routing service (`SessionRouter`) as the external IO boundary, 
 - `onRouting = unset`
 - `onSecurity = no-op`
 - `onError = no-op`
+
+## Tool bridge security wrapping
+
+- `Magenta` wraps session `toolBridge` with `SecurityManager.authorize(...)` before delegation.
+- Authorization decisions (allow/deny/validation/override) are emitted through `onSecurity`.
+- Denied tool calls return structured failure payloads to the model/tool loop; tool handlers are not executed on deny.

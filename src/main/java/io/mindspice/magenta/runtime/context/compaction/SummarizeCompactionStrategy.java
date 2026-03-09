@@ -25,11 +25,11 @@ public final class SummarizeCompactionStrategy implements CompactionStrategy {
             return fallback.run(sessionId, context, targetTokens, tokenizerEncoding);
         }
 
-        ContextElement system = null;
+        List<ContextElement> leadingSystem = new ArrayList<>();
         int start = 0;
-        if (context.getFirst() instanceof ContextElement.SystemMsg sys) {
-            system = sys;
-            start = 1;
+        while (start < context.size() && context.get(start) instanceof ContextElement.SystemMsg) {
+            leadingSystem.add(context.get(start));
+            start++;
         }
 
         int summaryEnd = Math.max(start, context.size() - SUMMARY_RECENT_MESSAGES);
@@ -46,9 +46,7 @@ public final class SummarizeCompactionStrategy implements CompactionStrategy {
         }
 
         List<ContextElement> output = new ArrayList<>();
-        if (system != null) {
-            output.add(system);
-        }
+        output.addAll(leadingSystem);
         output.add(new ContextElement.SummaryMsg(summary.trim(), "session:" + sessionId));
         output.addAll(recent);
 
