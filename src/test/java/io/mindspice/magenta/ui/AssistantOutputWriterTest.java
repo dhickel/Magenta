@@ -94,6 +94,16 @@ class AssistantOutputWriterTest {
         assertThat(target.toolResults).containsExactly("shell_command|true={\"status\":\"failed\",\"code\":\"denied\"}");
     }
 
+    @Test
+    void customAssistantLabelIsUsedForPrefix() {
+        RecordingTarget target = new RecordingTarget();
+        AssistantOutputWriter writer = new AssistantOutputWriter(target, true, "magenta");
+
+        writer.onOutput(new SessionOutput.FinalOutput("Hello"));
+
+        assertThat(target.assistantFinals).singleElement().isEqualTo("magenta> Hello");
+    }
+
     private static final class RecordingTarget implements AssistantOutputTarget {
         private final List<String> assistantTokens = new ArrayList<>();
         private final List<String> assistantFinals = new ArrayList<>();

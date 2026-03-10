@@ -27,6 +27,24 @@ Current built-ins:
 
 All tools return structured payloads normalized by `ToolManager` (`status`, `code`, `message`, optional `data`).
 
+## Tool family overview
+
+Canonical usage groupings:
+
+- File operations:
+  - `read_file`, `list_directory`, `file_metadata`, `grep_files`, `search_replace`, `write_file`, `delete_file`
+- Shell execution:
+  - `shell_command`
+- SQLite operations:
+  - `sqlite_query` (read-only), `sqlite_exec` (mutating)
+- Todo/task-state operations:
+  - `todo_create`, `todo_list`, `todo_update`, `todo_delete`
+- Agent orchestration:
+  - `list_agents`, `delegate_agent`
+
+TODO lifecycle is canonicalized as: `todo_create -> todo_list -> todo_update -> todo_delete`.
+There is no separate `todo_read` tool; `todo_list` is the read operation.
+
 ## Execution pipeline
 
 Tool path is runtime-owned and single-route:

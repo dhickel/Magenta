@@ -60,7 +60,7 @@ public final class FileTools {
 
         Path path;
         try {
-            path = ToolPathSupport.resolveWorkspacePath(settings.workspaceRoot(), pathText);
+            path = ToolPathSupport.resolveWorkspacePath(settings.workspaceRoot(), settings.enforceWorkspaceRoot(), pathText);
         } catch (IllegalArgumentException e) {
             return ToolPayloads.failure(request, "validation_error", e.getMessage(), null, true);
         }
@@ -141,7 +141,7 @@ public final class FileTools {
 
         Path path;
         try {
-            path = ToolPathSupport.resolveWorkspacePath(settings.workspaceRoot(), pathText);
+            path = ToolPathSupport.resolveWorkspacePath(settings.workspaceRoot(), settings.enforceWorkspaceRoot(), pathText);
         } catch (IllegalArgumentException e) {
             return ToolPayloads.failure(request, "validation_error", e.getMessage(), null, true);
         }
@@ -215,7 +215,7 @@ public final class FileTools {
 
         Path path;
         try {
-            path = ToolPathSupport.resolveWorkspacePath(settings.workspaceRoot(), pathText);
+            path = ToolPathSupport.resolveWorkspacePath(settings.workspaceRoot(), settings.enforceWorkspaceRoot(), pathText);
         } catch (IllegalArgumentException e) {
             return ToolPayloads.failure(request, "validation_error", e.getMessage(), null, true);
         }
@@ -269,7 +269,7 @@ public final class FileTools {
 
         Path rootPath;
         try {
-            rootPath = ToolPathSupport.resolveWorkspacePath(settings.workspaceRoot(), rootPathText);
+            rootPath = ToolPathSupport.resolveWorkspacePath(settings.workspaceRoot(), settings.enforceWorkspaceRoot(), rootPathText);
         } catch (IllegalArgumentException e) {
             return ToolPayloads.failure(request, "validation_error", e.getMessage(), null, true);
         }
@@ -407,7 +407,7 @@ public final class FileTools {
 
         Path path;
         try {
-            path = ToolPathSupport.resolveWorkspacePath(settings.workspaceRoot(), pathText);
+            path = ToolPathSupport.resolveWorkspacePath(settings.workspaceRoot(), settings.enforceWorkspaceRoot(), pathText);
         } catch (IllegalArgumentException e) {
             return ToolPayloads.failure(request, "validation_error", e.getMessage(), null, true);
         }
@@ -505,7 +505,7 @@ public final class FileTools {
 
         Path path;
         try {
-            path = ToolPathSupport.resolveWorkspacePath(settings.workspaceRoot(), pathText);
+            path = ToolPathSupport.resolveWorkspacePath(settings.workspaceRoot(), settings.enforceWorkspaceRoot(), pathText);
         } catch (IllegalArgumentException e) {
             return ToolPayloads.failure(request, "validation_error", e.getMessage(), null, true);
         }
@@ -555,7 +555,7 @@ public final class FileTools {
 
         Path path;
         try {
-            path = ToolPathSupport.resolveWorkspacePath(settings.workspaceRoot(), pathText);
+            path = ToolPathSupport.resolveWorkspacePath(settings.workspaceRoot(), settings.enforceWorkspaceRoot(), pathText);
         } catch (IllegalArgumentException e) {
             return ToolPayloads.failure(request, "validation_error", e.getMessage(), null, true);
         }

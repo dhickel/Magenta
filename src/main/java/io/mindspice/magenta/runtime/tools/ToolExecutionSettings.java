@@ -6,7 +6,8 @@ public record ToolExecutionSettings(
         Path workspaceRoot,
         int maxToolOutputBytes,
         int maxFileReadLines,
-        int maxSqlRows
+        int maxSqlRows,
+        boolean enforceWorkspaceRoot
 ) {
     public ToolExecutionSettings {
         workspaceRoot = workspaceRoot == null

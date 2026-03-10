@@ -1,6 +1,5 @@
-id: "default-task"
 promptIds:
-  - "base.system"
+  - "agents/default-agent"
 toolIds:
   - "read_file"
 enabled: true

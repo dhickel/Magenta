@@ -109,13 +109,16 @@ public final class SecurityManager {
         }
 
         Set<String> allowedByAgent = agentToolIds == null ? Set.of() : Set.copyOf(agentToolIds);
-        if (!allowedByAgent.contains(toolName)) {
+        boolean agentAllowsAll = allowedByAgent.contains("*");
+        if (!agentAllowsAll && !allowedByAgent.contains(toolName)) {
             return new Decision(DecisionCode.DENIED, false, "Denied: tool not allowed by agent settings", mode);
         }
 
         String policyToolName = policyToolName(toolName);
 
-        if (policy.deniedTools().contains(toolName) || policy.deniedTools().contains(policyToolName)) {
+        if (policy.deniedTools().contains("*")
+            || policy.deniedTools().contains(toolName)
+            || policy.deniedTools().contains(policyToolName)) {
             return new Decision(DecisionCode.DENIED, false, "Denied: tool is blacklisted", mode);
         }
 
@@ -158,6 +161,9 @@ public final class SecurityManager {
     private Decision authorizeWhitelist(String toolName, String policyToolName, ToolPolicy policy, RuntimeConfig.SecurityMode mode) {
         if (policy.allowedTools().isEmpty()) {
             return new Decision(DecisionCode.ALLOWED, true, "Allowed by agent gate (whitelist empty)", mode);
+        }
+        if (policy.allowedTools().contains("*")) {
+            return new Decision(DecisionCode.ALLOWED, true, "Allowed by wildcard whitelist", mode);
         }
         if (policy.allowedTools().contains(toolName) || policy.allowedTools().contains(policyToolName)) {
             return new Decision(DecisionCode.ALLOWED, true, "Allowed by whitelist", mode);
@@ -224,7 +230,7 @@ public final class SecurityManager {
             return null;
         }
 
-        if (policy.allowedPaths().isEmpty()) {
+        if (policy.allowedPaths().isEmpty() || policy.allowedPaths().contains("*")) {
             return null;
         }
 
@@ -314,7 +320,7 @@ public final class SecurityManager {
             }
         }
 
-        if (!policy.allowedCommands().isEmpty()) {
+        if (!policy.allowedCommands().isEmpty() && !policy.allowedCommands().contains("*")) {
             String executable = commandTokens.getFirst();
             if (!policy.allowedCommands().contains(executable)) {
                 return new Decision(DecisionCode.DENIED, false, "Denied: command not in allowedCommands", mode);

@@ -71,7 +71,7 @@ public final class TerminalUiRuntime {
                 List.of(
                         "sessionId=" + session.handle().sessionId(),
                         "workspaceRoot=" + runtimeConfig.workspaceRoot(),
-                        "Commands: /help, /session, /approve-demo, /tool-approval <on|off>, /yolo <on|off>, /event <text>, /exit"
+                        "Commands: /help, /session, /task <name>, /approve-demo, /tool-approval <on|off>, /yolo <on|off>, /event <text>, /exit"
                 ),
                 UiStyle.SYSTEM
         ));
@@ -177,9 +177,21 @@ public final class TerminalUiRuntime {
                                             List.of("toolsEnabled", String.valueOf(settings.toolsEnabled())),
                                             List.of("streamingEnabled", String.valueOf(settings.streamingEnabled())),
                                             List.of("securityMode", policy.mode().name()),
-                                            List.of("yoloOverride", String.valueOf(policy.devYoloOverride()))
+                                            List.of("yoloOverride", String.valueOf(policy.devYoloOverride())),
+                                            List.of("activeTask", magenta.activeTask(session.handle()))
                                     )
                             ));
+                        }
+                ),
+                SlashCommandSpec.one(
+                        "task",
+                        List.of(),
+                        "Apply an exposed agent task by name/path",
+                        "/task <task-name>",
+                        List.of("task-name"),
+                        taskName -> {
+                            String appliedTask = magenta.applyTask(session.handle(), taskName);
+                            renderer.printInfo("active task => " + appliedTask);
                         }
                 ),
                 SlashCommandSpec.zero(

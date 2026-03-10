@@ -95,7 +95,8 @@ public final class TerminalUiBootstrap {
 
         AssistantOutputWriter outputWriter = new AssistantOutputWriter(
                 new TerminalAssistantOutputTarget(renderer),
-                streamingExpected
+                streamingExpected,
+                settings.agentId()
         );
         var outputRoute = magenta.addOutputRoute(
                 handle,

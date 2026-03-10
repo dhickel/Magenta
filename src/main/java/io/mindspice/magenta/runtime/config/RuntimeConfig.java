@@ -15,12 +15,15 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -36,6 +39,8 @@ public record RuntimeConfig(
         Map<String, ModelConfig> modelsById,
         Map<String, AgentConfig> agentsById,
         Map<String, String> promptsById,
+        Map<String, TaskConfig> tasksById,
+        Map<String, WorkflowConfig> workflowsById,
         SecurityPolicyConfig security,
         TerminalConfig terminal
 ) {
@@ -63,8 +68,44 @@ public record RuntimeConfig(
         modelsById = Map.copyOf(modelsById);
         agentsById = Map.copyOf(agentsById);
         promptsById = Map.copyOf(promptsById);
+        tasksById = Map.copyOf(tasksById);
+        workflowsById = Map.copyOf(workflowsById);
         security = Objects.requireNonNull(security, "security");
         terminal = terminal == null ? TerminalConfig.defaults() : terminal;
+    }
+
+    public RuntimeConfig(
+            Path rootDir,
+            Path workspaceRoot,
+            String baseAgentId,
+            String compactionAgentId,
+            int maxTurns,
+            int maxToolOutputBytes,
+            int maxFileReadLines,
+            int maxSqlRows,
+            Map<String, ModelConfig> modelsById,
+            Map<String, AgentConfig> agentsById,
+            Map<String, String> promptsById,
+            SecurityPolicyConfig security,
+            TerminalConfig terminal
+    ) {
+        this(
+                rootDir,
+                workspaceRoot,
+                baseAgentId,
+                compactionAgentId,
+                maxTurns,
+                maxToolOutputBytes,
+                maxFileReadLines,
+                maxSqlRows,
+                modelsById,
+                agentsById,
+                promptsById,
+                Map.of(),
+                Map.of(),
+                security,
+                terminal
+        );
     }
 
     public static RuntimeConfig loadDefault() {
@@ -92,16 +133,39 @@ public record RuntimeConfig(
 
         Map<String, String> prompts = loadPrompts(configRoot, includePatterns(root.prompts));
         Map<String, ModelConfig> models = loadModels(configRoot, includePatterns(root.models));
+        Map<String, TaskConfig> tasks = loadTasks(configRoot, includePatterns(root.tasks));
+        Map<String, WorkflowConfig> workflows = loadWorkflows(configRoot, includePatterns(root.workflows));
         Map<String, AgentConfig> agents = loadAgents(configRoot, includePatterns(root.agents));
 
-        String baseAgentId = Optional.ofNullable(root.instance)
+        tasks = resolveTaskReferences(tasks, prompts);
+        workflows = resolveWorkflowReferences(workflows, tasks);
+        agents = resolveAgentReferences(agents, models, prompts, tasks, workflows);
+
+        String requestedBaseAgent = Optional.ofNullable(root.instance)
                 .map(InstanceConfig::baseAgentId)
                 .filter(id -> !id.isBlank())
-                .orElseGet(() -> firstEnabledAgent(agents));
-        String compactionAgentId = Optional.ofNullable(root.instance)
+                .orElse(null);
+        if (requestedBaseAgent == null) {
+            requestedBaseAgent = firstEnabledAgent(agents);
+        }
+        String requestedCompactionAgent = Optional.ofNullable(root.instance)
                 .map(InstanceConfig::compactionAgentId)
                 .filter(id -> !id.isBlank())
-                .orElse(baseAgentId);
+                .orElse(requestedBaseAgent);
+
+        String baseAgentId = resolveSingleReference(
+                requestedBaseAgent,
+                agents,
+                "agent",
+                "instance.baseAgentId"
+        );
+        String compactionAgentId = resolveSingleReference(
+                requestedCompactionAgent,
+                agents,
+                "agent",
+                "instance.compactionAgentId"
+        );
+
         int maxTurns = Optional.ofNullable(root.instance)
                 .map(InstanceConfig::maxTurns)
                 .orElse(8);
@@ -118,7 +182,7 @@ public record RuntimeConfig(
                 .map(InstanceConfig::maxSqlRows)
                 .orElse(DEFAULT_MAX_SQL_ROWS);
 
-        validate(models, agents, prompts, baseAgentId, compactionAgentId);
+        validate(models, agents, prompts, tasks, workflows, baseAgentId, compactionAgentId);
         validateInstanceLimits(maxToolOutputBytes, maxFileReadLines, maxSqlRows);
 
         SecurityPolicyConfig securityConfig = toSecurityPolicyConfig(root.security);
@@ -136,9 +200,79 @@ public record RuntimeConfig(
                 models,
                 agents,
                 prompts,
+                tasks,
+                workflows,
                 securityConfig,
                 terminalConfig
         );
+    }
+
+    public RuntimeConfig withYoloOverride() {
+        if (security.devYoloOverride()) {
+            return this;
+        }
+        SecurityPolicyConfig override = new SecurityPolicyConfig(
+                security.mode(),
+                true,
+                security.allowedPaths(),
+                security.allowedCommands(),
+                security.allowedTools(),
+                security.deniedTools(),
+                security.webAccess(),
+                security.rules()
+        );
+
+        return new RuntimeConfig(
+                rootDir,
+                workspaceRoot,
+                baseAgentId,
+                compactionAgentId,
+                maxTurns,
+                maxToolOutputBytes,
+                maxFileReadLines,
+                maxSqlRows,
+                modelsById,
+                agentsById,
+                promptsById,
+                tasksById,
+                workflowsById,
+                override,
+                terminal
+        );
+    }
+
+    public List<String> exposedTaskIdsForAgent(String agentId) {
+        AgentConfig agent = agentsById.get(agentId);
+        if (agent == null) {
+            return List.of();
+        }
+        return exposedTaskIds(agent);
+    }
+
+    public List<String> exposedTaskIds(AgentConfig agent) {
+        if (agent == null) {
+            return List.of();
+        }
+        LinkedHashSet<String> taskIds = new LinkedHashSet<>();
+        taskIds.addAll(agent.tasks());
+        for (String workflowId : agent.workflows()) {
+            collectWorkflowTasks(workflowId, taskIds, new HashSet<>());
+        }
+        return List.copyOf(taskIds);
+    }
+
+    private void collectWorkflowTasks(String workflowId, LinkedHashSet<String> taskIds, Set<String> visited) {
+        if (!visited.add(workflowId)) {
+            return;
+        }
+        WorkflowConfig workflow = workflowsById.get(workflowId);
+        if (workflow == null || !workflow.enabled()) {
+            return;
+        }
+        taskIds.addAll(workflow.taskIds());
+        for (String dependency : workflow.dependsOnWorkflows()) {
+            collectWorkflowTasks(dependency, taskIds, visited);
+        }
     }
 
     private static IllegalStateException parseException(Path path, JsonProcessingException e) {
@@ -183,9 +317,26 @@ public record RuntimeConfig(
         List<Path> files = resolveIncludes(root, patterns);
         Map<String, ModelConfig> output = new LinkedHashMap<>();
         Map<String, Path> sourcesById = new HashMap<>();
+        Path domainRoot = root.resolve("models").toAbsolutePath().normalize();
         for (Path file : files) {
             try {
-                ModelConfig cfg = MAPPER.readValue(file.toFile(), ModelConfig.class);
+                RawModelDocument raw = MAPPER.readValue(file.toFile(), RawModelDocument.class);
+                String id = deriveFileId(root, domainRoot, file);
+                ModelConfig cfg = new ModelConfig(
+                        id,
+                        raw.provider,
+                        raw.model,
+                        raw.endpoint,
+                        raw.maxTokens,
+                        raw.maxContext,
+                        raw.compactThreshold,
+                        raw.temperature,
+                        raw.compactionStrategy,
+                        raw.tokenizerEncoding,
+                        Boolean.TRUE.equals(raw.supportsToolCalling),
+                        Boolean.TRUE.equals(raw.supportsStreaming),
+                        raw.enabled == null || raw.enabled
+                );
                 validateTokenizerEncoding(cfg.id(), cfg.tokenizerEncodingOrDefault());
                 putUniqueOrThrow("model", cfg.id(), cfg, file, output, sourcesById);
             } catch (JsonProcessingException e) {
@@ -201,9 +352,20 @@ public record RuntimeConfig(
         List<Path> files = resolveIncludes(root, patterns);
         Map<String, AgentConfig> output = new LinkedHashMap<>();
         Map<String, Path> sourcesById = new HashMap<>();
+        Path domainRoot = root.resolve("agents").toAbsolutePath().normalize();
         for (Path file : files) {
             try {
-                AgentConfig cfg = MAPPER.readValue(file.toFile(), AgentConfig.class);
+                RawAgentDocument raw = MAPPER.readValue(file.toFile(), RawAgentDocument.class);
+                String id = deriveFileId(root, domainRoot, file);
+                AgentConfig cfg = new AgentConfig(
+                        id,
+                        normalizeOrDefault(raw.modelId, ""),
+                        normalizeList(raw.promptIds),
+                        normalizeList(raw.tasks),
+                        normalizeList(raw.workflows),
+                        normalizeList(raw.toolIds),
+                        raw.enabled == null || raw.enabled
+                );
                 putUniqueOrThrow("agent", cfg.id(), cfg, file, output, sourcesById);
             } catch (JsonProcessingException e) {
                 throw parseException(file, e);
@@ -214,17 +376,65 @@ public record RuntimeConfig(
         return output;
     }
 
+    private static Map<String, TaskConfig> loadTasks(Path root, List<String> patterns) {
+        List<Path> files = resolveIncludes(root, patterns);
+        Map<String, TaskConfig> output = new LinkedHashMap<>();
+        Map<String, Path> sourcesById = new HashMap<>();
+        Path domainRoot = root.resolve("tasks").toAbsolutePath().normalize();
+        for (Path file : files) {
+            try {
+                RawTaskDocument raw = MAPPER.readValue(file.toFile(), RawTaskDocument.class);
+                String id = deriveFileId(root, domainRoot, file);
+                TaskConfig cfg = new TaskConfig(
+                        id,
+                        normalizeList(raw.promptIds),
+                        normalizeList(raw.toolIds),
+                        raw.enabled == null || raw.enabled
+                );
+                putUniqueOrThrow("task", cfg.id(), cfg, file, output, sourcesById);
+            } catch (JsonProcessingException e) {
+                throw parseException(file, e);
+            } catch (IOException e) {
+                throw new IllegalStateException("Failed to read task config: " + file, e);
+            }
+        }
+        return output;
+    }
+
+    private static Map<String, WorkflowConfig> loadWorkflows(Path root, List<String> patterns) {
+        List<Path> files = resolveIncludes(root, patterns);
+        Map<String, WorkflowConfig> output = new LinkedHashMap<>();
+        Map<String, Path> sourcesById = new HashMap<>();
+        Path domainRoot = root.resolve("workflows").toAbsolutePath().normalize();
+        for (Path file : files) {
+            try {
+                RawWorkflowDocument raw = MAPPER.readValue(file.toFile(), RawWorkflowDocument.class);
+                String id = deriveFileId(root, domainRoot, file);
+                WorkflowConfig cfg = new WorkflowConfig(
+                        id,
+                        normalizeList(raw.taskIds),
+                        normalizeList(raw.dependsOnWorkflows),
+                        raw.enabled == null || raw.enabled
+                );
+                putUniqueOrThrow("workflow", cfg.id(), cfg, file, output, sourcesById);
+            } catch (JsonProcessingException e) {
+                throw parseException(file, e);
+            } catch (IOException e) {
+                throw new IllegalStateException("Failed to read workflow config: " + file, e);
+            }
+        }
+        return output;
+    }
+
     private static Map<String, String> loadPrompts(Path root, List<String> patterns) {
         List<Path> files = resolveIncludes(root, patterns);
         Map<String, String> output = new LinkedHashMap<>();
         Map<String, Path> sourcesById = new HashMap<>();
-        Path promptsRoot = root.resolve("prompts").normalize();
+        Path promptsRoot = root.resolve("prompts").toAbsolutePath().normalize();
 
         for (Path file : files) {
             Path normalized = file.toAbsolutePath().normalize();
-            String id = normalized.startsWith(promptsRoot.toAbsolutePath().normalize())
-                    ? toPromptId(promptsRoot.relativize(normalized))
-                    : toPromptId(root.relativize(normalized));
+            String id = deriveFileId(root, promptsRoot, normalized);
             try {
                 putUniqueOrThrow("prompt", id, Files.readString(file), file, output, sourcesById);
             } catch (IOException e) {
@@ -232,6 +442,220 @@ public record RuntimeConfig(
             }
         }
         return output;
+    }
+
+    private static String deriveFileId(Path configRoot, Path domainRoot, Path file) {
+        Path normalized = file.toAbsolutePath().normalize();
+        Path relative = normalized.startsWith(domainRoot)
+                ? domainRoot.relativize(normalized)
+                : configRoot.toAbsolutePath().normalize().relativize(normalized);
+
+        String raw = relative.toString().replace('\\', '/');
+        int dot = raw.lastIndexOf('.');
+        if (dot > 0) {
+            raw = raw.substring(0, dot);
+        }
+        return raw;
+    }
+
+    private static Map<String, TaskConfig> resolveTaskReferences(
+            Map<String, TaskConfig> tasks,
+            Map<String, String> prompts
+    ) {
+        Map<String, TaskConfig> resolved = new LinkedHashMap<>();
+        for (TaskConfig task : tasks.values()) {
+            List<String> promptIds = resolveReferenceList(
+                    task.promptIds(),
+                    prompts,
+                    "prompt",
+                    "task '" + task.id() + "'",
+                    true
+            );
+            List<String> toolIds = normalizeList(task.toolIds());
+            resolved.put(task.id(), new TaskConfig(task.id(), promptIds, toolIds, task.enabled()));
+        }
+        return resolved;
+    }
+
+    private static Map<String, WorkflowConfig> resolveWorkflowReferences(
+            Map<String, WorkflowConfig> workflows,
+            Map<String, TaskConfig> tasks
+    ) {
+        Map<String, WorkflowConfig> resolved = new LinkedHashMap<>();
+        for (WorkflowConfig workflow : workflows.values()) {
+            List<String> taskIds = resolveReferenceList(
+                    workflow.taskIds(),
+                    tasks,
+                    "task",
+                    "workflow '" + workflow.id() + "'",
+                    true
+            );
+            List<String> dependsOn = resolveReferenceList(
+                    workflow.dependsOnWorkflows(),
+                    workflows,
+                    "workflow",
+                    "workflow '" + workflow.id() + "'",
+                    true
+            );
+            resolved.put(workflow.id(), new WorkflowConfig(workflow.id(), taskIds, dependsOn, workflow.enabled()));
+        }
+        return resolved;
+    }
+
+    private static Map<String, AgentConfig> resolveAgentReferences(
+            Map<String, AgentConfig> agents,
+            Map<String, ModelConfig> models,
+            Map<String, String> prompts,
+            Map<String, TaskConfig> tasks,
+            Map<String, WorkflowConfig> workflows
+    ) {
+        Map<String, AgentConfig> resolved = new LinkedHashMap<>();
+        for (AgentConfig agent : agents.values()) {
+            String modelId = resolveSingleReference(
+                    agent.modelId(),
+                    models,
+                    "model",
+                    "agent '" + agent.id() + "'"
+            );
+            List<String> promptIds = resolveReferenceList(
+                    agent.promptIds(),
+                    prompts,
+                    "prompt",
+                    "agent '" + agent.id() + "'",
+                    true
+            );
+            List<String> taskIds = resolveReferenceList(
+                    agent.tasks(),
+                    tasks,
+                    "task",
+                    "agent '" + agent.id() + "'",
+                    true
+            );
+            List<String> workflowIds = resolveReferenceList(
+                    agent.workflows(),
+                    workflows,
+                    "workflow",
+                    "agent '" + agent.id() + "'",
+                    true
+            );
+            List<String> toolIds = normalizeList(agent.toolIds());
+            resolved.put(agent.id(), new AgentConfig(agent.id(), modelId, promptIds, taskIds, workflowIds, toolIds, agent.enabled()));
+        }
+        return resolved;
+    }
+
+    private static String resolveSingleReference(
+            String rawReference,
+            Map<String, ?> domain,
+            String type,
+            String owner
+    ) {
+        String token = normalizeReferenceToken(rawReference);
+        if (token.isBlank()) {
+            throw new IllegalStateException("Missing required " + type + " reference for " + owner);
+        }
+        if ("*".equals(token)) {
+            throw new IllegalStateException("Wildcard '*' is not valid for scalar " + type + " reference in " + owner);
+        }
+
+        String exact = resolveSingleReferenceOrNull(token, domain);
+        if (exact != null) {
+            return exact;
+        }
+
+        throw new IllegalStateException("Unresolved " + type + " reference for " + owner + ": " + token);
+    }
+
+    private static List<String> resolveReferenceList(
+            List<String> rawReferences,
+            Map<String, ?> domain,
+            String type,
+            String owner,
+            boolean allowWildcard
+    ) {
+        if (rawReferences == null || rawReferences.isEmpty()) {
+            return List.of();
+        }
+
+        List<String> allIds = domain.keySet().stream().sorted().toList();
+        LinkedHashSet<String> output = new LinkedHashSet<>();
+        for (String raw : rawReferences) {
+            String token = normalizeReferenceToken(raw);
+            if (token.isBlank()) {
+                continue;
+            }
+
+            if ("*".equals(token)) {
+                if (!allowWildcard) {
+                    throw new IllegalStateException("Wildcard '*' is not supported for " + type + " references in " + owner);
+                }
+                output.addAll(allIds);
+                continue;
+            }
+
+            String resolved = resolveSingleReferenceOrNull(token, domain);
+            if (resolved == null) {
+                throw new IllegalStateException("Unresolved " + type + " reference for " + owner + ": " + token);
+            }
+            output.add(resolved);
+        }
+
+        return List.copyOf(output);
+    }
+
+    private static String resolveSingleReferenceOrNull(String token, Map<String, ?> domain) {
+        if (domain.containsKey(token)) {
+            return token;
+        }
+
+        if (token.contains(".") && !token.contains("/")) {
+            String dottedToPath = token.replace('.', '/');
+            if (domain.containsKey(dottedToPath)) {
+                return dottedToPath;
+            }
+        }
+
+        String basename = basename(token);
+        List<String> basenameMatches = domain.keySet().stream()
+                .filter(id -> basename(id).equals(basename))
+                .sorted()
+                .toList();
+
+        if (basenameMatches.size() == 1) {
+            return basenameMatches.getFirst();
+        }
+        if (basenameMatches.size() > 1) {
+            throw new IllegalStateException(
+                    "Ambiguous reference '" + token + "'. Matches: " + String.join(", ", basenameMatches)
+            );
+        }
+
+        return null;
+    }
+
+    private static String basename(String id) {
+        String normalized = normalizeReferenceToken(id);
+        int slash = normalized.lastIndexOf('/');
+        return slash >= 0 ? normalized.substring(slash + 1) : normalized;
+    }
+
+    private static String normalizeReferenceToken(String rawToken) {
+        if (rawToken == null) {
+            return "";
+        }
+        String token = rawToken.trim().replace('\\', '/');
+        if (token.startsWith("./")) {
+            token = token.substring(2);
+        }
+
+        String lower = token.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".yaml") || lower.endsWith(".yml") || lower.endsWith(".md")) {
+            int dot = token.lastIndexOf('.');
+            if (dot > 0) {
+                token = token.substring(0, dot);
+            }
+        }
+        return token;
     }
 
     private static <T> void putUniqueOrThrow(
@@ -254,15 +678,6 @@ public record RuntimeConfig(
             );
         }
         output.put(id, value);
-    }
-
-    private static String toPromptId(Path relativePath) {
-        String raw = relativePath.toString().replace('\\', '/');
-        int dot = raw.lastIndexOf('.');
-        if (dot > 0) {
-            raw = raw.substring(0, dot);
-        }
-        return raw.replace('/', '.');
     }
 
     private static List<Path> resolveIncludes(Path root, List<String> patterns) {
@@ -296,7 +711,7 @@ public record RuntimeConfig(
     }
 
     private static void validateTokenizerEncoding(String modelId, String tokenizerEncoding) {
-        String normalized = tokenizerEncoding.trim().replace('-', '_').toUpperCase();
+        String normalized = tokenizerEncoding.trim().replace('-', '_').toUpperCase(Locale.ROOT);
         try {
             EncodingType.valueOf(normalized);
         } catch (IllegalArgumentException e) {
@@ -311,6 +726,8 @@ public record RuntimeConfig(
             Map<String, ModelConfig> models,
             Map<String, AgentConfig> agents,
             Map<String, String> prompts,
+            Map<String, TaskConfig> tasks,
+            Map<String, WorkflowConfig> workflows,
             String baseAgentId,
             String compactionAgentId
     ) {
@@ -331,6 +748,37 @@ public record RuntimeConfig(
             throw new IllegalStateException("Compaction agent is missing or disabled: " + compactionAgentId);
         }
 
+        for (TaskConfig task : tasks.values()) {
+            if (!task.enabled()) {
+                continue;
+            }
+            for (String promptId : task.promptIds()) {
+                if (!prompts.containsKey(promptId)) {
+                    throw new IllegalStateException("Task prompt id not found: " + task.id() + " -> " + promptId);
+                }
+            }
+        }
+
+        for (WorkflowConfig workflow : workflows.values()) {
+            if (!workflow.enabled()) {
+                continue;
+            }
+            for (String taskId : workflow.taskIds()) {
+                TaskConfig task = tasks.get(taskId);
+                if (task == null || !task.enabled()) {
+                    throw new IllegalStateException("Enabled workflow references missing/disabled task: " + workflow.id() + " -> " + taskId);
+                }
+            }
+            for (String dependency : workflow.dependsOnWorkflows()) {
+                WorkflowConfig dependencyCfg = workflows.get(dependency);
+                if (dependencyCfg == null || !dependencyCfg.enabled()) {
+                    throw new IllegalStateException("Enabled workflow references missing/disabled workflow dependency: " + workflow.id() + " -> " + dependency);
+                }
+            }
+        }
+
+        validateWorkflowCycles(workflows);
+
         for (AgentConfig agent : agents.values()) {
             if (!agent.enabled()) {
                 continue;
@@ -344,7 +792,68 @@ public record RuntimeConfig(
                     throw new IllegalStateException("Agent prompt id not found: " + agent.id() + " -> " + promptId);
                 }
             }
+            for (String taskId : agent.tasks()) {
+                TaskConfig task = tasks.get(taskId);
+                if (task == null || !task.enabled()) {
+                    throw new IllegalStateException("Enabled agent references missing/disabled task: " + agent.id() + " -> " + taskId);
+                }
+            }
+            for (String workflowId : agent.workflows()) {
+                WorkflowConfig workflow = workflows.get(workflowId);
+                if (workflow == null || !workflow.enabled()) {
+                    throw new IllegalStateException("Enabled agent references missing/disabled workflow: " + agent.id() + " -> " + workflowId);
+                }
+            }
         }
+    }
+
+    private static void validateWorkflowCycles(Map<String, WorkflowConfig> workflows) {
+        Map<String, VisitState> states = new HashMap<>();
+        for (WorkflowConfig workflow : workflows.values()) {
+            if (!workflow.enabled()) {
+                continue;
+            }
+            detectWorkflowCycle(workflow.id(), workflows, states, new ArrayList<>());
+        }
+    }
+
+    private static void detectWorkflowCycle(
+            String workflowId,
+            Map<String, WorkflowConfig> workflows,
+            Map<String, VisitState> states,
+            List<String> stack
+    ) {
+        VisitState currentState = states.getOrDefault(workflowId, VisitState.UNVISITED);
+        if (currentState == VisitState.VISITING) {
+            int start = stack.indexOf(workflowId);
+            List<String> cycle = start >= 0
+                    ? new ArrayList<>(stack.subList(start, stack.size()))
+                    : new ArrayList<>(stack);
+            cycle.add(workflowId);
+            throw new IllegalStateException("Workflow cycle detected: " + String.join(" -> ", cycle));
+        }
+        if (currentState == VisitState.VISITED) {
+            return;
+        }
+
+        states.put(workflowId, VisitState.VISITING);
+        stack.add(workflowId);
+
+        WorkflowConfig workflow = workflows.get(workflowId);
+        if (workflow != null && workflow.enabled()) {
+            for (String dependency : workflow.dependsOnWorkflows()) {
+                detectWorkflowCycle(dependency, workflows, states, stack);
+            }
+        }
+
+        stack.removeLast();
+        states.put(workflowId, VisitState.VISITED);
+    }
+
+    private enum VisitState {
+        UNVISITED,
+        VISITING,
+        VISITED
     }
 
     private static SecurityPolicyConfig toSecurityPolicyConfig(RawSecurityConfig rawConfig) {
@@ -732,19 +1241,19 @@ public record RuntimeConfig(
     }
 
     public record ModelConfig(
-            @JsonProperty("id") String id,
-            @JsonProperty("provider") String provider,
-            @JsonProperty("model") String model,
-            @JsonProperty("endpoint") String endpoint,
-            @JsonProperty("maxTokens") int maxTokens,
-            @JsonProperty("maxContext") int maxContext,
-            @JsonProperty("compactThreshold") int compactThreshold,
-            @JsonProperty("temperature") double temperature,
-            @JsonProperty("compactionStrategy") String compactionStrategy,
-            @JsonProperty("tokenizerEncoding") String tokenizerEncoding,
-            @JsonProperty("supportsToolCalling") boolean supportsToolCalling,
-            @JsonProperty("supportsStreaming") boolean supportsStreaming,
-            @JsonProperty("enabled") boolean enabled
+            String id,
+            String provider,
+            String model,
+            String endpoint,
+            int maxTokens,
+            int maxContext,
+            int compactThreshold,
+            double temperature,
+            String compactionStrategy,
+            String tokenizerEncoding,
+            boolean supportsToolCalling,
+            boolean supportsStreaming,
+            boolean enabled
     ) {
         public ModelConfig {
             Objects.requireNonNull(id, "model.id");
@@ -763,21 +1272,95 @@ public record RuntimeConfig(
     }
 
     public record AgentConfig(
-            @JsonProperty("id") String id,
-            @JsonProperty("modelId") String modelId,
-            @JsonProperty("promptIds") List<String> promptIds,
-            @JsonProperty("taskIds") List<String> taskIds,
-            @JsonProperty("workflowIds") List<String> workflowIds,
-            @JsonProperty("toolIds") List<String> toolIds,
-            @JsonProperty("enabled") boolean enabled
+            String id,
+            String modelId,
+            List<String> promptIds,
+            List<String> tasks,
+            List<String> workflows,
+            List<String> toolIds,
+            boolean enabled
     ) {
         public AgentConfig {
             Objects.requireNonNull(id, "agent.id");
             Objects.requireNonNull(modelId, "agent.modelId");
             promptIds = promptIds == null ? List.of() : List.copyOf(promptIds);
-            taskIds = taskIds == null ? List.of() : List.copyOf(taskIds);
-            workflowIds = workflowIds == null ? List.of() : List.copyOf(workflowIds);
+            tasks = tasks == null ? List.of() : List.copyOf(tasks);
+            workflows = workflows == null ? List.of() : List.copyOf(workflows);
             toolIds = toolIds == null ? List.of() : List.copyOf(toolIds);
+        }
+
+        public AgentConfig(
+                String id,
+                String modelId,
+                List<String> promptIds,
+                String task,
+                List<String> taskIds,
+                List<String> workflowIds,
+                List<String> toolIds,
+                boolean enabled
+        ) {
+            this(
+                    id,
+                    modelId,
+                    promptIds,
+                    mergeLegacyTasks(task, taskIds),
+                    workflowIds,
+                    toolIds,
+                    enabled
+            );
+        }
+
+        public String task() {
+            return tasks.isEmpty() ? "" : tasks.getFirst();
+        }
+
+        public List<String> taskIds() {
+            return tasks;
+        }
+
+        public List<String> workflowIds() {
+            return workflows;
+        }
+
+        private static List<String> mergeLegacyTasks(String task, List<String> taskIds) {
+            LinkedHashSet<String> merged = new LinkedHashSet<>();
+            if (task != null && !task.isBlank()) {
+                merged.add(task.trim());
+            }
+            if (taskIds != null) {
+                for (String taskId : taskIds) {
+                    if (taskId != null && !taskId.isBlank()) {
+                        merged.add(taskId.trim());
+                    }
+                }
+            }
+            return List.copyOf(merged);
+        }
+    }
+
+    public record TaskConfig(
+            String id,
+            List<String> promptIds,
+            List<String> toolIds,
+            boolean enabled
+    ) {
+        public TaskConfig {
+            Objects.requireNonNull(id, "task.id");
+            promptIds = promptIds == null ? List.of() : List.copyOf(promptIds);
+            toolIds = toolIds == null ? List.of() : List.copyOf(toolIds);
+        }
+    }
+
+    public record WorkflowConfig(
+            String id,
+            List<String> taskIds,
+            List<String> dependsOnWorkflows,
+            boolean enabled
+    ) {
+        public WorkflowConfig {
+            Objects.requireNonNull(id, "workflow.id");
+            taskIds = taskIds == null ? List.of() : List.copyOf(taskIds);
+            dependsOnWorkflows = dependsOnWorkflows == null ? List.of() : List.copyOf(dependsOnWorkflows);
         }
     }
 
@@ -799,6 +1382,70 @@ public record RuntimeConfig(
         private IncludeSet tasks;
         @JsonProperty("workflows")
         private IncludeSet workflows;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    private static final class RawModelDocument {
+        @JsonProperty("provider")
+        private String provider;
+        @JsonProperty("model")
+        private String model;
+        @JsonProperty("endpoint")
+        private String endpoint;
+        @JsonProperty("maxTokens")
+        private int maxTokens;
+        @JsonProperty("maxContext")
+        private int maxContext;
+        @JsonProperty("compactThreshold")
+        private int compactThreshold;
+        @JsonProperty("temperature")
+        private double temperature;
+        @JsonProperty("compactionStrategy")
+        private String compactionStrategy;
+        @JsonProperty("tokenizerEncoding")
+        private String tokenizerEncoding;
+        @JsonProperty("supportsToolCalling")
+        private Boolean supportsToolCalling;
+        @JsonProperty("supportsStreaming")
+        private Boolean supportsStreaming;
+        @JsonProperty("enabled")
+        private Boolean enabled;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    private static final class RawAgentDocument {
+        @JsonProperty("modelId")
+        private String modelId;
+        @JsonProperty("promptIds")
+        private List<String> promptIds;
+        @JsonProperty("tasks")
+        private List<String> tasks;
+        @JsonProperty("workflows")
+        private List<String> workflows;
+        @JsonProperty("toolIds")
+        private List<String> toolIds;
+        @JsonProperty("enabled")
+        private Boolean enabled;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    private static final class RawTaskDocument {
+        @JsonProperty("promptIds")
+        private List<String> promptIds;
+        @JsonProperty("toolIds")
+        private List<String> toolIds;
+        @JsonProperty("enabled")
+        private Boolean enabled;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    private static final class RawWorkflowDocument {
+        @JsonProperty("taskIds")
+        private List<String> taskIds;
+        @JsonProperty("dependsOnWorkflows")
+        private List<String> dependsOnWorkflows;
+        @JsonProperty("enabled")
+        private Boolean enabled;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = false)

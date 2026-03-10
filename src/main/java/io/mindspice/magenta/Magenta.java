@@ -101,8 +101,12 @@ public final class Magenta {
     }
 
     public SessionHandle startBaseSession(String alias, SessionConfig sessionConfig) {
+        return startBaseSession(alias, null, sessionConfig);
+    }
+
+    public SessionHandle startBaseSession(String alias, String launchTaskOrNull, SessionConfig sessionConfig) {
         String agentId = runtimeConfig.baseAgentId();
-        Session session = sessionManager.start(agentId, alias, securedSessionConfig(agentId, sessionConfig));
+        Session session = sessionManager.start(agentId, alias, securedSessionConfig(agentId, sessionConfig), launchTaskOrNull);
         securityManager.initializePolicy(session.sessionId());
         return sessionManager.handleFor(session.sessionId());
     }
@@ -112,7 +116,11 @@ public final class Magenta {
     }
 
     public SessionHandle startSession(String agentId, String alias, SessionConfig sessionConfig) {
-        Session session = sessionManager.start(agentId, alias, securedSessionConfig(agentId, sessionConfig));
+        return startSession(agentId, alias, null, sessionConfig);
+    }
+
+    public SessionHandle startSession(String agentId, String alias, String launchTaskOrNull, SessionConfig sessionConfig) {
+        Session session = sessionManager.start(agentId, alias, securedSessionConfig(agentId, sessionConfig), launchTaskOrNull);
         securityManager.initializePolicy(session.sessionId());
         return sessionManager.handleFor(session.sessionId());
     }
@@ -143,6 +151,19 @@ public final class Magenta {
 
     public SessionSettingsView settingsFor(SessionHandle handle) {
         return sessionManager.settingsFor(handle);
+    }
+
+    public String applyTask(SessionHandle handle, String taskName) {
+        Objects.requireNonNull(handle, "handle");
+        if (!handle.isActive()) {
+            throw new IllegalStateException("Session handle is inactive: " + handle.sessionId());
+        }
+        return sessionManager.applyTask(handle.sessionId(), taskName);
+    }
+
+    public String activeTask(SessionHandle handle) {
+        Objects.requireNonNull(handle, "handle");
+        return sessionManager.activeTaskId(handle.sessionId());
     }
 
     public RouteHandle addInputRoute(SessionHandle handle, InputRoutePolicy policy) {
@@ -303,9 +324,11 @@ public final class Magenta {
         }
 
         boolean shouldStream = settingsFor(handle).streamingEnabled() && sessionRouter.hasStreamedOutputListeners(handle);
+        List<String> activeToolIds = sessionManager.activeToolIds(session.sessionId());
+        boolean yolo = securityManager.toolPolicy(session.sessionId()).devYoloOverride();
         List<ToolSpecification> toolSpecifications = session.sessionConfig().params().toolsEnabled()
                 && session.modelConfig().supportsToolCalling()
-                ? toolManager.toolSpecificationsFor(session.toolIds())
+                ? toolManager.toolSpecificationsFor(yolo ? List.of("*") : activeToolIds)
                 : List.of();
         return modelRunner.runTurn(
                 session,
@@ -348,6 +371,9 @@ public final class Magenta {
                 continue;
             }
             for (String toolId : agent.toolIds()) {
+                if ("*".equals(toolId)) {
+                    continue;
+                }
                 if (!availableToolIds.contains(toolId)) {
                     throw new IllegalStateException(
                             "Enabled agent references unresolved tool id: " + agent.id() + " -> " + toolId
@@ -448,10 +474,10 @@ public final class Magenta {
         if (agentConfig == null) {
             throw new IllegalStateException("Agent not found for security policy wiring: " + agentId);
         }
-        Set<String> agentToolIds = Set.copyOf(agentConfig.toolIds());
         Function<ToolRequest, ToolResult> delegate = original.toolBridge();
 
         Function<ToolRequest, ToolResult> securedBridge = request -> {
+            Set<String> agentToolIds = activeToolIdsForRequest(agentConfig, request);
             SecurityManager.Decision decision = securityManager.authorize(request, agentToolIds);
             emitSecurityCallback(original, request, decision);
             if (!decision.allowed()) {
@@ -469,6 +495,22 @@ public final class Magenta {
                 original.onSecurity(),
                 original.onError()
         );
+    }
+
+    private Set<String> activeToolIdsForRequest(RuntimeConfig.AgentConfig agentConfig, ToolRequest request) {
+        if (request == null || request.sessionId() == null) {
+            return Set.copyOf(agentConfig.toolIds());
+        }
+        try {
+            UUID sessionId = UUID.fromString(request.sessionId());
+            List<String> active = sessionManager.activeToolIds(sessionId);
+            if (active.isEmpty()) {
+                return Set.copyOf(agentConfig.toolIds());
+            }
+            return Set.copyOf(active);
+        } catch (Exception ignored) {
+            return Set.copyOf(agentConfig.toolIds());
+        }
     }
 
     private void emitSecurityCallback(SessionConfig sessionConfig, ToolRequest request, SecurityManager.Decision decision) {

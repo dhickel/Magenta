@@ -75,7 +75,7 @@ public final class SqliteTools {
 
         Path dbPath;
         try {
-            dbPath = ToolPathSupport.resolveWorkspacePath(settings.workspaceRoot(), dbPathText);
+            dbPath = ToolPathSupport.resolveWorkspacePath(settings.workspaceRoot(), settings.enforceWorkspaceRoot(), dbPathText);
         } catch (IllegalArgumentException e) {
             return ToolPayloads.failure(request, "validation_error", e.getMessage(), null, true);
         }
@@ -169,7 +169,7 @@ public final class SqliteTools {
 
         Path dbPath;
         try {
-            dbPath = ToolPathSupport.resolveWorkspacePath(settings.workspaceRoot(), dbPathText);
+            dbPath = ToolPathSupport.resolveWorkspacePath(settings.workspaceRoot(), settings.enforceWorkspaceRoot(), dbPathText);
         } catch (IllegalArgumentException e) {
             return ToolPayloads.failure(request, "validation_error", e.getMessage(), null, true);
         }

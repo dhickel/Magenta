@@ -1,10 +1,9 @@
-id: "default-agent"
 modelId: "default-model"
 promptIds:
-  - "base.system"
-taskIds:
+  - "base/system"
+tasks:
   - "default-task"
-workflowIds:
+workflows:
   - "default-workflow"
 toolIds:
   - "read_file"

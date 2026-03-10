@@ -32,9 +32,11 @@ Applications should treat these types as supported API surface for v1 chat/runti
 ## Lifecycle contract
 
 - Start: `startBaseSession(...)` / `startSession(...)` returns `SessionHandle`.
+  - launch-task argument is treated as a task reference (file-derived task id), not raw system-prompt text.
 - Reattach: `resumeSession(handle)` returns a fresh `SessionHandle`.
 - Fork: `forkSession(sourceHandle, ...)` clones context into a new session id.
 - Close: `closeSession(handle)` deactivates handle and prunes routes.
+- Task switching: `applyTask(handle, taskName)` replaces the active task system-prompt segment for that session.
 - Tool policy: `toolPolicy(handle)` reads active session tool policy and `setToolPolicy(handle, policy)` atomically replaces it.
 - Tool bridge execution: `executeTool(request)` executes through Magenta-owned built-ins/tool manager.
 - Tool security policy includes `allowedPaths` roots, command allow/rule sets, tool allow/deny sets, and web access toggles.

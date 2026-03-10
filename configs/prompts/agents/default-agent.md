@@ -1,1 +1,1 @@
-Agent-specific prompt for default-agent.
+Agent-specific prompt for magenta.

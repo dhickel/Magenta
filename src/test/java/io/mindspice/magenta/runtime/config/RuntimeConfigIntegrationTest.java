@@ -1,12 +1,12 @@
 package io.mindspice.magenta.runtime.config;
 
-import io.mindspice.magenta.runtime.config.RuntimeConfig;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -17,111 +17,111 @@ class RuntimeConfigIntegrationTest {
     Path tempDir;
 
     @Test
-    void loadParsesStrictConfigurationWithResolvableReferences() throws IOException {
+    void loadParsesStrictConfigurationWithFilenameDerivedIds() throws IOException {
         Path configRoot = createConfigRoot("cfg");
         writeDefaultMagentaYaml(configRoot);
-        writeModel(configRoot.resolve("models/default.yaml"), "model-default", "dev");
-        writeAgent(configRoot.resolve("agents/default.yaml"), "agent-default", "model-default", "base.system");
-        writeAgent(configRoot.resolve("agents/compaction.yaml"), "agent-compaction", "model-default", "base.system");
+        writeModel(configRoot.resolve("models/default.yaml"), "dev");
+        writeTask(configRoot.resolve("tasks/default-task.yaml"), List.of("base/system"), List.of("read_file"));
+        writeWorkflow(configRoot.resolve("workflows/default-workflow.yaml"), List.of("default-task"), List.of());
+        writeAgent(
+                configRoot.resolve("agents/main.yaml"),
+                "default",
+                List.of("base/system"),
+                List.of("default-task"),
+                List.of("default-workflow")
+        );
+        writeAgent(
+                configRoot.resolve("agents/compaction.yaml"),
+                "default",
+                List.of("base/system"),
+                List.of(),
+                List.of()
+        );
         Files.writeString(configRoot.resolve("prompts/base/system.md"), "system prompt");
 
         RuntimeConfig loaded = RuntimeConfig.load(configRoot.resolve("magenta.yaml"));
-        assertThat(loaded.baseAgentId()).isEqualTo("agent-default");
-        assertThat(loaded.compactionAgentId()).isEqualTo("agent-compaction");
+        assertThat(loaded.baseAgentId()).isEqualTo("main");
+        assertThat(loaded.compactionAgentId()).isEqualTo("compaction");
         assertThat(loaded.maxTurns()).isEqualTo(3);
         assertThat(loaded.workspaceRoot()).isEqualTo(configRoot.toAbsolutePath().normalize());
         assertThat(loaded.maxToolOutputBytes()).isEqualTo(32_768);
         assertThat(loaded.maxFileReadLines()).isEqualTo(200);
         assertThat(loaded.maxSqlRows()).isEqualTo(500);
-        assertThat(loaded.modelsById()).containsKey("model-default");
-        assertThat(loaded.modelsById().get("model-default").tokenizerEncodingOrDefault()).isEqualTo("cl100k_base");
-        assertThat(loaded.agentsById()).containsKeys("agent-default", "agent-compaction");
-        assertThat(loaded.promptsById()).containsKey("base.system");
+        assertThat(loaded.modelsById()).containsKey("default");
+        assertThat(loaded.modelsById().get("default").tokenizerEncodingOrDefault()).isEqualTo("cl100k_base");
+        assertThat(loaded.agentsById()).containsKeys("main", "compaction");
+        assertThat(loaded.agentsById().get("main").tasks()).containsExactly("default-task");
+        assertThat(loaded.promptsById()).containsKey("base/system");
         assertThat(loaded.security().mode()).isEqualTo(RuntimeConfig.SecurityMode.BLACKLIST);
         assertThat(loaded.terminal().security().eventVisibility()).isEqualTo(RuntimeConfig.TerminalSecurityVisibility.DENIALS_ONLY);
     }
 
     @Test
-    void loadDefaultParsesCurrentRepositoryConfigShape() {
-        RuntimeConfig loaded = RuntimeConfig.loadDefault();
-        assertThat(loaded).isNotNull();
-        assertThat(loaded.maxTurns()).isEqualTo(8);
-        assertThat(loaded.workspaceRoot()).isNotNull();
-        assertThat(loaded.maxToolOutputBytes()).isGreaterThan(0);
-        assertThat(loaded.maxFileReadLines()).isGreaterThan(0);
-        assertThat(loaded.maxSqlRows()).isGreaterThan(0);
-        assertThat(loaded.modelsById()).isNotEmpty();
-        assertThat(loaded.agentsById()).isNotEmpty();
-        assertThat(loaded.promptsById()).isNotEmpty();
-        assertThat(loaded.security().mode()).isEqualTo(RuntimeConfig.SecurityMode.BLACKLIST);
-        assertThat(loaded.terminal().tools().outputFormat()).isEqualTo(RuntimeConfig.TerminalToolOutputFormat.COMPACT_SUMMARY);
+    void wildcardTaskReferencesExpandToAllTasks() throws IOException {
+        Path configRoot = createConfigRoot("cfg-task-star");
+        writeDefaultMagentaYaml(configRoot);
+        writeModel(configRoot.resolve("models/default.yaml"), "dev");
+        writeTask(configRoot.resolve("tasks/a.yaml"), List.of("base/system"), List.of("read_file"));
+        writeTask(configRoot.resolve("tasks/b.yaml"), List.of("base/system"), List.of("read_file"));
+        writeWorkflow(configRoot.resolve("workflows/default-workflow.yaml"), List.of(), List.of());
+        writeAgent(configRoot.resolve("agents/main.yaml"), "default", List.of("base/system"), List.of("*"), List.of());
+        writeAgent(configRoot.resolve("agents/compaction.yaml"), "default", List.of("base/system"), List.of(), List.of());
+        Files.writeString(configRoot.resolve("prompts/base/system.md"), "system prompt");
+
+        RuntimeConfig loaded = RuntimeConfig.load(configRoot.resolve("magenta.yaml"));
+        assertThat(loaded.agentsById().get("main").tasks()).containsExactly("a", "b");
     }
 
     @Test
-    void terminalSectionParsesRenderingSecurityAndTools() throws IOException {
-        Path configRoot = createConfigRoot("cfg-terminal");
+    void legacyModelIdFieldIsRejected() throws IOException {
+        Path configRoot = createConfigRoot("cfg-legacy-model-id");
         writeDefaultMagentaYaml(configRoot);
-        writeModel(configRoot.resolve("models/default.yaml"), "model-default", "dev");
-        writeAgent(configRoot.resolve("agents/default.yaml"), "agent-default", "model-default", "base.system");
-        writeAgent(configRoot.resolve("agents/compaction.yaml"), "agent-compaction", "model-default", "base.system");
-        Files.writeString(configRoot.resolve("prompts/base/system.md"), "system prompt");
-
-        Path magentaYaml = configRoot.resolve("magenta.yaml");
-        Files.writeString(magentaYaml, Files.readString(magentaYaml) + """
-                terminal:
-                  rendering:
-                    colorEnabled: false
-                    showTimestamps: true
-                    showStatusBar: false
-                    colors:
-                      info: "white"
-                      error: "yellow"
-                  security:
-                    eventVisibility: "all"
-                  tools:
-                    outputFormat: "compact_summary"
+        Files.writeString(configRoot.resolve("models/default.yaml"), """
+                id: "legacy"
+                provider: "langchain4j"
+                model: "dev"
+                endpoint: "http://localhost:11434"
+                maxTokens: 8000
+                maxContext: 7000
+                compactThreshold: 6000
+                temperature: 0.1
+                compactionStrategy: "rolling_window"
+                tokenizerEncoding: "cl100k_base"
+                supportsToolCalling: true
+                supportsStreaming: false
+                enabled: true
                 """);
-
-        RuntimeConfig loaded = RuntimeConfig.load(magentaYaml);
-        assertThat(loaded.terminal().rendering().colorEnabled()).isFalse();
-        assertThat(loaded.terminal().rendering().showTimestamps()).isTrue();
-        assertThat(loaded.terminal().rendering().showStatusBar()).isFalse();
-        assertThat(loaded.terminal().rendering().colors().info()).isEqualTo(RuntimeConfig.TerminalColor.WHITE);
-        assertThat(loaded.terminal().rendering().colors().error()).isEqualTo(RuntimeConfig.TerminalColor.YELLOW);
-        assertThat(loaded.terminal().security().eventVisibility()).isEqualTo(RuntimeConfig.TerminalSecurityVisibility.ALL);
-    }
-
-    @Test
-    void duplicateModelIdsAreRejected() throws IOException {
-        Path configRoot = createConfigRoot("cfg-duplicate-model");
-        writeDefaultMagentaYaml(configRoot);
-        writeModel(configRoot.resolve("models/a.yaml"), "model-default", "first");
-        writeModel(configRoot.resolve("models/b.yaml"), "model-default", "second");
-        writeAgent(configRoot.resolve("agents/default.yaml"), "agent-default", "model-default", "base.system");
-        writeAgent(configRoot.resolve("agents/compaction.yaml"), "agent-compaction", "model-default", "base.system");
+        writeTask(configRoot.resolve("tasks/default-task.yaml"), List.of("base/system"), List.of("read_file"));
+        writeWorkflow(configRoot.resolve("workflows/default-workflow.yaml"), List.of(), List.of());
+        writeAgent(configRoot.resolve("agents/main.yaml"), "default", List.of("base/system"), List.of(), List.of());
+        writeAgent(configRoot.resolve("agents/compaction.yaml"), "default", List.of("base/system"), List.of(), List.of());
         Files.writeString(configRoot.resolve("prompts/base/system.md"), "system prompt");
 
         assertThatThrownBy(() -> RuntimeConfig.load(configRoot.resolve("magenta.yaml")))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Duplicate model id 'model-default'")
-                .hasMessageContaining("a.yaml")
-                .hasMessageContaining("b.yaml");
+                .hasMessageContaining("Unrecognized field \"id\"");
     }
 
     @Test
-    void duplicateAgentIdsAreRejected() throws IOException {
-        Path configRoot = createConfigRoot("cfg-duplicate-agent");
+    void legacyAgentTaskFieldIsRejected() throws IOException {
+        Path configRoot = createConfigRoot("cfg-legacy-agent-task");
         writeDefaultMagentaYaml(configRoot);
-        writeModel(configRoot.resolve("models/default.yaml"), "model-default", "dev");
-        writeAgent(configRoot.resolve("agents/a.yaml"), "agent-default", "model-default", "base.system");
-        writeAgent(configRoot.resolve("agents/b.yaml"), "agent-default", "model-default", "base.system");
+        writeModel(configRoot.resolve("models/default.yaml"), "dev");
+        writeTask(configRoot.resolve("tasks/default-task.yaml"), List.of("base/system"), List.of("read_file"));
+        writeWorkflow(configRoot.resolve("workflows/default-workflow.yaml"), List.of(), List.of());
+        Files.writeString(configRoot.resolve("agents/main.yaml"), """
+                modelId: "default"
+                promptIds: ["base/system"]
+                task: "legacy"
+                toolIds: []
+                enabled: true
+                """);
+        writeAgent(configRoot.resolve("agents/compaction.yaml"), "default", List.of("base/system"), List.of(), List.of());
         Files.writeString(configRoot.resolve("prompts/base/system.md"), "system prompt");
 
         assertThatThrownBy(() -> RuntimeConfig.load(configRoot.resolve("magenta.yaml")))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Duplicate agent id 'agent-default'")
-                .hasMessageContaining("a.yaml")
-                .hasMessageContaining("b.yaml");
+                .hasMessageContaining("Unrecognized field \"task\"");
     }
 
     @Test
@@ -130,8 +130,8 @@ class RuntimeConfigIntegrationTest {
         Files.createDirectories(configRoot.resolve("base"));
         Files.writeString(configRoot.resolve("magenta.yaml"), """
                 instance:
-                  baseAgentId: "agent-default"
-                  compactionAgentId: "agent-compaction"
+                  baseAgentId: "main"
+                  compactionAgentId: "compaction"
                   maxTurns: 3
                 models:
                   include:
@@ -140,19 +140,27 @@ class RuntimeConfigIntegrationTest {
                   include:
                     - "prompts/**/*.md"
                     - "base/*.md"
+                tasks:
+                  include:
+                    - "tasks/*.yaml"
+                workflows:
+                  include:
+                    - "workflows/*.yaml"
                 agents:
                   include:
                     - "agents/*.yaml"
                 """);
-        writeModel(configRoot.resolve("models/default.yaml"), "model-default", "dev");
-        writeAgent(configRoot.resolve("agents/default.yaml"), "agent-default", "model-default", "base.system");
-        writeAgent(configRoot.resolve("agents/compaction.yaml"), "agent-compaction", "model-default", "base.system");
+        writeModel(configRoot.resolve("models/default.yaml"), "dev");
+        writeTask(configRoot.resolve("tasks/default-task.yaml"), List.of("base/system"), List.of("read_file"));
+        writeWorkflow(configRoot.resolve("workflows/default-workflow.yaml"), List.of(), List.of());
+        writeAgent(configRoot.resolve("agents/main.yaml"), "default", List.of("base/system"), List.of(), List.of());
+        writeAgent(configRoot.resolve("agents/compaction.yaml"), "default", List.of("base/system"), List.of(), List.of());
         Files.writeString(configRoot.resolve("prompts/base/system.md"), "system prompt A");
         Files.writeString(configRoot.resolve("base/system.md"), "system prompt B");
 
         assertThatThrownBy(() -> RuntimeConfig.load(configRoot.resolve("magenta.yaml")))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Duplicate prompt id 'base.system'")
+                .hasMessageContaining("Duplicate prompt id 'base/system'")
                 .hasMessageContaining("prompts/base/system.md")
                 .hasMessageContaining("base/system.md");
     }
@@ -161,9 +169,11 @@ class RuntimeConfigIntegrationTest {
     void unknownConfigKeyStillFailsFast() throws IOException {
         Path configRoot = createConfigRoot("cfg-unknown-key");
         writeDefaultMagentaYaml(configRoot);
-        writeModel(configRoot.resolve("models/default.yaml"), "model-default", "dev");
-        writeAgent(configRoot.resolve("agents/default.yaml"), "agent-default", "model-default", "base.system");
-        writeAgent(configRoot.resolve("agents/compaction.yaml"), "agent-compaction", "model-default", "base.system");
+        writeModel(configRoot.resolve("models/default.yaml"), "dev");
+        writeTask(configRoot.resolve("tasks/default-task.yaml"), List.of("base/system"), List.of("read_file"));
+        writeWorkflow(configRoot.resolve("workflows/default-workflow.yaml"), List.of(), List.of());
+        writeAgent(configRoot.resolve("agents/main.yaml"), "default", List.of("base/system"), List.of(), List.of());
+        writeAgent(configRoot.resolve("agents/compaction.yaml"), "default", List.of("base/system"), List.of(), List.of());
         Files.writeString(configRoot.resolve("prompts/base/system.md"), "system prompt");
 
         Path magentaYaml = configRoot.resolve("magenta.yaml");
@@ -178,9 +188,11 @@ class RuntimeConfigIntegrationTest {
     void invalidTokenizerEncodingFailsFast() throws IOException {
         Path configRoot = createConfigRoot("cfg-invalid-tokenizer");
         writeDefaultMagentaYaml(configRoot);
-        writeModel(configRoot.resolve("models/default.yaml"), "model-default", "dev");
-        writeAgent(configRoot.resolve("agents/default.yaml"), "agent-default", "model-default", "base.system");
-        writeAgent(configRoot.resolve("agents/compaction.yaml"), "agent-compaction", "model-default", "base.system");
+        writeModel(configRoot.resolve("models/default.yaml"), "dev");
+        writeTask(configRoot.resolve("tasks/default-task.yaml"), List.of("base/system"), List.of("read_file"));
+        writeWorkflow(configRoot.resolve("workflows/default-workflow.yaml"), List.of(), List.of());
+        writeAgent(configRoot.resolve("agents/main.yaml"), "default", List.of("base/system"), List.of(), List.of());
+        writeAgent(configRoot.resolve("agents/compaction.yaml"), "default", List.of("base/system"), List.of(), List.of());
         Files.writeString(configRoot.resolve("prompts/base/system.md"), "system prompt");
 
         Path modelYaml = configRoot.resolve("models/default.yaml");
@@ -189,7 +201,7 @@ class RuntimeConfigIntegrationTest {
         assertThatThrownBy(() -> RuntimeConfig.load(configRoot.resolve("magenta.yaml")))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Unsupported tokenizerEncoding")
-                .hasMessageContaining("model-default")
+                .hasMessageContaining("default")
                 .hasMessageContaining("not_real");
     }
 
@@ -197,9 +209,11 @@ class RuntimeConfigIntegrationTest {
     void invalidSecurityModeFailsFast() throws IOException {
         Path configRoot = createConfigRoot("cfg-invalid-security-mode");
         writeDefaultMagentaYaml(configRoot);
-        writeModel(configRoot.resolve("models/default.yaml"), "model-default", "dev");
-        writeAgent(configRoot.resolve("agents/default.yaml"), "agent-default", "model-default", "base.system");
-        writeAgent(configRoot.resolve("agents/compaction.yaml"), "agent-compaction", "model-default", "base.system");
+        writeModel(configRoot.resolve("models/default.yaml"), "dev");
+        writeTask(configRoot.resolve("tasks/default-task.yaml"), List.of("base/system"), List.of("read_file"));
+        writeWorkflow(configRoot.resolve("workflows/default-workflow.yaml"), List.of(), List.of());
+        writeAgent(configRoot.resolve("agents/main.yaml"), "default", List.of("base/system"), List.of(), List.of());
+        writeAgent(configRoot.resolve("agents/compaction.yaml"), "default", List.of("base/system"), List.of(), List.of());
         Files.writeString(configRoot.resolve("prompts/base/system.md"), "system prompt");
 
         Path magentaYaml = configRoot.resolve("magenta.yaml");
@@ -217,9 +231,11 @@ class RuntimeConfigIntegrationTest {
     void invalidTerminalColorFailsFast() throws IOException {
         Path configRoot = createConfigRoot("cfg-invalid-terminal-color");
         writeDefaultMagentaYaml(configRoot);
-        writeModel(configRoot.resolve("models/default.yaml"), "model-default", "dev");
-        writeAgent(configRoot.resolve("agents/default.yaml"), "agent-default", "model-default", "base.system");
-        writeAgent(configRoot.resolve("agents/compaction.yaml"), "agent-compaction", "model-default", "base.system");
+        writeModel(configRoot.resolve("models/default.yaml"), "dev");
+        writeTask(configRoot.resolve("tasks/default-task.yaml"), List.of("base/system"), List.of("read_file"));
+        writeWorkflow(configRoot.resolve("workflows/default-workflow.yaml"), List.of(), List.of());
+        writeAgent(configRoot.resolve("agents/main.yaml"), "default", List.of("base/system"), List.of(), List.of());
+        writeAgent(configRoot.resolve("agents/compaction.yaml"), "default", List.of("base/system"), List.of(), List.of());
         Files.writeString(configRoot.resolve("prompts/base/system.md"), "system prompt");
 
         Path magentaYaml = configRoot.resolve("magenta.yaml");
@@ -240,14 +256,16 @@ class RuntimeConfigIntegrationTest {
         Files.createDirectories(configRoot.resolve("models"));
         Files.createDirectories(configRoot.resolve("agents"));
         Files.createDirectories(configRoot.resolve("prompts/base"));
+        Files.createDirectories(configRoot.resolve("tasks"));
+        Files.createDirectories(configRoot.resolve("workflows"));
         return configRoot;
     }
 
     private void writeDefaultMagentaYaml(Path configRoot) throws IOException {
         Files.writeString(configRoot.resolve("magenta.yaml"), """
                 instance:
-                  baseAgentId: "agent-default"
-                  compactionAgentId: "agent-compaction"
+                  baseAgentId: "main"
+                  compactionAgentId: "compaction"
                   maxTurns: 3
                 models:
                   include:
@@ -255,15 +273,20 @@ class RuntimeConfigIntegrationTest {
                 prompts:
                   include:
                     - "prompts/**/*.md"
+                tasks:
+                  include:
+                    - "tasks/*.yaml"
+                workflows:
+                  include:
+                    - "workflows/*.yaml"
                 agents:
                   include:
                     - "agents/*.yaml"
                 """);
     }
 
-    private void writeModel(Path path, String id, String modelName) throws IOException {
+    private void writeModel(Path path, String modelName) throws IOException {
         Files.writeString(path, """
-                id: "%s"
                 provider: "langchain4j"
                 model: "%s"
                 endpoint: "http://localhost:11434"
@@ -276,16 +299,46 @@ class RuntimeConfigIntegrationTest {
                 supportsToolCalling: true
                 supportsStreaming: false
                 enabled: true
-                """.formatted(id, modelName));
+                """.formatted(modelName));
     }
 
-    private void writeAgent(Path path, String id, String modelId, String promptId) throws IOException {
+    private void writeAgent(
+            Path path,
+            String modelId,
+            List<String> promptIds,
+            List<String> tasks,
+            List<String> workflows
+    ) throws IOException {
         Files.writeString(path, """
-                id: "%s"
                 modelId: "%s"
-                promptIds: ["%s"]
+                promptIds: %s
+                tasks: %s
+                workflows: %s
                 toolIds: []
                 enabled: true
-                """.formatted(id, modelId, promptId));
+                """.formatted(modelId, toYamlInline(promptIds), toYamlInline(tasks), toYamlInline(workflows)));
+    }
+
+    private void writeTask(Path path, List<String> promptIds, List<String> toolIds) throws IOException {
+        Files.writeString(path, """
+                promptIds: %s
+                toolIds: %s
+                enabled: true
+                """.formatted(toYamlInline(promptIds), toYamlInline(toolIds)));
+    }
+
+    private void writeWorkflow(Path path, List<String> taskIds, List<String> dependsOnWorkflows) throws IOException {
+        Files.writeString(path, """
+                taskIds: %s
+                dependsOnWorkflows: %s
+                enabled: true
+                """.formatted(toYamlInline(taskIds), toYamlInline(dependsOnWorkflows)));
+    }
+
+    private String toYamlInline(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return "[]";
+        }
+        return values.stream().map(v -> "\"" + v + "\"").collect(java.util.stream.Collectors.joining(", ", "[", "]"));
     }
 }

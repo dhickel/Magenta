@@ -104,6 +104,19 @@ Checks:
 2. `sqlite_query` supports one read statement only.
 3. `sqlite_exec` rejects read statements, `ATTACH`/`DETACH`, `PRAGMA`, and unknown statement classes.
 
+## TODO tool naming confusion
+
+Symptoms:
+
+- prompts reference `todo_read` and tool call is not handled
+- model/tool usage appears inconsistent for TODO state reads
+
+Checks:
+
+1. use canonical TODO tools only: `todo_create`, `todo_list`, `todo_update`, `todo_delete`.
+2. treat `todo_list` as the TODO read operation for current session state.
+3. verify prompt/task text uses canonical IDs to avoid model confusion.
+
 ## onError behavior
 
 `SessionConfig.onError` is notification-only; ingress swallows turn exceptions after callback.

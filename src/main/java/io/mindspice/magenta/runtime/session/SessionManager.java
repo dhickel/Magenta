@@ -2,6 +2,7 @@ package io.mindspice.magenta.runtime.session;
 
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
 import io.mindspice.magenta.runtime.context.Context;
+import io.mindspice.magenta.runtime.context.ContextElement;
 import io.mindspice.magenta.runtime.context.ContextManager;
 import io.mindspice.magenta.runtime.routing.InputRoutingEvent;
 import io.mindspice.magenta.runtime.routing.RoutingEvent;
@@ -11,9 +12,12 @@ import io.mindspice.magenta.runtime.session.config.SessionParams;
 import io.mindspice.magenta.runtime.tools.ToolResult;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -26,6 +30,8 @@ public final class SessionManager {
     private final ContextManager contextManager;
     private final BiFunction<UUID, SessionInput, String> turnSubmitter;
     private final ConcurrentMap<UUID, Session> sessionsById = new ConcurrentHashMap<>();
+    private final ConcurrentMap<UUID, String> activeTaskBySession = new ConcurrentHashMap<>();
+    private final ConcurrentMap<UUID, List<String>> activeToolIdsBySession = new ConcurrentHashMap<>();
 
     public SessionManager(
             RuntimeConfig runtimeConfig,
@@ -38,16 +44,32 @@ public final class SessionManager {
     }
 
     public Session start(String agentId, String alias, SessionConfig sessionConfig) {
-        return start(agentId, alias, sessionConfig, null);
+        return start(agentId, alias, sessionConfig, null, null);
+    }
+
+    public Session start(String agentId, String alias, SessionConfig sessionConfig, String launchTaskOrNull) {
+        return start(agentId, alias, sessionConfig, launchTaskOrNull, null);
     }
 
     public Session start(String agentId, String alias, SessionConfig sessionConfig, Context existingContextOrNull) {
+        return start(agentId, alias, sessionConfig, null, existingContextOrNull);
+    }
+
+    public Session start(
+            String agentId,
+            String alias,
+            SessionConfig sessionConfig,
+            String launchTaskOrNull,
+            Context existingContextOrNull
+    ) {
         RuntimeConfig.AgentConfig agent = requireAgent(agentId);
         RuntimeConfig.ModelConfig model = requireModel(agent.modelId(), agentId);
 
         UUID sessionId = UUID.randomUUID();
         String effectiveAlias = normalizeAlias(alias, sessionId);
-        List<String> systemPrompts = resolveSystemPrompts(agent.promptIds());
+        String initialTaskId = resolveLaunchTask(agent, launchTaskOrNull);
+        List<String> systemPrompts = resolveSystemPrompts(agent.promptIds(), initialTaskId);
+        List<String> effectiveToolIds = resolveEffectiveToolIds(agent.toolIds(), initialTaskId);
         Context context = contextManager.loadContext(sessionId, existingContextOrNull, systemPrompts);
 
         Session session = new Session(
@@ -55,7 +77,7 @@ public final class SessionManager {
                 agent.id(),
                 effectiveAlias,
                 model,
-                agent.toolIds(),
+                effectiveToolIds,
                 context,
                 sessionConfig == null
                         ? new SessionConfig(
@@ -71,6 +93,10 @@ public final class SessionManager {
         if (prior != null) {
             throw new IllegalStateException("Session ID collision: " + sessionId);
         }
+        if (initialTaskId != null) {
+            activeTaskBySession.put(sessionId, initialTaskId);
+        }
+        activeToolIdsBySession.put(sessionId, effectiveToolIds);
 
         contextManager.initializeSessionPersistence(session);
         return session;
@@ -93,7 +119,16 @@ public final class SessionManager {
         Session source = resume(sourceSessionId);
         SessionConfig config = overrideOrNull == null ? source.sessionConfig() : overrideOrNull;
         Context copiedContext = contextManager.copyContext(source.context());
-        return start(source.agentId(), alias, config, copiedContext);
+        Session forked = start(source.agentId(), alias, config, copiedContext);
+        String activeTask = activeTaskBySession.get(sourceSessionId);
+        if (activeTask != null && !activeTask.isBlank()) {
+            activeTaskBySession.put(forked.sessionId(), activeTask);
+        }
+        List<String> activeTools = activeToolIdsBySession.get(sourceSessionId);
+        if (activeTools != null && !activeTools.isEmpty()) {
+            activeToolIdsBySession.put(forked.sessionId(), List.copyOf(activeTools));
+        }
+        return forked;
     }
 
     public List<Session> list() {
@@ -104,6 +139,8 @@ public final class SessionManager {
 
     public void close(UUID sessionId) {
         sessionsById.remove(sessionId);
+        activeTaskBySession.remove(sessionId);
+        activeToolIdsBySession.remove(sessionId);
     }
 
     public SessionHandle handleFor(UUID sessionId) {
@@ -132,11 +169,11 @@ public final class SessionManager {
                 params.streamingEnabled(),
                 agent.modelId(),
                 agent.promptIds(),
-                agent.taskIds(),
-                agent.workflowIds(),
+                runtimeConfig.exposedTaskIds(agent),
+                agent.workflows(),
                 agent.toolIds(),
                 agent.enabled(),
-                resolveSystemPrompt(agent.promptIds()),
+                resolveSystemPrompt(session.context().snapshot()),
                 model.id(),
                 model.provider(),
                 model.model(),
@@ -185,6 +222,48 @@ public final class SessionManager {
         return sessionId != null && sessionsById.containsKey(sessionId);
     }
 
+    public String activeTaskId(UUID sessionId) {
+        if (sessionId == null) {
+            return "";
+        }
+        String taskId = activeTaskBySession.get(sessionId);
+        return taskId == null ? "" : taskId;
+    }
+
+    public List<String> activeToolIds(UUID sessionId) {
+        if (sessionId == null) {
+            return List.of();
+        }
+        Session session = resume(sessionId);
+        List<String> active = activeToolIdsBySession.get(sessionId);
+        if (active != null) {
+            return active;
+        }
+        List<String> fallback = resolveEffectiveToolIds(requireAgent(session.agentId()).toolIds(), activeTaskBySession.get(sessionId));
+        activeToolIdsBySession.put(sessionId, fallback);
+        return fallback;
+    }
+
+    public String applyTask(UUID sessionId, String taskRef) {
+        Session session = resume(sessionId);
+        RuntimeConfig.AgentConfig agent = requireAgent(session.agentId());
+        String taskId = resolveTaskForAgent(agent, taskRef);
+
+        List<ContextElement> current = session.context().snapshot();
+        int firstNonSystem = firstNonSystemIndex(current);
+        List<ContextElement> replacement = new ArrayList<>();
+        for (String prompt : resolveSystemPrompts(agent.promptIds(), taskId)) {
+            replacement.add(new ContextElement.SystemMsg(prompt));
+        }
+        replacement.addAll(current.subList(firstNonSystem, current.size()));
+        session.context().replaceAll(replacement);
+
+        activeTaskBySession.put(sessionId, taskId);
+        List<String> effectiveTools = resolveEffectiveToolIds(agent.toolIds(), taskId);
+        activeToolIdsBySession.put(sessionId, effectiveTools);
+        return taskId;
+    }
+
     private RuntimeConfig.AgentConfig requireAgent(String agentId) {
         RuntimeConfig.AgentConfig agent = runtimeConfig.agentsById().get(agentId);
         if (agent == null || !agent.enabled()) {
@@ -201,20 +280,31 @@ public final class SessionManager {
         return model;
     }
 
-    private String resolveSystemPrompt(List<String> promptIds) {
-        List<String> prompts = resolveSystemPrompts(promptIds);
+    private String resolveSystemPrompt(List<ContextElement> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return "";
+        }
+        java.util.ArrayList<String> prompts = new java.util.ArrayList<>();
+        for (ContextElement message : messages) {
+            if (message instanceof ContextElement.SystemMsg systemMsg) {
+                prompts.add(systemMsg.content());
+                continue;
+            }
+            break;
+        }
         if (prompts.isEmpty()) {
             return "";
         }
         return String.join("\n\n", prompts);
     }
 
-    private List<String> resolveSystemPrompts(List<String> promptIds) {
+    private List<String> resolveSystemPrompts(List<String> promptIds, String taskIdOrNull) {
+        ArrayList<String> prompts = new ArrayList<>();
         if (promptIds == null || promptIds.isEmpty()) {
-            return List.of();
+            appendTaskPrompts(prompts, taskIdOrNull);
+            return List.copyOf(prompts);
         }
 
-        java.util.ArrayList<String> prompts = new java.util.ArrayList<>();
         for (String promptId : promptIds) {
             String prompt = runtimeConfig.promptsById().get(promptId);
             if (prompt == null) {
@@ -222,7 +312,157 @@ public final class SessionManager {
             }
             prompts.add(prompt);
         }
+        appendTaskPrompts(prompts, taskIdOrNull);
         return List.copyOf(prompts);
+    }
+
+    private String resolveLaunchTask(RuntimeConfig.AgentConfig agent, String launchTaskOrNull) {
+        if (launchTaskOrNull == null || launchTaskOrNull.isBlank()) {
+            return null;
+        }
+        return resolveTaskForAgent(agent, launchTaskOrNull);
+    }
+
+    private void appendTaskPrompts(List<String> prompts, String taskIdOrNull) {
+        if (taskIdOrNull == null || taskIdOrNull.isBlank()) {
+            return;
+        }
+        RuntimeConfig.TaskConfig task = runtimeConfig.tasksById().get(taskIdOrNull);
+        if (task == null || !task.enabled()) {
+            throw new IllegalStateException("Task not found or disabled: " + taskIdOrNull);
+        }
+        for (String promptId : task.promptIds()) {
+            String prompt = runtimeConfig.promptsById().get(promptId);
+            if (prompt == null) {
+                throw new IllegalStateException("Task prompt ID not found: " + taskIdOrNull + " -> " + promptId);
+            }
+            prompts.add(prompt);
+        }
+    }
+
+    private String resolveTaskForAgent(RuntimeConfig.AgentConfig agent, String taskRef) {
+        if (taskRef == null || taskRef.isBlank()) {
+            throw new IllegalStateException("Task name is required");
+        }
+        List<String> exposedTasks = runtimeConfig.exposedTaskIds(agent);
+        if (exposedTasks.isEmpty()) {
+            throw new IllegalStateException("Agent has no exposed tasks: " + agent.id());
+        }
+
+        String normalized = normalizeReferenceToken(taskRef);
+        if (exposedTasks.contains(normalized)) {
+            return normalized;
+        }
+
+        if (normalized.contains(".") && !normalized.contains("/")) {
+            String dotted = normalized.replace('.', '/');
+            if (exposedTasks.contains(dotted)) {
+                return dotted;
+            }
+        }
+
+        String basename = basename(normalized);
+        List<String> matches = exposedTasks.stream()
+                .filter(candidate -> basename(candidate).equals(basename))
+                .sorted()
+                .toList();
+        if (matches.size() == 1) {
+            return matches.getFirst();
+        }
+        if (matches.size() > 1) {
+            throw new IllegalStateException("Ambiguous task reference '" + taskRef + "'. Matches: " + String.join(", ", matches));
+        }
+        throw new IllegalStateException("Task not exposed by agent '" + agent.id() + "': " + taskRef);
+    }
+
+    private List<String> resolveEffectiveToolIds(List<String> agentToolIds, String taskIdOrNull) {
+        List<String> base = normalizeToolIds(agentToolIds);
+        if (taskIdOrNull == null || taskIdOrNull.isBlank()) {
+            return base;
+        }
+
+        RuntimeConfig.TaskConfig task = runtimeConfig.tasksById().get(taskIdOrNull);
+        if (task == null || !task.enabled()) {
+            throw new IllegalStateException("Task not found or disabled for tool resolution: " + taskIdOrNull);
+        }
+        List<String> taskToolIds = normalizeToolIds(task.toolIds());
+        if (taskToolIds.isEmpty()) {
+            return base;
+        }
+
+        boolean baseAll = base.contains("*");
+        boolean taskAll = taskToolIds.contains("*");
+
+        if (baseAll && taskAll) {
+            return List.of("*");
+        }
+        if (baseAll) {
+            return taskToolIds;
+        }
+        if (taskAll) {
+            return base;
+        }
+
+        Set<String> taskSet = Set.copyOf(taskToolIds);
+        LinkedHashSet<String> intersection = new LinkedHashSet<>();
+        for (String toolId : base) {
+            if (taskSet.contains(toolId)) {
+                intersection.add(toolId);
+            }
+        }
+        return List.copyOf(intersection);
+    }
+
+    private List<String> normalizeToolIds(List<String> raw) {
+        if (raw == null || raw.isEmpty()) {
+            return List.of();
+        }
+        LinkedHashSet<String> normalized = new LinkedHashSet<>();
+        for (String entry : raw) {
+            if (entry == null) {
+                continue;
+            }
+            String token = entry.trim();
+            if (token.isEmpty()) {
+                continue;
+            }
+            normalized.add(token);
+        }
+        return List.copyOf(normalized);
+    }
+
+    private int firstNonSystemIndex(List<ContextElement> context) {
+        int index = 0;
+        while (index < context.size()) {
+            if (!(context.get(index) instanceof ContextElement.SystemMsg)) {
+                break;
+            }
+            index++;
+        }
+        return index;
+    }
+
+    private String normalizeReferenceToken(String rawToken) {
+        if (rawToken == null) {
+            return "";
+        }
+        String token = rawToken.trim().replace('\\', '/');
+        if (token.startsWith("./")) {
+            token = token.substring(2);
+        }
+        String lower = token.toLowerCase(java.util.Locale.ROOT);
+        if (lower.endsWith(".yaml") || lower.endsWith(".yml") || lower.endsWith(".md")) {
+            int dot = token.lastIndexOf('.');
+            if (dot > 0) {
+                token = token.substring(0, dot);
+            }
+        }
+        return token;
+    }
+
+    private String basename(String id) {
+        int slash = id.lastIndexOf('/');
+        return slash >= 0 ? id.substring(slash + 1) : id;
     }
 
     private String normalizeAlias(String alias, UUID sessionId) {

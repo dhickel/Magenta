@@ -1,4 +1,3 @@
-id: "default-workflow"
 taskIds:
   - "default-task"
 dependsOnWorkflows: []

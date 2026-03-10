@@ -7,9 +7,11 @@
 ## Responsibilities
 
 - Parse root config document.
-- Resolve include globs for models/agents/prompts.
-- Load model and agent YAML docs.
-- Load prompt markdown content and derive prompt IDs.
+- Resolve include globs for models/agents/prompts/tasks/workflows.
+- Load model/agent/task/workflow YAML docs.
+- Load prompt markdown content and derive prompt IDs from relative prompt paths.
+- Derive model/agent/task/workflow IDs from relative file paths (without extension).
+- Expand `*` references to full domain sets and resolve basename/path references.
 - Resolve `baseAgentId`, `compactionAgentId`, and `maxTurns` defaults.
 - Load terminal UI defaults from `terminal.rendering`, `terminal.security`, and `terminal.tools`.
 - Load security policy defaults from `security` (mode, tools, command rules, approved roots, web access).
@@ -23,10 +25,11 @@
 
 ## Invariants
 
-- Returned maps (`modelsById`, `agentsById`, `promptsById`) are immutable.
+- Returned maps (`modelsById`, `agentsById`, `promptsById`, `tasksById`, `workflowsById`) are immutable.
 - Base agent and compaction agent must exist and be enabled.
 - Enabled agents must reference enabled models.
-- All agent prompt IDs must resolve.
+- All enabled references (prompt/task/workflow) must resolve.
+- Workflow dependency graph for enabled workflows must be acyclic.
 - Unknown YAML keys fail deserialization.
 - Unsupported terminal config tokens (color names, security visibility, tool output format) fail startup.
 - Security mode/action tokens map to closed enums and fail startup on unknown values.
@@ -58,6 +61,6 @@ read magenta.yaml
 
 ## Known constraints
 
-- Duplicate IDs fail fast with explicit source file diagnostics.
+- Duplicate file-derived IDs fail fast with explicit source file diagnostics.
 - Include resolution walks full config tree per pattern.
 - `allowedPaths` is configured as path roots; target path resolution and authorization semantics are enforced at runtime by `SecurityManager`.

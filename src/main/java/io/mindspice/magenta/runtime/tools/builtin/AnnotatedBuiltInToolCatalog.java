@@ -64,8 +64,10 @@ public final class AnnotatedBuiltInToolCatalog {
     }
 
     @Tool(name = READ_FILE, value = {
-            "Read a UTF-8 file with bounded line output and stable hashline anchors.",
-            "Use this before edits to obtain snapshotId and anchors in line:hh format."
+            "Reads the content of a UTF-8 encoded file within the workspace, returning text content along with a snapshotId and stable line:hh anchors.",
+            "Always use this tool before attempting to edit a file with search_replace to ensure you have the latest snapshot and correct line hashes.",
+            "Input requires a 'path' (workspace-relative or absolute). Optional 'startLine' and 'endLine' (1-based, inclusive) allow reading specific ranges, which is essential for large files to avoid hitting runtime output limits.",
+            "The returned snapshotId must be passed to subsequent write or edit operations to prevent state corruption. Success payloads include the requested text range and metadata; failures occur if the file is missing, unreadable, or exceeds system size limits."
     })
     public ToolResult readFile(
             @ToolMemoryId ToolRequest request,
@@ -81,8 +83,10 @@ public final class AnnotatedBuiltInToolCatalog {
     }
 
     @Tool(name = LIST_DIRECTORY, value = {
-            "List directory entries with bounded output.",
-            "Use for project discovery without reading file contents."
+            "Lists the contents of a specified directory, providing names, types (file/dir), and sizes for all entries without reading file content.",
+            "This is the primary tool for workspace exploration and project structure discovery. Use it to locate source code, configuration files, and documentation.",
+            "Optional parameters include 'path' (defaults to '.'), 'maxEntries' to limit the response size, and 'includeHidden' to toggle visibility of dot-prefixed files.",
+            "If a directory is extremely large, the output may be truncated based on runtime safety limits. This tool is read-only and will fail if the path does not exist or is not a directory."
     })
     public ToolResult listDirectory(
             @ToolMemoryId ToolRequest request,
@@ -98,7 +102,10 @@ public final class AnnotatedBuiltInToolCatalog {
     }
 
     @Tool(name = FILE_METADATA, value = {
-            "Inspect one file or directory without reading full content."
+            "Retrieves detailed metadata for a single file or directory, including size, timestamps, permissions, and its current snapshotId.",
+            "Use this tool when you need to check if a file exists, verify its size, or obtain a snapshotId for a write/delete operation without needing to read the actual file content.",
+            "Requires a 'path' parameter. This is a lightweight alternative to read_file and is ideal for verifying the state of large assets or binary files.",
+            "Returns a structured JSON payload containing filesystem attributes; fails if the path is invalid or inaccessible due to security constraints."
     })
     public ToolResult fileMetadata(
             @ToolMemoryId ToolRequest request,
@@ -110,11 +117,10 @@ public final class AnnotatedBuiltInToolCatalog {
     }
 
     @Tool(name = GREP_FILES, value = {
-            "Search files recursively for a literal or regex pattern with bounded output.",
-            "pattern applies to file contents (line text), not file names.",
-            "rootPath is optional and defaults to '.'. It must resolve to an existing directory.",
-            "filePattern supports basename filters (for example 'fractal.lisp') and glob filters (for example '**/*.lisp').",
-            "Returns matched lines with anchors for deterministic follow-up edits."
+            "Recursively searches through files in the workspace for lines matching a literal string or regular expression, returning matches with their line numbers and hashes.",
+            "This is the most efficient way to locate specific symbols, patterns, or code snippets across multiple files without reading each file individually.",
+            "Parameters: 'pattern' (search string), 'rootPath' (starting directory, defaults to '.'), 'regex' (enables regex mode), 'caseSensitive' (enables case sensitivity), 'maxMatches' (limits results), and 'filePattern' (glob filter for file names like '**/*.java' or basename filters such as '*.md').",
+            "The returned payload includes 'matches' containing line text and 'line:hh' anchors which are compatible with search_replace. rootPath is optional. If too many matches are found, file contents and matches will be truncated for performance."
     })
     public ToolResult grepFiles(
             @ToolMemoryId ToolRequest request,
@@ -136,9 +142,11 @@ public final class AnnotatedBuiltInToolCatalog {
     }
 
     @Tool(name = SEARCH_REPLACE, value = {
-            "Apply deterministic anchored edits to a file.",
-            "Requires path, snapshotId, and edits[] entries with startAnchor/endAnchor/replacement.",
-            "Anchors must exactly match line:hh values returned by read_file or grep_files; do not invent anchors."
+            "Applies highly precise, deterministic edits to a file using stable 'line:hh' anchors obtained from a prior read_file or grep_files call.",
+            "This is the safest and most efficient method for modifying code, as it ensures changes are applied to the correct logical blocks even if file line numbers shift slightly.",
+            "Requires 'path' (the target file), 'snapshotId' (to prevent editing stale file states), and a list of 'edits' containing: 'startAnchor' (the beginning line and its hash), 'endAnchor' (the ending line and its hash), and 'replacement' (the new text).",
+            "Optional 'expectedText' can be included within an edit as an additional verification layer to ensure the content between anchors exactly matches your assumptions.",
+            "This tool is strictly guarded; it will fail if the anchors are invalid, if the snapshotId is outdated, or if the expected text does not match. Use it to ensure surgical accuracy and prevent unintended side effects; do not invent anchors."
     })
     public ToolResult searchReplace(
             @ToolMemoryId ToolRequest request,
@@ -155,7 +163,10 @@ public final class AnnotatedBuiltInToolCatalog {
     }
 
     @Tool(name = WRITE_FILE, value = {
-            "Write UTF-8 text to a file with overwrite and optional snapshot guard controls."
+            "Writes the provided UTF-8 text content to a file at the specified path, creating the file if it doesn't exist or overwriting it if it does.",
+            "Use this for creating new files or replacing the entire content of existing ones. For partial edits, prefer search_replace for greater precision and safety.",
+            "Parameters: 'path' (target file), 'content' (raw text to write), 'overwrite' (boolean, must be true to replace existing files), and 'expectedSnapshotId' (guard to ensure the file hasn't changed since your last read).",
+            "This operation is atomic and requires write permissions. Success returns confirmation of the write; failures occur if the path is invalid, permissions are denied, or the snapshot check fails."
     })
     public ToolResult writeFile(
             @ToolMemoryId ToolRequest request,
@@ -173,7 +184,10 @@ public final class AnnotatedBuiltInToolCatalog {
     }
 
     @Tool(name = DELETE_FILE, value = {
-            "Delete one file with optional snapshot guard validation."
+            "Removes a single file from the workspace filesystem permanently. This action is irreversible, so use it with caution.",
+            "Always verify that the file is no longer needed before calling this tool. For added safety, provide an 'expectedSnapshotId' to ensure you're deleting the exact state you just inspected.",
+            "Requires a 'path' parameter (relative or absolute). If the file is a directory, this tool will fail; use recursive shell commands if directory deletion is necessary.",
+            "Success returns a confirmation message; failures occur if the file is missing, the path points to a directory, or the snapshotId does not match."
     })
     public ToolResult deleteFile(
             @ToolMemoryId ToolRequest request,
@@ -187,8 +201,12 @@ public final class AnnotatedBuiltInToolCatalog {
     }
 
     @Tool(name = SHELL_COMMAND, value = {
-            "Execute a shell command in the configured workspace root with timeout and bounded output capture.",
-            "Use a single command invocation; shell operators/chaining (for example '|', ';', '&&', redirects) are blocked by security."
+            "Executes a single command invocation (non-interactive, via 'bash -lc') within the workspace root directory, capturing the resulting output and error streams.",
+            "Use this tool for running build scripts, executing unit tests, managing dependencies, or performing filesystem operations that are not covered by the specialized file tools.",
+            "Security constraints are strictly enforced: operators/chaining (e.g., '|', ';', '&&', '>', '`', etc.) are blocked to prevent unauthorized access or command injection.",
+            "Parameters: 'cmd' (the raw command string to run) and 'timeoutMs' (optional duration after which the process is forcibly terminated).",
+            "This tool provides direct access to the system's capabilities; always verify the command's safety and expected behavior before execution.",
+            "Returns a structured result including 'exitCode', 'stdout', and 'stderr'. Use the exitCode (0 for success) to determine the outcome of the command."
     })
     public ToolResult shellCommand(
             @ToolMemoryId ToolRequest request,
@@ -202,7 +220,10 @@ public final class AnnotatedBuiltInToolCatalog {
     }
 
     @Tool(name = SQLITE_QUERY, value = {
-            "Run one read-only SQLite SQL statement and return rows as structured JSON."
+            "Executes a single read-only SQL SELECT statement against a SQLite database file and returns the resulting rows as a structured JSON array.",
+            "Use this tool for data discovery, state inspection, or analytical queries on workspace-resident databases without modifying the data.",
+            "Parameters: 'dbPath' (path to the .sqlite or .db file) and 'sql' (a single, valid SELECT statement). Multiple statements are not supported here.",
+            "This tool is strictly read-only and will fail if the SQL statement attempts to modify the database state. If the query returns a large volume of data, the result set will be truncated."
     })
     public ToolResult sqliteQuery(
             @ToolMemoryId ToolRequest request,
@@ -216,7 +237,11 @@ public final class AnnotatedBuiltInToolCatalog {
     }
 
     @Tool(name = SQLITE_EXEC, value = {
-            "Execute one or more mutating SQLite SQL statements with optional transaction wrapping."
+            "Executes one or more mutating SQL statements against a SQLite database file, allowing you to create tables, insert/update/delete rows, or modify the database schema.",
+            "Use this tool for persistence, state management, or data transformations within workspace-resident databases.",
+            "Parameters: 'dbPath' (path to the target database file), 'sql' (one or more SQL statements to execute), and 'transactional' (optional boolean, defaults to true, which wraps all statements in a single transaction).",
+            "This tool handles both single-statement mutations and complex multi-step operations efficiently. Success returns the number of affected rows and the resulting database state metadata.",
+            "Security constraints prevent access to databases outside the authorized scope; this tool will fail if the provided database path is invalid or if the SQL syntax is incorrect."
     })
     public ToolResult sqliteExec(
             @ToolMemoryId ToolRequest request,
@@ -232,8 +257,10 @@ public final class AnnotatedBuiltInToolCatalog {
     }
 
     @Tool(name = TODO_CREATE, value = {
-            "Create a todo item for the current session.",
-            "Todos are scoped to the calling session id."
+            "Creates a new todo item in the current session's tracker as the first step in the todo lifecycle (create -> list -> update -> delete).",
+            "Use this tool to break down a larger user request into manageable steps, providing visibility into progress and upcoming actions.",
+            "Parameters: 'title' (a short summary of the task) and 'details' (optional notes, dependencies, or success criteria).",
+            "Each todo is assigned a unique ID used by update/delete calls. Todos are persisted in the runtime state DB and scoped by sessionId; use todo_list to read current state."
     })
     public ToolResult todoCreate(
             @ToolMemoryId ToolRequest request,
@@ -247,8 +274,10 @@ public final class AnnotatedBuiltInToolCatalog {
     }
 
     @Tool(name = TODO_LIST, value = {
-            "List todos for the current session.",
-            "Optional status filter accepts 'open' or 'done'."
+            "Reads todo state for the current session by listing active and/or completed items.",
+            "Use this as the canonical todo read operation to verify progress, identify pending actions, and recover state after interruption.",
+            "Optional parameters include 'status' (filter by 'open' or 'done') and 'limit' (to bound the result count for sessions with many tasks).",
+            "Returns structured todo objects including todoId, title, details, status, createdAtMs, and updatedAtMs."
     })
     public ToolResult todoList(
             @ToolMemoryId ToolRequest request,
@@ -262,8 +291,10 @@ public final class AnnotatedBuiltInToolCatalog {
     }
 
     @Tool(name = TODO_UPDATE, value = {
-            "Update one todo for the current session by id.",
-            "Provide at least one of: title, details, status."
+            "Updates an existing todo item by todoId (title, details, and/or status).",
+            "Call this immediately when task state changes, especially to mark completion with status='done'.",
+            "Requires a 'todoId'. Optional parameters include 'title' (rename the task), 'details' (add additional context), and 'status' ('open' or 'done').",
+            "This operation is atomic and will fail if the provided todoId does not exist in the current session."
     })
     public ToolResult todoUpdate(
             @ToolMemoryId ToolRequest request,
@@ -281,7 +312,10 @@ public final class AnnotatedBuiltInToolCatalog {
     }
 
     @Tool(name = TODO_DELETE, value = {
-            "Delete one todo for the current session by id."
+            "Deletes an existing todo item from the current session by todoId.",
+            "Use this only to remove obsolete or incorrectly created items after confirming they should not remain in plan state.",
+            "Requires a 'todoId' parameter. Deletion is immediate and irreversible for the current session.",
+            "Success returns a confirmation message; fails if the todoId is not found or the session is inactive."
     })
     public ToolResult todoDelete(
             @ToolMemoryId ToolRequest request,
@@ -293,8 +327,10 @@ public final class AnnotatedBuiltInToolCatalog {
     }
 
     @Tool(name = LIST_AGENTS, value = {
-            "List available configured agents by id.",
-            "Use this before delegate_agent to discover valid targets."
+            "Provides a list of all configured agents currently available in the runtime, along with their IDs, capabilities, and status.",
+            "Call this tool before attempting to use delegate_agent to discover valid delegation targets and their associated metadata (e.g., modelId, tool count).",
+            "Accepts an optional 'includeDisabled' boolean to show agents that are currently inactive. The output is sorted alphabetically by agentId for consistency.",
+            "Success returns a list of agent descriptors; use this to understand the specialized expertise available for complex sub-tasks or parallel execution."
     })
     public ToolResult listAgents(
             @ToolMemoryId ToolRequest request,
@@ -319,8 +355,8 @@ public final class AnnotatedBuiltInToolCatalog {
                     agentNode.put("modelId", agent.modelId());
                     agentNode.put("enabled", agent.enabled());
                     agentNode.put("promptCount", agent.promptIds().size());
-                    agentNode.put("taskCount", agent.taskIds().size());
-                    agentNode.put("workflowCount", agent.workflowIds().size());
+                    agentNode.put("taskCount", agent.tasks().size());
+                    agentNode.put("workflowCount", agent.workflows().size());
                     agentNode.put("toolCount", agent.toolIds().size());
                     agents.add(agentNode);
                 });
@@ -333,8 +369,11 @@ public final class AnnotatedBuiltInToolCatalog {
     }
 
     @Tool(name = DELEGATE_AGENT, value = {
-            "Delegate a prompt to another configured agent and return its final response.",
-            "Delegation is synchronous and runs in an ephemeral child session."
+            "Delegates a complex prompt or specific task to another configured agent, returning the final response as a structured ToolResult.",
+            "Use this tool for parallelizing investigation, leveraging specialized agent expertise, or executing tasks that require a separate session context.",
+            "Delegation is synchronous: it spawns an ephemeral child session, executes the prompt using the target agent's specific model and tools, and then returns the outcome to you.",
+            "Requires 'targetAgentId' (which should be verified first with list_agents) and 'prompt' (the instruction to execute). Optional 'timeoutMs' to limit child session duration.",
+            "This is a powerful orchestration tool for building multi-agent workflows. Success returns the delegated agent's response payload; failures occur if the target agent is missing, disabled, or if the child session times out."
     })
     public ToolResult delegateAgent(
             @ToolMemoryId ToolRequest request,

@@ -20,6 +20,7 @@ class ContextManagerCompactionIntegrationTest {
         ContextManager contextManager = new ContextManager();
         Context context = new Context();
         context.append(new ContextElement.SystemMsg("system"));
+        context.append(new ContextElement.SystemMsg("task"));
         for (int i = 0; i < 10; i++) {
             context.append(new ContextElement.UserMsg("message-" + i + "-xxxxxxxxxxxxxxxxxxxxxxxx"));
         }
@@ -54,11 +55,12 @@ class ContextManagerCompactionIntegrationTest {
         List<ContextElement> compacted = context.snapshot();
         assertThat(summarizedInput.get()).hasSize(4);
         assertThat(compacted.getFirst()).isEqualTo(new ContextElement.SystemMsg("system"));
-        assertThat(compacted.get(1)).isInstanceOf(ContextElement.SummaryMsg.class);
-        ContextElement.SummaryMsg summary = (ContextElement.SummaryMsg) compacted.get(1);
+        assertThat(compacted.get(1)).isEqualTo(new ContextElement.SystemMsg("task"));
+        assertThat(compacted.get(2)).isInstanceOf(ContextElement.SummaryMsg.class);
+        ContextElement.SummaryMsg summary = (ContextElement.SummaryMsg) compacted.get(2);
         assertThat(summary.content()).isEqualTo("summary text");
         assertThat(summary.sourceTag()).startsWith("session:");
-        assertThat(compacted).hasSize(8);
+        assertThat(compacted).hasSize(9);
     }
 
     @Test

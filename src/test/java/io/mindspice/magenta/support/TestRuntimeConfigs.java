@@ -32,8 +32,8 @@ public final class TestRuntimeConfigs {
                 "agent-default",
                 "model-default",
                 List.of("base.system", "agents.default"),
-                List.of(),
-                List.of(),
+                List.of("default-task"),
+                List.of("default-workflow"),
                 List.of("read_file"),
                 true
         );
@@ -44,6 +44,19 @@ public final class TestRuntimeConfigs {
                 List.of("base.system"),
                 List.of(),
                 List.of(),
+                List.of(),
+                true
+        );
+
+        RuntimeConfig.TaskConfig defaultTask = new RuntimeConfig.TaskConfig(
+                "default-task",
+                List.of("tasks.default"),
+                List.of("read_file"),
+                true
+        );
+        RuntimeConfig.WorkflowConfig defaultWorkflow = new RuntimeConfig.WorkflowConfig(
+                "default-workflow",
+                List.of("default-task"),
                 List.of(),
                 true
         );
@@ -61,8 +74,11 @@ public final class TestRuntimeConfigs {
                 Map.of(baseAgent.id(), baseAgent, compactionAgent.id(), compactionAgent),
                 Map.of(
                         "base.system", "Base prompt",
-                        "agents.default", "Agent prompt"
+                        "agents.default", "Agent prompt",
+                        "tasks.default", "Configured task"
                 ),
+                Map.of(defaultTask.id(), defaultTask),
+                Map.of(defaultWorkflow.id(), defaultWorkflow),
                 RuntimeConfig.SecurityPolicyConfig.defaults(),
                 RuntimeConfig.TerminalConfig.defaults()
         );

@@ -3,8 +3,10 @@ instance:
   dataRoot: ".magenta"
   debugJsonl: ".magenta/logs/events.jsonl"
   localDevMode: true
+  baseAgentId: "magenta"
+  compactionAgentId: "magenta"
   maxTurns: 8
-  maxToolOutputBytes: 32768
+  maxToolOutputBytes: 65536
   maxFileReadLines: 200
   maxSqlRows: 500
   maxEssenceBodyBytes: 65536

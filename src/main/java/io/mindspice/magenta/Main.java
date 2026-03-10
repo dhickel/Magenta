@@ -11,12 +11,18 @@ import io.mindspice.magenta.ui.ToolApprovalPromptAdapter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 public class Main {
 
     public static void main(String[] args) {
-        Path configPath = args.length > 0 ? Path.of(args[0]) : Path.of("configs", "magenta.yaml");
+        CliArgs cli = parseArgs(args);
+        Path configPath = cli.configPath();
         RuntimeConfig runtimeConfig = RuntimeConfig.load(configPath);
+        if (cli.forceYolo()) {
+            runtimeConfig = runtimeConfig.withYoloOverride();
+        }
         boolean routingLogsEnabled = Boolean.parseBoolean(System.getenv().getOrDefault("MAGENTA_UI_ROUTE_LOGS", "false"));
         ensureWorkspaceRoot(runtimeConfig.workspaceRoot());
         ToolApprovalPromptAdapter approvalAdapter = new ToolApprovalPromptAdapter();
@@ -25,7 +31,7 @@ public class Main {
 
         TerminalUiConfig uiConfig = new TerminalUiConfig(
                 new TerminalUiConfig.Session(
-                        "terminal",
+                        "magenta",
                         SessionParams.ofStreaming(true),
                         routingLogsEnabled ? RoutingEventLevel.FINAL : RoutingEventLevel.NONE
                 ),
@@ -53,6 +59,42 @@ public class Main {
         } catch (Exception e) {
             throw new IllegalStateException("Failed to start terminal UI", e);
         }
+    }
+
+    private static CliArgs parseArgs(String[] args) {
+        Path configPath = Path.of("configs", "magenta.yaml");
+        boolean configPathSet = false;
+        boolean forceYolo = false;
+        List<String> unknownFlags = new ArrayList<>();
+
+        if (args != null) {
+            for (String arg : args) {
+                if (arg == null || arg.isBlank()) {
+                    continue;
+                }
+                if ("--yolo".equals(arg.trim())) {
+                    forceYolo = true;
+                    continue;
+                }
+                if (arg.startsWith("-")) {
+                    unknownFlags.add(arg);
+                    continue;
+                }
+                if (configPathSet) {
+                    throw new IllegalArgumentException("Only one config path argument is supported");
+                }
+                configPath = Path.of(arg);
+                configPathSet = true;
+            }
+        }
+
+        if (!unknownFlags.isEmpty()) {
+            throw new IllegalArgumentException("Unsupported flags: " + String.join(", ", unknownFlags));
+        }
+        return new CliArgs(configPath, forceYolo);
+    }
+
+    private record CliArgs(Path configPath, boolean forceYolo) {
     }
 
     private static void ensureWorkspaceRoot(Path workspaceRoot) {

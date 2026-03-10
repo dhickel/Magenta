@@ -145,7 +145,10 @@ configs/
 
 Rules:
 - `magenta.yaml` wires include sets and runtime defaults.
-- Agents reference reusable IDs (models/prompts/tasks/workflows).
+- All config entity identity is derived from relative file path (filename/path without extension), not inline `id` fields.
+- Agents reference reusable file-derived IDs (models/prompts/tasks/workflows).
+- Agent task wiring uses one `tasks` list (no separate `task`/`taskIds` split).
+- `*` in reference lists expands to all loaded entries for that domain.
 - Startup resolves and validates full graph before runtime side effects.
 - Merge precedence: `defaults < YAML < env vars < CLI flags`.
 - No hot-reload requirement for v1.
@@ -224,6 +227,7 @@ Non-negotiable rules:
 - future broader side-effect ingress should converge into `SecurityService` when that phase is implemented.
 - deny-by-default baseline.
 - developer override (`yolo`) must be explicit and auditable.
+- CLI `--yolo` forces runtime override of tool policy (including tool/file access checks) regardless of config values.
 - no shell/file mutation bypass paths.
 - tool outputs are structured and machine-verifiable.
 
@@ -293,6 +297,22 @@ Build/CI gate:
 - `mvn verify` is the required test gate for merge readiness (not `mvn test` alone),
 - `maven-surefire-plugin` runs `*Test` classes only,
 - `maven-failsafe-plugin` runs `*IT`/`*IntegrationTest` suites.
+
+### Home Deployment Workflow (`~/.magenta`)
+
+Use a home deployment target for runtime smoke/ops:
+- Deploy root: `~/.magenta`
+- Runtime workspace root: `~/.magenta/root`
+- Deployed config root: `~/.magenta/configs`
+- Deployed jar path: `~/.magenta/Magenta2-1.0-SNAPSHOT.jar`
+
+On any code/config change that should be runnable from the home deployment:
+1. Run `scripts/deploy-home-magenta.sh` from repo root.
+2. Default deploy behavior updates the JAR only and does **not** overwrite `~/.magenta/configs`.
+3. If you intentionally want to refresh deployed configs, run `scripts/deploy-home-magenta.sh --sync-configs` (or set `MAGENTA_DEPLOY_SYNC_CONFIGS=true`); this performs a full replace of `~/.magenta/configs`.
+4. Confirm deployed config keeps `instance.workspaceRoot` set to `~/.magenta/root`.
+5. For live-environment testing after deployment, run `magenta` (alias for `java -jar ~/.magenta/Magenta2-1.0-SNAPSHOT.jar ~/.magenta/configs/magenta.yaml`).
+6. If the alias is missing, add `alias magenta='java -jar "$HOME/.magenta/Magenta2-1.0-SNAPSHOT.jar" "$HOME/.magenta/configs/magenta.yaml"'` to your shell profile.
 
 ### Terminal UI Smoke Test Loop
 

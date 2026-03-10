@@ -7,21 +7,27 @@ import java.util.Objects;
 public final class AssistantOutputWriter {
 
     private final AssistantOutputTarget target;
+    private final String assistantPrefix;
     private boolean streamInProgress = false;
 
     public AssistantOutputWriter(AssistantOutputTarget target) {
-        this(target, false);
+        this(target, false, "assistant");
     }
 
     public AssistantOutputWriter(AssistantOutputTarget target, boolean emitFallbackNotice) {
+        this(target, emitFallbackNotice, "assistant");
+    }
+
+    public AssistantOutputWriter(AssistantOutputTarget target, boolean emitFallbackNotice, String assistantLabel) {
         this.target = Objects.requireNonNull(target, "target");
+        this.assistantPrefix = normalizeAssistantPrefix(assistantLabel);
     }
 
     public void onOutput(SessionOutput output) {
         switch (output) {
             case SessionOutput.StreamedOutput stream -> {
                 if (!streamInProgress) {
-                    target.printAssistantToken("assistant> ");
+                    target.printAssistantToken(assistantPrefix);
                 }
                 streamInProgress = true;
                 target.printAssistantToken(stream.text());
@@ -32,7 +38,7 @@ public final class AssistantOutputWriter {
                     target.finishAssistantStreamLine();
                 } else {
                     if (hasFinalText) {
-                        target.printAssistantFinal("assistant> " + finalOutput.text());
+                        target.printAssistantFinal(assistantPrefix + finalOutput.text());
                     }
                 }
                 streamInProgress = false;
@@ -53,5 +59,13 @@ public final class AssistantOutputWriter {
         }
         String normalized = content.toLowerCase();
         return normalized.contains("\"status\":\"failed\"") || normalized.contains("\"status\": \"failed\"");
+    }
+
+    private static String normalizeAssistantPrefix(String assistantLabel) {
+        String label = assistantLabel == null ? "" : assistantLabel.trim();
+        if (label.isEmpty()) {
+            label = "assistant";
+        }
+        return label + "> ";
     }
 }

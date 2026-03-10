@@ -58,6 +58,64 @@ class SessionManagerIntegrationTest {
     }
 
     @Test
+    void startWithLaunchTaskOverrideAppendsOverrideAsFinalSystemMessage() {
+        RuntimeConfig config = TestRuntimeConfigs.basicRuntimeConfig();
+        ContextManager contextManager = new ContextManager();
+        SessionManager manager = new SessionManager(config, contextManager, (sessionId, input) -> "ok");
+
+        Session session = manager.start(
+                "agent-default",
+                "override",
+                new SessionConfig(
+                        SessionParams.ofStreaming(true),
+                        request -> ToolResult.notHandled(request.toolCall()),
+                        ignored -> {}
+                ),
+                "default-task"
+        );
+
+        assertThat(session.context().snapshot())
+                .startsWith(
+                        new ContextElement.SystemMsg("Base prompt"),
+                        new ContextElement.SystemMsg("Agent prompt"),
+                        new ContextElement.SystemMsg("Configured task")
+                )
+                .doesNotContain(new ContextElement.SystemMsg("Override task"));
+
+        SessionSettingsView settings = manager.settingsFor(session.sessionId());
+        assertThat(settings.resolvedSystemPrompt()).isEqualTo("Base prompt\n\nAgent prompt\n\nConfigured task");
+    }
+
+    @Test
+    void applyTaskReplacesExistingTaskSystemPromptAndPreservesConversation() {
+        RuntimeConfig config = TestRuntimeConfigs.basicRuntimeConfig();
+        ContextManager contextManager = new ContextManager();
+        SessionManager manager = new SessionManager(config, contextManager, (sessionId, input) -> "ok");
+
+        Session session = manager.start(
+                "agent-default",
+                "apply-task",
+                new SessionConfig(
+                        SessionParams.ofStreaming(true),
+                        request -> ToolResult.notHandled(request.toolCall()),
+                        ignored -> {}
+                )
+        );
+        session.context().append(new ContextElement.UserMsg("hello"));
+
+        String applied = manager.applyTask(session.sessionId(), "default-task");
+        assertThat(applied).isEqualTo("default-task");
+        assertThat(manager.activeTaskId(session.sessionId())).isEqualTo("default-task");
+        assertThat(session.context().snapshot())
+                .startsWith(
+                        new ContextElement.SystemMsg("Base prompt"),
+                        new ContextElement.SystemMsg("Agent prompt"),
+                        new ContextElement.SystemMsg("Configured task")
+                )
+                .contains(new ContextElement.UserMsg("hello"));
+    }
+
+    @Test
     void settingsViewIsStableSnapshotAndReadOnly() {
         RuntimeConfig config = TestRuntimeConfigs.basicRuntimeConfig();
         ContextManager contextManager = new ContextManager();

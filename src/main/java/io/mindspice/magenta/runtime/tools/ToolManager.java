@@ -49,7 +49,8 @@ public final class ToolManager {
                         Path.of("").toAbsolutePath().normalize(),
                         DEFAULT_MAX_TOOL_OUTPUT_BYTES,
                         DEFAULT_MAX_FILE_READ_LINES,
-                        DEFAULT_MAX_SQL_ROWS
+                        DEFAULT_MAX_SQL_ROWS,
+                        true
                 ),
                 handlersByTool,
                 Map.of(),
@@ -98,7 +99,8 @@ public final class ToolManager {
                 runtimeConfig.workspaceRoot(),
                 runtimeConfig.maxToolOutputBytes(),
                 runtimeConfig.maxFileReadLines(),
-                runtimeConfig.maxSqlRows()
+                runtimeConfig.maxSqlRows(),
+                !runtimeConfig.security().devYoloOverride()
         );
 
         FileTools fileTools = new FileTools(settings);
@@ -197,6 +199,9 @@ public final class ToolManager {
                 continue;
             }
             String normalized = toolId.trim();
+            if ("*".equals(normalized)) {
+                return List.copyOf(toolSpecificationsByName.values());
+            }
             if (!seen.add(normalized)) {
                 continue;
             }
