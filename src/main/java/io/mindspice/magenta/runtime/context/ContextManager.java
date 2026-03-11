@@ -10,10 +10,14 @@ import io.mindspice.magenta.runtime.session.SessionTokenEstimator;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 
 public final class ContextManager {
+
+    private static final int MIN_COMPACTION_TOKEN_REDUCTION = 128;
+    private static final double MIN_COMPACTION_RATIO_REDUCTION = 0.05;
 
     private final Function<SessionContextCommand, SessionContextResult> contextBridge;
 
@@ -103,7 +107,7 @@ public final class ContextManager {
         // Persistence is mutation-driven through session-scoped context listeners.
     }
 
-    public void compactIfNeeded(
+    public Optional<CompactionOutcome> compactIfNeeded(
             UUID sessionId,
             Context context,
             RuntimeConfig.ModelConfig modelConfig,
@@ -111,14 +115,64 @@ public final class ContextManager {
     ) {
         List<ContextElement> snapshot = context.snapshot();
         String tokenizerEncoding = modelConfig.tokenizerEncodingOrDefault();
-        int tokens = SessionTokenEstimator.estimate(snapshot, tokenizerEncoding);
-        if (tokens <= modelConfig.compactThreshold()) {
-            return;
+        int preTokens = SessionTokenEstimator.estimate(snapshot, tokenizerEncoding);
+        int compactThreshold = modelConfig.compactThreshold();
+        if (preTokens <= compactThreshold) {
+            return Optional.empty();
         }
 
         CompactionStrategy strategy = CompactionStrategy.forName(modelConfig.compactionStrategyOrDefault(), summarizer);
-        List<ContextElement> compacted = strategy.run(sessionId, snapshot, modelConfig.compactThreshold(), tokenizerEncoding);
+        CompactionStrategy.CompactionResult compactedResult = strategy.run(
+                sessionId,
+                snapshot,
+                compactThreshold,
+                tokenizerEncoding
+        );
+        List<ContextElement> compacted = compactedResult.messages();
+        if (snapshot.equals(compacted)) {
+            return Optional.empty();
+        }
+
+        int postTokens = SessionTokenEstimator.estimate(compacted, tokenizerEncoding);
+        int tokenDelta = preTokens - postTokens;
+        double reductionRatio = preTokens <= 0 ? 0.0 : (double) tokenDelta / (double) preTokens;
+        if (tokenDelta < MIN_COMPACTION_TOKEN_REDUCTION || reductionRatio < MIN_COMPACTION_RATIO_REDUCTION) {
+            return Optional.empty();
+        }
+
+        int preMessages = snapshot.size();
         context.replaceAll(compacted);
+        int postMessages = compacted.size();
+        return Optional.of(new CompactionOutcome(
+                preTokens,
+                postTokens,
+                preMessages,
+                postMessages,
+                compactThreshold,
+                modelConfig.compactionStrategyOrDefault(),
+                compactedResult.protectedSystemCount(),
+                compactedResult.summarizedCount(),
+                compactedResult.preservedRecentCount()
+        ));
+    }
+
+    public record CompactionOutcome(
+            int tokensBefore,
+            int tokensAfter,
+            int messagesBefore,
+            int messagesAfter,
+            int compactThreshold,
+            String strategy,
+            int protectedSystemCount,
+            int summarizedCount,
+            int preservedRecentCount
+    ) {
+        public CompactionOutcome {
+            strategy = strategy == null ? "" : strategy;
+            protectedSystemCount = Math.max(0, protectedSystemCount);
+            summarizedCount = Math.max(0, summarizedCount);
+            preservedRecentCount = Math.max(0, preservedRecentCount);
+        }
     }
 
     private Context loadPersistedOrNew(UUID sessionId, List<String> systemPrompts) {

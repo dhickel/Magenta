@@ -20,9 +20,12 @@ Keep history mutation and token-budget control explicit, deterministic, and isol
 
 - `Context.snapshot()` returns immutable copy.
 - Compaction is no-op when estimated tokens are within threshold.
+- Leading contiguous `SystemMsg` entries are protected and never sent to summarization input.
 - Strategy selection is deterministic by `compactionStrategyOrDefault()`.
 - Rolling window preserves all leading system prompt messages when present.
 - Compaction is evaluated before each model call, including tool-loop follow-up calls.
+- Summarize strategy preserves a raw unsummarized recent tail, aligned to a user/inbound turn boundary.
+- Context replacement is skipped when token reduction gain is too small (low-value churn guard).
 - Context mutation persistence uses ordered per-session message IDs.
 
 ## State transitions
@@ -32,6 +35,7 @@ context snapshot
 -> estimate tokens
 -> if over threshold: select strategy
 -> run strategy(sessionId, messages, targetTokens)
+-> if change is negligible: no-op
 -> replaceAll(compactedMessages)
 ```
 
@@ -39,7 +43,7 @@ Summarize strategy transition:
 
 ```text
 over-threshold context
--> split into summarize-segment + recent-tail
+-> split into summarize-segment + protected recent-tail
 -> summarize old segment
 -> if summary blank/error: fallback rolling_window
 -> build [system?, SummaryMsg, recent...]

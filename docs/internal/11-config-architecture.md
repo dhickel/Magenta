@@ -64,3 +64,4 @@ read magenta.yaml
 - Duplicate file-derived IDs fail fast with explicit source file diagnostics.
 - Include resolution walks full config tree per pattern.
 - `allowedPaths` is configured as path roots; target path resolution and authorization semantics are enforced at runtime by `SecurityManager`.
+- Runtime compaction quality depends on `compactionAgentId` prompt selection; a dedicated summarizer prompt is recommended over reusing the main agent persona prompt.

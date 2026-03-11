@@ -39,6 +39,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -61,15 +62,51 @@ public final class OllamaClient {
         try {
             HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             if (response.statusCode() < 200 || response.statusCode() > 299) {
-                throw new IllegalStateException("Ollama chat failed with status " + response.statusCode() + ": " + response.body());
+                throw classifyHttpFailure("chat", response.statusCode(), response.body());
             }
-            JsonNode body = json.readTree(response.body());
+            JsonNode body;
+            try {
+                body = json.readTree(response.body());
+            } catch (IOException parseError) {
+                throw new ModelClientException(
+                        ModelClientException.Reason.MALFORMED_RESPONSE,
+                        "Ollama chat returned malformed JSON",
+                        response.statusCode(),
+                        "",
+                        preview(response.body()),
+                        parseError
+                );
+            }
+            ModelClientException doneReasonFailure = classifyDoneReasonFailure(
+                    body.path("done_reason").asText(""),
+                    response.statusCode(),
+                    body.toString()
+            );
+            if (doneReasonFailure != null) {
+                throw doneReasonFailure;
+            }
             return toChatResponse(modelConfig, body, null);
+        } catch (ModelClientException e) {
+            throw e;
         } catch (IOException e) {
-            throw new IllegalStateException("Ollama chat request failed", e);
+            throw new ModelClientException(
+                    ModelClientException.Reason.HTTP_ERROR,
+                    "Ollama chat request failed",
+                    0,
+                    "",
+                    "",
+                    e
+            );
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException("Ollama chat request interrupted", e);
+            throw new ModelClientException(
+                    ModelClientException.Reason.HTTP_ERROR,
+                    "Ollama chat request interrupted",
+                    0,
+                    "",
+                    "",
+                    e
+            );
         }
     }
 
@@ -88,12 +125,13 @@ public final class OllamaClient {
             HttpResponse<InputStream> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofInputStream());
             if (response.statusCode() < 200 || response.statusCode() > 299) {
                 String body = new String(response.body().readAllBytes(), StandardCharsets.UTF_8);
-                throw new IllegalStateException("Ollama stream failed with status " + response.statusCode() + ": " + body);
+                throw classifyHttpFailure("stream", response.statusCode(), body);
             }
 
             StringBuilder completeText = new StringBuilder();
             JsonNode finalNode = null;
             JsonNode streamedToolCalls = null;
+            String doneReason = "";
 
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
                 String line;
@@ -101,7 +139,19 @@ public final class OllamaClient {
                     if (line.isBlank()) {
                         continue;
                     }
-                    JsonNode node = json.readTree(line);
+                    JsonNode node;
+                    try {
+                        node = json.readTree(line);
+                    } catch (IOException parseError) {
+                        throw new ModelClientException(
+                                ModelClientException.Reason.MALFORMED_RESPONSE,
+                                "Ollama stream returned malformed JSON chunk",
+                                response.statusCode(),
+                                "",
+                                preview(line),
+                                parseError
+                        );
+                    }
                     JsonNode message = node.path("message");
                     String partial = message.path("content").asText("");
                     if (!partial.isBlank()) {
@@ -113,6 +163,7 @@ public final class OllamaClient {
                         streamedToolCalls = toolCalls.deepCopy();
                     }
                     if (node.path("done").asBoolean(false)) {
+                        doneReason = node.path("done_reason").asText("");
                         finalNode = node;
                         break;
                     }
@@ -120,9 +171,14 @@ public final class OllamaClient {
             }
 
             if (finalNode == null) {
-                finalNode = json.createObjectNode()
-                        .put("model", modelConfig.model())
-                        .set("message", json.createObjectNode().put("content", completeText.toString()));
+                throw new ModelClientException(
+                        ModelClientException.Reason.STREAM_INCOMPLETE,
+                        "Ollama stream ended without a final done frame",
+                        response.statusCode(),
+                        "",
+                        preview(completeText.toString()),
+                        null
+                );
             }
             if ((finalNode.path("message").path("tool_calls").isMissingNode()
                  || finalNode.path("message").path("tool_calls").isEmpty())
@@ -136,9 +192,37 @@ public final class OllamaClient {
                 }
             }
 
+            ModelClientException doneReasonFailure = classifyDoneReasonFailure(
+                    doneReason,
+                    response.statusCode(),
+                    finalNode.toString()
+            );
+            if (doneReasonFailure != null) {
+                throw doneReasonFailure;
+            }
+
             return toChatResponse(modelConfig, finalNode, completeText.toString());
-        } catch (Exception e) {
-            throw new IllegalStateException("Ollama streaming request failed", e);
+        } catch (ModelClientException e) {
+            throw e;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ModelClientException(
+                    ModelClientException.Reason.HTTP_ERROR,
+                    "Ollama streaming request interrupted",
+                    0,
+                    "",
+                    "",
+                    e
+            );
+        } catch (IOException e) {
+            throw new ModelClientException(
+                    ModelClientException.Reason.HTTP_ERROR,
+                    "Ollama streaming request failed",
+                    0,
+                    "",
+                    "",
+                    e
+            );
         }
     }
 
@@ -406,5 +490,71 @@ public final class OllamaClient {
                     .build());
         }
         return requests;
+    }
+
+    private ModelClientException classifyHttpFailure(String phase, int statusCode, String body) {
+        String safeBody = body == null ? "" : body;
+        String normalized = safeBody.toLowerCase(Locale.ROOT);
+        ModelClientException.Reason reason = ModelClientException.Reason.HTTP_ERROR;
+        if (statusCode == 413 || looksLikeContextOverflow(normalized)) {
+            reason = ModelClientException.Reason.CONTEXT_OVERFLOW;
+        }
+        return new ModelClientException(
+                reason,
+                "Ollama " + phase + " failed with status " + statusCode,
+                statusCode,
+                "",
+                preview(safeBody),
+                null
+        );
+    }
+
+    private ModelClientException classifyDoneReasonFailure(String doneReason, int statusCode, String previewText) {
+        String normalized = doneReason == null ? "" : doneReason.trim().toLowerCase(Locale.ROOT);
+        if (normalized.isBlank() || "stop".equals(normalized)) {
+            return null;
+        }
+        if ("length".equals(normalized) || normalized.contains("max_tokens")) {
+            return new ModelClientException(
+                    ModelClientException.Reason.OUTPUT_TRUNCATED,
+                    "Ollama generation stopped due to output length limit",
+                    statusCode,
+                    normalized,
+                    preview(previewText),
+                    null
+            );
+        }
+        if (looksLikeContextOverflow(normalized)) {
+            return new ModelClientException(
+                    ModelClientException.Reason.CONTEXT_OVERFLOW,
+                    "Ollama generation stopped due to context pressure",
+                    statusCode,
+                    normalized,
+                    preview(previewText),
+                    null
+            );
+        }
+        return null;
+    }
+
+    private boolean looksLikeContextOverflow(String normalizedText) {
+        if (normalizedText == null || normalizedText.isBlank()) {
+            return false;
+        }
+        return normalizedText.contains("context length")
+                || normalizedText.contains("context window")
+                || normalizedText.contains("num_ctx")
+                || normalizedText.contains("prompt is too long")
+                || normalizedText.contains("token limit")
+                || normalizedText.contains("context overflow");
+    }
+
+    private String preview(String text) {
+        String safe = text == null ? "" : text;
+        int max = 512;
+        if (safe.length() <= max) {
+            return safe;
+        }
+        return safe.substring(0, max);
     }
 }

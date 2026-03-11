@@ -10,7 +10,7 @@ import java.util.function.Function;
 
 public final class SummarizeCompactionStrategy implements CompactionStrategy {
 
-    private static final int SUMMARY_RECENT_MESSAGES = 6;
+    private static final int SUMMARY_RECENT_MESSAGES = 10;
 
     private final Function<List<ContextElement>, String> summarizer;
     private final CompactionStrategy fallback = new RollingWindowCompactionStrategy();
@@ -20,7 +20,7 @@ public final class SummarizeCompactionStrategy implements CompactionStrategy {
     }
 
     @Override
-    public List<ContextElement> run(UUID sessionId, List<ContextElement> context, int targetTokens, String tokenizerEncoding) {
+    public CompactionResult run(UUID sessionId, List<ContextElement> context, int targetTokens, String tokenizerEncoding) {
         if (context.size() <= SUMMARY_RECENT_MESSAGES + 1) {
             return fallback.run(sessionId, context, targetTokens, tokenizerEncoding);
         }
@@ -32,7 +32,7 @@ public final class SummarizeCompactionStrategy implements CompactionStrategy {
             start++;
         }
 
-        int summaryEnd = Math.max(start, context.size() - SUMMARY_RECENT_MESSAGES);
+        int summaryEnd = resolveSummaryEnd(context, start);
         if (summaryEnd <= start) {
             return fallback.run(sessionId, context, targetTokens, tokenizerEncoding);
         }
@@ -53,6 +53,23 @@ public final class SummarizeCompactionStrategy implements CompactionStrategy {
         if (SessionTokenEstimator.estimate(output, tokenizerEncoding) > targetTokens) {
             return fallback.run(sessionId, output, targetTokens, tokenizerEncoding);
         }
-        return output;
+        return new CompactionResult(output, leadingSystem.size(), toSummarize.size(), recent.size());
+    }
+
+    private int resolveSummaryEnd(List<ContextElement> context, int nonSystemStart) {
+        int tentative = Math.max(nonSystemStart, context.size() - SUMMARY_RECENT_MESSAGES);
+        int boundary = tentative;
+        while (boundary > nonSystemStart && !isTurnStart(context.get(boundary))) {
+            boundary--;
+        }
+        if (boundary == nonSystemStart && !isTurnStart(context.get(boundary))) {
+            return tentative;
+        }
+        return boundary;
+    }
+
+    private boolean isTurnStart(ContextElement message) {
+        return message instanceof ContextElement.UserMsg
+                || message instanceof ContextElement.InboundMsg;
     }
 }

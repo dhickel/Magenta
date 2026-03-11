@@ -49,6 +49,8 @@ public sealed interface SessionEvent permits SessionEvent.MessageIn,
 
     sealed interface Action extends SessionEvent permits Action.ToolCall,
             Action.ToolResult,
+            Action.ContextCompacted,
+            Action.ModelFailure,
             Action.SessionStarted,
             Action.SessionClosed,
             Action.InputRouteAdded,
@@ -96,6 +98,53 @@ public sealed interface SessionEvent permits SessionEvent.MessageIn,
             @Override
             public String actionType() {
                 return "tool_result";
+            }
+        }
+
+        record ContextCompacted(
+                @NonNull SessionHandle sessionHandle,
+                @NonNull String agentId,
+                int tokensBefore,
+                int tokensAfter,
+                int messagesBefore,
+                int messagesAfter,
+                int compactThreshold,
+                @NonNull String strategy,
+                int protectedSystemCount,
+                int summarizedCount,
+                int preservedRecentCount
+        ) implements Action {
+            public ContextCompacted {
+                Objects.requireNonNull(sessionHandle, "sessionHandle");
+                agentId = agentId == null ? "" : agentId;
+                strategy = strategy == null ? "" : strategy;
+            }
+
+            @Override
+            public String actionType() {
+                return "context_compacted";
+            }
+        }
+
+        record ModelFailure(
+                @NonNull SessionHandle sessionHandle,
+                @NonNull String agentId,
+                @NonNull String reason,
+                int statusCode,
+                @NonNull String doneReason,
+                @NonNull String message
+        ) implements Action {
+            public ModelFailure {
+                Objects.requireNonNull(sessionHandle, "sessionHandle");
+                agentId = agentId == null ? "" : agentId;
+                reason = reason == null ? "" : reason;
+                doneReason = doneReason == null ? "" : doneReason;
+                message = message == null ? "" : message;
+            }
+
+            @Override
+            public String actionType() {
+                return "model_failure";
             }
         }
 

@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -16,14 +17,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ContextManagerCompactionIntegrationTest {
 
     @Test
-    void summarizeCompactionCreatesSummaryAndRetainsRecentMessages() {
+    void summarizeCompactionExcludesSystemAndRetainsRecentTail() {
         ContextManager contextManager = new ContextManager();
         Context context = new Context();
         context.append(new ContextElement.SystemMsg("system"));
         context.append(new ContextElement.SystemMsg("task"));
-        for (int i = 0; i < 10; i++) {
-            context.append(new ContextElement.UserMsg("message-" + i + "-xxxxxxxxxxxxxxxxxxxxxxxx"));
+        for (int i = 0; i < 20; i++) {
+            context.append(new ContextElement.UserMsg("user-" + i + "-" + "x".repeat(220)));
+            context.append(new ContextElement.AssistantMsg("assistant-" + i + "-" + "y".repeat(120), List.of()));
         }
+        List<ContextElement> original = context.snapshot();
 
         RuntimeConfig.ModelConfig modelConfig = new RuntimeConfig.ModelConfig(
                 "m",
@@ -32,7 +35,7 @@ class ContextManagerCompactionIntegrationTest {
                 "http://localhost",
                 2048,
                 2048,
-                60,
+                1200,
                 0.0,
                 "summarize",
                 "cl100k_base",
@@ -42,7 +45,7 @@ class ContextManagerCompactionIntegrationTest {
         );
 
         AtomicReference<List<ContextElement>> summarizedInput = new AtomicReference<>(List.of());
-        contextManager.compactIfNeeded(
+        Optional<ContextManager.CompactionOutcome> outcome = contextManager.compactIfNeeded(
                 UUID.randomUUID(),
                 context,
                 modelConfig,
@@ -53,24 +56,27 @@ class ContextManagerCompactionIntegrationTest {
         );
 
         List<ContextElement> compacted = context.snapshot();
-        assertThat(summarizedInput.get()).hasSize(4);
+        assertThat(outcome).isPresent();
+        assertThat(summarizedInput.get()).allMatch(message -> !(message instanceof ContextElement.SystemMsg));
         assertThat(compacted.getFirst()).isEqualTo(new ContextElement.SystemMsg("system"));
         assertThat(compacted.get(1)).isEqualTo(new ContextElement.SystemMsg("task"));
         assertThat(compacted.get(2)).isInstanceOf(ContextElement.SummaryMsg.class);
-        ContextElement.SummaryMsg summary = (ContextElement.SummaryMsg) compacted.get(2);
-        assertThat(summary.content()).isEqualTo("summary text");
-        assertThat(summary.sourceTag()).startsWith("session:");
-        assertThat(compacted).hasSize(9);
+        List<ContextElement> preservedTail = compacted.subList(3, compacted.size());
+        assertThat(preservedTail).hasSizeGreaterThanOrEqualTo(10);
+        assertThat(preservedTail.getFirst())
+                .matches(message -> message instanceof ContextElement.UserMsg || message instanceof ContextElement.InboundMsg);
+        assertThat(preservedTail).isEqualTo(original.subList(original.size() - preservedTail.size(), original.size()));
     }
 
     @Test
-    void summarizeCompactionFallsBackToRollingWindowWhenSummaryIsBlank() {
+    void summarizeCompactionNoopsWhenReductionIsTooSmall() {
         ContextManager contextManager = new ContextManager();
         Context context = new Context();
         context.append(new ContextElement.SystemMsg("system"));
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 6; i++) {
             context.append(new ContextElement.UserMsg("message-" + i + "-xxxxxxxxxxxxxxxxxxxxxxxx"));
         }
+        List<ContextElement> original = context.snapshot();
 
         RuntimeConfig.ModelConfig modelConfig = new RuntimeConfig.ModelConfig(
                 "m",
@@ -79,7 +85,7 @@ class ContextManagerCompactionIntegrationTest {
                 "http://localhost",
                 2048,
                 2048,
-                60,
+                20,
                 0.0,
                 "summarize",
                 "cl100k_base",
@@ -88,13 +94,15 @@ class ContextManagerCompactionIntegrationTest {
                 true
         );
 
-        contextManager.compactIfNeeded(UUID.randomUUID(), context, modelConfig, messages -> "   ");
+        Optional<ContextManager.CompactionOutcome> outcome = contextManager.compactIfNeeded(
+                UUID.randomUUID(),
+                context,
+                modelConfig,
+                messages -> "tiny"
+        );
 
-        List<ContextElement> compacted = context.snapshot();
-        assertThat(compacted).isNotEmpty();
-        assertThat(compacted.getFirst()).isEqualTo(new ContextElement.SystemMsg("system"));
-        assertThat(compacted.stream().anyMatch(ContextElement.SummaryMsg.class::isInstance)).isFalse();
-        assertThat(compacted.size()).isLessThan(11);
+        assertThat(outcome).isEmpty();
+        assertThat(context.snapshot()).isEqualTo(original);
     }
 
     @Test

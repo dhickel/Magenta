@@ -38,7 +38,8 @@ Keep model execution (`ModelRunner`) separate from provider transport (`OllamaCl
 
 ## Failure behavior
 
-- HTTP/transport/parsing errors surface as exceptions
+- `OllamaClient` classifies provider failures into typed reasons (`context_overflow`, `output_truncated`, `stream_incomplete`, `http_error`, `malformed_response`) via `ModelClientException`
+- `Magenta` emits `SessionEvent.Action.ModelFailure` on typed model failures before rethrowing to session error ingress
 - tool bridge exceptions propagate to submit path, where session ingress emits `onError`
 
 ## Known constraints
@@ -46,3 +47,4 @@ Keep model execution (`ModelRunner`) separate from provider transport (`OllamaCl
 - tool schemas are sent only when session tools are enabled, model tool-calling is supported, and tool specs are discoverable
 - schema quality depends on annotated tool parameter typing; nested typed records/lists produce stricter provider schemas than raw JSON nodes
 - single provider transport implementation (`OllamaClient`)
+- `SummaryMsg` context is mapped as user-role context (not system-role instruction) during model request assembly

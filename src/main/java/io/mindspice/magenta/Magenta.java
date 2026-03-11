@@ -10,6 +10,7 @@ import io.mindspice.magenta.runtime.events.SessionEvent;
 import io.mindspice.magenta.runtime.events.SessionEventHub;
 import io.mindspice.magenta.runtime.events.SessionEventListenerHandle;
 import io.mindspice.magenta.runtime.events.SessionEventLogSink;
+import io.mindspice.magenta.runtime.model.ModelClientException;
 import io.mindspice.magenta.runtime.model.ModelRunner;
 import io.mindspice.magenta.runtime.model.OllamaClient;
 import io.mindspice.magenta.runtime.persistence.DatabaseService;
@@ -406,27 +407,52 @@ public final class Magenta {
                 && session.modelConfig().supportsToolCalling()
                 ? toolManager.toolSpecificationsFor(yolo ? List.of("*") : activeToolIds)
                 : List.of();
-        return modelRunner.runTurn(
-                session,
-                handle,
-                runtimeConfig.maxTurns(),
-                shouldStream,
-                event -> {
-                    emitOutputEvents(handle, session.agentId(), event.output());
-                    sessionRouter.emit(handle, event);
-                },
-                () -> contextManager.compactIfNeeded(
-                        session.sessionId(),
-                        session.context(),
-                        session.modelConfig(),
-                        messages -> modelRunner.summarize(
-                                compactionModelConfig(),
-                                compactionSystemPrompt(),
-                                messages
-                        )
-                ),
-                toolSpecifications
-        );
+        try {
+            return modelRunner.runTurn(
+                    session,
+                    handle,
+                    runtimeConfig.maxTurns(),
+                    shouldStream,
+                    event -> {
+                        emitOutputEvents(handle, session.agentId(), event.output());
+                        sessionRouter.emit(handle, event);
+                    },
+                    () -> contextManager.compactIfNeeded(
+                                    session.sessionId(),
+                                    session.context(),
+                                    session.modelConfig(),
+                                    messages -> modelRunner.summarize(
+                                            compactionModelConfig(),
+                                            compactionSystemPrompt(),
+                                            messages
+                                    )
+                            )
+                            .ifPresent(compaction -> emitEvent(new SessionEvent.Action.ContextCompacted(
+                                    handle,
+                                    session.agentId(),
+                                    compaction.tokensBefore(),
+                                    compaction.tokensAfter(),
+                                    compaction.messagesBefore(),
+                                    compaction.messagesAfter(),
+                                    compaction.compactThreshold(),
+                                    compaction.strategy(),
+                                    compaction.protectedSystemCount(),
+                                    compaction.summarizedCount(),
+                                    compaction.preservedRecentCount()
+                            ))),
+                    toolSpecifications
+            );
+        } catch (ModelClientException modelFailure) {
+            emitEvent(new SessionEvent.Action.ModelFailure(
+                    handle,
+                    session.agentId(),
+                    modelFailure.reason().code(),
+                    modelFailure.statusCode(),
+                    modelFailure.doneReason(),
+                    modelFailure.getMessage()
+            ));
+            throw modelFailure;
+        }
     }
 
     private SessionConfig defaultSessionConfig() {
