@@ -91,6 +91,35 @@ Output routing behavior:
 - `onSecurity`
 - `onError` (`Consumer<SessionException>`)
 
+Callback behavior in current runtime:
+
+- callbacks are compatibility adapters over the per-session `SessionEvent` listener hub
+- callbacks are registered at session start/fork and invoked from routed event emission
+- direct typed listener registration is available via `Magenta.addEventListener(...)` and removal via `Magenta.removeEventListener(...)`
+
+## Session Event API
+
+Per-session event surface is modeled as `SessionEvent` ADT with typed listener registration:
+
+- `addEventListener(handle, Class<T>, Consumer<T>)`
+- `addEventListener(handle, Class<T>, Predicate<T>, Consumer<T>)`
+- `removeEventListener(listenerHandle)`
+
+Major event families:
+
+- `SessionEvent.MessageIn`
+- `SessionEvent.MessageOut`
+- `SessionEvent.Action` (tool calls/results + session/route lifecycle)
+- `SessionEvent.RoutingDecision`
+- `SessionEvent.SecurityDecision`
+- `SessionEvent.ErrorEvent`
+
+Delivery semantics:
+
+- synchronous fanout
+- listener failures are isolated (observability-only)
+- events are emitted even if no listeners are registered
+
 ## Turn flow
 
 1. Caller submits typed input through `messageInputConsumer(handle)` / `eventInputConsumer(handle)`.
@@ -101,8 +130,34 @@ Output routing behavior:
    - `settingsFor(handle).streamingEnabled() && sessionRouter.hasStreamedOutputListeners(handle)`
 6. `ModelRunner` executes the turn and emits routed outputs.
 7. Tool calls use `SessionConfig.toolBridge`, wrapped by `SecurityManager`.
-8. Security authorization is descriptor-driven per tool (`ToolSecurityDescriptor`) and decision events emit through `onSecurity`.
+8. Security authorization is descriptor-driven per tool (`ToolSecurityDescriptor`) and decisions emit `SessionEvent.SecurityDecision`.
 9. Tool specs are discovered from annotation-registered tools and passed to model requests when enabled and supported.
+
+## Logging and Debugging
+
+Built-in event logging writes to `workspaceRoot/logs/` using global config:
+
+- `instance.observability.log_level`: `OFF`, `ERROR`, `INFO`, `DEBUG`, `TRACE`
+- `instance.observability.pretty_logs_enabled`: `true|false`
+- CLI override: `--log-level <off|error|info|debug|trace>`
+
+Files:
+
+- `session-events.jsonl`: canonical compact machine log (one JSON object per line)
+- `session-events.pretty.json`: pretty-printed entries when `pretty_logs_enabled=true`
+
+Current runtime controls:
+
+- `log_level=INFO` is the default runtime logging level.
+- Full tool payload bodies are logged only at `DEBUG` and `TRACE`.
+- At `ERROR` and `INFO`, tool payload fields are preview-capped to 1 KB with truncation metadata.
+- Terminal output behavior is unchanged by `log_level`; terminal security/event rendering remains controlled by existing terminal/runtime UI settings.
+
+Development full-debug recipe:
+
+1. run with `--log-level debug` (or set `instance.observability.log_level: "debug"`).
+2. optionally set `instance.observability.pretty_logs_enabled: true` for human-readable mirror output.
+3. inspect `workspaceRoot/logs/session-events.jsonl` (and pretty log when enabled).
 
 ## Tool and security notes
 

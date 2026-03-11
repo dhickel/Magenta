@@ -6,6 +6,10 @@ import dev.langchain4j.agent.tool.ToolSpecification;
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
 import io.mindspice.magenta.runtime.context.ContextElement;
 import io.mindspice.magenta.runtime.context.ContextManager;
+import io.mindspice.magenta.runtime.events.SessionEvent;
+import io.mindspice.magenta.runtime.events.SessionEventHub;
+import io.mindspice.magenta.runtime.events.SessionEventListenerHandle;
+import io.mindspice.magenta.runtime.events.SessionEventLogSink;
 import io.mindspice.magenta.runtime.model.ModelRunner;
 import io.mindspice.magenta.runtime.model.OllamaClient;
 import io.mindspice.magenta.runtime.persistence.DatabaseService;
@@ -18,8 +22,10 @@ import io.mindspice.magenta.runtime.routing.OutputRoutePolicy;
 import io.mindspice.magenta.runtime.routing.OutputRoutingEvent;
 import io.mindspice.magenta.runtime.routing.Route;
 import io.mindspice.magenta.runtime.routing.RouteHandle;
+import io.mindspice.magenta.runtime.routing.RoutingEvent;
 import io.mindspice.magenta.runtime.routing.SessionRouter;
 import io.mindspice.magenta.runtime.security.SecurityManager;
+import io.mindspice.magenta.runtime.session.SessionException;
 import io.mindspice.magenta.runtime.session.Session;
 import io.mindspice.magenta.runtime.session.SessionHandle;
 import io.mindspice.magenta.runtime.session.SessionInput;
@@ -41,8 +47,11 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -59,9 +68,13 @@ public final class Magenta {
     private final ContextManager contextManager;
     private final SessionManager sessionManager;
     private final SessionRouter sessionRouter;
+    private final SessionEventHub eventHub;
+    private final SessionEventLogSink eventLogSink;
     private final ModelRunner modelRunner;
     private final ToolManager toolManager;
     private final SecurityManager securityManager;
+    private final ConcurrentMap<UUID, LegacySessionCallbacks> legacyCallbacksBySession = new ConcurrentHashMap<>();
+    private final ConcurrentMap<UUID, List<SessionEventListenerHandle>> legacyCallbackListenerHandles = new ConcurrentHashMap<>();
 
     public Magenta(RuntimeConfig runtimeConfig) {
         this(runtimeConfig, null, null);
@@ -88,8 +101,14 @@ public final class Magenta {
         );
         this.contextManager = new ContextManager(sessionContextBridge);
         this.modelRunner = new ModelRunner(new OllamaClient());
+        this.eventHub = new SessionEventHub(ignored -> {});
+        this.eventLogSink = new SessionEventLogSink(runtimeConfig.workspaceRoot(), runtimeConfig.observability());
         this.sessionManager = new SessionManager(runtimeConfig, contextManager, this::executeTurn);
-        this.sessionRouter = new SessionRouter(sessionManager::submitFromRoute, sessionManager::onRoutingEvent, ignored -> {});
+        this.sessionRouter = new SessionRouter(
+                this::submitFromRoute,
+                sessionManager::onRoutingEvent,
+                ignored -> {}
+        );
     }
 
     public ToolResult executeTool(ToolRequest request) {
@@ -106,9 +125,13 @@ public final class Magenta {
 
     public SessionHandle startBaseSession(String alias, String launchTaskOrNull, SessionConfig sessionConfig) {
         String agentId = runtimeConfig.baseAgentId();
-        Session session = sessionManager.start(agentId, alias, securedSessionConfig(agentId, sessionConfig), launchTaskOrNull);
+        SessionConfig requestedConfig = sessionConfig == null ? defaultSessionConfig() : sessionConfig;
+        Session session = sessionManager.start(agentId, alias, securedSessionConfig(agentId, requestedConfig), launchTaskOrNull);
         securityManager.initializePolicy(session.sessionId());
-        return sessionManager.handleFor(session.sessionId());
+        SessionHandle handle = sessionManager.handleFor(session.sessionId());
+        registerLegacyCallbacks(handle, requestedConfig);
+        emitEvent(new SessionEvent.Action.SessionStarted(handle, session.agentId(), session.alias()));
+        return handle;
     }
 
     public SessionHandle startSession(String agentId, String alias) {
@@ -120,9 +143,13 @@ public final class Magenta {
     }
 
     public SessionHandle startSession(String agentId, String alias, String launchTaskOrNull, SessionConfig sessionConfig) {
-        Session session = sessionManager.start(agentId, alias, securedSessionConfig(agentId, sessionConfig), launchTaskOrNull);
+        SessionConfig requestedConfig = sessionConfig == null ? defaultSessionConfig() : sessionConfig;
+        Session session = sessionManager.start(agentId, alias, securedSessionConfig(agentId, requestedConfig), launchTaskOrNull);
         securityManager.initializePolicy(session.sessionId());
-        return sessionManager.handleFor(session.sessionId());
+        SessionHandle handle = sessionManager.handleFor(session.sessionId());
+        registerLegacyCallbacks(handle, requestedConfig);
+        emitEvent(new SessionEvent.Action.SessionStarted(handle, session.agentId(), session.alias()));
+        return handle;
     }
 
     public SessionHandle resumeSession(SessionHandle handle) {
@@ -134,7 +161,13 @@ public final class Magenta {
         Objects.requireNonNull(sourceHandle, "sourceHandle");
         Session session = sessionManager.fork(sourceHandle.sessionId(), alias);
         securityManager.copyPolicy(sourceHandle.sessionId(), session.sessionId());
-        return sessionManager.handleFor(session.sessionId());
+        SessionHandle handle = sessionManager.handleFor(session.sessionId());
+        LegacySessionCallbacks legacyCallbacks = legacyCallbacksBySession.get(sourceHandle.sessionId());
+        if (legacyCallbacks != null) {
+            registerLegacyCallbacks(handle, legacyCallbacks);
+        }
+        emitEvent(new SessionEvent.Action.SessionStarted(handle, session.agentId(), session.alias()));
+        return handle;
     }
 
     public SessionHandle forkSession(SessionHandle sourceHandle, String alias, SessionConfig sessionConfigOverride) {
@@ -146,7 +179,13 @@ public final class Magenta {
                 securedSessionConfig(agentId, sessionConfigOverride)
         );
         securityManager.copyPolicy(sourceHandle.sessionId(), session.sessionId());
-        return sessionManager.handleFor(session.sessionId());
+        SessionHandle handle = sessionManager.handleFor(session.sessionId());
+        LegacySessionCallbacks callbacks = sessionConfigOverride == null
+                ? legacyCallbacksBySession.getOrDefault(sourceHandle.sessionId(), LegacySessionCallbacks.from(defaultSessionConfig()))
+                : LegacySessionCallbacks.from(sessionConfigOverride);
+        registerLegacyCallbacks(handle, callbacks);
+        emitEvent(new SessionEvent.Action.SessionStarted(handle, session.agentId(), session.alias()));
+        return handle;
     }
 
     public SessionSettingsView settingsFor(SessionHandle handle) {
@@ -167,7 +206,9 @@ public final class Magenta {
     }
 
     public RouteHandle addInputRoute(SessionHandle handle, InputRoutePolicy policy) {
-        return sessionRouter.addInputRoute(handle, policy);
+        RouteHandle routeHandle = sessionRouter.addInputRoute(handle, policy);
+        emitEvent(new SessionEvent.Action.InputRouteAdded(handle, agentIdFor(handle.sessionId()), SessionEvent.UUIDLike.from(routeHandle)));
+        return routeHandle;
     }
 
     public RouteHandle addOutputRoute(SessionHandle handle, OutputRoutePolicy outputPolicy, Consumer<OutputRoutingEvent> outputListener) {
@@ -175,11 +216,19 @@ public final class Magenta {
         if (!settings.streamingEnabled() && outputPolicy.requestsStreamedOutput()) {
             throw new IllegalArgumentException("Streamed output routes require streamingEnabled=true for session " + handle.sessionId());
         }
-        return sessionRouter.addOutputRoute(handle, outputPolicy, outputListener);
+        RouteHandle routeHandle = sessionRouter.addOutputRoute(handle, outputPolicy, outputListener);
+        emitEvent(new SessionEvent.Action.OutputRouteAdded(handle, agentIdFor(handle.sessionId()), SessionEvent.UUIDLike.from(routeHandle)));
+        return routeHandle;
     }
 
     public void removeRoute(RouteHandle routeHandle) {
+        Route route = route(routeHandle);
         sessionRouter.removeRoute(routeHandle);
+        emitEvent(new SessionEvent.Action.RouteRemoved(
+                route.sessionHandle(),
+                agentIdFor(route.sessionHandle().sessionId()),
+                SessionEvent.UUIDLike.from(routeHandle)
+        ));
     }
 
     public Route route(RouteHandle routeHandle) {
@@ -202,9 +251,36 @@ public final class Magenta {
         if (handle == null) {
             return;
         }
+        emitEvent(new SessionEvent.Action.SessionClosed(handle, agentIdFor(handle.sessionId())));
         sessionRouter.pruneSession(handle);
+        unregisterLegacyCallbacks(handle.sessionId());
+        eventHub.pruneSession(handle);
+        legacyCallbacksBySession.remove(handle.sessionId());
         securityManager.clearPolicy(handle.sessionId());
         sessionManager.close(handle.sessionId());
+    }
+
+    public <T extends SessionEvent> SessionEventListenerHandle addEventListener(
+            SessionHandle handle,
+            Class<T> eventType,
+            Consumer<T> listener
+    ) {
+        Objects.requireNonNull(handle, "handle");
+        return eventHub.on(handle, eventType, listener);
+    }
+
+    public <T extends SessionEvent> SessionEventListenerHandle addEventListener(
+            SessionHandle handle,
+            Class<T> eventType,
+            Predicate<T> predicate,
+            Consumer<T> listener
+    ) {
+        Objects.requireNonNull(handle, "handle");
+        return eventHub.on(handle, eventType, predicate, listener);
+    }
+
+    public void removeEventListener(SessionEventListenerHandle handle) {
+        eventHub.off(handle);
     }
 
     public void setToolPolicy(SessionHandle handle, SecurityManager.ToolPolicy policy) {
@@ -335,7 +411,10 @@ public final class Magenta {
                 handle,
                 runtimeConfig.maxTurns(),
                 shouldStream,
-                event -> sessionRouter.emit(handle, event),
+                event -> {
+                    emitOutputEvents(handle, session.agentId(), event.output());
+                    sessionRouter.emit(handle, event);
+                },
                 () -> contextManager.compactIfNeeded(
                         session.sessionId(),
                         session.context(),
@@ -479,7 +558,7 @@ public final class Magenta {
         Function<ToolRequest, ToolResult> securedBridge = request -> {
             Set<String> agentToolIds = activeToolIdsForRequest(agentConfig, request);
             SecurityManager.Decision decision = securityManager.authorize(request, agentToolIds);
-            emitSecurityCallback(original, request, decision);
+            emitSecurityEvent(request, decision);
             if (!decision.allowed()) {
                 return ToolResult.handled(request.toolCall().id(), request.toolCall().name(), deniedPayload(decision));
             }
@@ -491,9 +570,15 @@ public final class Magenta {
                 original.params(),
                 securedBridge,
                 original.routingEventLevel(),
-                original.onRouting(),
-                original.onSecurity(),
-                original.onError()
+                routingEvent -> onRoutingEvent(agentId, routingEvent),
+                securityEvent -> {
+                    // Security events are emitted directly from authorization flow.
+                },
+                sessionException -> emitEvent(new SessionEvent.ErrorEvent(
+                        sessionException.sessionHandle(),
+                        agentId,
+                        sessionException
+                ))
         );
     }
 
@@ -513,13 +598,122 @@ public final class Magenta {
         }
     }
 
-    private void emitSecurityCallback(SessionConfig sessionConfig, ToolRequest request, SecurityManager.Decision decision) {
+    private void emitSecurityEvent(ToolRequest request, SecurityManager.Decision decision) {
+        SessionHandle sessionHandle;
         try {
-            if (sessionConfig.onSecurity() != null) {
-                sessionConfig.onSecurity().accept(securityManager.toEvent(request, decision));
-            }
+            sessionHandle = sessionManager.handleFor(UUID.fromString(request.sessionId()));
+        } catch (Exception ignored) {
+            return;
+        }
+        try {
+            SecurityManager.SecurityEvent securityEvent = securityManager.toEvent(request, decision);
+            emitEvent(new SessionEvent.SecurityDecision(sessionHandle, request.agentId(), securityEvent));
         } catch (Throwable ignored) {
-            // Security observability callback failures are non-fatal.
+            // Security event emission failures are observability-only.
+        }
+    }
+
+    private void onRoutingEvent(String agentId, RoutingEvent routingEvent) {
+        if (routingEvent == null) {
+            return;
+        }
+        emitEvent(new SessionEvent.RoutingDecision(
+                routingEvent.sessionHandle(),
+                agentId == null ? "" : agentId,
+                routingEvent
+        ));
+    }
+
+    private void submitFromRoute(SessionHandle handle, SessionInput input) {
+        emitEvent(new SessionEvent.MessageIn(handle, agentIdFor(handle.sessionId()), input));
+        sessionManager.submitFromRoute(handle, input);
+    }
+
+    private void emitOutputEvents(SessionHandle handle, String agentId, SessionOutput output) {
+        emitEvent(new SessionEvent.MessageOut(handle, agentId, output));
+
+        switch (output) {
+            case SessionOutput.ToolCallOutput toolCallOutput -> emitEvent(new SessionEvent.Action.ToolCall(
+                    handle,
+                    agentId,
+                    toolCallOutput.toolCall().name(),
+                    toolCallOutput.toolCall().id(),
+                    toolCallOutput.toolCall().argumentsJson()
+            ));
+            case SessionOutput.ToolMessageOutput toolMessageOutput -> emitEvent(new SessionEvent.Action.ToolResult(
+                    handle,
+                    agentId,
+                    toolMessageOutput.message().toolName(),
+                    toolMessageOutput.message().toolCallId(),
+                    toolMessageOutput.message().content()
+            ));
+            default -> {
+                // No action payload for non-tool output variants.
+            }
+        }
+    }
+
+    private void emitEvent(SessionEvent event) {
+        if (event == null) {
+            return;
+        }
+        try {
+            eventHub.emit(event);
+        } catch (Throwable ignored) {
+            // Event listeners are observability-only.
+        }
+        try {
+            eventLogSink.append(event);
+        } catch (Throwable ignored) {
+            // Event logging is observability-only.
+        }
+    }
+
+    private String agentIdFor(UUID sessionId) {
+        try {
+            return sessionManager.resume(sessionId).agentId();
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
+
+    private void registerLegacyCallbacks(SessionHandle handle, SessionConfig config) {
+        registerLegacyCallbacks(handle, LegacySessionCallbacks.from(config == null ? defaultSessionConfig() : config));
+    }
+
+    private void registerLegacyCallbacks(SessionHandle handle, LegacySessionCallbacks callbacks) {
+        if (handle == null || callbacks == null) {
+            return;
+        }
+        unregisterLegacyCallbacks(handle.sessionId());
+        legacyCallbacksBySession.put(handle.sessionId(), callbacks);
+
+        List<SessionEventListenerHandle> handles = new java.util.ArrayList<>();
+        handles.add(addEventListener(handle, SessionEvent.RoutingDecision.class, event -> {
+            if (callbacks.routingEventLevel() == io.mindspice.magenta.runtime.routing.RoutingEventLevel.NONE) {
+                return;
+            }
+            if (callbacks.routingEventLevel() == io.mindspice.magenta.runtime.routing.RoutingEventLevel.FINAL
+                && event.routingEvent() instanceof RoutingEvent.InputResult inputResult
+                && inputResult.phase() != io.mindspice.magenta.runtime.routing.InputRoutingEvent.Phase.FINAL) {
+                return;
+            }
+            callbacks.onRouting().accept(event.routingEvent());
+        }));
+        handles.add(addEventListener(handle, SessionEvent.SecurityDecision.class,
+                event -> callbacks.onSecurity().accept(event.securityEvent())));
+        handles.add(addEventListener(handle, SessionEvent.ErrorEvent.class,
+                event -> callbacks.onError().accept(event.error())));
+        legacyCallbackListenerHandles.put(handle.sessionId(), List.copyOf(handles));
+    }
+
+    private void unregisterLegacyCallbacks(UUID sessionId) {
+        List<SessionEventListenerHandle> handles = legacyCallbackListenerHandles.remove(sessionId);
+        if (handles == null || handles.isEmpty()) {
+            return;
+        }
+        for (SessionEventListenerHandle handle : handles) {
+            eventHub.off(handle);
         }
     }
 
@@ -555,6 +749,30 @@ public final class Magenta {
             modelId = modelId == null ? "" : modelId;
             modelName = modelName == null ? "" : modelName;
             tokenizerEncoding = tokenizerEncoding == null ? "" : tokenizerEncoding;
+        }
+    }
+
+    private record LegacySessionCallbacks(
+            io.mindspice.magenta.runtime.routing.RoutingEventLevel routingEventLevel,
+            Consumer<RoutingEvent> onRouting,
+            Consumer<SecurityManager.SecurityEvent> onSecurity,
+            Consumer<SessionException> onError
+    ) {
+        static LegacySessionCallbacks from(SessionConfig config) {
+            if (config == null) {
+                return new LegacySessionCallbacks(
+                        io.mindspice.magenta.runtime.routing.RoutingEventLevel.NONE,
+                        ignored -> {},
+                        ignored -> {},
+                        ignored -> {}
+                );
+            }
+            return new LegacySessionCallbacks(
+                    config.routingEventLevel(),
+                    config.onRouting() == null ? ignored -> {} : config.onRouting(),
+                    config.onSecurity() == null ? ignored -> {} : config.onSecurity(),
+                    config.onError() == null ? ignored -> {} : config.onError()
+            );
         }
     }
 }

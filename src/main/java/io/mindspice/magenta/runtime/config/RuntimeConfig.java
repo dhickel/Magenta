@@ -42,7 +42,8 @@ public record RuntimeConfig(
         Map<String, TaskConfig> tasksById,
         Map<String, WorkflowConfig> workflowsById,
         SecurityPolicyConfig security,
-        TerminalConfig terminal
+        TerminalConfig terminal,
+        ObservabilityConfig observability
 ) {
 
     private static final ObjectMapper MAPPER = new ObjectMapper(new YAMLFactory())
@@ -72,6 +73,7 @@ public record RuntimeConfig(
         workflowsById = Map.copyOf(workflowsById);
         security = Objects.requireNonNull(security, "security");
         terminal = terminal == null ? TerminalConfig.defaults() : terminal;
+        observability = observability == null ? ObservabilityConfig.defaults() : observability;
     }
 
     public RuntimeConfig(
@@ -104,7 +106,45 @@ public record RuntimeConfig(
                 Map.of(),
                 Map.of(),
                 security,
-                terminal
+                terminal,
+                ObservabilityConfig.defaults()
+        );
+    }
+
+    public RuntimeConfig(
+            Path rootDir,
+            Path workspaceRoot,
+            String baseAgentId,
+            String compactionAgentId,
+            int maxTurns,
+            int maxToolOutputBytes,
+            int maxFileReadLines,
+            int maxSqlRows,
+            Map<String, ModelConfig> modelsById,
+            Map<String, AgentConfig> agentsById,
+            Map<String, String> promptsById,
+            Map<String, TaskConfig> tasksById,
+            Map<String, WorkflowConfig> workflowsById,
+            SecurityPolicyConfig security,
+            TerminalConfig terminal
+    ) {
+        this(
+                rootDir,
+                workspaceRoot,
+                baseAgentId,
+                compactionAgentId,
+                maxTurns,
+                maxToolOutputBytes,
+                maxFileReadLines,
+                maxSqlRows,
+                modelsById,
+                agentsById,
+                promptsById,
+                tasksById,
+                workflowsById,
+                security,
+                terminal,
+                ObservabilityConfig.defaults()
         );
     }
 
@@ -187,6 +227,9 @@ public record RuntimeConfig(
 
         SecurityPolicyConfig securityConfig = toSecurityPolicyConfig(root.security);
         TerminalConfig terminalConfig = toTerminalConfig(root.terminal);
+        ObservabilityConfig observabilityConfig = toObservabilityConfig(Optional.ofNullable(root.instance)
+                .map(InstanceConfig::observability)
+                .orElse(null));
 
         return new RuntimeConfig(
                 configRoot,
@@ -203,7 +246,8 @@ public record RuntimeConfig(
                 tasks,
                 workflows,
                 securityConfig,
-                terminalConfig
+                terminalConfig,
+                observabilityConfig
         );
     }
 
@@ -237,7 +281,32 @@ public record RuntimeConfig(
                 tasksById,
                 workflowsById,
                 override,
-                terminal
+                terminal,
+                observability
+        );
+    }
+
+    public RuntimeConfig withLogLevelOverride(LogLevel logLevel) {
+        if (logLevel == null || observability.logLevel() == logLevel) {
+            return this;
+        }
+        return new RuntimeConfig(
+                rootDir,
+                workspaceRoot,
+                baseAgentId,
+                compactionAgentId,
+                maxTurns,
+                maxToolOutputBytes,
+                maxFileReadLines,
+                maxSqlRows,
+                modelsById,
+                agentsById,
+                promptsById,
+                tasksById,
+                workflowsById,
+                security,
+                terminal,
+                new ObservabilityConfig(logLevel, observability.prettyLogsEnabled())
         );
     }
 
@@ -1026,6 +1095,32 @@ public record RuntimeConfig(
         };
     }
 
+    private static LogLevel parseLogLevel(String value, LogLevel fallback) {
+        String normalized = normalizeToken(value);
+        return switch (normalized) {
+            case "" -> fallback;
+            case "off", "none" -> LogLevel.OFF;
+            case "error", "errors" -> LogLevel.ERROR;
+            case "info" -> LogLevel.INFO;
+            case "debug" -> LogLevel.DEBUG;
+            case "trace" -> LogLevel.TRACE;
+            default -> throw new IllegalStateException("Unsupported log level: " + value);
+        };
+    }
+
+    private static ObservabilityConfig toObservabilityConfig(RawInstanceObservability rawObservability) {
+        ObservabilityConfig defaults = ObservabilityConfig.defaults();
+        if (rawObservability == null) {
+            return defaults;
+        }
+        return new ObservabilityConfig(
+                parseLogLevel(rawObservability.logLevel, defaults.logLevel()),
+                rawObservability.prettyLogsEnabled == null
+                        ? defaults.prettyLogsEnabled()
+                        : rawObservability.prettyLogsEnabled
+        );
+    }
+
     private static String normalizeToken(String value) {
         if (value == null) {
             return "";
@@ -1076,6 +1171,27 @@ public record RuntimeConfig(
 
     public enum TerminalToolOutputFormat {
         COMPACT_SUMMARY
+    }
+
+    public enum LogLevel {
+        OFF,
+        ERROR,
+        INFO,
+        DEBUG,
+        TRACE
+    }
+
+    public record ObservabilityConfig(
+            LogLevel logLevel,
+            boolean prettyLogsEnabled
+    ) {
+        public ObservabilityConfig {
+            logLevel = logLevel == null ? LogLevel.INFO : logLevel;
+        }
+
+        public static ObservabilityConfig defaults() {
+            return new ObservabilityConfig(LogLevel.INFO, false);
+        }
     }
 
     public record TerminalConfig(
@@ -1472,6 +1588,8 @@ public record RuntimeConfig(
         private Integer maxSqlRows;
         @JsonProperty("maxEssenceBodyBytes")
         private Integer maxEssenceBodyBytes;
+        @JsonProperty("observability")
+        private RawInstanceObservability observability;
 
         private String baseAgentId() { return baseAgentId; }
 
@@ -1486,6 +1604,16 @@ public record RuntimeConfig(
         private Integer maxFileReadLines() { return maxFileReadLines; }
 
         private Integer maxSqlRows() { return maxSqlRows; }
+
+        private RawInstanceObservability observability() { return observability; }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    private static final class RawInstanceObservability {
+        @JsonProperty("log_level")
+        private String logLevel;
+        @JsonProperty("pretty_logs_enabled")
+        private Boolean prettyLogsEnabled;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = false)

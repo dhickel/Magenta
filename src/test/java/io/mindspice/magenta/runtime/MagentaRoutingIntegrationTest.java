@@ -2,6 +2,8 @@ package io.mindspice.magenta.runtime;
 
 import io.mindspice.magenta.Magenta;
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
+import io.mindspice.magenta.runtime.events.SessionEvent;
+import io.mindspice.magenta.runtime.events.SessionEventListenerHandle;
 import io.mindspice.magenta.runtime.routing.InputRoutePolicy;
 import io.mindspice.magenta.runtime.routing.InputRoutingEvent;
 import io.mindspice.magenta.runtime.routing.OutputRoutePolicy;
@@ -22,6 +24,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -211,5 +214,28 @@ class MagentaRoutingIntegrationTest {
         magenta.setToolPolicy(handle, denyAll);
 
         assertThat(magenta.toolPolicy(handle).mode()).isEqualTo(io.mindspice.magenta.runtime.config.RuntimeConfig.SecurityMode.DENY_ALL);
+    }
+
+    @Test
+    void typedEventListenersReceiveMatchingActionEventsAndCanBeRemoved() {
+        Magenta magenta = new Magenta(TestRuntimeConfigs.basicRuntimeConfig());
+        SessionHandle handle = magenta.startBaseSession("listener-lifecycle");
+        AtomicInteger actionEvents = new AtomicInteger();
+
+        SessionEventListenerHandle listenerHandle = magenta.addEventListener(
+                handle,
+                SessionEvent.Action.class,
+                event -> event instanceof SessionEvent.Action.InputRouteAdded
+                         || event instanceof SessionEvent.Action.RouteRemoved,
+                ignored -> actionEvents.incrementAndGet()
+        );
+
+        RouteHandle inputRoute = magenta.addInputRoute(handle, InputRoutePolicy.defaults());
+        magenta.removeRoute(inputRoute);
+        assertThat(actionEvents).hasValue(2);
+
+        magenta.removeEventListener(listenerHandle);
+        magenta.addInputRoute(handle, InputRoutePolicy.defaults());
+        assertThat(actionEvents).hasValue(2);
     }
 }
