@@ -63,6 +63,48 @@ class ToolManagerBuiltInsTest {
     }
 
     @Test
+    void searchReplaceFailsWhenSnapshotIdMissing() throws Exception {
+        Files.writeString(tempDir.resolve("sample.txt"), "alpha\nbeta\n");
+
+        ToolManager manager = ToolManager.withBuiltIns(runtimeConfig(tempDir));
+        String args = """
+                {
+                  "path": "sample.txt",
+                  "edits": [
+                    {"startAnchor":"1:00","endAnchor":"1:00","replacement":"alpha"}
+                  ]
+                }
+                """;
+
+        ToolResult result = manager.execute(request("search_replace", args));
+        JsonNode payload = MAPPER.readTree(result.content());
+        assertThat(payload.path("status").asText()).isEqualTo("failed");
+        assertThat(payload.path("code").asText()).isEqualTo("validation_error");
+        assertThat(payload.path("message").asText()).isEqualTo("Missing required argument: snapshotId");
+    }
+
+    @Test
+    void searchReplaceRejectsLegacyLiteralArguments() throws Exception {
+        Files.writeString(tempDir.resolve("sample.txt"), "alpha\nbeta\n");
+
+        ToolManager manager = ToolManager.withBuiltIns(runtimeConfig(tempDir));
+        String args = """
+                {
+                  "path": "sample.txt",
+                  "snapshotId": "any",
+                  "search": "beta",
+                  "replace": "omega"
+                }
+                """;
+
+        ToolResult result = manager.execute(request("search_replace", args));
+        JsonNode payload = MAPPER.readTree(result.content());
+        assertThat(payload.path("status").asText()).isEqualTo("failed");
+        assertThat(payload.path("code").asText()).isEqualTo("validation_error");
+        assertThat(payload.path("message").asText()).isEqualTo("Missing required argument: edits");
+    }
+
+    @Test
     void searchReplaceAppliesAnchorBasedEdit() throws Exception {
         Files.writeString(tempDir.resolve("sample.txt"), "alpha\n");
 
