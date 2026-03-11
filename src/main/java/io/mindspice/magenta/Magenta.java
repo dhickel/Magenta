@@ -440,7 +440,8 @@ public final class Magenta {
                                     compaction.summarizedCount(),
                                     compaction.preservedRecentCount()
                             ))),
-                    toolSpecifications
+                    toolSpecifications,
+                    runtimeConfig.toolLoopGuard()
             );
         } catch (ModelClientException modelFailure) {
             emitEvent(new SessionEvent.Action.ModelFailure(

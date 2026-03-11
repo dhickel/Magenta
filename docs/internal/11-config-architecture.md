@@ -12,7 +12,7 @@
 - Load prompt markdown content and derive prompt IDs from relative prompt paths.
 - Derive model/agent/task/workflow IDs from relative file paths (without extension).
 - Expand `*` references to full domain sets and resolve basename/path references.
-- Resolve `baseAgentId`, `compactionAgentId`, and `maxTurns` defaults.
+- Resolve `baseAgentId`, `compactionAgentId`, `maxTurns`, and `toolLoopGuard` defaults.
 - Load terminal UI defaults from `terminal.rendering`, `terminal.security`, and `terminal.tools`.
 - Load security policy defaults from `security` (mode, tools, command rules, approved roots, web access).
 - Validate runtime graph before runtime startup.
@@ -41,7 +41,7 @@ read magenta.yaml
 -> parse root document
 -> resolve include file list
 -> parse model/agent docs + read prompts
--> derive defaults (base/compaction/maxTurns)
+-> derive defaults (base/compaction/maxTurns/toolLoopGuard)
 -> validate graph
 -> create RuntimeConfig record
 ```

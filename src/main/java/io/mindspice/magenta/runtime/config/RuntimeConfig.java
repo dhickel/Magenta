@@ -36,6 +36,7 @@ public record RuntimeConfig(
         int maxToolOutputBytes,
         int maxFileReadLines,
         int maxSqlRows,
+        ToolLoopGuardConfig toolLoopGuard,
         Map<String, ModelConfig> modelsById,
         Map<String, AgentConfig> agentsById,
         Map<String, String> promptsById,
@@ -54,6 +55,8 @@ public record RuntimeConfig(
     private static final int DEFAULT_MAX_TOOL_OUTPUT_BYTES = 32_768;
     private static final int DEFAULT_MAX_FILE_READ_LINES = 200;
     private static final int DEFAULT_MAX_SQL_ROWS = 500;
+    private static final int DEFAULT_TOOL_LOOP_REPEAT_THRESHOLD = 5;
+    private static final int DEFAULT_TOOL_LOOP_WINDOW_SIZE = 8;
 
     public RuntimeConfig {
         workspaceRoot = workspaceRoot == null ? Path.of("").toAbsolutePath().normalize() : workspaceRoot.toAbsolutePath().normalize();
@@ -66,6 +69,8 @@ public record RuntimeConfig(
         if (maxSqlRows <= 0) {
             throw new IllegalStateException("instance.maxSqlRows must be > 0");
         }
+        toolLoopGuard = toolLoopGuard == null ? ToolLoopGuardConfig.defaults() : toolLoopGuard;
+        validateInstanceLimits(maxToolOutputBytes, maxFileReadLines, maxSqlRows, toolLoopGuard);
         modelsById = Map.copyOf(modelsById);
         agentsById = Map.copyOf(agentsById);
         promptsById = Map.copyOf(promptsById);
@@ -100,6 +105,7 @@ public record RuntimeConfig(
                 maxToolOutputBytes,
                 maxFileReadLines,
                 maxSqlRows,
+                ToolLoopGuardConfig.defaults(),
                 modelsById,
                 agentsById,
                 promptsById,
@@ -137,6 +143,7 @@ public record RuntimeConfig(
                 maxToolOutputBytes,
                 maxFileReadLines,
                 maxSqlRows,
+                ToolLoopGuardConfig.defaults(),
                 modelsById,
                 agentsById,
                 promptsById,
@@ -221,9 +228,13 @@ public record RuntimeConfig(
         int maxSqlRows = Optional.ofNullable(root.instance)
                 .map(InstanceConfig::maxSqlRows)
                 .orElse(DEFAULT_MAX_SQL_ROWS);
+        ToolLoopGuardConfig toolLoopGuard = Optional.ofNullable(root.instance)
+                .map(InstanceConfig::toolLoopGuard)
+                .map(RuntimeConfig::toToolLoopGuardConfig)
+                .orElse(ToolLoopGuardConfig.defaults());
 
         validate(models, agents, prompts, tasks, workflows, baseAgentId, compactionAgentId);
-        validateInstanceLimits(maxToolOutputBytes, maxFileReadLines, maxSqlRows);
+        validateInstanceLimits(maxToolOutputBytes, maxFileReadLines, maxSqlRows, toolLoopGuard);
 
         SecurityPolicyConfig securityConfig = toSecurityPolicyConfig(root.security);
         TerminalConfig terminalConfig = toTerminalConfig(root.terminal);
@@ -240,6 +251,7 @@ public record RuntimeConfig(
                 maxToolOutputBytes,
                 maxFileReadLines,
                 maxSqlRows,
+                toolLoopGuard,
                 models,
                 agents,
                 prompts,
@@ -275,6 +287,7 @@ public record RuntimeConfig(
                 maxToolOutputBytes,
                 maxFileReadLines,
                 maxSqlRows,
+                toolLoopGuard,
                 modelsById,
                 agentsById,
                 promptsById,
@@ -299,6 +312,7 @@ public record RuntimeConfig(
                 maxToolOutputBytes,
                 maxFileReadLines,
                 maxSqlRows,
+                toolLoopGuard,
                 modelsById,
                 agentsById,
                 promptsById,
@@ -366,7 +380,12 @@ public record RuntimeConfig(
         return workspacePath.toAbsolutePath().normalize();
     }
 
-    private static void validateInstanceLimits(int maxToolOutputBytes, int maxFileReadLines, int maxSqlRows) {
+    private static void validateInstanceLimits(
+            int maxToolOutputBytes,
+            int maxFileReadLines,
+            int maxSqlRows,
+            ToolLoopGuardConfig toolLoopGuard
+    ) {
         if (maxToolOutputBytes <= 0) {
             throw new IllegalStateException("instance.maxToolOutputBytes must be > 0");
         }
@@ -375,6 +394,12 @@ public record RuntimeConfig(
         }
         if (maxSqlRows <= 0) {
             throw new IllegalStateException("instance.maxSqlRows must be > 0");
+        }
+        if (toolLoopGuard.repeatThreshold() < 2) {
+            throw new IllegalStateException("instance.toolLoopGuard.repeatThreshold must be >= 2");
+        }
+        if (toolLoopGuard.windowSize() < toolLoopGuard.repeatThreshold()) {
+            throw new IllegalStateException("instance.toolLoopGuard.windowSize must be >= repeatThreshold");
         }
     }
 
@@ -1108,6 +1133,21 @@ public record RuntimeConfig(
         };
     }
 
+    private static ToolLoopGuardConfig toToolLoopGuardConfig(RawToolLoopGuardConfig rawToolLoopGuard) {
+        if (rawToolLoopGuard == null) {
+            return ToolLoopGuardConfig.defaults();
+        }
+        return new ToolLoopGuardConfig(
+                rawToolLoopGuard.enabled == null || rawToolLoopGuard.enabled,
+                rawToolLoopGuard.repeatThreshold == null
+                        ? DEFAULT_TOOL_LOOP_REPEAT_THRESHOLD
+                        : rawToolLoopGuard.repeatThreshold,
+                rawToolLoopGuard.windowSize == null
+                        ? DEFAULT_TOOL_LOOP_WINDOW_SIZE
+                        : rawToolLoopGuard.windowSize
+        );
+    }
+
     private static ObservabilityConfig toObservabilityConfig(RawInstanceObservability rawObservability) {
         ObservabilityConfig defaults = ObservabilityConfig.defaults();
         if (rawObservability == null) {
@@ -1148,6 +1188,25 @@ public record RuntimeConfig(
                 .filter(v -> !v.isEmpty())
                 .distinct()
                 .toList();
+    }
+
+    public record ToolLoopGuardConfig(
+            boolean enabled,
+            int repeatThreshold,
+            int windowSize
+    ) {
+        public ToolLoopGuardConfig {
+            if (repeatThreshold < 2) {
+                throw new IllegalStateException("instance.toolLoopGuard.repeatThreshold must be >= 2");
+            }
+            if (windowSize < repeatThreshold) {
+                throw new IllegalStateException("instance.toolLoopGuard.windowSize must be >= repeatThreshold");
+            }
+        }
+
+        public static ToolLoopGuardConfig defaults() {
+            return new ToolLoopGuardConfig(true, DEFAULT_TOOL_LOOP_REPEAT_THRESHOLD, DEFAULT_TOOL_LOOP_WINDOW_SIZE);
+        }
     }
 
     public enum TerminalColor {
@@ -1586,6 +1645,8 @@ public record RuntimeConfig(
         private Integer maxFileReadLines;
         @JsonProperty("maxSqlRows")
         private Integer maxSqlRows;
+        @JsonProperty("toolLoopGuard")
+        private RawToolLoopGuardConfig toolLoopGuard;
         @JsonProperty("maxEssenceBodyBytes")
         private Integer maxEssenceBodyBytes;
         @JsonProperty("observability")
@@ -1605,7 +1666,19 @@ public record RuntimeConfig(
 
         private Integer maxSqlRows() { return maxSqlRows; }
 
+        private RawToolLoopGuardConfig toolLoopGuard() { return toolLoopGuard; }
+
         private RawInstanceObservability observability() { return observability; }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    private static final class RawToolLoopGuardConfig {
+        @JsonProperty("enabled")
+        private Boolean enabled;
+        @JsonProperty("repeatThreshold")
+        private Integer repeatThreshold;
+        @JsonProperty("windowSize")
+        private Integer windowSize;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = false)

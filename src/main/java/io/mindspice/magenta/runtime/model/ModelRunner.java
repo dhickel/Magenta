@@ -1,5 +1,7 @@
 package io.mindspice.magenta.runtime.model;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
@@ -19,10 +21,17 @@ import io.mindspice.magenta.runtime.tools.ToolRequest;
 import io.mindspice.magenta.runtime.tools.ToolResult;
 
 import java.util.ArrayList;
+import java.util.ArrayDeque;
+import java.util.Comparator;
+import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 public final class ModelRunner {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
 
     private final OllamaClient ollamaClient;
 
@@ -38,7 +47,8 @@ public final class ModelRunner {
                 false,
                 event -> {},
                 () -> {},
-                List.of()
+                List.of(),
+                RuntimeConfig.ToolLoopGuardConfig.defaults()
         );
     }
 
@@ -49,13 +59,19 @@ public final class ModelRunner {
             boolean streamTokens,
             Consumer<OutputRoutingEvent> outputEmitter,
             Runnable beforeModelCallHook,
-            List<ToolSpecification> toolSpecifications
+            List<ToolSpecification> toolSpecifications,
+            RuntimeConfig.ToolLoopGuardConfig toolLoopGuardConfig
     ) {
         boolean toolLoopActive = false;
         String latestText = "";
         Runnable safeBeforeModelCallHook = beforeModelCallHook == null ? () -> {} : beforeModelCallHook;
         Consumer<OutputRoutingEvent> safeOutputEmitter = outputEmitter == null ? ignored -> {} : outputEmitter;
         List<ToolSpecification> safeToolSpecifications = toolSpecifications == null ? List.of() : List.copyOf(toolSpecifications);
+        RuntimeConfig.ToolLoopGuardConfig safeToolLoopGuardConfig = toolLoopGuardConfig == null
+                ? RuntimeConfig.ToolLoopGuardConfig.defaults()
+                : toolLoopGuardConfig;
+        Deque<String> recentSignatures = new ArrayDeque<>();
+        Map<String, Integer> signatureCounts = new HashMap<>();
 
         for (int i = 0; i < maxIterations; i++) {
             safeBeforeModelCallHook.run();
@@ -96,6 +112,40 @@ public final class ModelRunner {
             }
 
             for (ContextElement.ToolCall toolCall : toolCalls) {
+                if (safeToolLoopGuardConfig.enabled()) {
+                    String signature = toolCallSignature(toolCall);
+                    String oldestIfWindowFull = recentSignatures.size() >= safeToolLoopGuardConfig.windowSize()
+                            ? recentSignatures.peekFirst()
+                            : null;
+                    int nextCount = signatureCounts.getOrDefault(signature, 0) + 1;
+                    int effectiveCountAfterWindowShift = signature.equals(oldestIfWindowFull)
+                            ? nextCount - 1
+                            : nextCount;
+                    if (effectiveCountAfterWindowShift >= safeToolLoopGuardConfig.repeatThreshold()) {
+                        String stopText = loopDetectedText(
+                                latestText,
+                                safeToolLoopGuardConfig.repeatThreshold(),
+                                safeToolLoopGuardConfig.windowSize()
+                        );
+                        if (!stopText.equals(latestText)) {
+                            session.context().append(new ContextElement.AssistantMsg(stopText, List.of()));
+                            safeOutputEmitter.accept(new OutputRoutingEvent(handle, new SessionOutput.FinalOutput(stopText)));
+                        }
+                        return stopText;
+                    }
+                    recentSignatures.addLast(signature);
+                    signatureCounts.put(signature, nextCount);
+                    while (recentSignatures.size() > safeToolLoopGuardConfig.windowSize()) {
+                        String oldest = recentSignatures.removeFirst();
+                        int count = signatureCounts.getOrDefault(oldest, 0) - 1;
+                        if (count <= 0) {
+                            signatureCounts.remove(oldest);
+                        } else {
+                            signatureCounts.put(oldest, count);
+                        }
+                    }
+                }
+
                 safeOutputEmitter.accept(new OutputRoutingEvent(handle, new SessionOutput.ToolCallOutput(toolCall)));
                 ToolRequest toolRequest = new ToolRequest(session.sessionId().toString(), session.agentId(), toolCall);
                 ToolResult toolResult = session.sessionConfig().toolBridge().apply(toolRequest);
@@ -111,7 +161,12 @@ public final class ModelRunner {
             toolLoopActive = true;
         }
 
-        return latestText;
+        String cappedText = maxTurnsExhaustedText(latestText, maxIterations);
+        if (!cappedText.equals(latestText)) {
+            session.context().append(new ContextElement.AssistantMsg(cappedText, List.of()));
+            safeOutputEmitter.accept(new OutputRoutingEvent(handle, new SessionOutput.FinalOutput(cappedText)));
+        }
+        return cappedText;
     }
 
     public String summarize(RuntimeConfig.ModelConfig modelConfig, String systemPrompt, List<ContextElement> messages) {
@@ -178,5 +233,70 @@ public final class ModelRunner {
 
     private String safeText(String text) {
         return text == null ? "" : text;
+    }
+
+    private String toolCallSignature(ContextElement.ToolCall toolCall) {
+        String toolName = toolCall.name() == null ? "" : toolCall.name().trim();
+        String canonicalArgs = canonicalizeArguments(toolCall.argumentsJson());
+        return toolName + "|" + canonicalArgs;
+    }
+
+    private String canonicalizeArguments(String argumentsJson) {
+        String safe = argumentsJson == null ? "" : argumentsJson.trim();
+        if (safe.isEmpty()) {
+            return "";
+        }
+        try {
+            JsonNode parsed = MAPPER.readTree(safe);
+            return canonicalizeNode(parsed);
+        } catch (Exception ignored) {
+            return safe.replaceAll("\\s+", " ");
+        }
+    }
+
+    private String canonicalizeNode(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return "null";
+        }
+        if (node.isObject()) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("{");
+            List<String> names = new ArrayList<>();
+            node.fieldNames().forEachRemaining(names::add);
+            names.sort(Comparator.naturalOrder());
+            for (int i = 0; i < names.size(); i++) {
+                String name = names.get(i);
+                if (i > 0) {
+                    sb.append(",");
+                }
+                sb.append("\"").append(name).append("\":").append(canonicalizeNode(node.get(name)));
+            }
+            sb.append("}");
+            return sb.toString();
+        }
+        if (node.isArray()) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("[");
+            for (int i = 0; i < node.size(); i++) {
+                if (i > 0) {
+                    sb.append(",");
+                }
+                sb.append(canonicalizeNode(node.get(i)));
+            }
+            sb.append("]");
+            return sb.toString();
+        }
+        return node.toString();
+    }
+
+    private String loopDetectedText(String latestText, int repeatThreshold, int windowSize) {
+        String reason = "[tool-loop-stop] repeated tool-call pattern detected (threshold="
+                        + repeatThreshold + ", window=" + windowSize + ")";
+        return latestText == null || latestText.isBlank() ? reason : latestText + "\n\n" + reason;
+    }
+
+    private String maxTurnsExhaustedText(String latestText, int maxIterations) {
+        String reason = "[tool-loop-stop] maxTurns exhausted (" + maxIterations + ")";
+        return latestText == null || latestText.isBlank() ? reason : latestText + "\n\n" + reason;
     }
 }

@@ -47,6 +47,9 @@ class RuntimeConfigIntegrationTest {
         assertThat(loaded.maxToolOutputBytes()).isEqualTo(32_768);
         assertThat(loaded.maxFileReadLines()).isEqualTo(200);
         assertThat(loaded.maxSqlRows()).isEqualTo(500);
+        assertThat(loaded.toolLoopGuard().enabled()).isTrue();
+        assertThat(loaded.toolLoopGuard().repeatThreshold()).isEqualTo(5);
+        assertThat(loaded.toolLoopGuard().windowSize()).isEqualTo(8);
         assertThat(loaded.modelsById()).containsKey("default");
         assertThat(loaded.modelsById().get("default").tokenizerEncodingOrDefault()).isEqualTo("cl100k_base");
         assertThat(loaded.agentsById()).containsKeys("main", "compaction");
@@ -184,6 +187,56 @@ class RuntimeConfigIntegrationTest {
         assertThatThrownBy(() -> RuntimeConfig.load(magentaYaml))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("unknownSetting");
+    }
+
+    @Test
+    void toolLoopGuardParsesFromInstanceBlock() throws IOException {
+        Path configRoot = createConfigRoot("cfg-tool-loop-guard");
+        writeDefaultMagentaYaml(configRoot);
+        writeModel(configRoot.resolve("models/default.yaml"), "dev");
+        writeTask(configRoot.resolve("tasks/default-task.yaml"), List.of("base/system"), List.of("read_file"));
+        writeWorkflow(configRoot.resolve("workflows/default-workflow.yaml"), List.of(), List.of());
+        writeAgent(configRoot.resolve("agents/main.yaml"), "default", List.of("base/system"), List.of(), List.of());
+        writeAgent(configRoot.resolve("agents/compaction.yaml"), "default", List.of("base/system"), List.of(), List.of());
+        Files.writeString(configRoot.resolve("prompts/base/system.md"), "system prompt");
+
+        Path magentaYaml = configRoot.resolve("magenta.yaml");
+        Files.writeString(magentaYaml, Files.readString(magentaYaml).replace("maxTurns: 3", """
+                maxTurns: 3
+                  toolLoopGuard:
+                    enabled: false
+                    repeatThreshold: 9999
+                    windowSize: 9999
+                """));
+
+        RuntimeConfig loaded = RuntimeConfig.load(magentaYaml);
+        assertThat(loaded.toolLoopGuard().enabled()).isFalse();
+        assertThat(loaded.toolLoopGuard().repeatThreshold()).isEqualTo(9999);
+        assertThat(loaded.toolLoopGuard().windowSize()).isEqualTo(9999);
+    }
+
+    @Test
+    void invalidToolLoopGuardWindowFailsFast() throws IOException {
+        Path configRoot = createConfigRoot("cfg-tool-loop-guard-invalid");
+        writeDefaultMagentaYaml(configRoot);
+        writeModel(configRoot.resolve("models/default.yaml"), "dev");
+        writeTask(configRoot.resolve("tasks/default-task.yaml"), List.of("base/system"), List.of("read_file"));
+        writeWorkflow(configRoot.resolve("workflows/default-workflow.yaml"), List.of(), List.of());
+        writeAgent(configRoot.resolve("agents/main.yaml"), "default", List.of("base/system"), List.of(), List.of());
+        writeAgent(configRoot.resolve("agents/compaction.yaml"), "default", List.of("base/system"), List.of(), List.of());
+        Files.writeString(configRoot.resolve("prompts/base/system.md"), "system prompt");
+
+        Path magentaYaml = configRoot.resolve("magenta.yaml");
+        Files.writeString(magentaYaml, Files.readString(magentaYaml).replace("maxTurns: 3", """
+                maxTurns: 3
+                  toolLoopGuard:
+                    repeatThreshold: 6
+                    windowSize: 5
+                """));
+
+        assertThatThrownBy(() -> RuntimeConfig.load(magentaYaml))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("instance.toolLoopGuard.windowSize must be >= repeatThreshold");
     }
 
     @Test
