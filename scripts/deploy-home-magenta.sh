@@ -14,9 +14,14 @@ SOURCE_JAR_PATH="${REPO_ROOT}/target/Magenta2-1.0-SNAPSHOT.jar"
 
 DEPLOY_MAGENTA_CONFIG="${DEPLOY_CONFIG_ROOT}/magenta.yaml"
 SYNC_CONFIGS="${MAGENTA_DEPLOY_SYNC_CONFIGS:-false}"
+REPLACE_CONFIGS="${MAGENTA_DEPLOY_REPLACE_CONFIGS:-false}"
 
 if [[ "${1:-}" == "--sync-configs" ]]; then
   SYNC_CONFIGS="true"
+fi
+if [[ "${1:-}" == "--sync-configs-replace" ]]; then
+  SYNC_CONFIGS="true"
+  REPLACE_CONFIGS="true"
 fi
 
 echo "Building Magenta2 jar..."
@@ -42,10 +47,38 @@ if [[ ! -f "${DEPLOY_MAGENTA_CONFIG}" ]]; then
 fi
 
 if [[ "${SYNC_CONFIGS}" == "true" ]]; then
-  echo "Syncing configs (replace mode)..."
+  backup_dir=""
+  if [[ -d "${DEPLOY_CONFIG_ROOT}" ]] && [[ -n "$(ls -A "${DEPLOY_CONFIG_ROOT}" 2>/dev/null || true)" ]]; then
+    ts="$(date +%Y%m%d_%H%M%S)"
+    backup_dir="${DEPLOY_HOME}/config-backups/configs_${ts}"
+    echo "Backing up existing configs to ${backup_dir}..."
+    mkdir -p "${backup_dir}"
+    cp -a "${DEPLOY_CONFIG_ROOT}/." "${backup_dir}/"
+  fi
+
+  staging_dir="$(mktemp -d)"
+  cp -a "${SOURCE_CONFIG_ROOT}/." "${staging_dir}/"
+
+  if [[ "${REPLACE_CONFIGS}" == "true" ]]; then
+    echo "Syncing configs (explicit replace mode)..."
+  else
+    echo "Syncing configs (preserve local overrides mode)..."
+    for rel in magenta.yaml prompts tasks workflows; do
+      if [[ -e "${DEPLOY_CONFIG_ROOT}/${rel}" ]]; then
+        if [[ -d "${DEPLOY_CONFIG_ROOT}/${rel}" ]]; then
+          mkdir -p "${staging_dir}/${rel}"
+          cp -a "${DEPLOY_CONFIG_ROOT}/${rel}/." "${staging_dir}/${rel}/"
+        else
+          cp -a "${DEPLOY_CONFIG_ROOT}/${rel}" "${staging_dir}/${rel}"
+        fi
+      fi
+    done
+  fi
+
   rm -rf "${DEPLOY_CONFIG_ROOT}"
   mkdir -p "${DEPLOY_CONFIG_ROOT}"
-  cp -a "${SOURCE_CONFIG_ROOT}/." "${DEPLOY_CONFIG_ROOT}/"
+  cp -a "${staging_dir}/." "${DEPLOY_CONFIG_ROOT}/"
+  rm -rf "${staging_dir}"
 
   if [[ ! -f "${DEPLOY_MAGENTA_CONFIG}" ]]; then
     echo "ERROR: Missing deployed config ${DEPLOY_MAGENTA_CONFIG}" >&2
