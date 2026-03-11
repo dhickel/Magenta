@@ -9,6 +9,10 @@ instance:
   maxToolOutputBytes: 65536
   maxFileReadLines: 200
   maxSqlRows: 500
+  toolLoopGuard:
+    enabled: true
+    repeatThreshold: 5
+    windowSize: 8
   maxEssenceBodyBytes: 65536
   observability:
     log_level: "info"
