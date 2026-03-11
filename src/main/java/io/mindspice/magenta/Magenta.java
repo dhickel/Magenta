@@ -425,7 +425,8 @@ public final class Magenta {
                                 messages
                         )
                 ),
-                toolSpecifications
+                toolSpecifications,
+                runtimeConfig.toolLoopGuard()
         );
     }
 

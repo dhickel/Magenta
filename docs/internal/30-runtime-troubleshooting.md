@@ -65,6 +65,19 @@ Checks:
 2. validate bridge input parsing and error handling
 3. wrap bridge with policy guards where needed
 
+## Tool loop termination
+
+Symptoms:
+
+- assistant output includes `[tool-loop-stop] repeated tool-call pattern detected`
+- assistant output includes `[tool-loop-stop] maxTurns exhausted`
+
+Checks:
+
+1. review `instance.maxTurns` and `instance.toolLoopGuard` in `configs/magenta.yaml`.
+2. if loops are expected in a stress harness, raise `toolLoopGuard.repeatThreshold`/`windowSize` or disable guard explicitly.
+3. if loops are not expected, inspect recent tool-call arguments for repeated signatures and add stronger tool result checks/prompts.
+
 ## Security denial surprises
 
 Symptoms:
