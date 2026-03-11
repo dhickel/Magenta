@@ -1,17 +1,27 @@
-# Routing and Callback Contract Architecture
+# Routing and Event Contract Architecture
 
 ## Design intent
 
 Use one concrete routing service (`SessionRouter`) as the external IO boundary, while keeping `ModelRunner` and `Session` decoupled from router internals.
 
-## SessionConfig callback contract
+## Session event contract
 
-`SessionConfig` remains small but explicit:
+Observability and reactive integration now route through per-session typed events:
 
 - `toolBridge`: tool execution callback
-- `onRouting`: optional session-scoped routing observability callback for both input and output routing results
-- `onSecurity`: optional session-scoped security decision callback for tool authorization outcomes
-- `onError`: session-scoped execution error callback (`SessionException`)
+- `SessionEvent` hub: session-scoped typed listener registration/unregistration
+- listener registration forms:
+  - `on(Class<T>, Consumer<T>)`
+  - `on(Class<T>, Predicate<T>, Consumer<T>)`
+- major event families: `MessageIn`, `MessageOut`, `Action`, `RoutingDecision`, `SecurityDecision`, `ErrorEvent`
+
+## SessionConfig callback compatibility
+
+`SessionConfig.onRouting`, `onSecurity`, and `onError` remain as compatibility adapters:
+
+- callbacks are registered as typed event listeners at session start/fork
+- callbacks are no longer a separate primary emission path
+- callback failures remain observability-only
 
 ## Input routing contract
 
@@ -19,7 +29,7 @@ Use one concrete routing service (`SessionRouter`) as the external IO boundary, 
 - Multiple input routes can exist per session.
 - Evaluation is insertion-order and stops at first approval.
 - Exhaustion emits a final denied routing decision.
-- Routing callback emission level is controlled by `RoutingEventLevel`:
+- Routing callback adapter delivery is controlled by `RoutingEventLevel`:
   - `NONE`
   - `FINAL`
   - `ALL`
@@ -38,8 +48,9 @@ Use one concrete routing service (`SessionRouter`) as the external IO boundary, 
 
 ## Error semantics
 
-- Input submit path catches internal turn failures and calls `SessionConfig.onError` with `SessionException`.
-- Routing callback failures are observability-only and must not break ingress/turn execution.
+- Input submit path catches internal turn failures and emits `SessionEvent.ErrorEvent`.
+- Legacy `onError` callback receives those errors through adapter wiring.
+- Listener/callback failures are observability-only and must not break ingress/turn execution.
 
 ## Defaults
 
@@ -48,12 +59,13 @@ Use one concrete routing service (`SessionRouter`) as the external IO boundary, 
 - `params = SessionParams.ofStreaming(true)`
 - `toolBridge = ToolManager.execute(...)` (empty manager defaults to not-handled)
 - `routingEventLevel = NONE`
-- `onRouting = unset`
-- `onSecurity = no-op`
-- `onError = no-op`
+- `onRouting = unset` (compat adapter)
+- `onSecurity = no-op` (compat adapter)
+- `onError = no-op` (compat adapter)
 
 ## Tool bridge security wrapping
 
 - `Magenta` wraps session `toolBridge` with `SecurityManager.authorize(...)` before delegation.
-- Authorization decisions (allow/deny/validation/override) are emitted through `onSecurity`.
+- Authorization decisions (allow/deny/validation/override) emit `SessionEvent.SecurityDecision`.
+- Legacy `onSecurity` receives those events via callback adapter wiring.
 - Denied tool calls return structured failure payloads to the model/tool loop; tool handlers are not executed on deny.

@@ -54,6 +54,8 @@ class RuntimeConfigIntegrationTest {
         assertThat(loaded.promptsById()).containsKey("base/system");
         assertThat(loaded.security().mode()).isEqualTo(RuntimeConfig.SecurityMode.BLACKLIST);
         assertThat(loaded.terminal().security().eventVisibility()).isEqualTo(RuntimeConfig.TerminalSecurityVisibility.DENIALS_ONLY);
+        assertThat(loaded.observability().logLevel()).isEqualTo(RuntimeConfig.LogLevel.INFO);
+        assertThat(loaded.observability().prettyLogsEnabled()).isFalse();
     }
 
     @Test
@@ -249,6 +251,53 @@ class RuntimeConfigIntegrationTest {
         assertThatThrownBy(() -> RuntimeConfig.load(magentaYaml))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Unsupported terminal color token");
+    }
+
+    @Test
+    void observabilityLogLevelParsesFromInstanceBlock() throws IOException {
+        Path configRoot = createConfigRoot("cfg-observability-log-level");
+        writeDefaultMagentaYaml(configRoot);
+        writeModel(configRoot.resolve("models/default.yaml"), "dev");
+        writeTask(configRoot.resolve("tasks/default-task.yaml"), List.of("base/system"), List.of("read_file"));
+        writeWorkflow(configRoot.resolve("workflows/default-workflow.yaml"), List.of(), List.of());
+        writeAgent(configRoot.resolve("agents/main.yaml"), "default", List.of("base/system"), List.of(), List.of());
+        writeAgent(configRoot.resolve("agents/compaction.yaml"), "default", List.of("base/system"), List.of(), List.of());
+        Files.writeString(configRoot.resolve("prompts/base/system.md"), "system prompt");
+
+        Path magentaYaml = configRoot.resolve("magenta.yaml");
+        Files.writeString(magentaYaml, Files.readString(magentaYaml).replace("maxTurns: 3", """
+                maxTurns: 3
+                  observability:
+                    log_level: "debug"
+                    pretty_logs_enabled: true
+                """));
+
+        RuntimeConfig loaded = RuntimeConfig.load(magentaYaml);
+        assertThat(loaded.observability().logLevel()).isEqualTo(RuntimeConfig.LogLevel.DEBUG);
+        assertThat(loaded.observability().prettyLogsEnabled()).isTrue();
+    }
+
+    @Test
+    void invalidObservabilityLogLevelFailsFast() throws IOException {
+        Path configRoot = createConfigRoot("cfg-observability-log-level-invalid");
+        writeDefaultMagentaYaml(configRoot);
+        writeModel(configRoot.resolve("models/default.yaml"), "dev");
+        writeTask(configRoot.resolve("tasks/default-task.yaml"), List.of("base/system"), List.of("read_file"));
+        writeWorkflow(configRoot.resolve("workflows/default-workflow.yaml"), List.of(), List.of());
+        writeAgent(configRoot.resolve("agents/main.yaml"), "default", List.of("base/system"), List.of(), List.of());
+        writeAgent(configRoot.resolve("agents/compaction.yaml"), "default", List.of("base/system"), List.of(), List.of());
+        Files.writeString(configRoot.resolve("prompts/base/system.md"), "system prompt");
+
+        Path magentaYaml = configRoot.resolve("magenta.yaml");
+        Files.writeString(magentaYaml, Files.readString(magentaYaml).replace("maxTurns: 3", """
+                maxTurns: 3
+                  observability:
+                    log_level: "chatter"
+                """));
+
+        assertThatThrownBy(() -> RuntimeConfig.load(magentaYaml))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Unsupported log level");
     }
 
     private Path createConfigRoot(String name) throws IOException {

@@ -10,6 +10,9 @@ instance:
   maxFileReadLines: 200
   maxSqlRows: 500
   maxEssenceBodyBytes: 65536
+  observability:
+    log_level: "info"
+    pretty_logs_enabled: false
 
 security:
   mode: "BLACKLIST"

@@ -23,6 +23,9 @@ public class Main {
         if (cli.forceYolo()) {
             runtimeConfig = runtimeConfig.withYoloOverride();
         }
+        if (cli.logLevelOverride() != null) {
+            runtimeConfig = runtimeConfig.withLogLevelOverride(cli.logLevelOverride());
+        }
         boolean routingLogsEnabled = Boolean.parseBoolean(System.getenv().getOrDefault("MAGENTA_UI_ROUTE_LOGS", "false"));
         ensureWorkspaceRoot(runtimeConfig.workspaceRoot());
         ToolApprovalPromptAdapter approvalAdapter = new ToolApprovalPromptAdapter();
@@ -65,15 +68,25 @@ public class Main {
         Path configPath = Path.of("configs", "magenta.yaml");
         boolean configPathSet = false;
         boolean forceYolo = false;
+        RuntimeConfig.LogLevel logLevelOverride = null;
         List<String> unknownFlags = new ArrayList<>();
 
         if (args != null) {
-            for (String arg : args) {
+            for (int i = 0; i < args.length; i++) {
+                String arg = args[i];
                 if (arg == null || arg.isBlank()) {
                     continue;
                 }
                 if ("--yolo".equals(arg.trim())) {
                     forceYolo = true;
+                    continue;
+                }
+                if ("--log-level".equals(arg.trim())) {
+                    if (i + 1 >= args.length) {
+                        throw new IllegalArgumentException("--log-level requires a value");
+                    }
+                    String value = args[++i];
+                    logLevelOverride = parseLogLevelArg(value);
                     continue;
                 }
                 if (arg.startsWith("-")) {
@@ -91,10 +104,26 @@ public class Main {
         if (!unknownFlags.isEmpty()) {
             throw new IllegalArgumentException("Unsupported flags: " + String.join(", ", unknownFlags));
         }
-        return new CliArgs(configPath, forceYolo);
+        return new CliArgs(configPath, forceYolo, logLevelOverride);
     }
 
-    private record CliArgs(Path configPath, boolean forceYolo) {
+    private static RuntimeConfig.LogLevel parseLogLevelArg(String value) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("--log-level requires one of: off, error, info, debug, trace");
+        }
+        return switch (value.trim().toLowerCase(java.util.Locale.ROOT)) {
+            case "off" -> RuntimeConfig.LogLevel.OFF;
+            case "error" -> RuntimeConfig.LogLevel.ERROR;
+            case "info" -> RuntimeConfig.LogLevel.INFO;
+            case "debug" -> RuntimeConfig.LogLevel.DEBUG;
+            case "trace" -> RuntimeConfig.LogLevel.TRACE;
+            default -> throw new IllegalArgumentException(
+                    "Unsupported --log-level value: " + value + " (expected off|error|info|debug|trace)"
+            );
+        };
+    }
+
+    private record CliArgs(Path configPath, boolean forceYolo, RuntimeConfig.LogLevel logLevelOverride) {
     }
 
     private static void ensureWorkspaceRoot(Path workspaceRoot) {

@@ -121,3 +121,22 @@ Checks:
 
 `SessionConfig.onError` is notification-only; ingress swallows turn exceptions after callback.
 `SessionException` includes the originating `SessionHandle` for multi-session consumers.
+
+## Event logging and debug visibility
+
+Symptoms:
+
+- expected debug traces not visible in logs
+- expected runtime actions not found in logs
+
+Checks:
+
+1. confirm event files are being written under `workspaceRoot/logs/`:
+   - `session-events.jsonl`
+   - `session-events.pretty.json` (only when `instance.observability.pretty_logs_enabled=true`)
+2. verify effective log level:
+   - config: `instance.observability.log_level`
+   - CLI override: `--log-level <off|error|info|debug|trace>`
+3. remember full tool payloads are only logged at `DEBUG` and `TRACE`; `ERROR`/`INFO` store 1 KB preview-capped payload metadata.
+4. verify listeners were registered for the correct session handle and event type.
+5. if using callback compatibility fields (`onRouting`/`onSecurity`/`onError`), verify callbacks are provided in the `SessionConfig` passed at start/fork.
