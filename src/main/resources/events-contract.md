@@ -11,15 +11,12 @@ Each line in the debug stream is a JSON object with this stable shape:
 
 Core event types:
 
-- `session_init`
-- `user_message`
-- `agent_message`
+- `session_started`
+- `message_in`
+- `message_out`
 - `tool_call`
 - `tool_result`
-- `policy_denied`
+- `context_compacted`
+- `model_failure`
 - `security_decision`
-- `session_end`
-
-Additional audit event type:
-
-- `policy_override`
+- `session_closed`

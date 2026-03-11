@@ -4,7 +4,7 @@ instance:
   debugJsonl: ".magenta/logs/events.jsonl"
   localDevMode: true
   baseAgentId: "magenta"
-  compactionAgentId: "magenta"
+  compactionAgentId: "compaction"
   maxTurns: 8
   maxToolOutputBytes: 65536
   maxFileReadLines: 200

@@ -1,0 +1,7 @@
+modelId: "default-model"
+promptIds:
+  - "base/compaction"
+tasks: []
+workflows: []
+toolIds: []
+enabled: true

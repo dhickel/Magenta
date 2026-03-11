@@ -10,9 +10,9 @@ import java.util.UUID;
 public final class RollingWindowCompactionStrategy implements CompactionStrategy {
 
     @Override
-    public List<ContextElement> run(UUID sessionId, List<ContextElement> context, int targetTokens, String tokenizerEncoding) {
+    public CompactionResult run(UUID sessionId, List<ContextElement> context, int targetTokens, String tokenizerEncoding) {
         if (context.isEmpty()) {
-            return context;
+            return new CompactionResult(List.of(), 0, 0, 0);
         }
 
         List<ContextElement> leadingSystem = new ArrayList<>();
@@ -40,6 +40,6 @@ public final class RollingWindowCompactionStrategy implements CompactionStrategy
         List<ContextElement> output = new ArrayList<>();
         output.addAll(leadingSystem);
         output.addAll(kept);
-        return output;
+        return new CompactionResult(output, leadingSystem.size(), 0, kept.size());
     }
 }

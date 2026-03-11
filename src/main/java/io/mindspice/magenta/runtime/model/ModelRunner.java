@@ -216,7 +216,9 @@ public final class ModelRunner {
                         toolMsg.toolName(),
                         safeText(toolMsg.content())
                 ));
-                case ContextElement.SummaryMsg summaryMsg -> output.add(SystemMessage.from("Context Summary: " + summaryMsg.content()));
+                case ContextElement.SummaryMsg summaryMsg -> output.add(
+                        UserMessage.from("[Context Summary]\n" + safeText(summaryMsg.content()))
+                );
             }
         }
         return output;
