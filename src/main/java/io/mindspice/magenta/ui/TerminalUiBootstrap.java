@@ -4,12 +4,15 @@ import io.mindspice.magenta.Magenta;
 import io.mindspice.magenta.runtime.routing.InputRoutePolicy;
 import io.mindspice.magenta.runtime.routing.OutputRoutePolicy;
 import io.mindspice.magenta.runtime.routing.RoutingEventLevel;
+import io.mindspice.magenta.runtime.events.SessionEvent;
 import io.mindspice.magenta.runtime.security.SecurityManager;
+import io.mindspice.magenta.runtime.session.SessionHandle;
 import io.mindspice.magenta.runtime.session.SessionOutput;
 import io.mindspice.magenta.runtime.session.config.SessionConfig;
 import io.mindspice.magenta.ui.prompt.JlinePromptService;
 import io.mindspice.magenta.ui.render.UiRenderBlock;
 import io.mindspice.magenta.ui.render.UiRenderer;
+import io.mindspice.magenta.ui.render.UiStatusBar;
 import io.mindspice.magenta.ui.render.UiStyle;
 import io.mindspice.magenta.ui.slash.SlashCommandRegistry;
 import io.mindspice.magenta.ui.slash.SlashCompleter;
@@ -23,6 +26,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 public final class TerminalUiBootstrap {
 
@@ -49,6 +53,7 @@ public final class TerminalUiBootstrap {
         JlinePromptService promptService = new JlinePromptService(lineReader, renderer, config.prompts());
         approvalAdapter.setPromptService(promptService);
         RoutingEventPrinter routePrinter = new RoutingEventPrinter(renderer);
+        AtomicReference<Runnable> refreshStatusRef = new AtomicReference<>(() -> {});
 
         SessionConfig sessionConfig = new SessionConfig(
                 config.session().params(),
@@ -70,6 +75,7 @@ public final class TerminalUiBootstrap {
                                 securityStyle(event)
                         ));
                     }
+                    refreshStatusRef.get().run();
                     config.callbacks().onSecurity().accept(event);
                 },
                 error -> {
@@ -82,11 +88,15 @@ public final class TerminalUiBootstrap {
                             ),
                             UiStyle.ERROR
                     ));
+                    refreshStatusRef.get().run();
                     config.callbacks().onError().accept(error);
                 }
         );
 
         var handle = magenta.startBaseSession(config.session().alias(), sessionConfig);
+        Supplier<Magenta.SessionContextUsage> contextUsageSupplier = magenta.contextUsageSupplier(handle);
+        Runnable refreshStatus = statusRefresh(renderer, magenta, handle, contextUsageSupplier);
+        refreshStatusRef.set(refreshStatus);
         magenta.addInputRoute(handle, InputRoutePolicy.defaults());
         var settings = magenta.settingsFor(handle);
         boolean streamingExpected = settings.streamingEnabled()
@@ -108,15 +118,36 @@ public final class TerminalUiBootstrap {
                                 SessionOutput.ToolMessageOutput.FILTER_TAG
                         ))
                         .build(),
-                event -> outputWriter.onOutput(event.output())
+                event -> {
+                    outputWriter.onOutput(event.output());
+                    switch (event.output()) {
+                        case SessionOutput.FinalOutput ignored -> refreshStatus.run();
+                        case SessionOutput.ToolMessageOutput ignored -> refreshStatus.run();
+                        case SessionOutput.StreamedOutput ignored -> {
+                            // no-op
+                        }
+                        case SessionOutput.ToolCallOutput ignored -> {
+                            // no-op
+                        }
+                    }
+                }
         );
+
+        magenta.addEventListener(handle, SessionEvent.Action.ContextCompacted.class, event -> {
+            renderer.renderBlock(new UiRenderBlock(
+                    "",
+                    List.of(contextCompactionDisplayLine(event)),
+                    UiStyle.INFO
+            ));
+            refreshStatus.run();
+        });
 
         TerminalUiSession uiSession = new TerminalUiSession(
                 handle,
                 outputRoute,
                 magenta.messageInputConsumer(handle),
                 magenta.eventInputConsumer(handle),
-                magenta.contextUsageSupplier(handle)
+                contextUsageSupplier
         );
 
         SlashCommandRegistry slashRegistry = TerminalUiRuntime.defaultCommands(
@@ -140,6 +171,30 @@ public final class TerminalUiBootstrap {
                 uiSession,
                 slashRegistry
         );
+    }
+
+    private static Runnable statusRefresh(
+            UiRenderer renderer,
+            Magenta magenta,
+            SessionHandle handle,
+            Supplier<Magenta.SessionContextUsage> contextUsageSupplier
+    ) {
+        return () -> {
+            try {
+                UiStatusBar status = TerminalUiRuntime.buildStatusBar(magenta, handle, contextUsageSupplier);
+                renderer.renderStatus(status);
+            } catch (Exception ignored) {
+                // Best effort refresh; session may be closing.
+            }
+        };
+    }
+
+    private static String contextCompactionDisplayLine(SessionEvent.Action.ContextCompacted event) {
+        return "[Context] Compacted: tokens " + event.tokensBefore()
+               + " -> " + event.tokensAfter()
+               + ", messages " + event.messagesBefore()
+               + " -> " + event.messagesAfter()
+               + ", strategy=" + event.strategy();
     }
 
     private static boolean shouldRenderSecurityEvent(

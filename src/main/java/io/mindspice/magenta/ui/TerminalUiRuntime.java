@@ -4,6 +4,7 @@ import io.mindspice.magenta.Magenta;
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
 import io.mindspice.magenta.runtime.security.SecurityManager;
 import io.mindspice.magenta.runtime.session.SessionInput;
+import io.mindspice.magenta.runtime.session.SessionHandle;
 import io.mindspice.magenta.ui.prompt.PromptService;
 import io.mindspice.magenta.ui.prompt.UiPromptRequest;
 import io.mindspice.magenta.ui.prompt.UiPromptResponse;
@@ -26,6 +27,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 public final class TerminalUiRuntime {
 
@@ -305,9 +307,21 @@ public final class TerminalUiRuntime {
     }
 
     private void renderStatus() {
-        Magenta.SessionContextUsage usage = session.contextUsageSupplier().get();
-        var settings = magenta.settingsFor(session.handle());
-        var policy = magenta.toolPolicy(session.handle());
+        renderer.renderStatus(buildStatusBar(magenta, session.handle(), session.contextUsageSupplier()));
+    }
+
+    static UiStatusBar buildStatusBar(
+            Magenta magenta,
+            SessionHandle handle,
+            Supplier<Magenta.SessionContextUsage> contextUsageSupplier
+    ) {
+        Objects.requireNonNull(magenta, "magenta");
+        Objects.requireNonNull(handle, "handle");
+        Objects.requireNonNull(contextUsageSupplier, "contextUsageSupplier");
+
+        Magenta.SessionContextUsage usage = contextUsageSupplier.get();
+        var settings = magenta.settingsFor(handle);
+        var policy = magenta.toolPolicy(handle);
 
         String topLeft = "model: " + usage.modelName();
         String topRight = "ctx: " + usage.estimatedContextTokens() + "/" + usage.maxContextTokens()
@@ -319,10 +333,10 @@ public final class TerminalUiRuntime {
                              + " security=" + policy.mode().name()
                              + " yolo=" + (policy.devYoloOverride() ? "on" : "off");
 
-        renderer.renderStatus(new UiStatusBar(topLeft, topRight, bottomLeft, bottomRight));
+        return new UiStatusBar(topLeft, topRight, bottomLeft, bottomRight);
     }
 
-    private String shortSessionId(String id) {
+    private static String shortSessionId(String id) {
         if (id == null || id.length() < 8) {
             return id == null ? "" : id;
         }
