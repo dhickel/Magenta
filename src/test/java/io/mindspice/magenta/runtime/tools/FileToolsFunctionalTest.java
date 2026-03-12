@@ -250,6 +250,92 @@ class FileToolsFunctionalTest {
     }
 
     @Test
+    void searchReplaceReturnsHashDetailsForStartAnchorMismatch() throws Exception {
+        Files.writeString(tempDir.resolve("sample.txt"), "alpha\nbeta\n");
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+
+        JsonNode read = ToolTestSupport.payload(manager.execute(ToolTestSupport.request("read_file", "{\"path\":\"sample.txt\"}")));
+        String snapshotId = read.path("data").path("snapshotId").asText();
+        String startAnchor = read.path("data").path("lines").get(0).path("anchor").asText();
+        String endAnchor = read.path("data").path("lines").get(1).path("anchor").asText();
+        String badStartAnchor = mutateAnchorHash(startAnchor);
+
+        String args = ToolTestSupport.MAPPER.writeValueAsString(Map.of(
+                "path", "sample.txt",
+                "snapshotId", snapshotId,
+                "edits", List.of(Map.of(
+                        "startAnchor", badStartAnchor,
+                        "endAnchor", endAnchor,
+                        "replacement", "omega\nbeta"
+                ))
+        ));
+
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request("search_replace", args)));
+        JsonNode conflict = payload.path("data").path("conflicts").get(0);
+        String expectedHash = badStartAnchor.substring(badStartAnchor.indexOf(':') + 1);
+        String actualHash = startAnchor.substring(startAnchor.indexOf(':') + 1);
+
+        assertThat(payload.path("status").asText()).isEqualTo("failed");
+        assertThat(payload.path("code").asText()).isEqualTo("anchor_mismatch");
+        assertThat(payload.path("message").asText()).contains("startAnchor hash mismatch at line 1")
+                .contains("expected " + expectedHash)
+                .contains("actual " + actualHash);
+        assertThat(conflict.path("reason").asText()).isEqualTo("start_anchor_mismatch");
+        assertThat(conflict.path("lineNumber").asInt()).isEqualTo(1);
+        assertThat(conflict.path("expectedHash").asText()).isEqualTo(expectedHash);
+        assertThat(conflict.path("actualHash").asText()).isEqualTo(actualHash);
+    }
+
+    @Test
+    void searchReplaceReturnsHashDetailsForEndAnchorMismatch() throws Exception {
+        Files.writeString(tempDir.resolve("sample.txt"), "alpha\nbeta\n");
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+
+        JsonNode read = ToolTestSupport.payload(manager.execute(ToolTestSupport.request("read_file", "{\"path\":\"sample.txt\"}")));
+        String snapshotId = read.path("data").path("snapshotId").asText();
+        String startAnchor = read.path("data").path("lines").get(0).path("anchor").asText();
+        String endAnchor = read.path("data").path("lines").get(1).path("anchor").asText();
+        String badEndAnchor = mutateAnchorHash(endAnchor);
+
+        String args = ToolTestSupport.MAPPER.writeValueAsString(Map.of(
+                "path", "sample.txt",
+                "snapshotId", snapshotId,
+                "edits", List.of(Map.of(
+                        "startAnchor", startAnchor,
+                        "endAnchor", badEndAnchor,
+                        "replacement", "alpha\nomega"
+                ))
+        ));
+
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request("search_replace", args)));
+        JsonNode conflict = payload.path("data").path("conflicts").get(0);
+        String expectedHash = badEndAnchor.substring(badEndAnchor.indexOf(':') + 1);
+        String actualHash = endAnchor.substring(endAnchor.indexOf(':') + 1);
+
+        assertThat(payload.path("status").asText()).isEqualTo("failed");
+        assertThat(payload.path("code").asText()).isEqualTo("anchor_mismatch");
+        assertThat(payload.path("message").asText()).contains("endAnchor hash mismatch at line 2")
+                .contains("expected " + expectedHash)
+                .contains("actual " + actualHash);
+        assertThat(conflict.path("reason").asText()).isEqualTo("end_anchor_mismatch");
+        assertThat(conflict.path("lineNumber").asInt()).isEqualTo(2);
+        assertThat(conflict.path("expectedHash").asText()).isEqualTo(expectedHash);
+        assertThat(conflict.path("actualHash").asText()).isEqualTo(actualHash);
+    }
+
+    private static String mutateAnchorHash(String anchor) {
+        int separator = anchor.indexOf(':');
+        if (separator <= 0 || separator >= anchor.length() - 1) {
+            throw new IllegalArgumentException("Invalid anchor: " + anchor);
+        }
+        String prefix = anchor.substring(0, separator + 1);
+        String hash = anchor.substring(separator + 1);
+        char last = hash.charAt(hash.length() - 1);
+        char replacement = last == '0' ? '1' : '0';
+        return prefix + hash.substring(0, hash.length() - 1) + replacement;
+    }
+
+    @Test
     void listDirectoryReturnsBoundedEntries() throws Exception {
         Files.writeString(tempDir.resolve("a.txt"), "a");
         Files.writeString(tempDir.resolve("b.txt"), "b");

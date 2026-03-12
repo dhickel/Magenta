@@ -314,6 +314,13 @@ On any code/config change that should be runnable from the home deployment:
 5. For live-environment testing after deployment, run `magenta` (alias for `java -jar ~/.magenta/Magenta2-1.0-SNAPSHOT.jar ~/.magenta/configs/magenta.yaml`).
 6. If the alias is missing, add `alias magenta='java -jar "$HOME/.magenta/Magenta2-1.0-SNAPSHOT.jar" "$HOME/.magenta/configs/magenta.yaml"'` to your shell profile.
 
+### Ollama Host Diagnostics
+
+Use the dedicated Ollama host to diagnose model/service issues separately from local Magenta2 application issues.
+- SSH target: `admin2@192.168.1.112`
+- Password: `admin3`
+- Primary purpose: inspect Ollama service logs and host-level system state (CPU, memory, disk, networking, model availability) when triaging runtime/model failures.
+
 ### Terminal UI Smoke Test Loop
 
 Use this loop for manual terminal validation of prompt handling, output rendering, tool interaction, and streaming behavior.

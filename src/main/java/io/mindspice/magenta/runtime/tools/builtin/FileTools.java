@@ -477,7 +477,15 @@ public final class FileTools {
         } catch (AnchorConflictException e) {
             ObjectNode data = MAPPER.createObjectNode();
             ArrayNode conflicts = MAPPER.createArrayNode();
-            conflicts.add(conflictNode(e.editIndex(), e.reason(), e.startAnchor(), e.endAnchor()));
+            conflicts.add(conflictNode(
+                    e.editIndex(),
+                    e.reason(),
+                    e.startAnchor(),
+                    e.endAnchor(),
+                    e.lineNumber(),
+                    e.expectedHash(),
+                    e.actualHash()
+            ));
             data.set("conflicts", conflicts);
             return ToolPayloads.failure(request, "anchor_mismatch", e.getMessage(), data, true);
         } catch (Exception e) {
@@ -642,12 +650,30 @@ public final class FileTools {
 
             String startActualHash = hashLineToken(lines.get(start.lineNumber() - 1));
             if (!Objects.equals(start.hash(), startActualHash)) {
-                throw new AnchorConflictException(i, "start_anchor_mismatch", "startAnchor hash mismatch", startAnchor, endAnchor);
+                throw new AnchorConflictException(
+                        i,
+                        "start_anchor_mismatch",
+                        anchorMismatchMessage("startAnchor", start.lineNumber(), start.hash(), startActualHash),
+                        startAnchor,
+                        endAnchor,
+                        start.lineNumber(),
+                        start.hash(),
+                        startActualHash
+                );
             }
 
             String endActualHash = hashLineToken(lines.get(end.lineNumber() - 1));
             if (!Objects.equals(end.hash(), endActualHash)) {
-                throw new AnchorConflictException(i, "end_anchor_mismatch", "endAnchor hash mismatch", startAnchor, endAnchor);
+                throw new AnchorConflictException(
+                        i,
+                        "end_anchor_mismatch",
+                        anchorMismatchMessage("endAnchor", end.lineNumber(), end.hash(), endActualHash),
+                        startAnchor,
+                        endAnchor,
+                        end.lineNumber(),
+                        end.hash(),
+                        endActualHash
+                );
             }
 
             String expectedText = readFirstString(editNode, List.of("expectedText"));
@@ -744,11 +770,32 @@ public final class FileTools {
     }
 
     private ObjectNode conflictNode(int editIndex, String reason, String startAnchor, String endAnchor) {
+        return conflictNode(editIndex, reason, startAnchor, endAnchor, null, null, null);
+    }
+
+    private ObjectNode conflictNode(
+            int editIndex,
+            String reason,
+            String startAnchor,
+            String endAnchor,
+            Integer lineNumber,
+            String expectedHash,
+            String actualHash
+    ) {
         ObjectNode node = MAPPER.createObjectNode();
         node.put("editIndex", editIndex);
         node.put("reason", reason);
         node.put("startAnchor", startAnchor == null ? "" : startAnchor);
         node.put("endAnchor", endAnchor == null ? "" : endAnchor);
+        if (lineNumber != null) {
+            node.put("lineNumber", lineNumber);
+        }
+        if (!isBlank(expectedHash)) {
+            node.put("expectedHash", expectedHash);
+        }
+        if (!isBlank(actualHash)) {
+            node.put("actualHash", actualHash);
+        }
         return node;
     }
 
@@ -818,6 +865,11 @@ public final class FileTools {
         return lineNumber + ":" + hash;
     }
 
+    private static String anchorMismatchMessage(String anchorName, int lineNumber, String expectedHash, String actualHash) {
+        return anchorName + " hash mismatch at line " + lineNumber
+                + " (expected " + expectedHash + ", actual " + actualHash + ")";
+    }
+
     private static String snapshotId(String normalizedText) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -850,13 +902,32 @@ public final class FileTools {
         private final String reason;
         private final String startAnchor;
         private final String endAnchor;
+        private final Integer lineNumber;
+        private final String expectedHash;
+        private final String actualHash;
 
         private AnchorConflictException(int editIndex, String reason, String message, String startAnchor, String endAnchor) {
+            this(editIndex, reason, message, startAnchor, endAnchor, null, null, null);
+        }
+
+        private AnchorConflictException(
+                int editIndex,
+                String reason,
+                String message,
+                String startAnchor,
+                String endAnchor,
+                Integer lineNumber,
+                String expectedHash,
+                String actualHash
+        ) {
             super(message);
             this.editIndex = editIndex;
             this.reason = reason;
             this.startAnchor = startAnchor;
             this.endAnchor = endAnchor;
+            this.lineNumber = lineNumber;
+            this.expectedHash = expectedHash;
+            this.actualHash = actualHash;
         }
 
         private int editIndex() {
@@ -873,6 +944,18 @@ public final class FileTools {
 
         private String endAnchor() {
             return endAnchor;
+        }
+
+        private Integer lineNumber() {
+            return lineNumber;
+        }
+
+        private String expectedHash() {
+            return expectedHash;
+        }
+
+        private String actualHash() {
+            return actualHash;
         }
     }
 }

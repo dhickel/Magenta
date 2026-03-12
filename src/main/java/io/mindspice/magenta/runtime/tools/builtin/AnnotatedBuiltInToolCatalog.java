@@ -120,7 +120,7 @@ public final class AnnotatedBuiltInToolCatalog {
             "Recursively searches through files in the workspace for lines matching a literal string or regular expression, returning matches with their line numbers and hashes.",
             "This is the most efficient way to locate specific symbols, patterns, or code snippets across multiple files without reading each file individually.",
             "Parameters: 'pattern' (search string), 'rootPath' (starting directory, defaults to '.'), 'regex' (enables regex mode), 'caseSensitive' (enables case sensitivity), 'maxMatches' (limits results), and 'filePattern' (glob filter for file names like '**/*.java' or basename filters such as '*.md').",
-            "The returned payload includes 'matches' containing line text and 'line:hh' anchors which are compatible with search_replace. rootPath is optional. If too many matches are found, file contents and matches will be truncated for performance."
+            "The returned payload includes 'matches' containing line text and 'line:hh' anchors which are compatible with search_replace. grep_files does not return snapshotId; obtain snapshotId for the target file via read_file or file_metadata before editing. rootPath is optional. If too many matches are found, file contents and matches will be truncated for performance."
     })
     public ToolResult grepFiles(
             @ToolMemoryId ToolRequest request,
