@@ -16,7 +16,7 @@ public final class SummarizeCompactionStrategy implements CompactionStrategy {
     private static final int TURN_ALIGNMENT_BACKTRACK_LIMIT = 6;
     private static final int HEAVY_TOOL_PAYLOAD_CHARS = 2_000;
     private static final int TOOL_PAYLOAD_COMPACT_CHARS = 1_200;
-    private static final int TOOL_PAYLOAD_HARD_COMPACT_CHARS = 400;
+    private static final int TOOL_PAYLOAD_HARD_COMPACT_CHARS = 200;
     private static final double HEAVY_RECENT_HEADROOM_RATIO = 0.75;
 
     private final Function<List<ContextElement>, String> summarizer;

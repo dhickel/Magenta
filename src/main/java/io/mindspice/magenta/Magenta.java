@@ -70,8 +70,9 @@ public final class Magenta {
     private static final int COMPACTION_TODO_LIMIT = 50;
     private static final int RECENT_TOOL_CALLS_LIMIT = 4;
     private static final int RECENT_TODO_UPDATES_LIMIT = 4;
-    private static final int KNOWN_TODO_IDS_LIMIT = 20;
-    private static final int KNOWN_TODO_IDS_DISPLAY_LIMIT = 8;
+    private static final int OPEN_TODO_QUEUE_LIMIT = 20;
+    private static final int OPEN_TODO_QUEUE_MIN_RESERVE_CHARS = 500;
+    private static final int COMPLETION_GUARD_OPEN_TODO_LIST_LIMIT = 20;
     private static final int PROTECTED_STATE_MAX_CHARS = 1_500;
     private static final String TURN_ABORTED_TEXT = "[turn-aborted] request cancelled by user";
 
@@ -427,6 +428,10 @@ public final class Magenta {
 
         List<SessionContextResult.CompactionToolMessage> toolMessages = loaded.recentToolMessages();
         List<SessionContextResult.CompactionTodoItem> todos = loaded.todos();
+        List<SessionContextResult.CompactionTodoItem> openTodos = todos.stream()
+                .filter(todo -> "open".equalsIgnoreCase(todo.status()))
+                .limit(OPEN_TODO_QUEUE_LIMIT)
+                .toList();
         java.util.Map<String, SessionContextResult.CompactionTodoItem> todosById = todos.stream()
                 .filter(todo -> todo.todoId() != null && !todo.todoId().isBlank())
                 .collect(Collectors.toMap(
@@ -497,6 +502,53 @@ public final class Magenta {
         }
 
         StringBuilder sb = new StringBuilder();
+        sb.append("todos:\n");
+        sb.append("openTodoCount=").append(loaded.openTodoCount()).append('\n');
+        sb.append("openTodoQueue:\n");
+        if (openTodos.isEmpty()) {
+            sb.append("none\n");
+        } else {
+            for (int i = 0; i < openTodos.size(); i++) {
+                SessionContextResult.CompactionTodoItem todo = openTodos.get(i);
+                sb.append(i + 1)
+                        .append(") todoId=").append(stateValue(todo.todoId()))
+                        .append(" title=").append(stateValue(todo.title()))
+                        .append(" status=").append(stateValue(todo.status()))
+                        .append(" updatedAtMs=").append(todo.updatedAtMs())
+                        .append('\n');
+            }
+        }
+        SessionContextResult.CompactionTodoItem currentTodo = currentTodoId.isBlank()
+                ? null
+                : todosById.get(currentTodoId);
+        sb.append("currentTodoId=").append(stateValue(currentTodoId)).append('\n');
+        sb.append("currentTodoStatus=").append(stateValue(currentTodo == null ? "" : currentTodo.status())).append('\n');
+        sb.append("currentTodoTitle=").append(stateValue(currentTodo == null ? "" : currentTodo.title())).append('\n');
+        sb.append("recentTodoUpdates:\n");
+        if (recentTodoUpdates.isEmpty()) {
+            sb.append("none\n");
+        } else {
+            for (int i = 0; i < recentTodoUpdates.size(); i++) {
+                TodoUpdateState update = recentTodoUpdates.get(i);
+                sb.append(i + 1)
+                        .append(") todoId=").append(stateValue(update.todoId()))
+                        .append(" title=").append(stateValue(update.title()))
+                        .append(" status=").append(stateValue(update.status()))
+                        .append(" updatedAtMs=").append(update.updatedAtMs())
+                        .append('\n');
+            }
+        }
+
+        sb.append("files:\n");
+        if (fileState == null) {
+            sb.append("none\n");
+        } else {
+            sb.append("lastPath=").append(stateValue(fileState.path()))
+                    .append(" action=").append(stateValue(fileState.action()))
+                    .append(" snapshotId=").append(stateValue(fileState.snapshotId()))
+                    .append('\n');
+        }
+
         sb.append("recentToolCalls:\n");
         if (recentToolCalls.isEmpty()) {
             sb.append("none\n");
@@ -512,56 +564,15 @@ public final class Magenta {
                         .append('\n');
             }
         }
-
-        sb.append("files:\n");
-        if (fileState == null) {
-            sb.append("none\n");
-        } else {
-            sb.append("lastPath=").append(stateValue(fileState.path()))
-                    .append(" action=").append(stateValue(fileState.action()))
-                    .append(" snapshotId=").append(stateValue(fileState.snapshotId()))
-                    .append('\n');
+        String block = capStateBlock(sb.toString().trim());
+        if (!block.isBlank()) {
+            return block;
         }
-
-        List<String> knownTodoIds = todos.stream()
-                .map(SessionContextResult.CompactionTodoItem::todoId)
-                .filter(id -> id != null && !id.isBlank())
-                .limit(KNOWN_TODO_IDS_LIMIT)
-                .toList();
-        SessionContextResult.CompactionTodoItem currentTodo = currentTodoId.isBlank()
-                ? null
-                : todosById.get(currentTodoId);
-
-        sb.append("todos:\n");
-        sb.append("currentTodoId=").append(stateValue(currentTodoId)).append('\n');
-        sb.append("currentTodoStatus=").append(stateValue(currentTodo == null ? "" : currentTodo.status())).append('\n');
-        sb.append("currentTodoTitle=").append(stateValue(currentTodo == null ? "" : currentTodo.title())).append('\n');
-        sb.append("knownTodoIds=");
-        if (knownTodoIds.isEmpty()) {
-            sb.append("none\n");
-        } else {
-            sb.append(formatKnownTodoIds(knownTodoIds)).append('\n');
+        SessionContextResult.CompactionSnapshot snapshot = loaded.latestSnapshot();
+        if (snapshot == null || snapshot.manifestText().isBlank()) {
+            return "";
         }
-        sb.append("recentTodoUpdates:\n");
-        if (recentTodoUpdates.isEmpty()) {
-            sb.append("none");
-        } else {
-            for (int i = 0; i < recentTodoUpdates.size(); i++) {
-                TodoUpdateState update = recentTodoUpdates.get(i);
-                sb.append(i + 1)
-                        .append(") todoId=").append(stateValue(update.todoId()))
-                        .append(" title=").append(stateValue(update.title()))
-                        .append(" status=").append(stateValue(update.status()))
-                        .append(" updatedAtMs=").append(update.updatedAtMs())
-                        .append('\n');
-            }
-            if (sb.charAt(sb.length() - 1) == '\n') {
-                sb.setLength(sb.length() - 1);
-            }
-        }
-
-        String block = sb.toString().trim();
-        return capStateBlock(block);
+        return capStateBlock(snapshot.manifestText());
     }
 
     private ParsedToolState parseToolState(String toolName, String payloadContent) {
@@ -750,26 +761,70 @@ public final class Magenta {
         if (safe.length() <= PROTECTED_STATE_MAX_CHARS) {
             return safe;
         }
-        // Prefer dropping lower-priority breadth fields before truncating core continuity lines.
-        String withoutKnownIds = safe.replaceAll("(?m)^knownTodoIds=.*$", "knownTodoIds=truncated");
-        if (withoutKnownIds.length() <= PROTECTED_STATE_MAX_CHARS) {
-            return withoutKnownIds;
+        String withoutTools = dropSection(safe, "recentToolCalls:");
+        if (withoutTools.length() <= PROTECTED_STATE_MAX_CHARS) {
+            return withoutTools;
         }
+        String withoutRecentUpdates = dropSection(withoutTools, "recentTodoUpdates:");
+        if (withoutRecentUpdates.length() <= PROTECTED_STATE_MAX_CHARS) {
+            return withoutRecentUpdates;
+        }
+
+        String normalizedQueue = withoutRecentUpdates.replaceAll("(?m)title=([^\\n]{80})[^\\n]*", "title=$1...");
+        if (normalizedQueue.length() <= PROTECTED_STATE_MAX_CHARS) {
+            return normalizedQueue;
+        }
+
+        int queueStart = normalizedQueue.indexOf("openTodoQueue:");
+        if (queueStart >= 0) {
+            int reserve = Math.min(normalizedQueue.length(), Math.max(OPEN_TODO_QUEUE_MIN_RESERVE_CHARS, PROTECTED_STATE_MAX_CHARS / 3));
+            String queuePrefix = normalizedQueue.substring(queueStart, Math.min(normalizedQueue.length(), queueStart + reserve));
+            int max = Math.max(0, PROTECTED_STATE_MAX_CHARS - queuePrefix.length() - 20);
+            String head = normalizedQueue.substring(0, Math.min(max, normalizedQueue.length()));
+            return (head + "\n" + queuePrefix + "\n...[truncated]").substring(0, Math.min(PROTECTED_STATE_MAX_CHARS, head.length() + queuePrefix.length() + 17));
+        }
+
         int max = Math.max(0, PROTECTED_STATE_MAX_CHARS - 16);
-        return withoutKnownIds.substring(0, max) + "\n...[truncated]";
+        return normalizedQueue.substring(0, max) + "\n...[truncated]";
     }
 
-    private String formatKnownTodoIds(List<String> knownTodoIds) {
-        if (knownTodoIds == null || knownTodoIds.isEmpty()) {
-            return "none";
+    private String dropSection(String content, String sectionHeader) {
+        if (content == null || content.isBlank() || sectionHeader == null || sectionHeader.isBlank()) {
+            return content == null ? "" : content;
         }
-        List<String> normalized = knownTodoIds.stream().map(this::stateValue).toList();
-        if (normalized.size() <= KNOWN_TODO_IDS_DISPLAY_LIMIT) {
-            return String.join(",", normalized);
+        int sectionStart = content.indexOf(sectionHeader);
+        if (sectionStart < 0) {
+            return content;
         }
-        List<String> head = normalized.subList(0, KNOWN_TODO_IDS_DISPLAY_LIMIT);
-        int remaining = normalized.size() - KNOWN_TODO_IDS_DISPLAY_LIMIT;
-        return String.join(",", head) + ",+" + remaining + "_more";
+        int nextSectionStart = content.indexOf("\n", sectionStart + sectionHeader.length());
+        if (nextSectionStart < 0) {
+            return content.substring(0, sectionStart).trim();
+        }
+        int cursor = nextSectionStart + 1;
+        while (cursor < content.length()) {
+            int lineEnd = content.indexOf('\n', cursor);
+            if (lineEnd < 0) {
+                lineEnd = content.length();
+            }
+            String line = content.substring(cursor, lineEnd).trim();
+            boolean looksLikeSection = line.endsWith(":")
+                                       && !line.startsWith("1)")
+                                       && !line.startsWith("2)")
+                                       && !line.startsWith("3)");
+            if (looksLikeSection) {
+                break;
+            }
+            cursor = lineEnd + 1;
+        }
+        String before = content.substring(0, sectionStart).trim();
+        String after = cursor >= content.length() ? "" : content.substring(cursor).trim();
+        if (before.isBlank()) {
+            return after;
+        }
+        if (after.isBlank()) {
+            return before;
+        }
+        return before + "\n" + after;
     }
 
     private String executeTurn(UUID sessionId, SessionInput input) {
@@ -789,7 +844,81 @@ public final class Magenta {
                 && session.modelConfig().supportsToolCalling()
                 ? toolManager.toolSpecificationsFor(yolo ? List.of("*") : activeToolIds)
                 : List.of();
+        Runnable beforeModelCallHook = () -> {
+            boolean thresholdCompactionApplied = contextManager.compactIfNeeded(
+                            session.sessionId(),
+                            session.context(),
+                            session.modelConfig(),
+                            messages -> modelRunner.summarize(
+                                    compactionModelConfig(),
+                                    compactionSystemPrompt(),
+                                    messages
+                            ),
+                            () -> buildProtectedCompactionStateBlock(session.sessionId())
+                    )
+                    .map(compaction -> {
+                        emitCompactionEvent(handle, session.agentId(), compaction);
+                        return true;
+                    })
+                    .orElse(false);
+            boolean hardGuardCompactionApplied = contextManager.enforceMaxContext(
+                            session.sessionId(),
+                            session.context(),
+                            session.modelConfig()
+                    )
+                    .map(compaction -> {
+                        emitCompactionEvent(handle, session.agentId(), compaction);
+                        return true;
+                    })
+                    .orElse(false);
+            int estimatedTokens = SessionTokenEstimator.estimate(
+                    session.context().snapshot(),
+                    session.modelConfig().tokenizerEncodingOrDefault()
+            );
+            int maxContext = session.modelConfig().maxContext();
+            double percent = maxContext <= 0 ? 0.0 : (estimatedTokens * 100.0) / maxContext;
+            emitEvent(new SessionEvent.Action.ContextSendBudget(
+                    handle,
+                    session.agentId(),
+                    estimatedTokens,
+                    maxContext,
+                    percent,
+                    thresholdCompactionApplied,
+                    hardGuardCompactionApplied,
+                    estimatedTokens <= maxContext
+            ));
+            if (estimatedTokens > maxContext) {
+                throw ModelClientException.of(
+                        ModelClientException.Reason.CONTEXT_OVERFLOW,
+                        "Context exceeds maxContext after guard compaction (" + estimatedTokens + " > " + maxContext + ")"
+                );
+            }
+        };
         try {
+            String output = modelRunner.runTurn(
+                    session,
+                    handle,
+                    runtimeConfig.maxTurns(),
+                    shouldStream,
+                    event -> {
+                        emitOutputEvents(handle, session.agentId(), event.output());
+                        sessionRouter.emit(handle, event);
+                    },
+                    beforeModelCallHook,
+                    toolSpecifications,
+                    runtimeConfig.toolLoopGuard()
+            );
+            if (!shouldApplyCompletionGuard(output)) {
+                return output;
+            }
+
+            List<ToolCommandResult.TodoItem> openTodos = openTodosForCompletionGuard(session.sessionId());
+            if (openTodos.isEmpty()) {
+                return output;
+            }
+
+            String guardMessage = buildCompletionGuardMessage(openTodos);
+            session.context().append(new ContextElement.SystemMsg(guardMessage));
             return modelRunner.runTurn(
                     session,
                     handle,
@@ -799,56 +928,7 @@ public final class Magenta {
                         emitOutputEvents(handle, session.agentId(), event.output());
                         sessionRouter.emit(handle, event);
                     },
-                    () -> {
-                        boolean thresholdCompactionApplied = contextManager.compactIfNeeded(
-                                    session.sessionId(),
-                                    session.context(),
-                                    session.modelConfig(),
-                                    messages -> modelRunner.summarize(
-                                            compactionModelConfig(),
-                                            compactionSystemPrompt(),
-                                            messages
-                                    ),
-                                    () -> buildProtectedCompactionStateBlock(session.sessionId())
-                            )
-                                .map(compaction -> {
-                                    emitCompactionEvent(handle, session.agentId(), compaction);
-                                    return true;
-                                })
-                                .orElse(false);
-                        boolean hardGuardCompactionApplied = contextManager.enforceMaxContext(
-                                        session.sessionId(),
-                                        session.context(),
-                                        session.modelConfig()
-                                )
-                                .map(compaction -> {
-                                    emitCompactionEvent(handle, session.agentId(), compaction);
-                                    return true;
-                                })
-                                .orElse(false);
-                        int estimatedTokens = SessionTokenEstimator.estimate(
-                                session.context().snapshot(),
-                                session.modelConfig().tokenizerEncodingOrDefault()
-                        );
-                        int maxContext = session.modelConfig().maxContext();
-                        double percent = maxContext <= 0 ? 0.0 : (estimatedTokens * 100.0) / maxContext;
-                        emitEvent(new SessionEvent.Action.ContextSendBudget(
-                                handle,
-                                session.agentId(),
-                                estimatedTokens,
-                                maxContext,
-                                percent,
-                                thresholdCompactionApplied,
-                                hardGuardCompactionApplied,
-                                estimatedTokens <= maxContext
-                        ));
-                        if (estimatedTokens > maxContext) {
-                            throw ModelClientException.of(
-                                    ModelClientException.Reason.CONTEXT_OVERFLOW,
-                                    "Context exceeds maxContext after guard compaction (" + estimatedTokens + " > " + maxContext + ")"
-                            );
-                        }
-                    },
+                    beforeModelCallHook,
                     toolSpecifications,
                     runtimeConfig.toolLoopGuard()
             );
@@ -871,6 +951,50 @@ public final class Magenta {
         } finally {
             sessionManager.clearAbort(sessionId);
         }
+    }
+
+    private boolean shouldApplyCompletionGuard(String modelOutput) {
+        if (modelOutput == null || modelOutput.isBlank()) {
+            return false;
+        }
+        String normalized = modelOutput.toLowerCase(java.util.Locale.ROOT);
+        return normalized.contains("task completed")
+               || normalized.contains("all tasks completed")
+               || normalized.contains("work is complete")
+               || normalized.contains("completed successfully");
+    }
+
+    private List<ToolCommandResult.TodoItem> openTodosForCompletionGuard(UUID sessionId) {
+        if (sessionId == null) {
+            return List.of();
+        }
+        ToolCommandResult result = databaseService.execute(new ToolCommand.TodoList(
+                sessionId.toString(),
+                "open",
+                COMPLETION_GUARD_OPEN_TODO_LIST_LIMIT
+        ));
+        if (result instanceof ToolCommandResult.TodoListed listed) {
+            return listed.todos();
+        }
+        return List.of();
+    }
+
+    private String buildCompletionGuardMessage(List<ToolCommandResult.TodoItem> openTodos) {
+        if (openTodos == null || openTodos.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("Do not conclude completion. Open todos remain and must be resolved before final completion:\n");
+        for (int i = 0; i < openTodos.size(); i++) {
+            ToolCommandResult.TodoItem todo = openTodos.get(i);
+            sb.append(i + 1)
+                    .append(") todoId=").append(stateValue(todo.todoId()))
+                    .append(" title=").append(stateValue(todo.title()))
+                    .append(" status=").append(stateValue(todo.status()))
+                    .append('\n');
+        }
+        sb.append("Continue execution and update the existing todo IDs, do not recreate duplicates.");
+        return sb.toString();
     }
 
     private boolean interruptedModelFailure(ModelClientException failure) {

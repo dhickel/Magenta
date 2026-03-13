@@ -106,6 +106,29 @@ class DatabaseServiceTest {
         SessionContextResult.ContextMessageLoaded activeMessage = (SessionContextResult.ContextMessageLoaded) newMessage;
         assertThat(activeMessage.dropped()).isFalse();
         assertThat(activeMessage.message()).isEqualTo(new ContextElement.SystemMsg("system"));
+
+        SessionContextResult compactionState = service.execute(new SessionContextCommand.LoadCompactionState(sessionId, 5, 5));
+        SessionContextResult.CompactionStateLoaded loadedCompaction = (SessionContextResult.CompactionStateLoaded) compactionState;
+        assertThat(loadedCompaction.latestSnapshot()).isNotNull();
+        assertThat(loadedCompaction.latestSnapshot().summaryMessageId()).isEqualTo(4);
+        assertThat(loadedCompaction.latestSnapshot().replacementMessageIds()).containsExactly(3, 4);
+    }
+
+    @Test
+    void todoCreateReusesExistingOpenTitleInSession() {
+        DatabaseService service = new DatabaseService(tempDir);
+        String sessionId = UUID.randomUUID().toString();
+
+        ToolCommandResult.TodoCreated first = (ToolCommandResult.TodoCreated) service.execute(
+                new ToolCommand.TodoCreate(sessionId, "Select and summarize posts 51-60", "")
+        );
+        ToolCommandResult.TodoCreated second = (ToolCommandResult.TodoCreated) service.execute(
+                new ToolCommand.TodoCreate(sessionId, "  select and summarize posts 51-60  ", "")
+        );
+
+        assertThat(first.created()).isTrue();
+        assertThat(second.created()).isFalse();
+        assertThat(second.todo().todoId()).isEqualTo(first.todo().todoId());
     }
 
     @Test
@@ -157,10 +180,12 @@ class DatabaseServiceTest {
         assertThat(loaded.recentToolMessages().get(0).toolCallId()).isEqualTo("call-6");
         assertThat(loaded.recentToolMessages().get(0).messageId())
                 .isGreaterThan(loaded.recentToolMessages().get(1).messageId());
+        assertThat(loaded.openTodoCount()).isEqualTo(1);
         assertThat(loaded.todos()).hasSize(2);
-        assertThat(loaded.todos().get(0).todoId()).isEqualTo(createdA.todo().todoId());
+        assertThat(loaded.todos().get(0).status()).isEqualTo("open");
         assertThat(loaded.todos().stream().map(SessionContextResult.CompactionTodoItem::todoId))
-                .contains(createdA.todo().todoId(), createdB.todo().todoId());
+                .contains(createdA.todo().todoId(), createdB.todo().todoId())
+                .doesNotHaveDuplicates();
     }
 
     @Test
@@ -174,6 +199,8 @@ class DatabaseServiceTest {
         SessionContextResult.CompactionStateLoaded loaded = (SessionContextResult.CompactionStateLoaded) stateResult;
         assertThat(loaded.recentToolMessages()).isEmpty();
         assertThat(loaded.todos()).isEmpty();
+        assertThat(loaded.openTodoCount()).isZero();
+        assertThat(loaded.latestSnapshot()).isNull();
     }
 
     @Test
@@ -213,5 +240,6 @@ class DatabaseServiceTest {
         assertThat(loaded.recentToolMessages())
                 .extracting(SessionContextResult.CompactionToolMessage::toolCallId)
                 .containsExactly("call-new-2", "call-new-1");
+        assertThat(loaded.latestSnapshot()).isNull();
     }
 }

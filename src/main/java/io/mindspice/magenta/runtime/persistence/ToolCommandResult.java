@@ -28,7 +28,7 @@ public sealed interface ToolCommandResult permits CommonCommandResults.Success,
         }
     }
 
-    record TodoCreated(Path dbPath, TodoItem todo) implements ToolCommandResult {
+    record TodoCreated(Path dbPath, TodoItem todo, boolean created) implements ToolCommandResult {
     }
 
     record TodoListed(

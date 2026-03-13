@@ -85,17 +85,23 @@ public final class DatabaseService {
             return new CommonCommandResults.Failure("validation_error", "Missing required argument: title");
         }
 
+        String sessionId = command.sessionId().trim();
+        String title = command.title().trim();
         long now = Instant.now().toEpochMilli();
         String todoId = UUID.randomUUID().toString();
 
         try (Connection connection = openConnection()) {
+            Optional<TodoRow> existingOpen = findOpenTodoByNormalizedTitle(connection, sessionId, title);
+            if (existingOpen.isPresent()) {
+                return new ToolCommandResult.TodoCreated(dbPath, toTodoItem(existingOpen.get()), false);
+            }
             SjResult<Integer> insert = simplyJDBC.executeUpdate(
                     connection,
                     """
                             INSERT INTO todos(todo_id, session_id, title, details, status, created_at_ms, updated_at_ms)
                             VALUES (?, ?, ?, ?, ?, ?, ?)
                             """,
-                    List.of(todoId, command.sessionId().trim(), command.title().trim(), command.details(), STATUS_OPEN, now, now)
+                    List.of(todoId, sessionId, title, command.details(), STATUS_OPEN, now, now)
             );
             if (insert.isFailure()) {
                 return dbFailure("Todo insert failed", insert.error().orElse(null));
@@ -103,7 +109,8 @@ public final class DatabaseService {
 
             return new ToolCommandResult.TodoCreated(
                     dbPath,
-                    new ToolCommandResult.TodoItem(todoId, command.sessionId().trim(), command.title().trim(), command.details(), STATUS_OPEN, now, now)
+                    new ToolCommandResult.TodoItem(todoId, sessionId, title, command.details(), STATUS_OPEN, now, now),
+                    true
             );
         } catch (Exception e) {
             return new CommonCommandResults.Failure("db_error", "Failed to create todo: " + e.getMessage());
@@ -128,7 +135,8 @@ public final class DatabaseService {
             sql.append(" AND status = ?");
             params.add(status);
         }
-        sql.append(" ORDER BY updated_at_ms DESC LIMIT ?");
+        sql.append(" ORDER BY CASE WHEN status = ? THEN 0 ELSE 1 END, updated_at_ms DESC LIMIT ?");
+        params.add(STATUS_OPEN);
         params.add(limit + 1);
 
         try (Connection connection = openConnection()) {
@@ -352,7 +360,13 @@ public final class DatabaseService {
                 List<Integer> allIds = listAllMessageIds(connection, command.sessionId().trim());
                 List<Integer> activeIds = allIds.stream().filter(id -> !droppedIds.contains(id)).toList();
 
-                int nextMessageId = appendMessagesInternal(connection, command.sessionId().trim(), session.nextMessageId(), command.replacement());
+                int firstReplacementMessageId = session.nextMessageId();
+                int nextMessageId = appendMessagesInternal(
+                        connection,
+                        command.sessionId().trim(),
+                        firstReplacementMessageId,
+                        command.replacement()
+                );
                 droppedIds.addAll(activeIds);
                 long now = Instant.now().toEpochMilli();
 
@@ -375,6 +389,14 @@ public final class DatabaseService {
                     connection.rollback();
                     return dbFailure("Session replace update failed", updateSession.error().orElse(null));
                 }
+
+                persistCompactionSnapshot(
+                        connection,
+                        command.sessionId().trim(),
+                        command.replacement(),
+                        firstReplacementMessageId,
+                        now
+                );
 
                 connection.commit();
                 return new CommonCommandResults.Success("context replaced");
@@ -496,7 +518,7 @@ public final class DatabaseService {
         try (Connection connection = openConnection()) {
             Optional<SessionRow> session = findSession(connection, sessionId);
             if (session.isEmpty()) {
-                return new SessionContextResult.CompactionStateLoaded(List.of(), List.of());
+                return new SessionContextResult.CompactionStateLoaded(List.of(), List.of(), 0, null);
             }
             Set<Integer> dropped = Set.copyOf(parseDroppedIds(session.get().droppedMessageIdsJson()));
 
@@ -522,14 +544,40 @@ public final class DatabaseService {
                             SELECT todo_id, session_id, title, details, status, created_at_ms, updated_at_ms
                             FROM todos
                             WHERE session_id = ?
-                            ORDER BY updated_at_ms DESC
+                            ORDER BY CASE WHEN status = ? THEN 0 ELSE 1 END, updated_at_ms DESC
                             LIMIT ?
                             """,
-                    List.of(sessionId, todoLimit),
+                    List.of(sessionId, STATUS_OPEN, todoLimit),
                     TodoRow.class
             );
             if (todoRows.isFailure()) {
                 return dbFailure("Compaction todo-state query failed", todoRows.error().orElse(null));
+            }
+
+            SjResult<CountRow> openTodoCountRows = simplyJDBC.query(
+                    connection,
+                    "SELECT COUNT(*) AS count FROM todos WHERE session_id = ? AND status = ?",
+                    List.of(sessionId, STATUS_OPEN),
+                    CountRow.class
+            );
+            if (openTodoCountRows.isFailure()) {
+                return dbFailure("Compaction open todo count query failed", openTodoCountRows.error().orElse(null));
+            }
+
+            SjResult<CompactionSnapshotRow> snapshotRows = simplyJDBC.query(
+                    connection,
+                    """
+                            SELECT snapshot_id, session_id, summary_message_id, replacement_message_ids_json, manifest_text, created_at_ms
+                            FROM compaction_snapshots
+                            WHERE session_id = ?
+                            ORDER BY snapshot_id DESC
+                            LIMIT 1
+                            """,
+                    List.of(sessionId),
+                    CompactionSnapshotRow.class
+            );
+            if (snapshotRows.isFailure()) {
+                return dbFailure("Compaction snapshot query failed", snapshotRows.error().orElse(null));
             }
 
             List<SessionContextResult.CompactionToolMessage> tools = toolRows.rows().stream()
@@ -553,10 +601,78 @@ public final class DatabaseService {
                             row.updatedAtMs()
                     ))
                     .toList();
-            return new SessionContextResult.CompactionStateLoaded(tools, todos);
+            int openTodoCount = openTodoCountRows.first().map(CountRow::count).orElse(0);
+            SessionContextResult.CompactionSnapshot latestSnapshot = snapshotRows.first()
+                    .map(row -> new SessionContextResult.CompactionSnapshot(
+                            row.snapshotId(),
+                            row.summaryMessageId(),
+                            parseIntArray(row.replacementMessageIdsJson()),
+                            row.manifestText(),
+                            row.createdAtMs()
+                    ))
+                    .orElse(null);
+            return new SessionContextResult.CompactionStateLoaded(tools, todos, openTodoCount, latestSnapshot);
         } catch (Exception e) {
             return new CommonCommandResults.Failure("db_error", "Failed to load compaction state: " + e.getMessage());
         }
+    }
+
+    private void persistCompactionSnapshot(
+            Connection connection,
+            String sessionId,
+            List<ContextElement> replacement,
+            int firstReplacementMessageId,
+            long createdAtMs
+    ) {
+        if (replacement == null || replacement.isEmpty()) {
+            return;
+        }
+        int summaryOffset = -1;
+        String manifestText = "";
+        for (int i = 0; i < replacement.size(); i++) {
+            ContextElement message = replacement.get(i);
+            if (message instanceof ContextElement.SummaryMsg summaryMsg) {
+                summaryOffset = i;
+                manifestText = extractProtectedState(summaryMsg.content());
+                break;
+            }
+        }
+        if (summaryOffset < 0) {
+            return;
+        }
+
+        List<Integer> replacementMessageIds = new ArrayList<>(replacement.size());
+        for (int i = 0; i < replacement.size(); i++) {
+            replacementMessageIds.add(firstReplacementMessageId + i);
+        }
+        String replacementIdsJson = writeIntegerList(replacementMessageIds);
+        int summaryMessageId = firstReplacementMessageId + summaryOffset;
+
+        SjResult<Integer> insertSnapshot = simplyJDBC.executeUpdate(
+                connection,
+                """
+                        INSERT INTO compaction_snapshots(
+                            session_id, summary_message_id, replacement_message_ids_json, manifest_text, created_at_ms
+                        )
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                List.of(sessionId, summaryMessageId, replacementIdsJson, manifestText, createdAtMs)
+        );
+        if (insertSnapshot.isFailure()) {
+            throw new IllegalStateException("Compaction snapshot insert failed: " + errorMessage(insertSnapshot.error().orElse(null)));
+        }
+    }
+
+    private String extractProtectedState(String summaryContent) {
+        if (summaryContent == null || summaryContent.isBlank()) {
+            return "";
+        }
+        String marker = "[Protected State]";
+        int index = summaryContent.indexOf(marker);
+        if (index < 0) {
+            return "";
+        }
+        return summaryContent.substring(index + marker.length()).trim();
     }
 
     private int appendMessagesInternal(
@@ -617,6 +733,29 @@ public final class DatabaseService {
         );
         if (result.isFailure()) {
             throw new IllegalStateException("Todo lookup failed: " + errorMessage(result.error().orElse(null)));
+        }
+        return result.first();
+    }
+
+    private Optional<TodoRow> findOpenTodoByNormalizedTitle(Connection connection, String sessionId, String title) {
+        if (title == null || title.isBlank()) {
+            return Optional.empty();
+        }
+        SjResult<TodoRow> result = simplyJDBC.query(
+                connection,
+                """
+                        SELECT todo_id, session_id, title, details, status, created_at_ms, updated_at_ms
+                        FROM todos
+                        WHERE session_id = ? AND status = ?
+                          AND lower(trim(title)) = lower(trim(?))
+                        ORDER BY updated_at_ms DESC
+                        LIMIT 1
+                        """,
+                List.of(sessionId, STATUS_OPEN, title),
+                TodoRow.class
+        );
+        if (result.isFailure()) {
+            throw new IllegalStateException("Todo dedup lookup failed: " + errorMessage(result.error().orElse(null)));
         }
         return result.first();
     }
@@ -746,9 +885,38 @@ public final class DatabaseService {
         }
     }
 
+    private List<Integer> parseIntArray(String json) {
+        if (isBlank(json)) {
+            return List.of();
+        }
+        try {
+            List<Integer> values = MAPPER.readValue(json, new TypeReference<List<Integer>>() {});
+            if (values == null || values.isEmpty()) {
+                return List.of();
+            }
+            LinkedHashSet<Integer> deduped = new LinkedHashSet<>();
+            for (Integer value : values) {
+                if (value != null && value >= 0) {
+                    deduped.add(value);
+                }
+            }
+            return List.copyOf(deduped);
+        } catch (Exception ignored) {
+            return List.of();
+        }
+    }
+
     private String writeDroppedIds(Set<Integer> droppedIds) {
         try {
             return MAPPER.writeValueAsString(droppedIds == null ? List.of() : droppedIds.stream().sorted().toList());
+        } catch (Exception ignored) {
+            return "[]";
+        }
+    }
+
+    private String writeIntegerList(List<Integer> values) {
+        try {
+            return MAPPER.writeValueAsString(values == null ? List.of() : values);
         } catch (Exception ignored) {
             return "[]";
         }
@@ -827,6 +995,20 @@ public final class DatabaseService {
                         """);
         executeSchemaUpdate(connection,
                 "CREATE INDEX IF NOT EXISTS idx_context_messages_session ON context_messages(session_id, message_id)");
+
+        executeSchemaUpdate(connection,
+                """
+                        CREATE TABLE IF NOT EXISTS compaction_snapshots(
+                            snapshot_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            session_id TEXT NOT NULL,
+                            summary_message_id INTEGER NOT NULL,
+                            replacement_message_ids_json TEXT NOT NULL DEFAULT '[]',
+                            manifest_text TEXT NOT NULL DEFAULT '',
+                            created_at_ms INTEGER NOT NULL
+                        )
+                        """);
+        executeSchemaUpdate(connection,
+                "CREATE INDEX IF NOT EXISTS idx_compaction_snapshots_session ON compaction_snapshots(session_id, snapshot_id DESC)");
     }
 
     private void executeSchemaUpdate(Connection connection, String sql) {
@@ -958,6 +1140,19 @@ public final class DatabaseService {
             @SjColumn("content") String content,
             @SjColumn("created_at_ms") long createdAtMs
     ) {
+    }
+
+    private record CompactionSnapshotRow(
+            @SjColumn("snapshot_id") int snapshotId,
+            @SjColumn("session_id") String sessionId,
+            @SjColumn("summary_message_id") int summaryMessageId,
+            @SjColumn("replacement_message_ids_json") String replacementMessageIdsJson,
+            @SjColumn("manifest_text") String manifestText,
+            @SjColumn("created_at_ms") long createdAtMs
+    ) {
+    }
+
+    private record CountRow(@SjColumn("count") int count) {
     }
 
     private record SessionRow(

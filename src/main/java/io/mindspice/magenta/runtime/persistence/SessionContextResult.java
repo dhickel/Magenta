@@ -29,11 +29,14 @@ public sealed interface SessionContextResult permits CommonCommandResults.Succes
 
     record CompactionStateLoaded(
             List<SessionContextResult.CompactionToolMessage> recentToolMessages,
-            List<SessionContextResult.CompactionTodoItem> todos
+            List<SessionContextResult.CompactionTodoItem> todos,
+            int openTodoCount,
+            SessionContextResult.CompactionSnapshot latestSnapshot
     ) implements SessionContextResult {
         public CompactionStateLoaded {
             recentToolMessages = recentToolMessages == null ? List.of() : List.copyOf(recentToolMessages);
             todos = todos == null ? List.of() : List.copyOf(todos);
+            openTodoCount = Math.max(openTodoCount, 0);
         }
     }
 
@@ -68,6 +71,22 @@ public sealed interface SessionContextResult permits CommonCommandResults.Succes
             status = status == null ? "" : status;
             createdAtMs = Math.max(createdAtMs, 0L);
             updatedAtMs = Math.max(updatedAtMs, 0L);
+        }
+    }
+
+    record CompactionSnapshot(
+            int snapshotId,
+            int summaryMessageId,
+            List<Integer> replacementMessageIds,
+            String manifestText,
+            long createdAtMs
+    ) {
+        public CompactionSnapshot {
+            snapshotId = Math.max(snapshotId, 0);
+            summaryMessageId = Math.max(summaryMessageId, 0);
+            replacementMessageIds = replacementMessageIds == null ? List.of() : List.copyOf(replacementMessageIds);
+            manifestText = manifestText == null ? "" : manifestText;
+            createdAtMs = Math.max(createdAtMs, 0L);
         }
     }
 }

@@ -260,7 +260,8 @@ public final class AnnotatedBuiltInToolCatalog {
             "Creates a new todo item in the current session's tracker as the first step in the todo lifecycle (create -> list -> update -> delete).",
             "Use this tool to break down a larger user request into manageable steps, providing visibility into progress and upcoming actions.",
             "Parameters: 'title' (a short summary of the task) and 'details' (optional notes, dependencies, or success criteria).",
-            "Each todo is assigned a unique ID used by update/delete calls. Todos are persisted in the runtime state DB and scoped by sessionId; use todo_list to read current state."
+            "If an open todo already exists with the same normalized title in the current session, the existing todo is reused instead of creating a duplicate row (response includes created/reused flags).",
+            "Todos are persisted in the runtime state DB and scoped by sessionId; use todo_list to read current state and visible titles."
     })
     public ToolResult todoCreate(
             @ToolMemoryId ToolRequest request,
@@ -277,7 +278,7 @@ public final class AnnotatedBuiltInToolCatalog {
             "Reads todo state for the current session by listing active and/or completed items.",
             "Use this as the canonical todo read operation to verify progress, identify pending actions, and recover state after interruption.",
             "Optional parameters include 'status' (filter by 'open' or 'done') and 'limit' (to bound the result count for sessions with many tasks).",
-            "Returns structured todo objects including todoId, title, details, status, createdAtMs, and updatedAtMs."
+            "Returns structured todo objects including todoId, title, details, status, createdAtMs, and updatedAtMs, with open items prioritized ahead of done items when no status filter is provided."
     })
     public ToolResult todoList(
             @ToolMemoryId ToolRequest request,

@@ -59,8 +59,10 @@ public final class TodoTools {
             case ToolCommandResult.TodoCreated created -> {
                 ObjectNode data = MAPPER.createObjectNode();
                 data.put("dbPath", ToolPathSupport.displayPath(settings.workspaceRoot(), created.dbPath()));
+                data.put("created", created.created());
+                data.put("reused", !created.created());
                 data.set("todo", toTodoNode(created.todo()));
-                yield ToolPayloads.success(request, "Todo created", data);
+                yield ToolPayloads.success(request, created.created() ? "Todo created" : "Todo reused", data);
             }
             default -> ToolPayloads.failure(request, "handler_exception", "Unexpected todo create response", null, true);
         };

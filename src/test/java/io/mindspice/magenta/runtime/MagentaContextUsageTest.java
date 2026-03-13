@@ -7,6 +7,9 @@ import io.mindspice.magenta.runtime.events.SessionEvent;
 import io.mindspice.magenta.runtime.routing.InputRoutePolicy;
 import io.mindspice.magenta.runtime.session.SessionHandle;
 import io.mindspice.magenta.runtime.session.SessionInput;
+import io.mindspice.magenta.runtime.session.SessionOutput;
+import io.mindspice.magenta.runtime.tools.ToolRequest;
+import io.mindspice.magenta.runtime.context.ContextElement;
 import io.mindspice.magenta.support.TestRuntimeConfigs;
 import org.junit.jupiter.api.Test;
 
@@ -15,8 +18,11 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
@@ -113,6 +119,84 @@ class MagentaContextUsageTest {
         } finally {
             server.stop(0);
         }
+    }
+
+    @Test
+    void completionGuardTriggersExtraTurnWhenOpenTodosRemain() throws IOException {
+        AtomicInteger chatCalls = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/chat", exchange -> {
+            int call = chatCalls.incrementAndGet();
+            String text = call == 1 ? "Task completed." : "Continuing with remaining todos.";
+            String response = """
+                    {"model":"test-model","message":{"role":"assistant","content":"%s"},"done":true}
+                    """.formatted(text);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, response.getBytes(StandardCharsets.UTF_8).length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(response.getBytes(StandardCharsets.UTF_8));
+            }
+        });
+        server.start();
+
+        try {
+            RuntimeConfig config = runtimeConfigForEndpoint("http://127.0.0.1:" + server.getAddress().getPort());
+            Magenta magenta = new Magenta(config);
+            SessionHandle handle = magenta.startBaseSession("completion-guard");
+            magenta.addInputRoute(handle, InputRoutePolicy.defaults());
+
+            magenta.executeTool(new ToolRequest(
+                    handle.sessionId().toString(),
+                    "agent-default",
+                    new ContextElement.ToolCall("todo-create", "todo_create", "{\"title\":\"Remaining work\"}")
+            ));
+
+            List<String> finalOutputs = new ArrayList<>();
+            magenta.addOutputRoute(
+                    handle,
+                    io.mindspice.magenta.runtime.routing.OutputRoutePolicy.builder()
+                            .allowedOutputTags(java.util.Set.of(SessionOutput.FinalOutput.FILTER_TAG))
+                            .build(),
+                    event -> finalOutputs.add(event.output().text())
+            );
+
+            magenta.messageInputConsumer(handle).accept(SessionInput.userMessage("Continue"));
+
+            assertThat(chatCalls.get()).isEqualTo(2);
+            assertThat(finalOutputs).hasSizeGreaterThanOrEqualTo(2);
+            assertThat(finalOutputs.get(finalOutputs.size() - 1)).isEqualTo("Continuing with remaining todos.");
+
+            magenta.closeSession(handle);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void protectedStateIncludesOpenTodoQueueWithVisibleTitles() throws Exception {
+        Magenta magenta = new Magenta(TestRuntimeConfigs.basicRuntimeConfig());
+        SessionHandle handle = magenta.startBaseSession("protected-state");
+
+        magenta.executeTool(new ToolRequest(
+                handle.sessionId().toString(),
+                "agent-default",
+                new ContextElement.ToolCall("todo-create-1", "todo_create", "{\"title\":\"Select and summarize posts 51-60\"}")
+        ));
+        magenta.executeTool(new ToolRequest(
+                handle.sessionId().toString(),
+                "agent-default",
+                new ContextElement.ToolCall("todo-create-2", "todo_create", "{\"title\":\"Select and summarize posts 61-70\"}")
+        ));
+
+        Method method = Magenta.class.getDeclaredMethod("buildProtectedCompactionStateBlock", java.util.UUID.class);
+        method.setAccessible(true);
+        String protectedState = (String) method.invoke(magenta, handle.sessionId());
+
+        assertThat(protectedState).contains("openTodoQueue:");
+        assertThat(protectedState).contains("Select and summarize posts 51-60");
+        assertThat(protectedState).contains("Select and summarize posts 61-70");
+
+        magenta.closeSession(handle);
     }
 
     private RuntimeConfig runtimeConfigForEndpoint(String endpoint) {

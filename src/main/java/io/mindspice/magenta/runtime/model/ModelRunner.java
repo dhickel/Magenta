@@ -32,6 +32,7 @@ import java.util.function.Consumer;
 public final class ModelRunner {
 
     private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
+    private static final int MAX_CONTEXT_TOOL_PAYLOAD_CHARS = 2_000;
 
     private final OllamaClient ollamaClient;
 
@@ -149,13 +150,22 @@ public final class ModelRunner {
                 safeOutputEmitter.accept(new OutputRoutingEvent(handle, new SessionOutput.ToolCallOutput(toolCall)));
                 ToolRequest toolRequest = new ToolRequest(session.sessionId().toString(), session.agentId(), toolCall);
                 ToolResult toolResult = session.sessionConfig().toolBridge().apply(toolRequest);
+                String rawContent = safeText(toolResult.content());
+                String contextContent = truncateToolContentForContext(rawContent);
                 ContextElement.ToolMsg toolMessage = new ContextElement.ToolMsg(
                         toolResult.toolCallId(),
                         toolResult.toolName(),
-                        safeText(toolResult.content())
+                        contextContent
                 );
                 session.context().append(toolMessage);
-                safeOutputEmitter.accept(new OutputRoutingEvent(handle, new SessionOutput.ToolMessageOutput(toolMessage)));
+                safeOutputEmitter.accept(new OutputRoutingEvent(
+                        handle,
+                        new SessionOutput.ToolMessageOutput(new ContextElement.ToolMsg(
+                                toolResult.toolCallId(),
+                                toolResult.toolName(),
+                                rawContent
+                        ))
+                ));
             }
 
             toolLoopActive = true;
@@ -233,6 +243,19 @@ public final class ModelRunner {
 
     private String safeText(String text) {
         return text == null ? "" : text;
+    }
+
+    private String truncateToolContentForContext(String content) {
+        String safe = safeText(content);
+        if (safe.length() <= MAX_CONTEXT_TOOL_PAYLOAD_CHARS) {
+            return safe;
+        }
+        int markerReserve = 72;
+        int headLength = Math.max(0, MAX_CONTEXT_TOOL_PAYLOAD_CHARS - markerReserve);
+        return safe.substring(0, headLength)
+               + "...[truncated_for_context chars="
+               + safe.length()
+               + "]";
     }
 
     private String toolCallSignature(ContextElement.ToolCall toolCall) {
