@@ -109,7 +109,7 @@ Core runtime services:
 
 Current implementation status:
 - implemented runtime slice is `Magenta + RuntimeConfig + SessionManager + SessionRouter + ContextManager + ModelRunner + OllamaClient + SecurityManager + ToolManager`.
-- terminal entrypoint is JLine-based through internal `io.mindspice.magenta.ui` package (`TerminalUiRuntime`/`TerminalUiBootstrap`) and still wired through handle-first route + callback contracts.
+- terminal entrypoint is Lanterna-based through internal `io.mindspice.magenta.ui` package (`TerminalUiRuntime`/`TerminalUiBootstrap`) and still wired through handle-first route + callback contracts.
 - tool/security behavior enters through runtime-wrapped `SessionConfig.toolBridge` callback wiring.
 - runtime external API is handle-first (`SessionHandle`) with routed input/output through `SessionRouter`.
 - `MindStore`, `SchedulerService`, and full cross-domain `SecurityService` remain future-phase targets.
