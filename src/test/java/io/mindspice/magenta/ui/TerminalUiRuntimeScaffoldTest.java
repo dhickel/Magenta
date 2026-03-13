@@ -140,6 +140,23 @@ class TerminalUiRuntimeScaffoldTest {
     }
 
     @Test
+    void composerCtrlNControlCharacterInsertsNewlineWithoutSubmitting() {
+        AtomicInteger submitCalls = new AtomicInteger();
+        ComposerInput composer = new ComposerInput(text -> {
+            submitCalls.incrementAndGet();
+            return false;
+        }, () -> {});
+        composer.setSize(new TerminalSize(8, 4));
+        composer.setText("hello");
+
+        Interactable.Result result = composer.handleKeyStroke(new KeyStroke('\u000E', false, false));
+
+        assertThat(result).isEqualTo(Interactable.Result.HANDLED);
+        assertThat(submitCalls).hasValue(0);
+        assertThat(composer.getText()).isEqualTo("hello\n");
+    }
+
+    @Test
     void composerCtrlNewlineCharacterDoesNotSubmitOrInsert() {
         AtomicInteger submitCalls = new AtomicInteger();
         ComposerInput composer = new ComposerInput(text -> {
@@ -187,6 +204,13 @@ class TerminalUiRuntimeScaffoldTest {
 
         assertThat(lines).hasSizeGreaterThan(3);
         assertThat(lines).allSatisfy(line -> assertThat(line.text().length()).isLessThanOrEqualTo(11));
+    }
+
+    @Test
+    void transcriptBlockFormatUsesBracketTagAndNoBottomRule() {
+        String block = TerminalUiRuntime.formatTranscriptBlock("user", List.of("hello", "world"), false);
+
+        assertThat(block).isEqualTo("[user]\n│ hello\n│ world");
     }
 
     @Test

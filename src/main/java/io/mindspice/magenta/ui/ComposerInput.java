@@ -24,6 +24,7 @@ final class ComposerInput extends AbstractInteractableComponent<ComposerInput> {
     }
 
     private static final int DEFAULT_VISIBLE_ROWS = 4;
+    private static final int FRAME_THICKNESS = 1;
 
     private final SubmitHandler submitHandler;
     private final Runnable abortHandler;
@@ -62,6 +63,11 @@ final class ComposerInput extends AbstractInteractableComponent<ComposerInput> {
 
     @Override
     protected synchronized Interactable.Result handleKeyStroke(KeyStroke keyStroke) {
+        if (isCtrlNStroke(keyStroke)) {
+            insert("\n");
+            return Result.HANDLED;
+        }
+
         if (isEnterCharacter(keyStroke)) {
             if (keyStroke.isCtrlDown()) {
                 return Result.HANDLED;
@@ -111,10 +117,6 @@ final class ComposerInput extends AbstractInteractableComponent<ComposerInput> {
             Character character = keyStroke.getCharacter();
             if (character != null && (character == 'c' || character == 'C')) {
                 abortHandler.run();
-                return Result.HANDLED;
-            }
-            if (character != null && (character == 'n' || character == 'N')) {
-                insert("\n");
                 return Result.HANDLED;
             }
         }
@@ -194,11 +196,23 @@ final class ComposerInput extends AbstractInteractableComponent<ComposerInput> {
         return character != null && (character == '\n' || character == '\r');
     }
 
+    private boolean isCtrlNStroke(KeyStroke keyStroke) {
+        if (keyStroke.getKeyType() != KeyType.Character) {
+            return false;
+        }
+        Character character = keyStroke.getCharacter();
+        if (character == null) {
+            return false;
+        }
+        return (keyStroke.isCtrlDown() && (character == 'n' || character == 'N'))
+               || character == '\u000E';
+    }
+
     private void moveCaretToMouse(MouseAction mouseAction) {
         WrappedLayout layout = currentLayout();
         TerminalPosition local = mouseAction.getPosition().minus(getGlobalPosition());
-        int row = Math.max(0, Math.min(layout.lines().size() - 1, scrollRow + local.getRow()));
-        int column = Math.max(0, local.getColumn());
+        int row = Math.max(0, Math.min(layout.lines().size() - 1, scrollRow + contentRow(local.getRow())));
+        int column = Math.max(0, contentColumn(local.getColumn()));
         caretIndex = layout.indexAt(row, column);
         preferredColumn = -1;
         ensureCaretVisible();
@@ -267,7 +281,7 @@ final class ComposerInput extends AbstractInteractableComponent<ComposerInput> {
     private void ensureCaretVisible() {
         WrappedLayout layout = currentLayout();
         CaretPosition position = layout.positionOf(caretIndex);
-        int visibleRows = Math.max(1, getSize().getRows());
+        int visibleRows = visibleContentRows();
         int maxScroll = Math.max(0, layout.lines().size() - visibleRows);
         if (position.row() < scrollRow) {
             scrollRow = position.row();
@@ -278,7 +292,23 @@ final class ComposerInput extends AbstractInteractableComponent<ComposerInput> {
     }
 
     private WrappedLayout currentLayout() {
-        return layoutFor(text, Math.max(1, getSize().getColumns()));
+        return layoutFor(text, visibleContentColumns());
+    }
+
+    private int visibleContentColumns() {
+        return Math.max(1, getSize().getColumns() - (FRAME_THICKNESS * 2));
+    }
+
+    private int visibleContentRows() {
+        return Math.max(1, getSize().getRows() - (FRAME_THICKNESS * 2));
+    }
+
+    private int contentColumn(int localColumn) {
+        return Math.max(0, localColumn - FRAME_THICKNESS);
+    }
+
+    private int contentRow(int localRow) {
+        return Math.max(0, localRow - FRAME_THICKNESS);
     }
 
     static WrappedLayout layoutFor(String text, int width) {
@@ -374,12 +404,18 @@ final class ComposerInput extends AbstractInteractableComponent<ComposerInput> {
         public TerminalPosition getCursorLocation(ComposerInput component) {
             component.ensureCaretVisible();
             CaretPosition position = component.currentLayout().positionOf(component.caretIndex);
-            return new TerminalPosition(position.column(), Math.max(0, position.row() - component.scrollRow));
+            return new TerminalPosition(
+                    FRAME_THICKNESS + position.column(),
+                    FRAME_THICKNESS + Math.max(0, position.row() - component.scrollRow)
+            );
         }
 
         @Override
         public TerminalSize getPreferredSize(ComposerInput component) {
-            return new TerminalSize(Math.max(1, component.currentLayout().width()), DEFAULT_VISIBLE_ROWS);
+            return new TerminalSize(
+                    Math.max(1, component.currentLayout().width() + (FRAME_THICKNESS * 2)),
+                    DEFAULT_VISIBLE_ROWS
+            );
         }
 
         @Override
@@ -391,7 +427,8 @@ final class ComposerInput extends AbstractInteractableComponent<ComposerInput> {
             graphics.fill(' ');
 
             WrappedLayout layout = component.currentLayout();
-            int visibleRows = Math.max(1, graphics.getSize().getRows());
+            drawFrame(graphics);
+            int visibleRows = Math.max(1, graphics.getSize().getRows() - (FRAME_THICKNESS * 2));
             for (int row = 0; row < visibleRows; row++) {
                 int sourceRow = component.scrollRow + row;
                 if (sourceRow >= layout.lines().size()) {
@@ -399,9 +436,25 @@ final class ComposerInput extends AbstractInteractableComponent<ComposerInput> {
                 }
                 String lineText = layout.lines().get(sourceRow).text();
                 if (!lineText.isEmpty()) {
-                    graphics.putString(0, row, lineText);
+                    graphics.putString(FRAME_THICKNESS, FRAME_THICKNESS + row, lineText);
                 }
             }
+        }
+
+        private void drawFrame(TextGUIGraphics graphics) {
+            TerminalSize size = graphics.getSize();
+            int cols = size.getColumns();
+            int rows = size.getRows();
+            if (cols < 2 || rows < 2) {
+                return;
+            }
+            String horizontal = "─".repeat(Math.max(0, cols - 2));
+            graphics.putString(0, 0, "┌" + horizontal + "┐");
+            for (int row = 1; row < rows - 1; row++) {
+                graphics.putString(0, row, "│");
+                graphics.putString(cols - 1, row, "│");
+            }
+            graphics.putString(0, rows - 1, "└" + horizontal + "┘");
         }
     }
 }

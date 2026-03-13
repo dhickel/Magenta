@@ -4,6 +4,7 @@ import io.mindspice.magenta.runtime.config.RuntimeConfig;
 import io.mindspice.magenta.runtime.routing.RoutingEventLevel;
 import io.mindspice.magenta.runtime.session.config.SessionParams;
 import io.mindspice.magenta.ui.casciian.CasciianUiScaffold;
+import io.mindspice.magenta.ui.casciian.CasciianTerminalUiBootstrap;
 import io.mindspice.magenta.ui.TerminalUiBootstrap;
 import io.mindspice.magenta.ui.TerminalUiCallbacks;
 import io.mindspice.magenta.ui.TerminalUiConfig;
@@ -22,7 +23,7 @@ public class Main {
         String uiBackend = System.getenv().getOrDefault("MAGENTA_UI_BACKEND", "casciian")
                 .trim()
                 .toLowerCase(java.util.Locale.ROOT);
-        if (!uiBackend.equals("lanterna")) {
+        if (uiBackend.equals("casciian-demo")) {
             try {
                 CasciianUiScaffold.runDemo();
                 return;
@@ -70,8 +71,11 @@ public class Main {
         );
 
         try {
-            var runtime = TerminalUiBootstrap.bootstrap(magenta, uiConfig, approvalAdapter);
-            runtime.runLoop();
+            if (uiBackend.equals("lanterna")) {
+                TerminalUiBootstrap.bootstrap(magenta, uiConfig, approvalAdapter).runLoop();
+            } else {
+                CasciianTerminalUiBootstrap.bootstrap(magenta, uiConfig, approvalAdapter).runLoop();
+            }
         } catch (Exception e) {
             throw new IllegalStateException("Failed to start terminal UI", e);
         }

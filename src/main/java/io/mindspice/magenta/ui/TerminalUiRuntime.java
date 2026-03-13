@@ -67,9 +67,9 @@ public final class TerminalUiRuntime {
 
     private final BasicWindow window;
     private final TranscriptView transcriptView;
-    private final Label sessionHeaderLabel;
-    private final Label sessionSubHeaderLabel;
-    private final Label contextUsageLabel;
+    private final FixedTextPanel sessionHeaderPanel;
+    private final FixedTextPanel contextUsagePanel;
+    private final FixedTextPanel rightPanePanel;
     private final ComposerInput inputBox;
     private final Panel promptPane;
     private final Panel promptContainer;
@@ -120,37 +120,43 @@ public final class TerminalUiRuntime {
         ));
 
         this.transcriptView = new TranscriptView();
-        this.sessionHeaderLabel = new Label("").setForegroundColor(new TextColor.RGB(208, 214, 224));
-        this.sessionSubHeaderLabel = new Label("").setForegroundColor(new TextColor.RGB(178, 188, 203));
-        this.contextUsageLabel = new Label("").setForegroundColor(new TextColor.RGB(188, 196, 208));
+        this.sessionHeaderPanel = new FixedTextPanel(
+                2,
+                new TextColor.RGB(208, 214, 224),
+                new TextColor.RGB(40, 44, 52)
+        );
+        this.contextUsagePanel = new FixedTextPanel(
+                1,
+                new TextColor.RGB(188, 196, 208),
+                new TextColor.RGB(40, 44, 52)
+        );
+        this.rightPanePanel = new FixedTextPanel(
+                3,
+                new TextColor.RGB(188, 196, 208),
+                new TextColor.RGB(40, 44, 52)
+        );
         this.inputBox = new ComposerInput(this::onLineSubmitted, this::requestAbort);
         this.promptPane = new Panel(new LinearLayout(Direction.VERTICAL));
         this.promptContainer = new Panel(new BorderLayout());
         this.promptContainer.addComponent(promptPane.withBorder(Borders.singleLine("action")), BorderLayout.Location.CENTER);
         this.promptContainer.setVisible(false);
 
-        Panel sessionHeader = new Panel(new LinearLayout(Direction.VERTICAL));
-        sessionHeader.addComponent(sessionHeaderLabel);
-        sessionHeader.addComponent(sessionSubHeaderLabel);
-
         Panel transcriptStack = new Panel(new BorderLayout());
-        transcriptStack.addComponent(sessionHeader.withBorder(Borders.singleLine("session")), BorderLayout.Location.TOP);
+        transcriptStack.addComponent(sessionHeaderPanel, BorderLayout.Location.TOP);
         transcriptStack.addComponent(transcriptView.withBorder(Borders.singleLine("conversation")), BorderLayout.Location.CENTER);
-        transcriptStack.addComponent(contextUsageLabel.withBorder(Borders.singleLine("context")), BorderLayout.Location.BOTTOM);
+        transcriptStack.addComponent(contextUsagePanel, BorderLayout.Location.BOTTOM);
 
         this.rightPane = new Panel(new BorderLayout());
-        Panel rightContent = new Panel(new LinearLayout(Direction.VERTICAL));
-        rightContent.addComponent(new Label("context/task views coming soon"));
-        rightPane.addComponent(rightContent, BorderLayout.Location.CENTER);
+        this.rightPane.addComponent(rightPanePanel, BorderLayout.Location.CENTER);
 
         Panel bottomStack = new Panel(new BorderLayout());
         bottomStack.addComponent(promptContainer, BorderLayout.Location.TOP);
-        bottomStack.addComponent(inputBox.withBorder(Borders.singleLine("input")), BorderLayout.Location.CENTER);
+        bottomStack.addComponent(inputBox, BorderLayout.Location.CENTER);
 
         this.leftVerticalSplit = FillSplitPanel.vertical(transcriptStack, bottomStack, 0.84d);
         this.leftVerticalSplit.setMinimumPrimarySizes(MIN_TRANSCRIPT_ROWS, MIN_COMPOSER_ROWS);
 
-        this.contentSplit = FillSplitPanel.horizontal(leftVerticalSplit, rightPane.withBorder(Borders.singleLine("views")), 0.76d);
+        this.contentSplit = FillSplitPanel.horizontal(leftVerticalSplit, rightPane, 0.76d);
         this.contentSplit.setMinimumPrimarySizes(MIN_LEFT_COLS, MIN_RIGHT_COLS);
         window.setComponent(contentSplit);
 
@@ -444,7 +450,7 @@ public final class TerminalUiRuntime {
         runOnUi(() -> {
             synchronized (transcriptLock) {
                 finishStreamingEntryLocked();
-                String payload = boxedBlockText(title, lines);
+                String payload = formatTranscriptBlock(title, lines, config.rendering().showTimestamps());
                 transcriptEntries.addLast(new TranscriptEntry(nextTranscriptId(), role, payload, false));
                 while (transcriptEntries.size() > 800) {
                     transcriptEntries.removeFirst();
@@ -458,14 +464,21 @@ public final class TerminalUiRuntime {
         runOnUi(() -> {
             Magenta.SessionContextUsage usage = session.contextUsageSupplier().get();
             var status = buildStatusBar(magenta, session.handle(), session.contextUsageSupplier());
-            sessionHeaderLabel.setText(status.bottomLeft());
-            sessionSubHeaderLabel.setText(status.topLeft() + " | " + status.bottomRight());
-            contextUsageLabel.setText(
-                    "ctx "
+            sessionHeaderPanel.setLines(List.of(
+                    status.bottomLeft() + " | agent: " + magenta.settingsFor(session.handle()).agentId(),
+                    status.topLeft() + " | " + status.bottomRight()
+            ));
+            contextUsagePanel.setLines(List.of(
+                    "context "
                     + usage.estimatedContextTokens() + "/" + usage.maxContextTokens()
-                    + " (" + String.format(Locale.ROOT, "%.1f", usage.percentOfMaxContext()) + "%) | "
-                    + "messages " + usage.messageCount()
-            );
+                    + " (" + String.format(Locale.ROOT, "%.1f", usage.percentOfMaxContext()) + "%)"
+                    + " | messages " + usage.messageCount()
+            ));
+            rightPanePanel.setLines(List.of(
+                    "model " + usage.modelId(),
+                    "agent " + magenta.settingsFor(session.handle()).agentId(),
+                    "tool/context views coming soon"
+            ));
         });
     }
 
@@ -480,23 +493,22 @@ public final class TerminalUiRuntime {
         transcriptView.refreshLayout();
     }
 
-    private String boxedBlockText(String title, List<String> lines) {
+    static String formatTranscriptBlock(String title, List<String> lines, boolean showTimestamps) {
         List<String> payload = new ArrayList<>();
         String safeTitle = title == null || title.isBlank() ? "event" : title;
-        String stamp = config.rendering().showTimestamps() ? TS_FORMAT.format(Instant.now()) + " " : "";
-        payload.add(stamp + "┌─ " + safeTitle);
+        String stamp = showTimestamps ? TS_FORMAT.format(Instant.now()) + " " : "";
+        payload.add(stamp + "[" + safeTitle + "]");
         if (lines == null || lines.isEmpty()) {
-            payload.add(stamp + "│ ");
+            payload.add("│ ");
         } else {
             for (String line : lines) {
                 String value = line == null ? "" : line;
                 String[] physicalLines = value.split("\\R", -1);
                 for (String physicalLine : physicalLines) {
-                    payload.add(stamp + "│ " + physicalLine);
+                    payload.add("│ " + physicalLine);
                 }
             }
         }
-        payload.add(stamp + "└" + "─".repeat(Math.max(4, safeTitle.length() + 4)));
         return String.join("\n", payload);
     }
 
@@ -1235,7 +1247,7 @@ public final class TerminalUiRuntime {
     private void updateStreamingAssistantBlock(String content) {
         runOnUi(() -> {
             synchronized (transcriptLock) {
-                String payload = boxedBlockText(assistantTitle(), List.of(content));
+                String payload = formatTranscriptBlock(assistantTitle(), List.of(content), config.rendering().showTimestamps());
                 TranscriptEntry last = transcriptEntries.peekLast();
                 if (last != null && last.streaming()) {
                     transcriptEntries.removeLast();
