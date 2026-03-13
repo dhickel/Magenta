@@ -141,6 +141,10 @@ public final class TerminalUiBootstrap {
             ));
             refreshStatus.run();
         });
+        magenta.addEventListener(handle, SessionEvent.Action.ContextSendBudget.class, event -> {
+            // Keep context send-budget telemetry as footer-only refresh to avoid chat transcript noise.
+            refreshStatus.run();
+        });
 
         TerminalUiSession uiSession = new TerminalUiSession(
                 handle,

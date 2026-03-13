@@ -21,6 +21,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
 
@@ -32,6 +33,8 @@ public final class SessionManager {
     private final ConcurrentMap<UUID, Session> sessionsById = new ConcurrentHashMap<>();
     private final ConcurrentMap<UUID, String> activeTaskBySession = new ConcurrentHashMap<>();
     private final ConcurrentMap<UUID, List<String>> activeToolIdsBySession = new ConcurrentHashMap<>();
+    private final ConcurrentMap<UUID, Thread> activeTurnThreadsBySession = new ConcurrentHashMap<>();
+    private final ConcurrentMap<UUID, AtomicBoolean> abortRequestedBySession = new ConcurrentHashMap<>();
 
     public SessionManager(
             RuntimeConfig runtimeConfig,
@@ -138,9 +141,12 @@ public final class SessionManager {
     }
 
     public void close(UUID sessionId) {
+        requestAbort(sessionId);
         sessionsById.remove(sessionId);
         activeTaskBySession.remove(sessionId);
         activeToolIdsBySession.remove(sessionId);
+        activeTurnThreadsBySession.remove(sessionId);
+        abortRequestedBySession.remove(sessionId);
     }
 
     public SessionHandle handleFor(UUID sessionId) {
@@ -242,6 +248,45 @@ public final class SessionManager {
         List<String> fallback = resolveEffectiveToolIds(requireAgent(session.agentId()).toolIds(), activeTaskBySession.get(sessionId));
         activeToolIdsBySession.put(sessionId, fallback);
         return fallback;
+    }
+
+    public boolean requestAbort(UUID sessionId) {
+        if (sessionId == null || !isActive(sessionId)) {
+            return false;
+        }
+        abortFlag(sessionId).set(true);
+        Thread activeThread = activeTurnThreadsBySession.get(sessionId);
+        if (activeThread == null) {
+            return false;
+        }
+        activeThread.interrupt();
+        return true;
+    }
+
+    public boolean turnInProgress(UUID sessionId) {
+        if (sessionId == null) {
+            return false;
+        }
+        Thread thread = activeTurnThreadsBySession.get(sessionId);
+        return thread != null && thread.isAlive();
+    }
+
+    public boolean isAbortRequested(UUID sessionId) {
+        if (sessionId == null) {
+            return false;
+        }
+        AtomicBoolean flag = abortRequestedBySession.get(sessionId);
+        return flag != null && flag.get();
+    }
+
+    public void clearAbort(UUID sessionId) {
+        if (sessionId == null) {
+            return;
+        }
+        AtomicBoolean flag = abortRequestedBySession.get(sessionId);
+        if (flag != null) {
+            flag.set(false);
+        }
     }
 
     public String applyTask(UUID sessionId, String taskRef) {
@@ -479,6 +524,8 @@ public final class SessionManager {
             if (input == null) {
                 return;
             }
+            clearAbort(sessionId);
+            activeTurnThreadsBySession.put(sessionId, Thread.currentThread());
             turnSubmitter.apply(sessionId, input);
         } catch (IllegalStateException e) {
             String message = e.getMessage();
@@ -488,7 +535,14 @@ public final class SessionManager {
             emitOnError(session, e);
         } catch (Throwable throwable) {
             emitOnError(session, throwable);
+        } finally {
+            activeTurnThreadsBySession.remove(sessionId, Thread.currentThread());
+            Thread.interrupted();
         }
+    }
+
+    private AtomicBoolean abortFlag(UUID sessionId) {
+        return abortRequestedBySession.computeIfAbsent(sessionId, ignored -> new AtomicBoolean(false));
     }
 
     private BooleanSupplier isActiveSupplier(UUID sessionId) {

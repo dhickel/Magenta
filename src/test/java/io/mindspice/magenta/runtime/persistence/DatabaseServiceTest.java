@@ -107,4 +107,111 @@ class DatabaseServiceTest {
         assertThat(activeMessage.dropped()).isFalse();
         assertThat(activeMessage.message()).isEqualTo(new ContextElement.SystemMsg("system"));
     }
+
+    @Test
+    void loadCompactionStateReturnsBoundedRecentToolRowsAndTodos() {
+        DatabaseService service = new DatabaseService(tempDir);
+        String sessionId = UUID.randomUUID().toString();
+
+        service.execute(new SessionContextCommand.InitializeSession(
+                sessionId,
+                "agent-default",
+                "alpha",
+                1,
+                List.of(new ContextElement.SystemMsg("system"))
+        ));
+        service.execute(new SessionContextCommand.AppendMessages(
+                sessionId,
+                List.of(
+                        new ContextElement.ToolMsg("call-1", "read_file", "{\"status\":\"ok\",\"data\":{\"path\":\"a.txt\",\"snapshotId\":\"snap-1\"}}"),
+                        new ContextElement.ToolMsg("call-2", "todo_create", "{\"status\":\"ok\",\"data\":{\"todo\":{\"todoId\":\"todo-1\",\"title\":\"First\",\"status\":\"open\",\"updatedAtMs\":1000}}}"),
+                        new ContextElement.ToolMsg("call-3", "write_file", "{\"status\":\"ok\",\"data\":{\"path\":\"a.txt\",\"snapshotId\":\"snap-2\"}}"),
+                        new ContextElement.ToolMsg("call-4", "todo_update", "{\"status\":\"ok\",\"data\":{\"todo\":{\"todoId\":\"todo-2\",\"title\":\"Second\",\"status\":\"done\",\"updatedAtMs\":2000}}}"),
+                        new ContextElement.ToolMsg("call-5", "shell_command", "{\"status\":\"ok\",\"data\":{\"command\":\"pwd\"}}"),
+                        new ContextElement.ToolMsg("call-6", "todo_delete", "{\"status\":\"ok\",\"data\":{\"todoId\":\"todo-3\"}}")
+                )
+        ));
+
+        ToolCommandResult.TodoCreated createdA = (ToolCommandResult.TodoCreated) service.execute(
+                new ToolCommand.TodoCreate(sessionId, "A", "")
+        );
+        ToolCommandResult.TodoCreated createdB = (ToolCommandResult.TodoCreated) service.execute(
+                new ToolCommand.TodoCreate(sessionId, "B", "")
+        );
+        service.execute(new ToolCommand.TodoUpdate(
+                sessionId,
+                createdA.todo().todoId(),
+                false,
+                "",
+                false,
+                "",
+                true,
+                "done"
+        ));
+
+        SessionContextResult stateResult = service.execute(new SessionContextCommand.LoadCompactionState(sessionId, 4, 2));
+        assertThat(stateResult).isInstanceOf(SessionContextResult.CompactionStateLoaded.class);
+
+        SessionContextResult.CompactionStateLoaded loaded = (SessionContextResult.CompactionStateLoaded) stateResult;
+        assertThat(loaded.recentToolMessages()).hasSize(4);
+        assertThat(loaded.recentToolMessages().get(0).toolCallId()).isEqualTo("call-6");
+        assertThat(loaded.recentToolMessages().get(0).messageId())
+                .isGreaterThan(loaded.recentToolMessages().get(1).messageId());
+        assertThat(loaded.todos()).hasSize(2);
+        assertThat(loaded.todos().get(0).todoId()).isEqualTo(createdA.todo().todoId());
+        assertThat(loaded.todos().stream().map(SessionContextResult.CompactionTodoItem::todoId))
+                .contains(createdA.todo().todoId(), createdB.todo().todoId());
+    }
+
+    @Test
+    void loadCompactionStateHandlesMissingSessionAsEmptyState() {
+        DatabaseService service = new DatabaseService(tempDir);
+        String sessionId = UUID.randomUUID().toString();
+
+        SessionContextResult stateResult = service.execute(new SessionContextCommand.LoadCompactionState(sessionId, 40, 50));
+        assertThat(stateResult).isInstanceOf(SessionContextResult.CompactionStateLoaded.class);
+
+        SessionContextResult.CompactionStateLoaded loaded = (SessionContextResult.CompactionStateLoaded) stateResult;
+        assertThat(loaded.recentToolMessages()).isEmpty();
+        assertThat(loaded.todos()).isEmpty();
+    }
+
+    @Test
+    void loadCompactionStateExcludesDroppedToolMessagesAfterReplace() {
+        DatabaseService service = new DatabaseService(tempDir);
+        String sessionId = UUID.randomUUID().toString();
+
+        service.execute(new SessionContextCommand.InitializeSession(
+                sessionId,
+                "agent-default",
+                "alpha",
+                1,
+                List.of(new ContextElement.SystemMsg("system"))
+        ));
+        service.execute(new SessionContextCommand.AppendMessages(
+                sessionId,
+                List.of(
+                        new ContextElement.ToolMsg("call-old-1", "todo_update", "{\"status\":\"ok\"}"),
+                        new ContextElement.ToolMsg("call-old-2", "todo_update", "{\"status\":\"ok\"}")
+                )
+        ));
+
+        service.execute(new SessionContextCommand.ReplaceActiveContext(
+                sessionId,
+                List.of(
+                        new ContextElement.SystemMsg("system"),
+                        new ContextElement.ToolMsg("call-new-1", "todo_update", "{\"status\":\"ok\"}"),
+                        new ContextElement.ToolMsg("call-new-2", "write_file", "{\"status\":\"ok\"}")
+                ),
+                1
+        ));
+
+        SessionContextResult stateResult = service.execute(new SessionContextCommand.LoadCompactionState(sessionId, 10, 10));
+        assertThat(stateResult).isInstanceOf(SessionContextResult.CompactionStateLoaded.class);
+
+        SessionContextResult.CompactionStateLoaded loaded = (SessionContextResult.CompactionStateLoaded) stateResult;
+        assertThat(loaded.recentToolMessages())
+                .extracting(SessionContextResult.CompactionToolMessage::toolCallId)
+                .containsExactly("call-new-2", "call-new-1");
+    }
 }

@@ -2,17 +2,22 @@ package io.mindspice.magenta.runtime.context;
 
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
 import io.mindspice.magenta.runtime.context.compaction.CompactionStrategy;
+import io.mindspice.magenta.runtime.context.compaction.RollingWindowCompactionStrategy;
 import io.mindspice.magenta.runtime.persistence.CommonCommandResults;
 import io.mindspice.magenta.runtime.persistence.SessionContextCommand;
 import io.mindspice.magenta.runtime.persistence.SessionContextResult;
 import io.mindspice.magenta.runtime.session.Session;
 import io.mindspice.magenta.runtime.session.SessionTokenEstimator;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 public final class ContextManager {
 
@@ -113,7 +118,21 @@ public final class ContextManager {
             RuntimeConfig.ModelConfig modelConfig,
             Function<List<ContextElement>, String> summarizer
     ) {
+        return compactIfNeeded(sessionId, context, modelConfig, summarizer, () -> "");
+    }
+
+    public Optional<CompactionOutcome> compactIfNeeded(
+            UUID sessionId,
+            Context context,
+            RuntimeConfig.ModelConfig modelConfig,
+            Function<List<ContextElement>, String> summarizer,
+            Supplier<String> protectedStateSupplier
+    ) {
         List<ContextElement> snapshot = context.snapshot();
+        int originalSystemCount = countLeadingSystemPrompts(snapshot);
+        List<ContextElement> originalLeadingSystem = originalSystemCount == 0
+                ? List.of()
+                : List.copyOf(snapshot.subList(0, originalSystemCount));
         String tokenizerEncoding = modelConfig.tokenizerEncodingOrDefault();
         int preTokens = SessionTokenEstimator.estimate(snapshot, tokenizerEncoding);
         int compactThreshold = modelConfig.compactThreshold();
@@ -121,14 +140,42 @@ public final class ContextManager {
             return Optional.empty();
         }
 
-        CompactionStrategy strategy = CompactionStrategy.forName(modelConfig.compactionStrategyOrDefault(), summarizer);
+        Function<List<ContextElement>, String> effectiveSummarizer = messages -> {
+            String summary;
+            try {
+                summary = summarizer.apply(messages);
+            } catch (Exception ignored) {
+                summary = "";
+            }
+            if (!"summarize".equalsIgnoreCase(modelConfig.compactionStrategyOrDefault())) {
+                return summary;
+            }
+            if (summary == null || summary.isBlank()) {
+                summary = buildDeterministicCompactionFallback(messages);
+            }
+            String protectedState;
+            try {
+                protectedState = protectedStateSupplier == null ? "" : protectedStateSupplier.get();
+            } catch (Exception ignored) {
+                protectedState = "";
+            }
+            if (protectedState == null || protectedState.isBlank()) {
+                return summary;
+            }
+            return summary.trim() + "\n\n[Protected State]\n" + protectedState.trim();
+        };
+
+        CompactionStrategy strategy = CompactionStrategy.forName(modelConfig.compactionStrategyOrDefault(), effectiveSummarizer);
         CompactionStrategy.CompactionResult compactedResult = strategy.run(
                 sessionId,
                 snapshot,
                 compactThreshold,
                 tokenizerEncoding
         );
-        List<ContextElement> compacted = compactedResult.messages();
+        List<ContextElement> compacted = withPreservedLeadingSystemPrompts(
+                originalLeadingSystem,
+                compactedResult.messages()
+        );
         if (snapshot.equals(compacted)) {
             return Optional.empty();
         }
@@ -150,7 +197,56 @@ public final class ContextManager {
                 postMessages,
                 compactThreshold,
                 modelConfig.compactionStrategyOrDefault(),
-                compactedResult.protectedSystemCount(),
+                countLeadingSystemPrompts(compacted),
+                compactedResult.summarizedCount(),
+                compactedResult.preservedRecentCount()
+        ));
+    }
+
+    public Optional<CompactionOutcome> enforceMaxContext(
+            UUID sessionId,
+            Context context,
+            RuntimeConfig.ModelConfig modelConfig
+    ) {
+        Objects.requireNonNull(context, "context");
+        Objects.requireNonNull(modelConfig, "modelConfig");
+
+        List<ContextElement> snapshot = context.snapshot();
+        int originalSystemCount = countLeadingSystemPrompts(snapshot);
+        List<ContextElement> originalLeadingSystem = originalSystemCount == 0
+                ? List.of()
+                : List.copyOf(snapshot.subList(0, originalSystemCount));
+        String tokenizerEncoding = modelConfig.tokenizerEncodingOrDefault();
+        int preTokens = SessionTokenEstimator.estimate(snapshot, tokenizerEncoding);
+        int maxContext = modelConfig.maxContext();
+        if (preTokens <= maxContext) {
+            return Optional.empty();
+        }
+
+        CompactionStrategy.CompactionResult compactedResult = new RollingWindowCompactionStrategy().run(
+                sessionId,
+                snapshot,
+                maxContext,
+                tokenizerEncoding
+        );
+        List<ContextElement> compacted = withPreservedLeadingSystemPrompts(
+                originalLeadingSystem,
+                compactedResult.messages()
+        );
+        if (snapshot.equals(compacted)) {
+            return Optional.empty();
+        }
+
+        context.replaceAll(compacted);
+        int postTokens = SessionTokenEstimator.estimate(compacted, tokenizerEncoding);
+        return Optional.of(new CompactionOutcome(
+                preTokens,
+                postTokens,
+                snapshot.size(),
+                compacted.size(),
+                maxContext,
+                "max_context_guard",
+                countLeadingSystemPrompts(compacted),
                 compactedResult.summarizedCount(),
                 compactedResult.preservedRecentCount()
         ));
@@ -223,5 +319,114 @@ public final class ContextManager {
         if (result instanceof CommonCommandResults.Failure failure) {
             throw new IllegalStateException(prefix + ": " + failure.code() + " - " + failure.message());
         }
+    }
+
+    private List<ContextElement> withPreservedLeadingSystemPrompts(
+            List<ContextElement> originalLeadingSystem,
+            List<ContextElement> candidate
+    ) {
+        List<ContextElement> compacted = candidate == null ? List.of() : List.copyOf(candidate);
+        if (originalLeadingSystem == null || originalLeadingSystem.isEmpty()) {
+            return compacted;
+        }
+        if (compacted.size() >= originalLeadingSystem.size()
+            && compacted.subList(0, originalLeadingSystem.size()).equals(originalLeadingSystem)) {
+            return compacted;
+        }
+
+        int candidateLeadingSystemCount = countLeadingSystemPrompts(compacted);
+        List<ContextElement> tail = compacted.subList(candidateLeadingSystemCount, compacted.size());
+        ArrayList<ContextElement> repaired = new ArrayList<>(originalLeadingSystem.size() + tail.size());
+        repaired.addAll(originalLeadingSystem);
+        repaired.addAll(tail);
+        return List.copyOf(repaired);
+    }
+
+    private String buildDeterministicCompactionFallback(List<ContextElement> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return """
+                    Objective: Continue current task.
+                    Completed: Compaction fallback summary generated from empty context.
+                    Pending: Resume normal execution flow.
+                    Errors: summary_model_empty.
+                    Next: Read current TODO state before more tool mutations.
+                    """.trim();
+        }
+
+        int userCount = 0;
+        int assistantCount = 0;
+        int toolCount = 0;
+        String lastUser = "";
+        String lastAssistant = "";
+        Map<String, Integer> toolSignatureCounts = new HashMap<>();
+
+        for (ContextElement message : messages) {
+            switch (message) {
+                case ContextElement.UserMsg userMsg -> {
+                    userCount++;
+                    if (userMsg.content() != null && !userMsg.content().isBlank()) {
+                        lastUser = compactText(userMsg.content(), 180);
+                    }
+                }
+                case ContextElement.InboundMsg inboundMsg -> {
+                    userCount++;
+                    if (inboundMsg.content() != null && !inboundMsg.content().isBlank()) {
+                        lastUser = compactText(inboundMsg.content(), 180);
+                    }
+                }
+                case ContextElement.AssistantMsg assistantMsg -> {
+                    assistantCount++;
+                    if (assistantMsg.content() != null && !assistantMsg.content().isBlank()) {
+                        lastAssistant = compactText(assistantMsg.content(), 180);
+                    }
+                }
+                case ContextElement.ToolMsg toolMsg -> {
+                    toolCount++;
+                    String signature = compactText(toolMsg.toolName() + "|" + compactText(toolMsg.content(), 120), 200);
+                    toolSignatureCounts.merge(signature, 1, Integer::sum);
+                }
+                default -> { }
+            }
+        }
+
+        String objective = lastUser.isBlank()
+                ? (lastAssistant.isBlank() ? "Continue current task." : "Continue from latest assistant state: " + lastAssistant)
+                : "Follow latest user intent: " + lastUser;
+
+        String repeatWarning = "";
+        String repeatedSignature = "";
+        int repeatedCount = 0;
+        for (Map.Entry<String, Integer> entry : toolSignatureCounts.entrySet()) {
+            if (entry.getValue() > repeatedCount) {
+                repeatedCount = entry.getValue();
+                repeatedSignature = entry.getKey();
+            }
+        }
+        if (repeatedCount >= 3) {
+            repeatWarning = " repetitive_tool_pattern count=" + repeatedCount + " signature=" + compactText(repeatedSignature, 120) + ".";
+        }
+
+        return (
+                "Objective: " + objective + "\n"
+                + "Completed: Condensed " + messages.size() + " messages (user=" + userCount
+                + ", assistant=" + assistantCount + ", tool=" + toolCount + ").\n"
+                + "Pending: Resume active workflow from protected state and current TODO focus.\n"
+                + "Errors: summary_model_empty." + repeatWarning + "\n"
+                + "Next: Refresh TODO state, then continue only with non-duplicate tool actions."
+        ).trim();
+    }
+
+    private String compactText(String value, int maxChars) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String normalized = value.replace('\n', ' ').replace('\r', ' ').trim();
+        if (normalized.length() <= maxChars) {
+            return normalized;
+        }
+        if (maxChars <= 3) {
+            return normalized.substring(0, Math.max(maxChars, 0));
+        }
+        return normalized.substring(0, maxChars - 3) + "...";
     }
 }

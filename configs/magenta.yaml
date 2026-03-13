@@ -9,6 +9,7 @@ instance:
   maxToolOutputBytes: 65536
   maxFileReadLines: 200
   maxSqlRows: 500
+  modelRequestTimeoutMs: 600000
   toolLoopGuard:
     enabled: true
     repeatThreshold: 5

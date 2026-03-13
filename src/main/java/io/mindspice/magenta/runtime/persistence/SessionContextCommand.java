@@ -10,7 +10,8 @@ public sealed interface SessionContextCommand permits SessionContextCommand.Init
         SessionContextCommand.AppendMessages,
         SessionContextCommand.ReplaceActiveContext,
         SessionContextCommand.LoadActiveContext,
-        SessionContextCommand.GetMessageById {
+        SessionContextCommand.GetMessageById,
+        SessionContextCommand.LoadCompactionState {
 
     record InitializeSession(
             String sessionId,
@@ -63,6 +64,18 @@ public sealed interface SessionContextCommand permits SessionContextCommand.Init
     record GetMessageById(String sessionId, int messageId) implements SessionContextCommand {
         public GetMessageById {
             sessionId = sessionId == null ? "" : sessionId;
+        }
+    }
+
+    record LoadCompactionState(
+            String sessionId,
+            int toolScanLimit,
+            int todoLimit
+    ) implements SessionContextCommand {
+        public LoadCompactionState {
+            sessionId = sessionId == null ? "" : sessionId;
+            toolScanLimit = Math.max(toolScanLimit, 1);
+            todoLimit = Math.max(todoLimit, 1);
         }
     }
 }

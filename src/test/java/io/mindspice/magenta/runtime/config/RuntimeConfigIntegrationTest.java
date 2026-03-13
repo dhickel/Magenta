@@ -47,6 +47,7 @@ class RuntimeConfigIntegrationTest {
         assertThat(loaded.maxToolOutputBytes()).isEqualTo(32_768);
         assertThat(loaded.maxFileReadLines()).isEqualTo(200);
         assertThat(loaded.maxSqlRows()).isEqualTo(500);
+        assertThat(loaded.modelRequestTimeoutMs()).isEqualTo(600_000);
         assertThat(loaded.toolLoopGuard().enabled()).isTrue();
         assertThat(loaded.toolLoopGuard().repeatThreshold()).isEqualTo(5);
         assertThat(loaded.toolLoopGuard().windowSize()).isEqualTo(8);
@@ -213,6 +214,49 @@ class RuntimeConfigIntegrationTest {
         assertThat(loaded.toolLoopGuard().enabled()).isFalse();
         assertThat(loaded.toolLoopGuard().repeatThreshold()).isEqualTo(9999);
         assertThat(loaded.toolLoopGuard().windowSize()).isEqualTo(9999);
+    }
+
+    @Test
+    void modelRequestTimeoutParsesFromInstanceBlock() throws IOException {
+        Path configRoot = createConfigRoot("cfg-model-request-timeout");
+        writeDefaultMagentaYaml(configRoot);
+        writeModel(configRoot.resolve("models/default.yaml"), "dev");
+        writeTask(configRoot.resolve("tasks/default-task.yaml"), List.of("base/system"), List.of("read_file"));
+        writeWorkflow(configRoot.resolve("workflows/default-workflow.yaml"), List.of(), List.of());
+        writeAgent(configRoot.resolve("agents/main.yaml"), "default", List.of("base/system"), List.of(), List.of());
+        writeAgent(configRoot.resolve("agents/compaction.yaml"), "default", List.of("base/system"), List.of(), List.of());
+        Files.writeString(configRoot.resolve("prompts/base/system.md"), "system prompt");
+
+        Path magentaYaml = configRoot.resolve("magenta.yaml");
+        Files.writeString(magentaYaml, Files.readString(magentaYaml).replace("maxTurns: 3", """
+                maxTurns: 3
+                  modelRequestTimeoutMs: 700000
+                """));
+
+        RuntimeConfig loaded = RuntimeConfig.load(magentaYaml);
+        assertThat(loaded.modelRequestTimeoutMs()).isEqualTo(700_000);
+    }
+
+    @Test
+    void invalidModelRequestTimeoutFailsFast() throws IOException {
+        Path configRoot = createConfigRoot("cfg-model-request-timeout-invalid");
+        writeDefaultMagentaYaml(configRoot);
+        writeModel(configRoot.resolve("models/default.yaml"), "dev");
+        writeTask(configRoot.resolve("tasks/default-task.yaml"), List.of("base/system"), List.of("read_file"));
+        writeWorkflow(configRoot.resolve("workflows/default-workflow.yaml"), List.of(), List.of());
+        writeAgent(configRoot.resolve("agents/main.yaml"), "default", List.of("base/system"), List.of(), List.of());
+        writeAgent(configRoot.resolve("agents/compaction.yaml"), "default", List.of("base/system"), List.of(), List.of());
+        Files.writeString(configRoot.resolve("prompts/base/system.md"), "system prompt");
+
+        Path magentaYaml = configRoot.resolve("magenta.yaml");
+        Files.writeString(magentaYaml, Files.readString(magentaYaml).replace("maxTurns: 3", """
+                maxTurns: 3
+                  modelRequestTimeoutMs: 0
+                """));
+
+        assertThatThrownBy(() -> RuntimeConfig.load(magentaYaml))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("instance.modelRequestTimeoutMs must be > 0");
     }
 
     @Test

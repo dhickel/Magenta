@@ -45,8 +45,21 @@ import java.util.function.Consumer;
 
 public final class OllamaClient {
 
+    private static final int DEFAULT_REQUEST_TIMEOUT_MS = 600_000;
     private final ObjectMapper json = new ObjectMapper().findAndRegisterModules();
     private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(30)).build();
+    private final Duration requestTimeout;
+
+    public OllamaClient() {
+        this(DEFAULT_REQUEST_TIMEOUT_MS);
+    }
+
+    public OllamaClient(int requestTimeoutMs) {
+        if (requestTimeoutMs <= 0) {
+            throw new IllegalArgumentException("requestTimeoutMs must be > 0");
+        }
+        this.requestTimeout = Duration.ofMillis(requestTimeoutMs);
+    }
 
     public ChatResponse chatBlocking(RuntimeConfig.ModelConfig modelConfig, ChatRequest request) {
         String baseUrl = resolveBaseUrl(modelConfig.endpoint());
@@ -54,7 +67,7 @@ public final class OllamaClient {
 
         HttpRequest httpRequest = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/api/chat"))
-                .timeout(Duration.ofSeconds(120))
+                .timeout(requestTimeout)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(payload.toString(), StandardCharsets.UTF_8))
                 .build();
@@ -116,7 +129,7 @@ public final class OllamaClient {
 
         HttpRequest httpRequest = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/api/chat"))
-                .timeout(Duration.ofSeconds(120))
+                .timeout(requestTimeout)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(payload.toString(), StandardCharsets.UTF_8))
                 .build();

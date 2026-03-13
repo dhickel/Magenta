@@ -50,6 +50,7 @@ public sealed interface SessionEvent permits SessionEvent.MessageIn,
     sealed interface Action extends SessionEvent permits Action.ToolCall,
             Action.ToolResult,
             Action.ContextCompacted,
+            Action.ContextSendBudget,
             Action.ModelFailure,
             Action.SessionStarted,
             Action.SessionClosed,
@@ -123,6 +124,27 @@ public sealed interface SessionEvent permits SessionEvent.MessageIn,
             @Override
             public String actionType() {
                 return "context_compacted";
+            }
+        }
+
+        record ContextSendBudget(
+                @NonNull SessionHandle sessionHandle,
+                @NonNull String agentId,
+                int estimatedTokens,
+                int maxContextTokens,
+                double percentOfMaxContext,
+                boolean thresholdCompactionApplied,
+                boolean hardGuardCompactionApplied,
+                boolean willSend
+        ) implements Action {
+            public ContextSendBudget {
+                Objects.requireNonNull(sessionHandle, "sessionHandle");
+                agentId = agentId == null ? "" : agentId;
+            }
+
+            @Override
+            public String actionType() {
+                return "context_send_budget";
             }
         }
 

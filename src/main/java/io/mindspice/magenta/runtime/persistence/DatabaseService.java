@@ -24,6 +24,8 @@ public final class DatabaseService {
 
     private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
     private static final int DEFAULT_LIST_LIMIT = 100;
+    private static final int MAX_COMPACTION_TOOL_SCAN_LIMIT = 200;
+    private static final int MAX_COMPACTION_TODO_LIMIT = 200;
     private static final String STATUS_OPEN = "open";
 
     private final Path workspaceRoot;
@@ -71,6 +73,7 @@ public final class DatabaseService {
             case SessionContextCommand.ReplaceActiveContext replace -> replaceActiveContext(replace);
             case SessionContextCommand.LoadActiveContext load -> loadActiveContext(load);
             case SessionContextCommand.GetMessageById get -> getMessageById(get);
+            case SessionContextCommand.LoadCompactionState load -> loadCompactionState(load);
         };
     }
 
@@ -481,6 +484,81 @@ public final class DatabaseService {
         }
     }
 
+    private SessionContextResult loadCompactionState(SessionContextCommand.LoadCompactionState command) {
+        if (isBlank(command.sessionId())) {
+            return new CommonCommandResults.Failure("validation_error", "Invalid session id");
+        }
+
+        String sessionId = command.sessionId().trim();
+        int toolScanLimit = Math.min(Math.max(command.toolScanLimit(), 1), MAX_COMPACTION_TOOL_SCAN_LIMIT);
+        int todoLimit = Math.min(Math.max(command.todoLimit(), 1), MAX_COMPACTION_TODO_LIMIT);
+
+        try (Connection connection = openConnection()) {
+            Optional<SessionRow> session = findSession(connection, sessionId);
+            if (session.isEmpty()) {
+                return new SessionContextResult.CompactionStateLoaded(List.of(), List.of());
+            }
+            Set<Integer> dropped = Set.copyOf(parseDroppedIds(session.get().droppedMessageIdsJson()));
+
+            SjResult<CompactionToolRow> toolRows = simplyJDBC.query(
+                    connection,
+                    """
+                            SELECT message_id, tool_call_id, tool_name, content, created_at_ms
+                            FROM context_messages
+                            WHERE session_id = ? AND element_type = 'tool'
+                            ORDER BY message_id DESC
+                            LIMIT ?
+                            """,
+                    List.of(sessionId, MAX_COMPACTION_TOOL_SCAN_LIMIT),
+                    CompactionToolRow.class
+            );
+            if (toolRows.isFailure()) {
+                return dbFailure("Compaction tool-state query failed", toolRows.error().orElse(null));
+            }
+
+            SjResult<TodoRow> todoRows = simplyJDBC.query(
+                    connection,
+                    """
+                            SELECT todo_id, session_id, title, details, status, created_at_ms, updated_at_ms
+                            FROM todos
+                            WHERE session_id = ?
+                            ORDER BY updated_at_ms DESC
+                            LIMIT ?
+                            """,
+                    List.of(sessionId, todoLimit),
+                    TodoRow.class
+            );
+            if (todoRows.isFailure()) {
+                return dbFailure("Compaction todo-state query failed", todoRows.error().orElse(null));
+            }
+
+            List<SessionContextResult.CompactionToolMessage> tools = toolRows.rows().stream()
+                    .filter(row -> !dropped.contains(row.messageId()))
+                    .limit(toolScanLimit)
+                    .map(row -> new SessionContextResult.CompactionToolMessage(
+                            row.messageId(),
+                            row.toolCallId(),
+                            row.toolName(),
+                            row.content(),
+                            row.createdAtMs()
+                    ))
+                    .toList();
+            List<SessionContextResult.CompactionTodoItem> todos = todoRows.rows().stream()
+                    .map(row -> new SessionContextResult.CompactionTodoItem(
+                            row.todoId(),
+                            row.title(),
+                            row.details(),
+                            row.status(),
+                            row.createdAtMs(),
+                            row.updatedAtMs()
+                    ))
+                    .toList();
+            return new SessionContextResult.CompactionStateLoaded(tools, todos);
+        } catch (Exception e) {
+            return new CommonCommandResults.Failure("db_error", "Failed to load compaction state: " + e.getMessage());
+        }
+    }
+
     private int appendMessagesInternal(
             Connection connection,
             String sessionId,
@@ -870,6 +948,15 @@ public final class DatabaseService {
             @SjColumn("status") String status,
             @SjColumn("created_at_ms") long createdAtMs,
             @SjColumn("updated_at_ms") long updatedAtMs
+    ) {
+    }
+
+    private record CompactionToolRow(
+            @SjColumn("message_id") int messageId,
+            @SjColumn("tool_call_id") String toolCallId,
+            @SjColumn("tool_name") String toolName,
+            @SjColumn("content") String content,
+            @SjColumn("created_at_ms") long createdAtMs
     ) {
     }
 

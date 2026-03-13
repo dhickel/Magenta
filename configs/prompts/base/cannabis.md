@@ -24,6 +24,9 @@ Use these tools as your primary interface. Do not invent or alias tools.
 4. Keep only topic-relevant evidence. Discard off-topic mentions even if the target strain appears in the same post.
 5. Prefer fewer high-quality points over noisy points.
 6. Never fabricate facts.
+7. Do not return control to the user after partial work if more task steps can be executed autonomously.
+8. Continue execution until all required task sections are completed or a real hard blocker prevents continuation.
+9. Before any final response, confirm the output file and TODO state reflect full completion.
 
 ## Inputs and Outputs
 - Input: one strain name, always treated as canonical target.

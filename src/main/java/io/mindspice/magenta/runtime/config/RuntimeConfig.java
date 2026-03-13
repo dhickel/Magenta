@@ -36,6 +36,7 @@ public record RuntimeConfig(
         int maxToolOutputBytes,
         int maxFileReadLines,
         int maxSqlRows,
+        int modelRequestTimeoutMs,
         ToolLoopGuardConfig toolLoopGuard,
         Map<String, ModelConfig> modelsById,
         Map<String, AgentConfig> agentsById,
@@ -55,6 +56,7 @@ public record RuntimeConfig(
     private static final int DEFAULT_MAX_TOOL_OUTPUT_BYTES = 32_768;
     private static final int DEFAULT_MAX_FILE_READ_LINES = 200;
     private static final int DEFAULT_MAX_SQL_ROWS = 500;
+    private static final int DEFAULT_MODEL_REQUEST_TIMEOUT_MS = 600_000;
     private static final int DEFAULT_TOOL_LOOP_REPEAT_THRESHOLD = 5;
     private static final int DEFAULT_TOOL_LOOP_WINDOW_SIZE = 8;
 
@@ -69,8 +71,11 @@ public record RuntimeConfig(
         if (maxSqlRows <= 0) {
             throw new IllegalStateException("instance.maxSqlRows must be > 0");
         }
+        if (modelRequestTimeoutMs <= 0) {
+            throw new IllegalStateException("instance.modelRequestTimeoutMs must be > 0");
+        }
         toolLoopGuard = toolLoopGuard == null ? ToolLoopGuardConfig.defaults() : toolLoopGuard;
-        validateInstanceLimits(maxToolOutputBytes, maxFileReadLines, maxSqlRows, toolLoopGuard);
+        validateInstanceLimits(maxToolOutputBytes, maxFileReadLines, maxSqlRows, modelRequestTimeoutMs, toolLoopGuard);
         modelsById = Map.copyOf(modelsById);
         agentsById = Map.copyOf(agentsById);
         promptsById = Map.copyOf(promptsById);
@@ -105,6 +110,7 @@ public record RuntimeConfig(
                 maxToolOutputBytes,
                 maxFileReadLines,
                 maxSqlRows,
+                DEFAULT_MODEL_REQUEST_TIMEOUT_MS,
                 ToolLoopGuardConfig.defaults(),
                 modelsById,
                 agentsById,
@@ -143,6 +149,7 @@ public record RuntimeConfig(
                 maxToolOutputBytes,
                 maxFileReadLines,
                 maxSqlRows,
+                DEFAULT_MODEL_REQUEST_TIMEOUT_MS,
                 ToolLoopGuardConfig.defaults(),
                 modelsById,
                 agentsById,
@@ -228,13 +235,16 @@ public record RuntimeConfig(
         int maxSqlRows = Optional.ofNullable(root.instance)
                 .map(InstanceConfig::maxSqlRows)
                 .orElse(DEFAULT_MAX_SQL_ROWS);
+        int modelRequestTimeoutMs = Optional.ofNullable(root.instance)
+                .map(InstanceConfig::modelRequestTimeoutMs)
+                .orElse(DEFAULT_MODEL_REQUEST_TIMEOUT_MS);
         ToolLoopGuardConfig toolLoopGuard = Optional.ofNullable(root.instance)
                 .map(InstanceConfig::toolLoopGuard)
                 .map(RuntimeConfig::toToolLoopGuardConfig)
                 .orElse(ToolLoopGuardConfig.defaults());
 
         validate(models, agents, prompts, tasks, workflows, baseAgentId, compactionAgentId);
-        validateInstanceLimits(maxToolOutputBytes, maxFileReadLines, maxSqlRows, toolLoopGuard);
+        validateInstanceLimits(maxToolOutputBytes, maxFileReadLines, maxSqlRows, modelRequestTimeoutMs, toolLoopGuard);
 
         SecurityPolicyConfig securityConfig = toSecurityPolicyConfig(root.security);
         TerminalConfig terminalConfig = toTerminalConfig(root.terminal);
@@ -251,6 +261,7 @@ public record RuntimeConfig(
                 maxToolOutputBytes,
                 maxFileReadLines,
                 maxSqlRows,
+                modelRequestTimeoutMs,
                 toolLoopGuard,
                 models,
                 agents,
@@ -287,6 +298,7 @@ public record RuntimeConfig(
                 maxToolOutputBytes,
                 maxFileReadLines,
                 maxSqlRows,
+                modelRequestTimeoutMs,
                 toolLoopGuard,
                 modelsById,
                 agentsById,
@@ -312,6 +324,7 @@ public record RuntimeConfig(
                 maxToolOutputBytes,
                 maxFileReadLines,
                 maxSqlRows,
+                modelRequestTimeoutMs,
                 toolLoopGuard,
                 modelsById,
                 agentsById,
@@ -384,6 +397,7 @@ public record RuntimeConfig(
             int maxToolOutputBytes,
             int maxFileReadLines,
             int maxSqlRows,
+            int modelRequestTimeoutMs,
             ToolLoopGuardConfig toolLoopGuard
     ) {
         if (maxToolOutputBytes <= 0) {
@@ -394,6 +408,9 @@ public record RuntimeConfig(
         }
         if (maxSqlRows <= 0) {
             throw new IllegalStateException("instance.maxSqlRows must be > 0");
+        }
+        if (modelRequestTimeoutMs <= 0) {
+            throw new IllegalStateException("instance.modelRequestTimeoutMs must be > 0");
         }
         if (toolLoopGuard.repeatThreshold() < 2) {
             throw new IllegalStateException("instance.toolLoopGuard.repeatThreshold must be >= 2");
@@ -1645,6 +1662,8 @@ public record RuntimeConfig(
         private Integer maxFileReadLines;
         @JsonProperty("maxSqlRows")
         private Integer maxSqlRows;
+        @JsonProperty("modelRequestTimeoutMs")
+        private Integer modelRequestTimeoutMs;
         @JsonProperty("toolLoopGuard")
         private RawToolLoopGuardConfig toolLoopGuard;
         @JsonProperty("maxEssenceBodyBytes")
@@ -1665,6 +1684,8 @@ public record RuntimeConfig(
         private Integer maxFileReadLines() { return maxFileReadLines; }
 
         private Integer maxSqlRows() { return maxSqlRows; }
+
+        private Integer modelRequestTimeoutMs() { return modelRequestTimeoutMs; }
 
         private RawToolLoopGuardConfig toolLoopGuard() { return toolLoopGuard; }
 

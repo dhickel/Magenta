@@ -30,7 +30,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 public final class TerminalUiRuntime {
-
     private final RuntimeConfig runtimeConfig;
     private final Magenta magenta;
     private final Terminal terminal;
@@ -41,6 +40,7 @@ public final class TerminalUiRuntime {
     private final TerminalUiSession session;
     private final SlashCommandRegistry slashRegistry;
     private final SlashCommandDispatcher slashDispatcher;
+    private final Terminal.SignalHandler previousIntHandler;
 
     private final AtomicBoolean closed = new AtomicBoolean(false);
 
@@ -65,6 +65,14 @@ public final class TerminalUiRuntime {
         this.session = Objects.requireNonNull(session, "session");
         this.slashRegistry = Objects.requireNonNull(slashRegistry, "slashRegistry");
         this.slashDispatcher = new SlashCommandDispatcher(slashRegistry, renderer);
+        this.previousIntHandler = terminal.handle(Terminal.Signal.INT, signal -> {
+            if (!magenta.turnInProgress(session.handle())) {
+                return;
+            }
+            if (magenta.abortTurn(session.handle())) {
+                renderer.printWarn("abort requested (ctrl-c)");
+            }
+        });
     }
 
     public void runLoop() {
@@ -126,6 +134,12 @@ public final class TerminalUiRuntime {
             renderer.close();
         } catch (Exception ignored) {
             // best effort close
+        }
+
+        try {
+            terminal.handle(Terminal.Signal.INT, previousIntHandler);
+        } catch (Exception ignored) {
+            // best effort restore
         }
 
         try {

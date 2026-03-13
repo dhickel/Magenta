@@ -17,6 +17,7 @@ Core event types:
 - `tool_call`
 - `tool_result`
 - `context_compacted`
+- `context_send_budget`
 - `model_failure`
 - `security_decision`
 - `session_closed`
