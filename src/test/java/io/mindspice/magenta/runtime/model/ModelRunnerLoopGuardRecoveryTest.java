@@ -32,7 +32,7 @@ class ModelRunnerLoopGuardRecoveryTest {
     private static final String WARNING_PREFIX = "[tool-loop-warning] repeated_calls=2/2; window_failures=1; recovery_attempt=1/1; required_action=change_approach_or_return_defeat";
 
     @Test
-    void loopWarningTriggersRecoveryModelRetryWithInjectedSystemMessage() throws Exception {
+    void loopWarningTriggersRecoveryModelRetryWithoutTranscriptLeak() throws Exception {
         try (StubOllamaServer stub = new StubOllamaServer(
                 toolCallResponse("tool pass 1", "call-1"),
                 toolCallResponse("tool pass 2", "call-2"),
@@ -58,7 +58,7 @@ class ModelRunnerLoopGuardRecoveryTest {
             assertThat(outputs)
                     .filteredOn(output -> output instanceof SessionOutput.FinalOutput)
                     .extracting(output -> ((SessionOutput.FinalOutput) output).text())
-                    .anyMatch(text -> text.startsWith(WARNING_PREFIX));
+                    .noneMatch(text -> text.startsWith(WARNING_PREFIX));
             assertThat(stub.requestBodies()).hasSize(3);
 
             JsonNode thirdRequest = MAPPER.readTree(stub.requestBodies().get(2));

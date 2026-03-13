@@ -52,22 +52,6 @@ final class TranscriptView extends AbstractInteractableComponent<TranscriptView>
         invalidate();
     }
 
-    boolean containsGlobalPosition(TerminalPosition position) {
-        if (position == null) {
-            return false;
-        }
-        TerminalPosition global = getGlobalPosition();
-        TerminalSize size = getSize();
-        return position.getColumn() >= global.getColumn()
-               && position.getColumn() < global.getColumn() + Math.max(1, size.getColumns())
-               && position.getRow() >= global.getRow()
-               && position.getRow() < global.getRow() + Math.max(1, size.getRows());
-    }
-
-    Interactable.Result handleMouseAction(MouseAction mouseAction) {
-        return handleMouse(mouseAction);
-    }
-
     int topRow() {
         return topRow;
     }

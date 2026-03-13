@@ -62,9 +62,8 @@ final class ComposerInput extends AbstractInteractableComponent<ComposerInput> {
 
     @Override
     protected synchronized Interactable.Result handleKeyStroke(KeyStroke keyStroke) {
-        if (isModifiedEnterCharacter(keyStroke)) {
-            if (keyStroke.isShiftDown() || keyStroke.isAltDown()) {
-                insert("\n");
+        if (isEnterCharacter(keyStroke)) {
+            if (keyStroke.isCtrlDown()) {
                 return Result.HANDLED;
             }
             if (submitHandler.submit(text)) {
@@ -98,10 +97,6 @@ final class ComposerInput extends AbstractInteractableComponent<ComposerInput> {
         }
 
         if (keyStroke.getKeyType() == KeyType.Enter) {
-            if (keyStroke.isShiftDown() || keyStroke.isAltDown()) {
-                insert("\n");
-                return Result.HANDLED;
-            }
             if (submitHandler.submit(text)) {
                 text = "";
                 caretIndex = 0;
@@ -189,6 +184,14 @@ final class ComposerInput extends AbstractInteractableComponent<ComposerInput> {
             }
             default -> super.handleKeyStroke(keyStroke);
         };
+    }
+
+    private boolean isEnterCharacter(KeyStroke keyStroke) {
+        if (keyStroke.getKeyType() != KeyType.Character) {
+            return false;
+        }
+        Character character = keyStroke.getCharacter();
+        return character != null && (character == '\n' || character == '\r');
     }
 
     private void moveCaretToMouse(MouseAction mouseAction) {
@@ -319,14 +322,6 @@ final class ComposerInput extends AbstractInteractableComponent<ComposerInput> {
         int length() {
             return text.length();
         }
-    }
-
-    private boolean isModifiedEnterCharacter(KeyStroke keyStroke) {
-        if (keyStroke.getKeyType() != KeyType.Character) {
-            return false;
-        }
-        Character character = keyStroke.getCharacter();
-        return character != null && (character == '\n' || character == '\r');
     }
 
     record CaretPosition(int row, int column) {}

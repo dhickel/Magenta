@@ -144,9 +144,6 @@ public final class ModelRunner {
                                     recoveryAttemptsUsed,
                                     recoveryAttempts
                             );
-                            safeOutputEmitter.accept(
-                                    new OutputRoutingEvent(handle, new SessionOutput.FinalOutput(warningMessage))
-                            );
                             pendingLoopWarningSystemMessage = warningMessage;
                             recentSignatures.clear();
                             signatureCounts.clear();

@@ -1020,10 +1020,6 @@ public final class TerminalUiRuntime {
     private final class MainWindow extends BasicWindow {
         @Override
         public boolean handleInput(KeyStroke key) {
-            if (key instanceof MouseAction mouseAction && transcriptView.containsGlobalPosition(mouseAction.getPosition())) {
-                Interactable.Result result = transcriptView.handleMouseAction(mouseAction);
-                return result == Interactable.Result.HANDLED || super.handleInput(key);
-            }
             if (key.getKeyType() == KeyType.EOF) {
                 close();
                 TerminalUiRuntime.this.close();
@@ -1031,6 +1027,10 @@ public final class TerminalUiRuntime {
             }
             if (key.getKeyType() == KeyType.Escape && activePromptFuture != null) {
                 completePrompt(new UiPromptResponse.Cancelled("cancelled"));
+                return true;
+            }
+            if (key.getKeyType() == KeyType.Escape) {
+                requestAbort();
                 return true;
             }
             if (key.getKeyType() == KeyType.Character

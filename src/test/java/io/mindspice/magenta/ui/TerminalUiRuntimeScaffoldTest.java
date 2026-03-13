@@ -44,11 +44,11 @@ class TerminalUiRuntimeScaffoldTest {
     }
 
     @Test
-    void composerAltEnterInsertsNewlineWithoutSubmitting() {
-        AtomicInteger submitCalls = new AtomicInteger();
+    void composerAltEnterStillSubmits() {
+        AtomicReference<String> submitted = new AtomicReference<>();
         ComposerInput composer = new ComposerInput(text -> {
-            submitCalls.incrementAndGet();
-            return false;
+            submitted.set(text);
+            return true;
         }, () -> {});
         composer.setSize(new TerminalSize(8, 4));
         composer.setText("hello");
@@ -56,16 +56,33 @@ class TerminalUiRuntimeScaffoldTest {
         Interactable.Result result = composer.handleKeyStroke(new KeyStroke(KeyType.Enter, false, true));
 
         assertThat(result).isEqualTo(Interactable.Result.HANDLED);
-        assertThat(submitCalls).hasValue(0);
-        assertThat(composer.getText()).isEqualTo("hello\n");
+        assertThat(submitted).hasValue("hello");
+        assertThat(composer.getText()).isEmpty();
     }
 
     @Test
-    void composerShiftedNewlineCharacterInsertsNewlineWithoutSubmitting() {
-        AtomicInteger submitCalls = new AtomicInteger();
+    void composerShiftedEnterStillSubmits() {
+        AtomicReference<String> submitted = new AtomicReference<>();
         ComposerInput composer = new ComposerInput(text -> {
-            submitCalls.incrementAndGet();
-            return false;
+            submitted.set(text);
+            return true;
+        }, () -> {});
+        composer.setSize(new TerminalSize(8, 4));
+        composer.setText("hello");
+
+        Interactable.Result result = composer.handleKeyStroke(new KeyStroke(KeyType.Enter, false, true));
+
+        assertThat(result).isEqualTo(Interactable.Result.HANDLED);
+        assertThat(submitted).hasValue("hello");
+        assertThat(composer.getText()).isEmpty();
+    }
+
+    @Test
+    void composerNewlineCharacterStillSubmits() {
+        AtomicReference<String> submitted = new AtomicReference<>();
+        ComposerInput composer = new ComposerInput(text -> {
+            submitted.set(text);
+            return true;
         }, () -> {});
         composer.setSize(new TerminalSize(8, 4));
         composer.setText("hello");
@@ -73,8 +90,8 @@ class TerminalUiRuntimeScaffoldTest {
         Interactable.Result result = composer.handleKeyStroke(new KeyStroke('\n', false, false, true));
 
         assertThat(result).isEqualTo(Interactable.Result.HANDLED);
-        assertThat(submitCalls).hasValue(0);
-        assertThat(composer.getText()).isEqualTo("hello\n");
+        assertThat(submitted).hasValue("hello");
+        assertThat(composer.getText()).isEmpty();
     }
 
     @Test
@@ -120,6 +137,23 @@ class TerminalUiRuntimeScaffoldTest {
         assertThat(result).isEqualTo(Interactable.Result.HANDLED);
         assertThat(submitCalls).hasValue(0);
         assertThat(composer.getText()).isEqualTo("hello\n");
+    }
+
+    @Test
+    void composerCtrlNewlineCharacterDoesNotSubmitOrInsert() {
+        AtomicInteger submitCalls = new AtomicInteger();
+        ComposerInput composer = new ComposerInput(text -> {
+            submitCalls.incrementAndGet();
+            return true;
+        }, () -> {});
+        composer.setSize(new TerminalSize(8, 4));
+        composer.setText("hello");
+
+        Interactable.Result result = composer.handleKeyStroke(new KeyStroke('\n', true, false));
+
+        assertThat(result).isEqualTo(Interactable.Result.HANDLED);
+        assertThat(submitCalls).hasValue(0);
+        assertThat(composer.getText()).isEqualTo("hello");
     }
 
     @Test
