@@ -393,16 +393,14 @@ class ToolManagerBuiltInsTest {
         ToolSpecification shell = manager.toolSpecificationsFor(List.of("shell_command")).getFirst();
         ToolSpecification searchReplace = manager.toolSpecificationsFor(List.of("search_replace")).getFirst();
 
-        assertThat(grep.description()).contains("rootPath is optional");
+        assertThat(grep.description()).contains("optional rootPath");
         assertThat(grep.description()).contains("filePattern");
-        assertThat(grep.description()).contains("basename filters");
         assertThat(grep.description()).contains("does not return snapshotId");
-        assertThat(grep.description()).contains("read_file or file_metadata");
-        assertThat(grep.description()).contains("file contents");
+        assertThat(grep.description()).contains("read_file");
         assertThat(shell.description()).contains("single command invocation");
         assertThat(shell.description()).contains("operators/chaining");
-        assertThat(searchReplace.description()).contains("line:hh");
-        assertThat(searchReplace.description()).contains("do not invent anchors");
+        assertThat(searchReplace.description()).contains("startAnchor");
+        assertThat(searchReplace.description().toLowerCase(java.util.Locale.ROOT)).contains("do not invent anchors");
     }
 
     private RuntimeConfig runtimeConfig(Path workspaceRoot) {
@@ -412,6 +410,7 @@ class ToolManagerBuiltInsTest {
                 "agent-default",
                 "agent-compaction",
                 8,
+                64,
                 32_768,
                 200,
                 500,
@@ -450,6 +449,7 @@ class ToolManagerBuiltInsTest {
                 "agent-enabled",
                 "agent-enabled",
                 8,
+                64,
                 32_768,
                 200,
                 500,

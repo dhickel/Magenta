@@ -42,6 +42,17 @@ public record SlashCommandSpec(
         return new SlashCommandSpec(name, aliases, help, usage, argHints, new SlashCommandAction.OneArg(handler));
     }
 
+    public static SlashCommandSpec optionalOne(
+            String name,
+            List<String> aliases,
+            String help,
+            String usage,
+            List<String> argHints,
+            java.util.function.Consumer<String> handler
+    ) {
+        return new SlashCommandSpec(name, aliases, help, usage, argHints, new SlashCommandAction.OptionalOneArg(handler));
+    }
+
     public static SlashCommandSpec two(
             String name,
             List<String> aliases,

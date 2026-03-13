@@ -12,29 +12,40 @@ import io.mindspice.magenta.runtime.session.config.SessionParams;
 import io.mindspice.magenta.runtime.tools.ToolResult;
 
 import java.time.Instant;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
 
 public final class SessionManager {
+    private static final String ANON_TASK_LABEL = "anon task";
 
     private final RuntimeConfig runtimeConfig;
     private final ContextManager contextManager;
     private final BiFunction<UUID, SessionInput, String> turnSubmitter;
+    private final int sessionQueueCapacity;
+    private final ExecutorService turnExecutor = Executors.newVirtualThreadPerTaskExecutor();
     private final ConcurrentMap<UUID, Session> sessionsById = new ConcurrentHashMap<>();
     private final ConcurrentMap<UUID, String> activeTaskBySession = new ConcurrentHashMap<>();
     private final ConcurrentMap<UUID, List<String>> activeToolIdsBySession = new ConcurrentHashMap<>();
     private final ConcurrentMap<UUID, Thread> activeTurnThreadsBySession = new ConcurrentHashMap<>();
     private final ConcurrentMap<UUID, AtomicBoolean> abortRequestedBySession = new ConcurrentHashMap<>();
+    private final ConcurrentMap<UUID, SessionQueueState> queuesBySession = new ConcurrentHashMap<>();
 
     public SessionManager(
             RuntimeConfig runtimeConfig,
@@ -44,6 +55,7 @@ public final class SessionManager {
         this.runtimeConfig = runtimeConfig;
         this.contextManager = contextManager;
         this.turnSubmitter = Objects.requireNonNull(turnSubmitter, "turnSubmitter");
+        this.sessionQueueCapacity = runtimeConfig.sessionQueueCapacity();
     }
 
     public Session start(String agentId, String alias, SessionConfig sessionConfig) {
@@ -142,6 +154,10 @@ public final class SessionManager {
 
     public void close(UUID sessionId) {
         requestAbort(sessionId);
+        SessionQueueState queueState = queuesBySession.remove(sessionId);
+        if (queueState != null) {
+            queueState.clear();
+        }
         sessionsById.remove(sessionId);
         activeTaskBySession.remove(sessionId);
         activeToolIdsBySession.remove(sessionId);
@@ -197,7 +213,52 @@ public final class SessionManager {
     }
 
     public void submitFromRoute(SessionHandle handle, SessionInput input) {
-        submit(handle.sessionId(), input);
+        Objects.requireNonNull(handle, "handle");
+        Session session = null;
+        try {
+            UUID sessionId = handle.sessionId();
+            session = resume(sessionId);
+            enqueueOrThrow(sessionId, input, null);
+        } catch (SessionQueueFullException queueFullException) {
+            emitOnError(session, queueFullException);
+            throw queueFullException;
+        } catch (IllegalStateException e) {
+            String message = e.getMessage();
+            if (message != null && message.contains("Session not found")) {
+                throw e;
+            }
+            emitOnError(session, e);
+        } catch (Throwable throwable) {
+            emitOnError(session, throwable);
+        }
+    }
+
+    public String submitAndAwait(SessionHandle handle, SessionInput input, long timeoutMs) throws TimeoutException {
+        Objects.requireNonNull(handle, "handle");
+        UUID sessionId = handle.sessionId();
+        Session session = resume(sessionId);
+        if (input == null) {
+            return "";
+        }
+        CompletableFuture<String> completion = new CompletableFuture<>();
+        try {
+            enqueueOrThrow(sessionId, input, completion);
+            return completion.get(timeoutMs, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException timeoutException) {
+            completion.cancel(true);
+            throw timeoutException;
+        } catch (SessionQueueFullException queueFullException) {
+            emitOnError(session, queueFullException);
+            throw queueFullException;
+        } catch (InterruptedException interruptedException) {
+            Thread.currentThread().interrupt();
+            emitOnError(session, interruptedException);
+            throw new IllegalStateException("Interrupted while waiting for queued turn completion", interruptedException);
+        } catch (java.util.concurrent.ExecutionException executionException) {
+            Throwable cause = executionException.getCause() == null ? executionException : executionException.getCause();
+            emitOnError(session, cause);
+            throw new IllegalStateException("Queued turn failed: " + cause.getMessage(), cause);
+        }
     }
 
     public void onRoutingEvent(RoutingEvent event) {
@@ -255,9 +316,10 @@ public final class SessionManager {
             return false;
         }
         abortFlag(sessionId).set(true);
+        boolean clearedPending = clearPendingQueue(sessionId) > 0;
         Thread activeThread = activeTurnThreadsBySession.get(sessionId);
         if (activeThread == null) {
-            return false;
+            return clearedPending;
         }
         activeThread.interrupt();
         return true;
@@ -309,6 +371,69 @@ public final class SessionManager {
         return taskId;
     }
 
+    public String applyAnonTaskPrompt(UUID sessionId, String promptText) {
+        Session session = resume(sessionId);
+        RuntimeConfig.AgentConfig agent = requireAgent(session.agentId());
+        String normalizedPrompt = promptText == null ? "" : promptText.trim();
+        if (normalizedPrompt.isBlank()) {
+            throw new IllegalStateException("Task prompt text is required");
+        }
+
+        List<ContextElement> current = session.context().snapshot();
+        int firstNonSystem = firstNonSystemIndex(current);
+        List<ContextElement> replacement = new ArrayList<>();
+        for (String prompt : resolveSystemPrompts(agent.promptIds(), null)) {
+            replacement.add(new ContextElement.SystemMsg(prompt));
+        }
+        replacement.add(new ContextElement.SystemMsg(normalizedPrompt));
+        replacement.addAll(current.subList(firstNonSystem, current.size()));
+        session.context().replaceAll(replacement);
+
+        activeTaskBySession.put(sessionId, ANON_TASK_LABEL);
+        return ANON_TASK_LABEL;
+    }
+
+    public RuntimeConfig.ModelConfig switchModel(UUID sessionId, String modelRef) {
+        Session session = resume(sessionId);
+        if (turnInProgress(sessionId)) {
+            throw new IllegalStateException("Cannot switch model while a turn is in progress");
+        }
+        RuntimeConfig.ModelConfig nextModel = resolveModel(modelRef);
+        Session updated = new Session(
+                session.sessionId(),
+                session.agentId(),
+                session.alias(),
+                nextModel,
+                session.toolIds(),
+                session.context(),
+                session.sessionConfig(),
+                session.createdAt()
+        );
+        sessionsById.put(sessionId, updated);
+        return nextModel;
+    }
+
+    public List<RuntimeConfig.ModelConfig> availableModels() {
+        return runtimeConfig.modelsById().values().stream()
+                .filter(RuntimeConfig.ModelConfig::enabled)
+                .sorted(Comparator.comparing(RuntimeConfig.ModelConfig::id))
+                .toList();
+    }
+
+    public List<ContextElement.SystemMsg> clearConversationKeepSystemMessages(UUID sessionId) {
+        Session session = resume(sessionId);
+        List<ContextElement> current = session.context().snapshot();
+        int firstNonSystem = firstNonSystemIndex(current);
+        List<ContextElement> replacement = firstNonSystem <= 0
+                ? List.of()
+                : List.copyOf(current.subList(0, firstNonSystem));
+        session.context().replaceAll(replacement);
+        return replacement.stream()
+                .filter(ContextElement.SystemMsg.class::isInstance)
+                .map(ContextElement.SystemMsg.class::cast)
+                .toList();
+    }
+
     private RuntimeConfig.AgentConfig requireAgent(String agentId) {
         RuntimeConfig.AgentConfig agent = runtimeConfig.agentsById().get(agentId);
         if (agent == null || !agent.enabled()) {
@@ -323,6 +448,37 @@ public final class SessionManager {
             throw new IllegalStateException("Model missing or disabled for agent " + agentId + ": " + modelId);
         }
         return model;
+    }
+
+    private RuntimeConfig.ModelConfig resolveModel(String modelRef) {
+        String normalized = normalizeReferenceToken(modelRef);
+        if (normalized.isBlank()) {
+            throw new IllegalStateException("Model name is required");
+        }
+
+        RuntimeConfig.ModelConfig direct = runtimeConfig.modelsById().get(normalized);
+        if (direct != null) {
+            if (!direct.enabled()) {
+                throw new IllegalStateException("Model is disabled: " + normalized);
+            }
+            return direct;
+        }
+
+        String basename = basename(normalized);
+        List<RuntimeConfig.ModelConfig> matches = runtimeConfig.modelsById().entrySet().stream()
+                .filter(entry -> basename(entry.getKey()).equals(basename))
+                .map(Map.Entry::getValue)
+                .filter(RuntimeConfig.ModelConfig::enabled)
+                .sorted(Comparator.comparing(RuntimeConfig.ModelConfig::id))
+                .toList();
+        if (matches.size() == 1) {
+            return matches.getFirst();
+        }
+        if (matches.size() > 1) {
+            String candidates = matches.stream().map(RuntimeConfig.ModelConfig::id).collect(java.util.stream.Collectors.joining(", "));
+            throw new IllegalStateException("Ambiguous model reference '" + modelRef + "'. Matches: " + candidates);
+        }
+        throw new IllegalStateException("Model not found or disabled: " + modelRef);
     }
 
     private String resolveSystemPrompt(List<ContextElement> messages) {
@@ -517,28 +673,100 @@ public final class SessionManager {
         return alias.trim();
     }
 
-    private void submit(UUID sessionId, SessionInput input) {
+    private void enqueueOrThrow(UUID sessionId, SessionInput input, CompletableFuture<String> completion) {
+        if (input == null) {
+            if (completion != null) {
+                completion.complete("");
+            }
+            return;
+        }
+        SessionQueueState queueState = queuesBySession.computeIfAbsent(
+                sessionId,
+                ignored -> new SessionQueueState(sessionQueueCapacity)
+        );
+        boolean accepted = queueState.offer(new QueuedInput(input, completion));
+        if (!accepted) {
+            if (completion != null) {
+                completion.completeExceptionally(new SessionQueueFullException(sessionId, sessionQueueCapacity));
+            }
+            throw new SessionQueueFullException(sessionId, sessionQueueCapacity);
+        }
+        scheduleDrain(sessionId, queueState);
+    }
+
+    private void scheduleDrain(UUID sessionId, SessionQueueState queueState) {
+        if (!queueState.draining.compareAndSet(false, true)) {
+            return;
+        }
+        turnExecutor.submit(() -> drainQueue(sessionId, queueState));
+    }
+
+    private void drainQueue(UUID sessionId, SessionQueueState queueState) {
+        try {
+            while (true) {
+                QueuedInput queuedInput = queueState.poll();
+                if (queuedInput == null) {
+                    break;
+                }
+                try {
+                    String output = processQueuedTurn(sessionId, queuedInput.input());
+                    if (queuedInput.completion() != null) {
+                        queuedInput.completion().complete(output == null ? "" : output);
+                    }
+                } catch (Throwable throwable) {
+                    if (queuedInput.completion() != null) {
+                        queuedInput.completion().completeExceptionally(throwable);
+                    }
+                }
+            }
+        } finally {
+            queueState.draining.set(false);
+            if (!queueState.isEmpty()) {
+                scheduleDrain(sessionId, queueState);
+            }
+        }
+    }
+
+    private String processQueuedTurn(UUID sessionId, SessionInput input) {
         Session session = null;
         try {
             session = resume(sessionId);
             if (input == null) {
-                return;
+                return "";
             }
             clearAbort(sessionId);
             activeTurnThreadsBySession.put(sessionId, Thread.currentThread());
-            turnSubmitter.apply(sessionId, input);
+            return turnSubmitter.apply(sessionId, input);
         } catch (IllegalStateException e) {
             String message = e.getMessage();
             if (message != null && message.contains("Session not found")) {
                 throw e;
             }
             emitOnError(session, e);
+            throw e;
         } catch (Throwable throwable) {
             emitOnError(session, throwable);
+            throw throwable;
         } finally {
             activeTurnThreadsBySession.remove(sessionId, Thread.currentThread());
             Thread.interrupted();
         }
+    }
+
+    private int clearPendingQueue(UUID sessionId) {
+        SessionQueueState queueState = queuesBySession.get(sessionId);
+        if (queueState == null) {
+            return 0;
+        }
+        List<QueuedInput> pending = queueState.drainAll();
+        for (QueuedInput queuedInput : pending) {
+            if (queuedInput.completion() != null) {
+                queuedInput.completion().completeExceptionally(
+                        new IllegalStateException("Queued input cleared due to abort")
+                );
+            }
+        }
+        return pending.size();
     }
 
     private AtomicBoolean abortFlag(UUID sessionId) {
@@ -558,6 +786,45 @@ public final class SessionManager {
             session.sessionConfig().onError().accept(new SessionException(handle, throwable));
         } catch (Throwable ignored) {
             // Secondary callback failures must not escape external ingress path.
+        }
+    }
+
+    private record QueuedInput(SessionInput input, CompletableFuture<String> completion) {
+    }
+
+    private static final class SessionQueueState {
+        private final int capacity;
+        private final ArrayDeque<QueuedInput> queue = new ArrayDeque<>();
+        private final AtomicBoolean draining = new AtomicBoolean(false);
+
+        private SessionQueueState(int capacity) {
+            this.capacity = capacity;
+        }
+
+        private synchronized boolean offer(QueuedInput queuedInput) {
+            if (queue.size() >= capacity) {
+                return false;
+            }
+            queue.addLast(queuedInput);
+            return true;
+        }
+
+        private synchronized QueuedInput poll() {
+            return queue.pollFirst();
+        }
+
+        private synchronized boolean isEmpty() {
+            return queue.isEmpty();
+        }
+
+        private synchronized List<QueuedInput> drainAll() {
+            List<QueuedInput> drained = new ArrayList<>(queue);
+            queue.clear();
+            return drained;
+        }
+
+        private synchronized void clear() {
+            queue.clear();
         }
     }
 }

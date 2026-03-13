@@ -49,7 +49,7 @@ final class ToolOutputFormatter {
         return switch (toolName) {
             case "read_file" -> List.of(
                     "Path: " + text(data, "path", "n/a"),
-                    "Lines: " + intValue(data, "returnedLines") + "/" + intValue(data, "totalLines")
+                    "Lines: " + readLineSummary(data)
                             + (boolValue(data, "truncated") ? " (truncated)" : "")
             );
             case "write_file" -> List.of(
@@ -224,6 +224,21 @@ final class ToolOutputFormatter {
             return 0;
         }
         return node.get(key).asInt();
+    }
+
+    private String readLineSummary(JsonNode data) {
+        int total = intValue(data, "totalLines");
+        int returned = intValue(data, "returnedLines");
+        int start = intValue(data, "returnedStartLine");
+        int end = intValue(data, "returnedEndLine");
+
+        if (returned <= 0) {
+            return "none/" + total;
+        }
+        if (start > 0 && end >= start) {
+            return start + "-" + end + "/" + total;
+        }
+        return returned + "/" + total;
     }
 
     private boolean boolValue(JsonNode node, String key) {

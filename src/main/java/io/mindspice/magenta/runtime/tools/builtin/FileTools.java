@@ -113,6 +113,8 @@ public final class FileTools {
             data.put("snapshotId", snapshotId(normalized));
             data.put("totalLines", totalLines);
             data.put("returnedLines", lineNodes.size());
+            data.put("returnedStartLine", lineNodes.isEmpty() ? 0 : from);
+            data.put("returnedEndLine", lineNodes.isEmpty() ? 0 : cappedEnd);
             data.put("bytesRead", renderedText.toString().getBytes(StandardCharsets.UTF_8).length);
             data.put("truncated", truncated);
             data.set("lines", lineNodes);

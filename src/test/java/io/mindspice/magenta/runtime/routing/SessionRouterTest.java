@@ -4,12 +4,14 @@ import io.mindspice.magenta.runtime.context.ContextElement;
 import io.mindspice.magenta.runtime.session.SessionHandle;
 import io.mindspice.magenta.runtime.session.SessionInput;
 import io.mindspice.magenta.runtime.session.SessionOutput;
+import io.mindspice.magenta.runtime.session.SessionQueueFullException;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -57,6 +59,7 @@ class SessionRouterTest {
         router.emit(handle, new OutputRoutingEvent(handle, new SessionOutput.StreamedOutput("chunk")));
         router.emit(handle, new OutputRoutingEvent(handle, new SessionOutput.FinalOutput("final")));
 
+        awaitListSize(received, 1);
         assertThat(received).singleElement()
                 .extracting(event -> event.output().text())
                 .isEqualTo("final");
@@ -81,6 +84,7 @@ class SessionRouterTest {
                         "x"
                 )))
         )).doesNotThrowAnyException();
+        waitForValue(successCalls, 1);
         assertThat(successCalls).hasValue(1);
         assertThat(diagnostics).anyMatch(msg -> msg.contains("output_route_listener_failure"));
     }
@@ -120,5 +124,59 @@ class SessionRouterTest {
         assertThatThrownBy(() -> router.route(routeHandle))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Route not registered");
+    }
+
+    @Test
+    void queueFullDuringApprovedHandoffEmitsQueueFullRoutingOutcome() {
+        UUID sessionId = UUID.randomUUID();
+        SessionHandle handle = new SessionHandle(sessionId, () -> true);
+        List<RoutingEvent> reports = new ArrayList<>();
+
+        SessionRouter router = new SessionRouter(
+                (h, input) -> { throw new SessionQueueFullException(h.sessionId(), 1); },
+                reports::add,
+                ignored -> {}
+        );
+        router.addInputRoute(handle, InputRoutePolicy.defaults());
+
+        router.messageInputConsumer(handle).accept(new SessionInput.UserMsg("queued", "user", true));
+
+        assertThat(reports)
+                .filteredOn(event -> event instanceof RoutingEvent.InputResult input
+                        && input.phase() == InputRoutingEvent.Phase.FINAL)
+                .extracting(event -> ((RoutingEvent.InputResult) event).outcome())
+                .containsExactly(InputRoutingEvent.OutCome.APPROVED, InputRoutingEvent.OutCome.QUEUE_FULL);
+    }
+
+    private void awaitListSize(List<?> list, int expectedSize) {
+        long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(2);
+        while (System.currentTimeMillis() < deadline) {
+            if (list.size() >= expectedSize) {
+                return;
+            }
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        assertThat(list).hasSize(expectedSize);
+    }
+
+    private void waitForValue(AtomicInteger value, int expected) {
+        long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(2);
+        while (System.currentTimeMillis() < deadline) {
+            if (value.get() == expected) {
+                return;
+            }
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        assertThat(value).hasValue(expected);
     }
 }

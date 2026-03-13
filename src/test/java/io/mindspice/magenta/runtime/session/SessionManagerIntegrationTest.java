@@ -13,6 +13,10 @@ import io.mindspice.magenta.support.TestRuntimeConfigs;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -113,6 +117,200 @@ class SessionManagerIntegrationTest {
                         new ContextElement.SystemMsg("Configured task")
                 )
                 .contains(new ContextElement.UserMsg("hello"));
+    }
+
+    @Test
+    void applyAnonTaskPromptReplacesTaskSystemPromptAndPreservesConversation() {
+        RuntimeConfig config = TestRuntimeConfigs.basicRuntimeConfig();
+        ContextManager contextManager = new ContextManager();
+        SessionManager manager = new SessionManager(config, contextManager, (sessionId, input) -> "ok");
+
+        Session session = manager.start(
+                "agent-default",
+                "apply-anon-task",
+                new SessionConfig(
+                        SessionParams.ofStreaming(true),
+                        request -> ToolResult.notHandled(request.toolCall()),
+                        ignored -> {}
+                )
+        );
+        session.context().append(new ContextElement.UserMsg("hello"));
+
+        String applied = manager.applyAnonTaskPrompt(session.sessionId(), "Stay autonomous and continue until fully done.");
+        assertThat(applied).isEqualTo("anon task");
+        assertThat(manager.activeTaskId(session.sessionId())).isEqualTo("anon task");
+        assertThat(session.context().snapshot())
+                .startsWith(
+                        new ContextElement.SystemMsg("Base prompt"),
+                        new ContextElement.SystemMsg("Agent prompt"),
+                        new ContextElement.SystemMsg("Stay autonomous and continue until fully done.")
+                )
+                .contains(new ContextElement.UserMsg("hello"));
+    }
+
+    @Test
+    void clearConversationKeepSystemMessagesDropsChatHistoryAndRetainsTaskPrompts() {
+        RuntimeConfig config = TestRuntimeConfigs.basicRuntimeConfig();
+        ContextManager contextManager = new ContextManager();
+        SessionManager manager = new SessionManager(config, contextManager, (sessionId, input) -> "ok");
+
+        Session session = manager.start(
+                "agent-default",
+                "clear-history",
+                new SessionConfig(
+                        SessionParams.ofStreaming(true),
+                        request -> ToolResult.notHandled(request.toolCall()),
+                        ignored -> {}
+                )
+        );
+        manager.applyTask(session.sessionId(), "default-task");
+        session.context().append(new ContextElement.UserMsg("hello"));
+        session.context().append(new ContextElement.AssistantMsg("hi", java.util.List.of()));
+        session.context().append(new ContextElement.SystemMsg("late-system"));
+
+        var retained = manager.clearConversationKeepSystemMessages(session.sessionId());
+
+        assertThat(retained)
+                .containsExactly(
+                        new ContextElement.SystemMsg("Base prompt"),
+                        new ContextElement.SystemMsg("Agent prompt"),
+                        new ContextElement.SystemMsg("Configured task")
+                );
+        assertThat(session.context().snapshot())
+                .containsExactly(
+                        new ContextElement.SystemMsg("Base prompt"),
+                        new ContextElement.SystemMsg("Agent prompt"),
+                        new ContextElement.SystemMsg("Configured task")
+                );
+        assertThat(manager.activeTaskId(session.sessionId())).isEqualTo("default-task");
+    }
+
+    @Test
+    void switchModelUpdatesSessionModelConfigAndKeepsContext() {
+        RuntimeConfig base = TestRuntimeConfigs.basicRuntimeConfig();
+        RuntimeConfig.ModelConfig altModel = new RuntimeConfig.ModelConfig(
+                "model-alt",
+                "test-provider",
+                "alt-model",
+                "http://localhost:11435",
+                8192,
+                8192,
+                800,
+                0.2,
+                "rolling_window",
+                "cl100k_base",
+                true,
+                true,
+                true
+        );
+        Map<String, RuntimeConfig.ModelConfig> models = new LinkedHashMap<>(base.modelsById());
+        models.put(altModel.id(), altModel);
+        RuntimeConfig config = new RuntimeConfig(
+                base.rootDir(),
+                base.workspaceRoot(),
+                base.baseAgentId(),
+                base.compactionAgentId(),
+                base.maxTurns(),
+                base.sessionQueueCapacity(),
+                base.maxToolOutputBytes(),
+                base.maxFileReadLines(),
+                base.maxSqlRows(),
+                base.modelRequestTimeoutMs(),
+                base.toolLoopGuard(),
+                models,
+                base.agentsById(),
+                base.promptsById(),
+                base.tasksById(),
+                base.workflowsById(),
+                base.security(),
+                base.terminal(),
+                base.observability()
+        );
+        ContextManager contextManager = new ContextManager();
+        SessionManager manager = new SessionManager(config, contextManager, (sessionId, input) -> "ok");
+
+        Session session = manager.start(
+                "agent-default",
+                "switch-model",
+                new SessionConfig(
+                        SessionParams.ofStreaming(true),
+                        request -> ToolResult.notHandled(request.toolCall()),
+                        ignored -> {}
+                )
+        );
+        session.context().append(new ContextElement.UserMsg("retain-me"));
+
+        RuntimeConfig.ModelConfig switched = manager.switchModel(session.sessionId(), "model-alt");
+
+        assertThat(switched.id()).isEqualTo("model-alt");
+        assertThat(manager.resume(session.sessionId()).modelConfig().id()).isEqualTo("model-alt");
+        assertThat(manager.settingsFor(session.sessionId()).modelName()).isEqualTo("alt-model");
+        assertThat(manager.resume(session.sessionId()).context().snapshot())
+                .contains(new ContextElement.UserMsg("retain-me"));
+    }
+
+    @Test
+    void availableModelsReturnsEnabledModelsSortedById() {
+        RuntimeConfig base = TestRuntimeConfigs.basicRuntimeConfig();
+        RuntimeConfig.ModelConfig disabledModel = new RuntimeConfig.ModelConfig(
+                "model-disabled",
+                "test-provider",
+                "disabled-model",
+                "http://localhost:11436",
+                1024,
+                1024,
+                100,
+                0.0,
+                "rolling_window",
+                "cl100k_base",
+                false,
+                false,
+                false
+        );
+        RuntimeConfig.ModelConfig secondModel = new RuntimeConfig.ModelConfig(
+                "model-aaa",
+                "test-provider",
+                "second-model",
+                "http://localhost:11437",
+                2048,
+                2048,
+                200,
+                0.1,
+                "rolling_window",
+                "cl100k_base",
+                true,
+                true,
+                true
+        );
+        Map<String, RuntimeConfig.ModelConfig> models = new LinkedHashMap<>(base.modelsById());
+        models.put(disabledModel.id(), disabledModel);
+        models.put(secondModel.id(), secondModel);
+        RuntimeConfig config = new RuntimeConfig(
+                base.rootDir(),
+                base.workspaceRoot(),
+                base.baseAgentId(),
+                base.compactionAgentId(),
+                base.maxTurns(),
+                base.sessionQueueCapacity(),
+                base.maxToolOutputBytes(),
+                base.maxFileReadLines(),
+                base.maxSqlRows(),
+                base.modelRequestTimeoutMs(),
+                base.toolLoopGuard(),
+                models,
+                base.agentsById(),
+                base.promptsById(),
+                base.tasksById(),
+                base.workflowsById(),
+                base.security(),
+                base.terminal(),
+                base.observability()
+        );
+        SessionManager manager = new SessionManager(config, new ContextManager(), (sessionId, input) -> "ok");
+
+        assertThat(manager.availableModels())
+                .extracting(RuntimeConfig.ModelConfig::id)
+                .containsExactly("model-aaa", "model-default");
     }
 
     @Test
@@ -225,6 +423,7 @@ class SessionManagerIntegrationTest {
                 handle,
                 new SessionInput.UserMsg("hello", "user", true)
         )).doesNotThrowAnyException();
+        waitForValue(onErrorCalls, 1);
         assertThat(onErrorCalls).hasValue(1);
         assertThat(errorHandle.get().sessionId()).isEqualTo(session.sessionId());
     }
@@ -269,5 +468,86 @@ class SessionManagerIntegrationTest {
         ));
 
         assertThat(callbackCalls).hasValue(1);
+    }
+
+    @Test
+    void queueFullRejectsNewestInputAndEmitsOnError() throws Exception {
+        RuntimeConfig config = withQueueCapacity(TestRuntimeConfigs.basicRuntimeConfig(), 1);
+        ContextManager contextManager = new ContextManager();
+        AtomicInteger onErrorCalls = new AtomicInteger();
+        CountDownLatch firstTurnStarted = new CountDownLatch(1);
+        CountDownLatch releaseFirstTurn = new CountDownLatch(1);
+
+        SessionManager manager = new SessionManager(config, contextManager, (sessionId, input) -> {
+            if ("first".equals(input.text())) {
+                firstTurnStarted.countDown();
+                try {
+                    releaseFirstTurn.await(2, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("Interrupted while waiting in test turn handler", e);
+                }
+            }
+            return "ok";
+        });
+
+        SessionConfig cfg = new SessionConfig(
+                SessionParams.ofStreaming(true),
+                request -> ToolResult.notHandled(request.toolCall()),
+                error -> onErrorCalls.incrementAndGet()
+        );
+        Session session = manager.start("agent-default", "queue-capacity", cfg);
+        SessionHandle handle = manager.handleFor(session.sessionId());
+
+        manager.submitFromRoute(handle, new SessionInput.UserMsg("first", "user", true));
+        assertThat(firstTurnStarted.await(2, TimeUnit.SECONDS)).isTrue();
+        manager.submitFromRoute(handle, new SessionInput.UserMsg("second", "user", true));
+
+        assertThatThrownBy(() -> manager.submitFromRoute(handle, new SessionInput.UserMsg("third", "user", true)))
+                .isInstanceOf(SessionQueueFullException.class)
+                .hasMessageContaining("queue_full");
+
+        waitForValue(onErrorCalls, 1);
+        releaseFirstTurn.countDown();
+    }
+
+    private void waitForValue(AtomicInteger value, int expected) {
+        long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(2);
+        while (System.currentTimeMillis() < deadline) {
+            if (value.get() == expected) {
+                return;
+            }
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        assertThat(value).hasValue(expected);
+    }
+
+    private RuntimeConfig withQueueCapacity(RuntimeConfig base, int capacity) {
+        return new RuntimeConfig(
+                base.rootDir(),
+                base.workspaceRoot(),
+                base.baseAgentId(),
+                base.compactionAgentId(),
+                base.maxTurns(),
+                capacity,
+                base.maxToolOutputBytes(),
+                base.maxFileReadLines(),
+                base.maxSqlRows(),
+                base.modelRequestTimeoutMs(),
+                base.toolLoopGuard(),
+                base.modelsById(),
+                base.agentsById(),
+                base.promptsById(),
+                base.tasksById(),
+                base.workflowsById(),
+                base.security(),
+                base.terminal(),
+                base.observability()
+        );
     }
 }

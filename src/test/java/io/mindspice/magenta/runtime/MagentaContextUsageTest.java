@@ -22,6 +22,7 @@ import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
@@ -70,6 +71,7 @@ class MagentaContextUsageTest {
 
             Magenta.SessionContextUsage before = magenta.contextUsage(handle);
             magenta.messageInputConsumer(handle).accept(SessionInput.userMessage("hello"));
+            waitUntil(() -> magenta.contextUsage(handle).messageCount() >= before.messageCount() + 2, 2);
             Magenta.SessionContextUsage after = magenta.contextUsage(handle);
 
             assertThat(after.messageCount()).isGreaterThanOrEqualTo(before.messageCount() + 2);
@@ -106,6 +108,7 @@ class MagentaContextUsageTest {
             magenta.addEventListener(handle, SessionEvent.Action.ContextCompacted.class, eventRef::set);
 
             magenta.messageInputConsumer(handle).accept(SessionInput.userMessage("long-context ".repeat(200)));
+            waitUntil(() -> eventRef.get() != null, 2);
 
             SessionEvent.Action.ContextCompacted event = eventRef.get();
             assertThat(event).isNotNull();
@@ -161,6 +164,8 @@ class MagentaContextUsageTest {
             );
 
             magenta.messageInputConsumer(handle).accept(SessionInput.userMessage("Continue"));
+            waitUntil(() -> chatCalls.get() == 2, 2);
+            waitUntil(() -> finalOutputs.size() >= 2, 2);
 
             assertThat(chatCalls.get()).isEqualTo(2);
             assertThat(finalOutputs).hasSizeGreaterThanOrEqualTo(2);
@@ -248,6 +253,7 @@ class MagentaContextUsageTest {
                 "agent-default",
                 "agent-compaction",
                 8,
+                64,
                 32_768,
                 200,
                 500,
@@ -261,5 +267,21 @@ class MagentaContextUsageTest {
                 RuntimeConfig.SecurityPolicyConfig.defaults(),
                 RuntimeConfig.TerminalConfig.defaults()
         );
+    }
+
+    private void waitUntil(java.util.function.BooleanSupplier condition, int timeoutSeconds) {
+        long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(timeoutSeconds);
+        while (System.currentTimeMillis() < deadline) {
+            if (condition.getAsBoolean()) {
+                return;
+            }
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        assertThat(condition.getAsBoolean()).isTrue();
     }
 }

@@ -4,6 +4,7 @@ promptIds:
 tasks:
   - "default-task"
   - "cannabis-task"
+  - "cannabis-ask"
 workflows:
   - "default-workflow"
 toolIds:

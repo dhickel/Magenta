@@ -4,9 +4,15 @@ import java.util.Objects;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
-public sealed interface SlashCommandAction permits SlashCommandAction.ZeroArg, SlashCommandAction.OneArg, SlashCommandAction.TwoArg, SlashCommandAction.ThreeArg {
+public sealed interface SlashCommandAction permits SlashCommandAction.ZeroArg,
+        SlashCommandAction.OneArg,
+        SlashCommandAction.OptionalOneArg,
+        SlashCommandAction.TwoArg,
+        SlashCommandAction.ThreeArg {
 
-    int arity();
+    int minArity();
+
+    int maxArity();
 
     record ZeroArg(Runnable handler) implements SlashCommandAction {
         public ZeroArg {
@@ -14,7 +20,12 @@ public sealed interface SlashCommandAction permits SlashCommandAction.ZeroArg, S
         }
 
         @Override
-        public int arity() {
+        public int minArity() {
+            return 0;
+        }
+
+        @Override
+        public int maxArity() {
             return 0;
         }
     }
@@ -25,7 +36,28 @@ public sealed interface SlashCommandAction permits SlashCommandAction.ZeroArg, S
         }
 
         @Override
-        public int arity() {
+        public int minArity() {
+            return 1;
+        }
+
+        @Override
+        public int maxArity() {
+            return 1;
+        }
+    }
+
+    record OptionalOneArg(Consumer<String> handler) implements SlashCommandAction {
+        public OptionalOneArg {
+            Objects.requireNonNull(handler, "handler");
+        }
+
+        @Override
+        public int minArity() {
+            return 0;
+        }
+
+        @Override
+        public int maxArity() {
             return 1;
         }
     }
@@ -36,7 +68,12 @@ public sealed interface SlashCommandAction permits SlashCommandAction.ZeroArg, S
         }
 
         @Override
-        public int arity() {
+        public int minArity() {
+            return 2;
+        }
+
+        @Override
+        public int maxArity() {
             return 2;
         }
     }
@@ -47,7 +84,12 @@ public sealed interface SlashCommandAction permits SlashCommandAction.ZeroArg, S
         }
 
         @Override
-        public int arity() {
+        public int minArity() {
+            return 3;
+        }
+
+        @Override
+        public int maxArity() {
             return 3;
         }
     }

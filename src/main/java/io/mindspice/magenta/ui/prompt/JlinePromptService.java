@@ -97,7 +97,7 @@ public final class JlinePromptService implements PromptService {
 
     private UiPromptResponse promptText(UiPromptRequest.TextPrompt request) {
         try {
-            String raw = safeRead("input" + (request.defaultValue().isBlank() ? "" : " [default set]") + " ");
+            String raw = safeRead(textPromptLabel(request) + (request.defaultValue().isBlank() ? "" : " [default set]") + ": ");
             if (raw == null) {
                 return new UiPromptResponse.Cancelled("interrupted");
             }
@@ -111,6 +111,14 @@ public final class JlinePromptService implements PromptService {
         } catch (Exception ignored) {
             return new UiPromptResponse.Cancelled("prompt_failed");
         }
+    }
+
+    private String textPromptLabel(UiPromptRequest.TextPrompt request) {
+        String title = request.title();
+        if (title == null || title.isBlank() || "input".equalsIgnoreCase(title.trim())) {
+            return "input";
+        }
+        return title.trim();
     }
 
     public String truncateForToolPrompt(String text) {

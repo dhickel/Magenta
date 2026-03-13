@@ -27,6 +27,7 @@ final class ToolTestSupport {
                 "agent-default",
                 "agent-compaction",
                 8,
+                64,
                 maxToolOutputBytes,
                 maxFileReadLines,
                 maxSqlRows,

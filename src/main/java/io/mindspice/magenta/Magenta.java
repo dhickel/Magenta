@@ -32,6 +32,7 @@ import io.mindspice.magenta.runtime.session.Session;
 import io.mindspice.magenta.runtime.session.SessionHandle;
 import io.mindspice.magenta.runtime.session.SessionInput;
 import io.mindspice.magenta.runtime.session.SessionManager;
+import io.mindspice.magenta.runtime.session.SessionQueueFullException;
 import io.mindspice.magenta.runtime.session.SessionOutput;
 import io.mindspice.magenta.runtime.session.SessionSettingsView;
 import io.mindspice.magenta.runtime.session.SessionTokenEstimator;
@@ -48,7 +49,6 @@ import java.util.Set;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -214,9 +214,82 @@ public final class Magenta {
         return sessionManager.applyTask(handle.sessionId(), taskName);
     }
 
+    public String applyAnonTaskPrompt(SessionHandle handle, String promptText) {
+        Objects.requireNonNull(handle, "handle");
+        if (!handle.isActive()) {
+            throw new IllegalStateException("Session handle is inactive: " + handle.sessionId());
+        }
+        return sessionManager.applyAnonTaskPrompt(handle.sessionId(), promptText);
+    }
+
     public String activeTask(SessionHandle handle) {
         Objects.requireNonNull(handle, "handle");
         return sessionManager.activeTaskId(handle.sessionId());
+    }
+
+    public RuntimeConfig.ModelConfig switchModel(SessionHandle handle, String modelRef) {
+        Objects.requireNonNull(handle, "handle");
+        if (!handle.isActive()) {
+            throw new IllegalStateException("Session handle is inactive: " + handle.sessionId());
+        }
+        return sessionManager.switchModel(handle.sessionId(), modelRef);
+    }
+
+    public List<RuntimeConfig.ModelConfig> availableModels() {
+        return sessionManager.availableModels();
+    }
+
+    public List<SystemMessageOccupancy> clearConversation(SessionHandle handle) {
+        Objects.requireNonNull(handle, "handle");
+        if (!handle.isActive()) {
+            throw new IllegalStateException("Session handle is inactive: " + handle.sessionId());
+        }
+        List<ContextElement.SystemMsg> retained = sessionManager.clearConversationKeepSystemMessages(handle.sessionId());
+        List<SystemMessageOccupancy> occupied = new ArrayList<>(retained.size());
+        for (int i = 0; i < retained.size(); i++) {
+            String content = retained.get(i).content();
+            int chars = content == null ? 0 : content.length();
+            occupied.add(new SystemMessageOccupancy(i + 1, chars, content == null ? "" : content));
+        }
+        return List.copyOf(occupied);
+    }
+
+    public ForcedCompactionResult forceCompact(SessionHandle handle) {
+        Objects.requireNonNull(handle, "handle");
+        if (!handle.isActive()) {
+            throw new IllegalStateException("Session handle is inactive: " + handle.sessionId());
+        }
+        Session session = sessionManager.resume(handle.sessionId());
+        List<ContextElement> snapshot = session.context().snapshot();
+        int forcedThreshold = forcedCompactionThreshold(session.modelConfig(), snapshot);
+        RuntimeConfig.ModelConfig forcedThresholdModel = withCompactThreshold(session.modelConfig(), forcedThreshold);
+        ContextManager.CompactionOutcome thresholdOutcome = contextManager.compactIfNeeded(
+                        session.sessionId(),
+                        session.context(),
+                        forcedThresholdModel,
+                        messages -> modelRunner.summarize(
+                                compactionModelConfig(),
+                                compactionSystemPrompt(),
+                                messages
+                        ),
+                        () -> buildProtectedCompactionStateBlock(session.sessionId())
+                )
+                .map(compaction -> {
+                    emitCompactionEvent(handle, session.agentId(), compaction);
+                    return compaction;
+                })
+                .orElse(null);
+        ContextManager.CompactionOutcome hardGuardOutcome = contextManager.enforceMaxContext(
+                        session.sessionId(),
+                        session.context(),
+                        session.modelConfig()
+                )
+                .map(compaction -> {
+                    emitCompactionEvent(handle, session.agentId(), compaction);
+                    return compaction;
+                })
+                .orElse(null);
+        return new ForcedCompactionResult(thresholdOutcome, hardGuardOutcome);
     }
 
     public RouteHandle addInputRoute(SessionHandle handle, InputRoutePolicy policy) {
@@ -411,6 +484,33 @@ public final class Magenta {
             sb.append(prompt);
         }
         return sb.toString();
+    }
+
+    private RuntimeConfig.ModelConfig withCompactThreshold(RuntimeConfig.ModelConfig source, int compactThreshold) {
+        return new RuntimeConfig.ModelConfig(
+                source.id(),
+                source.provider(),
+                source.model(),
+                source.endpoint(),
+                source.maxTokens(),
+                source.maxContext(),
+                compactThreshold,
+                source.temperature(),
+                source.compactionStrategy(),
+                source.tokenizerEncoding(),
+                source.supportsToolCalling(),
+                source.supportsStreaming(),
+                source.enabled()
+        );
+    }
+
+    private int forcedCompactionThreshold(RuntimeConfig.ModelConfig modelConfig, List<ContextElement> snapshot) {
+        int configuredThreshold = Math.max(1, modelConfig.compactThreshold());
+        int estimatedTokens = Math.max(1, SessionTokenEstimator.estimate(snapshot, modelConfig.tokenizerEncodingOrDefault()));
+        if (estimatedTokens <= configuredThreshold) {
+            return Math.max(1, estimatedTokens - 1);
+        }
+        return configuredThreshold;
     }
 
     private String buildProtectedCompactionStateBlock(UUID sessionId) {
@@ -1119,15 +1219,20 @@ public final class Magenta {
             securityManager.copyPolicy(parentSessionId, delegatedSessionId);
 
             String output;
-            try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
-                var task = executor.submit(() -> executeTurn(delegatedSessionId, SessionInput.userMessage(prompt)));
-                output = task.get(timeoutMs, TimeUnit.MILLISECONDS);
+            try {
+                output = submitFromRouteAndAwait(delegated, SessionInput.userMessage(prompt), timeoutMs);
             } catch (TimeoutException e) {
                 ObjectNode data = MAPPER.createObjectNode();
                 data.put("targetAgentId", targetAgentId);
                 data.put("delegatedSessionId", delegatedSessionId.toString());
                 data.put("timeoutMs", timeoutMs);
                 return ToolPayloads.failure(request, "delegate_timeout", "Delegated session timed out", data, true);
+            } catch (SessionQueueFullException e) {
+                ObjectNode data = MAPPER.createObjectNode();
+                data.put("targetAgentId", targetAgentId);
+                data.put("delegatedSessionId", delegatedSessionId.toString());
+                data.put("capacity", e.capacity());
+                return ToolPayloads.failure(request, "delegate_queue_full", e.getMessage(), data, true);
             }
 
             long durationMs = (System.nanoTime() - startedAt) / 1_000_000L;
@@ -1231,6 +1336,11 @@ public final class Magenta {
     private void submitFromRoute(SessionHandle handle, SessionInput input) {
         emitEvent(new SessionEvent.MessageIn(handle, agentIdFor(handle.sessionId()), input));
         sessionManager.submitFromRoute(handle, input);
+    }
+
+    private String submitFromRouteAndAwait(SessionHandle handle, SessionInput input, long timeoutMs) throws TimeoutException {
+        emitEvent(new SessionEvent.MessageIn(handle, agentIdFor(handle.sessionId()), input));
+        return sessionManager.submitAndAwait(handle, input, timeoutMs);
     }
 
     private void emitOutputEvents(SessionHandle handle, String agentId, SessionOutput output) {
@@ -1386,6 +1496,27 @@ public final class Magenta {
             modelId = modelId == null ? "" : modelId;
             modelName = modelName == null ? "" : modelName;
             tokenizerEncoding = tokenizerEncoding == null ? "" : tokenizerEncoding;
+        }
+    }
+
+    public record SystemMessageOccupancy(
+            int position,
+            int chars,
+            String content
+    ) {
+        public SystemMessageOccupancy {
+            position = Math.max(1, position);
+            chars = Math.max(0, chars);
+            content = content == null ? "" : content;
+        }
+    }
+
+    public record ForcedCompactionResult(
+            ContextManager.CompactionOutcome thresholdCompaction,
+            ContextManager.CompactionOutcome hardGuardCompaction
+    ) {
+        public boolean changed() {
+            return thresholdCompaction != null || hardGuardCompaction != null;
         }
     }
 

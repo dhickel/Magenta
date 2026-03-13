@@ -1,0 +1,5 @@
+promptIds:
+  - "base/cannabis-ask"
+toolIds:
+  - "sqlite_query"
+enabled: true

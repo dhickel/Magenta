@@ -19,12 +19,14 @@ class SlashCommandDispatcherTest {
     void dispatchesHandlersByArity() throws Exception {
         AtomicInteger zeroCalls = new AtomicInteger();
         AtomicInteger oneCalls = new AtomicInteger();
+        AtomicInteger optionalCalls = new AtomicInteger();
         AtomicInteger twoCalls = new AtomicInteger();
         AtomicInteger threeCalls = new AtomicInteger();
 
         SlashCommandRegistry registry = new SlashCommandRegistry(List.of(
                 SlashCommandSpec.zero("zero", List.of(), "", "/zero", zeroCalls::incrementAndGet),
                 SlashCommandSpec.one("one", List.of(), "", "/one <a>", List.of("a"), a -> oneCalls.incrementAndGet()),
+                SlashCommandSpec.optionalOne("opt", List.of(), "", "/opt [a]", List.of("a"), a -> optionalCalls.incrementAndGet()),
                 SlashCommandSpec.two("two", List.of(), "", "/two <a> <b>", List.of("a", "b"), (a, b) -> twoCalls.incrementAndGet()),
                 SlashCommandSpec.three("three", List.of(), "", "/three <a> <b> <c>", List.of("a", "b", "c"), (a, b, c) -> threeCalls.incrementAndGet())
         ));
@@ -44,12 +46,15 @@ class SlashCommandDispatcherTest {
 
             dispatcher.dispatchIfCommand("/zero");
             dispatcher.dispatchIfCommand("/one x");
+            dispatcher.dispatchIfCommand("/opt");
+            dispatcher.dispatchIfCommand("/opt x");
             dispatcher.dispatchIfCommand("/two x y");
             dispatcher.dispatchIfCommand("/three x y z");
             dispatcher.dispatchIfCommand("/three only-two args");
 
             assertThat(zeroCalls.get()).isEqualTo(1);
             assertThat(oneCalls.get()).isEqualTo(1);
+            assertThat(optionalCalls.get()).isEqualTo(2);
             assertThat(twoCalls.get()).isEqualTo(1);
             assertThat(threeCalls.get()).isEqualTo(1);
         }

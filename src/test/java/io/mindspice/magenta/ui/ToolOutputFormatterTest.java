@@ -14,14 +14,26 @@ class ToolOutputFormatterTest {
         ToolOutputFormatter.FormattedToolCall call = formatter.formatCall("read_file", "{\"path\":\"src/Main.java\"}");
         ToolOutputFormatter.FormattedToolResult result = formatter.formatResult(
                 "read_file",
-                "{\"status\":\"ok\",\"code\":\"ok\",\"message\":\"done\",\"data\":{\"bytesRead\":128,\"returnedLines\":5,\"totalLines\":99,\"path\":\"src/Main.java\"}}"
+                "{\"status\":\"ok\",\"code\":\"ok\",\"message\":\"done\",\"data\":{\"bytesRead\":128,\"returnedLines\":5,\"returnedStartLine\":11,\"returnedEndLine\":15,\"totalLines\":99,\"path\":\"src/Main.java\"}}"
         );
 
         assertThat(call.title()).isEqualTo("[Tool] Read File");
         assertThat(call.lines()).containsExactly("Path: src/Main.java");
         assertThat(result.title()).isEqualTo("[Tool] Read File OK");
-        assertThat(result.lines()).containsExactly("Path: src/Main.java", "Lines: 5/99");
+        assertThat(result.lines()).containsExactly("Path: src/Main.java", "Lines: 11-15/99");
         assertThat(result.style()).isEqualTo(UiStyle.INFO);
+    }
+
+    @Test
+    void readFileResultFallsBackWhenRangeIsMissing() {
+        ToolOutputFormatter formatter = new ToolOutputFormatter();
+
+        ToolOutputFormatter.FormattedToolResult result = formatter.formatResult(
+                "read_file",
+                "{\"status\":\"ok\",\"code\":\"ok\",\"message\":\"done\",\"data\":{\"bytesRead\":128,\"returnedLines\":5,\"totalLines\":99,\"path\":\"src/Main.java\"}}"
+        );
+
+        assertThat(result.lines()).containsExactly("Path: src/Main.java", "Lines: 5/99");
     }
 
     @Test

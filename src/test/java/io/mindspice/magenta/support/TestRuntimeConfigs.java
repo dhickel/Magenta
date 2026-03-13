@@ -67,6 +67,7 @@ public final class TestRuntimeConfigs {
                 "agent-default",
                 "agent-compaction",
                 8,
+                64,
                 32_768,
                 200,
                 500,

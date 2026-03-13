@@ -5,6 +5,7 @@ import org.jline.terminal.Terminal;
 import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStringBuilder;
 import org.jline.utils.AttributedStyle;
+import org.jline.utils.InfoCmp;
 import org.jline.utils.Status;
 
 import java.io.PrintWriter;
@@ -116,6 +117,13 @@ public final class UiRenderer {
         printStyled(text, UiStyle.ASSISTANT, false);
     }
 
+    public synchronized void clearScreen() {
+        suspendStatusForOutput();
+        terminal.puts(InfoCmp.Capability.clear_screen);
+        writer.flush();
+        restoreStatusAfterOutput();
+    }
+
     public synchronized void printStreamToken(String token) {
         if (!streamWriteInProgress) {
             suspendStatusForOutput();
@@ -137,8 +145,17 @@ public final class UiRenderer {
 
     public synchronized void close() {
         if (bottomStatus != null) {
+            try {
+                currentStatusLines = List.of();
+                bottomStatus.update(currentStatusLines);
+                bottomStatus.hide();
+            } catch (Throwable ignored) {
+                // best effort footer cleanup
+            }
             bottomStatus.close();
         }
+        writer.print("\r\033[K");
+        writer.flush();
     }
 
     private void printStyled(String text, UiStyle style, boolean padTitle) {
@@ -290,4 +307,5 @@ public final class UiRenderer {
             bottomStatus.update(currentStatusLines);
         }
     }
+
 }

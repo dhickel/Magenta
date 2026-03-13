@@ -33,6 +33,7 @@ public record RuntimeConfig(
         String baseAgentId,
         String compactionAgentId,
         int maxTurns,
+        int sessionQueueCapacity,
         int maxToolOutputBytes,
         int maxFileReadLines,
         int maxSqlRows,
@@ -56,6 +57,7 @@ public record RuntimeConfig(
     private static final int DEFAULT_MAX_TOOL_OUTPUT_BYTES = 32_768;
     private static final int DEFAULT_MAX_FILE_READ_LINES = 200;
     private static final int DEFAULT_MAX_SQL_ROWS = 500;
+    private static final int DEFAULT_SESSION_QUEUE_CAPACITY = 64;
     private static final int DEFAULT_MODEL_REQUEST_TIMEOUT_MS = 600_000;
     private static final int DEFAULT_TOOL_LOOP_REPEAT_THRESHOLD = 5;
     private static final int DEFAULT_TOOL_LOOP_WINDOW_SIZE = 8;
@@ -65,6 +67,9 @@ public record RuntimeConfig(
         workspaceRoot = workspaceRoot == null ? Path.of("").toAbsolutePath().normalize() : workspaceRoot.toAbsolutePath().normalize();
         if (maxToolOutputBytes <= 0) {
             throw new IllegalStateException("instance.maxToolOutputBytes must be > 0");
+        }
+        if (sessionQueueCapacity <= 0) {
+            throw new IllegalStateException("instance.sessionQueueCapacity must be > 0");
         }
         if (maxFileReadLines <= 0) {
             throw new IllegalStateException("instance.maxFileReadLines must be > 0");
@@ -76,7 +81,14 @@ public record RuntimeConfig(
             throw new IllegalStateException("instance.modelRequestTimeoutMs must be > 0");
         }
         toolLoopGuard = toolLoopGuard == null ? ToolLoopGuardConfig.defaults() : toolLoopGuard;
-        validateInstanceLimits(maxToolOutputBytes, maxFileReadLines, maxSqlRows, modelRequestTimeoutMs, toolLoopGuard);
+        validateInstanceLimits(
+                sessionQueueCapacity,
+                maxToolOutputBytes,
+                maxFileReadLines,
+                maxSqlRows,
+                modelRequestTimeoutMs,
+                toolLoopGuard
+        );
         modelsById = Map.copyOf(modelsById);
         agentsById = Map.copyOf(agentsById);
         promptsById = Map.copyOf(promptsById);
@@ -93,6 +105,7 @@ public record RuntimeConfig(
             String baseAgentId,
             String compactionAgentId,
             int maxTurns,
+            int sessionQueueCapacity,
             int maxToolOutputBytes,
             int maxFileReadLines,
             int maxSqlRows,
@@ -108,6 +121,7 @@ public record RuntimeConfig(
                 baseAgentId,
                 compactionAgentId,
                 maxTurns,
+                sessionQueueCapacity,
                 maxToolOutputBytes,
                 maxFileReadLines,
                 maxSqlRows,
@@ -130,6 +144,7 @@ public record RuntimeConfig(
             String baseAgentId,
             String compactionAgentId,
             int maxTurns,
+            int sessionQueueCapacity,
             int maxToolOutputBytes,
             int maxFileReadLines,
             int maxSqlRows,
@@ -147,6 +162,7 @@ public record RuntimeConfig(
                 baseAgentId,
                 compactionAgentId,
                 maxTurns,
+                sessionQueueCapacity,
                 maxToolOutputBytes,
                 maxFileReadLines,
                 maxSqlRows,
@@ -224,6 +240,9 @@ public record RuntimeConfig(
         int maxTurns = Optional.ofNullable(root.instance)
                 .map(InstanceConfig::maxTurns)
                 .orElse(8);
+        int sessionQueueCapacity = Optional.ofNullable(root.instance)
+                .map(InstanceConfig::sessionQueueCapacity)
+                .orElse(DEFAULT_SESSION_QUEUE_CAPACITY);
         Path workspaceRoot = resolveWorkspaceRoot(configRoot, Optional.ofNullable(root.instance)
                 .map(InstanceConfig::workspaceRoot)
                 .orElse("."));
@@ -245,7 +264,14 @@ public record RuntimeConfig(
                 .orElse(ToolLoopGuardConfig.defaults());
 
         validate(models, agents, prompts, tasks, workflows, baseAgentId, compactionAgentId);
-        validateInstanceLimits(maxToolOutputBytes, maxFileReadLines, maxSqlRows, modelRequestTimeoutMs, toolLoopGuard);
+        validateInstanceLimits(
+                sessionQueueCapacity,
+                maxToolOutputBytes,
+                maxFileReadLines,
+                maxSqlRows,
+                modelRequestTimeoutMs,
+                toolLoopGuard
+        );
 
         SecurityPolicyConfig securityConfig = toSecurityPolicyConfig(root.security);
         TerminalConfig terminalConfig = toTerminalConfig(root.terminal);
@@ -259,6 +285,7 @@ public record RuntimeConfig(
                 baseAgentId,
                 compactionAgentId,
                 maxTurns,
+                sessionQueueCapacity,
                 maxToolOutputBytes,
                 maxFileReadLines,
                 maxSqlRows,
@@ -296,6 +323,7 @@ public record RuntimeConfig(
                 baseAgentId,
                 compactionAgentId,
                 maxTurns,
+                sessionQueueCapacity,
                 maxToolOutputBytes,
                 maxFileReadLines,
                 maxSqlRows,
@@ -322,6 +350,7 @@ public record RuntimeConfig(
                 baseAgentId,
                 compactionAgentId,
                 maxTurns,
+                sessionQueueCapacity,
                 maxToolOutputBytes,
                 maxFileReadLines,
                 maxSqlRows,
@@ -395,12 +424,16 @@ public record RuntimeConfig(
     }
 
     private static void validateInstanceLimits(
+            int sessionQueueCapacity,
             int maxToolOutputBytes,
             int maxFileReadLines,
             int maxSqlRows,
             int modelRequestTimeoutMs,
             ToolLoopGuardConfig toolLoopGuard
     ) {
+        if (sessionQueueCapacity <= 0) {
+            throw new IllegalStateException("instance.sessionQueueCapacity must be > 0");
+        }
         if (maxToolOutputBytes <= 0) {
             throw new IllegalStateException("instance.maxToolOutputBytes must be > 0");
         }
@@ -1672,6 +1705,8 @@ public record RuntimeConfig(
         private String compactionAgentId;
         @JsonProperty("maxTurns")
         private Integer maxTurns;
+        @JsonProperty("sessionQueueCapacity")
+        private Integer sessionQueueCapacity;
         @JsonProperty("maxToolOutputBytes")
         private Integer maxToolOutputBytes;
         @JsonProperty("maxFileReadLines")
@@ -1692,6 +1727,8 @@ public record RuntimeConfig(
         private String compactionAgentId() { return compactionAgentId; }
 
         private Integer maxTurns() { return maxTurns; }
+
+        private Integer sessionQueueCapacity() { return sessionQueueCapacity; }
 
         private String workspaceRoot() { return workspaceRoot; }
 

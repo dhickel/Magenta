@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
@@ -81,7 +82,7 @@ public final class TerminalUiRuntime {
                 List.of(
                         "sessionId=" + session.handle().sessionId(),
                         "workspaceRoot=" + runtimeConfig.workspaceRoot(),
-                        "Commands: /help, /session, /task <name>, /approve-demo, /tool-approval <on|off>, /yolo <on|off>, /event <text>, /exit"
+                        "Commands: /help, /session, /model, /clear, /task [name], /new, /compact, /approve-demo, /tool-approval <on|off>, /yolo <on|off>, /event <text>, /exit"
                 ),
                 UiStyle.SYSTEM
         ));
@@ -107,6 +108,7 @@ public final class TerminalUiRuntime {
             }
 
             session.messageIn().accept(SessionInput.userMessage(line));
+            waitForTurnCompletion();
             renderStatus();
         }
 
@@ -199,14 +201,169 @@ public final class TerminalUiRuntime {
                             ));
                         }
                 ),
-                SlashCommandSpec.one(
+                SlashCommandSpec.zero(
+                        "model",
+                        List.of(),
+                        "Switch active session model using a numbered selector",
+                        "/model",
+                        () -> {
+                            if (magenta.turnInProgress(session.handle())) {
+                                renderer.printWarn("model switch blocked: turn in progress; wait for completion or abort first");
+                                return;
+                            }
+
+                            List<RuntimeConfig.ModelConfig> models = magenta.availableModels();
+                            if (models.isEmpty()) {
+                                renderer.printWarn("no enabled models available");
+                                return;
+                            }
+
+                            String currentModelId = magenta.settingsFor(session.handle()).modelId();
+                            int defaultIndex = 0;
+                            for (int i = 0; i < models.size(); i++) {
+                                if (models.get(i).id().equals(currentModelId)) {
+                                    defaultIndex = i;
+                                    break;
+                                }
+                            }
+
+                            List<String> options = models.stream()
+                                    .map(model -> {
+                                        String current = model.id().equals(currentModelId) ? " [current]" : "";
+                                        return model.id()
+                                               + " -> " + model.model()
+                                               + " (" + model.provider() + ")"
+                                               + current;
+                                    })
+                                    .toList();
+
+                            UiPromptResponse response = promptService.prompt(new UiPromptRequest.SelectPrompt(
+                                    "Switch Model",
+                                    "Select model number for this session",
+                                    options,
+                                    defaultIndex
+                            ));
+                            if (!(response instanceof UiPromptResponse.SelectResponse selected)) {
+                                renderer.printWarn("model switch cancelled");
+                                return;
+                            }
+
+                            RuntimeConfig.ModelConfig chosen = models.get(selected.selectedIndex());
+                            if (chosen.id().equals(currentModelId)) {
+                                renderer.printInfo("active model unchanged => " + chosen.model() + " (" + chosen.id() + ")");
+                                return;
+                            }
+
+                            try {
+                                RuntimeConfig.ModelConfig next = magenta.switchModel(session.handle(), chosen.id());
+                                renderer.printInfo("active model => " + next.model() + " (" + next.id() + ")");
+                            } catch (IllegalStateException e) {
+                                renderer.printWarn("model switch blocked: " + (e.getMessage() == null ? "unknown reason" : e.getMessage()));
+                            }
+                        }
+                ),
+                SlashCommandSpec.zero(
+                        "clear",
+                        List.of(),
+                        "Clear visible terminal output only",
+                        "/clear",
+                        renderer::clearScreen
+                ),
+                SlashCommandSpec.zero(
+                        "new",
+                        List.of(),
+                        "Clear chat history and keep current system/task prompts",
+                        "/new",
+                        () -> {
+                            List<Magenta.SystemMessageOccupancy> occupied = magenta.clearConversation(session.handle());
+                            renderer.printInfo("conversation cleared; retained system messages => " + occupied.size());
+                            List<List<String>> rows = occupied.stream()
+                                    .map(item -> List.of(
+                                            String.valueOf(item.position()),
+                                            String.valueOf(item.chars()),
+                                            preview(item.content(), 72)
+                                    ))
+                                    .toList();
+                            renderer.renderTable(new UiRenderTable(
+                                    List.of("#", "Chars", "Preview"),
+                                    rows
+                            ));
+                        }
+                ),
+                SlashCommandSpec.zero(
+                        "compact",
+                        List.of(),
+                        "Force compaction now (ignores compact threshold)",
+                        "/compact",
+                        () -> {
+                            Magenta.SessionContextUsage before = session.contextUsageSupplier().get();
+                            Magenta.ForcedCompactionResult result = magenta.forceCompact(session.handle());
+                            Magenta.SessionContextUsage after = session.contextUsageSupplier().get();
+                            renderer.renderTable(new UiRenderTable(
+                                    List.of("Field", "Value"),
+                                    List.of(
+                                            List.of("changed", String.valueOf(result.changed())),
+                                            List.of("tokens", before.estimatedContextTokens() + " -> " + after.estimatedContextTokens()),
+                                            List.of("messages", before.messageCount() + " -> " + after.messageCount())
+                                    )
+                            ));
+                        }
+                ),
+                SlashCommandSpec.optionalOne(
                         "task",
                         List.of(),
-                        "Apply an exposed agent task by name/path",
-                        "/task <task-name>",
+                        "Apply exposed task by name/path, or prompt for anon task text",
+                        "/task [task-name]",
                         List.of("task-name"),
-                        taskName -> {
-                            String appliedTask = magenta.applyTask(session.handle(), taskName);
+                        taskArg -> {
+                            String currentTask = magenta.activeTask(session.handle());
+                            boolean replacingExisting = currentTask != null && !currentTask.isBlank();
+                            if (taskArg != null && !taskArg.isBlank()) {
+                                if (replacingExisting) {
+                                    UiPromptResponse replacePrompt = promptService.prompt(new UiPromptRequest.ConfirmPrompt(
+                                            "Replace Task",
+                                            "Replace active task '" + currentTask + "' with '" + taskArg + "'?",
+                                            false
+                                    ));
+                                    if (!(replacePrompt instanceof UiPromptResponse.ConfirmResponse confirm && confirm.approved())) {
+                                        renderer.printWarn("task update cancelled");
+                                        return;
+                                    }
+                                }
+                                String appliedTask = magenta.applyTask(session.handle(), taskArg);
+                                renderer.printInfo("active task => " + appliedTask);
+                                return;
+                            }
+
+                            UiPromptResponse textPrompt = promptService.prompt(new UiPromptRequest.TextPrompt(
+                                    "Task Desc",
+                                    "Enter task prompt text to apply as persistent system instruction",
+                                    false,
+                                    ""
+                            ));
+                            if (!(textPrompt instanceof UiPromptResponse.TextResponse textResponse)) {
+                                renderer.printWarn("task prompt cancelled");
+                                return;
+                            }
+
+                            String promptText = textResponse.text() == null ? "" : textResponse.text().trim();
+                            if (promptText.isBlank()) {
+                                renderer.printWarn("task prompt cancelled: empty");
+                                return;
+                            }
+                            if (replacingExisting) {
+                                UiPromptResponse replacePrompt = promptService.prompt(new UiPromptRequest.ConfirmPrompt(
+                                        "Replace Task Prompt",
+                                        "Replace active task '" + currentTask + "' with new anon task prompt?",
+                                        false
+                                ));
+                                if (!(replacePrompt instanceof UiPromptResponse.ConfirmResponse confirm && confirm.approved())) {
+                                    renderer.printWarn("task prompt update cancelled");
+                                    return;
+                                }
+                            }
+
+                            String appliedTask = magenta.applyAnonTaskPrompt(session.handle(), promptText);
                             renderer.printInfo("active task => " + appliedTask);
                         }
                 ),
@@ -359,6 +516,43 @@ public final class TerminalUiRuntime {
 
     static AtomicReference<SlashCommandRegistry> registryRef() {
         return new AtomicReference<>(SlashCommandRegistry.empty());
+    }
+
+    private static String preview(String text, int maxChars) {
+        if (text == null) {
+            return "";
+        }
+        String compact = text.replace('\n', ' ').replace('\r', ' ').trim();
+        if (compact.length() <= maxChars) {
+            return compact;
+        }
+        int limit = Math.max(0, maxChars - 3);
+        return compact.substring(0, limit) + "...";
+    }
+
+    private void waitForTurnCompletion() {
+        long start = System.nanoTime();
+        long startTimeoutNanos = TimeUnit.MILLISECONDS.toNanos(250);
+        while (!closed.get() && !magenta.turnInProgress(session.handle())) {
+            if (System.nanoTime() - start >= startTimeoutNanos) {
+                return;
+            }
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+
+        while (!closed.get() && magenta.turnInProgress(session.handle())) {
+            try {
+                Thread.sleep(20);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
     }
 
 }

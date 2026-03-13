@@ -27,7 +27,8 @@ public record InputRoutingEvent(
     public enum OutCome {
         APPROVED,
         DENIED_POLICY,
-        SESSION_INACTIVE
+        SESSION_INACTIVE,
+        QUEUE_FULL
     }
 
     public enum Phase {

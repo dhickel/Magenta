@@ -6,6 +6,7 @@ instance:
   baseAgentId: "magenta"
   compactionAgentId: "compaction"
   maxTurns: 8
+  sessionQueueCapacity: 64
   maxToolOutputBytes: 65536
   maxFileReadLines: 200
   maxSqlRows: 500

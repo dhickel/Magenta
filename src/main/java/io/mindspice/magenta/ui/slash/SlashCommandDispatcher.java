@@ -41,8 +41,9 @@ public final class SlashCommandDispatcher {
         }
 
         List<String> args = invocation.args();
-        int expectedArity = spec.action().arity();
-        if (args.size() != expectedArity) {
+        int minArity = spec.action().minArity();
+        int maxArity = spec.action().maxArity();
+        if (args.size() < minArity || args.size() > maxArity) {
             renderer.printError("usage: " + spec.usage());
             return;
         }
@@ -51,6 +52,8 @@ public final class SlashCommandDispatcher {
             switch (spec.action()) {
                 case SlashCommandAction.ZeroArg zeroArg -> zeroArg.handler().run();
                 case SlashCommandAction.OneArg oneArg -> oneArg.handler().accept(args.getFirst());
+                case SlashCommandAction.OptionalOneArg optionalOneArg ->
+                        optionalOneArg.handler().accept(args.isEmpty() ? "" : args.getFirst());
                 case SlashCommandAction.TwoArg twoArg -> twoArg.handler().accept(args.get(0), args.get(1));
                 case SlashCommandAction.ThreeArg threeArg -> threeArg.handler().accept(args.get(0), args.get(1), args.get(2));
             }

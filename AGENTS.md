@@ -80,6 +80,18 @@ Lookup order for LangChain4j work:
 - First check local knowledge in `.internal-dev/knowledge/langchain4j/`.
 - If needed information is missing or stale, consult the official references above and then write/update the local knowledge notes.
 
+## Codex CLI Reference Policy
+
+Primary Codex CLI reference:
+- Repo: `https://github.com/openai/codex`
+
+Usage guidance:
+- Use Codex CLI as a technical reference when reviewing or implementing features.
+- Treat it as a robust agent implementation reference and distill useful techniques and improvements into Magenta2 where appropriate.
+- Codex CLI is more complex than Magenta2; prefer simpler approaches when they satisfy Magenta2 requirements.
+- Use Codex CLI as a strong reference for high-quality prompt and tool descriptions that align with industry standards.
+- Use Codex CLI as a strong reference for terminal UI approach and implementation specifics when shaping Magenta2 terminal behavior.
+
 ## Architecture Targets
 
 Core runtime services:
@@ -307,6 +319,7 @@ Use a home deployment target for runtime smoke/ops:
 - Deployed jar path: `~/.magenta/Magenta2-1.0-SNAPSHOT.jar`
 
 On any code/config change that should be runnable from the home deployment:
+0. Default rule for agents: after implementing a feature, run `scripts/deploy-home-magenta.sh` unless the user explicitly says not to deploy.
 1. Run `scripts/deploy-home-magenta.sh` from repo root.
 2. Default deploy behavior updates the JAR only and does **not** overwrite `~/.magenta/configs`.
 3. If you intentionally want to refresh deployed configs, run `scripts/deploy-home-magenta.sh --sync-configs` (or set `MAGENTA_DEPLOY_SYNC_CONFIGS=true`); this performs a full replace of `~/.magenta/configs`.
