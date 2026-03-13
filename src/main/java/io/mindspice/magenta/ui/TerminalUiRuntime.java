@@ -17,8 +17,6 @@ import com.googlecode.lanterna.gui2.TextBox;
 import com.googlecode.lanterna.gui2.TextGUIGraphics;
 import com.googlecode.lanterna.gui2.Window;
 import com.googlecode.lanterna.gui2.WindowBasedTextGUI;
-import com.googlecode.lanterna.gui2.table.DefaultTableCellRenderer;
-import com.googlecode.lanterna.gui2.table.Table;
 import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
 import com.googlecode.lanterna.input.MouseAction;
@@ -68,7 +66,7 @@ public final class TerminalUiRuntime {
     private final TerminalUiSession session;
 
     private final BasicWindow window;
-    private final Table<TranscriptEntry> transcriptTable;
+    private final TranscriptView transcriptView;
     private final Label sessionHeaderLabel;
     private final Label sessionSubHeaderLabel;
     private final Label contextUsageLabel;
@@ -89,6 +87,8 @@ public final class TerminalUiRuntime {
 
     private final Object transcriptLock = new Object();
     private final ArrayDeque<TranscriptEntry> transcriptEntries = new ArrayDeque<>();
+    private final StreamingAssistantBuffer streamingAssistant = new StreamingAssistantBuffer("assistant> ");
+    private long transcriptSequence = 0L;
 
     private static final int MIN_LEFT_COLS = 56;
     private static final int MIN_RIGHT_COLS = 24;
@@ -119,9 +119,7 @@ public final class TerminalUiRuntime {
                 new TextColor.RGB(40, 44, 52)
         ));
 
-        this.transcriptTable = new Table<>("Feed");
-        this.transcriptTable.setTableCellRenderer(new TranscriptCellRenderer());
-        this.transcriptTable.setCellSelection(false);
+        this.transcriptView = new TranscriptView();
         this.sessionHeaderLabel = new Label("").setForegroundColor(new TextColor.RGB(208, 214, 224));
         this.sessionSubHeaderLabel = new Label("").setForegroundColor(new TextColor.RGB(178, 188, 203));
         this.contextUsageLabel = new Label("").setForegroundColor(new TextColor.RGB(188, 196, 208));
@@ -137,7 +135,7 @@ public final class TerminalUiRuntime {
 
         Panel transcriptStack = new Panel(new BorderLayout());
         transcriptStack.addComponent(sessionHeader.withBorder(Borders.singleLine("session")), BorderLayout.Location.TOP);
-        transcriptStack.addComponent(transcriptTable.withBorder(Borders.singleLine("conversation")), BorderLayout.Location.CENTER);
+        transcriptStack.addComponent(transcriptView.withBorder(Borders.singleLine("conversation")), BorderLayout.Location.CENTER);
         transcriptStack.addComponent(contextUsageLabel.withBorder(Borders.singleLine("context")), BorderLayout.Location.BOTTOM);
 
         this.rightPane = new Panel(new BorderLayout());
@@ -287,36 +285,60 @@ public final class TerminalUiRuntime {
     }
 
     void appendSystemMessage(String text) {
-        renderBlock("system", List.of(text));
+        renderBlock("system", MessageRole.SYSTEM, List.of(text));
     }
 
     void appendInfo(String text) {
-        renderBlock("info", List.of(text));
+        renderBlock("info", MessageRole.INFO, List.of(text));
     }
 
     void appendWarn(String text) {
-        renderBlock("warn", List.of(text));
+        renderBlock("warn", MessageRole.WARN, List.of(text));
     }
 
     void appendError(String text) {
-        renderBlock("error", List.of(text));
+        renderBlock("error", MessageRole.ERROR, List.of(text));
     }
 
     void appendUser(String text) {
-        renderBlock("user", List.of(text));
+        renderBlock("user", MessageRole.USER, List.of(text));
     }
 
     void appendAssistant(String text) {
-        renderBlock("assistant", List.of(text));
+        renderBlock(assistantTitle(), MessageRole.ASSISTANT, List.of(text));
+    }
+
+    void appendAssistantToken(String token) {
+        if (!streamingAssistant.appendToken(token)) {
+            return;
+        }
+        updateStreamingAssistantBlock(streamingAssistant.content());
+    }
+
+    void finishAssistantStream() {
+        if (!streamingAssistant.started()) {
+            return;
+        }
+        synchronized (transcriptLock) {
+            if (!transcriptEntries.isEmpty()) {
+                TranscriptEntry last = transcriptEntries.peekLast();
+                if (last != null && last.streaming()) {
+                    transcriptEntries.removeLast();
+                    transcriptEntries.addLast(last.withStreaming(false));
+                    refreshTranscriptViewLocked();
+                }
+            }
+        }
+        streamingAssistant.reset();
     }
 
     void appendToolLine(String text) {
-        renderBlock("tool", List.of(text));
+        renderBlock("tool", MessageRole.TOOL, List.of(text));
     }
 
     void appendTable(String title, List<String> headers, List<List<String>> rows) {
         List<String> lines = formatTable(headers, rows);
-        renderBlock(title, lines);
+        renderBlock(title, roleFor(title), lines);
     }
 
     boolean onLineSubmitted(String line) {
@@ -410,20 +432,24 @@ public final class TerminalUiRuntime {
     void onTerminalResized(TerminalSize newSize) {
         runOnUi(() -> {
             inputBox.refreshLayout();
-            rebuildTranscriptModel();
+            transcriptView.refreshLayout();
         });
     }
 
     private void renderBlock(String title, List<String> lines) {
+        renderBlock(title, roleFor(title), lines);
+    }
+
+    private void renderBlock(String title, MessageRole role, List<String> lines) {
         runOnUi(() -> {
             synchronized (transcriptLock) {
-                MessageRole role = roleFor(title);
+                finishStreamingEntryLocked();
                 String payload = boxedBlockText(title, lines);
-                transcriptEntries.addLast(new TranscriptEntry(role, payload));
+                transcriptEntries.addLast(new TranscriptEntry(nextTranscriptId(), role, payload, false));
                 while (transcriptEntries.size() > 800) {
                     transcriptEntries.removeFirst();
                 }
-                rebuildTranscriptModel();
+                refreshTranscriptViewLocked();
             }
         });
     }
@@ -445,13 +471,13 @@ public final class TerminalUiRuntime {
 
     private void adjustHorizontalSplit(int deltaCols) {
         contentSplit.adjustBy(deltaCols);
-        rebuildTranscriptModel();
+        transcriptView.refreshLayout();
     }
 
     private void adjustVerticalSplit(int deltaRows) {
         leftVerticalSplit.adjustBy(deltaRows);
         inputBox.refreshLayout();
-        rebuildTranscriptModel();
+        transcriptView.refreshLayout();
     }
 
     private String boxedBlockText(String title, List<String> lines) {
@@ -463,74 +489,15 @@ public final class TerminalUiRuntime {
             payload.add(stamp + "│ ");
         } else {
             for (String line : lines) {
-                payload.add(stamp + "│ " + (line == null ? "" : line));
+                String value = line == null ? "" : line;
+                String[] physicalLines = value.split("\\R", -1);
+                for (String physicalLine : physicalLines) {
+                    payload.add(stamp + "│ " + physicalLine);
+                }
             }
         }
         payload.add(stamp + "└" + "─".repeat(Math.max(4, safeTitle.length() + 4)));
         return String.join("\n", payload);
-    }
-
-    private void rebuildTranscriptModel() {
-        int wrapWidth = Math.max(36, transcriptTable.getSize().getColumns() <= 0 ? 120 : transcriptTable.getSize().getColumns() - 2);
-        int previousRowCount = transcriptTable.getTableModel().getRowCount();
-        int previousSelection = transcriptTable.getSelectedRow();
-        var model = transcriptTable.getTableModel();
-        model.clear();
-        for (TranscriptEntry entry : transcriptEntries) {
-            model.addRow(new TranscriptEntry(entry.role(), padWrapped(wrap(entry.text(), wrapWidth), wrapWidth)));
-        }
-        if (model.getRowCount() > 0) {
-            boolean stickToBottom = previousRowCount == 0 || previousSelection >= previousRowCount - 1;
-            int target = stickToBottom ? model.getRowCount() - 1 : Math.min(previousSelection, model.getRowCount() - 1);
-            transcriptTable.setSelectedRow(Math.max(0, target));
-        }
-    }
-
-    private String wrap(String text, int width) {
-        if (text == null || text.isBlank()) {
-            return "";
-        }
-        List<String> wrapped = new ArrayList<>();
-        String[] paragraphs = text.split("\\R", -1);
-        for (String paragraph : paragraphs) {
-            if (paragraph.isBlank()) {
-                wrapped.add("");
-                continue;
-            }
-            int dividerIndex = paragraph.indexOf("│ ");
-            if (dividerIndex >= 0) {
-                String prefix = paragraph.substring(0, dividerIndex + 2);
-                String payload = paragraph.substring(dividerIndex + 2);
-                int available = Math.max(12, width - prefix.length());
-                List<String> chunks = wordWrapWithHardBreaks(available, payload);
-                if (chunks.isEmpty()) {
-                    wrapped.add(prefix);
-                } else {
-                    for (String chunk : chunks) {
-                        wrapped.add(prefix + chunk);
-                    }
-                }
-                continue;
-            }
-            wrapped.addAll(wordWrapWithHardBreaks(width, paragraph));
-        }
-        return String.join("\n", wrapped);
-    }
-
-    private String padWrapped(String text, int width) {
-        if (text == null || text.isEmpty()) {
-            return "";
-        }
-        List<String> padded = new ArrayList<>();
-        for (String line : text.split("\\R", -1)) {
-            String value = safe(line);
-            if (value.length() >= width) {
-                padded.add(value);
-            } else {
-                padded.add(value + " ".repeat(width - value.length()));
-            }
-        }
-        return String.join("\n", padded);
     }
 
     private MessageRole roleFor(String title) {
@@ -547,35 +514,19 @@ public final class TerminalUiRuntime {
         };
     }
 
-    private List<String> wordWrapWithHardBreaks(int width, String text) {
-        int safeWidth = Math.max(4, width);
-        List<String> base = TerminalTextUtils.getWordWrappedText(safeWidth, safe(text));
-        List<String> hardWrapped = new ArrayList<>();
-        for (String line : base) {
-            String current = safe(line);
-            if (current.length() <= safeWidth) {
-                hardWrapped.add(current);
-                continue;
-            }
-            for (int i = 0; i < current.length(); i += safeWidth) {
-                hardWrapped.add(current.substring(i, Math.min(current.length(), i + safeWidth)));
-            }
-        }
-        return hardWrapped;
-    }
-
     private void scrollTranscriptBy(int delta) {
-        var model = transcriptTable.getTableModel();
-        int rowCount = model.getRowCount();
-        if (rowCount == 0 || delta == 0) {
+        if (delta == 0) {
             return;
         }
-        int current = transcriptTable.getSelectedRow();
-        if (current < 0) {
-            current = rowCount - 1;
+        runOnUi(() -> transcriptView.scrollBy(delta));
+    }
+
+    private String assistantTitle() {
+        String agentId = magenta.settingsFor(session.handle()).agentId();
+        if (agentId == null || agentId.isBlank()) {
+            return "assistant";
         }
-        int target = Math.max(0, Math.min(rowCount - 1, current + delta));
-        transcriptTable.setSelectedRow(target);
+        return agentId;
     }
 
     private List<String> formatTable(List<String> headers, List<List<String>> rows) {
@@ -759,8 +710,9 @@ public final class TerminalUiRuntime {
                         "/clear",
                         () -> runOnUi(() -> {
                             synchronized (transcriptLock) {
+                                streamingAssistant.reset();
                                 transcriptEntries.clear();
-                                rebuildTranscriptModel();
+                                refreshTranscriptViewLocked();
                             }
                         })
                 ),
@@ -1068,15 +1020,9 @@ public final class TerminalUiRuntime {
     private final class MainWindow extends BasicWindow {
         @Override
         public boolean handleInput(KeyStroke key) {
-            if (key instanceof MouseAction mouseAction) {
-                if (mouseAction.getActionType() == MouseActionType.SCROLL_UP) {
-                    scrollTranscriptBy(-3);
-                    return true;
-                }
-                if (mouseAction.getActionType() == MouseActionType.SCROLL_DOWN) {
-                    scrollTranscriptBy(3);
-                    return true;
-                }
+            if (key instanceof MouseAction mouseAction && transcriptView.containsGlobalPosition(mouseAction.getPosition())) {
+                Interactable.Result result = transcriptView.handleMouseAction(mouseAction);
+                return result == Interactable.Result.HANDLED || super.handleInput(key);
             }
             if (key.getKeyType() == KeyType.EOF) {
                 close();
@@ -1259,30 +1205,6 @@ public final class TerminalUiRuntime {
         }
     }
 
-    private final class TranscriptCellRenderer extends DefaultTableCellRenderer<TranscriptEntry> {
-        @Override
-        protected void applyStyle(
-                Table<TranscriptEntry> table,
-                TranscriptEntry cell,
-                int columnIndex,
-                int rowIndex,
-                boolean selected,
-                TextGUIGraphics textGUIGraphics
-        ) {
-            MessageRole role = cell == null ? MessageRole.INFO : cell.role();
-            textGUIGraphics.setForegroundColor(role.foreground());
-            textGUIGraphics.setBackgroundColor(role.background());
-        }
-
-        @Override
-        protected String[] getContent(TranscriptEntry cell) {
-            if (cell == null || cell.text() == null) {
-                return new String[] {""};
-            }
-            return cell.text().split("\\R", -1);
-        }
-    }
-
     private enum MessageRole {
         USER(new TextColor.RGB(171, 207, 255), new TextColor.RGB(47, 61, 79)),
         ASSISTANT(new TextColor.RGB(185, 231, 208), new TextColor.RGB(45, 70, 62)),
@@ -1310,7 +1232,59 @@ public final class TerminalUiRuntime {
         }
     }
 
-    private record TranscriptEntry(MessageRole role, String text) {}
+    private void updateStreamingAssistantBlock(String content) {
+        runOnUi(() -> {
+            synchronized (transcriptLock) {
+                String payload = boxedBlockText(assistantTitle(), List.of(content));
+                TranscriptEntry last = transcriptEntries.peekLast();
+                if (last != null && last.streaming()) {
+                    transcriptEntries.removeLast();
+                    transcriptEntries.addLast(new TranscriptEntry(last.id(), MessageRole.ASSISTANT, payload, true));
+                } else {
+                    transcriptEntries.addLast(new TranscriptEntry(nextTranscriptId(), MessageRole.ASSISTANT, payload, true));
+                    while (transcriptEntries.size() > 800) {
+                        transcriptEntries.removeFirst();
+                    }
+                }
+                refreshTranscriptViewLocked();
+            }
+        });
+    }
+
+    private void finishStreamingEntryLocked() {
+        if (!streamingAssistant.started()) {
+            return;
+        }
+        TranscriptEntry last = transcriptEntries.peekLast();
+        if (last != null && last.streaming()) {
+            transcriptEntries.removeLast();
+            transcriptEntries.addLast(last.withStreaming(false));
+        }
+        streamingAssistant.reset();
+    }
+
+    private void refreshTranscriptViewLocked() {
+        List<TranscriptView.Block> blocks = transcriptEntries.stream()
+                .map(entry -> new TranscriptView.Block(
+                        entry.id(),
+                        entry.role().foreground(),
+                        entry.role().background(),
+                        entry.text()
+                ))
+                .toList();
+        transcriptView.setBlocks(blocks);
+    }
+
+    private long nextTranscriptId() {
+        transcriptSequence++;
+        return transcriptSequence;
+    }
+
+    private record TranscriptEntry(long id, MessageRole role, String text, boolean streaming) {
+        private TranscriptEntry withStreaming(boolean streaming) {
+            return new TranscriptEntry(id, role, text, streaming);
+        }
+    }
 
     private void completePrompt(UiPromptResponse response) {
         runOnUi(() -> {

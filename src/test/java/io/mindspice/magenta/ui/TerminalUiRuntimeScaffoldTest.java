@@ -1,6 +1,7 @@
 package io.mindspice.magenta.ui;
 
 import com.googlecode.lanterna.TerminalSize;
+import com.googlecode.lanterna.TextColor;
 import com.googlecode.lanterna.gui2.Interactable;
 import com.googlecode.lanterna.gui2.Panel;
 import com.googlecode.lanterna.input.KeyStroke;
@@ -8,6 +9,7 @@ import com.googlecode.lanterna.input.KeyType;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -59,6 +61,23 @@ class TerminalUiRuntimeScaffoldTest {
     }
 
     @Test
+    void composerShiftedNewlineCharacterInsertsNewlineWithoutSubmitting() {
+        AtomicInteger submitCalls = new AtomicInteger();
+        ComposerInput composer = new ComposerInput(text -> {
+            submitCalls.incrementAndGet();
+            return false;
+        }, () -> {});
+        composer.setSize(new TerminalSize(8, 4));
+        composer.setText("hello");
+
+        Interactable.Result result = composer.handleKeyStroke(new KeyStroke('\n', false, false, true));
+
+        assertThat(result).isEqualTo(Interactable.Result.HANDLED);
+        assertThat(submitCalls).hasValue(0);
+        assertThat(composer.getText()).isEqualTo("hello\n");
+    }
+
+    @Test
     void composerEnterSubmitsAndClearsWhenAccepted() {
         AtomicReference<String> submitted = new AtomicReference<>();
         ComposerInput composer = new ComposerInput(text -> {
@@ -84,6 +103,56 @@ class TerminalUiRuntimeScaffoldTest {
 
         assertThat(result).isEqualTo(Interactable.Result.HANDLED);
         assertThat(abortCalls).hasValue(1);
+    }
+
+    @Test
+    void composerCtrlNInsertsNewlineWithoutSubmitting() {
+        AtomicInteger submitCalls = new AtomicInteger();
+        ComposerInput composer = new ComposerInput(text -> {
+            submitCalls.incrementAndGet();
+            return false;
+        }, () -> {});
+        composer.setSize(new TerminalSize(8, 4));
+        composer.setText("hello");
+
+        Interactable.Result result = composer.handleKeyStroke(new KeyStroke('n', true, false));
+
+        assertThat(result).isEqualTo(Interactable.Result.HANDLED);
+        assertThat(submitCalls).hasValue(0);
+        assertThat(composer.getText()).isEqualTo("hello\n");
+    }
+
+    @Test
+    void transcriptViewKeepsScrollAnchorAcrossRewrap() {
+        TranscriptView view = new TranscriptView();
+        view.setSize(new TerminalSize(14, 4));
+        view.setBlocks(List.of(
+                new TranscriptView.Block(1L, TextColor.ANSI.WHITE, TextColor.ANSI.BLACK, "one\ntwo\nthree\nfour"),
+                new TranscriptView.Block(2L, TextColor.ANSI.WHITE, TextColor.ANSI.BLACK, "alpha beta gamma delta epsilon zeta")
+        ));
+        view.scrollBy(3);
+        int anchoredTop = view.topRow();
+
+        view.setSize(new TerminalSize(10, 4));
+        view.refreshLayout();
+
+        assertThat(view.topRow()).isGreaterThanOrEqualTo(anchoredTop);
+    }
+
+    @Test
+    void transcriptViewAddsScrollbarColumnWhenContentExceedsViewport() {
+        List<TranscriptView.RenderedLine> lines = TranscriptView.renderBlocks(
+                List.of(new TranscriptView.Block(
+                        1L,
+                        TextColor.ANSI.WHITE,
+                        TextColor.ANSI.BLACK,
+                        "line one\nline two\nline three\nline four\nline five"
+                )),
+                new TerminalSize(12, 3)
+        );
+
+        assertThat(lines).hasSizeGreaterThan(3);
+        assertThat(lines).allSatisfy(line -> assertThat(line.text().length()).isLessThanOrEqualTo(11));
     }
 
     @Test

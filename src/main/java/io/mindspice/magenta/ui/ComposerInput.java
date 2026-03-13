@@ -62,6 +62,21 @@ final class ComposerInput extends AbstractInteractableComponent<ComposerInput> {
 
     @Override
     protected synchronized Interactable.Result handleKeyStroke(KeyStroke keyStroke) {
+        if (isModifiedEnterCharacter(keyStroke)) {
+            if (keyStroke.isShiftDown() || keyStroke.isAltDown()) {
+                insert("\n");
+                return Result.HANDLED;
+            }
+            if (submitHandler.submit(text)) {
+                text = "";
+                caretIndex = 0;
+                scrollRow = 0;
+                preferredColumn = -1;
+                invalidate();
+            }
+            return Result.HANDLED;
+        }
+
         if (keyStroke instanceof MouseAction mouseAction) {
             if (mouseAction.getActionType() == MouseActionType.CLICK_DOWN || mouseAction.getActionType() == MouseActionType.DRAG) {
                 takeFocus();
@@ -101,6 +116,10 @@ final class ComposerInput extends AbstractInteractableComponent<ComposerInput> {
             Character character = keyStroke.getCharacter();
             if (character != null && (character == 'c' || character == 'C')) {
                 abortHandler.run();
+                return Result.HANDLED;
+            }
+            if (character != null && (character == 'n' || character == 'N')) {
+                insert("\n");
                 return Result.HANDLED;
             }
         }
@@ -300,6 +319,14 @@ final class ComposerInput extends AbstractInteractableComponent<ComposerInput> {
         int length() {
             return text.length();
         }
+    }
+
+    private boolean isModifiedEnterCharacter(KeyStroke keyStroke) {
+        if (keyStroke.getKeyType() != KeyType.Character) {
+            return false;
+        }
+        Character character = keyStroke.getCharacter();
+        return character != null && (character == '\n' || character == '\r');
     }
 
     record CaretPosition(int row, int column) {}
