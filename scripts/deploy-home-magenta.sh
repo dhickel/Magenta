@@ -15,6 +15,7 @@ SOURCE_JAR_PATH="${REPO_ROOT}/target/Magenta2-1.0-SNAPSHOT.jar"
 DEPLOY_MAGENTA_CONFIG="${DEPLOY_CONFIG_ROOT}/magenta.yaml"
 SYNC_CONFIGS="${MAGENTA_DEPLOY_SYNC_CONFIGS:-false}"
 REPLACE_CONFIGS="${MAGENTA_DEPLOY_REPLACE_CONFIGS:-false}"
+CONFIRM_CONFIG_SYNC="${MAGENTA_DEPLOY_CONFIRM_CONFIG_SYNC:-false}"
 
 if [[ "${1:-}" == "--sync-configs" ]]; then
   SYNC_CONFIGS="true"
@@ -45,6 +46,39 @@ if [[ ! -f "${DEPLOY_MAGENTA_CONFIG}" ]]; then
   echo "No deployed config found; bootstrapping configs once..."
   SYNC_CONFIGS="true"
 fi
+
+confirm_config_sync() {
+  if [[ "${SYNC_CONFIGS}" != "true" ]]; then
+    return 0
+  fi
+  if [[ ! -d "${DEPLOY_CONFIG_ROOT}" ]] || [[ -z "$(ls -A "${DEPLOY_CONFIG_ROOT}" 2>/dev/null || true)" ]]; then
+    return 0
+  fi
+  if [[ "${CONFIRM_CONFIG_SYNC}" == "true" ]]; then
+    echo "Config sync confirmation bypassed via MAGENTA_DEPLOY_CONFIRM_CONFIG_SYNC=true."
+    return 0
+  fi
+  if [[ ! -t 0 ]]; then
+    echo "ERROR: Config sync requested but no interactive prompt is available." >&2
+    echo "Set MAGENTA_DEPLOY_CONFIRM_CONFIG_SYNC=true only when you intentionally approve config overwrite behavior." >&2
+    exit 1
+  fi
+
+  mode_label="preserve local overrides"
+  if [[ "${REPLACE_CONFIGS}" == "true" ]]; then
+    mode_label="explicit replace"
+  fi
+
+  echo "Config sync requested (${mode_label} mode)."
+  echo "This can overwrite deployed config content in ${DEPLOY_CONFIG_ROOT}."
+  read -r -p "Type 'yes' to continue config sync: " confirm
+  if [[ "${confirm}" != "yes" ]]; then
+    echo "Aborted: config sync not approved."
+    exit 1
+  fi
+}
+
+confirm_config_sync
 
 if [[ "${SYNC_CONFIGS}" == "true" ]]; then
   backup_dir=""

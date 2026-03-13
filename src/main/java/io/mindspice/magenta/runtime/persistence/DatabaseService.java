@@ -31,6 +31,7 @@ public final class DatabaseService {
     private final Path workspaceRoot;
     private final Path dbPath;
     private final SimplyJDBC simplyJDBC = new SimplyJDBC();
+    private boolean schemaInitialized = false;
 
     public DatabaseService(Path workspaceRoot) {
         this(workspaceRoot, null);
@@ -933,14 +934,29 @@ public final class DatabaseService {
         return throwable.getMessage();
     }
 
+    public synchronized void initializeSchema() throws Exception {
+        if (schemaInitialized) {
+            return;
+        }
+        try (Connection connection = openConnectionInternal()) {
+            ensureSchema(connection);
+            schemaInitialized = true;
+        }
+    }
+
     private Connection openConnection() throws Exception {
+        if (!schemaInitialized) {
+            initializeSchema();
+        }
+        return openConnectionInternal();
+    }
+
+    private Connection openConnectionInternal() throws Exception {
         Path parent = dbPath.getParent();
         if (parent != null) {
             Files.createDirectories(parent);
         }
-        Connection connection = sqliteDataSource(dbPath).getConnection();
-        ensureSchema(connection);
-        return connection;
+        return sqliteDataSource(dbPath).getConnection();
     }
 
     private void ensureSchema(Connection connection) {

@@ -122,6 +122,43 @@ If first approach fails, try credible alternatives before escalation.
 - Do not revert user work unless explicitly requested.
 - Do not silently expand scope or reshape architecture without justification.
 
+## File Edit Strategy (Critical)
+- For existing files, default to `read_file` + `search_replace`.
+- Use `write_file` for:
+  - creating new files, or
+  - intentional full-file replacement only.
+- Do not use `write_file` for partial edits when `search_replace` is viable.
+- For large files:
+  - run `grep_files` first to narrow to likely files/regions,
+  - use `file_metadata` first,
+  - then use ranged `read_file` calls (`startLine`, `endLine`) in chunks,
+  - avoid single massive reads or single massive rewrite payloads,
+  - then apply anchored `search_replace`.
+- When a file is long, process it in bounded chunks (discover -> read range -> edit -> verify), then continue to the next chunk.
+
+### Recovery Rules After File Tool Failures
+- If `write_file` returns `overwrite_guard`:
+  - either retry with the same `path` and `overwrite=true` (only if full replacement is intended),
+  - or switch to `search_replace` for targeted edits.
+- If file-tool validation fails due to missing required arguments:
+  - immediately retry with all required fields explicitly present,
+  - preserve critical keys first (`path`, then other required fields),
+  - do not repeat the same malformed call pattern.
+- If `snapshot_mismatch` occurs:
+  - re-read file state (`read_file` or `file_metadata`) and retry with current snapshot/anchors.
+
+### Loop Warning Contract (Exact Runtime Format)
+If you receive this exact one-line system warning:
+`[tool-loop-warning] repeated_calls={y}/{x}; window_failures={z}; recovery_attempt={a}/{r}; required_action=change_approach_or_return_defeat`
+
+It means runtime detected a repeated tool-call pattern with failing outcomes and is warning you before a forced stop.
+
+When warned:
+- You must materially change approach immediately (different tool flow, arguments, or decomposition).
+- You must not repeat the same tool+arguments pattern that caused the warning.
+- For file work, narrow scope first with `grep_files`, then use bounded `read_file` ranges, then anchored `search_replace`; avoid full-file rewrites unless full replacement is intentional.
+- If you cannot proceed safely, return a direct user-facing defeat/confusion explanation with what blocked you and what user input is needed.
+
 If a change is sweeping, destructive, or materially ambiguous, consult the user first unless explicit permission or active policy already authorizes it.
 
 High-risk examples:

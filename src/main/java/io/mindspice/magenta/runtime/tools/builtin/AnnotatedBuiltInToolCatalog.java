@@ -64,10 +64,10 @@ public final class AnnotatedBuiltInToolCatalog {
     }
 
     @Tool(name = READ_FILE, value = {
-            "Reads the content of a UTF-8 encoded file within the workspace, returning text content along with a snapshotId and stable line:hh anchors.",
-            "Always use this tool before attempting to edit a file with search_replace to ensure you have the latest snapshot and correct line hashes.",
-            "Input requires a 'path' (workspace-relative or absolute). Optional 'startLine' and 'endLine' (1-based, inclusive) allow reading specific ranges, which is essential for large files to avoid hitting runtime output limits.",
-            "The returned snapshotId must be passed to subsequent write or edit operations to prevent state corruption. Success payloads include the requested text range and metadata; failures occur if the file is missing, unreadable, or exceeds system size limits."
+            "Read UTF-8 file content and return snapshotId + stable line:hh anchors for deterministic edits.",
+            "Use this before any file mutation. For existing files, this is the normal first step before search_replace.",
+            "Prefer ranged reads on large files using startLine/endLine (1-based, inclusive) to avoid oversized tool outputs.",
+            "Required: path. Returned snapshotId should be reused for search_replace/write_file/delete_file guards."
     })
     public ToolResult readFile(
             @ToolMemoryId ToolRequest request,
@@ -102,10 +102,10 @@ public final class AnnotatedBuiltInToolCatalog {
     }
 
     @Tool(name = FILE_METADATA, value = {
-            "Retrieves detailed metadata for a single file or directory, including size, timestamps, permissions, and its current snapshotId.",
-            "Use this tool when you need to check if a file exists, verify its size, or obtain a snapshotId for a write/delete operation without needing to read the actual file content.",
-            "Requires a 'path' parameter. This is a lightweight alternative to read_file and is ideal for verifying the state of large assets or binary files.",
-            "Returns a structured JSON payload containing filesystem attributes; fails if the path is invalid or inaccessible due to security constraints."
+            "Read file/directory metadata without reading full content (size, type, timestamps, snapshotId when applicable).",
+            "Use this to decide strategy before editing: if file is large, use read_file with ranges + search_replace.",
+            "Use this to verify existence and get snapshotId cheaply before guarded write/delete operations.",
+            "Required: path. This is a lightweight preflight tool and should be preferred over full reads when content is not needed."
     })
     public ToolResult fileMetadata(
             @ToolMemoryId ToolRequest request,
@@ -117,10 +117,10 @@ public final class AnnotatedBuiltInToolCatalog {
     }
 
     @Tool(name = GREP_FILES, value = {
-            "Recursively searches through files in the workspace for lines matching a literal string or regular expression, returning matches with their line numbers and hashes.",
-            "This is the most efficient way to locate specific symbols, patterns, or code snippets across multiple files without reading each file individually.",
-            "Parameters: 'pattern' (search string), 'rootPath' (starting directory, defaults to '.'), 'regex' (enables regex mode), 'caseSensitive' (enables case sensitivity), 'maxMatches' (limits results), and 'filePattern' (glob filter for file names like '**/*.java' or basename filters such as '*.md').",
-            "The returned payload includes 'matches' containing line text and 'line:hh' anchors which are compatible with search_replace. grep_files does not return snapshotId; obtain snapshotId for the target file via read_file or file_metadata before editing. rootPath is optional. If too many matches are found, file contents and matches will be truncated for performance."
+            "Recursively search files for literal or regex matches and return matched lines with line numbers and line:hh anchors.",
+            "Use this for discovery across many files, then switch to read_file on the target file before editing.",
+            "This tool does not return snapshotId. Do not edit directly from grep output alone.",
+            "Parameters: pattern, optional rootPath, regex, caseSensitive, maxMatches, and filePattern."
     })
     public ToolResult grepFiles(
             @ToolMemoryId ToolRequest request,
@@ -142,11 +142,10 @@ public final class AnnotatedBuiltInToolCatalog {
     }
 
     @Tool(name = SEARCH_REPLACE, value = {
-            "Applies highly precise, deterministic edits to a file using stable 'line:hh' anchors obtained from a prior read_file or grep_files call.",
-            "This is the safest and most efficient method for modifying code, as it ensures changes are applied to the correct logical blocks even if file line numbers shift slightly.",
-            "Requires 'path' (the target file), 'snapshotId' (to prevent editing stale file states), and a list of 'edits' containing: 'startAnchor' (the beginning line and its hash), 'endAnchor' (the ending line and its hash), and 'replacement' (the new text).",
-            "Optional 'expectedText' can be included within an edit as an additional verification layer to ensure the content between anchors exactly matches your assumptions.",
-            "This tool is strictly guarded; it will fail if the anchors are invalid, if the snapshotId is outdated, or if the expected text does not match. Use it to ensure surgical accuracy and prevent unintended side effects; do not invent anchors."
+            "Apply precise deterministic edits using anchors from read_file/grep_files and a current snapshotId.",
+            "This is the default tool for editing existing files. Prefer this over write_file for partial changes.",
+            "Required: path, snapshotId, edits[]. Each edit needs startAnchor, endAnchor, replacement; expectedText is optional but recommended.",
+            "Do not invent anchors. If anchors/snapshot mismatch, re-read the file and retry with updated anchors."
     })
     public ToolResult searchReplace(
             @ToolMemoryId ToolRequest request,
@@ -163,10 +162,11 @@ public final class AnnotatedBuiltInToolCatalog {
     }
 
     @Tool(name = WRITE_FILE, value = {
-            "Writes the provided UTF-8 text content to a file at the specified path, creating the file if it doesn't exist or overwriting it if it does.",
-            "Use this for creating new files or replacing the entire content of existing ones. For partial edits, prefer search_replace for greater precision and safety.",
-            "Parameters: 'path' (target file), 'content' (raw text to write), 'overwrite' (boolean, must be true to replace existing files), and 'expectedSnapshotId' (guard to ensure the file hasn't changed since your last read).",
-            "This operation is atomic and requires write permissions. Success returns confirmation of the write; failures occur if the path is invalid, permissions are denied, or the snapshot check fails."
+            "Create a new file or replace an entire file with provided UTF-8 content.",
+            "Do not use this for partial edits to existing files; use search_replace for that.",
+            "Required: path and content. Optional: overwrite and expectedSnapshotId. Always include path explicitly.",
+            "If file exists and overwrite=false, the tool fails with overwrite_guard. Recovery: either set overwrite=true for intentional full replacement, or switch to read_file + search_replace.",
+            "For large existing files, avoid full rewrites because model output truncation can corrupt arguments. Prefer incremental edits."
     })
     public ToolResult writeFile(
             @ToolMemoryId ToolRequest request,
@@ -184,10 +184,10 @@ public final class AnnotatedBuiltInToolCatalog {
     }
 
     @Tool(name = DELETE_FILE, value = {
-            "Removes a single file from the workspace filesystem permanently. This action is irreversible, so use it with caution.",
-            "Always verify that the file is no longer needed before calling this tool. For added safety, provide an 'expectedSnapshotId' to ensure you're deleting the exact state you just inspected.",
-            "Requires a 'path' parameter (relative or absolute). If the file is a directory, this tool will fail; use recursive shell commands if directory deletion is necessary.",
-            "Success returns a confirmation message; failures occur if the file is missing, the path points to a directory, or the snapshotId does not match."
+            "Permanently delete a single file.",
+            "Required: path. Optional: expectedSnapshotId for state-guarded deletion.",
+            "Use file_metadata/read_file first when safety matters. This tool fails for directories.",
+            "If snapshot mismatch occurs, re-read metadata/content and retry with the current snapshot."
     })
     public ToolResult deleteFile(
             @ToolMemoryId ToolRequest request,

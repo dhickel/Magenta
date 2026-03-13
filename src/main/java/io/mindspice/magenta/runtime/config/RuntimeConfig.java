@@ -59,6 +59,7 @@ public record RuntimeConfig(
     private static final int DEFAULT_MODEL_REQUEST_TIMEOUT_MS = 600_000;
     private static final int DEFAULT_TOOL_LOOP_REPEAT_THRESHOLD = 5;
     private static final int DEFAULT_TOOL_LOOP_WINDOW_SIZE = 8;
+    private static final int DEFAULT_TOOL_LOOP_RECOVERY_ATTEMPTS = 2;
 
     public RuntimeConfig {
         workspaceRoot = workspaceRoot == null ? Path.of("").toAbsolutePath().normalize() : workspaceRoot.toAbsolutePath().normalize();
@@ -417,6 +418,9 @@ public record RuntimeConfig(
         }
         if (toolLoopGuard.windowSize() < toolLoopGuard.repeatThreshold()) {
             throw new IllegalStateException("instance.toolLoopGuard.windowSize must be >= repeatThreshold");
+        }
+        if (toolLoopGuard.recoveryAttempts() < 0) {
+            throw new IllegalStateException("instance.toolLoopGuard.recoveryAttempts must be >= 0");
         }
     }
 
@@ -1161,7 +1165,10 @@ public record RuntimeConfig(
                         : rawToolLoopGuard.repeatThreshold,
                 rawToolLoopGuard.windowSize == null
                         ? DEFAULT_TOOL_LOOP_WINDOW_SIZE
-                        : rawToolLoopGuard.windowSize
+                        : rawToolLoopGuard.windowSize,
+                rawToolLoopGuard.recoveryAttempts == null
+                        ? DEFAULT_TOOL_LOOP_RECOVERY_ATTEMPTS
+                        : rawToolLoopGuard.recoveryAttempts
         );
     }
 
@@ -1210,7 +1217,8 @@ public record RuntimeConfig(
     public record ToolLoopGuardConfig(
             boolean enabled,
             int repeatThreshold,
-            int windowSize
+            int windowSize,
+            int recoveryAttempts
     ) {
         public ToolLoopGuardConfig {
             if (repeatThreshold < 2) {
@@ -1219,10 +1227,18 @@ public record RuntimeConfig(
             if (windowSize < repeatThreshold) {
                 throw new IllegalStateException("instance.toolLoopGuard.windowSize must be >= repeatThreshold");
             }
+            if (recoveryAttempts < 0) {
+                throw new IllegalStateException("instance.toolLoopGuard.recoveryAttempts must be >= 0");
+            }
         }
 
         public static ToolLoopGuardConfig defaults() {
-            return new ToolLoopGuardConfig(true, DEFAULT_TOOL_LOOP_REPEAT_THRESHOLD, DEFAULT_TOOL_LOOP_WINDOW_SIZE);
+            return new ToolLoopGuardConfig(
+                    true,
+                    DEFAULT_TOOL_LOOP_REPEAT_THRESHOLD,
+                    DEFAULT_TOOL_LOOP_WINDOW_SIZE,
+                    DEFAULT_TOOL_LOOP_RECOVERY_ATTEMPTS
+            );
         }
     }
 
@@ -1700,6 +1716,8 @@ public record RuntimeConfig(
         private Integer repeatThreshold;
         @JsonProperty("windowSize")
         private Integer windowSize;
+        @JsonProperty("recoveryAttempts")
+        private Integer recoveryAttempts;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = false)

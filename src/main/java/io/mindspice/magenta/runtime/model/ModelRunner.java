@@ -73,11 +73,19 @@ public final class ModelRunner {
                 : toolLoopGuardConfig;
         Deque<String> recentSignatures = new ArrayDeque<>();
         Map<String, Integer> signatureCounts = new HashMap<>();
+        Deque<Boolean> recentFailureFlags = new ArrayDeque<>();
+        int recoveryAttemptsUsed = 0;
+        String pendingLoopWarningSystemMessage = null;
 
         for (int i = 0; i < maxIterations; i++) {
             safeBeforeModelCallHook.run();
+            List<ContextElement> requestContext = session.context().snapshot();
+            if (pendingLoopWarningSystemMessage != null && !pendingLoopWarningSystemMessage.isBlank()) {
+                requestContext = prependSystemMessage(requestContext, pendingLoopWarningSystemMessage);
+                pendingLoopWarningSystemMessage = null;
+            }
             ChatRequest.Builder requestBuilder = ChatRequest.builder()
-                    .messages(toChatMessages(session.context().snapshot()));
+                    .messages(toChatMessages(requestContext));
             RuntimeConfig.ModelConfig modelConfig = session.modelConfig();
             if (session.sessionConfig().params().toolsEnabled()
                 && modelConfig.supportsToolCalling()
@@ -112,6 +120,8 @@ public final class ModelRunner {
                 return latestText;
             }
 
+            boolean loopWarningIssuedThisIteration = false;
+            boolean executedAnyToolThisIteration = false;
             for (ContextElement.ToolCall toolCall : toolCalls) {
                 if (safeToolLoopGuardConfig.enabled()) {
                     String signature = toolCallSignature(toolCall);
@@ -123,10 +133,34 @@ public final class ModelRunner {
                             ? nextCount - 1
                             : nextCount;
                     if (effectiveCountAfterWindowShift >= safeToolLoopGuardConfig.repeatThreshold()) {
+                        int windowFailures = countWindowFailures(recentFailureFlags);
+                        int recoveryAttempts = safeToolLoopGuardConfig.recoveryAttempts();
+                        if (recoveryAttempts > 0 && recoveryAttemptsUsed < recoveryAttempts) {
+                            recoveryAttemptsUsed++;
+                            String warningMessage = loopWarningMessage(
+                                    effectiveCountAfterWindowShift,
+                                    safeToolLoopGuardConfig.windowSize(),
+                                    windowFailures,
+                                    recoveryAttemptsUsed,
+                                    recoveryAttempts
+                            );
+                            safeOutputEmitter.accept(
+                                    new OutputRoutingEvent(handle, new SessionOutput.FinalOutput(warningMessage))
+                            );
+                            pendingLoopWarningSystemMessage = warningMessage;
+                            recentSignatures.clear();
+                            signatureCounts.clear();
+                            recentFailureFlags.clear();
+                            loopWarningIssuedThisIteration = true;
+                            break;
+                        }
                         String stopText = loopDetectedText(
                                 latestText,
                                 safeToolLoopGuardConfig.repeatThreshold(),
-                                safeToolLoopGuardConfig.windowSize()
+                                safeToolLoopGuardConfig.windowSize(),
+                                windowFailures,
+                                recoveryAttemptsUsed,
+                                recoveryAttempts
                         );
                         if (!stopText.equals(latestText)) {
                             session.context().append(new ContextElement.AssistantMsg(stopText, List.of()));
@@ -150,6 +184,7 @@ public final class ModelRunner {
                 safeOutputEmitter.accept(new OutputRoutingEvent(handle, new SessionOutput.ToolCallOutput(toolCall)));
                 ToolRequest toolRequest = new ToolRequest(session.sessionId().toString(), session.agentId(), toolCall);
                 ToolResult toolResult = session.sessionConfig().toolBridge().apply(toolRequest);
+                executedAnyToolThisIteration = true;
                 String rawContent = safeText(toolResult.content());
                 String contextContent = truncateToolContentForContext(rawContent);
                 ContextElement.ToolMsg toolMessage = new ContextElement.ToolMsg(
@@ -166,8 +201,21 @@ public final class ModelRunner {
                                 rawContent
                         ))
                 ));
+                if (safeToolLoopGuardConfig.enabled()) {
+                    recentFailureFlags.addLast(toolResultFailed(rawContent));
+                    while (recentFailureFlags.size() > safeToolLoopGuardConfig.windowSize()) {
+                        recentFailureFlags.removeFirst();
+                    }
+                }
             }
 
+            if (loopWarningIssuedThisIteration) {
+                toolLoopActive = true;
+                continue;
+            }
+            if (executedAnyToolThisIteration) {
+                recoveryAttemptsUsed = 0;
+            }
             toolLoopActive = true;
         }
 
@@ -202,6 +250,13 @@ public final class ModelRunner {
         ChatRequest request = ChatRequest.builder().messages(toChatMessages(summaryMessages)).build();
         ChatResponse response = ollamaClient.chatBlocking(modelConfig, request);
         return safeText(response.aiMessage().text());
+    }
+
+    private List<ContextElement> prependSystemMessage(List<ContextElement> snapshot, String message) {
+        List<ContextElement> withSystemPrefix = new ArrayList<>(snapshot.size() + 1);
+        withSystemPrefix.add(new ContextElement.SystemMsg(message));
+        withSystemPrefix.addAll(snapshot);
+        return withSystemPrefix;
     }
 
     private List<ChatMessage> toChatMessages(List<ContextElement> context) {
@@ -312,10 +367,61 @@ public final class ModelRunner {
         return node.toString();
     }
 
-    private String loopDetectedText(String latestText, int repeatThreshold, int windowSize) {
+    private int countWindowFailures(Deque<Boolean> recentFailureFlags) {
+        int failures = 0;
+        for (Boolean failed : recentFailureFlags) {
+            if (Boolean.TRUE.equals(failed)) {
+                failures++;
+            }
+        }
+        return failures;
+    }
+
+    private boolean toolResultFailed(String rawContent) {
+        String payload = safeText(rawContent);
+        if (payload.isBlank()) {
+            return true;
+        }
+        try {
+            JsonNode root = MAPPER.readTree(payload);
+            return !"ok".equalsIgnoreCase(root.path("status").asText("failed"));
+        } catch (Exception ignored) {
+            return true;
+        }
+    }
+
+    private String loopWarningMessage(
+            int repeatedCalls,
+            int windowSize,
+            int windowFailures,
+            int recoveryAttempt,
+            int recoveryAttemptsMax
+    ) {
+        return "[tool-loop-warning] repeated_calls=" + repeatedCalls
+               + "/" + windowSize
+               + "; window_failures=" + windowFailures
+               + "; recovery_attempt=" + recoveryAttempt
+               + "/" + recoveryAttemptsMax
+               + "; required_action=change_approach_or_return_defeat";
+    }
+
+    private String loopDetectedText(
+            String latestText,
+            int repeatThreshold,
+            int windowSize,
+            int windowFailures,
+            int recoveryAttemptsUsed,
+            int recoveryAttemptsMax
+    ) {
         String reason = "[tool-loop-stop] repeated tool-call pattern detected (threshold="
                         + repeatThreshold + ", window=" + windowSize + ")";
-        return latestText == null || latestText.isBlank() ? reason : latestText + "\n\n" + reason;
+        String detail = reason
+                        + " failures_in_window=" + windowFailures
+                        + " recovery_attempts=" + recoveryAttemptsUsed + "/" + recoveryAttemptsMax;
+        if (recoveryAttemptsMax > 0) {
+            detail = detail + " model did not change approach after warning(s)";
+        }
+        return latestText == null || latestText.isBlank() ? detail : latestText + "\n\n" + detail;
     }
 
     private String maxTurnsExhaustedText(String latestText, int maxIterations) {

@@ -51,6 +51,7 @@ class RuntimeConfigIntegrationTest {
         assertThat(loaded.toolLoopGuard().enabled()).isTrue();
         assertThat(loaded.toolLoopGuard().repeatThreshold()).isEqualTo(5);
         assertThat(loaded.toolLoopGuard().windowSize()).isEqualTo(8);
+        assertThat(loaded.toolLoopGuard().recoveryAttempts()).isEqualTo(2);
         assertThat(loaded.modelsById()).containsKey("default");
         assertThat(loaded.modelsById().get("default").tokenizerEncodingOrDefault()).isEqualTo("cl100k_base");
         assertThat(loaded.agentsById()).containsKeys("main", "compaction");
@@ -208,12 +209,14 @@ class RuntimeConfigIntegrationTest {
                     enabled: false
                     repeatThreshold: 9999
                     windowSize: 9999
+                    recoveryAttempts: 7
                 """));
 
         RuntimeConfig loaded = RuntimeConfig.load(magentaYaml);
         assertThat(loaded.toolLoopGuard().enabled()).isFalse();
         assertThat(loaded.toolLoopGuard().repeatThreshold()).isEqualTo(9999);
         assertThat(loaded.toolLoopGuard().windowSize()).isEqualTo(9999);
+        assertThat(loaded.toolLoopGuard().recoveryAttempts()).isEqualTo(7);
     }
 
     @Test
@@ -281,6 +284,29 @@ class RuntimeConfigIntegrationTest {
         assertThatThrownBy(() -> RuntimeConfig.load(magentaYaml))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("instance.toolLoopGuard.windowSize must be >= repeatThreshold");
+    }
+
+    @Test
+    void invalidToolLoopGuardRecoveryAttemptsFailsFast() throws IOException {
+        Path configRoot = createConfigRoot("cfg-tool-loop-guard-invalid-recovery");
+        writeDefaultMagentaYaml(configRoot);
+        writeModel(configRoot.resolve("models/default.yaml"), "dev");
+        writeTask(configRoot.resolve("tasks/default-task.yaml"), List.of("base/system"), List.of("read_file"));
+        writeWorkflow(configRoot.resolve("workflows/default-workflow.yaml"), List.of(), List.of());
+        writeAgent(configRoot.resolve("agents/main.yaml"), "default", List.of("base/system"), List.of(), List.of());
+        writeAgent(configRoot.resolve("agents/compaction.yaml"), "default", List.of("base/system"), List.of(), List.of());
+        Files.writeString(configRoot.resolve("prompts/base/system.md"), "system prompt");
+
+        Path magentaYaml = configRoot.resolve("magenta.yaml");
+        Files.writeString(magentaYaml, Files.readString(magentaYaml).replace("maxTurns: 3", """
+                maxTurns: 3
+                  toolLoopGuard:
+                    recoveryAttempts: -1
+                """));
+
+        assertThatThrownBy(() -> RuntimeConfig.load(magentaYaml))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("instance.toolLoopGuard.recoveryAttempts must be >= 0");
     }
 
     @Test

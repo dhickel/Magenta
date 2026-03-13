@@ -14,6 +14,7 @@ instance:
     enabled: true
     repeatThreshold: 5
     windowSize: 8
+    recoveryAttempts: 2
   maxEssenceBodyBytes: 65536
   observability:
     log_level: "info"
