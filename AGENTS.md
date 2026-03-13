@@ -326,6 +326,8 @@ On any code/config change that should be runnable from the home deployment:
 4. Confirm deployed config keeps `instance.workspaceRoot` set to `~/.magenta/root`.
 5. For live-environment testing after deployment, run `magenta` (alias for `java -jar ~/.magenta/Magenta2-1.0-SNAPSHOT.jar ~/.magenta/configs/magenta.yaml`).
 6. If the alias is missing, add `alias magenta='java -jar "$HOME/.magenta/Magenta2-1.0-SNAPSHOT.jar" "$HOME/.magenta/configs/magenta.yaml"'` to your shell profile.
+7. Never run git commands in `~/.magenta`; it is a deployment/runtime directory, not a source repository.
+8. Never track deployment/runtime artifacts in this repo (especially `.magenta/state.db` and `logs/session-events.jsonl`).
 
 ### Ollama Host Diagnostics
 
