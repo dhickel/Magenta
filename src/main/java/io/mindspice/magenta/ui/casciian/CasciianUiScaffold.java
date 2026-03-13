@@ -65,17 +65,17 @@ public final class CasciianUiScaffold {
             );
             this.spec = spec;
             this.horizontalSplit = addSplitPane(0, 0, Math.max(1, getWidth() - 2), Math.max(1, getHeight() - 2), true);
-            TPanel leftPanel = new TPanel(horizontalSplit, 0, 0, 10, 10);
+            TPanel leftPanel = new TPanel(null, 0, 0, 10, 10);
             leftPanel.setTitle("conversation");
-            TPanel rightPanel = new TPanel(horizontalSplit, 0, 0, 10, 10);
+            TPanel rightPanel = new TPanel(null, 0, 0, 10, 10);
             rightPanel.setTitle("views");
             this.horizontalSplit.setLeft(leftPanel);
             this.horizontalSplit.setRight(rightPanel);
 
             this.verticalSplit = leftPanel.addSplitPane(0, 0, Math.max(1, leftPanel.getWidth()), Math.max(1, leftPanel.getHeight()), false);
-            this.topPanel = new TPanel(verticalSplit, 0, 0, 10, 10);
+            this.topPanel = new TPanel(null, 0, 0, 10, 10);
             this.topPanel.setTitle("session");
-            this.bottomPanel = new TPanel(verticalSplit, 0, 0, 10, 10);
+            this.bottomPanel = new TPanel(null, 0, 0, 10, 10);
             this.bottomPanel.setTitle("input");
             this.verticalSplit.setTop(topPanel);
             this.verticalSplit.setBottom(bottomPanel);
