@@ -22,9 +22,13 @@ public final class CasciianUiScaffold {
     private CasciianUiScaffold() {
     }
 
-    public static void main(String[] args) throws Exception {
+    public static void runDemo() throws Exception {
         ScaffoldApp app = new ScaffoldApp();
         app.run();
+    }
+
+    public static void main(String[] args) throws Exception {
+        runDemo();
     }
 
     static final class ScaffoldApp extends TApplication {
