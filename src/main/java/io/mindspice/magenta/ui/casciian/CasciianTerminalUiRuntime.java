@@ -92,7 +92,9 @@ public final class CasciianTerminalUiRuntime {
 
     public void runLoop() {
         appThread = Thread.ofPlatform().name("magenta-casciian-ui").start(app);
+        awaitUiStartup();
         runOnUi(() -> {
+            app.forceInitialLayoutPass();
             renderStatus();
             app.focusComposer();
         });
@@ -338,6 +340,18 @@ public final class CasciianTerminalUiRuntime {
             });
         } catch (Exception ignored) {
             // best effort UI updates
+        }
+    }
+
+    private void awaitUiStartup() {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (!closed.get() && !app.started() && System.nanoTime() < deadline) {
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
         }
     }
 
@@ -1031,6 +1045,10 @@ public final class CasciianTerminalUiRuntime {
             return started || !closed.get();
         }
 
+        boolean started() {
+            return started;
+        }
+
         @Override
         protected void onPreDraw() {
             super.onPreDraw();
@@ -1096,6 +1114,10 @@ public final class CasciianTerminalUiRuntime {
             viewsWindow.setDimensions(leftCols + gutter, 0, rightCols, height);
             conversationWindow.relayout(force);
             viewsWindow.relayout();
+        }
+
+        void forceInitialLayoutPass() {
+            layoutWindows(true);
         }
 
         void setTranscriptEntries(List<TranscriptEntry> entries) {
@@ -1229,7 +1251,13 @@ public final class CasciianTerminalUiRuntime {
                             Math.min(innerHeight - layoutSpec.minBottomRows(), topRowsOverride)
                     );
             verticalSplit.setSplit(Math.max(1, split));
+            // Split-pane children can report previous dimensions for one cycle;
+            // run content layout twice to converge immediately on startup.
+            applyChildLayout();
+            applyChildLayout();
+        }
 
+        private void applyChildLayout() {
             ConversationLayout layout = conversationLayoutFor(
                     transcriptPanel.getWidth(),
                     transcriptPanel.getHeight(),
@@ -1239,6 +1267,7 @@ public final class CasciianTerminalUiRuntime {
             headerPrimary.setDimensions(1, layout.headerPrimaryY(), layout.transcriptWidth(), 1);
             headerSeparator.setDimensions(1, layout.headerSeparatorY(), layout.transcriptWidth());
             transcriptWidget.setDimensions(1, layout.transcriptY(), layout.transcriptWidth(), layout.transcriptRows());
+            transcriptWidget.reflowData();
             footerSeparator.setDimensions(1, layout.footerSeparatorY(), layout.transcriptWidth());
             contextFooter.setDimensions(1, layout.footerY(), layout.transcriptWidth(), 1);
             composer.setDimensions(1, 0, layout.inputWidth(), layout.composerRows());

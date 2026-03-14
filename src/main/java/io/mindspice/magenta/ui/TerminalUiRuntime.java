@@ -935,13 +935,11 @@ public final class TerminalUiRuntime {
         var settings = magenta.settingsFor(handle);
         var policy = magenta.toolPolicy(handle);
 
-        String topLeft = "model: " + usage.modelName();
+        String topLeft = "model: " + settings.modelId();
         String topRight = "ctx: " + usage.estimatedContextTokens() + "/" + usage.maxContextTokens()
                           + " (" + String.format(Locale.ROOT, "%.1f", usage.percentOfMaxContext()) + "%)";
         String bottomLeft = "session: " + settings.alias() + " [" + shortSessionId(usage.sessionId().toString()) + "]";
         String bottomRight = "tools=" + settings.toolsEnabled()
-                             + " stream=session:" + settings.streamingEnabled()
-                             + ",model:" + settings.modelSupportsStreaming()
                              + " security=" + policy.mode().name()
                              + " yolo=" + (policy.devYoloOverride() ? "on" : "off");
 
