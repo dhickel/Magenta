@@ -68,7 +68,7 @@ public final class CasciianTerminalUiRuntime {
 
     private final Object transcriptLock = new Object();
     private final ArrayDeque<TranscriptEntry> transcriptEntries = new ArrayDeque<>();
-    private final StreamingBuffer streamingAssistant = new StreamingBuffer("assistant> ");
+    private final StreamingBuffer streamingAssistant = new StreamingBuffer("");
 
     private final MagentaApp app;
     private final CasciianPromptService promptService;
@@ -1206,7 +1206,7 @@ public final class CasciianTerminalUiRuntime {
             this.transcriptWidget = new TranscriptWidget(transcriptPanel, 1, 4, 20, 8);
 
             this.composer = new ComposerEditor(inputPanel, 1, 1, 20, 4);
-            this.contextFooter = new StaticTextWidget(inputPanel, 1, 1, 20, 1);
+            this.contextFooter = new StaticTextWidget(transcriptPanel, 1, 1, 20, 1);
             relayout(true);
         }
 
@@ -1236,11 +1236,11 @@ public final class CasciianTerminalUiRuntime {
             headerPrimary.setDimensions(1, 1, transcriptWidth, 1);
             headerSecondary.setDimensions(1, 2, transcriptWidth, 1);
             transcriptWidget.setDimensions(1, 4, transcriptWidth, Math.max(3, transcriptHeight - 4));
+            contextFooter.setDimensions(1, Math.max(4, transcriptHeight), transcriptWidth, 1);
 
             int inputWidth = Math.max(12, inputPanel.getWidth() - 2);
             int inputHeight = Math.max(4, inputPanel.getHeight() - 2);
-            contextFooter.setDimensions(1, 1, inputWidth, 1);
-            composer.setDimensions(1, 2, inputWidth, Math.max(3, inputHeight - 2));
+            composer.setDimensions(1, 1, inputWidth, Math.max(3, inputHeight - 1));
         }
 
         int innerHeight() {
@@ -1548,17 +1548,9 @@ public final class CasciianTerminalUiRuntime {
         private List<RenderedLine> renderEntry(TranscriptEntry entry, int width) {
             List<RenderedLine> lines = new ArrayList<>();
             CellAttributes style = entry.role().blockStyle();
-            lines.add(new RenderedLine(padOrTrim(formatTranscriptTag(entry), width), style));
-            int bodyWidth = Math.max(1, width - 2);
-            List<String> source = entry.lines() == null || entry.lines().isEmpty() ? List.of("") : entry.lines();
-            for (String rawLine : source) {
-                List<String> wrapped = CasciianMessageFormatter.wordWrap(rawLine == null ? "" : rawLine, bodyWidth);
-                if (wrapped.isEmpty()) {
-                    wrapped = List.of("");
-                }
-                for (String part : wrapped) {
-                    lines.add(new RenderedLine(padOrTrim("│ " + part, width), style));
-                }
+            lines.add(new RenderedLine(formatTranscriptTag(entry.title(), entry.timestamp(), width), style));
+            for (String bodyLine : formatTranscriptBodyLines(entry.lines(), width)) {
+                lines.add(new RenderedLine(bodyLine, style));
             }
             return lines;
         }
@@ -1574,13 +1566,44 @@ public final class CasciianTerminalUiRuntime {
         }
     }
 
-    private static String formatTranscriptTag(TranscriptEntry entry) {
-        String label = entry.title() == null || entry.title().isBlank() ? "event" : entry.title();
-        String tag = "[" + label + "]";
-        if (entry.timestamp() == null) {
-            return tag;
+    static String formatTranscriptTag(String title, Instant timestamp, int width) {
+        int boundedWidth = Math.max(4, width);
+        String label = title == null || title.isBlank() ? "event" : title;
+        String sender = "[" + label + "]";
+        if (timestamp == null) {
+            return padOrTrim("┌─" + sender, boundedWidth);
         }
-        return TS_FORMAT.format(entry.timestamp()) + " " + tag;
+        return padOrTrim("┌─" + TS_FORMAT.format(timestamp) + " " + sender, boundedWidth);
+    }
+
+    static List<String> formatTranscriptBodyLines(List<String> sourceLines, int width) {
+        int boundedWidth = Math.max(4, width);
+        int bodyWidth = Math.max(1, boundedWidth - 2);
+        List<String> source = sourceLines == null || sourceLines.isEmpty() ? List.of("") : sourceLines;
+        List<String> wrappedLines = new ArrayList<>();
+        for (String rawLine : source) {
+            List<String> wrapped = CasciianMessageFormatter.wordWrap(rawLine == null ? "" : rawLine, bodyWidth);
+            if (wrapped.isEmpty()) {
+                wrapped = List.of("");
+            }
+            wrappedLines.addAll(wrapped);
+        }
+        if (wrappedLines.isEmpty()) {
+            wrappedLines.add("");
+        }
+
+        List<String> rendered = new ArrayList<>(wrappedLines.size());
+        for (String wrappedLine : wrappedLines) {
+            rendered.add(padOrTrim("│ " + wrappedLine, boundedWidth));
+        }
+        return List.copyOf(rendered);
+    }
+
+    private static String padOrTrim(String text, int width) {
+        if (text.length() >= width) {
+            return text.substring(0, width);
+        }
+        return text + " ".repeat(width - text.length());
     }
 
     private static final class StaticTextWidget extends casciian.TWidget {
