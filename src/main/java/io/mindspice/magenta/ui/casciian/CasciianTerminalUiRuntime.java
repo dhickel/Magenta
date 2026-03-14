@@ -93,11 +93,6 @@ public final class CasciianTerminalUiRuntime {
     public void runLoop() {
         appThread = Thread.ofPlatform().name("magenta-casciian-ui").start(app);
         runOnUi(() -> {
-            renderBlock("system", List.of(
-                    "sessionId=" + session.handle().sessionId(),
-                    "workspaceRoot=" + runtimeConfig.workspaceRoot(),
-                    "Commands: /help, /session, /model, /clear, /task [name], /new, /compact, /approve-demo, /tool-approval <on|off>, /yolo <on|off>, /event <text>, /exit"
-            ));
             renderStatus();
             app.focusComposer();
         });
@@ -274,11 +269,12 @@ public final class CasciianTerminalUiRuntime {
         runOnUi(() -> {
             Magenta.SessionContextUsage usage = session.contextUsageSupplier().get();
             UiStatusBar status = buildStatusBar(magenta, session.handle(), session.contextUsageSupplier());
+            String agentId = magenta.settingsFor(session.handle()).agentId();
             app.updateSessionHeader(
-                    status.bottomLeft() + " | agent: " + magenta.settingsFor(session.handle()).agentId(),
-                    status.topLeft() + " | " + status.bottomRight(),
-                    "context "
-                    + usage.estimatedContextTokens() + "/" + usage.maxContextTokens()
+                    "agent: " + agentId + " | " + status.topLeft() + " | " + status.bottomLeft() + " | " + status.bottomRight(),
+                    "",
+                    "root: " + runtimeConfig.workspaceRoot()
+                    + " | context " + usage.estimatedContextTokens() + "/" + usage.maxContextTokens()
                     + " (" + String.format(Locale.ROOT, "%.1f", usage.percentOfMaxContext()) + "%) | messages "
                     + usage.messageCount()
             );
@@ -860,13 +856,11 @@ public final class CasciianTerminalUiRuntime {
         var settings = magenta.settingsFor(handle);
         var policy = magenta.toolPolicy(handle);
 
-        String topLeft = "model: " + usage.modelName();
+        String topLeft = "model: " + settings.modelId();
         String topRight = "ctx: " + usage.estimatedContextTokens() + "/" + usage.maxContextTokens()
                           + " (" + String.format(Locale.ROOT, "%.1f", usage.percentOfMaxContext()) + "%)";
         String bottomLeft = "session: " + settings.alias() + " [" + shortSessionId(usage.sessionId().toString()) + "]";
         String bottomRight = "tools=" + settings.toolsEnabled()
-                             + " stream=session:" + settings.streamingEnabled()
-                             + ",model:" + settings.modelSupportsStreaming()
                              + " security=" + policy.mode().name()
                              + " yolo=" + (policy.devYoloOverride() ? "on" : "off");
 
@@ -1185,13 +1179,17 @@ public final class CasciianTerminalUiRuntime {
         private final TranscriptWidget transcriptWidget;
         private final ComposerEditor composer;
         private final StaticTextWidget headerPrimary;
-        private final StaticTextWidget headerSecondary;
+        private final HorizontalSeparatorWidget headerSeparator;
+        private final HorizontalSeparatorWidget footerSeparator;
         private final StaticTextWidget contextFooter;
         private int topRowsOverride = -1;
 
         private ConversationWindow(TApplication app) {
             super(app, "", 0, 0, 80, 24,
                     ABSOLUTEXY | NOCLOSEBOX | NOZOOMBOX | OVERRIDEMENU);
+            setBorderStyleForeground("single");
+            setBorderStyleInactive("single");
+            setBorderStyleMoving("single");
             this.verticalSplit = addSplitPane(0, 0, Math.max(1, getWidth() - 2), Math.max(1, getHeight() - 2), false);
 
             this.transcriptPanel = new TPanel(null, 0, 0, 10, 10);
@@ -1201,9 +1199,10 @@ public final class CasciianTerminalUiRuntime {
             this.verticalSplit.setTop(transcriptPanel);
             this.verticalSplit.setBottom(inputPanel);
 
-            this.headerPrimary = new StaticTextWidget(transcriptPanel, 1, 1, 20, 1);
-            this.headerSecondary = new StaticTextWidget(transcriptPanel, 1, 2, 20, 1);
-            this.transcriptWidget = new TranscriptWidget(transcriptPanel, 1, 4, 20, 8);
+            this.headerPrimary = new StaticTextWidget(transcriptPanel, 1, 0, 20, 1);
+            this.headerSeparator = new HorizontalSeparatorWidget(transcriptPanel, 1, 1, 20);
+            this.footerSeparator = new HorizontalSeparatorWidget(transcriptPanel, 1, 1, 20);
+            this.transcriptWidget = new TranscriptWidget(transcriptPanel, 1, 2, 20, 8);
 
             this.composer = new ComposerEditor(inputPanel, 1, 1, 20, 4);
             this.contextFooter = new StaticTextWidget(transcriptPanel, 1, 1, 20, 1);
@@ -1231,16 +1230,18 @@ public final class CasciianTerminalUiRuntime {
                     );
             verticalSplit.setSplit(Math.max(1, split));
 
-            int transcriptWidth = Math.max(12, transcriptPanel.getWidth() - 2);
-            int transcriptHeight = Math.max(6, transcriptPanel.getHeight() - 2);
-            headerPrimary.setDimensions(1, 1, transcriptWidth, 1);
-            headerSecondary.setDimensions(1, 2, transcriptWidth, 1);
-            transcriptWidget.setDimensions(1, 4, transcriptWidth, Math.max(3, transcriptHeight - 4));
-            contextFooter.setDimensions(1, Math.max(4, transcriptHeight), transcriptWidth, 1);
-
-            int inputWidth = Math.max(12, inputPanel.getWidth() - 2);
-            int inputHeight = Math.max(4, inputPanel.getHeight() - 2);
-            composer.setDimensions(1, 1, inputWidth, Math.max(3, inputHeight - 1));
+            ConversationLayout layout = conversationLayoutFor(
+                    transcriptPanel.getWidth(),
+                    transcriptPanel.getHeight(),
+                    inputPanel.getWidth(),
+                    inputPanel.getHeight()
+            );
+            headerPrimary.setDimensions(1, layout.headerPrimaryY(), layout.transcriptWidth(), 1);
+            headerSeparator.setDimensions(1, layout.headerSeparatorY(), layout.transcriptWidth());
+            transcriptWidget.setDimensions(1, layout.transcriptY(), layout.transcriptWidth(), layout.transcriptRows());
+            footerSeparator.setDimensions(1, layout.footerSeparatorY(), layout.transcriptWidth());
+            contextFooter.setDimensions(1, layout.footerY(), layout.transcriptWidth(), 1);
+            composer.setDimensions(1, 0, layout.inputWidth(), layout.composerRows());
         }
 
         int innerHeight() {
@@ -1253,7 +1254,6 @@ public final class CasciianTerminalUiRuntime {
 
         void updateHeader(String primary, String secondary, String context) {
             headerPrimary.setText(primary);
-            headerSecondary.setText(secondary);
             contextFooter.setText(context);
         }
 
@@ -1276,6 +1276,9 @@ public final class CasciianTerminalUiRuntime {
         private ViewsWindow(TApplication app) {
             super(app, "", 0, 0, 30, 24,
                     ABSOLUTEXY | NOCLOSEBOX | NOZOOMBOX | OVERRIDEMENU);
+            setBorderStyleForeground("single");
+            setBorderStyleInactive("single");
+            setBorderStyleMoving("single");
             this.content = new StaticTextWidget(this, 1, 1, 10, 10);
             this.content.setText("""
                     context/task views coming soon
@@ -1438,9 +1441,9 @@ public final class CasciianTerminalUiRuntime {
 
         private TranscriptWidget(TPanel parent, int x, int y, int width, int height) {
             super(parent, x, y, width, height);
-            this.vScroller = new casciian.TVScroller(this, Math.max(0, width - 1), 0, Math.max(1, height - 1));
+            this.vScroller = new casciian.TVScroller(this, Math.max(0, width - 1), 0, Math.max(1, height));
             setVerticalSmallChange(1);
-            setVerticalBigChange(Math.max(1, height - 1));
+            setVerticalBigChange(Math.max(1, height));
             reflowData();
         }
 
@@ -1496,16 +1499,16 @@ public final class CasciianTerminalUiRuntime {
 
         @Override
         public void draw() {
-            int contentWidth = Math.max(1, getWidth() - 2);
+            int contentWidth = Math.max(1, getWidth() - 1);
             CellAttributes fill = getTheme().getColor(ColorTheme.TTEXT);
             int start = getVerticalValue();
             int row = 0;
-            for (int index = start; index < renderedLines.size() && row < getHeight() - 1; index++, row++) {
+            for (int index = start; index < renderedLines.size() && row < getHeight(); index++, row++) {
                 RenderedLine line = renderedLines.get(index);
                 hLineXY(0, row, Math.max(1, getWidth() - 1), ' ', fill);
-                putStringXY(0, row, padOrTrim(line.text(), contentWidth), line.style());
+                putStringXY(0, row, trimToWidth(line.text(), contentWidth), line.style());
             }
-            while (row < getHeight() - 1) {
+            while (row < getHeight()) {
                 hLineXY(0, row, Math.max(1, getWidth() - 1), ' ', fill);
                 row++;
             }
@@ -1515,7 +1518,7 @@ public final class CasciianTerminalUiRuntime {
         public void reflowData() {
             boolean atBottom = getVerticalValue() >= Math.max(0, getBottomValue() - 1);
             int previousTop = getVerticalValue();
-            int contentWidth = Math.max(12, getWidth() - 2);
+            int contentWidth = Math.max(12, getWidth() - 1);
             List<RenderedLine> nextLines = new ArrayList<>();
             for (TranscriptEntry entry : entries) {
                 nextLines.addAll(renderEntry(entry, contentWidth));
@@ -1525,7 +1528,7 @@ public final class CasciianTerminalUiRuntime {
                 nextLines.remove(nextLines.size() - 1);
             }
             this.renderedLines = List.copyOf(nextLines);
-            int visibleRows = Math.max(1, getHeight() - 1);
+            int visibleRows = Math.max(1, getHeight());
             setBottomValue(Math.max(0, renderedLines.size() - visibleRows));
             setVerticalBigChange(visibleRows);
             if (atBottom) {
@@ -1555,11 +1558,11 @@ public final class CasciianTerminalUiRuntime {
             return lines;
         }
 
-        private String padOrTrim(String text, int width) {
+        private String trimToWidth(String text, int width) {
             if (text.length() >= width) {
                 return text.substring(0, width);
             }
-            return text + " ".repeat(width - text.length());
+            return text;
         }
 
         private record RenderedLine(String text, CellAttributes style) {
@@ -1571,9 +1574,9 @@ public final class CasciianTerminalUiRuntime {
         String label = title == null || title.isBlank() ? "event" : title;
         String sender = "[" + label + "]";
         if (timestamp == null) {
-            return padOrTrim("┌─" + sender, boundedWidth);
+            return trimToWidth("┌─" + sender, boundedWidth);
         }
-        return padOrTrim("┌─" + TS_FORMAT.format(timestamp) + " " + sender, boundedWidth);
+        return trimToWidth("┌─" + TS_FORMAT.format(timestamp) + " " + sender, boundedWidth);
     }
 
     static List<String> formatTranscriptBodyLines(List<String> sourceLines, int width) {
@@ -1594,16 +1597,71 @@ public final class CasciianTerminalUiRuntime {
 
         List<String> rendered = new ArrayList<>(wrappedLines.size());
         for (String wrappedLine : wrappedLines) {
-            rendered.add(padOrTrim("│ " + wrappedLine, boundedWidth));
+            rendered.add(trimToWidth("│ " + wrappedLine, boundedWidth));
         }
         return List.copyOf(rendered);
     }
 
-    private static String padOrTrim(String text, int width) {
+    static ConversationLayout conversationLayoutFor(int transcriptPanelWidth, int transcriptPanelHeight, int inputPanelWidth, int inputPanelHeight) {
+        int transcriptWidth = Math.max(12, transcriptPanelWidth - 2);
+        int headerPrimaryY = 0;
+        int headerSecondaryY = 0;
+        int headerSeparatorY = 1;
+        int transcriptY = 2;
+        int footerY = Math.max(transcriptY + 4, transcriptPanelHeight - 1);
+        int footerSeparatorY = footerY - 1;
+        int transcriptRows = Math.max(3, footerSeparatorY - transcriptY);
+        int inputWidth = Math.max(12, inputPanelWidth - 2);
+        int composerRows = Math.max(3, inputPanelHeight);
+        return new ConversationLayout(
+                transcriptWidth,
+                headerPrimaryY,
+                headerSecondaryY,
+                headerSeparatorY,
+                transcriptY,
+                transcriptRows,
+                footerSeparatorY,
+                footerY,
+                inputWidth,
+                composerRows
+        );
+    }
+
+    record ConversationLayout(
+            int transcriptWidth,
+            int headerPrimaryY,
+            int headerSecondaryY,
+            int headerSeparatorY,
+            int transcriptY,
+            int transcriptRows,
+            int footerSeparatorY,
+            int footerY,
+            int inputWidth,
+            int composerRows
+    ) {
+    }
+
+    private static String trimToWidth(String text, int width) {
         if (text.length() >= width) {
             return text.substring(0, width);
         }
-        return text + " ".repeat(width - text.length());
+        return text;
+    }
+
+    private static final class HorizontalSeparatorWidget extends casciian.TWidget {
+        private HorizontalSeparatorWidget(casciian.TWidget parent, int x, int y, int width) {
+            super(parent, x, y, width, 1);
+        }
+
+        void setDimensions(int x, int y, int width) {
+            super.setDimensions(x, y, width, 1);
+        }
+
+        @Override
+        public void draw() {
+            CellAttributes fill = getTheme().getColor(ColorTheme.TTEXT);
+            hLineXY(0, 0, Math.max(1, getWidth()), '─', fill);
+        }
     }
 
     private static final class StaticTextWidget extends casciian.TWidget {
