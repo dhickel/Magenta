@@ -28,8 +28,8 @@ class ContextManagerCompactionIntegrationTest {
     void summarizeCompactionExcludesSystemAndRetainsRecentTail() {
         ContextManager contextManager = new ContextManager();
         Context context = new Context();
-        context.append(new ContextElement.SystemMsg("system"));
-        context.append(new ContextElement.SystemMsg("task"));
+        context.append(new ContextElement.SystemCoreMsg("system"));
+        context.append(new ContextElement.SystemTaskMsg("task"));
         for (int i = 0; i < 20; i++) {
             context.append(new ContextElement.UserMsg("user-" + i + "-" + "x".repeat(220)));
             context.append(new ContextElement.AssistantMsg("assistant-" + i + "-" + "y".repeat(120), List.of()));
@@ -65,9 +65,9 @@ class ContextManagerCompactionIntegrationTest {
 
         List<ContextElement> compacted = context.snapshot();
         assertThat(outcome).isPresent();
-        assertThat(summarizedInput.get()).allMatch(message -> !(message instanceof ContextElement.SystemMsg));
-        assertThat(compacted.getFirst()).isEqualTo(new ContextElement.SystemMsg("system"));
-        assertThat(compacted.get(1)).isEqualTo(new ContextElement.SystemMsg("task"));
+        assertThat(summarizedInput.get()).allMatch(message -> !(message instanceof ContextElement.SystemElement));
+        assertThat(compacted.getFirst()).isEqualTo(new ContextElement.SystemCoreMsg("system"));
+        assertThat(compacted.get(1)).isEqualTo(new ContextElement.SystemTaskMsg("task"));
         assertThat(compacted.get(2)).isInstanceOf(ContextElement.SummaryMsg.class);
         List<ContextElement> preservedTail = compacted.subList(3, compacted.size());
         assertThat(preservedTail).hasSizeGreaterThanOrEqualTo(10);
@@ -77,10 +77,11 @@ class ContextManagerCompactionIntegrationTest {
     }
 
     @Test
-    void summarizeCompactionAppendsProtectedStateBlock() {
+    void summarizeCompactionPreservesStateSystemMessageOutsideSummary() {
         ContextManager contextManager = new ContextManager();
         Context context = new Context();
-        context.append(new ContextElement.SystemMsg("system"));
+        context.append(new ContextElement.SystemCoreMsg("system"));
+        context.append(new ContextElement.SystemStateMsg("{\"kind\":\"state_snapshot\",\"version\":1,\"toolUsage\":{}}"));
         for (int i = 0; i < 18; i++) {
             context.append(new ContextElement.UserMsg("user-" + i + "-" + "x".repeat(180)));
             context.append(new ContextElement.AssistantMsg("assistant-" + i + "-" + "y".repeat(120), List.of()));
@@ -106,24 +107,27 @@ class ContextManagerCompactionIntegrationTest {
                 UUID.randomUUID(),
                 context,
                 modelConfig,
-                messages -> "summary text",
-                () -> "recentToolCalls:\n1) id=call-1 tool=todo_update status=ok target=todo-1 targetName=Todo One"
+                messages -> "summary text"
         );
 
         assertThat(outcome).isPresent();
         List<ContextElement> compacted = context.snapshot();
-        assertThat(compacted.get(1)).isInstanceOf(ContextElement.SummaryMsg.class);
-        ContextElement.SummaryMsg summary = (ContextElement.SummaryMsg) compacted.get(1);
+        List<ContextElement.SystemStateMsg> stateMessages = compacted.stream()
+                .filter(ContextElement.SystemStateMsg.class::isInstance)
+                .map(ContextElement.SystemStateMsg.class::cast)
+                .toList();
+        assertThat(stateMessages).hasSize(1);
+
+        assertThat(compacted.get(2)).isInstanceOf(ContextElement.SummaryMsg.class);
+        ContextElement.SummaryMsg summary = (ContextElement.SummaryMsg) compacted.get(2);
         assertThat(summary.content()).contains("summary text");
-        assertThat(summary.content()).contains("[Protected State JSON]");
-        assertThat(summary.content()).contains("recentToolCalls:");
     }
 
     @Test
     void summarizeCompactionNoopsWhenReductionIsTooSmall() {
         ContextManager contextManager = new ContextManager();
         Context context = new Context();
-        context.append(new ContextElement.SystemMsg("system"));
+        context.append(new ContextElement.SystemCoreMsg("system"));
         for (int i = 0; i < 6; i++) {
             context.append(new ContextElement.UserMsg("message-" + i + "-xxxxxxxxxxxxxxxxxxxxxxxx"));
         }
@@ -160,7 +164,7 @@ class ContextManagerCompactionIntegrationTest {
     void summarizeCompactionUsesDeterministicFallbackWhenModelSummaryIsBlank() {
         ContextManager contextManager = new ContextManager();
         Context context = new Context();
-        context.append(new ContextElement.SystemMsg("system"));
+        context.append(new ContextElement.SystemCoreMsg("system"));
         context.append(new ContextElement.AssistantMsg("status checkpoint", List.of()));
         for (int i = 0; i < 40; i++) {
             context.append(new ContextElement.AssistantMsg("", List.of()));
@@ -208,7 +212,7 @@ class ContextManagerCompactionIntegrationTest {
     void summarizeCompactionDoesNotSkipSummarizationWhenFirstNonSystemIsUser() {
         ContextManager contextManager = new ContextManager();
         Context context = new Context();
-        context.append(new ContextElement.SystemMsg("system"));
+        context.append(new ContextElement.SystemCoreMsg("system"));
         context.append(new ContextElement.UserMsg("Continue with the task."));
         for (int i = 0; i < 28; i++) {
             context.append(new ContextElement.AssistantMsg("", List.of()));
@@ -252,7 +256,7 @@ class ContextManagerCompactionIntegrationTest {
     void summarizeCompactionShrinksHeavyRecentToolPayloadsBeforeFallback() {
         ContextManager contextManager = new ContextManager();
         Context context = new Context();
-        context.append(new ContextElement.SystemMsg("system"));
+        context.append(new ContextElement.SystemCoreMsg("system"));
         for (int i = 0; i < 22; i++) {
             context.append(new ContextElement.UserMsg("user-" + i + "-" + "x".repeat(140)));
             context.append(new ContextElement.AssistantMsg("assistant-" + i + "-" + "y".repeat(90), List.of()));
@@ -309,7 +313,7 @@ class ContextManagerCompactionIntegrationTest {
     void maxContextGuardCompactsWhenThresholdCompactionDoesNotRun() {
         ContextManager contextManager = new ContextManager();
         Context context = new Context();
-        context.append(new ContextElement.SystemMsg("system"));
+        context.append(new ContextElement.SystemCoreMsg("system"));
         for (int i = 0; i < 18; i++) {
             context.append(new ContextElement.UserMsg("user-" + i + "-" + "x".repeat(140)));
             context.append(new ContextElement.AssistantMsg("assistant-" + i + "-" + "y".repeat(90), List.of()));
@@ -347,7 +351,7 @@ class ContextManagerCompactionIntegrationTest {
     void maxContextGuardLeavesOverLimitContextWhenOnlySystemMessageCanBeKept() {
         ContextManager contextManager = new ContextManager();
         Context context = new Context();
-        context.append(new ContextElement.SystemMsg("system-" + "x".repeat(6000)));
+        context.append(new ContextElement.SystemCoreMsg("system-" + "x".repeat(6000)));
 
         RuntimeConfig.ModelConfig modelConfig = new RuntimeConfig.ModelConfig(
                 "m",
@@ -380,7 +384,7 @@ class ContextManagerCompactionIntegrationTest {
     void rollingWindowRespectsTargetTokensWhenAssistantContainsLargeToolArgs() {
         ContextManager contextManager = new ContextManager();
         Context context = new Context();
-        context.append(new ContextElement.SystemMsg("system"));
+        context.append(new ContextElement.SystemCoreMsg("system"));
         context.append(new ContextElement.AssistantMsg(
                 "",
                 List.of(new ContextElement.ToolCall("id-1", "read_file", "{\"blob\":\"" + "x".repeat(1000) + "\"}"))
@@ -415,7 +419,11 @@ class ContextManagerCompactionIntegrationTest {
         Context context = contextManager.loadContext(
                 sessionId,
                 null,
-                List.of("Core system prompt", "Agent system prompt", "Task system prompt")
+                List.of(
+                        new ContextElement.SystemCoreMsg("Core system prompt"),
+                        new ContextElement.SystemAgentMsg("Agent system prompt"),
+                        new ContextElement.SystemTaskMsg("Task system prompt")
+                )
         );
         for (int i = 0; i < 28; i++) {
             context.append(new ContextElement.UserMsg("user-" + i + "-" + "x".repeat(220)));
@@ -447,9 +455,9 @@ class ContextManagerCompactionIntegrationTest {
 
         assertThat(outcome).isPresent();
         assertThat(context.snapshot()).startsWith(
-                new ContextElement.SystemMsg("Core system prompt"),
-                new ContextElement.SystemMsg("Agent system prompt"),
-                new ContextElement.SystemMsg("Task system prompt")
+                new ContextElement.SystemCoreMsg("Core system prompt"),
+                new ContextElement.SystemAgentMsg("Agent system prompt"),
+                new ContextElement.SystemTaskMsg("Task system prompt")
         );
 
         SessionContextResult loaded = databaseService.execute(new SessionContextCommand.LoadActiveContext(sessionId.toString()));
@@ -457,9 +465,9 @@ class ContextManagerCompactionIntegrationTest {
         SessionContextResult.ActiveContextLoaded active = (SessionContextResult.ActiveContextLoaded) loaded;
         assertThat(active.sysPromptAmount()).isEqualTo(3);
         assertThat(active.messages()).startsWith(
-                new ContextElement.SystemMsg("Core system prompt"),
-                new ContextElement.SystemMsg("Agent system prompt"),
-                new ContextElement.SystemMsg("Task system prompt")
+                new ContextElement.SystemCoreMsg("Core system prompt"),
+                new ContextElement.SystemAgentMsg("Agent system prompt"),
+                new ContextElement.SystemTaskMsg("Task system prompt")
         );
     }
 }

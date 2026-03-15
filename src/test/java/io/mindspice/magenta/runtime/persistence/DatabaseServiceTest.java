@@ -26,8 +26,8 @@ class DatabaseServiceTest {
                 "alpha",
                 2,
                 List.of(
-                        new ContextElement.SystemMsg("Base prompt"),
-                        new ContextElement.SystemMsg("Agent prompt")
+                        new ContextElement.SystemCoreMsg("Base prompt"),
+                        new ContextElement.SystemAgentMsg("Agent prompt")
                 )
         ));
         assertThat(initialized).isInstanceOf(CommonCommandResults.Success.class);
@@ -48,8 +48,8 @@ class DatabaseServiceTest {
         assertThat(active.sysPromptAmount()).isEqualTo(2);
         assertThat(active.nextMessageId()).isEqualTo(4);
         assertThat(active.messages()).containsExactly(
-                new ContextElement.SystemMsg("Base prompt"),
-                new ContextElement.SystemMsg("Agent prompt"),
+                new ContextElement.SystemCoreMsg("Base prompt"),
+                new ContextElement.SystemAgentMsg("Agent prompt"),
                 new ContextElement.UserMsg("hello"),
                 new ContextElement.AssistantMsg("world", List.of())
         );
@@ -72,7 +72,7 @@ class DatabaseServiceTest {
                 "alpha",
                 1,
                 List.of(
-                        new ContextElement.SystemMsg("system"),
+                        new ContextElement.SystemCoreMsg("system"),
                         new ContextElement.UserMsg("u1"),
                         new ContextElement.UserMsg("u2")
                 )
@@ -81,7 +81,7 @@ class DatabaseServiceTest {
         SessionContextResult replaceResult = service.execute(new SessionContextCommand.ReplaceActiveContext(
                 sessionId,
                 List.of(
-                        new ContextElement.SystemMsg("system"),
+                        new ContextElement.SystemCoreMsg("system"),
                         new ContextElement.SummaryMsg("summary", "session:" + sessionId)
                 ),
                 1
@@ -94,7 +94,7 @@ class DatabaseServiceTest {
         assertThat(active.nextMessageId()).isEqualTo(5);
         assertThat(active.droppedMessageIds()).containsExactly(0, 1, 2);
         assertThat(active.messages()).containsExactly(
-                new ContextElement.SystemMsg("system"),
+                new ContextElement.SystemCoreMsg("system"),
                 new ContextElement.SummaryMsg("summary", "session:" + sessionId)
         );
 
@@ -105,13 +105,7 @@ class DatabaseServiceTest {
         SessionContextResult newMessage = service.execute(new SessionContextCommand.GetMessageById(sessionId, 3));
         SessionContextResult.ContextMessageLoaded activeMessage = (SessionContextResult.ContextMessageLoaded) newMessage;
         assertThat(activeMessage.dropped()).isFalse();
-        assertThat(activeMessage.message()).isEqualTo(new ContextElement.SystemMsg("system"));
-
-        SessionContextResult compactionState = service.execute(new SessionContextCommand.LoadCompactionState(sessionId, 5, 5));
-        SessionContextResult.CompactionStateLoaded loadedCompaction = (SessionContextResult.CompactionStateLoaded) compactionState;
-        assertThat(loadedCompaction.latestSnapshot()).isNotNull();
-        assertThat(loadedCompaction.latestSnapshot().summaryMessageId()).isEqualTo(4);
-        assertThat(loadedCompaction.latestSnapshot().replacementMessageIds()).containsExactly(3, 4);
+        assertThat(activeMessage.message()).isEqualTo(new ContextElement.SystemCoreMsg("system"));
     }
 
     @Test
@@ -141,7 +135,7 @@ class DatabaseServiceTest {
                 "agent-default",
                 "alpha",
                 1,
-                List.of(new ContextElement.SystemMsg("system"))
+                List.of(new ContextElement.SystemCoreMsg("system"))
         ));
         service.execute(new SessionContextCommand.AppendMessages(
                 sessionId,
@@ -200,7 +194,6 @@ class DatabaseServiceTest {
         assertThat(loaded.recentToolMessages()).isEmpty();
         assertThat(loaded.todos()).isEmpty();
         assertThat(loaded.openTodoCount()).isZero();
-        assertThat(loaded.latestSnapshot()).isNull();
     }
 
     @Test
@@ -213,7 +206,7 @@ class DatabaseServiceTest {
                 "agent-default",
                 "alpha",
                 1,
-                List.of(new ContextElement.SystemMsg("system"))
+                List.of(new ContextElement.SystemCoreMsg("system"))
         ));
         service.execute(new SessionContextCommand.AppendMessages(
                 sessionId,
@@ -226,7 +219,7 @@ class DatabaseServiceTest {
         service.execute(new SessionContextCommand.ReplaceActiveContext(
                 sessionId,
                 List.of(
-                        new ContextElement.SystemMsg("system"),
+                        new ContextElement.SystemCoreMsg("system"),
                         new ContextElement.ToolMsg("call-new-1", "todo_update", "{\"status\":\"ok\"}"),
                         new ContextElement.ToolMsg("call-new-2", "write_file", "{\"status\":\"ok\"}")
                 ),
@@ -240,6 +233,5 @@ class DatabaseServiceTest {
         assertThat(loaded.recentToolMessages())
                 .extracting(SessionContextResult.CompactionToolMessage::toolCallId)
                 .containsExactly("call-new-2", "call-new-1");
-        assertThat(loaded.latestSnapshot()).isNull();
     }
 }

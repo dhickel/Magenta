@@ -1601,11 +1601,10 @@ public final class CasciianTerminalUiRuntime {
     static String formatTranscriptTag(String title, Instant timestamp, int width) {
         int boundedWidth = Math.max(4, width);
         String label = title == null || title.isBlank() ? "event" : title;
-        String sender = "[" + label + "]";
         if (timestamp == null) {
-            return trimToWidth("┌─" + sender, boundedWidth);
+            return trimToWidth("┌─ " + label, boundedWidth);
         }
-        return trimToWidth("┌─" + TS_FORMAT.format(timestamp) + " " + sender, boundedWidth);
+        return trimToWidth("┌─ [" + TS_FORMAT.format(timestamp) + "] " + label, boundedWidth);
     }
 
     static List<String> formatTranscriptBodyLines(List<String> sourceLines, int width) {

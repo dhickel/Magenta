@@ -14,6 +14,7 @@ import io.mindspice.magenta.runtime.persistence.ToolCommandResult;
 import io.mindspice.magenta.runtime.security.ToolSecurityDescriptor;
 import io.mindspice.magenta.runtime.tools.builtin.AnnotatedBuiltInToolCatalog;
 import io.mindspice.magenta.runtime.tools.builtin.FileTools;
+import io.mindspice.magenta.runtime.tools.builtin.HistoryTools;
 import io.mindspice.magenta.runtime.tools.builtin.ShellTools;
 import io.mindspice.magenta.runtime.tools.builtin.SqliteTools;
 import io.mindspice.magenta.runtime.tools.builtin.TodoTools;
@@ -107,11 +108,13 @@ public final class ToolManager {
         ShellTools shellTools = new ShellTools(settings);
         SqliteTools sqliteTools = new SqliteTools(settings);
         TodoTools todoTools = new TodoTools(settings, toolCommandBridge);
+        HistoryTools historyTools = new HistoryTools(toolCommandBridge);
         AnnotatedBuiltInToolCatalog catalog = new AnnotatedBuiltInToolCatalog(
                 fileTools,
                 shellTools,
                 sqliteTools,
                 todoTools,
+                historyTools,
                 runtimeConfig.agentsById(),
                 delegationSupport
         );

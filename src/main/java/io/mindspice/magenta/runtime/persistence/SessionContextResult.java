@@ -31,8 +31,7 @@ public sealed interface SessionContextResult permits CommonCommandResults.Succes
             List<SessionContextResult.CompactionToolMessage> recentToolMessages,
             List<SessionContextResult.CompactionTodoItem> todos,
             int openTodoCount,
-            String activeTodoId,
-            SessionContextResult.CompactionSnapshot latestSnapshot
+            String activeTodoId
     ) implements SessionContextResult {
         public CompactionStateLoaded {
             recentToolMessages = recentToolMessages == null ? List.of() : List.copyOf(recentToolMessages);
@@ -79,19 +78,4 @@ public sealed interface SessionContextResult permits CommonCommandResults.Succes
         }
     }
 
-    record CompactionSnapshot(
-            int snapshotId,
-            int summaryMessageId,
-            List<Integer> replacementMessageIds,
-            String manifestText,
-            long createdAtMs
-    ) {
-        public CompactionSnapshot {
-            snapshotId = Math.max(snapshotId, 0);
-            summaryMessageId = Math.max(summaryMessageId, 0);
-            replacementMessageIds = replacementMessageIds == null ? List.of() : List.copyOf(replacementMessageIds);
-            manifestText = manifestText == null ? "" : manifestText;
-            createdAtMs = Math.max(createdAtMs, 0L);
-        }
-    }
 }

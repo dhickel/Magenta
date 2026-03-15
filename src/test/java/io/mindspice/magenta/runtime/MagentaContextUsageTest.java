@@ -181,7 +181,7 @@ class MagentaContextUsageTest {
     }
 
     @Test
-    void protectedStateIncludesOpenTodoQueueWithVisibleTitles() throws Exception {
+    void stateSnapshotIncludesOpenTodoQueueWithVisibleTitles() throws Exception {
         Magenta magenta = new Magenta(TestRuntimeConfigs.basicRuntimeConfig());
         SessionHandle handle = magenta.startBaseSession("protected-state");
 
@@ -196,9 +196,9 @@ class MagentaContextUsageTest {
                 new ContextElement.ToolCall("todo-create-2", "todo_create", "{\"title\":\"Select and summarize posts 61-70\"}")
         ));
 
-        Method method = Magenta.class.getDeclaredMethod("buildProtectedCompactionStateBlock", java.util.UUID.class);
+        Method method = Magenta.class.getDeclaredMethod("buildStateSnapshotJson", java.util.UUID.class, java.util.List.class);
         method.setAccessible(true);
-        String protectedState = (String) method.invoke(magenta, handle.sessionId());
+        String protectedState = (String) method.invoke(magenta, handle.sessionId(), List.of());
 
         JsonNode stateJson = MAPPER.readTree(protectedState);
         assertThat(stateJson.path("todos").path("openQueue")).isNotEmpty();

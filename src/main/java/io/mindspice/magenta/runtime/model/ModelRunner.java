@@ -81,6 +81,7 @@ public final class ModelRunner {
         for (int i = 0; i < maxIterations; i++) {
             safeBeforeModelCallHook.run();
             List<ContextElement> requestContext = session.context().snapshot();
+            requestContext = normalizeStateSystemOrdering(requestContext);
             if (pendingLoopWarningSystemMessage != null && !pendingLoopWarningSystemMessage.isBlank()) {
                 requestContext = prependSystemMessage(requestContext, pendingLoopWarningSystemMessage);
                 pendingLoopWarningSystemMessage = null;
@@ -237,7 +238,7 @@ public final class ModelRunner {
         input.append("Summarize the following conversation context. Return summary text only.\n\n");
         for (ContextElement message : messages) {
             String role = switch (message) {
-                case ContextElement.SystemMsg ignored -> "system";
+                case ContextElement.SystemElement ignored -> "system";
                 case ContextElement.UserMsg ignored -> "user";
                 case ContextElement.AssistantMsg ignored -> "assistant";
                 case ContextElement.ToolMsg ignored -> "tool";
@@ -248,7 +249,7 @@ public final class ModelRunner {
         }
 
         List<ContextElement> summaryMessages = List.of(
-                new ContextElement.SystemMsg(systemPrompt),
+                new ContextElement.SystemCoreMsg(systemPrompt),
                 new ContextElement.UserMsg(input.toString())
         );
 
@@ -259,16 +260,42 @@ public final class ModelRunner {
 
     private List<ContextElement> prependSystemMessage(List<ContextElement> snapshot, String message) {
         List<ContextElement> withSystemPrefix = new ArrayList<>(snapshot.size() + 1);
-        withSystemPrefix.add(new ContextElement.SystemMsg(message));
+        withSystemPrefix.add(new ContextElement.SystemAgentMsg(message));
         withSystemPrefix.addAll(snapshot);
         return withSystemPrefix;
+    }
+
+    private List<ContextElement> normalizeStateSystemOrdering(List<ContextElement> snapshot) {
+        if (snapshot == null || snapshot.isEmpty()) {
+            return List.of();
+        }
+        ContextElement.SystemStateMsg newestState = null;
+        List<ContextElement> withoutState = new ArrayList<>(snapshot.size());
+        for (ContextElement message : snapshot) {
+            if (message instanceof ContextElement.SystemStateMsg systemMsg) {
+                newestState = systemMsg;
+                continue;
+            }
+            withoutState.add(message);
+        }
+        if (newestState == null) {
+            return List.copyOf(withoutState);
+        }
+        int insertionIndex = 0;
+        for (int i = 0; i < withoutState.size(); i++) {
+            if (ContextElement.isSystemElement(withoutState.get(i))) {
+                insertionIndex = i + 1;
+            }
+        }
+        withoutState.add(insertionIndex, newestState);
+        return List.copyOf(withoutState);
     }
 
     private List<ChatMessage> toChatMessages(List<ContextElement> context) {
         List<ChatMessage> output = new ArrayList<>();
         for (ContextElement message : context) {
             switch (message) {
-                case ContextElement.SystemMsg systemMsg -> output.add(SystemMessage.from(systemMsg.content()));
+                case ContextElement.SystemElement systemMsg -> output.add(SystemMessage.from(systemMsg.content()));
                 case ContextElement.UserMsg userMsg -> output.add(UserMessage.from(userMsg.content()));
                 case ContextElement.InboundMsg inboundMsg -> output.add(UserMessage.from(inboundMsg.content()));
                 case ContextElement.AssistantMsg assistantMsg -> {

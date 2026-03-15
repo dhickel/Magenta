@@ -11,7 +11,7 @@ Canonical runtime documentation for engineers working in `src/main/java/io/minds
 - `10-runtime-architecture.md`: system composition, contracts, and runtime invariants.
 - `11-config-architecture.md`: config load/validation contract and failure semantics.
 - `12-session-architecture.md`: lifecycle semantics and session integration boundaries.
-- `13-context-compaction-architecture.md`: context mutation/compaction behavior and fallback rules.
+- `13-context-compaction-architecture.md`: context mutation/compaction behavior, typed system-message invariants, and state snapshot rules.
 - `14-model-ollama-architecture.md`: model turn loop and Ollama transport behavior.
 - `15-callback-contract-architecture.md`: session/router contract semantics, output event model, and error emission behavior.
 - `16-public-api-contract.md`: supported runtime API surface and stability policy.

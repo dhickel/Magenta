@@ -83,7 +83,7 @@ public final class SessionManager {
         UUID sessionId = UUID.randomUUID();
         String effectiveAlias = normalizeAlias(alias, sessionId);
         String initialTaskId = resolveLaunchTask(agent, launchTaskOrNull);
-        List<String> systemPrompts = resolveSystemPrompts(agent.promptIds(), initialTaskId);
+        List<ContextElement.PromptSystemElement> systemPrompts = resolveSystemPrompts(agent.promptIds(), initialTaskId);
         List<String> effectiveToolIds = resolveEffectiveToolIds(agent.toolIds(), initialTaskId);
         Context context = contextManager.loadContext(sessionId, existingContextOrNull, systemPrompts);
 
@@ -359,9 +359,7 @@ public final class SessionManager {
         List<ContextElement> current = session.context().snapshot();
         int firstNonSystem = firstNonSystemIndex(current);
         List<ContextElement> replacement = new ArrayList<>();
-        for (String prompt : resolveSystemPrompts(agent.promptIds(), taskId)) {
-            replacement.add(new ContextElement.SystemMsg(prompt));
-        }
+        replacement.addAll(resolveSystemPrompts(agent.promptIds(), taskId));
         replacement.addAll(current.subList(firstNonSystem, current.size()));
         session.context().replaceAll(replacement);
 
@@ -382,10 +380,8 @@ public final class SessionManager {
         List<ContextElement> current = session.context().snapshot();
         int firstNonSystem = firstNonSystemIndex(current);
         List<ContextElement> replacement = new ArrayList<>();
-        for (String prompt : resolveSystemPrompts(agent.promptIds(), null)) {
-            replacement.add(new ContextElement.SystemMsg(prompt));
-        }
-        replacement.add(new ContextElement.SystemMsg(normalizedPrompt));
+        replacement.addAll(resolveSystemPrompts(agent.promptIds(), null));
+        replacement.add(new ContextElement.SystemTaskMsg(normalizedPrompt));
         replacement.addAll(current.subList(firstNonSystem, current.size()));
         session.context().replaceAll(replacement);
 
@@ -420,17 +416,27 @@ public final class SessionManager {
                 .toList();
     }
 
-    public List<ContextElement.SystemMsg> clearConversationKeepSystemMessages(UUID sessionId) {
+    public List<ContextElement.PromptSystemElement> clearConversationKeepSystemMessages(UUID sessionId) {
         Session session = resume(sessionId);
         List<ContextElement> current = session.context().snapshot();
         int firstNonSystem = firstNonSystemIndex(current);
-        List<ContextElement> replacement = firstNonSystem <= 0
-                ? List.of()
-                : List.copyOf(current.subList(0, firstNonSystem));
+        List<ContextElement> replacement;
+        if (firstNonSystem <= 0) {
+            replacement = List.of();
+        } else {
+            List<ContextElement> retained = new ArrayList<>();
+            for (ContextElement message : current.subList(0, firstNonSystem)) {
+                if (isStateSystemMessage(message)) {
+                    continue;
+                }
+                retained.add(message);
+            }
+            replacement = List.copyOf(retained);
+        }
         session.context().replaceAll(replacement);
         return replacement.stream()
-                .filter(ContextElement.SystemMsg.class::isInstance)
-                .map(ContextElement.SystemMsg.class::cast)
+                .filter(ContextElement.PromptSystemElement.class::isInstance)
+                .map(ContextElement.PromptSystemElement.class::cast)
                 .toList();
     }
 
@@ -487,8 +493,11 @@ public final class SessionManager {
         }
         java.util.ArrayList<String> prompts = new java.util.ArrayList<>();
         for (ContextElement message : messages) {
-            if (message instanceof ContextElement.SystemMsg systemMsg) {
-                prompts.add(systemMsg.content());
+            if (message instanceof ContextElement.PromptSystemElement prompt) {
+                prompts.add(prompt.content());
+                continue;
+            }
+            if (ContextElement.isStateSystemElement(message)) {
                 continue;
             }
             break;
@@ -499,19 +508,25 @@ public final class SessionManager {
         return String.join("\n\n", prompts);
     }
 
-    private List<String> resolveSystemPrompts(List<String> promptIds, String taskIdOrNull) {
-        ArrayList<String> prompts = new ArrayList<>();
+    private List<ContextElement.PromptSystemElement> resolveSystemPrompts(List<String> promptIds, String taskIdOrNull) {
+        ArrayList<ContextElement.PromptSystemElement> prompts = new ArrayList<>();
         if (promptIds == null || promptIds.isEmpty()) {
             appendTaskPrompts(prompts, taskIdOrNull);
             return List.copyOf(prompts);
         }
 
+        boolean firstPrompt = true;
         for (String promptId : promptIds) {
             String prompt = runtimeConfig.promptsById().get(promptId);
             if (prompt == null) {
                 throw new IllegalStateException("Prompt ID not found: " + promptId);
             }
-            prompts.add(prompt);
+            if (firstPrompt) {
+                prompts.add(new ContextElement.SystemCoreMsg(prompt));
+                firstPrompt = false;
+            } else {
+                prompts.add(new ContextElement.SystemAgentMsg(prompt));
+            }
         }
         appendTaskPrompts(prompts, taskIdOrNull);
         return List.copyOf(prompts);
@@ -524,7 +539,7 @@ public final class SessionManager {
         return resolveTaskForAgent(agent, launchTaskOrNull);
     }
 
-    private void appendTaskPrompts(List<String> prompts, String taskIdOrNull) {
+    private void appendTaskPrompts(List<ContextElement.PromptSystemElement> prompts, String taskIdOrNull) {
         if (taskIdOrNull == null || taskIdOrNull.isBlank()) {
             return;
         }
@@ -537,7 +552,7 @@ public final class SessionManager {
             if (prompt == null) {
                 throw new IllegalStateException("Task prompt ID not found: " + taskIdOrNull + " -> " + promptId);
             }
-            prompts.add(prompt);
+            prompts.add(new ContextElement.SystemTaskMsg(prompt));
         }
     }
 
@@ -635,12 +650,16 @@ public final class SessionManager {
     private int firstNonSystemIndex(List<ContextElement> context) {
         int index = 0;
         while (index < context.size()) {
-            if (!(context.get(index) instanceof ContextElement.SystemMsg)) {
+            if (!ContextElement.isSystemElement(context.get(index))) {
                 break;
             }
             index++;
         }
         return index;
+    }
+
+    private boolean isStateSystemMessage(ContextElement message) {
+        return ContextElement.isStateSystemElement(message);
     }
 
     private String normalizeReferenceToken(String rawToken) {

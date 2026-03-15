@@ -35,6 +35,8 @@ public final class AnnotatedBuiltInToolCatalog {
     private static final String TODO_LIST = "todo_list";
     private static final String TODO_UPDATE = "todo_update";
     private static final String TODO_DELETE = "todo_delete";
+    private static final String HISTORY_META_LOOKUP = "history_meta_lookup";
+    private static final String HISTORY_RAW_LOOKUP = "history_raw_lookup";
     private static final String LIST_AGENTS = "list_agents";
     private static final String DELEGATE_AGENT = "delegate_agent";
 
@@ -42,6 +44,7 @@ public final class AnnotatedBuiltInToolCatalog {
     private final ShellTools shellTools;
     private final SqliteTools sqliteTools;
     private final TodoTools todoTools;
+    private final HistoryTools historyTools;
     private final Map<String, RuntimeConfig.AgentConfig> agentsById;
     private final DelegationSupport delegationSupport;
 
@@ -50,6 +53,7 @@ public final class AnnotatedBuiltInToolCatalog {
             ShellTools shellTools,
             SqliteTools sqliteTools,
             TodoTools todoTools,
+            HistoryTools historyTools,
             Map<String, RuntimeConfig.AgentConfig> agentsById,
             DelegationSupport delegationSupport
     ) {
@@ -57,6 +61,7 @@ public final class AnnotatedBuiltInToolCatalog {
         this.shellTools = Objects.requireNonNull(shellTools, "shellTools");
         this.sqliteTools = Objects.requireNonNull(sqliteTools, "sqliteTools");
         this.todoTools = Objects.requireNonNull(todoTools, "todoTools");
+        this.historyTools = Objects.requireNonNull(historyTools, "historyTools");
         this.agentsById = agentsById == null ? Map.of() : Map.copyOf(agentsById);
         this.delegationSupport = delegationSupport == null
                 ? DelegationSupport.unsupported()
@@ -331,6 +336,48 @@ public final class AnnotatedBuiltInToolCatalog {
         return todoTools.todoDelete(rewriteRequest(request, TODO_DELETE, args));
     }
 
+    @Tool(name = HISTORY_META_LOOKUP, value = {
+            "Loads compact metadata rows from durable session history across all message types.",
+            "Use this first to locate messageId references before requesting full content.",
+            "Supports paging (beforeMessageId) and optional element/tool filters.",
+            "Rows include messageId, message type, tool identity when present, status/code hints, and short preview text."
+    })
+    public ToolResult historyMetaLookup(
+            @ToolMemoryId ToolRequest request,
+            @P(value = "Maximum rows to return. Defaults to 20.", required = false) Integer limit,
+            @P(value = "Load rows with messageId < beforeMessageId.", required = false) Integer beforeMessageId,
+            @P(value = "Optional element type filter: system|user|assistant|tool|inbound|summary", required = false) String elementTypeFilter,
+            @P(value = "Optional tool name filter", required = false) String toolNameFilter,
+            @P(value = "Include compacted/dropped rows when true. Defaults to true.", required = false) Boolean includeDropped
+    ) {
+        ObjectNode args = objectArgs();
+        putIntIfPresent(args, "limit", limit);
+        putIntIfPresent(args, "beforeMessageId", beforeMessageId);
+        putTextIfPresent(args, "elementTypeFilter", elementTypeFilter);
+        putTextIfPresent(args, "toolNameFilter", toolNameFilter);
+        putBooleanIfPresent(args, "includeDropped", includeDropped);
+        return historyTools.historyMetaLookup(rewriteRequest(request, HISTORY_META_LOOKUP, args));
+    }
+
+    @Tool(name = HISTORY_RAW_LOOKUP, value = {
+            "Loads full durable content by messageId from session history.",
+            "Use this after history_meta_lookup when exact prior inputs or raw payload are needed.",
+            "Supports startChar/maxChars slicing for large records.",
+            "Returns hasMore and totalChars for continued paging."
+    })
+    public ToolResult historyRawLookup(
+            @ToolMemoryId ToolRequest request,
+            @P("Message id from history_meta_lookup rows") Integer messageId,
+            @P(value = "Slice start character offset. Defaults to 0.", required = false) Integer startChar,
+            @P(value = "Maximum chars to return. Defaults to runtime bound.", required = false) Integer maxChars
+    ) {
+        ObjectNode args = objectArgs();
+        putIntIfPresent(args, "messageId", messageId);
+        putIntIfPresent(args, "startChar", startChar);
+        putIntIfPresent(args, "maxChars", maxChars);
+        return historyTools.historyRawLookup(rewriteRequest(request, HISTORY_RAW_LOOKUP, args));
+    }
+
     @Tool(name = LIST_AGENTS, value = {
             "Provides a list of all configured agents currently available in the runtime, along with their IDs, capabilities, and status.",
             "Call this tool before attempting to use delegate_agent to discover valid delegation targets and their associated metadata (e.g., modelId, tool count).",
@@ -463,7 +510,9 @@ public final class AnnotatedBuiltInToolCatalog {
                 Map.entry(TODO_CREATE, ToolSecurityDescriptor.path(List.of(), false)),
                 Map.entry(TODO_LIST, ToolSecurityDescriptor.path(List.of(), false)),
                 Map.entry(TODO_UPDATE, ToolSecurityDescriptor.path(List.of(), false)),
-                Map.entry(TODO_DELETE, ToolSecurityDescriptor.path(List.of(), false))
+                Map.entry(TODO_DELETE, ToolSecurityDescriptor.path(List.of(), false)),
+                Map.entry(HISTORY_META_LOOKUP, ToolSecurityDescriptor.path(List.of(), false)),
+                Map.entry(HISTORY_RAW_LOOKUP, ToolSecurityDescriptor.path(List.of(), false))
         );
     }
 

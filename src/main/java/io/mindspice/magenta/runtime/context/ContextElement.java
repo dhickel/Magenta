@@ -4,13 +4,51 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-public sealed interface ContextElement permits ContextElement.SystemMsg, ContextElement.UserMsg,
+public sealed interface ContextElement permits ContextElement.SystemElement, ContextElement.UserMsg,
         ContextElement.AssistantMsg, ContextElement.ToolMsg, ContextElement.SummaryMsg, ContextElement.InboundMsg {
 
     String content();
 
-    record SystemMsg(String content) implements ContextElement {
-        public SystemMsg {
+    sealed interface SystemElement extends ContextElement permits ContextElement.PromptSystemElement,
+            ContextElement.SystemStateMsg {
+    }
+
+    sealed interface PromptSystemElement extends SystemElement permits ContextElement.SystemCoreMsg,
+            ContextElement.SystemAgentMsg, ContextElement.SystemTaskMsg {
+    }
+
+    static boolean isSystemElement(ContextElement element) {
+        return element instanceof SystemElement;
+    }
+
+    static boolean isPromptSystemElement(ContextElement element) {
+        return element instanceof PromptSystemElement;
+    }
+
+    static boolean isStateSystemElement(ContextElement element) {
+        return element instanceof SystemStateMsg;
+    }
+
+    record SystemCoreMsg(String content) implements PromptSystemElement {
+        public SystemCoreMsg {
+            content = content == null ? "" : content;
+        }
+    }
+
+    record SystemAgentMsg(String content) implements PromptSystemElement {
+        public SystemAgentMsg {
+            content = content == null ? "" : content;
+        }
+    }
+
+    record SystemTaskMsg(String content) implements PromptSystemElement {
+        public SystemTaskMsg {
+            content = content == null ? "" : content;
+        }
+    }
+
+    record SystemStateMsg(String content) implements SystemElement {
+        public SystemStateMsg {
             content = content == null ? "" : content;
         }
     }

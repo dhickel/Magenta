@@ -22,14 +22,14 @@ class CasciianTerminalUiRuntimeTest {
                 32
         );
 
-        assertThat(tag).isEqualTo("┌─" + TS_FORMAT.format(timestamp) + " [magenta]");
+        assertThat(tag).isEqualTo("┌─ [" + TS_FORMAT.format(timestamp) + "] magenta");
     }
 
     @Test
     void transcriptTagFallsBackToLabelOnlyWhenTimestampMissing() {
         String tag = CasciianTerminalUiRuntime.formatTranscriptTag("user", null, 16);
 
-        assertThat(tag).isEqualTo("┌─[user]");
+        assertThat(tag).isEqualTo("┌─ user");
     }
 
     @Test

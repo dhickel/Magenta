@@ -22,7 +22,7 @@ class ModelRunnerMessageMappingTest {
         List<ChatMessage> messages = (List<ChatMessage>) mapper.invoke(
                 runner,
                 List.of(
-                        new ContextElement.SystemMsg("system"),
+                        new ContextElement.SystemCoreMsg("system"),
                         new ContextElement.SummaryMsg("session summary", "session:test")
                 )
         );

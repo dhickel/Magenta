@@ -102,7 +102,7 @@ class ModelRunnerLoopGuardRecoveryTest {
 
     private static Session testSession(String endpoint) {
         Context context = new Context();
-        context.append(new ContextElement.SystemMsg("base system prompt"));
+        context.append(new ContextElement.SystemCoreMsg("base system prompt"));
         context.append(new ContextElement.UserMsg("use tools"));
         RuntimeConfig.ModelConfig modelConfig = new RuntimeConfig.ModelConfig(
                 "test-model",

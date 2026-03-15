@@ -112,6 +112,7 @@ Current implementation status:
 - terminal entrypoint is Lanterna-based through internal `io.mindspice.magenta.ui` package (`TerminalUiRuntime`/`TerminalUiBootstrap`) and still wired through handle-first route + callback contracts.
 - tool/security behavior enters through runtime-wrapped `SessionConfig.toolBridge` callback wiring.
 - runtime external API is handle-first (`SessionHandle`) with routed input/output through `SessionRouter`.
+- context system-message ADT is typed (`system_core`, `system_agent`, `system_task`, `system_state`) and state mirror identity is ADT-based (no string marker prefix).
 - `MindStore`, `SchedulerService`, and full cross-domain `SecurityService` remain future-phase targets.
 
 Design rules:

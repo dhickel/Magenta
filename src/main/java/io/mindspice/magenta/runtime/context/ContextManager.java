@@ -17,7 +17,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
-import java.util.function.Supplier;
 
 public final class ContextManager {
 
@@ -38,15 +37,15 @@ public final class ContextManager {
         if (systemPrompt == null || systemPrompt.isBlank()) {
             return new Context();
         }
-        return newContext(List.of(systemPrompt));
+        return newContext(List.of(new ContextElement.SystemCoreMsg(systemPrompt)));
     }
 
-    public Context newContext(List<String> systemPrompts) {
+    public Context newContext(List<? extends ContextElement.SystemElement> systemMessages) {
         Context context = new Context();
-        List<String> prompts = systemPrompts == null ? List.of() : List.copyOf(systemPrompts);
-        for (String systemPrompt : prompts) {
-            if (systemPrompt != null && !systemPrompt.isBlank()) {
-                context.append(new ContextElement.SystemMsg(systemPrompt));
+        List<? extends ContextElement.SystemElement> safe = systemMessages == null ? List.of() : List.copyOf(systemMessages);
+        for (ContextElement.SystemElement message : safe) {
+            if (message != null && !message.content().isBlank()) {
+                context.append(message);
             }
         }
         return context;
@@ -59,15 +58,23 @@ public final class ContextManager {
     }
 
     public Context loadContext(Context sourceOrNull, String systemPrompt) {
-        return loadContext(UUID.randomUUID(), sourceOrNull, systemPrompt == null ? List.of() : List.of(systemPrompt));
+        return loadContext(
+                UUID.randomUUID(),
+                sourceOrNull,
+                systemPrompt == null ? List.of() : List.of(new ContextElement.SystemCoreMsg(systemPrompt))
+        );
     }
 
-    public Context loadContext(UUID sessionId, Context sourceOrNull, List<String> systemPrompts) {
+    public Context loadContext(
+            UUID sessionId,
+            Context sourceOrNull,
+            List<? extends ContextElement.SystemElement> systemMessages
+    ) {
         Context context;
         if (sourceOrNull != null) {
             context = copyContext(sourceOrNull);
         } else {
-            context = loadPersistedOrNew(sessionId, systemPrompts);
+            context = loadPersistedOrNew(sessionId, systemMessages);
         }
 
         attachMutationListener(sessionId, context);
@@ -98,13 +105,21 @@ public final class ContextManager {
 
         int count = 0;
         for (ContextElement message : messages) {
-            if (message instanceof ContextElement.SystemMsg) {
+            if (ContextElement.isPromptSystemElement(message)) {
                 count++;
+                continue;
+            }
+            if (ContextElement.isStateSystemElement(message)) {
                 continue;
             }
             break;
         }
         return count;
+    }
+
+    public void upsertStateSystemMessage(Context context, String stateJson) {
+        Objects.requireNonNull(context, "context");
+        context.upsertStateSystemMessage(stateJson);
     }
 
     public void storeContext(Context context) {
@@ -118,21 +133,13 @@ public final class ContextManager {
             RuntimeConfig.ModelConfig modelConfig,
             Function<List<ContextElement>, String> summarizer
     ) {
-        return compactIfNeeded(sessionId, context, modelConfig, summarizer, () -> "");
-    }
-
-    public Optional<CompactionOutcome> compactIfNeeded(
-            UUID sessionId,
-            Context context,
-            RuntimeConfig.ModelConfig modelConfig,
-            Function<List<ContextElement>, String> summarizer,
-            Supplier<String> protectedStateSupplier
-    ) {
         List<ContextElement> snapshot = context.snapshot();
-        int originalSystemCount = countLeadingSystemPrompts(snapshot);
+        StateExtraction stateExtraction = extractStateMessage(snapshot);
+        List<ContextElement> compactableSnapshot = stateExtraction.withoutStateMessages();
+        int originalSystemCount = countLeadingSystemPrompts(compactableSnapshot);
         List<ContextElement> originalLeadingSystem = originalSystemCount == 0
                 ? List.of()
-                : List.copyOf(snapshot.subList(0, originalSystemCount));
+                : List.copyOf(compactableSnapshot.subList(0, originalSystemCount));
         String tokenizerEncoding = modelConfig.tokenizerEncodingOrDefault();
         int preTokens = SessionTokenEstimator.estimate(snapshot, tokenizerEncoding);
         int compactThreshold = modelConfig.compactThreshold();
@@ -153,29 +160,21 @@ public final class ContextManager {
             if (summary == null || summary.isBlank()) {
                 summary = buildDeterministicCompactionFallback(messages);
             }
-            String protectedState;
-            try {
-                protectedState = protectedStateSupplier == null ? "" : protectedStateSupplier.get();
-            } catch (Exception ignored) {
-                protectedState = "";
-            }
-            if (protectedState == null || protectedState.isBlank()) {
-                return summary;
-            }
-            return summary.trim() + "\n\n[Protected State JSON]\n" + protectedState.trim();
+            return summary;
         };
 
         CompactionStrategy strategy = CompactionStrategy.forName(modelConfig.compactionStrategyOrDefault(), effectiveSummarizer);
         CompactionStrategy.CompactionResult compactedResult = strategy.run(
                 sessionId,
-                snapshot,
+                compactableSnapshot,
                 compactThreshold,
                 tokenizerEncoding
         );
-        List<ContextElement> compacted = withPreservedLeadingSystemPrompts(
+        List<ContextElement> repaired = withPreservedLeadingSystemPrompts(
                 originalLeadingSystem,
                 compactedResult.messages()
         );
+        List<ContextElement> compacted = withStateMessage(repaired, stateExtraction.stateMessageOrNull());
         if (snapshot.equals(compacted)) {
             return Optional.empty();
         }
@@ -212,10 +211,12 @@ public final class ContextManager {
         Objects.requireNonNull(modelConfig, "modelConfig");
 
         List<ContextElement> snapshot = context.snapshot();
-        int originalSystemCount = countLeadingSystemPrompts(snapshot);
+        StateExtraction stateExtraction = extractStateMessage(snapshot);
+        List<ContextElement> compactableSnapshot = stateExtraction.withoutStateMessages();
+        int originalSystemCount = countLeadingSystemPrompts(compactableSnapshot);
         List<ContextElement> originalLeadingSystem = originalSystemCount == 0
                 ? List.of()
-                : List.copyOf(snapshot.subList(0, originalSystemCount));
+                : List.copyOf(compactableSnapshot.subList(0, originalSystemCount));
         String tokenizerEncoding = modelConfig.tokenizerEncodingOrDefault();
         int preTokens = SessionTokenEstimator.estimate(snapshot, tokenizerEncoding);
         int maxContext = modelConfig.maxContext();
@@ -225,14 +226,15 @@ public final class ContextManager {
 
         CompactionStrategy.CompactionResult compactedResult = new RollingWindowCompactionStrategy().run(
                 sessionId,
-                snapshot,
+                compactableSnapshot,
                 maxContext,
                 tokenizerEncoding
         );
-        List<ContextElement> compacted = withPreservedLeadingSystemPrompts(
+        List<ContextElement> repaired = withPreservedLeadingSystemPrompts(
                 originalLeadingSystem,
                 compactedResult.messages()
         );
+        List<ContextElement> compacted = withStateMessage(repaired, stateExtraction.stateMessageOrNull());
         if (snapshot.equals(compacted)) {
             return Optional.empty();
         }
@@ -271,9 +273,9 @@ public final class ContextManager {
         }
     }
 
-    private Context loadPersistedOrNew(UUID sessionId, List<String> systemPrompts) {
+    private Context loadPersistedOrNew(UUID sessionId, List<? extends ContextElement.SystemElement> systemMessages) {
         if (contextBridge == null || sessionId == null) {
-            return newContext(systemPrompts);
+            return newContext(systemMessages);
         }
 
         SessionContextResult loaded = contextBridge.apply(new SessionContextCommand.LoadActiveContext(sessionId.toString()));
@@ -284,10 +286,10 @@ public final class ContextManager {
         }
 
         if (loaded instanceof CommonCommandResults.Failure) {
-            return newContext(systemPrompts);
+            return newContext(systemMessages);
         }
 
-        return newContext(systemPrompts);
+        return newContext(systemMessages);
     }
 
     private void attachMutationListener(UUID sessionId, Context context) {
@@ -310,6 +312,9 @@ public final class ContextManager {
                         replaceAll.messages(),
                         countLeadingSystemPrompts(replaceAll.messages())
                 ));
+                case Context.Mutation.UpsertStateSystemMessage upsert -> contextBridge.apply(
+                        new SessionContextCommand.UpsertStateSystemMessage(sessionId.toString(), upsert.stateJson())
+                );
             };
             ensureSuccess(result, "Failed to persist context mutation");
         });
@@ -340,6 +345,56 @@ public final class ContextManager {
         repaired.addAll(originalLeadingSystem);
         repaired.addAll(tail);
         return List.copyOf(repaired);
+    }
+
+    private StateExtraction extractStateMessage(List<ContextElement> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return new StateExtraction(null, List.of());
+        }
+        ContextElement.SystemStateMsg newestState = null;
+        for (ContextElement message : messages) {
+            if (isStateSystemMessage(message)) {
+                newestState = (ContextElement.SystemStateMsg) message;
+            }
+        }
+        if (newestState == null) {
+            return new StateExtraction(null, List.copyOf(messages));
+        }
+
+        List<ContextElement> without = new ArrayList<>(messages.size());
+        for (ContextElement message : messages) {
+            if (isStateSystemMessage(message)) {
+                continue;
+            }
+            without.add(message);
+        }
+        return new StateExtraction(newestState, List.copyOf(without));
+    }
+
+    private List<ContextElement> withStateMessage(List<ContextElement> messages, ContextElement.SystemStateMsg stateMessage) {
+        if (stateMessage == null) {
+            return messages == null ? List.of() : List.copyOf(messages);
+        }
+        List<ContextElement> safe = messages == null ? List.of() : List.copyOf(messages);
+        ArrayList<ContextElement> rebuilt = new ArrayList<>(safe.size() + 1);
+        for (ContextElement message : safe) {
+            if (isStateSystemMessage(message)) {
+                continue;
+            }
+            rebuilt.add(message);
+        }
+        int insertionIndex = 0;
+        for (int i = 0; i < rebuilt.size(); i++) {
+            if (ContextElement.isSystemElement(rebuilt.get(i))) {
+                insertionIndex = i + 1;
+            }
+        }
+        rebuilt.add(insertionIndex, stateMessage);
+        return List.copyOf(rebuilt);
+    }
+
+    private boolean isStateSystemMessage(ContextElement message) {
+        return ContextElement.isStateSystemElement(message);
     }
 
     private String buildDeterministicCompactionFallback(List<ContextElement> messages) {
@@ -410,7 +465,7 @@ public final class ContextManager {
                 "Objective: " + objective + "\n"
                 + "Completed: Condensed " + messages.size() + " messages (user=" + userCount
                 + ", assistant=" + assistantCount + ", tool=" + toolCount + ").\n"
-                + "Pending: Resume active workflow from protected state and current TODO focus.\n"
+                + "Pending: Resume active workflow from state snapshot and current TODO focus.\n"
                 + "Errors: summary_model_empty." + repeatWarning + "\n"
                 + "Next: Refresh TODO state, then continue only with non-duplicate tool actions."
         ).trim();
@@ -428,5 +483,14 @@ public final class ContextManager {
             return normalized.substring(0, Math.max(maxChars, 0));
         }
         return normalized.substring(0, maxChars - 3) + "...";
+    }
+
+    private record StateExtraction(
+            ContextElement.SystemStateMsg stateMessageOrNull,
+            List<ContextElement> withoutStateMessages
+    ) {
+        private StateExtraction {
+            withoutStateMessages = withoutStateMessages == null ? List.of() : List.copyOf(withoutStateMessages);
+        }
     }
 }

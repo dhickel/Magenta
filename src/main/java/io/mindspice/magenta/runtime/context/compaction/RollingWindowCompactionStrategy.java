@@ -17,7 +17,7 @@ public final class RollingWindowCompactionStrategy implements CompactionStrategy
 
         List<ContextElement> leadingSystem = new ArrayList<>();
         int start = 0;
-        while (start < context.size() && context.get(start) instanceof ContextElement.SystemMsg) {
+        while (start < context.size() && ContextElement.isPromptSystemElement(context.get(start))) {
             leadingSystem.add(context.get(start));
             start++;
         }

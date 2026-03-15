@@ -2,6 +2,7 @@ package io.mindspice.magenta;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
@@ -43,6 +44,10 @@ import io.mindspice.magenta.runtime.tools.ToolPayloads;
 import io.mindspice.magenta.runtime.tools.ToolRequest;
 import io.mindspice.magenta.runtime.tools.ToolResult;
 
+import java.time.Instant;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -66,14 +71,19 @@ public final class Magenta {
     private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
     private static final int DEFAULT_DELEGATION_TIMEOUT_MS = 30_000;
     private static final int MAX_DELEGATION_TIMEOUT_MS = 180_000;
-    private static final int COMPACTION_TOOL_SCAN_LIMIT = 40;
+    private static final int COMPACTION_TOOL_SCAN_LIMIT = 100;
     private static final int COMPACTION_TODO_LIMIT = 50;
-    private static final int RECENT_TOOL_CALLS_LIMIT = 4;
+    private static final int RECENT_TOOL_CALLS_LIMIT = 6;
     private static final int RECENT_TODO_UPDATES_LIMIT = 4;
     private static final int OPEN_TODO_QUEUE_LIMIT = 20;
-    private static final int OPEN_TODO_QUEUE_MIN_RESERVE_CHARS = 500;
+    private static final int STATE_TOOL_USAGE_FILE_LIMIT = 4;
+    private static final int STATE_TOOL_USAGE_SQL_LIMIT = 4;
+    private static final int STATE_TOOL_USAGE_TODO_LIMIT = 4;
+    private static final int STATE_TOOL_USAGE_OTHER_LIMIT = 8;
+    private static final int STATE_PREVIEW_MAX_CHARS = 200;
+    private static final int STATE_MAX_CHARS = 2_400;
+    private static final DateTimeFormatter STATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss");
     private static final int COMPLETION_GUARD_OPEN_TODO_LIST_LIMIT = 20;
-    private static final int PROTECTED_STATE_MAX_CHARS = 1_500;
     private static final String TURN_ABORTED_TEXT = "[turn-aborted] request cancelled by user";
 
     private final RuntimeConfig runtimeConfig;
@@ -244,7 +254,7 @@ public final class Magenta {
         if (!handle.isActive()) {
             throw new IllegalStateException("Session handle is inactive: " + handle.sessionId());
         }
-        List<ContextElement.SystemMsg> retained = sessionManager.clearConversationKeepSystemMessages(handle.sessionId());
+        List<ContextElement.PromptSystemElement> retained = sessionManager.clearConversationKeepSystemMessages(handle.sessionId());
         List<SystemMessageOccupancy> occupied = new ArrayList<>(retained.size());
         for (int i = 0; i < retained.size(); i++) {
             String content = retained.get(i).content();
@@ -271,8 +281,7 @@ public final class Magenta {
                                 compactionModelConfig(),
                                 compactionSystemPrompt(),
                                 messages
-                        ),
-                        () -> buildProtectedCompactionStateBlock(session.sessionId())
+                        )
                 )
                 .map(compaction -> {
                     emitCompactionEvent(handle, session.agentId(), compaction);
@@ -513,7 +522,28 @@ public final class Magenta {
         return configuredThreshold;
     }
 
-    private String buildProtectedCompactionStateBlock(UUID sessionId) {
+    private void updateStateSystemMessage(Session session) {
+        if (session == null || session.sessionId() == null) {
+            return;
+        }
+        String snapshotJson = buildStateSnapshotJson(session.sessionId(), session.context().snapshot());
+        if (snapshotJson.isBlank()) {
+            return;
+        }
+
+        String currentBody = "";
+        for (ContextElement message : session.context().snapshot()) {
+            if (message instanceof ContextElement.SystemStateMsg systemMsg) {
+                currentBody = systemMsg.content();
+            }
+        }
+        if (!currentBody.isBlank() && currentBody.equals(snapshotJson)) {
+            return;
+        }
+        contextManager.upsertStateSystemMessage(session.context(), snapshotJson);
+    }
+
+    private String buildStateSnapshotJson(UUID sessionId, List<ContextElement> contextSnapshot) {
         if (sessionId == null) {
             return "";
         }
@@ -525,9 +555,10 @@ public final class Magenta {
         if (!(result instanceof SessionContextResult.CompactionStateLoaded loaded)) {
             return "";
         }
+
         List<SessionContextResult.CompactionToolMessage> toolMessages = loaded.recentToolMessages();
         List<SessionContextResult.CompactionTodoItem> todos = loaded.todos();
-        java.util.Map<String, SessionContextResult.CompactionTodoItem> todosById = todos.stream()
+        Map<String, SessionContextResult.CompactionTodoItem> todosById = todos.stream()
                 .filter(todo -> todo.todoId() != null && !todo.todoId().isBlank())
                 .collect(Collectors.toMap(
                         SessionContextResult.CompactionTodoItem::todoId,
@@ -537,7 +568,9 @@ public final class Magenta {
                 ));
 
         ObjectNode root = MAPPER.createObjectNode();
-        root.put("version", 2);
+        root.put("kind", "state_snapshot");
+        root.put("version", 1);
+        root.put("generatedAtMs", System.currentTimeMillis());
 
         ObjectNode todosNode = root.putObject("todos");
         String activeTodoId = loaded.activeTodoId() == null ? "" : loaded.activeTodoId();
@@ -551,7 +584,7 @@ public final class Magenta {
             activeNode.put("updatedAtMs", activeTodo.updatedAtMs());
         }
         todosNode.put("openCount", loaded.openTodoCount());
-        var openQueue = todosNode.putArray("openQueue");
+        ArrayNode openQueue = todosNode.putArray("openQueue");
         todos.stream()
                 .filter(todo -> "open".equalsIgnoreCase(todo.status()))
                 .limit(OPEN_TODO_QUEUE_LIMIT)
@@ -562,110 +595,122 @@ public final class Magenta {
                     todoNode.put("status", todo.status());
                     todoNode.put("updatedAtMs", todo.updatedAtMs());
                 });
-        var recentUpdates = todosNode.putArray("recentUpdates");
-        java.util.Set<String> seenUpdateIds = new java.util.LinkedHashSet<>();
+
+        Map<String, JsonNode> toolArgsById = toolCallArgsById(contextSnapshot);
+        ObjectNode toolUsage = root.putObject("toolUsage");
+        ArrayNode fileUsage = null;
+        ArrayNode sqlUsage = null;
+        ArrayNode todoUsage = null;
+        ArrayNode otherUsage = null;
+        int fileUsageCount = 0;
+        int sqlUsageCount = 0;
+        int todoUsageCount = 0;
+        int otherUsageCount = 0;
+        ArrayNode recentFiles = root.putObject("files").putArray("recent");
+        java.util.Set<String> seenPaths = new java.util.LinkedHashSet<>();
         for (SessionContextResult.CompactionToolMessage message : toolMessages) {
-            if (!isTodoTool(message.toolName())) {
-                continue;
+            JsonNode payload = parseJson(message.rawContent());
+            JsonNode data = payload == null ? MAPPER.createObjectNode() : payload.path("data");
+            JsonNode args = toolArgsById.getOrDefault(message.toolCallId(), MAPPER.createObjectNode());
+
+            String category = toolUsageCategory(message.toolName());
+            ArrayNode bucket = switch (category) {
+                case "files" -> {
+                    if (fileUsageCount >= STATE_TOOL_USAGE_FILE_LIMIT) {
+                        yield null;
+                    }
+                    if (fileUsage == null) {
+                        fileUsage = toolUsage.putArray("files");
+                    }
+                    fileUsageCount++;
+                    yield fileUsage;
+                }
+                case "sql" -> {
+                    if (sqlUsageCount >= STATE_TOOL_USAGE_SQL_LIMIT) {
+                        yield null;
+                    }
+                    if (sqlUsage == null) {
+                        sqlUsage = toolUsage.putArray("sql");
+                    }
+                    sqlUsageCount++;
+                    yield sqlUsage;
+                }
+                case "todos" -> {
+                    if (todoUsageCount >= STATE_TOOL_USAGE_TODO_LIMIT) {
+                        yield null;
+                    }
+                    if (todoUsage == null) {
+                        todoUsage = toolUsage.putArray("todos");
+                    }
+                    todoUsageCount++;
+                    yield todoUsage;
+                }
+                default -> {
+                    if (otherUsageCount >= STATE_TOOL_USAGE_OTHER_LIMIT) {
+                        yield null;
+                    }
+                    if (otherUsage == null) {
+                        otherUsage = toolUsage.putArray("other");
+                    }
+                    otherUsageCount++;
+                    yield otherUsage;
+                }
+            };
+            if (bucket != null) {
+                ObjectNode usage = bucket.addObject();
+                usage.put("messageId", message.messageId());
+                usage.put("toolCallId", message.toolCallId());
+                usage.put("toolName", message.toolName());
+                usage.put("status", readText(payload, "status"));
+                usage.put("code", readText(payload, "code"));
+                usage.put("createdAtMs", message.createdAtMs());
+                usage.put("time", formatTimeOnly(message.createdAtMs()));
+                usage.set("target", buildToolTarget(message, args, data));
             }
-            JsonNode data = parsePayloadData(message.rawContent());
-            String todoId = firstNonBlank(
-                    readText(data, "focus", "todoId"),
-                    readText(data, "nextFocus", "todoId"),
-                    readText(data, "deletedTodoId"),
-                    readText(data, "activeTodoId")
+
+            String path = firstNonBlank(
+                    readText(args, "path"),
+                    readText(args, "rootPath"),
+                    readText(data, "path"),
+                    readText(data, "rootPath")
             );
-            if (todoId.isBlank() || !seenUpdateIds.add(todoId) || recentUpdates.size() >= RECENT_TODO_UPDATES_LIMIT) {
-                continue;
+            if (!path.isBlank() && seenPaths.add(path) && recentFiles.size() < 10) {
+                ObjectNode file = recentFiles.addObject();
+                file.put("path", path);
+                file.put("action", fileActionFromTool(message.toolName()));
+                file.put("snapshotId", firstNonBlank(
+                        readText(data, "snapshotIdAfter"),
+                        readText(data, "snapshotId"),
+                        readText(data, "snapshotIdBefore")
+                ));
+                file.put("messageId", message.messageId());
+                file.put("toolCallId", message.toolCallId());
+                file.put("updatedAtMs", message.createdAtMs());
+                file.put("time", formatTimeOnly(message.createdAtMs()));
             }
-            SessionContextResult.CompactionTodoItem canonical = todosById.get(todoId);
-            ObjectNode node = recentUpdates.addObject();
-            node.put("todoId", todoId);
-            node.put("title", trimStateText(firstNonBlank(
-                    readText(data, "focus", "title"),
-                    readText(data, "nextFocus", "title"),
-                    canonical == null ? "" : canonical.title()
-            )));
-            node.put("status", firstNonBlank(
-                    readText(data, "focus", "status"),
-                    readText(data, "nextFocus", "status"),
-                    canonical == null ? "" : canonical.status()
-            ));
-            node.put("updatedAtMs", firstLong(
-                    readLong(data, "focus", "updatedAtMs"),
-                    readLong(data, "nextFocus", "updatedAtMs"),
-                    canonical == null ? 0L : canonical.updatedAtMs(),
-                    message.createdAtMs()
-            ));
         }
-
-        ObjectNode files = root.putObject("files");
-        for (SessionContextResult.CompactionToolMessage message : toolMessages) {
-            if (!isFileTool(message.toolName())) {
-                continue;
-            }
-            JsonNode data = parsePayloadData(message.rawContent());
-            String path = firstNonBlank(readText(data, "path"), readText(data, "rootPath"));
-            if (path.isBlank()) {
-                continue;
-            }
-            files.put("lastPath", path);
-            files.put("action", fileActionFromTool(message.toolName()));
-            files.put("snapshotId", firstNonBlank(
-                    readText(data, "snapshotIdAfter"),
-                    readText(data, "snapshotId"),
-                    readText(data, "snapshotIdBefore")
-            ));
-            break;
+        if (toolUsage.isEmpty()) {
+            root.remove("toolUsage");
         }
-
-        ObjectNode sql = root.putObject("sql");
-        for (SessionContextResult.CompactionToolMessage message : toolMessages) {
-            if (!"sqlite_exec".equals(message.toolName())) {
-                continue;
-            }
-            JsonNode data = parsePayloadData(message.rawContent());
-            JsonNode receipt = data.path("receipt");
-            ObjectNode lastMutation = sql.putObject("lastMutation");
-            lastMutation.put("dbPath", readText(data.path("database"), "dbPath"));
-            lastMutation.put("statementCount", readInt(receipt, "statementCount"));
-            lastMutation.put("rowsAffected", readInt(receipt, "rowsAffected"));
-            lastMutation.put("lastInsertRowId", readLong(receipt, "lastInsertRowId"));
-            break;
-        }
-
-        var recentTools = root.putArray("recentTools");
-        int addedTools = 0;
-        for (SessionContextResult.CompactionToolMessage message : toolMessages) {
-            if (addedTools++ >= RECENT_TOOL_CALLS_LIMIT) {
-                break;
-            }
-            JsonNode rootPayload = parseJson(message.rawContent());
-            ObjectNode tool = recentTools.addObject();
-            tool.put("toolCallId", message.toolCallId());
-            tool.put("toolName", message.toolName());
-            tool.put("status", readText(rootPayload, "status"));
-            tool.put("code", readText(rootPayload, "code"));
-        }
-
-        String block = trimProtectedStateJson(root);
-        if (!block.isBlank()) {
-            return block;
-        }
-        SessionContextResult.CompactionSnapshot snapshot = loaded.latestSnapshot();
-        if (snapshot == null || snapshot.manifestText().isBlank()) {
-            return "";
-        }
-        JsonNode prior = parseJson(snapshot.manifestText());
-        if (!(prior instanceof ObjectNode priorObj)) {
-            return "";
-        }
-        return trimProtectedStateJson(priorObj);
+        return trimStateJson(root);
     }
 
-    private JsonNode parsePayloadData(String payload) {
-        JsonNode root = parseJson(payload);
-        return root == null ? MAPPER.createObjectNode() : root.path("data");
+    private String formatTimeOnly(long epochMs) {
+        if (epochMs <= 0L) {
+            return "";
+        }
+        LocalTime localTime = Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()).toLocalTime();
+        return STATE_TIME_FORMATTER.format(localTime);
+    }
+
+    private String toolUsageCategory(String toolName) {
+        String safeName = toolName == null ? "" : toolName.trim();
+        return switch (safeName) {
+            case "read_file", "file_metadata", "write_file", "search_replace", "delete_file", "list_directory", "grep_files" -> "files";
+            case "sqlite_query", "sqlite_exec" -> "sql";
+            case "todo_create", "todo_update", "todo_delete", "todo_list" -> "todos";
+            default -> "other";
+        };
     }
 
     private JsonNode parseJson(String content) {
@@ -679,40 +724,209 @@ public final class Magenta {
         }
     }
 
-    private String trimProtectedStateJson(ObjectNode manifest) {
+    private String trimStateJson(ObjectNode manifest) {
         try {
             ObjectNode working = manifest.deepCopy();
-            while (MAPPER.writeValueAsString(working).length() > PROTECTED_STATE_MAX_CHARS) {
+            while (MAPPER.writeValueAsString(working).length() > STATE_MAX_CHARS) {
                 boolean changed = false;
-                JsonNode recentTools = working.path("recentTools");
-                if (recentTools.isArray() && recentTools.size() > 0) {
-                    ((com.fasterxml.jackson.databind.node.ArrayNode) recentTools).remove(recentTools.size() - 1);
-                    changed = true;
-                } else {
-                    JsonNode recentUpdates = working.path("todos").path("recentUpdates");
-                    if (recentUpdates.isArray() && recentUpdates.size() > 0) {
-                        ((com.fasterxml.jackson.databind.node.ArrayNode) recentUpdates).remove(recentUpdates.size() - 1);
+                changed |= removeTailFromUsageBucket(working, "other");
+                if (!changed) {
+                    changed |= removeTailFromUsageBucket(working, "todos");
+                }
+                if (!changed) {
+                    changed |= removeTailFromUsageBucket(working, "sql");
+                }
+                if (!changed) {
+                    changed |= removeTailFromUsageBucket(working, "files");
+                }
+                if (!changed) {
+                    JsonNode recentFiles = working.path("files").path("recent");
+                    if (recentFiles.isArray() && recentFiles.size() > 0) {
+                        ((ArrayNode) recentFiles).remove(recentFiles.size() - 1);
                         changed = true;
-                    } else {
-                        JsonNode openQueue = working.path("todos").path("openQueue");
-                        if (openQueue.isArray() && openQueue.size() > 1) {
-                            ((com.fasterxml.jackson.databind.node.ArrayNode) openQueue).remove(openQueue.size() - 1);
-                            changed = true;
-                        }
                     }
                 }
                 if (!changed) {
                     break;
                 }
             }
+            JsonNode filesNode = working.path("files");
+            if (filesNode.isObject()) {
+                JsonNode recentFiles = filesNode.path("recent");
+                if (recentFiles.isArray() && recentFiles.isEmpty()) {
+                    ((ObjectNode) filesNode).remove("recent");
+                }
+                if (((ObjectNode) filesNode).isEmpty()) {
+                    working.remove("files");
+                }
+            }
+            JsonNode usageNode = working.path("toolUsage");
+            if (usageNode.isObject() && ((ObjectNode) usageNode).isEmpty()) {
+                working.remove("toolUsage");
+            }
             String json = MAPPER.writeValueAsString(working);
-            if (json.length() > PROTECTED_STATE_MAX_CHARS) {
+            if (json.length() > STATE_MAX_CHARS) {
                 return "";
             }
             return json;
         } catch (Exception ignored) {
             return "";
         }
+    }
+
+    private boolean removeTailFromUsageBucket(ObjectNode working, String bucketName) {
+        JsonNode toolUsage = working.path("toolUsage");
+        if (!toolUsage.isObject()) {
+            return false;
+        }
+        JsonNode bucketNode = toolUsage.path(bucketName);
+        if (!bucketNode.isArray() || bucketNode.isEmpty()) {
+            return false;
+        }
+        ArrayNode bucket = (ArrayNode) bucketNode;
+        bucket.remove(bucket.size() - 1);
+        if (bucket.isEmpty()) {
+            ((ObjectNode) toolUsage).remove(bucketName);
+            if (((ObjectNode) toolUsage).isEmpty()) {
+                working.remove("toolUsage");
+            }
+        }
+        return true;
+    }
+
+    private Map<String, JsonNode> toolCallArgsById(List<ContextElement> contextSnapshot) {
+        if (contextSnapshot == null || contextSnapshot.isEmpty()) {
+            return Map.of();
+        }
+        java.util.LinkedHashMap<String, JsonNode> byId = new java.util.LinkedHashMap<>();
+        for (ContextElement message : contextSnapshot) {
+            if (!(message instanceof ContextElement.AssistantMsg assistantMsg)) {
+                continue;
+            }
+            for (ContextElement.ToolCall toolCall : assistantMsg.toolCalls()) {
+                if (toolCall == null || toolCall.id() == null || toolCall.id().isBlank()) {
+                    continue;
+                }
+                JsonNode args = parseJson(toolCall.argumentsJson());
+                byId.put(toolCall.id(), args == null ? MAPPER.createObjectNode() : args);
+            }
+        }
+        return Map.copyOf(byId);
+    }
+
+    private ObjectNode buildToolTarget(
+            SessionContextResult.CompactionToolMessage message,
+            JsonNode args,
+            JsonNode data
+    ) {
+        ObjectNode target = MAPPER.createObjectNode();
+        String toolName = message.toolName() == null ? "" : message.toolName();
+        switch (toolName) {
+            case "read_file", "file_metadata", "delete_file", "list_directory", "grep_files" -> {
+                String path = firstNonBlank(
+                        readText(args, "path"),
+                        readText(args, "rootPath"),
+                        readText(data, "path"),
+                        readText(data, "rootPath")
+                );
+                if (!path.isBlank()) {
+                    target.put("path", path);
+                }
+                if ("read_file".equals(toolName)) {
+                    int startLine = readInt(args, "startLine");
+                    int endLine = readInt(args, "endLine");
+                    if (startLine > 0 || endLine > 0) {
+                        ObjectNode lines = target.putObject("lineTarget");
+                        lines.put("startLine", Math.max(startLine, 0));
+                        lines.put("endLine", Math.max(endLine, 0));
+                    }
+                }
+                if ("grep_files".equals(toolName)) {
+                    target.put("pattern", previewWithHistoryHint(readText(args, "pattern"), message.messageId()));
+                    target.put("filePattern", previewWithHistoryHint(readText(args, "filePattern"), message.messageId()));
+                }
+            }
+            case "search_replace" -> {
+                target.put("path", readText(args, "path"));
+                JsonNode edits = args.path("edits");
+                target.put("editCount", edits.isArray() ? edits.size() : 0);
+                ArrayNode ranges = target.putArray("lineTargets");
+                if (edits.isArray()) {
+                    for (JsonNode edit : edits) {
+                        String startAnchor = readText(edit, "startAnchor");
+                        String endAnchor = readText(edit, "endAnchor");
+                        ObjectNode range = ranges.addObject();
+                        range.put("startAnchor", startAnchor);
+                        range.put("endAnchor", endAnchor);
+                        range.put("startLine", anchorLine(startAnchor));
+                        range.put("endLine", anchorLine(endAnchor));
+                    }
+                }
+            }
+            case "write_file" -> {
+                target.put("path", readText(args, "path"));
+                target.put("overwrite", args.path("overwrite").asBoolean(false));
+                String content = readText(args, "content");
+                target.put("contentChars", content.length());
+                target.put("bytesWritten", readInt(data, "bytesWritten"));
+            }
+            case "sqlite_query", "sqlite_exec" -> {
+                target.put("dbPath", firstNonBlank(
+                        readText(args, "dbPath"),
+                        readText(data.path("database"), "dbPath"),
+                        readText(data, "dbPath")
+                ));
+                target.put("sqlPreview", previewWithHistoryHint(readText(args, "sql"), message.messageId()));
+                target.put("statementCount", readInt(data.path("receipt"), "statementCount"));
+                target.put("rowsAffected", readInt(data.path("receipt"), "rowsAffected"));
+            }
+            case "shell_command" -> target.put(
+                    "commandPreview",
+                    previewWithHistoryHint(readText(args, "cmd"), message.messageId())
+            );
+            case "todo_create", "todo_update", "todo_delete" -> {
+                target.put("todoId", firstNonBlank(readText(args, "todoId"), readText(data, "deletedTodoId"), readText(data, "activeTodoId")));
+                target.put("title", previewWithHistoryHint(readText(args, "title"), message.messageId()));
+                target.put("status", firstNonBlank(readText(args, "status"), readText(data, "action")));
+            }
+            case "todo_list" -> {
+                target.put("statusFilter", readText(args, "status"));
+                target.put("limit", readInt(args, "limit"));
+            }
+            default -> {
+                String path = firstNonBlank(readText(args, "path"), readText(data, "path"));
+                if (!path.isBlank()) {
+                    target.put("path", path);
+                }
+            }
+        }
+        return target;
+    }
+
+    private int anchorLine(String anchor) {
+        if (anchor == null || anchor.isBlank()) {
+            return 0;
+        }
+        int colon = anchor.indexOf(':');
+        if (colon <= 0) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(anchor.substring(0, colon));
+        } catch (Exception ignored) {
+            return 0;
+        }
+    }
+
+    private String previewWithHistoryHint(String value, int messageId) {
+        String normalized = value == null ? "" : value.replace('\n', ' ').replace('\r', ' ').trim();
+        if (normalized.length() <= STATE_PREVIEW_MAX_CHARS) {
+            return normalized;
+        }
+        String hint = " <use history tool on message " + messageId + " for full inputs>";
+        int cut = Math.max(0, STATE_PREVIEW_MAX_CHARS - hint.length());
+        String prefix = cut == 0 ? "" : normalized.substring(0, Math.min(cut, normalized.length()));
+        return prefix + hint;
     }
 
     private String readText(JsonNode root, String... path) {
@@ -744,15 +958,6 @@ public final class Magenta {
         }
     }
 
-    private long readLong(JsonNode root, String... path) {
-        String value = readText(root, path);
-        try {
-            return Long.parseLong(value);
-        } catch (Exception ignored) {
-            return 0L;
-        }
-    }
-
     private String firstNonBlank(String... values) {
         if (values == null || values.length == 0) {
             return "";
@@ -763,29 +968,6 @@ public final class Magenta {
             }
         }
         return "";
-    }
-
-    private long firstLong(long... values) {
-        if (values == null || values.length == 0) {
-            return 0L;
-        }
-        for (long value : values) {
-            if (value > 0L) {
-                return value;
-            }
-        }
-        return 0L;
-    }
-
-    private boolean isFileTool(String toolName) {
-        if (toolName == null || toolName.isBlank()) {
-            return false;
-        }
-        return switch (toolName) {
-            case "read_file", "file_metadata", "write_file", "search_replace", "delete_file", "list_directory", "grep_files" ->
-                    true;
-            default -> false;
-        };
     }
 
     private String fileActionFromTool(String toolName) {
@@ -802,10 +984,6 @@ public final class Magenta {
             case "grep_files" -> "grep";
             default -> toolName.trim();
         };
-    }
-
-    private boolean isTodoTool(String toolName) {
-        return toolName != null && toolName.startsWith("todo_");
     }
 
     private String trimStateText(String value) {
@@ -853,6 +1031,7 @@ public final class Magenta {
                 ? toolManager.toolSpecificationsFor(yolo ? List.of("*") : activeToolIds)
                 : List.of();
         Runnable beforeModelCallHook = () -> {
+            updateStateSystemMessage(session);
             boolean thresholdCompactionApplied = contextManager.compactIfNeeded(
                             session.sessionId(),
                             session.context(),
@@ -861,8 +1040,7 @@ public final class Magenta {
                                     compactionModelConfig(),
                                     compactionSystemPrompt(),
                                     messages
-                            ),
-                            () -> buildProtectedCompactionStateBlock(session.sessionId())
+                            )
                     )
                     .map(compaction -> {
                         emitCompactionEvent(handle, session.agentId(), compaction);
@@ -926,7 +1104,7 @@ public final class Magenta {
             }
 
             String guardMessage = buildCompletionGuardMessage(openTodos);
-            session.context().append(new ContextElement.SystemMsg(guardMessage));
+            session.context().append(new ContextElement.SystemAgentMsg(guardMessage));
             return modelRunner.runTurn(
                     session,
                     handle,
