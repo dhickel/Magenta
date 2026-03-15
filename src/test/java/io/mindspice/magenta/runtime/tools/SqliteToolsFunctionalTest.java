@@ -35,6 +35,9 @@ class SqliteToolsFunctionalTest {
 
         assertThat(payload.path("status").asText()).isEqualTo("failed");
         assertThat(payload.path("code").asText()).isEqualTo("invalid_sql_kind");
+        assertThat(payload.path("data").path("reason").asText()).isEqualTo("read_only_not_allowed");
+        assertThat(payload.path("data").path("blockedStatementType").asText()).isEqualTo("READ");
+        assertThat(payload.path("data").path("recoveryHint").asText()).contains("sqlite_query");
     }
 
     @Test
@@ -117,6 +120,9 @@ class SqliteToolsFunctionalTest {
 
         assertThat(payload.path("status").asText()).isEqualTo("failed");
         assertThat(payload.path("code").asText()).isEqualTo("invalid_sql_kind");
+        assertThat(payload.path("data").path("reason").asText()).isEqualTo("unsupported_statement");
+        assertThat(payload.path("data").path("blockedStatementType").asText()).isEqualTo("ATTACH");
+        assertThat(payload.path("data").path("recoveryHint").asText()).contains("shell_command");
     }
 
     @Test
@@ -129,6 +135,8 @@ class SqliteToolsFunctionalTest {
 
         assertThat(payload.path("status").asText()).isEqualTo("failed");
         assertThat(payload.path("code").asText()).isEqualTo("invalid_sql_kind");
+        assertThat(payload.path("data").path("reason").asText()).isEqualTo("unsupported_statement");
+        assertThat(payload.path("data").path("blockedStatementType").asText()).isEqualTo("ATTACH");
     }
 
     @Test
@@ -141,6 +149,7 @@ class SqliteToolsFunctionalTest {
 
         assertThat(payload.path("status").asText()).isEqualTo("failed");
         assertThat(payload.path("code").asText()).isEqualTo("invalid_sql_kind");
+        assertThat(payload.path("data").path("reason").asText()).isEqualTo("sql_parse_failed");
     }
 
     @Test
@@ -165,5 +174,20 @@ class SqliteToolsFunctionalTest {
 
         assertThat(payload.path("status").asText()).isEqualTo("failed");
         assertThat(payload.path("code").asText()).isEqualTo("invalid_sql_kind");
+        assertThat(payload.path("data").path("reason").asText()).isEqualTo("sql_parse_failed");
+        assertThat(payload.path("data").path("recoveryHint").asText()).contains("shell_command");
+    }
+
+    @Test
+    void sqliteExecReceiptTracksCreateTableIfNotExistsTableName() throws Exception {
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request(
+                "sqlite_exec",
+                "{\"dbPath\":\"db.sqlite\",\"sql\":\"CREATE TABLE IF NOT EXISTS research_posts(id INTEGER PRIMARY KEY);\"}"
+        )));
+
+        assertThat(payload.path("status").asText()).isEqualTo("ok");
+        assertThat(payload.path("data").path("receipt").path("changedTables").isArray()).isTrue();
+        assertThat(payload.path("data").path("receipt").path("changedTables").get(0).asText()).isEqualTo("research_posts");
     }
 }

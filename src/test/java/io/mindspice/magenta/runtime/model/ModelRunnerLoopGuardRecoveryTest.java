@@ -66,7 +66,9 @@ class ModelRunnerLoopGuardRecoveryTest {
             JsonNode thirdRequest = MAPPER.readTree(stub.requestBodies().get(2));
             JsonNode firstMessage = thirdRequest.path("messages").get(0);
             assertThat(firstMessage.path("role").asText()).isEqualTo("system");
-            assertThat(firstMessage.path("content").asText()).isEqualTo(WARNING_PREFIX);
+            assertThat(firstMessage.path("content").asText()).startsWith(WARNING_PREFIX);
+            assertThat(firstMessage.path("content").asText()).contains("; last_tool=write_file");
+            assertThat(firstMessage.path("content").asText()).contains("; last_failure_code=overwrite_guard");
         }
     }
 
@@ -135,6 +137,41 @@ class ModelRunnerLoopGuardRecoveryTest {
             JsonNode firstMessage = retryRequest.path("messages").get(0);
             assertThat(firstMessage.path("role").asText()).isEqualTo("system");
             assertThat(firstMessage.path("content").asText()).startsWith(CONTINUITY_PREFIX);
+            assertThat(firstMessage.path("content").asText()).contains("last_tool=none");
+            assertThat(firstMessage.path("content").asText()).contains("never pass prior tool-result JSON");
+        }
+    }
+
+    @Test
+    void continuityNudgeIncludesLastFailedToolContextWhenAvailable() throws Exception {
+        try (StubOllamaServer stub = new StubOllamaServer(
+                toolCallResponse("run tool", "call-1"),
+                finalResponse(""),
+                finalResponse("Adjusted approach after tool failure.")
+        )) {
+            ModelRunner runner = new ModelRunner(new OllamaClient(10_000));
+            Session session = testSession(stub.endpoint());
+            SessionHandle handle = new SessionHandle(session.sessionId(), () -> true);
+
+            String result = runner.runTurn(
+                    session,
+                    handle,
+                    6,
+                    false,
+                    event -> {},
+                    () -> {},
+                    List.of(),
+                    new RuntimeConfig.ToolLoopGuardConfig(true, 5, 8, 2)
+            );
+
+            assertThat(result).isEqualTo("Adjusted approach after tool failure.");
+            assertThat(stub.requestBodies()).hasSize(3);
+            JsonNode retryRequest = MAPPER.readTree(stub.requestBodies().get(2));
+            JsonNode firstMessage = retryRequest.path("messages").get(0);
+            assertThat(firstMessage.path("role").asText()).isEqualTo("system");
+            assertThat(firstMessage.path("content").asText()).startsWith(CONTINUITY_PREFIX);
+            assertThat(firstMessage.path("content").asText()).contains("last_tool=write_file");
+            assertThat(firstMessage.path("content").asText()).contains("last_failure_code=overwrite_guard");
         }
     }
 
@@ -162,6 +199,8 @@ class ModelRunnerLoopGuardRecoveryTest {
 
             assertThat(stub.requestBodies()).hasSize(2);
             assertThat(result).startsWith(EMPTY_TURN_STOP_PREFIX);
+            assertThat(result).contains("last_tool=none");
+            assertThat(result).contains("last_failure_code=none");
             assertThat(outputs)
                     .filteredOn(output -> output instanceof SessionOutput.FinalOutput)
                     .extracting(output -> ((SessionOutput.FinalOutput) output).text())

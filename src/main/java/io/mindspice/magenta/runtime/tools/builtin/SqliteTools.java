@@ -160,11 +160,28 @@ public final class SqliteTools {
             return ToolPayloads.failure(request, "validation_error", "Missing required arguments: dbPath and sql", null, true);
         }
 
+        StatementType preParseType = preParseStatementType(sql);
+        if (preParseType == StatementType.ATTACH || preParseType == StatementType.PRAGMA) {
+            return sqliteExecSqlKindFailure(
+                    request,
+                    "unsupported_statement",
+                    preParseType,
+                    "sqlite_exec blocked unsafe or unsupported SQL statement",
+                    "Use shell_command with sqlite3 for ATTACH/DETACH/PRAGMA or cross-database SQL."
+            );
+        }
+
         ParsedSql parsedSql;
         try {
             parsedSql = parseAndClassify(sql);
         } catch (JSQLParserException e) {
-            return ToolPayloads.failure(request, "invalid_sql_kind", "sqlite_exec SQL parse failed", null, true);
+            return sqliteExecSqlKindFailure(
+                    request,
+                    "sql_parse_failed",
+                    null,
+                    "sqlite_exec SQL parse failed",
+                    "Use valid mutating SQL. For ATTACH/DETACH/PRAGMA or cross-database SQL, use shell_command with sqlite3."
+            );
         }
 
         if (parsedSql.statements().isEmpty()) {
@@ -173,10 +190,22 @@ public final class SqliteTools {
 
         for (ParsedStatement statement : parsedSql.statements()) {
             if (statement.type() == StatementType.READ) {
-                return ToolPayloads.failure(request, "invalid_sql_kind", "sqlite_exec does not allow read-only SQL statements", null, true);
+                return sqliteExecSqlKindFailure(
+                        request,
+                        "read_only_not_allowed",
+                        statement.type(),
+                        "sqlite_exec does not allow read-only SQL statements",
+                        "Use sqlite_query for SELECT/read-only SQL."
+                );
             }
             if (statement.type() == StatementType.ATTACH || statement.type() == StatementType.PRAGMA || statement.type() == StatementType.UNKNOWN) {
-                return ToolPayloads.failure(request, "invalid_sql_kind", "sqlite_exec blocked unsafe or unsupported SQL statement", null, true);
+                return sqliteExecSqlKindFailure(
+                        request,
+                        "unsupported_statement",
+                        statement.type(),
+                        "sqlite_exec blocked unsafe or unsupported SQL statement",
+                        "Use shell_command with sqlite3 for ATTACH/DETACH/PRAGMA or cross-database SQL."
+                );
             }
         }
 
@@ -405,9 +434,47 @@ public final class SqliteTools {
             return "";
         }
         String remainder = normalized.substring(keyword.length()).trim();
+        if ("CREATE TABLE ".equals(keyword)) {
+            String upperRemainder = remainder.toUpperCase(Locale.ROOT);
+            if (upperRemainder.startsWith("IF NOT EXISTS ")) {
+                remainder = remainder.substring("IF NOT EXISTS ".length()).trim();
+            }
+        }
         int splitIndex = remainder.indexOf(' ');
         String token = splitIndex < 0 ? remainder : remainder.substring(0, splitIndex);
         return token.replaceAll("[\"'`;()]", "").trim();
+    }
+
+    private ToolResult sqliteExecSqlKindFailure(
+            ToolRequest request,
+            String reason,
+            StatementType blockedStatementType,
+            String message,
+            String recoveryHint
+    ) {
+        ObjectNode data = MAPPER.createObjectNode();
+        data.put("kind", "sqlite_exec_error");
+        data.put("reason", reason);
+        if (blockedStatementType != null) {
+            data.put("blockedStatementType", blockedStatementType.name());
+        }
+        data.put("recoveryHint", recoveryHint);
+        return ToolPayloads.failure(request, "invalid_sql_kind", message, data, true);
+    }
+
+    private StatementType preParseStatementType(String sql) {
+        if (sql == null || sql.isBlank()) {
+            return StatementType.UNKNOWN;
+        }
+        String normalized = sql.replace('\n', ' ').replace('\r', ' ').trim();
+        String upper = normalized.toUpperCase(Locale.ROOT);
+        if (upper.startsWith("ATTACH") || upper.startsWith("DETACH")) {
+            return StatementType.ATTACH;
+        }
+        if (upper.startsWith("PRAGMA")) {
+            return StatementType.PRAGMA;
+        }
+        return StatementType.UNKNOWN;
     }
 
     private String sqlPreview(String sql) {

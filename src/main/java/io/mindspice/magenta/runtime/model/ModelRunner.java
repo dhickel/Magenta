@@ -82,6 +82,7 @@ public final class ModelRunner {
         int emptyTurnRecoveryAttemptsUsed = 0;
         String pendingLoopWarningSystemMessage = null;
         String pendingEmptyTurnSystemMessage = null;
+        LastToolOutcome lastToolOutcome = LastToolOutcome.none();
 
         for (int i = 0; i < maxIterations; i++) {
             safeBeforeModelCallHook.run();
@@ -128,12 +129,13 @@ public final class ModelRunner {
                     emptyTurnRecoveryAttemptsUsed++;
                     pendingEmptyTurnSystemMessage = emptyTurnContinuityMessage(
                             emptyTurnRecoveryAttemptsUsed,
-                            EMPTY_TURN_RECOVERY_ATTEMPTS
+                            EMPTY_TURN_RECOVERY_ATTEMPTS,
+                            lastToolOutcome
                     );
                     toolLoopActive = true;
                     continue;
                 }
-                String stopText = emptyTurnStopText(emptyTurnRecoveryAttemptsUsed, EMPTY_TURN_RECOVERY_ATTEMPTS);
+                String stopText = emptyTurnStopText(emptyTurnRecoveryAttemptsUsed, EMPTY_TURN_RECOVERY_ATTEMPTS, lastToolOutcome);
                 session.context().append(new ContextElement.AssistantMsg(stopText, List.of()));
                 safeOutputEmitter.accept(new OutputRoutingEvent(handle, new SessionOutput.FinalOutput(stopText)));
                 return stopText;
@@ -170,7 +172,8 @@ public final class ModelRunner {
                                     safeToolLoopGuardConfig.windowSize(),
                                     windowFailures,
                                     recoveryAttemptsUsed,
-                                    recoveryAttempts
+                                    recoveryAttempts,
+                                    lastToolOutcome
                             );
                             pendingLoopWarningSystemMessage = warningMessage;
                             recentSignatures.clear();
@@ -233,6 +236,7 @@ public final class ModelRunner {
                                 rawContent
                         ))
                 ));
+                lastToolOutcome = captureToolOutcome(toolResult.toolName(), rawContent);
                 if (safeToolLoopGuardConfig.enabled()) {
                     recentFailureFlags.addLast(toolResultFailed(rawContent));
                     while (recentFailureFlags.size() > safeToolLoopGuardConfig.windowSize()) {
@@ -444,14 +448,19 @@ public final class ModelRunner {
             int windowSize,
             int windowFailures,
             int recoveryAttempt,
-            int recoveryAttemptsMax
+            int recoveryAttemptsMax,
+            LastToolOutcome lastToolOutcome
     ) {
         return "[tool-loop-warning] repeated_calls=" + repeatedCalls
                + "/" + windowSize
                + "; window_failures=" + windowFailures
                + "; recovery_attempt=" + recoveryAttempt
                + "/" + recoveryAttemptsMax
-               + "; required_action=change_approach_or_return_defeat";
+               + "; required_action=change_approach_or_return_defeat"
+               + "; last_tool=" + compactToken(lastToolOutcome.toolName(), "none")
+               + "; last_tool_status=" + compactToken(lastToolOutcome.status(), "unknown")
+               + "; last_failure_code=" + compactToken(lastToolOutcome.failureCode(), "none")
+               + "; recovery_hint=inspect_last_tool_payload_change_method_do_not_reuse_error_json_as_args";
     }
 
     private String loopDetectedText(
@@ -478,20 +487,65 @@ public final class ModelRunner {
         return latestText == null || latestText.isBlank() ? reason : latestText + "\n\n" + reason;
     }
 
-    private String emptyTurnContinuityMessage(int attempt, int maxAttempts) {
+    private String emptyTurnContinuityMessage(int attempt, int maxAttempts, LastToolOutcome lastToolOutcome) {
         return EMPTY_TURN_CONTINUITY_PREFIX
                + " empty assistant response received (attempt "
                + attempt + "/" + maxAttempts + "). "
+               + "Context: last_tool=" + compactToken(lastToolOutcome.toolName(), "none")
+               + ", last_tool_status=" + compactToken(lastToolOutcome.status(), "unknown")
+               + ", last_failure_code=" + compactToken(lastToolOutcome.failureCode(), "none") + ". "
                + "Before stopping, run a completion self-check: "
                + "if the task is fully complete, provide the final artifact/status update to the user; "
                + "if work remains, identify the next concrete step and continue execution. "
-               + "If using todos, verify todo focus/list before declaring completion.";
+               + "If using todos, verify todo focus/list before declaring completion. "
+               + "If the previous tool failed, inspect its payload and switch strategy; never pass prior tool-result JSON as new tool arguments.";
     }
 
-    private String emptyTurnStopText(int attemptsUsed, int attemptsMax) {
+    private String emptyTurnStopText(int attemptsUsed, int attemptsMax, LastToolOutcome lastToolOutcome) {
         return EMPTY_TURN_STOP_PREFIX
                + " no assistant content after continuity retry (attempts="
                + attemptsUsed + "/" + attemptsMax + "). "
+               + "Context: last_tool=" + compactToken(lastToolOutcome.toolName(), "none")
+               + ", last_tool_status=" + compactToken(lastToolOutcome.status(), "unknown")
+               + ", last_failure_code=" + compactToken(lastToolOutcome.failureCode(), "none") + ". "
                + "Return either a final artifact/status update or continue with concrete next actions.";
+    }
+
+    private LastToolOutcome captureToolOutcome(String toolName, String rawContent) {
+        String normalizedTool = safeText(toolName).isBlank() ? "unknown" : toolName.trim();
+        String payload = safeText(rawContent);
+        if (payload.isBlank()) {
+            return new LastToolOutcome(normalizedTool, "failed", "empty_payload", "");
+        }
+        try {
+            JsonNode root = MAPPER.readTree(payload);
+            String status = safeText(root.path("status").asText("failed"));
+            String code = safeText(root.path("code").asText("unknown"));
+            String message = safeText(root.path("message").asText(""));
+            return new LastToolOutcome(normalizedTool, status, code, message);
+        } catch (Exception ignored) {
+            return new LastToolOutcome(normalizedTool, "failed", "invalid_payload", "");
+        }
+    }
+
+    private String compactToken(String text, String fallback) {
+        String value = safeText(text).trim();
+        if (value.isBlank()) {
+            value = safeText(fallback).trim();
+        }
+        if (value.isBlank()) {
+            return "none";
+        }
+        return value.replaceAll("[\\s;=]+", "_");
+    }
+
+    private record LastToolOutcome(String toolName, String status, String code, String message) {
+        static LastToolOutcome none() {
+            return new LastToolOutcome("none", "unknown", "none", "");
+        }
+
+        String failureCode() {
+            return "failed".equalsIgnoreCase(status) ? code : "none";
+        }
     }
 }

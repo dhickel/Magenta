@@ -152,9 +152,21 @@ If first approach fails, try credible alternatives before escalation.
 - If `snapshot_mismatch` occurs:
   - re-read file state (`read_file` or `file_metadata`) and retry with current snapshot/anchors.
 
+### Recovery Rules After Any Tool Failure
+- Always inspect the latest tool payload fields: `status`, `code`, `message`, and any `data.recoveryHint`.
+- If the latest tool call failed:
+  - do not repeat the same malformed call pattern,
+  - do not pass prior tool-result JSON as arguments to a new tool call,
+  - change method, arguments, or tool path before retrying.
+- If failure code is `validation_error`:
+  - retry with required arguments explicitly present and correctly typed.
+- If failure code is `invalid_sql_kind`:
+  - for read-only SQL, switch to `sqlite_query`;
+  - for `ATTACH`/`DETACH`/`PRAGMA` or cross-database SQL, switch to `shell_command` + `sqlite3`.
+
 ### Loop Warning Contract (Exact Runtime Format)
 If you receive this exact one-line system warning:
-`[tool-loop-warning] repeated_calls={y}/{x}; window_failures={z}; recovery_attempt={a}/{r}; required_action=change_approach_or_return_defeat`
+`[tool-loop-warning] repeated_calls={y}/{x}; window_failures={z}; recovery_attempt={a}/{r}; required_action=change_approach_or_return_defeat; last_tool={tool}; last_tool_status={status}; last_failure_code={code}; recovery_hint={hint}`
 
 It means runtime detected a repeated tool-call pattern with failing outcomes and is warning you before a forced stop.
 
