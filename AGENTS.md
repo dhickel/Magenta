@@ -109,9 +109,10 @@ Core runtime services:
 
 Current implementation status:
 - implemented runtime slice is `Magenta + RuntimeConfig + SessionManager + SessionRouter + ContextManager + ModelRunner + OllamaClient + SecurityManager + ToolManager`.
-- terminal entrypoint is JLine-based through internal `io.mindspice.magenta.ui` package (`TerminalUiRuntime`/`TerminalUiBootstrap`) and still wired through handle-first route + callback contracts.
+- terminal entrypoint is Lanterna-based through internal `io.mindspice.magenta.ui` package (`TerminalUiRuntime`/`TerminalUiBootstrap`) and still wired through handle-first route + callback contracts.
 - tool/security behavior enters through runtime-wrapped `SessionConfig.toolBridge` callback wiring.
 - runtime external API is handle-first (`SessionHandle`) with routed input/output through `SessionRouter`.
+- context system-message ADT is typed (`system_core`, `system_agent`, `system_task`, `system_state`) and state mirror identity is ADT-based (no string marker prefix).
 - `MindStore`, `SchedulerService`, and full cross-domain `SecurityService` remain future-phase targets.
 
 Design rules:
@@ -326,6 +327,8 @@ On any code/config change that should be runnable from the home deployment:
 4. Confirm deployed config keeps `instance.workspaceRoot` set to `~/.magenta/root`.
 5. For live-environment testing after deployment, run `magenta` (alias for `java -jar ~/.magenta/Magenta2-1.0-SNAPSHOT.jar ~/.magenta/configs/magenta.yaml`).
 6. If the alias is missing, add `alias magenta='java -jar "$HOME/.magenta/Magenta2-1.0-SNAPSHOT.jar" "$HOME/.magenta/configs/magenta.yaml"'` to your shell profile.
+7. Never run git commands in `~/.magenta`; it is a deployment/runtime directory, not a source repository.
+8. Never track deployment/runtime artifacts in this repo (especially `.magenta/state.db` and `logs/session-events.jsonl`).
 
 ### Ollama Host Diagnostics
 

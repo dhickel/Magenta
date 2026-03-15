@@ -20,13 +20,15 @@ Keep history mutation and token-budget control explicit, deterministic, and isol
 
 - `Context.snapshot()` returns immutable copy.
 - Compaction is no-op when estimated tokens are within threshold.
-- Leading contiguous `SystemMsg` entries are protected and never sent to summarization input.
+- Leading contiguous prompt-system entries (`system_core`, `system_agent`, `system_task`) are protected and never sent to summarization input.
+- `system_state` is excluded from summarization input and reinserted as the last system message before model calls.
 - Strategy selection is deterministic by `compactionStrategyOrDefault()`.
 - Rolling window preserves all leading system prompt messages when present.
 - Compaction is evaluated before each model call, including tool-loop follow-up calls.
 - Summarize strategy preserves a raw unsummarized recent tail, aligned to a user/inbound turn boundary.
 - Context replacement is skipped when token reduction gain is too small (low-value churn guard).
 - Context mutation persistence uses ordered per-session message IDs.
+- State snapshot tool usage is bucketed and bounded (`files<=4`, `sql<=4`, `todos<=4`, `other<=8`) with empty buckets omitted.
 
 ## State transitions
 
@@ -65,3 +67,4 @@ over-threshold context
 - Tokenizer accuracy depends on selecting the model-appropriate encoding.
 - `CompactionStrategy.forName(...)` defaults unknown names to rolling-window instead of failing.
 - Context compaction reassigns new sequential IDs for the replacement active context; previous active IDs are tracked in dropped-id metadata.
+- Legacy `compaction_snapshots` persistence is removed; compaction-state loading is derived from bounded tool/todo/session rows only.

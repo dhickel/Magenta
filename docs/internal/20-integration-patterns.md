@@ -74,7 +74,7 @@ RouteHandle finalOnlyRoute = magenta.addOutputRoute(
 );
 ```
 
-## 5) Internal JLine terminal UI bootstrap
+## 5) Internal Lanterna terminal UI bootstrap
 
 ```java
 RuntimeConfig runtimeConfig = RuntimeConfig.loadDefault();

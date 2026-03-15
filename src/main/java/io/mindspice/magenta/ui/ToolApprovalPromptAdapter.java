@@ -3,7 +3,6 @@ package io.mindspice.magenta.ui;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta.runtime.security.SecurityManager;
-import io.mindspice.magenta.ui.prompt.JlinePromptService;
 import io.mindspice.magenta.ui.prompt.PromptService;
 import io.mindspice.magenta.ui.prompt.UiPromptRequest;
 import io.mindspice.magenta.ui.prompt.UiPromptResponse;
@@ -16,6 +15,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class ToolApprovalPromptAdapter implements SecurityManager.ApprovalCallback {
 
     private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
+    private static final int DEFAULT_ARGS_PREVIEW_MAX = 240;
     private final AtomicReference<PromptService> promptServiceRef = new AtomicReference<>();
 
     public void setPromptService(PromptService promptService) {
@@ -30,10 +30,7 @@ public final class ToolApprovalPromptAdapter implements SecurityManager.Approval
         }
 
         String rawArgs = request.argumentsJson() == null ? "" : request.argumentsJson();
-        String argsPreview = rawArgs;
-        if (promptService instanceof JlinePromptService jlinePromptService) {
-            argsPreview = jlinePromptService.truncateForToolPrompt(argsPreview);
-        }
+        String argsPreview = truncate(rawArgs, DEFAULT_ARGS_PREVIEW_MAX);
 
         PreviewField previewField = buildPreviewField(request.toolName(), rawArgs);
         String message = buildPromptMessage(request, previewField, argsPreview);
@@ -135,4 +132,15 @@ public final class ToolApprovalPromptAdapter implements SecurityManager.Approval
     }
 
     private record PreviewField(String label, String value) {}
+
+    private String truncate(String text, int maxChars) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        int max = Math.max(32, maxChars);
+        if (text.length() <= max) {
+            return text;
+        }
+        return text.substring(0, max - 3) + "...";
+    }
 }

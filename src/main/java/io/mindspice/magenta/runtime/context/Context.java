@@ -5,7 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class Context {
-    public sealed interface Mutation permits Mutation.Append, Mutation.AppendAll, Mutation.ReplaceAll {
+    public sealed interface Mutation permits Mutation.Append, Mutation.AppendAll, Mutation.ReplaceAll, Mutation.UpsertStateSystemMessage {
         record Append(ContextElement message) implements Mutation {
         }
 
@@ -18,6 +18,12 @@ public final class Context {
         record ReplaceAll(List<ContextElement> messages) implements Mutation {
             public ReplaceAll {
                 messages = messages == null ? List.of() : List.copyOf(messages);
+            }
+        }
+
+        record UpsertStateSystemMessage(String stateJson) implements Mutation {
+            public UpsertStateSystemMessage {
+                stateJson = stateJson == null ? "" : stateJson;
             }
         }
     }
@@ -78,6 +84,37 @@ public final class Context {
 
     public synchronized List<ContextElement> snapshot() {
         return List.copyOf(messages);
+    }
+
+    public void upsertStateSystemMessage(String stateJson) {
+        String safeState = stateJson == null ? "" : stateJson.trim();
+        MutationListener listener;
+        synchronized (this) {
+            if (safeState.isBlank()) {
+                return;
+            }
+
+            ArrayList<ContextElement> rebuilt = new ArrayList<>(messages.size() + 1);
+            for (ContextElement message : messages) {
+                if (ContextElement.isStateSystemElement(message)) {
+                    continue;
+                }
+                rebuilt.add(message);
+            }
+
+            int insertionIndex = 0;
+            for (int i = 0; i < rebuilt.size(); i++) {
+                if (ContextElement.isSystemElement(rebuilt.get(i))) {
+                    insertionIndex = i + 1;
+                }
+            }
+            rebuilt.add(insertionIndex, new ContextElement.SystemStateMsg(safeState));
+            messages.clear();
+            messages.addAll(rebuilt);
+            updatedAt = Instant.now();
+            listener = mutationListener;
+        }
+        listener.onMutation(new Mutation.UpsertStateSystemMessage(safeState));
     }
 
     public Instant createdAt() {

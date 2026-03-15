@@ -9,6 +9,7 @@ public sealed interface SessionContextCommand permits SessionContextCommand.Init
         SessionContextCommand.AppendMessage,
         SessionContextCommand.AppendMessages,
         SessionContextCommand.ReplaceActiveContext,
+        SessionContextCommand.UpsertStateSystemMessage,
         SessionContextCommand.LoadActiveContext,
         SessionContextCommand.GetMessageById,
         SessionContextCommand.LoadCompactionState {
@@ -52,6 +53,13 @@ public sealed interface SessionContextCommand permits SessionContextCommand.Init
             sessionId = sessionId == null ? "" : sessionId;
             replacement = replacement == null ? List.of() : List.copyOf(replacement);
             sysPromptAmount = Math.max(sysPromptAmount, 0);
+        }
+    }
+
+    record UpsertStateSystemMessage(String sessionId, String stateJson) implements SessionContextCommand {
+        public UpsertStateSystemMessage {
+            sessionId = sessionId == null ? "" : sessionId;
+            stateJson = stateJson == null ? "" : stateJson;
         }
     }
 

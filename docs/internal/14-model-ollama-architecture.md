@@ -47,4 +47,5 @@ Keep model execution (`ModelRunner`) separate from provider transport (`OllamaCl
 - tool schemas are sent only when session tools are enabled, model tool-calling is supported, and tool specs are discoverable
 - schema quality depends on annotated tool parameter typing; nested typed records/lists produce stricter provider schemas than raw JSON nodes
 - single provider transport implementation (`OllamaClient`)
+- all typed system variants (`system_core`, `system_agent`, `system_task`, `system_state`) map to provider `system` role messages
 - `SummaryMsg` context is mapped as user-role context (not system-role instruction) during model request assembly

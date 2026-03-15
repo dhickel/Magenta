@@ -1,13 +1,5 @@
-package io.mindspice.magenta.ui;
+package io.mindspice.magenta.ui.casciian;
 
-import com.googlecode.lanterna.gui2.MultiWindowTextGUI;
-import com.googlecode.lanterna.gui2.SeparateTextGUIThread;
-import com.googlecode.lanterna.screen.Screen;
-import com.googlecode.lanterna.screen.TerminalScreen;
-import com.googlecode.lanterna.terminal.DefaultTerminalFactory;
-import com.googlecode.lanterna.terminal.MouseCaptureMode;
-import com.googlecode.lanterna.terminal.Terminal;
-import com.googlecode.lanterna.terminal.ansi.UnixLikeTerminal;
 import io.mindspice.magenta.Magenta;
 import io.mindspice.magenta.runtime.events.SessionEvent;
 import io.mindspice.magenta.runtime.routing.InputRoutePolicy;
@@ -15,43 +7,33 @@ import io.mindspice.magenta.runtime.routing.OutputRoutePolicy;
 import io.mindspice.magenta.runtime.routing.RoutingEventLevel;
 import io.mindspice.magenta.runtime.session.SessionOutput;
 import io.mindspice.magenta.runtime.session.config.SessionConfig;
+import io.mindspice.magenta.ui.AssistantOutputWriter;
+import io.mindspice.magenta.ui.TerminalUiConfig;
+import io.mindspice.magenta.ui.TerminalUiSession;
+import io.mindspice.magenta.ui.ToolApprovalPromptAdapter;
 
-import java.io.IOException;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
-public final class TerminalUiBootstrap {
+public final class CasciianTerminalUiBootstrap {
 
-    private TerminalUiBootstrap() {
+    private CasciianTerminalUiBootstrap() {
     }
 
-    public static TerminalUiRuntime bootstrap(
+    public static CasciianTerminalUiRuntime bootstrap(
             Magenta magenta,
             TerminalUiConfig config,
             ToolApprovalPromptAdapter approvalAdapter
-    ) throws IOException {
-        DefaultTerminalFactory terminalFactory = new DefaultTerminalFactory()
-                .setMouseCaptureMode(MouseCaptureMode.CLICK_RELEASE_DRAG_MOVE)
-                .setUnixTerminalCtrlCBehaviour(UnixLikeTerminal.CtrlCBehaviour.TRAP);
-        Terminal terminal = terminalFactory.createTerminal();
-        Screen screen = new TerminalScreen(terminal);
-        screen.startScreen();
-
-        MultiWindowTextGUI gui = new MultiWindowTextGUI(new SeparateTextGUIThread.Factory(), screen);
-        gui.setVirtualScreenEnabled(false);
-        if (gui.getGUIThread() instanceof SeparateTextGUIThread separateThread) {
-            separateThread.start();
-        }
-
-        AtomicReference<TerminalUiRuntime> runtimeRef = new AtomicReference<>();
+    ) throws Exception {
+        AtomicReference<CasciianTerminalUiRuntime> runtimeRef = new AtomicReference<>();
 
         SessionConfig sessionConfig = new SessionConfig(
                 config.session().params(),
                 magenta::executeTool,
                 config.session().routingEventLevel(),
                 event -> {
-                    TerminalUiRuntime runtime = runtimeRef.get();
+                    CasciianTerminalUiRuntime runtime = runtimeRef.get();
                     if (runtime != null) {
                         runtime.onRoutingEvent(event);
                     }
@@ -60,14 +42,14 @@ public final class TerminalUiBootstrap {
                     }
                 },
                 event -> {
-                    TerminalUiRuntime runtime = runtimeRef.get();
+                    CasciianTerminalUiRuntime runtime = runtimeRef.get();
                     if (runtime != null) {
                         runtime.onSecurityEvent(event);
                     }
                     config.callbacks().onSecurity().accept(event);
                 },
                 error -> {
-                    TerminalUiRuntime runtime = runtimeRef.get();
+                    CasciianTerminalUiRuntime runtime = runtimeRef.get();
                     if (runtime != null) {
                         runtime.onSessionError(error);
                     }
@@ -100,7 +82,7 @@ public final class TerminalUiBootstrap {
                     if (writer != null) {
                         writer.onOutput(event.output());
                     }
-                    TerminalUiRuntime runtime = runtimeRef.get();
+                    CasciianTerminalUiRuntime runtime = runtimeRef.get();
                     if (runtime == null) {
                         return;
                     }
@@ -128,19 +110,16 @@ public final class TerminalUiBootstrap {
                 contextUsageSupplier
         );
 
-        TerminalUiRuntime runtime = new TerminalUiRuntime(
+        CasciianTerminalUiRuntime runtime = new CasciianTerminalUiRuntime(
                 magenta.runtimeConfig(),
                 magenta,
-                screen,
-                gui,
                 config,
                 runtimeSession
         );
         runtimeRef.set(runtime);
         approvalAdapter.setPromptService(runtime.promptService());
-        terminal.addResizeListener((newTerminal, newSize) -> runtime.onTerminalResized(newSize));
         outputWriterRef.set(new AssistantOutputWriter(
-                new LanternaAssistantOutputTarget(runtime),
+                new CasciianAssistantOutputTarget(runtime),
                 streamingExpected,
                 settings.agentId()
         ));

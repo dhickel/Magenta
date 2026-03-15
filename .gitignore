@@ -42,3 +42,7 @@ build/
 
 # Local test workspace
 /agent-sandbox/
+
+# Runtime artifacts that must never be tracked
+/.magenta/state.db
+/logs/session-events.jsonl

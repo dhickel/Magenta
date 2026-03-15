@@ -8,7 +8,6 @@ import io.mindspice.magenta.runtime.persistence.CommonCommandResults;
 import io.mindspice.magenta.runtime.persistence.ToolCommand;
 import io.mindspice.magenta.runtime.persistence.ToolCommandResult;
 import io.mindspice.magenta.runtime.tools.ToolExecutionSettings;
-import io.mindspice.magenta.runtime.tools.ToolPathSupport;
 import io.mindspice.magenta.runtime.tools.ToolPayloads;
 import io.mindspice.magenta.runtime.tools.ToolRequest;
 import io.mindspice.magenta.runtime.tools.ToolResult;
@@ -58,11 +57,14 @@ public final class TodoTools {
             case CommonCommandResults.Failure failure -> ToolPayloads.failure(request, failure.code(), failure.message(), null, true);
             case ToolCommandResult.TodoCreated created -> {
                 ObjectNode data = MAPPER.createObjectNode();
-                data.put("dbPath", ToolPathSupport.displayPath(settings.workspaceRoot(), created.dbPath()));
-                data.put("created", created.created());
-                data.put("reused", !created.created());
-                data.set("todo", toTodoNode(created.todo()));
-                yield ToolPayloads.success(request, created.created() ? "Todo created" : "Todo reused", data);
+                data.put("kind", "todo_focus");
+                data.put("action", created.created() ? "created" : "resumed");
+                data.put("activeTodoId", created.activeTodoId());
+                data.set("focus", toTodoNode(created.todo()));
+                data.put("openCount", created.openCount());
+                String code = created.created() ? "created_focus" : "resumed_focus";
+                String message = created.created() ? "Created new todo focus" : "Resumed existing todo focus";
+                yield ToolPayloads.success(request, code, message, data);
             }
             default -> ToolPayloads.failure(request, "handler_exception", "Unexpected todo create response", null, true);
         };
@@ -101,15 +103,17 @@ public final class TodoTools {
                 }
 
                 ObjectNode data = MAPPER.createObjectNode();
-                data.put("dbPath", ToolPathSupport.displayPath(settings.workspaceRoot(), listed.dbPath()));
-                data.put("count", todos.size());
+                data.put("kind", "todo_list");
+                data.put("activeTodoId", listed.activeTodoId());
+                data.put("openCount", listed.openCount());
+                data.put("doneCount", listed.doneCount());
                 data.put("limit", listed.limit());
                 data.put("truncated", listed.truncated());
-                if (listed.statusOrNull() != null && !listed.statusOrNull().isBlank()) {
+                if (!listed.statusOrNull().isBlank()) {
                     data.put("status", listed.statusOrNull());
                 }
-                data.set("todos", todos);
-                yield ToolPayloads.success(request, "Todos listed", data);
+                data.set("items", todos);
+                yield ToolPayloads.success(request, "todo_list_result", "Todo list loaded", data);
             }
             default -> ToolPayloads.failure(request, "handler_exception", "Unexpected todo list response", null, true);
         };
@@ -172,9 +176,14 @@ public final class TodoTools {
             case CommonCommandResults.Failure failure -> ToolPayloads.failure(request, failure.code(), failure.message(), null, true);
             case ToolCommandResult.TodoUpdated updated -> {
                 ObjectNode data = MAPPER.createObjectNode();
-                data.put("dbPath", ToolPathSupport.displayPath(settings.workspaceRoot(), updated.dbPath()));
-                data.set("todo", toTodoNode(updated.todo()));
-                yield ToolPayloads.success(request, "Todo updated", data);
+                data.put("kind", "todo_focus");
+                data.put("action", updated.action());
+                data.put("activeTodoId", updated.activeTodoId());
+                data.set("focus", toTodoNode(updated.todo()));
+                if (!updated.previousFocusTodoId().isBlank()) {
+                    data.put("previousFocusTodoId", updated.previousFocusTodoId());
+                }
+                yield ToolPayloads.success(request, "todo_focus_updated", "Todo focus updated", data);
             }
             default -> ToolPayloads.failure(request, "handler_exception", "Unexpected todo update response", null, true);
         };
@@ -201,10 +210,13 @@ public final class TodoTools {
             case CommonCommandResults.Failure failure -> ToolPayloads.failure(request, failure.code(), failure.message(), null, true);
             case ToolCommandResult.TodoDeleted deleted -> {
                 ObjectNode data = MAPPER.createObjectNode();
-                data.put("dbPath", ToolPathSupport.displayPath(settings.workspaceRoot(), deleted.dbPath()));
-                data.put("todoId", deleted.todoId());
-                data.put("deleted", true);
-                yield ToolPayloads.success(request, "Todo deleted", data);
+                data.put("kind", "todo_delete");
+                data.put("deletedTodoId", deleted.todoId());
+                data.put("activeTodoId", deleted.activeTodoId());
+                if (deleted.nextFocus() != null) {
+                    data.set("nextFocus", toTodoNode(deleted.nextFocus()));
+                }
+                yield ToolPayloads.success(request, "todo_deleted", "Todo deleted", data);
             }
             default -> ToolPayloads.failure(request, "handler_exception", "Unexpected todo delete response", null, true);
         };
@@ -213,7 +225,6 @@ public final class TodoTools {
     private ObjectNode toTodoNode(ToolCommandResult.TodoItem row) {
         ObjectNode node = MAPPER.createObjectNode();
         node.put("todoId", row.todoId());
-        node.put("sessionId", row.sessionId());
         node.put("title", row.title());
         node.put("details", row.details());
         node.put("status", row.status());

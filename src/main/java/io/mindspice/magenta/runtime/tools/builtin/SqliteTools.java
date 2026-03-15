@@ -37,6 +37,8 @@ import java.util.Locale;
 public final class SqliteTools {
 
     private static final ObjectMapper MAPPER = ToolPayloads.mapper();
+    private static final int SQL_DISPLAY_PREVIEW_MAX_LINES = 3;
+    private static final int SQL_DISPLAY_PREVIEW_LINE_CHARS = 96;
 
     private final ToolExecutionSettings settings;
     private final SimplyJDBC simplyJDBC = new SimplyJDBC();
@@ -88,12 +90,16 @@ public final class SqliteTools {
                 columns = discoverColumns(connection, statement);
                 if (columns.isEmpty()) {
                     ObjectNode data = MAPPER.createObjectNode();
-                    data.put("dbPath", ToolPathSupport.displayPath(settings.workspaceRoot(), dbPath));
-                    data.put("rowCount", 0);
-                    data.put("truncated", false);
-                    data.set("columns", MAPPER.createArrayNode());
-                    data.set("rows", MAPPER.createArrayNode());
-                    return ToolPayloads.success(request, "Query completed", data);
+                    data.put("kind", "sqlite_query_result");
+                    data.putObject("database")
+                            .put("dbPath", ToolPathSupport.displayPath(settings.workspaceRoot(), dbPath));
+                    data.put("sqlPreview", sqlDisplayPreview(statement));
+                    ObjectNode result = data.putObject("result");
+                    result.put("rowCount", 0);
+                    result.put("truncated", false);
+                    result.set("columns", MAPPER.createArrayNode());
+                    result.set("rows", MAPPER.createArrayNode());
+                    return ToolPayloads.success(request, "sqlite_query_result", "Query completed", data);
                 }
 
                 String wrappedSql = buildJsonWrappedSelect(statement, columns);
@@ -121,12 +127,19 @@ public final class SqliteTools {
                 columns.forEach(columnsNode::add);
 
                 ObjectNode data = MAPPER.createObjectNode();
-                data.put("dbPath", ToolPathSupport.displayPath(settings.workspaceRoot(), dbPath));
-                data.put("rowCount", rows.size());
-                data.put("truncated", truncated);
-                data.set("columns", columnsNode);
-                data.set("rows", rows);
-                return ToolPayloads.success(request, "Query completed", data);
+                data.put("kind", "sqlite_query_result");
+                data.putObject("database")
+                        .put("dbPath", ToolPathSupport.displayPath(settings.workspaceRoot(), dbPath));
+                data.put("sqlPreview", sqlDisplayPreview(statement));
+                ObjectNode result = data.putObject("result");
+                result.put("rowCount", rows.size());
+                result.put("truncated", truncated);
+                result.set("columns", columnsNode);
+                result.set("rows", rows);
+                if (truncated) {
+                    result.put("previewSummary", "Rows truncated to maxSqlRows=" + settings.maxSqlRows());
+                }
+                return ToolPayloads.success(request, "sqlite_query_result", "Query completed", data);
             }
         } catch (Exception e) {
             return ToolPayloads.failure(request, "db_error", "Failed to query sqlite: " + e.getMessage(), null, true);
@@ -174,8 +187,11 @@ public final class SqliteTools {
             return ToolPayloads.failure(request, "validation_error", e.getMessage(), null, true);
         }
 
-        ArrayNode details = MAPPER.createArrayNode();
+        ArrayNode statementsNode = MAPPER.createArrayNode();
+        ArrayNode changedTablesNode = MAPPER.createArrayNode();
+        List<String> changedTables = new ArrayList<>();
         int totalRowsAffected = 0;
+        long lastInsertRowId = 0L;
 
         SQLiteDataSource dataSource = sqliteDataSource(dbPath);
         try (Connection connection = dataSource.getConnection()) {
@@ -195,13 +211,30 @@ public final class SqliteTools {
                     int rows = updateResult.first().orElse(0);
                     if (type == StatementType.WRITE) {
                         totalRowsAffected += rows;
+                        long insertId = queryLastInsertRowId(connection);
+                        if (insertId > 0) {
+                            lastInsertRowId = insertId;
+                        }
                     }
 
+                    String kind = statementKind(statementSql, type);
+                    String table = statementTable(statementSql);
+                    if (!table.isBlank() && !changedTables.contains(table)) {
+                        changedTables.add(table);
+                        changedTablesNode.add(table);
+                    }
                     ObjectNode detail = MAPPER.createObjectNode();
-                    detail.put("statementType", type.name().toLowerCase(Locale.ROOT));
+                    detail.put("index", statementsNode.size() + 1);
+                    detail.put("kind", kind);
+                    if (!table.isBlank()) {
+                        detail.put("table", table);
+                    }
                     detail.put("rowsAffected", rows);
-                    detail.put("sql", statementSql);
-                    details.add(detail);
+                    if ("insert".equals(kind) && lastInsertRowId > 0) {
+                        detail.put("lastInsertRowId", lastInsertRowId);
+                    }
+                    detail.put("sqlPreview", sqlPreview(statementSql));
+                    statementsNode.add(detail);
                 }
 
                 if (transactional) {
@@ -220,12 +253,18 @@ public final class SqliteTools {
             }
 
             ObjectNode data = MAPPER.createObjectNode();
-            data.put("dbPath", ToolPathSupport.displayPath(settings.workspaceRoot(), dbPath));
-            data.put("statementCount", parsedSql.statements().size());
-            data.put("rowsAffected", totalRowsAffected);
-            data.put("transactional", transactional);
-            data.set("details", details);
-            return ToolPayloads.success(request, "SQL statements executed", data);
+            data.put("kind", "sqlite_exec_receipt");
+            data.putObject("database")
+                    .put("dbPath", ToolPathSupport.displayPath(settings.workspaceRoot(), dbPath));
+            data.put("sqlPreview", sqlDisplayPreview(sql));
+            ObjectNode receipt = data.putObject("receipt");
+            receipt.put("statementCount", parsedSql.statements().size());
+            receipt.put("rowsAffected", totalRowsAffected);
+            receipt.put("transactional", transactional);
+            receipt.put("lastInsertRowId", lastInsertRowId);
+            receipt.set("changedTables", changedTablesNode);
+            receipt.set("statements", statementsNode);
+            return ToolPayloads.success(request, "sqlite_exec_receipt", "SQL mutation applied", data);
         } catch (Exception e) {
             return ToolPayloads.failure(request, "db_error", "Failed to execute sqlite statements: " + e.getMessage(), null, true);
         }
@@ -299,6 +338,137 @@ public final class SqliteTools {
         return text.replace("'", "''");
     }
 
+    private long queryLastInsertRowId(Connection connection) {
+        SjResult<LastInsertIdRow> result = simplyJDBC.query(
+                connection,
+                "SELECT last_insert_rowid() AS last_insert_row_id",
+                SimplyJDBC.NO_PARAMS,
+                LastInsertIdRow.class
+        );
+        if (result.isFailure()) {
+            return 0L;
+        }
+        return result.first().map(LastInsertIdRow::lastInsertRowId).orElse(0L);
+    }
+
+    private String statementKind(String sql, StatementType type) {
+        String upper = sql == null ? "" : sql.trim().toUpperCase(Locale.ROOT);
+        if (upper.startsWith("INSERT") || upper.startsWith("REPLACE")) {
+            return "insert";
+        }
+        if (upper.startsWith("UPDATE")) {
+            return "update";
+        }
+        if (upper.startsWith("DELETE")) {
+            return "delete";
+        }
+        if (upper.startsWith("CREATE")) {
+            return "create";
+        }
+        if (upper.startsWith("DROP")) {
+            return "drop";
+        }
+        if (upper.startsWith("ALTER")) {
+            return "alter";
+        }
+        if (upper.startsWith("TRUNCATE")) {
+            return "truncate";
+        }
+        return switch (type) {
+            case DDL -> "ddl";
+            case TRANSACTION -> "transaction";
+            default -> type.name().toLowerCase(Locale.ROOT);
+        };
+    }
+
+    private String statementTable(String sql) {
+        if (sql == null || sql.isBlank()) {
+            return "";
+        }
+        String normalized = sql.replace('\n', ' ').replace('\r', ' ').trim();
+        String upper = normalized.toUpperCase(Locale.ROOT);
+        String keyword = "";
+        if (upper.startsWith("INSERT INTO ")) {
+            keyword = "INSERT INTO ";
+        } else if (upper.startsWith("UPDATE ")) {
+            keyword = "UPDATE ";
+        } else if (upper.startsWith("DELETE FROM ")) {
+            keyword = "DELETE FROM ";
+        } else if (upper.startsWith("CREATE TABLE ")) {
+            keyword = "CREATE TABLE ";
+        } else if (upper.startsWith("DROP TABLE ")) {
+            keyword = "DROP TABLE ";
+        } else if (upper.startsWith("ALTER TABLE ")) {
+            keyword = "ALTER TABLE ";
+        }
+        if (keyword.isEmpty()) {
+            return "";
+        }
+        String remainder = normalized.substring(keyword.length()).trim();
+        int splitIndex = remainder.indexOf(' ');
+        String token = splitIndex < 0 ? remainder : remainder.substring(0, splitIndex);
+        return token.replaceAll("[\"'`;()]", "").trim();
+    }
+
+    private String sqlPreview(String sql) {
+        if (sql == null) {
+            return "";
+        }
+        String compact = sql.replace('\n', ' ').replace('\r', ' ').replaceAll("\\s+", " ").trim();
+        int max = 96;
+        if (compact.length() <= max) {
+            return compact;
+        }
+        return compact.substring(0, max - 3) + "...";
+    }
+
+    private String sqlDisplayPreview(String sql) {
+        if (sql == null || sql.isBlank()) {
+            return "";
+        }
+        String[] physicalLines = sql.replace("\r\n", "\n").replace('\r', '\n').split("\n");
+        List<String> previewLines = new ArrayList<>(SQL_DISPLAY_PREVIEW_MAX_LINES);
+        boolean truncated = false;
+        for (String physical : physicalLines) {
+            String normalized = physical == null ? "" : physical.replaceAll("\\s+", " ").trim();
+            if (normalized.isBlank()) {
+                continue;
+            }
+            while (!normalized.isBlank()) {
+                if (previewLines.size() >= SQL_DISPLAY_PREVIEW_MAX_LINES) {
+                    truncated = true;
+                    break;
+                }
+                int take = Math.min(SQL_DISPLAY_PREVIEW_LINE_CHARS, normalized.length());
+                if (normalized.length() > SQL_DISPLAY_PREVIEW_LINE_CHARS) {
+                    int wordBoundary = normalized.lastIndexOf(' ', SQL_DISPLAY_PREVIEW_LINE_CHARS);
+                    if (wordBoundary >= 20) {
+                        take = wordBoundary;
+                    }
+                }
+                previewLines.add(normalized.substring(0, take).trim());
+                normalized = normalized.substring(take).trim();
+            }
+            if (truncated) {
+                break;
+            }
+        }
+        if (previewLines.isEmpty()) {
+            return "";
+        }
+        if (truncated) {
+            int last = previewLines.size() - 1;
+            String tail = previewLines.get(last);
+            if (!tail.endsWith("...")) {
+                if (tail.length() > SQL_DISPLAY_PREVIEW_LINE_CHARS - 3) {
+                    tail = tail.substring(0, SQL_DISPLAY_PREVIEW_LINE_CHARS - 3).trim();
+                }
+                previewLines.set(last, tail + "...");
+            }
+        }
+        return String.join("\n", previewLines);
+    }
+
     private ParsedSql parseAndClassify(String sql) throws JSQLParserException {
         Statements parsed = CCJSqlParserUtil.parseStatements(sql);
         List<ParsedStatement> statements = new ArrayList<>();
@@ -348,6 +518,9 @@ public final class SqliteTools {
     }
 
     private record JsonRow(@SjColumn("row_json") String rowJson) {
+    }
+
+    private record LastInsertIdRow(@SjColumn("last_insert_row_id") long lastInsertRowId) {
     }
 
     private enum StatementType {

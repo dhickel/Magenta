@@ -3,6 +3,7 @@ package io.mindspice.magenta.ui;
 import io.mindspice.magenta.ui.render.UiRenderBlock;
 import io.mindspice.magenta.ui.render.UiRenderer;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -41,7 +42,7 @@ public final class TerminalAssistantOutputTarget implements AssistantOutputTarge
         ToolOutputFormatter.FormattedToolResult formatted = formatter.formatResult(toolName, content);
         renderer.renderBlock(new UiRenderBlock(
                 "",
-                List.of("  " + singleLine(formatted.title(), formatted.lines())),
+                blockLines(formatted.title(), formatted.lines()),
                 formatted.style()
         ));
     }
@@ -51,17 +52,26 @@ public final class TerminalAssistantOutputTarget implements AssistantOutputTarge
         // Fallback notices are intentionally suppressed in terminal output.
     }
 
-    private String singleLine(String title, List<String> lines) {
+    private List<String> blockLines(String title, List<String> lines) {
         String base = title == null ? "" : title;
+        List<String> rendered = new ArrayList<>();
         if (lines == null || lines.isEmpty()) {
-            return base;
+            rendered.add("  " + base);
+            return rendered;
         }
-        String suffix = lines.stream()
+        List<String> nonBlank = lines.stream()
                 .filter(Objects::nonNull)
                 .map(String::trim)
                 .filter(text -> !text.isEmpty())
-                .reduce((left, right) -> left + " | " + right)
-                .orElse("");
-        return suffix.isEmpty() ? base : base + " | " + suffix;
+                .toList();
+        if (nonBlank.isEmpty()) {
+            rendered.add("  " + base);
+            return rendered;
+        }
+        rendered.add("  " + base + " | " + nonBlank.getFirst());
+        for (int i = 1; i < nonBlank.size(); i++) {
+            rendered.add("    " + nonBlank.get(i));
+        }
+        return rendered;
     }
 }

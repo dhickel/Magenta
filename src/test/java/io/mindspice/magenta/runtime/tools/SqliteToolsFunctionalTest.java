@@ -46,7 +46,10 @@ class SqliteToolsFunctionalTest {
         )));
 
         assertThat(payload.path("status").asText()).isEqualTo("ok");
-        assertThat(payload.path("data").path("rows").get(0).path("n").asInt()).isEqualTo(1);
+        assertThat(payload.path("data").path("result").path("rows").get(0).path("n").asInt()).isEqualTo(1);
+        String sqlPreview = payload.path("data").path("sqlPreview").asText("");
+        assertThat(sqlPreview).contains("WITH t AS");
+        assertThat(sqlPreview.split("\\R")).hasSizeLessThanOrEqualTo(3);
     }
 
     @Test
@@ -62,16 +65,20 @@ class SqliteToolsFunctionalTest {
         )));
 
         assertThat(payload.path("status").asText()).isEqualTo("ok");
-        assertThat(payload.path("data").path("truncated").asBoolean()).isTrue();
-        assertThat(payload.path("data").path("rowCount").asInt()).isEqualTo(2);
+        assertThat(payload.path("data").path("result").path("truncated").asBoolean()).isTrue();
+        assertThat(payload.path("data").path("result").path("rowCount").asInt()).isEqualTo(2);
     }
 
     @Test
     void sqliteExecTransactionalRollbackOnFailure() throws Exception {
         ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
-        manager.execute(ToolTestSupport.request("sqlite_exec",
+        JsonNode seedExec = ToolTestSupport.payload(manager.execute(ToolTestSupport.request("sqlite_exec",
                 "{\"dbPath\":\"db.sqlite\",\"sql\":\"CREATE TABLE t(id INTEGER PRIMARY KEY, name TEXT); INSERT INTO t(name) VALUES ('seed');\",\"transactional\":true}"
-        ));
+        )));
+        assertThat(seedExec.path("status").asText()).isEqualTo("ok");
+        String seedPreview = seedExec.path("data").path("sqlPreview").asText("");
+        assertThat(seedPreview).contains("CREATE TABLE t");
+        assertThat(seedPreview.split("\\R")).hasSizeLessThanOrEqualTo(3);
 
         JsonNode failedExec = ToolTestSupport.payload(manager.execute(ToolTestSupport.request(
                 "sqlite_exec",
@@ -85,7 +92,7 @@ class SqliteToolsFunctionalTest {
                 "{\"dbPath\":\"db.sqlite\",\"sql\":\"SELECT COUNT(*) AS c FROM t\"}"
         )));
         assertThat(query.path("status").asText()).isEqualTo("ok");
-        assertThat(query.path("data").path("rows").get(0).path("c").asInt()).isEqualTo(1);
+        assertThat(query.path("data").path("result").path("rows").get(0).path("c").asInt()).isEqualTo(1);
     }
 
     @Test

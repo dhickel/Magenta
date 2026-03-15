@@ -9,6 +9,9 @@ import dev.langchain4j.model.chat.request.json.JsonObjectSchema;
 import dev.langchain4j.model.chat.request.json.JsonSchemaElement;
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
 import io.mindspice.magenta.runtime.context.ContextElement;
+import io.mindspice.magenta.runtime.persistence.DatabaseService;
+import io.mindspice.magenta.runtime.persistence.SessionContextCommand;
+import io.mindspice.magenta.runtime.tools.builtin.AnnotatedBuiltInToolCatalog;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -157,8 +160,8 @@ class ToolManagerBuiltInsTest {
         assertThat(queryPayload.path("status").asText())
                 .withFailMessage(query.content())
                 .isEqualTo("ok");
-        assertThat(queryPayload.path("data").path("rows")).hasSize(2);
-        assertThat(queryPayload.path("data").path("rows").get(0).path("name").asText()).isEqualTo("a");
+        assertThat(queryPayload.path("data").path("result").path("rows")).hasSize(2);
+        assertThat(queryPayload.path("data").path("result").path("rows").get(0).path("name").asText()).isEqualTo("a");
     }
 
     @Test
@@ -181,7 +184,7 @@ class ToolManagerBuiltInsTest {
         ToolResult created = manager.execute(request(sessionA, "todo_create", "{\"title\":\"ship\"}"));
         JsonNode createdPayload = MAPPER.readTree(created.content());
         assertThat(createdPayload.path("status").asText()).isEqualTo("ok");
-        String todoId = createdPayload.path("data").path("todo").path("todoId").asText();
+        String todoId = createdPayload.path("data").path("focus").path("todoId").asText();
         assertThat(todoId).isNotBlank();
 
         ToolResult listedA = manager.execute(request(sessionA, "todo_list", "{}"));
@@ -189,9 +192,9 @@ class ToolManagerBuiltInsTest {
         JsonNode listedAPayload = MAPPER.readTree(listedA.content());
         JsonNode listedBPayload = MAPPER.readTree(listedB.content());
 
-        assertThat(listedAPayload.path("data").path("todos")).hasSize(1);
-        assertThat(listedAPayload.path("data").path("todos").get(0).path("todoId").asText()).isEqualTo(todoId);
-        assertThat(listedBPayload.path("data").path("todos")).isEmpty();
+        assertThat(listedAPayload.path("data").path("items")).hasSize(1);
+        assertThat(listedAPayload.path("data").path("items").get(0).path("todoId").asText()).isEqualTo(todoId);
+        assertThat(listedBPayload.path("data").path("items")).isEmpty();
 
         ToolResult updated = manager.execute(request(
                 sessionA,
@@ -200,12 +203,12 @@ class ToolManagerBuiltInsTest {
         ));
         JsonNode updatedPayload = MAPPER.readTree(updated.content());
         assertThat(updatedPayload.path("status").asText()).isEqualTo("ok");
-        assertThat(updatedPayload.path("data").path("todo").path("status").asText()).isEqualTo("done");
+        assertThat(updatedPayload.path("data").path("focus").path("status").asText()).isEqualTo("done");
 
         ToolResult deleted = manager.execute(request(sessionA, "todo_delete", "{\"todoId\":\"" + todoId + "\"}"));
         JsonNode deletedPayload = MAPPER.readTree(deleted.content());
         assertThat(deletedPayload.path("status").asText()).isEqualTo("ok");
-        assertThat(deletedPayload.path("data").path("deleted").asBoolean()).isTrue();
+        assertThat(deletedPayload.path("data").path("deletedTodoId").asText()).isEqualTo(todoId);
     }
 
     @Test
@@ -344,6 +347,8 @@ class ToolManagerBuiltInsTest {
                 "todo_list",
                 "todo_update",
                 "todo_delete",
+                "history_meta_lookup",
+                "history_raw_lookup",
                 "list_agents",
                 "delegate_agent"
         );
@@ -401,6 +406,70 @@ class ToolManagerBuiltInsTest {
         assertThat(shell.description()).contains("operators/chaining");
         assertThat(searchReplace.description()).contains("startAnchor");
         assertThat(searchReplace.description().toLowerCase(java.util.Locale.ROOT)).contains("do not invent anchors");
+    }
+
+    @Test
+    void historyMetaAndRawLookupRoundTrip() throws Exception {
+        DatabaseService databaseService = new DatabaseService(tempDir);
+        String sessionId = UUID.randomUUID().toString();
+        databaseService.execute(new SessionContextCommand.InitializeSession(
+                sessionId,
+                "agent-default",
+                "history",
+                1,
+                List.of(new ContextElement.SystemCoreMsg("system prompt"))
+        ));
+        databaseService.execute(new SessionContextCommand.AppendMessages(
+                sessionId,
+                List.of(
+                        new ContextElement.UserMsg("run shell"),
+                        new ContextElement.AssistantMsg(
+                                "",
+                                List.of(new ContextElement.ToolCall("call-1", "shell_command", "{\"cmd\":\"echo hello\"}"))
+                        ),
+                        new ContextElement.ToolMsg(
+                                "call-1",
+                                "shell_command",
+                                "{\"status\":\"ok\",\"code\":\"ok\",\"data\":{\"command\":\"echo hello\"}}",
+                                "{\"status\":\"ok\",\"code\":\"ok\",\"data\":{\"command\":\"echo hello\",\"stdout\":\"hello\\n\"}}",
+                                false
+                        )
+                )
+        ));
+
+        ToolManager manager = ToolManager.withBuiltIns(
+                runtimeConfig(tempDir),
+                databaseService::execute,
+                AnnotatedBuiltInToolCatalog.DelegationSupport.unsupported()
+        );
+        ToolResult meta = manager.execute(request(sessionId, "history_meta_lookup", "{\"limit\":10}"));
+        JsonNode metaPayload = MAPPER.readTree(meta.content());
+
+        assertThat(metaPayload.path("status").asText()).isEqualTo("ok");
+        assertThat(metaPayload.path("data").path("rows")).isNotEmpty();
+        int toolMessageId = metaPayload.path("data").path("rows").get(0).path("messageId").asInt();
+
+        ToolResult raw = manager.execute(request(
+                sessionId,
+                "history_raw_lookup",
+                "{\"messageId\":" + toolMessageId + ",\"startChar\":0,\"maxChars\":100}"
+        ));
+        JsonNode rawPayload = MAPPER.readTree(raw.content());
+
+        assertThat(rawPayload.path("status").asText()).isEqualTo("ok");
+        assertThat(rawPayload.path("data").path("messageId").asInt()).isEqualTo(toolMessageId);
+        assertThat(rawPayload.path("data").path("rawContent").asText()).contains("command");
+    }
+
+    @Test
+    void historyRawLookupRequiresMessageId() throws Exception {
+        ToolManager manager = ToolManager.withBuiltIns(runtimeConfig(tempDir));
+        ToolResult result = manager.execute(request("history_raw_lookup", "{\"startChar\":0}"));
+        JsonNode payload = MAPPER.readTree(result.content());
+
+        assertThat(payload.path("status").asText()).isEqualTo("failed");
+        assertThat(payload.path("code").asText()).isEqualTo("validation_error");
+        assertThat(payload.path("message").asText()).contains("messageId");
     }
 
     private RuntimeConfig runtimeConfig(Path workspaceRoot) {

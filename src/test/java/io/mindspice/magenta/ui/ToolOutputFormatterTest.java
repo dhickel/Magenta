@@ -42,7 +42,7 @@ class ToolOutputFormatterTest {
 
         ToolOutputFormatter.FormattedToolResult success = formatter.formatResult(
                 "sqlite_exec",
-                "{\"status\":\"ok\",\"code\":\"ok\",\"message\":\"done\",\"data\":{\"rowsAffected\":7,\"statementCount\":2,\"dbPath\":\"data/app.db\"}}"
+                "{\"status\":\"ok\",\"code\":\"sqlite_exec_receipt\",\"message\":\"done\",\"data\":{\"kind\":\"sqlite_exec_receipt\",\"database\":{\"dbPath\":\"data/app.db\"},\"sqlPreview\":\"UPDATE todos SET status = 'done' WHERE todo_id = '42'\",\"receipt\":{\"rowsAffected\":7,\"statementCount\":2,\"transactional\":true,\"statements\":[]}}}"
         );
         ToolOutputFormatter.FormattedToolResult failed = formatter.formatResult(
                 "write_file",
@@ -50,10 +50,27 @@ class ToolOutputFormatterTest {
         );
 
         assertThat(success.title()).isEqualTo("[Tool] SQL Exec OK");
-        assertThat(success.lines()).containsExactly("Database: data/app.db", "Rows Affected: 7");
+        assertThat(success.lines()).containsExactly(
+                "Database: data/app.db",
+                "SQL: UPDATE todos SET status = 'done' WHERE todo_id = '42'"
+        );
         assertThat(failed.title()).isEqualTo("[Tool] Write File FAILED");
         assertThat(failed.lines()).contains("Code: snapshot_mismatch", "Message: Snapshot mismatch");
         assertThat(failed.style()).isEqualTo(UiStyle.ERROR);
+    }
+
+    @Test
+    void todoUpdateSummaryIncludesTitleStatusAndDetails() {
+        ToolOutputFormatter formatter = new ToolOutputFormatter();
+
+        ToolOutputFormatter.FormattedToolResult result = formatter.formatResult(
+                "todo_update",
+                "{\"status\":\"ok\",\"code\":\"todo_focus_updated\",\"message\":\"done\",\"data\":{\"kind\":\"todo_focus\",\"action\":\"updated\",\"activeTodoId\":\"todo-1\",\"focus\":{\"todoId\":\"todo-1\",\"title\":\"Finalize terminal tool output\",\"details\":\"Include SQL preview and todo status in compact transcript\",\"status\":\"open\"}}}"
+        );
+
+        assertThat(result.lines()).containsExactly(
+                "Todo Updated: Finalize terminal tool output"
+        );
     }
 
     @Test

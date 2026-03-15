@@ -35,6 +35,8 @@ public final class AnnotatedBuiltInToolCatalog {
     private static final String TODO_LIST = "todo_list";
     private static final String TODO_UPDATE = "todo_update";
     private static final String TODO_DELETE = "todo_delete";
+    private static final String HISTORY_META_LOOKUP = "history_meta_lookup";
+    private static final String HISTORY_RAW_LOOKUP = "history_raw_lookup";
     private static final String LIST_AGENTS = "list_agents";
     private static final String DELEGATE_AGENT = "delegate_agent";
 
@@ -42,6 +44,7 @@ public final class AnnotatedBuiltInToolCatalog {
     private final ShellTools shellTools;
     private final SqliteTools sqliteTools;
     private final TodoTools todoTools;
+    private final HistoryTools historyTools;
     private final Map<String, RuntimeConfig.AgentConfig> agentsById;
     private final DelegationSupport delegationSupport;
 
@@ -50,6 +53,7 @@ public final class AnnotatedBuiltInToolCatalog {
             ShellTools shellTools,
             SqliteTools sqliteTools,
             TodoTools todoTools,
+            HistoryTools historyTools,
             Map<String, RuntimeConfig.AgentConfig> agentsById,
             DelegationSupport delegationSupport
     ) {
@@ -57,6 +61,7 @@ public final class AnnotatedBuiltInToolCatalog {
         this.shellTools = Objects.requireNonNull(shellTools, "shellTools");
         this.sqliteTools = Objects.requireNonNull(sqliteTools, "sqliteTools");
         this.todoTools = Objects.requireNonNull(todoTools, "todoTools");
+        this.historyTools = Objects.requireNonNull(historyTools, "historyTools");
         this.agentsById = agentsById == null ? Map.of() : Map.copyOf(agentsById);
         this.delegationSupport = delegationSupport == null
                 ? DelegationSupport.unsupported()
@@ -220,10 +225,11 @@ public final class AnnotatedBuiltInToolCatalog {
     }
 
     @Tool(name = SQLITE_QUERY, value = {
-            "Executes a single read-only SQL SELECT statement against a SQLite database file and returns the resulting rows as a structured JSON array.",
+            "Executes a single read-only SQL SELECT statement against a SQLite database file and returns a structured result payload.",
             "Use this tool for data discovery, state inspection, or analytical queries on workspace-resident databases without modifying the data.",
             "Parameters: 'dbPath' (path to the .sqlite or .db file) and 'sql' (a single, valid SELECT statement). Multiple statements are not supported here.",
-            "This tool is strictly read-only and will fail if the SQL statement attempts to modify the database state. If the query returns a large volume of data, the result set will be truncated."
+            "Success payload is code='sqlite_query_result' with data.kind='sqlite_query_result', data.database.dbPath, and data.result.{columns,rows,rowCount,truncated}.",
+            "This tool is strictly read-only and fails if SQL attempts to modify state. Large result sets may be truncated."
     })
     public ToolResult sqliteQuery(
             @ToolMemoryId ToolRequest request,
@@ -240,7 +246,8 @@ public final class AnnotatedBuiltInToolCatalog {
             "Executes one or more mutating SQL statements against a SQLite database file, allowing you to create tables, insert/update/delete rows, or modify the database schema.",
             "Use this tool for persistence, state management, or data transformations within workspace-resident databases.",
             "Parameters: 'dbPath' (path to the target database file), 'sql' (one or more SQL statements to execute), and 'transactional' (optional boolean, defaults to true, which wraps all statements in a single transaction).",
-            "This tool handles both single-statement mutations and complex multi-step operations efficiently. Success returns the number of affected rows and the resulting database state metadata.",
+            "Success payload is a receipt: code='sqlite_exec_receipt' with data.receipt.{statementCount,rowsAffected,transactional,lastInsertRowId,changedTables,statements[]}.",
+            "sqlite_exec returns mutation evidence only and does not echo full SQL bodies or row contents. Do not rerun a successful mutation just because rows were not returned.",
             "Security constraints prevent access to databases outside the authorized scope; this tool will fail if the provided database path is invalid or if the SQL syntax is incorrect."
     })
     public ToolResult sqliteExec(
@@ -260,8 +267,8 @@ public final class AnnotatedBuiltInToolCatalog {
             "Creates a new todo item in the current session's tracker as the first step in the todo lifecycle (create -> list -> update -> delete).",
             "Use this tool to break down a larger user request into manageable steps, providing visibility into progress and upcoming actions.",
             "Parameters: 'title' (a short summary of the task) and 'details' (optional notes, dependencies, or success criteria).",
-            "If an open todo already exists with the same normalized title in the current session, the existing todo is reused instead of creating a duplicate row (response includes created/reused flags).",
-            "Todos are persisted in the runtime state DB and scoped by sessionId; use todo_list to read current state and visible titles."
+            "If an open todo with the same normalized title already exists, focus is resumed (code='resumed_focus'). New rows return code='created_focus'.",
+            "Success payload is data.kind='todo_focus' with action, activeTodoId, focus, and openCount."
     })
     public ToolResult todoCreate(
             @ToolMemoryId ToolRequest request,
@@ -276,9 +283,9 @@ public final class AnnotatedBuiltInToolCatalog {
 
     @Tool(name = TODO_LIST, value = {
             "Reads todo state for the current session by listing active and/or completed items.",
-            "Use this as the canonical todo read operation to verify progress, identify pending actions, and recover state after interruption.",
+            "Use this as the canonical todo recovery read when TODO focus is uncertain.",
             "Optional parameters include 'status' (filter by 'open' or 'done') and 'limit' (to bound the result count for sessions with many tasks).",
-            "Returns structured todo objects including todoId, title, details, status, createdAtMs, and updatedAtMs, with open items prioritized ahead of done items when no status filter is provided."
+            "Success payload is code='todo_list_result' with data.kind='todo_list', activeTodoId, openCount, doneCount, items, limit, and truncated."
     })
     public ToolResult todoList(
             @ToolMemoryId ToolRequest request,
@@ -295,7 +302,8 @@ public final class AnnotatedBuiltInToolCatalog {
             "Updates an existing todo item by todoId (title, details, and/or status).",
             "Call this immediately when task state changes, especially to mark completion with status='done'.",
             "Requires a 'todoId'. Optional parameters include 'title' (rename the task), 'details' (add additional context), and 'status' ('open' or 'done').",
-            "This operation is atomic and will fail if the provided todoId does not exist in the current session."
+            "Success payload is code='todo_focus_updated' with data.kind='todo_focus', action, activeTodoId, and focus.",
+            "This operation is atomic and fails if todoId does not exist in the current session."
     })
     public ToolResult todoUpdate(
             @ToolMemoryId ToolRequest request,
@@ -316,7 +324,8 @@ public final class AnnotatedBuiltInToolCatalog {
             "Deletes an existing todo item from the current session by todoId.",
             "Use this only to remove obsolete or incorrectly created items after confirming they should not remain in plan state.",
             "Requires a 'todoId' parameter. Deletion is immediate and irreversible for the current session.",
-            "Success returns a confirmation message; fails if the todoId is not found or the session is inactive."
+            "Success payload is code='todo_deleted' with data.kind='todo_delete', deletedTodoId, activeTodoId, and optional nextFocus.",
+            "Fails if todoId is not found or the session is inactive."
     })
     public ToolResult todoDelete(
             @ToolMemoryId ToolRequest request,
@@ -325,6 +334,48 @@ public final class AnnotatedBuiltInToolCatalog {
         ObjectNode args = objectArgs();
         args.put("todoId", todoId);
         return todoTools.todoDelete(rewriteRequest(request, TODO_DELETE, args));
+    }
+
+    @Tool(name = HISTORY_META_LOOKUP, value = {
+            "Loads compact metadata rows from durable session history across all message types.",
+            "Use this first to locate messageId references before requesting full content.",
+            "Supports paging (beforeMessageId) and optional element/tool filters.",
+            "Rows include messageId, message type, tool identity when present, status/code hints, and short preview text."
+    })
+    public ToolResult historyMetaLookup(
+            @ToolMemoryId ToolRequest request,
+            @P(value = "Maximum rows to return. Defaults to 20.", required = false) Integer limit,
+            @P(value = "Load rows with messageId < beforeMessageId.", required = false) Integer beforeMessageId,
+            @P(value = "Optional element type filter: system|user|assistant|tool|inbound|summary", required = false) String elementTypeFilter,
+            @P(value = "Optional tool name filter", required = false) String toolNameFilter,
+            @P(value = "Include compacted/dropped rows when true. Defaults to true.", required = false) Boolean includeDropped
+    ) {
+        ObjectNode args = objectArgs();
+        putIntIfPresent(args, "limit", limit);
+        putIntIfPresent(args, "beforeMessageId", beforeMessageId);
+        putTextIfPresent(args, "elementTypeFilter", elementTypeFilter);
+        putTextIfPresent(args, "toolNameFilter", toolNameFilter);
+        putBooleanIfPresent(args, "includeDropped", includeDropped);
+        return historyTools.historyMetaLookup(rewriteRequest(request, HISTORY_META_LOOKUP, args));
+    }
+
+    @Tool(name = HISTORY_RAW_LOOKUP, value = {
+            "Loads full durable content by messageId from session history.",
+            "Use this after history_meta_lookup when exact prior inputs or raw payload are needed.",
+            "Supports startChar/maxChars slicing for large records.",
+            "Returns hasMore and totalChars for continued paging."
+    })
+    public ToolResult historyRawLookup(
+            @ToolMemoryId ToolRequest request,
+            @P("Message id from history_meta_lookup rows") Integer messageId,
+            @P(value = "Slice start character offset. Defaults to 0.", required = false) Integer startChar,
+            @P(value = "Maximum chars to return. Defaults to runtime bound.", required = false) Integer maxChars
+    ) {
+        ObjectNode args = objectArgs();
+        putIntIfPresent(args, "messageId", messageId);
+        putIntIfPresent(args, "startChar", startChar);
+        putIntIfPresent(args, "maxChars", maxChars);
+        return historyTools.historyRawLookup(rewriteRequest(request, HISTORY_RAW_LOOKUP, args));
     }
 
     @Tool(name = LIST_AGENTS, value = {
@@ -459,7 +510,9 @@ public final class AnnotatedBuiltInToolCatalog {
                 Map.entry(TODO_CREATE, ToolSecurityDescriptor.path(List.of(), false)),
                 Map.entry(TODO_LIST, ToolSecurityDescriptor.path(List.of(), false)),
                 Map.entry(TODO_UPDATE, ToolSecurityDescriptor.path(List.of(), false)),
-                Map.entry(TODO_DELETE, ToolSecurityDescriptor.path(List.of(), false))
+                Map.entry(TODO_DELETE, ToolSecurityDescriptor.path(List.of(), false)),
+                Map.entry(HISTORY_META_LOOKUP, ToolSecurityDescriptor.path(List.of(), false)),
+                Map.entry(HISTORY_RAW_LOOKUP, ToolSecurityDescriptor.path(List.of(), false))
         );
     }
 

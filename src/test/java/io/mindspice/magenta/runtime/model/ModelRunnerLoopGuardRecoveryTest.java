@@ -30,9 +30,11 @@ class ModelRunnerLoopGuardRecoveryTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
     private static final String WARNING_PREFIX = "[tool-loop-warning] repeated_calls=2/2; window_failures=1; recovery_attempt=1/1; required_action=change_approach_or_return_defeat";
+    private static final String CONTINUITY_PREFIX = "[continuity-check] empty assistant response received";
+    private static final String EMPTY_TURN_STOP_PREFIX = "[model-empty-turn-stop]";
 
     @Test
-    void loopWarningTriggersRecoveryModelRetryWithInjectedSystemMessage() throws Exception {
+    void loopWarningTriggersRecoveryModelRetryWithoutTranscriptLeak() throws Exception {
         try (StubOllamaServer stub = new StubOllamaServer(
                 toolCallResponse("tool pass 1", "call-1"),
                 toolCallResponse("tool pass 2", "call-2"),
@@ -58,7 +60,7 @@ class ModelRunnerLoopGuardRecoveryTest {
             assertThat(outputs)
                     .filteredOn(output -> output instanceof SessionOutput.FinalOutput)
                     .extracting(output -> ((SessionOutput.FinalOutput) output).text())
-                    .anyMatch(text -> text.startsWith(WARNING_PREFIX));
+                    .noneMatch(text -> text.startsWith(WARNING_PREFIX));
             assertThat(stub.requestBodies()).hasSize(3);
 
             JsonNode thirdRequest = MAPPER.readTree(stub.requestBodies().get(2));
@@ -100,9 +102,76 @@ class ModelRunnerLoopGuardRecoveryTest {
         }
     }
 
+    @Test
+    void blankNoToolResponseRetriesWithContinuityNudge() throws Exception {
+        try (StubOllamaServer stub = new StubOllamaServer(
+                finalResponse(""),
+                finalResponse("Continuing with next step.")
+        )) {
+            ModelRunner runner = new ModelRunner(new OllamaClient(10_000));
+            Session session = testSession(stub.endpoint());
+            SessionHandle handle = new SessionHandle(session.sessionId(), () -> true);
+            List<SessionOutput> outputs = new ArrayList<>();
+
+            String result = runner.runTurn(
+                    session,
+                    handle,
+                    6,
+                    false,
+                    event -> outputs.add(event.output()),
+                    () -> {},
+                    List.of(),
+                    new RuntimeConfig.ToolLoopGuardConfig(true, 2, 2, 1)
+            );
+
+            assertThat(result).isEqualTo("Continuing with next step.");
+            assertThat(stub.requestBodies()).hasSize(2);
+            assertThat(outputs)
+                    .filteredOn(output -> output instanceof SessionOutput.FinalOutput)
+                    .extracting(output -> ((SessionOutput.FinalOutput) output).text())
+                    .containsExactly("Continuing with next step.");
+
+            JsonNode retryRequest = MAPPER.readTree(stub.requestBodies().get(1));
+            JsonNode firstMessage = retryRequest.path("messages").get(0);
+            assertThat(firstMessage.path("role").asText()).isEqualTo("system");
+            assertThat(firstMessage.path("content").asText()).startsWith(CONTINUITY_PREFIX);
+        }
+    }
+
+    @Test
+    void blankNoToolResponseAfterRetryReturnsTaggedStop() throws Exception {
+        try (StubOllamaServer stub = new StubOllamaServer(
+                finalResponse(""),
+                finalResponse("")
+        )) {
+            ModelRunner runner = new ModelRunner(new OllamaClient(10_000));
+            Session session = testSession(stub.endpoint());
+            SessionHandle handle = new SessionHandle(session.sessionId(), () -> true);
+            List<SessionOutput> outputs = new ArrayList<>();
+
+            String result = runner.runTurn(
+                    session,
+                    handle,
+                    6,
+                    false,
+                    event -> outputs.add(event.output()),
+                    () -> {},
+                    List.of(),
+                    new RuntimeConfig.ToolLoopGuardConfig(true, 2, 2, 1)
+            );
+
+            assertThat(stub.requestBodies()).hasSize(2);
+            assertThat(result).startsWith(EMPTY_TURN_STOP_PREFIX);
+            assertThat(outputs)
+                    .filteredOn(output -> output instanceof SessionOutput.FinalOutput)
+                    .extracting(output -> ((SessionOutput.FinalOutput) output).text())
+                    .containsExactly(result);
+        }
+    }
+
     private static Session testSession(String endpoint) {
         Context context = new Context();
-        context.append(new ContextElement.SystemMsg("base system prompt"));
+        context.append(new ContextElement.SystemCoreMsg("base system prompt"));
         context.append(new ContextElement.UserMsg("use tools"));
         RuntimeConfig.ModelConfig modelConfig = new RuntimeConfig.ModelConfig(
                 "test-model",

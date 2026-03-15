@@ -44,8 +44,8 @@ class SessionManagerIntegrationTest {
 
         assertThat(session.context().snapshot())
                 .startsWith(
-                        new ContextElement.SystemMsg("Base prompt"),
-                        new ContextElement.SystemMsg("Agent prompt")
+                        new ContextElement.SystemCoreMsg("Base prompt"),
+                        new ContextElement.SystemAgentMsg("Agent prompt")
                 );
 
         SessionHandle handle = manager.handleFor(session.sessionId());
@@ -80,11 +80,11 @@ class SessionManagerIntegrationTest {
 
         assertThat(session.context().snapshot())
                 .startsWith(
-                        new ContextElement.SystemMsg("Base prompt"),
-                        new ContextElement.SystemMsg("Agent prompt"),
-                        new ContextElement.SystemMsg("Configured task")
+                        new ContextElement.SystemCoreMsg("Base prompt"),
+                        new ContextElement.SystemAgentMsg("Agent prompt"),
+                        new ContextElement.SystemTaskMsg("Configured task")
                 )
-                .doesNotContain(new ContextElement.SystemMsg("Override task"));
+                .doesNotContain(new ContextElement.SystemTaskMsg("Override task"));
 
         SessionSettingsView settings = manager.settingsFor(session.sessionId());
         assertThat(settings.resolvedSystemPrompt()).isEqualTo("Base prompt\n\nAgent prompt\n\nConfigured task");
@@ -112,9 +112,9 @@ class SessionManagerIntegrationTest {
         assertThat(manager.activeTaskId(session.sessionId())).isEqualTo("default-task");
         assertThat(session.context().snapshot())
                 .startsWith(
-                        new ContextElement.SystemMsg("Base prompt"),
-                        new ContextElement.SystemMsg("Agent prompt"),
-                        new ContextElement.SystemMsg("Configured task")
+                        new ContextElement.SystemCoreMsg("Base prompt"),
+                        new ContextElement.SystemAgentMsg("Agent prompt"),
+                        new ContextElement.SystemTaskMsg("Configured task")
                 )
                 .contains(new ContextElement.UserMsg("hello"));
     }
@@ -141,9 +141,9 @@ class SessionManagerIntegrationTest {
         assertThat(manager.activeTaskId(session.sessionId())).isEqualTo("anon task");
         assertThat(session.context().snapshot())
                 .startsWith(
-                        new ContextElement.SystemMsg("Base prompt"),
-                        new ContextElement.SystemMsg("Agent prompt"),
-                        new ContextElement.SystemMsg("Stay autonomous and continue until fully done.")
+                        new ContextElement.SystemCoreMsg("Base prompt"),
+                        new ContextElement.SystemAgentMsg("Agent prompt"),
+                        new ContextElement.SystemTaskMsg("Stay autonomous and continue until fully done.")
                 )
                 .contains(new ContextElement.UserMsg("hello"));
     }
@@ -166,21 +166,21 @@ class SessionManagerIntegrationTest {
         manager.applyTask(session.sessionId(), "default-task");
         session.context().append(new ContextElement.UserMsg("hello"));
         session.context().append(new ContextElement.AssistantMsg("hi", java.util.List.of()));
-        session.context().append(new ContextElement.SystemMsg("late-system"));
+        session.context().append(new ContextElement.SystemAgentMsg("late-system"));
 
         var retained = manager.clearConversationKeepSystemMessages(session.sessionId());
 
         assertThat(retained)
                 .containsExactly(
-                        new ContextElement.SystemMsg("Base prompt"),
-                        new ContextElement.SystemMsg("Agent prompt"),
-                        new ContextElement.SystemMsg("Configured task")
+                        new ContextElement.SystemCoreMsg("Base prompt"),
+                        new ContextElement.SystemAgentMsg("Agent prompt"),
+                        new ContextElement.SystemTaskMsg("Configured task")
                 );
         assertThat(session.context().snapshot())
                 .containsExactly(
-                        new ContextElement.SystemMsg("Base prompt"),
-                        new ContextElement.SystemMsg("Agent prompt"),
-                        new ContextElement.SystemMsg("Configured task")
+                        new ContextElement.SystemCoreMsg("Base prompt"),
+                        new ContextElement.SystemAgentMsg("Agent prompt"),
+                        new ContextElement.SystemTaskMsg("Configured task")
                 );
         assertThat(manager.activeTaskId(session.sessionId())).isEqualTo("default-task");
     }
