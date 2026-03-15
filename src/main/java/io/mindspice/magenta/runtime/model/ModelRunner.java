@@ -37,6 +37,8 @@ public final class ModelRunner {
     private static final int EMPTY_TURN_RECOVERY_ATTEMPTS = 1;
     private static final String EMPTY_TURN_CONTINUITY_PREFIX = "[continuity-check]";
     private static final String EMPTY_TURN_STOP_PREFIX = "[model-empty-turn-stop]";
+    private static final String SEARCH_REPLACE_WARNING_PREFIX = "[search-replace-warning]";
+    private static final int SEARCH_REPLACE_MISMATCH_WARNING_THRESHOLD = 2;
 
     private final OllamaClient ollamaClient;
 
@@ -82,7 +84,9 @@ public final class ModelRunner {
         int emptyTurnRecoveryAttemptsUsed = 0;
         String pendingLoopWarningSystemMessage = null;
         String pendingEmptyTurnSystemMessage = null;
+        String pendingSearchReplaceSystemMessage = null;
         LastToolOutcome lastToolOutcome = LastToolOutcome.none();
+        SearchReplaceMismatchTracker searchReplaceMismatchTracker = new SearchReplaceMismatchTracker();
 
         for (int i = 0; i < maxIterations; i++) {
             safeBeforeModelCallHook.run();
@@ -95,6 +99,10 @@ public final class ModelRunner {
             if (pendingEmptyTurnSystemMessage != null && !pendingEmptyTurnSystemMessage.isBlank()) {
                 requestContext = prependSystemMessage(requestContext, pendingEmptyTurnSystemMessage);
                 pendingEmptyTurnSystemMessage = null;
+            }
+            if (pendingSearchReplaceSystemMessage != null && !pendingSearchReplaceSystemMessage.isBlank()) {
+                requestContext = prependSystemMessage(requestContext, pendingSearchReplaceSystemMessage);
+                pendingSearchReplaceSystemMessage = null;
             }
             ChatRequest.Builder requestBuilder = ChatRequest.builder()
                     .messages(toChatMessages(requestContext));
@@ -237,6 +245,23 @@ public final class ModelRunner {
                         ))
                 ));
                 lastToolOutcome = captureToolOutcome(toolResult.toolName(), rawContent);
+                SearchReplaceSignal searchReplaceSignal = captureSearchReplaceSignal(toolCall, rawContent);
+                if (searchReplaceSignal.clearPath() != null && !searchReplaceSignal.clearPath().isBlank()) {
+                    searchReplaceMismatchTracker.clear(searchReplaceSignal.clearPath());
+                }
+                if (searchReplaceSignal.mismatchPath() != null && !searchReplaceSignal.mismatchPath().isBlank()) {
+                    SearchReplaceMismatchStatus mismatchStatus = searchReplaceMismatchTracker.recordMismatch(
+                            searchReplaceSignal.mismatchPath(),
+                            searchReplaceSignal.reason()
+                    );
+                    if (mismatchStatus.emitWarning()) {
+                        pendingSearchReplaceSystemMessage = searchReplaceWarningMessage(
+                                mismatchStatus.path(),
+                                mismatchStatus.consecutiveCount(),
+                                mismatchStatus.reason()
+                        );
+                    }
+                }
                 if (safeToolLoopGuardConfig.enabled()) {
                     recentFailureFlags.addLast(toolResultFailed(rawContent));
                     while (recentFailureFlags.size() > safeToolLoopGuardConfig.windowSize()) {
@@ -511,6 +536,99 @@ public final class ModelRunner {
                + "Return either a final artifact/status update or continue with concrete next actions.";
     }
 
+    private SearchReplaceSignal captureSearchReplaceSignal(ContextElement.ToolCall toolCall, String rawContent) {
+        if (toolCall == null || toolCall.name() == null) {
+            return SearchReplaceSignal.none();
+        }
+        String toolName = toolCall.name().trim();
+        String path = extractPath(toolCall.argumentsJson());
+        if ("read_file".equals(toolName)) {
+            if (toolResultFailed(rawContent) || path.isBlank()) {
+                return SearchReplaceSignal.none();
+            }
+            return SearchReplaceSignal.clear(path);
+        }
+        if (!"search_replace".equals(toolName) || path.isBlank()) {
+            return SearchReplaceSignal.none();
+        }
+        if (!toolResultFailed(rawContent)) {
+            return SearchReplaceSignal.clear(path);
+        }
+
+        SearchReplaceFailure failure = parseSearchReplaceFailure(rawContent);
+        if (!failure.mismatch()) {
+            return SearchReplaceSignal.none();
+        }
+        return SearchReplaceSignal.mismatch(path, failure.reason());
+    }
+
+    private SearchReplaceFailure parseSearchReplaceFailure(String rawContent) {
+        String payload = safeText(rawContent);
+        if (payload.isBlank()) {
+            return SearchReplaceFailure.none();
+        }
+        try {
+            JsonNode root = MAPPER.readTree(payload);
+            if (!"anchor_mismatch".equals(root.path("code").asText())) {
+                return SearchReplaceFailure.none();
+            }
+            JsonNode conflicts = root.path("data").path("conflicts");
+            String reason = "";
+            if (conflicts.isArray() && !conflicts.isEmpty()) {
+                reason = conflicts.get(0).path("reason").asText("");
+            }
+            return new SearchReplaceFailure(true, reason);
+        } catch (Exception ignored) {
+            return SearchReplaceFailure.none();
+        }
+    }
+
+    private String extractPath(String argumentsJson) {
+        String safe = argumentsJson == null ? "" : argumentsJson.trim();
+        if (safe.isBlank()) {
+            return "";
+        }
+        try {
+            JsonNode args = MAPPER.readTree(safe);
+            if (!args.isObject()) {
+                return "";
+            }
+            return firstNonBlank(
+                    args.path("path").asText(""),
+                    args.path("filePath").asText(""),
+                    args.path("targetPath").asText("")
+            );
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return "";
+    }
+
+    private String searchReplaceWarningMessage(String path, int consecutiveCount, String reason) {
+        return SEARCH_REPLACE_WARNING_PREFIX
+               + " repeated_anchor_mismatch="
+               + consecutiveCount
+               + "/"
+               + SEARCH_REPLACE_MISMATCH_WARNING_THRESHOLD
+               + "; path="
+               + compactToken(path, "unknown")
+               + "; reason="
+               + compactToken(firstNonBlank(reason, "anchor_mismatch"), "anchor_mismatch")
+               + "; required_action=read_file_refresh_before_retry"
+               + "; guidance=refresh_snapshot_and_inclusive_anchors_before_next_search_replace";
+    }
+
     private LastToolOutcome captureToolOutcome(String toolName, String rawContent) {
         String normalizedTool = safeText(toolName).isBlank() ? "unknown" : toolName.trim();
         String payload = safeText(rawContent);
@@ -537,6 +655,53 @@ public final class ModelRunner {
             return "none";
         }
         return value.replaceAll("[\\s;=]+", "_");
+    }
+
+    private record SearchReplaceFailure(boolean mismatch, String reason) {
+        private static SearchReplaceFailure none() {
+            return new SearchReplaceFailure(false, "");
+        }
+    }
+
+    private record SearchReplaceSignal(String clearPath, String mismatchPath, String reason) {
+        private static SearchReplaceSignal none() {
+            return new SearchReplaceSignal(null, null, "");
+        }
+
+        private static SearchReplaceSignal clear(String path) {
+            return new SearchReplaceSignal(path, null, "");
+        }
+
+        private static SearchReplaceSignal mismatch(String path, String reason) {
+            return new SearchReplaceSignal(null, path, reason == null ? "" : reason);
+        }
+    }
+
+    private static final class SearchReplaceMismatchTracker {
+        private final Map<String, Integer> consecutiveByPath = new HashMap<>();
+        private final Map<String, Boolean> warnedByPath = new HashMap<>();
+
+        private SearchReplaceMismatchStatus recordMismatch(String path, String reason) {
+            int next = consecutiveByPath.getOrDefault(path, 0) + 1;
+            consecutiveByPath.put(path, next);
+            boolean warned = warnedByPath.getOrDefault(path, false);
+            boolean emitWarning = next >= SEARCH_REPLACE_MISMATCH_WARNING_THRESHOLD && !warned;
+            if (emitWarning) {
+                warnedByPath.put(path, true);
+            }
+            return new SearchReplaceMismatchStatus(path, next, reason == null ? "" : reason, emitWarning);
+        }
+
+        private void clear(String path) {
+            if (path == null || path.isBlank()) {
+                return;
+            }
+            consecutiveByPath.remove(path);
+            warnedByPath.remove(path);
+        }
+    }
+
+    private record SearchReplaceMismatchStatus(String path, int consecutiveCount, String reason, boolean emitWarning) {
     }
 
     private record LastToolOutcome(String toolName, String status, String code, String message) {

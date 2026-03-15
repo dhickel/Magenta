@@ -151,6 +151,10 @@ If first approach fails, try credible alternatives before escalation.
   - do not repeat the same malformed call pattern.
 - If `snapshot_mismatch` occurs:
   - re-read file state (`read_file` or `file_metadata`) and retry with current snapshot/anchors.
+- If `search_replace` returns `anchor_mismatch` (including `expected_text_mismatch`):
+  - treat anchors as inclusive (`startAnchor..endAnchor`),
+  - run `read_file` for the same path before retrying,
+  - only include `expectedText` when you can reproduce the exact inclusive slice.
 
 ### Recovery Rules After Any Tool Failure
 - Always inspect the latest tool payload fields: `status`, `code`, `message`, and any `data.recoveryHint`.

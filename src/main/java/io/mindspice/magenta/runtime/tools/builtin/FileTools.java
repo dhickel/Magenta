@@ -426,10 +426,11 @@ public final class FileTools {
 
         try {
             String normalizedBefore = normalizedFileContent(path);
+            String displayPath = ToolPathSupport.displayPath(settings.workspaceRoot(), path);
             String actualSnapshotId = snapshotId(normalizedBefore);
             if (!Objects.equals(expectedSnapshotId, actualSnapshotId)) {
                 ObjectNode data = MAPPER.createObjectNode();
-                data.put("path", ToolPathSupport.displayPath(settings.workspaceRoot(), path));
+                data.put("path", displayPath);
                 data.put("providedSnapshotId", expectedSnapshotId);
                 data.put("currentSnapshotId", actualSnapshotId);
                 return ToolPayloads.failure(request, "snapshot_mismatch", "Snapshot mismatch", data, true);
@@ -449,9 +450,12 @@ public final class FileTools {
                 if (current.startLine() <= previous.endLine()) {
                     ObjectNode conflict = conflictNode(current.index(), "overlapping_range", current.startAnchor(), current.endAnchor());
                     ObjectNode data = MAPPER.createObjectNode();
+                    data.put("path", displayPath);
                     ArrayNode conflicts = MAPPER.createArrayNode();
                     conflicts.add(conflict);
                     data.set("conflicts", conflicts);
+                    data.put("requiredAction", "adjust_ranges");
+                    data.put("recoveryHint", "Edit ranges overlapped. Use non-overlapping inclusive anchor ranges.");
                     return ToolPayloads.failure(request, "anchor_mismatch", "Edit ranges overlap", data, true);
                 }
             }
@@ -478,6 +482,7 @@ public final class FileTools {
             return ToolPayloads.success(request, "Edits applied", data);
         } catch (AnchorConflictException e) {
             ObjectNode data = MAPPER.createObjectNode();
+            data.put("path", ToolPathSupport.displayPath(settings.workspaceRoot(), path));
             ArrayNode conflicts = MAPPER.createArrayNode();
             conflicts.add(conflictNode(
                     e.editIndex(),
@@ -486,9 +491,18 @@ public final class FileTools {
                     e.endAnchor(),
                     e.lineNumber(),
                     e.expectedHash(),
-                    e.actualHash()
+                    e.actualHash(),
+                    e.actualSlicePreview(),
+                    e.requiredAction(),
+                    e.recoveryHint()
             ));
             data.set("conflicts", conflicts);
+            if (!isBlank(e.requiredAction())) {
+                data.put("requiredAction", e.requiredAction());
+            }
+            if (!isBlank(e.recoveryHint())) {
+                data.put("recoveryHint", e.recoveryHint());
+            }
             return ToolPayloads.failure(request, "anchor_mismatch", e.getMessage(), data, true);
         } catch (Exception e) {
             return ToolPayloads.failure(request, "io_error", "Failed to apply edits: " + e.getMessage(), null, true);
@@ -633,9 +647,9 @@ public final class FileTools {
                 throw new AnchorConflictException(i, "invalid_edit", "Edit must be an object", "", "");
             }
 
-            String startAnchor = readFirstString(editNode, List.of("startAnchor"));
-            String endAnchor = readFirstString(editNode, List.of("endAnchor"));
-            JsonNode replacementNode = editNode.get("replacement");
+            String startAnchor = readFirstString(editNode, List.of("startAnchor", "start", "fromAnchor"));
+            String endAnchor = readFirstString(editNode, List.of("endAnchor", "end", "toAnchor"));
+            JsonNode replacementNode = readFirstTextNode(editNode, List.of("replacement", "text"));
             if (isBlank(startAnchor) || isBlank(endAnchor) || replacementNode == null || !replacementNode.isTextual()) {
                 throw new AnchorConflictException(i, "invalid_edit", "Each edit requires startAnchor, endAnchor, replacement", startAnchor, endAnchor);
             }
@@ -678,12 +692,24 @@ public final class FileTools {
                 );
             }
 
-            String expectedText = readFirstString(editNode, List.of("expectedText"));
+            String expectedText = readFirstString(editNode, List.of("expectedText", "expected"));
             if (!isBlank(expectedText)) {
                 String expectedNormalized = normalizeNewlines(expectedText);
                 String actualSlice = String.join("\n", lines.subList(start.lineNumber() - 1, end.lineNumber()));
                 if (!Objects.equals(expectedNormalized, actualSlice)) {
-                    throw new AnchorConflictException(i, "expected_text_mismatch", "expectedText does not match anchored range", startAnchor, endAnchor);
+                    throw new AnchorConflictException(
+                            i,
+                            "expected_text_mismatch",
+                            "expectedText does not match anchored inclusive range",
+                            startAnchor,
+                            endAnchor,
+                            null,
+                            null,
+                            null,
+                            slicePreview(actualSlice),
+                            "read_file_refresh",
+                            "Run read_file for this path and retry with inclusive anchors; include expectedText only when exact slice is known."
+                    );
                 }
             }
 
@@ -722,6 +748,19 @@ public final class FileTools {
             JsonNode node = args.get(key);
             if (node != null && node.isTextual()) {
                 return node.asText();
+            }
+        }
+        return null;
+    }
+
+    private JsonNode readFirstTextNode(JsonNode args, List<String> keys) {
+        if (args == null || !args.isObject()) {
+            return null;
+        }
+        for (String key : keys) {
+            JsonNode node = args.get(key);
+            if (node != null && node.isTextual()) {
+                return node;
             }
         }
         return null;
@@ -772,7 +811,7 @@ public final class FileTools {
     }
 
     private ObjectNode conflictNode(int editIndex, String reason, String startAnchor, String endAnchor) {
-        return conflictNode(editIndex, reason, startAnchor, endAnchor, null, null, null);
+        return conflictNode(editIndex, reason, startAnchor, endAnchor, null, null, null, null, null, null);
     }
 
     private ObjectNode conflictNode(
@@ -782,7 +821,10 @@ public final class FileTools {
             String endAnchor,
             Integer lineNumber,
             String expectedHash,
-            String actualHash
+            String actualHash,
+            String actualSlicePreview,
+            String requiredAction,
+            String recoveryHint
     ) {
         ObjectNode node = MAPPER.createObjectNode();
         node.put("editIndex", editIndex);
@@ -798,7 +840,25 @@ public final class FileTools {
         if (!isBlank(actualHash)) {
             node.put("actualHash", actualHash);
         }
+        if (!isBlank(actualSlicePreview)) {
+            node.put("actualSlicePreview", actualSlicePreview);
+        }
+        if (!isBlank(requiredAction)) {
+            node.put("requiredAction", requiredAction);
+        }
+        if (!isBlank(recoveryHint)) {
+            node.put("recoveryHint", recoveryHint);
+        }
         return node;
+    }
+
+    private String slicePreview(String text) {
+        String normalized = normalizeNewlines(text == null ? "" : text);
+        int max = 180;
+        if (normalized.length() <= max) {
+            return normalized;
+        }
+        return normalized.substring(0, max - 3) + "...";
     }
 
     private long safeSize(Path path) {
@@ -907,9 +967,12 @@ public final class FileTools {
         private final Integer lineNumber;
         private final String expectedHash;
         private final String actualHash;
+        private final String actualSlicePreview;
+        private final String requiredAction;
+        private final String recoveryHint;
 
         private AnchorConflictException(int editIndex, String reason, String message, String startAnchor, String endAnchor) {
-            this(editIndex, reason, message, startAnchor, endAnchor, null, null, null);
+            this(editIndex, reason, message, startAnchor, endAnchor, null, null, null, null, null, null);
         }
 
         private AnchorConflictException(
@@ -922,6 +985,22 @@ public final class FileTools {
                 String expectedHash,
                 String actualHash
         ) {
+            this(editIndex, reason, message, startAnchor, endAnchor, lineNumber, expectedHash, actualHash, null, null, null);
+        }
+
+        private AnchorConflictException(
+                int editIndex,
+                String reason,
+                String message,
+                String startAnchor,
+                String endAnchor,
+                Integer lineNumber,
+                String expectedHash,
+                String actualHash,
+                String actualSlicePreview,
+                String requiredAction,
+                String recoveryHint
+        ) {
             super(message);
             this.editIndex = editIndex;
             this.reason = reason;
@@ -930,6 +1009,9 @@ public final class FileTools {
             this.lineNumber = lineNumber;
             this.expectedHash = expectedHash;
             this.actualHash = actualHash;
+            this.actualSlicePreview = actualSlicePreview;
+            this.requiredAction = requiredAction;
+            this.recoveryHint = recoveryHint;
         }
 
         private int editIndex() {
@@ -958,6 +1040,18 @@ public final class FileTools {
 
         private String actualHash() {
             return actualHash;
+        }
+
+        private String actualSlicePreview() {
+            return actualSlicePreview;
+        }
+
+        private String requiredAction() {
+            return requiredAction;
+        }
+
+        private String recoveryHint() {
+            return recoveryHint;
         }
     }
 }

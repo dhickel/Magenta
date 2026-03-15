@@ -213,7 +213,7 @@ class FileToolsFunctionalTest {
                 "edits", List.of(Map.of(
                         "startAnchor", anchor,
                         "endAnchor", anchor,
-                        "expectedText", "wrong",
+                        "expected", "wrong",
                         "replacement", "omega"
                 ))
         ));
@@ -221,7 +221,39 @@ class FileToolsFunctionalTest {
         JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request("search_replace", args)));
         assertThat(payload.path("status").asText()).isEqualTo("failed");
         assertThat(payload.path("code").asText()).isEqualTo("anchor_mismatch");
-        assertThat(payload.path("data").path("conflicts").get(0).path("reason").asText()).isEqualTo("expected_text_mismatch");
+        assertThat(payload.path("data").path("requiredAction").asText()).isEqualTo("read_file_refresh");
+        assertThat(payload.path("data").path("recoveryHint").asText()).contains("Run read_file");
+        JsonNode conflict = payload.path("data").path("conflicts").get(0);
+        assertThat(conflict.path("reason").asText()).isEqualTo("expected_text_mismatch");
+        assertThat(conflict.path("requiredAction").asText()).isEqualTo("read_file_refresh");
+        assertThat(conflict.path("recoveryHint").asText()).contains("inclusive anchors");
+        assertThat(conflict.path("actualSlicePreview").asText()).isEqualTo("alpha");
+    }
+
+    @Test
+    void searchReplaceAcceptsMinimalEditAliases() throws Exception {
+        Files.writeString(tempDir.resolve("sample.txt"), "alpha\nbeta\n");
+        ToolManager manager = ToolManager.withBuiltIns(ToolTestSupport.runtimeConfig(tempDir));
+
+        JsonNode read = ToolTestSupport.payload(manager.execute(ToolTestSupport.request("read_file", "{\"path\":\"sample.txt\"}")));
+        String snapshotId = read.path("data").path("snapshotId").asText();
+        String startAnchor = read.path("data").path("lines").get(0).path("anchor").asText();
+        String endAnchor = read.path("data").path("lines").get(1).path("anchor").asText();
+
+        String args = ToolTestSupport.MAPPER.writeValueAsString(Map.of(
+                "path", "sample.txt",
+                "snapshotId", snapshotId,
+                "edits", List.of(Map.of(
+                        "start", startAnchor,
+                        "end", endAnchor,
+                        "text", "omega"
+                ))
+        ));
+
+        JsonNode payload = ToolTestSupport.payload(manager.execute(ToolTestSupport.request("search_replace", args)));
+        assertThat(payload.path("status").asText()).isEqualTo("ok");
+        assertThat(payload.path("data").path("appliedEdits").asInt()).isEqualTo(1);
+        assertThat(Files.readString(tempDir.resolve("sample.txt"))).isEqualTo("omega");
     }
 
     @Test
