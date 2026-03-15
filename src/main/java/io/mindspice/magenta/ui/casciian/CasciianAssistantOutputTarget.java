@@ -1,7 +1,10 @@
 package io.mindspice.magenta.ui.casciian;
 
 import io.mindspice.magenta.ui.AssistantOutputTarget;
+import io.mindspice.magenta.ui.ToolOutputFormatter;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
@@ -9,9 +12,11 @@ public final class CasciianAssistantOutputTarget implements AssistantOutputTarge
     private static final Pattern PREFIX_PATTERN = Pattern.compile("^[^>\\r\\n]{1,64}>\\s*");
 
     private final CasciianTerminalUiRuntime runtime;
+    private final ToolOutputFormatter formatter;
 
     public CasciianAssistantOutputTarget(CasciianTerminalUiRuntime runtime) {
         this.runtime = Objects.requireNonNull(runtime, "runtime");
+        this.formatter = new ToolOutputFormatter();
     }
 
     @Override
@@ -46,12 +51,8 @@ public final class CasciianAssistantOutputTarget implements AssistantOutputTarge
 
     @Override
     public void printToolResult(String toolName, String content, boolean failed) {
-        String status = failed ? "FAILED" : "OK";
-        String line = "[Tool] " + label(toolName) + " " + status;
-        if (content != null && !content.isBlank()) {
-            line += " | " + compact(content);
-        }
-        runtime.appendToolLine(line);
+        ToolOutputFormatter.FormattedToolResult formatted = formatter.formatResult(toolName, content);
+        runtime.appendToolLine(renderToolText(formatted.title(), formatted.lines()));
     }
 
     @Override
@@ -66,30 +67,28 @@ public final class CasciianAssistantOutputTarget implements AssistantOutputTarge
         return PREFIX_PATTERN.matcher(value).replaceFirst("");
     }
 
-    private String label(String toolName) {
-        if (toolName == null || toolName.isBlank()) {
-            return "Tool";
+    private String renderToolText(String title, List<String> lines) {
+        String base = title == null ? "" : title;
+        if (lines == null || lines.isEmpty()) {
+            return base;
         }
-        return switch (toolName.trim().toLowerCase(java.util.Locale.ROOT)) {
-            case "read_file" -> "Read File";
-            case "write_file" -> "Write File";
-            case "delete_file" -> "Delete File";
-            case "list_directory" -> "List Directory";
-            case "file_metadata" -> "File Metadata";
-            case "search_replace" -> "Search Replace";
-            case "grep_files" -> "Grep Files";
-            case "shell_command" -> "Shell";
-            case "sqlite_query" -> "SQL Query";
-            case "sqlite_exec" -> "SQL Exec";
-            default -> toolName;
-        };
-    }
-
-    private String compact(String text) {
-        String normalized = text.replace('\n', ' ').replace('\r', ' ').trim();
-        if (normalized.length() <= 220) {
-            return normalized;
+        List<String> nonBlank = new ArrayList<>();
+        for (String line : lines) {
+            if (line == null) {
+                continue;
+            }
+            String trimmed = line.trim();
+            if (!trimmed.isEmpty()) {
+                nonBlank.add(trimmed);
+            }
         }
-        return normalized.substring(0, 217) + "...";
+        if (nonBlank.isEmpty()) {
+            return base;
+        }
+        StringBuilder out = new StringBuilder(base).append(" | ").append(nonBlank.getFirst());
+        for (int i = 1; i < nonBlank.size(); i++) {
+            out.append('\n').append("  ").append(nonBlank.get(i));
+        }
+        return out.toString();
     }
 }

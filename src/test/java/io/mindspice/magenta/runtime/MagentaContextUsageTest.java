@@ -33,6 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class MagentaContextUsageTest {
     private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
+    private static final String COMPLETION_GUARD_STOP_PREFIX = "[completion-guard-stop]";
 
     @Test
     void contextUsageSupplierReturnsModelAndTokenSnapshot() {
@@ -173,6 +174,58 @@ class MagentaContextUsageTest {
             assertThat(chatCalls.get()).isEqualTo(2);
             assertThat(finalOutputs).hasSizeGreaterThanOrEqualTo(2);
             assertThat(finalOutputs.get(finalOutputs.size() - 1)).isEqualTo("Continuing with remaining todos.");
+
+            magenta.closeSession(handle);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void completionGuardEmitsTaggedStopWhenCompletionRepeatsWithOpenTodos() throws IOException {
+        AtomicInteger chatCalls = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/chat", exchange -> {
+            chatCalls.incrementAndGet();
+            String response = """
+                    {"model":"test-model","message":{"role":"assistant","content":"Task completed."},"done":true}
+                    """;
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, response.getBytes(StandardCharsets.UTF_8).length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(response.getBytes(StandardCharsets.UTF_8));
+            }
+        });
+        server.start();
+
+        try {
+            RuntimeConfig config = runtimeConfigForEndpoint("http://127.0.0.1:" + server.getAddress().getPort());
+            Magenta magenta = new Magenta(config);
+            SessionHandle handle = magenta.startBaseSession("completion-guard-stop");
+            magenta.addInputRoute(handle, InputRoutePolicy.defaults());
+
+            magenta.executeTool(new ToolRequest(
+                    handle.sessionId().toString(),
+                    "agent-default",
+                    new ContextElement.ToolCall("todo-create", "todo_create", "{\"title\":\"Remaining work\"}")
+            ));
+
+            List<String> finalOutputs = new ArrayList<>();
+            magenta.addOutputRoute(
+                    handle,
+                    io.mindspice.magenta.runtime.routing.OutputRoutePolicy.builder()
+                            .allowedOutputTags(java.util.Set.of(SessionOutput.FinalOutput.FILTER_TAG))
+                            .build(),
+                    event -> finalOutputs.add(event.output().text())
+            );
+
+            magenta.messageInputConsumer(handle).accept(SessionInput.userMessage("Continue"));
+            waitUntil(() -> chatCalls.get() == 2, 2);
+            waitUntil(() -> !finalOutputs.isEmpty()
+                    && finalOutputs.get(finalOutputs.size() - 1).startsWith(COMPLETION_GUARD_STOP_PREFIX), 2);
+
+            assertThat(chatCalls.get()).isEqualTo(2);
+            assertThat(finalOutputs.get(finalOutputs.size() - 1)).startsWith(COMPLETION_GUARD_STOP_PREFIX);
 
             magenta.closeSession(handle);
         } finally {

@@ -30,6 +30,8 @@ class ModelRunnerLoopGuardRecoveryTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
     private static final String WARNING_PREFIX = "[tool-loop-warning] repeated_calls=2/2; window_failures=1; recovery_attempt=1/1; required_action=change_approach_or_return_defeat";
+    private static final String CONTINUITY_PREFIX = "[continuity-check] empty assistant response received";
+    private static final String EMPTY_TURN_STOP_PREFIX = "[model-empty-turn-stop]";
 
     @Test
     void loopWarningTriggersRecoveryModelRetryWithoutTranscriptLeak() throws Exception {
@@ -97,6 +99,73 @@ class ModelRunnerLoopGuardRecoveryTest {
                     .filteredOn(output -> output instanceof SessionOutput.FinalOutput)
                     .extracting(output -> ((SessionOutput.FinalOutput) output).text())
                     .noneMatch(text -> text.startsWith("[tool-loop-warning]"));
+        }
+    }
+
+    @Test
+    void blankNoToolResponseRetriesWithContinuityNudge() throws Exception {
+        try (StubOllamaServer stub = new StubOllamaServer(
+                finalResponse(""),
+                finalResponse("Continuing with next step.")
+        )) {
+            ModelRunner runner = new ModelRunner(new OllamaClient(10_000));
+            Session session = testSession(stub.endpoint());
+            SessionHandle handle = new SessionHandle(session.sessionId(), () -> true);
+            List<SessionOutput> outputs = new ArrayList<>();
+
+            String result = runner.runTurn(
+                    session,
+                    handle,
+                    6,
+                    false,
+                    event -> outputs.add(event.output()),
+                    () -> {},
+                    List.of(),
+                    new RuntimeConfig.ToolLoopGuardConfig(true, 2, 2, 1)
+            );
+
+            assertThat(result).isEqualTo("Continuing with next step.");
+            assertThat(stub.requestBodies()).hasSize(2);
+            assertThat(outputs)
+                    .filteredOn(output -> output instanceof SessionOutput.FinalOutput)
+                    .extracting(output -> ((SessionOutput.FinalOutput) output).text())
+                    .containsExactly("Continuing with next step.");
+
+            JsonNode retryRequest = MAPPER.readTree(stub.requestBodies().get(1));
+            JsonNode firstMessage = retryRequest.path("messages").get(0);
+            assertThat(firstMessage.path("role").asText()).isEqualTo("system");
+            assertThat(firstMessage.path("content").asText()).startsWith(CONTINUITY_PREFIX);
+        }
+    }
+
+    @Test
+    void blankNoToolResponseAfterRetryReturnsTaggedStop() throws Exception {
+        try (StubOllamaServer stub = new StubOllamaServer(
+                finalResponse(""),
+                finalResponse("")
+        )) {
+            ModelRunner runner = new ModelRunner(new OllamaClient(10_000));
+            Session session = testSession(stub.endpoint());
+            SessionHandle handle = new SessionHandle(session.sessionId(), () -> true);
+            List<SessionOutput> outputs = new ArrayList<>();
+
+            String result = runner.runTurn(
+                    session,
+                    handle,
+                    6,
+                    false,
+                    event -> outputs.add(event.output()),
+                    () -> {},
+                    List.of(),
+                    new RuntimeConfig.ToolLoopGuardConfig(true, 2, 2, 1)
+            );
+
+            assertThat(stub.requestBodies()).hasSize(2);
+            assertThat(result).startsWith(EMPTY_TURN_STOP_PREFIX);
+            assertThat(outputs)
+                    .filteredOn(output -> output instanceof SessionOutput.FinalOutput)
+                    .extracting(output -> ((SessionOutput.FinalOutput) output).text())
+                    .containsExactly(result);
         }
     }
 

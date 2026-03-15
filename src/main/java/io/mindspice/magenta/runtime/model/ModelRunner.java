@@ -34,6 +34,9 @@ public final class ModelRunner {
 
     private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
     private static final int MAX_CONTEXT_TOOL_PAYLOAD_CHARS = 2_000;
+    private static final int EMPTY_TURN_RECOVERY_ATTEMPTS = 1;
+    private static final String EMPTY_TURN_CONTINUITY_PREFIX = "[continuity-check]";
+    private static final String EMPTY_TURN_STOP_PREFIX = "[model-empty-turn-stop]";
 
     private final OllamaClient ollamaClient;
 
@@ -76,7 +79,9 @@ public final class ModelRunner {
         Map<String, Integer> signatureCounts = new HashMap<>();
         Deque<Boolean> recentFailureFlags = new ArrayDeque<>();
         int recoveryAttemptsUsed = 0;
+        int emptyTurnRecoveryAttemptsUsed = 0;
         String pendingLoopWarningSystemMessage = null;
+        String pendingEmptyTurnSystemMessage = null;
 
         for (int i = 0; i < maxIterations; i++) {
             safeBeforeModelCallHook.run();
@@ -85,6 +90,10 @@ public final class ModelRunner {
             if (pendingLoopWarningSystemMessage != null && !pendingLoopWarningSystemMessage.isBlank()) {
                 requestContext = prependSystemMessage(requestContext, pendingLoopWarningSystemMessage);
                 pendingLoopWarningSystemMessage = null;
+            }
+            if (pendingEmptyTurnSystemMessage != null && !pendingEmptyTurnSystemMessage.isBlank()) {
+                requestContext = prependSystemMessage(requestContext, pendingEmptyTurnSystemMessage);
+                pendingEmptyTurnSystemMessage = null;
             }
             ChatRequest.Builder requestBuilder = ChatRequest.builder()
                     .messages(toChatMessages(requestContext));
@@ -113,6 +122,23 @@ public final class ModelRunner {
             AiMessage aiMessage = response.aiMessage();
             latestText = safeText(aiMessage.text());
             List<ContextElement.ToolCall> toolCalls = toToolCalls(aiMessage.toolExecutionRequests());
+
+            if (latestText.isBlank() && toolCalls.isEmpty()) {
+                if (emptyTurnRecoveryAttemptsUsed < EMPTY_TURN_RECOVERY_ATTEMPTS) {
+                    emptyTurnRecoveryAttemptsUsed++;
+                    pendingEmptyTurnSystemMessage = emptyTurnContinuityMessage(
+                            emptyTurnRecoveryAttemptsUsed,
+                            EMPTY_TURN_RECOVERY_ATTEMPTS
+                    );
+                    toolLoopActive = true;
+                    continue;
+                }
+                String stopText = emptyTurnStopText(emptyTurnRecoveryAttemptsUsed, EMPTY_TURN_RECOVERY_ATTEMPTS);
+                session.context().append(new ContextElement.AssistantMsg(stopText, List.of()));
+                safeOutputEmitter.accept(new OutputRoutingEvent(handle, new SessionOutput.FinalOutput(stopText)));
+                return stopText;
+            }
+            emptyTurnRecoveryAttemptsUsed = 0;
 
             ContextElement.AssistantMsg assistant = new ContextElement.AssistantMsg(latestText, toolCalls);
             session.context().append(assistant);
@@ -450,5 +476,22 @@ public final class ModelRunner {
     private String maxTurnsExhaustedText(String latestText, int maxIterations) {
         String reason = "[tool-loop-stop] maxTurns exhausted (" + maxIterations + ")";
         return latestText == null || latestText.isBlank() ? reason : latestText + "\n\n" + reason;
+    }
+
+    private String emptyTurnContinuityMessage(int attempt, int maxAttempts) {
+        return EMPTY_TURN_CONTINUITY_PREFIX
+               + " empty assistant response received (attempt "
+               + attempt + "/" + maxAttempts + "). "
+               + "Before stopping, run a completion self-check: "
+               + "if the task is fully complete, provide the final artifact/status update to the user; "
+               + "if work remains, identify the next concrete step and continue execution. "
+               + "If using todos, verify todo focus/list before declaring completion.";
+    }
+
+    private String emptyTurnStopText(int attemptsUsed, int attemptsMax) {
+        return EMPTY_TURN_STOP_PREFIX
+               + " no assistant content after continuity retry (attempts="
+               + attemptsUsed + "/" + attemptsMax + "). "
+               + "Return either a final artifact/status update or continue with concrete next actions.";
     }
 }

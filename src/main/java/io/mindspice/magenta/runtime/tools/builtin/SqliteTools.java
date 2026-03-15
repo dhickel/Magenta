@@ -37,6 +37,8 @@ import java.util.Locale;
 public final class SqliteTools {
 
     private static final ObjectMapper MAPPER = ToolPayloads.mapper();
+    private static final int SQL_DISPLAY_PREVIEW_MAX_LINES = 3;
+    private static final int SQL_DISPLAY_PREVIEW_LINE_CHARS = 96;
 
     private final ToolExecutionSettings settings;
     private final SimplyJDBC simplyJDBC = new SimplyJDBC();
@@ -91,6 +93,7 @@ public final class SqliteTools {
                     data.put("kind", "sqlite_query_result");
                     data.putObject("database")
                             .put("dbPath", ToolPathSupport.displayPath(settings.workspaceRoot(), dbPath));
+                    data.put("sqlPreview", sqlDisplayPreview(statement));
                     ObjectNode result = data.putObject("result");
                     result.put("rowCount", 0);
                     result.put("truncated", false);
@@ -127,6 +130,7 @@ public final class SqliteTools {
                 data.put("kind", "sqlite_query_result");
                 data.putObject("database")
                         .put("dbPath", ToolPathSupport.displayPath(settings.workspaceRoot(), dbPath));
+                data.put("sqlPreview", sqlDisplayPreview(statement));
                 ObjectNode result = data.putObject("result");
                 result.put("rowCount", rows.size());
                 result.put("truncated", truncated);
@@ -252,6 +256,7 @@ public final class SqliteTools {
             data.put("kind", "sqlite_exec_receipt");
             data.putObject("database")
                     .put("dbPath", ToolPathSupport.displayPath(settings.workspaceRoot(), dbPath));
+            data.put("sqlPreview", sqlDisplayPreview(sql));
             ObjectNode receipt = data.putObject("receipt");
             receipt.put("statementCount", parsedSql.statements().size());
             receipt.put("rowsAffected", totalRowsAffected);
@@ -415,6 +420,53 @@ public final class SqliteTools {
             return compact;
         }
         return compact.substring(0, max - 3) + "...";
+    }
+
+    private String sqlDisplayPreview(String sql) {
+        if (sql == null || sql.isBlank()) {
+            return "";
+        }
+        String[] physicalLines = sql.replace("\r\n", "\n").replace('\r', '\n').split("\n");
+        List<String> previewLines = new ArrayList<>(SQL_DISPLAY_PREVIEW_MAX_LINES);
+        boolean truncated = false;
+        for (String physical : physicalLines) {
+            String normalized = physical == null ? "" : physical.replaceAll("\\s+", " ").trim();
+            if (normalized.isBlank()) {
+                continue;
+            }
+            while (!normalized.isBlank()) {
+                if (previewLines.size() >= SQL_DISPLAY_PREVIEW_MAX_LINES) {
+                    truncated = true;
+                    break;
+                }
+                int take = Math.min(SQL_DISPLAY_PREVIEW_LINE_CHARS, normalized.length());
+                if (normalized.length() > SQL_DISPLAY_PREVIEW_LINE_CHARS) {
+                    int wordBoundary = normalized.lastIndexOf(' ', SQL_DISPLAY_PREVIEW_LINE_CHARS);
+                    if (wordBoundary >= 20) {
+                        take = wordBoundary;
+                    }
+                }
+                previewLines.add(normalized.substring(0, take).trim());
+                normalized = normalized.substring(take).trim();
+            }
+            if (truncated) {
+                break;
+            }
+        }
+        if (previewLines.isEmpty()) {
+            return "";
+        }
+        if (truncated) {
+            int last = previewLines.size() - 1;
+            String tail = previewLines.get(last);
+            if (!tail.endsWith("...")) {
+                if (tail.length() > SQL_DISPLAY_PREVIEW_LINE_CHARS - 3) {
+                    tail = tail.substring(0, SQL_DISPLAY_PREVIEW_LINE_CHARS - 3).trim();
+                }
+                previewLines.set(last, tail + "...");
+            }
+        }
+        return String.join("\n", previewLines);
     }
 
     private ParsedSql parseAndClassify(String sql) throws JSQLParserException {

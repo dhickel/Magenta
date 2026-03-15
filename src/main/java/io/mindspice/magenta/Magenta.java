@@ -84,6 +84,7 @@ public final class Magenta {
     private static final int STATE_MAX_CHARS = 2_400;
     private static final DateTimeFormatter STATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss");
     private static final int COMPLETION_GUARD_OPEN_TODO_LIST_LIMIT = 20;
+    private static final String COMPLETION_GUARD_STOP_PREFIX = "[completion-guard-stop]";
     private static final String TURN_ABORTED_TEXT = "[turn-aborted] request cancelled by user";
 
     private final RuntimeConfig runtimeConfig;
@@ -1105,7 +1106,7 @@ public final class Magenta {
 
             String guardMessage = buildCompletionGuardMessage(openTodos);
             session.context().append(new ContextElement.SystemAgentMsg(guardMessage));
-            return modelRunner.runTurn(
+            String guardedOutput = modelRunner.runTurn(
                     session,
                     handle,
                     runtimeConfig.maxTurns(),
@@ -1118,6 +1119,18 @@ public final class Magenta {
                     toolSpecifications,
                     runtimeConfig.toolLoopGuard()
             );
+            if (!shouldApplyCompletionGuard(guardedOutput)) {
+                return guardedOutput;
+            }
+            List<ToolCommandResult.TodoItem> remainingOpenTodos = openTodosForCompletionGuard(session.sessionId());
+            if (remainingOpenTodos.isEmpty()) {
+                return guardedOutput;
+            }
+            String stopText = completionGuardStopText(remainingOpenTodos.size());
+            session.context().append(new ContextElement.AssistantMsg(stopText, List.of()));
+            emitOutputEvents(handle, session.agentId(), new SessionOutput.FinalOutput(stopText));
+            sessionRouter.emit(handle, new SessionOutput.FinalOutput(stopText));
+            return stopText;
         } catch (ModelClientException modelFailure) {
             if (sessionManager.isAbortRequested(sessionId) && interruptedModelFailure(modelFailure)) {
                 emitOutputEvents(handle, session.agentId(), new SessionOutput.FinalOutput(TURN_ABORTED_TEXT));
@@ -1170,7 +1183,11 @@ public final class Magenta {
             return "";
         }
         StringBuilder sb = new StringBuilder();
-        sb.append("Do not conclude completion. Open todos remain and must be resolved before final completion:\n");
+        sb.append("Run a completion self-check before finalizing this turn.\n")
+                .append("If work is fully complete, provide the final artifact/status update to the user now.\n")
+                .append("If work remains, identify the next concrete step and continue execution.\n")
+                .append("If using todo tools, validate todo focus/list and update existing todo IDs instead of creating duplicates.\n")
+                .append("Open todos currently tracked:\n");
         for (int i = 0; i < openTodos.size(); i++) {
             ToolCommandResult.TodoItem todo = openTodos.get(i);
             sb.append(i + 1)
@@ -1179,8 +1196,14 @@ public final class Magenta {
                     .append(" status=").append(stateValue(todo.status()))
                     .append('\n');
         }
-        sb.append("Continue execution and update the existing todo IDs, do not recreate duplicates.");
+        sb.append("Do not return an empty response.");
         return sb.toString();
+    }
+
+    private String completionGuardStopText(int openTodoCount) {
+        return COMPLETION_GUARD_STOP_PREFIX
+               + " completion claimed while open todos remain (count=" + Math.max(0, openTodoCount) + "). "
+               + "Continue with the next concrete step or explicitly resolve remaining todos before finalizing.";
     }
 
     private boolean interruptedModelFailure(ModelClientException failure) {

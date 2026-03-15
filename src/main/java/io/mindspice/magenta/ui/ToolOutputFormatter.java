@@ -8,12 +8,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-final class ToolOutputFormatter {
+public final class ToolOutputFormatter {
 
     private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
     private static final int MAX_COMPACT_LEN = 220;
+    private static final int MAX_SQL_PREVIEW_LINES = 3;
+    private static final int MAX_TODO_TITLE_LEN = 96;
+    private static final int MAX_TODO_DETAILS_LEN = 72;
 
-    FormattedToolCall formatCall(String toolName, String argumentsJson) {
+    public FormattedToolCall formatCall(String toolName, String argumentsJson) {
         String normalizedToolName = normalizeToolName(toolName);
         String label = label(normalizedToolName);
         JsonNode args = parseJson(argumentsJson);
@@ -24,7 +27,7 @@ final class ToolOutputFormatter {
         );
     }
 
-    FormattedToolResult formatResult(String toolName, String content) {
+    public FormattedToolResult formatResult(String toolName, String content) {
         String normalizedToolName = normalizeToolName(toolName);
         String label = label(normalizedToolName);
         JsonNode root = parseJson(content);
@@ -80,19 +83,9 @@ final class ToolOutputFormatter {
                     "Path: " + text(data, "path", "n/a"),
                     "Applied Edits: " + intValue(data, "appliedEdits")
             );
-            case "sqlite_query" -> List.of(
-                    "Database: " + text(data == null ? null : data.path("database"), "dbPath", "n/a"),
-                    "Rows: " + intValue(data == null ? null : data.path("result"), "rowCount")
-                            + (boolValue(data == null ? null : data.path("result"), "truncated") ? " (truncated)" : "")
-            );
-            case "sqlite_exec" -> List.of(
-                    "Database: " + text(data == null ? null : data.path("database"), "dbPath", "n/a"),
-                    "Rows Affected: " + intValue(data == null ? null : data.path("receipt"), "rowsAffected")
-            );
-            case "todo_create", "todo_update" -> List.of(
-                    "Active Todo: " + text(data, "activeTodoId", "n/a"),
-                    "Action: " + text(data, "action", text(data, "kind", "todo_focus"))
-            );
+            case "sqlite_query" -> sqliteQuerySummaries(data);
+            case "sqlite_exec" -> sqliteExecSummaries(data);
+            case "todo_create", "todo_update" -> List.of(todoFocusSummary(toolName, data));
             case "todo_list" -> List.of(
                     "Active Todo: " + text(data, "activeTodoId", "none"),
                     "Open: " + intValue(data, "openCount") + ", Done: " + intValue(data, "doneCount")
@@ -260,15 +253,66 @@ final class ToolOutputFormatter {
         return node != null && node.isObject() && node.has(key) && node.get(key).asBoolean(false);
     }
 
+    private List<String> sqliteQuerySummaries(JsonNode data) {
+        List<String> lines = new ArrayList<>();
+        lines.add("Database: " + text(data == null ? null : data.path("database"), "dbPath", "n/a"));
+        appendSqlPreview(lines, text(data, "sqlPreview", ""));
+        return lines;
+    }
+
+    private List<String> sqliteExecSummaries(JsonNode data) {
+        List<String> lines = new ArrayList<>();
+        lines.add("Database: " + text(data == null ? null : data.path("database"), "dbPath", "n/a"));
+        appendSqlPreview(lines, text(data, "sqlPreview", ""));
+        return lines;
+    }
+
+    private void appendSqlPreview(List<String> lines, String sqlPreview) {
+        if (sqlPreview == null || sqlPreview.isBlank()) {
+            return;
+        }
+        String[] physicalLines = sqlPreview.split("\\R");
+        int visibleLines = Math.min(physicalLines.length, MAX_SQL_PREVIEW_LINES);
+        for (int i = 0; i < visibleLines; i++) {
+            String compactLine = compact(physicalLines[i]);
+            if (i == 0) {
+                lines.add("SQL: " + compactLine);
+            } else {
+                lines.add("     " + compactLine);
+            }
+        }
+        if (physicalLines.length > MAX_SQL_PREVIEW_LINES) {
+            int lastIdx = lines.size() - 1;
+            String last = lines.get(lastIdx);
+            lines.set(lastIdx, last.endsWith("...") ? last : last + " ...");
+        }
+    }
+
+    private String todoFocusSummary(String toolName, JsonNode data) {
+        JsonNode focus = data == null ? null : data.path("focus");
+        String title = firstNonBlank(
+                text(focus, "title", ""),
+                text(data, "title", ""),
+                text(data, "activeTodoId", "n/a")
+        );
+        String verb = "todo_create".equals(toolName) ? "Created" : "Updated";
+        return "Todo " + verb + ": " + compact(title, MAX_TODO_TITLE_LEN);
+    }
+
     private String compact(String value) {
+        return compact(value, MAX_COMPACT_LEN);
+    }
+
+    private String compact(String value, int maxLen) {
         if (value == null) {
             return "";
         }
         String singleLine = value.replace('\n', ' ').trim();
-        if (singleLine.length() <= MAX_COMPACT_LEN) {
+        int boundedMax = Math.max(24, maxLen);
+        if (singleLine.length() <= boundedMax) {
             return singleLine;
         }
-        return singleLine.substring(0, MAX_COMPACT_LEN - 3) + "...";
+        return singleLine.substring(0, boundedMax - 3) + "...";
     }
 
     private String fallbackLabel(String toolName) {
@@ -308,7 +352,7 @@ final class ToolOutputFormatter {
         return toolName == null ? "" : toolName.trim();
     }
 
-    record FormattedToolCall(String title, List<String> lines, UiStyle style) {}
+    public record FormattedToolCall(String title, List<String> lines, UiStyle style) {}
 
-    record FormattedToolResult(String title, List<String> lines, UiStyle style, boolean failed) {}
+    public record FormattedToolResult(String title, List<String> lines, UiStyle style, boolean failed) {}
 }

@@ -1,5 +1,7 @@
 package io.mindspice.magenta.ui;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 public final class LanternaAssistantOutputTarget implements AssistantOutputTarget {
@@ -46,11 +48,7 @@ public final class LanternaAssistantOutputTarget implements AssistantOutputTarge
     @Override
     public void printToolResult(String toolName, String content, boolean failed) {
         ToolOutputFormatter.FormattedToolResult formatted = formatter.formatResult(toolName, content);
-        String line = formatted.title();
-        if (!formatted.lines().isEmpty()) {
-            line += " | " + String.join(" | ", formatted.lines());
-        }
-        runtime.appendToolLine(line);
+        runtime.appendToolLine(renderToolText(formatted.title(), formatted.lines()));
     }
 
     @Override
@@ -63,5 +61,30 @@ public final class LanternaAssistantOutputTarget implements AssistantOutputTarge
             return "";
         }
         return PREFIX_PATTERN.matcher(value).replaceFirst("");
+    }
+
+    private String renderToolText(String title, List<String> lines) {
+        String base = title == null ? "" : title;
+        if (lines == null || lines.isEmpty()) {
+            return base;
+        }
+        List<String> nonBlank = new ArrayList<>();
+        for (String line : lines) {
+            if (line == null) {
+                continue;
+            }
+            String trimmed = line.trim();
+            if (!trimmed.isEmpty()) {
+                nonBlank.add(trimmed);
+            }
+        }
+        if (nonBlank.isEmpty()) {
+            return base;
+        }
+        StringBuilder out = new StringBuilder(base).append(" | ").append(nonBlank.getFirst());
+        for (int i = 1; i < nonBlank.size(); i++) {
+            out.append('\n').append("  ").append(nonBlank.get(i));
+        }
+        return out.toString();
     }
 }
