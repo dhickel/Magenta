@@ -202,6 +202,21 @@ class SecurityManagerTest {
     }
 
     @Test
+    void shellCommandAllowsSemicolonsInsideQuotedSqliteArgument() {
+        SecurityManager manager = manager(null);
+        UUID sessionId = UUID.randomUUID();
+        manager.initializePolicy(sessionId);
+
+        SecurityManager.Decision decision = manager.authorize(
+                request(sessionId, "shell_command",
+                        "{\"cmd\":\"sqlite3 strain_research.db \\\"ATTACH DATABASE 'source.db' AS source; INSERT INTO t SELECT 1; DETACH DATABASE source;\\\"\"}"),
+                Set.of("shell_command")
+        );
+
+        assertThat(decision.allowed()).isTrue();
+    }
+
+    @Test
     void shellCommandRejectsChainedOperators() {
         SecurityManager manager = manager(null);
         UUID sessionId = UUID.randomUUID();

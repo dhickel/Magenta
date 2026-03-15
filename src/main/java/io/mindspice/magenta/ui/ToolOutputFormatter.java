@@ -138,6 +138,10 @@ public final class ToolOutputFormatter {
         if (!message.isBlank()) {
             lines.add("Message: " + compact(message));
         }
+        String recoveryHint = text(data, "recoveryHint", "");
+        if (!recoveryHint.isBlank()) {
+            lines.add("Hint: " + compact(recoveryHint));
+        }
         return lines;
     }
 

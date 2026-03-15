@@ -138,4 +138,21 @@ class ToolOutputFormatterTest {
         assertThat(result.title()).isEqualTo("[Tool] Grep Files OK");
         assertThat(result.lines()).containsExactly("Root: .", "Scanned: 8", "Matches: 0");
     }
+
+    @Test
+    void sqliteFailureIncludesRecoveryHintWhenPresent() {
+        ToolOutputFormatter formatter = new ToolOutputFormatter();
+
+        ToolOutputFormatter.FormattedToolResult failed = formatter.formatResult(
+                "sqlite_exec",
+                "{\"status\":\"failed\",\"code\":\"invalid_sql_kind\",\"message\":\"blocked statement\",\"data\":{\"database\":{\"dbPath\":\"data/app.db\"},\"recoveryHint\":\"Use shell_command with sqlite3 for ATTACH/DETACH\"}}"
+        );
+
+        assertThat(failed.title()).isEqualTo("[Tool] SQL Exec FAILED");
+        assertThat(failed.lines()).contains(
+                "Code: invalid_sql_kind",
+                "Database: data/app.db",
+                "Hint: Use shell_command with sqlite3 for ATTACH/DETACH"
+        );
+    }
 }
