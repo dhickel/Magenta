@@ -42,7 +42,7 @@ class ToolOutputFormatterTest {
 
         ToolOutputFormatter.FormattedToolResult success = formatter.formatResult(
                 "sqlite_exec",
-                "{\"status\":\"ok\",\"code\":\"ok\",\"message\":\"done\",\"data\":{\"rowsAffected\":7,\"statementCount\":2,\"dbPath\":\"data/app.db\"}}"
+                "{\"status\":\"ok\",\"code\":\"sqlite_exec_receipt\",\"message\":\"done\",\"data\":{\"kind\":\"sqlite_exec_receipt\",\"database\":{\"dbPath\":\"data/app.db\"},\"receipt\":{\"rowsAffected\":7,\"statementCount\":2,\"transactional\":true,\"statements\":[]}}}"
         );
         ToolOutputFormatter.FormattedToolResult failed = formatter.formatResult(
                 "write_file",

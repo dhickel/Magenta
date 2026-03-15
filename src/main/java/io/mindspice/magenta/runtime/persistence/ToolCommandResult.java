@@ -28,7 +28,17 @@ public sealed interface ToolCommandResult permits CommonCommandResults.Success,
         }
     }
 
-    record TodoCreated(Path dbPath, TodoItem todo, boolean created) implements ToolCommandResult {
+    record TodoCreated(
+            Path dbPath,
+            TodoItem todo,
+            boolean created,
+            String activeTodoId,
+            int openCount
+    ) implements ToolCommandResult {
+        public TodoCreated {
+            activeTodoId = activeTodoId == null ? "" : activeTodoId;
+            openCount = Math.max(openCount, 0);
+        }
     }
 
     record TodoListed(
@@ -36,19 +46,43 @@ public sealed interface ToolCommandResult permits CommonCommandResults.Success,
             List<TodoItem> todos,
             int limit,
             boolean truncated,
-            String statusOrNull
+            String statusOrNull,
+            String activeTodoId,
+            int openCount,
+            int doneCount
     ) implements ToolCommandResult {
         public TodoListed {
             todos = todos == null ? List.of() : List.copyOf(todos);
+            statusOrNull = statusOrNull == null ? "" : statusOrNull;
+            activeTodoId = activeTodoId == null ? "" : activeTodoId;
+            openCount = Math.max(openCount, 0);
+            doneCount = Math.max(doneCount, 0);
         }
     }
 
-    record TodoUpdated(Path dbPath, TodoItem todo) implements ToolCommandResult {
+    record TodoUpdated(
+            Path dbPath,
+            TodoItem todo,
+            String action,
+            String activeTodoId,
+            String previousFocusTodoId
+    ) implements ToolCommandResult {
+        public TodoUpdated {
+            action = action == null ? "updated" : action;
+            activeTodoId = activeTodoId == null ? "" : activeTodoId;
+            previousFocusTodoId = previousFocusTodoId == null ? "" : previousFocusTodoId;
+        }
     }
 
-    record TodoDeleted(Path dbPath, String todoId) implements ToolCommandResult {
+    record TodoDeleted(
+            Path dbPath,
+            String todoId,
+            String activeTodoId,
+            TodoItem nextFocus
+    ) implements ToolCommandResult {
         public TodoDeleted {
             todoId = todoId == null ? "" : todoId;
+            activeTodoId = activeTodoId == null ? "" : activeTodoId;
         }
     }
 }

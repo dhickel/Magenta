@@ -157,8 +157,8 @@ class ToolManagerBuiltInsTest {
         assertThat(queryPayload.path("status").asText())
                 .withFailMessage(query.content())
                 .isEqualTo("ok");
-        assertThat(queryPayload.path("data").path("rows")).hasSize(2);
-        assertThat(queryPayload.path("data").path("rows").get(0).path("name").asText()).isEqualTo("a");
+        assertThat(queryPayload.path("data").path("result").path("rows")).hasSize(2);
+        assertThat(queryPayload.path("data").path("result").path("rows").get(0).path("name").asText()).isEqualTo("a");
     }
 
     @Test
@@ -181,7 +181,7 @@ class ToolManagerBuiltInsTest {
         ToolResult created = manager.execute(request(sessionA, "todo_create", "{\"title\":\"ship\"}"));
         JsonNode createdPayload = MAPPER.readTree(created.content());
         assertThat(createdPayload.path("status").asText()).isEqualTo("ok");
-        String todoId = createdPayload.path("data").path("todo").path("todoId").asText();
+        String todoId = createdPayload.path("data").path("focus").path("todoId").asText();
         assertThat(todoId).isNotBlank();
 
         ToolResult listedA = manager.execute(request(sessionA, "todo_list", "{}"));
@@ -189,9 +189,9 @@ class ToolManagerBuiltInsTest {
         JsonNode listedAPayload = MAPPER.readTree(listedA.content());
         JsonNode listedBPayload = MAPPER.readTree(listedB.content());
 
-        assertThat(listedAPayload.path("data").path("todos")).hasSize(1);
-        assertThat(listedAPayload.path("data").path("todos").get(0).path("todoId").asText()).isEqualTo(todoId);
-        assertThat(listedBPayload.path("data").path("todos")).isEmpty();
+        assertThat(listedAPayload.path("data").path("items")).hasSize(1);
+        assertThat(listedAPayload.path("data").path("items").get(0).path("todoId").asText()).isEqualTo(todoId);
+        assertThat(listedBPayload.path("data").path("items")).isEmpty();
 
         ToolResult updated = manager.execute(request(
                 sessionA,
@@ -200,12 +200,12 @@ class ToolManagerBuiltInsTest {
         ));
         JsonNode updatedPayload = MAPPER.readTree(updated.content());
         assertThat(updatedPayload.path("status").asText()).isEqualTo("ok");
-        assertThat(updatedPayload.path("data").path("todo").path("status").asText()).isEqualTo("done");
+        assertThat(updatedPayload.path("data").path("focus").path("status").asText()).isEqualTo("done");
 
         ToolResult deleted = manager.execute(request(sessionA, "todo_delete", "{\"todoId\":\"" + todoId + "\"}"));
         JsonNode deletedPayload = MAPPER.readTree(deleted.content());
         assertThat(deletedPayload.path("status").asText()).isEqualTo("ok");
-        assertThat(deletedPayload.path("data").path("deleted").asBoolean()).isTrue();
+        assertThat(deletedPayload.path("data").path("deletedTodoId").asText()).isEqualTo(todoId);
     }
 
     @Test

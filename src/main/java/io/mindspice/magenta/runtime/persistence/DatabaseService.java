@@ -27,6 +27,7 @@ public final class DatabaseService {
     private static final int MAX_COMPACTION_TOOL_SCAN_LIMIT = 200;
     private static final int MAX_COMPACTION_TODO_LIMIT = 200;
     private static final String STATUS_OPEN = "open";
+    private static final String STATUS_DONE = "done";
 
     private final Path workspaceRoot;
     private final Path dbPath;
@@ -92,9 +93,22 @@ public final class DatabaseService {
         String todoId = UUID.randomUUID().toString();
 
         try (Connection connection = openConnection()) {
+            boolean originalAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try {
             Optional<TodoRow> existingOpen = findOpenTodoByNormalizedTitle(connection, sessionId, title);
             if (existingOpen.isPresent()) {
-                return new ToolCommandResult.TodoCreated(dbPath, toTodoItem(existingOpen.get()), false);
+                    TodoRow existing = existingOpen.get();
+                    setActiveTodoId(connection, sessionId, existing.todoId(), now);
+                    int openCount = countTodosByStatus(connection, sessionId, STATUS_OPEN);
+                    connection.commit();
+                    return new ToolCommandResult.TodoCreated(
+                            dbPath,
+                            toTodoItem(existing),
+                            false,
+                            existing.todoId(),
+                            openCount
+                    );
             }
             SjResult<Integer> insert = simplyJDBC.executeUpdate(
                     connection,
@@ -105,14 +119,26 @@ public final class DatabaseService {
                     List.of(todoId, sessionId, title, command.details(), STATUS_OPEN, now, now)
             );
             if (insert.isFailure()) {
-                return dbFailure("Todo insert failed", insert.error().orElse(null));
+                    connection.rollback();
+                    return dbFailure("Todo insert failed", insert.error().orElse(null));
             }
 
-            return new ToolCommandResult.TodoCreated(
+                setActiveTodoId(connection, sessionId, todoId, now);
+                int openCount = countTodosByStatus(connection, sessionId, STATUS_OPEN);
+                connection.commit();
+                return new ToolCommandResult.TodoCreated(
                     dbPath,
                     new ToolCommandResult.TodoItem(todoId, sessionId, title, command.details(), STATUS_OPEN, now, now),
-                    true
+                    true,
+                    todoId,
+                    openCount
             );
+            } catch (Exception e) {
+                connection.rollback();
+                return new CommonCommandResults.Failure("db_error", "Failed to create todo: " + e.getMessage());
+            } finally {
+                connection.setAutoCommit(originalAutoCommit);
+            }
         } catch (Exception e) {
             return new CommonCommandResults.Failure("db_error", "Failed to create todo: " + e.getMessage());
         }
@@ -141,6 +167,7 @@ public final class DatabaseService {
         params.add(limit + 1);
 
         try (Connection connection = openConnection()) {
+            String sessionId = command.sessionId().trim();
             SjResult<TodoRow> rows = simplyJDBC.query(connection, sql.toString(), params, TodoRow.class);
             if (rows.isFailure()) {
                 return dbFailure("Todo list query failed", rows.error().orElse(null));
@@ -153,12 +180,19 @@ public final class DatabaseService {
                 output.add(toTodoItem(rows.rows().get(i)));
             }
 
+            int openCount = countTodosByStatus(connection, sessionId, STATUS_OPEN);
+            int doneCount = countTodosByStatus(connection, sessionId, STATUS_DONE);
+            String activeTodoId = findSession(connection, sessionId).map(SessionRow::activeTodoId).orElse("");
+
             return new ToolCommandResult.TodoListed(
                     dbPath,
                     output,
                     limit,
                     truncated,
-                    filterStatus ? status : null
+                    filterStatus ? status : null,
+                    activeTodoId,
+                    openCount,
+                    doneCount
             );
         } catch (Exception e) {
             return new CommonCommandResults.Failure("db_error", "Failed to list todos: " + e.getMessage());
@@ -180,34 +214,64 @@ public final class DatabaseService {
         }
 
         try (Connection connection = openConnection()) {
-            Optional<TodoRow> existing = findTodo(connection, command.sessionId().trim(), command.todoId().trim());
-            if (existing.isEmpty()) {
-                return new CommonCommandResults.Failure("not_found", "Todo not found: " + command.todoId().trim());
+            boolean originalAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try {
+                String sessionId = command.sessionId().trim();
+                String todoId = command.todoId().trim();
+                Optional<TodoRow> existing = findTodo(connection, sessionId, todoId);
+                if (existing.isEmpty()) {
+                    connection.rollback();
+                    return new CommonCommandResults.Failure("not_found", "Todo not found: " + todoId);
+                }
+
+                String previousFocusTodoId = findSession(connection, sessionId)
+                        .map(SessionRow::activeTodoId)
+                        .orElse("");
+                TodoRow current = existing.get();
+                String title = command.updateTitle() ? command.title().trim() : current.title();
+                String details = command.updateDetails() ? command.details() : current.details();
+                String status = command.updateStatus() ? command.status() : current.status();
+                long now = Instant.now().toEpochMilli();
+
+                SjResult<Integer> update = simplyJDBC.executeUpdate(
+                        connection,
+                        """
+                                UPDATE todos
+                                SET title = ?, details = ?, status = ?, updated_at_ms = ?
+                                WHERE session_id = ? AND todo_id = ?
+                                """,
+                        List.of(title, details, status, now, sessionId, todoId)
+                );
+                if (update.isFailure()) {
+                    connection.rollback();
+                    return dbFailure("Todo update failed", update.error().orElse(null));
+                }
+
+                String nextActiveTodoId = todoId;
+                String action = "updated";
+                if (STATUS_DONE.equalsIgnoreCase(status)) {
+                    Optional<TodoRow> nextOpen = findMostRecentOpenTodo(connection, sessionId);
+                    nextActiveTodoId = nextOpen.map(TodoRow::todoId).orElse("");
+                    action = "completed_and_advanced";
+                } else if (STATUS_OPEN.equalsIgnoreCase(status) && STATUS_DONE.equalsIgnoreCase(current.status())) {
+                    action = "reopened";
+                }
+                setActiveTodoId(connection, sessionId, nextActiveTodoId, now);
+                connection.commit();
+                return new ToolCommandResult.TodoUpdated(
+                        dbPath,
+                        new ToolCommandResult.TodoItem(current.todoId(), current.sessionId(), title, details, status, current.createdAtMs(), now),
+                        action,
+                        nextActiveTodoId,
+                        previousFocusTodoId
+                );
+            } catch (Exception e) {
+                connection.rollback();
+                return new CommonCommandResults.Failure("db_error", "Failed to update todo: " + e.getMessage());
+            } finally {
+                connection.setAutoCommit(originalAutoCommit);
             }
-
-            TodoRow current = existing.get();
-            String title = command.updateTitle() ? command.title().trim() : current.title();
-            String details = command.updateDetails() ? command.details() : current.details();
-            String status = command.updateStatus() ? command.status() : current.status();
-            long now = Instant.now().toEpochMilli();
-
-            SjResult<Integer> update = simplyJDBC.executeUpdate(
-                    connection,
-                    """
-                            UPDATE todos
-                            SET title = ?, details = ?, status = ?, updated_at_ms = ?
-                            WHERE session_id = ? AND todo_id = ?
-                            """,
-                    List.of(title, details, status, now, command.sessionId().trim(), command.todoId().trim())
-            );
-            if (update.isFailure()) {
-                return dbFailure("Todo update failed", update.error().orElse(null));
-            }
-
-            return new ToolCommandResult.TodoUpdated(
-                    dbPath,
-                    new ToolCommandResult.TodoItem(current.todoId(), current.sessionId(), title, details, status, current.createdAtMs(), now)
-            );
         } catch (Exception e) {
             return new CommonCommandResults.Failure("db_error", "Failed to update todo: " + e.getMessage());
         }
@@ -222,20 +286,47 @@ public final class DatabaseService {
         }
 
         try (Connection connection = openConnection()) {
+            boolean originalAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try {
+            String sessionId = command.sessionId().trim();
+            String todoId = command.todoId().trim();
+            String previousActiveTodoId = findSession(connection, sessionId).map(SessionRow::activeTodoId).orElse("");
             SjResult<Integer> delete = simplyJDBC.executeUpdate(
                     connection,
                     "DELETE FROM todos WHERE session_id = ? AND todo_id = ?",
-                    List.of(command.sessionId().trim(), command.todoId().trim())
+                    List.of(sessionId, todoId)
             );
             if (delete.isFailure()) {
-                return dbFailure("Todo delete failed", delete.error().orElse(null));
+                    connection.rollback();
+                    return dbFailure("Todo delete failed", delete.error().orElse(null));
             }
             int rows = delete.first().orElse(0);
             if (rows == 0) {
-                return new CommonCommandResults.Failure("not_found", "Todo not found: " + command.todoId().trim());
+                    connection.rollback();
+                    return new CommonCommandResults.Failure("not_found", "Todo not found: " + todoId);
             }
 
-            return new ToolCommandResult.TodoDeleted(dbPath, command.todoId().trim());
+                ToolCommandResult.TodoItem nextFocus = null;
+                String activeTodoId = previousActiveTodoId;
+                if (previousActiveTodoId.equals(todoId)) {
+                    Optional<TodoRow> nextOpen = findMostRecentOpenTodo(connection, sessionId);
+                    if (nextOpen.isPresent()) {
+                        nextFocus = toTodoItem(nextOpen.get());
+                        activeTodoId = nextFocus.todoId();
+                    } else {
+                        activeTodoId = "";
+                    }
+                    setActiveTodoId(connection, sessionId, activeTodoId, Instant.now().toEpochMilli());
+                }
+                connection.commit();
+                return new ToolCommandResult.TodoDeleted(dbPath, todoId, activeTodoId, nextFocus);
+            } catch (Exception e) {
+                connection.rollback();
+                return new CommonCommandResults.Failure("db_error", "Failed to delete todo: " + e.getMessage());
+            } finally {
+                connection.setAutoCommit(originalAutoCommit);
+            }
         } catch (Exception e) {
             return new CommonCommandResults.Failure("db_error", "Failed to delete todo: " + e.getMessage());
         }
@@ -262,8 +353,11 @@ public final class DatabaseService {
                 SjResult<Integer> insertSession = simplyJDBC.executeUpdate(
                         connection,
                         """
-                                INSERT INTO sessions(session_id, agent_id, alias, sys_prompt_amount, next_message_id, dropped_message_ids_json, created_at_ms, updated_at_ms)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                INSERT INTO sessions(
+                                    session_id, agent_id, alias, sys_prompt_amount, next_message_id,
+                                    dropped_message_ids_json, active_todo_id, created_at_ms, updated_at_ms
+                                )
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                                 """,
                         List.of(
                                 command.sessionId().trim(),
@@ -272,6 +366,7 @@ public final class DatabaseService {
                                 Math.max(command.sysPromptAmount(), 0),
                                 nextMessageId,
                                 dropped,
+                                "",
                                 now,
                                 now
                         )
@@ -428,6 +523,7 @@ public final class DatabaseService {
                     connection,
                     """
                             SELECT session_id, message_id, element_type, content, source_tag, tool_call_id, tool_name,
+                                   raw_content, content_truncated,
                                    input_domain, input_kind, source_id, correlation_id, metadata_json, tool_calls_json,
                                    created_at_ms
                             FROM context_messages
@@ -476,6 +572,7 @@ public final class DatabaseService {
                     connection,
                     """
                             SELECT session_id, message_id, element_type, content, source_tag, tool_call_id, tool_name,
+                                   raw_content, content_truncated,
                                    input_domain, input_kind, source_id, correlation_id, metadata_json, tool_calls_json,
                                    created_at_ms
                             FROM context_messages
@@ -519,20 +616,20 @@ public final class DatabaseService {
         try (Connection connection = openConnection()) {
             Optional<SessionRow> session = findSession(connection, sessionId);
             if (session.isEmpty()) {
-                return new SessionContextResult.CompactionStateLoaded(List.of(), List.of(), 0, null);
+                return new SessionContextResult.CompactionStateLoaded(List.of(), List.of(), 0, "", null);
             }
             Set<Integer> dropped = Set.copyOf(parseDroppedIds(session.get().droppedMessageIdsJson()));
 
             SjResult<CompactionToolRow> toolRows = simplyJDBC.query(
                     connection,
                     """
-                            SELECT message_id, tool_call_id, tool_name, content, created_at_ms
+                            SELECT message_id, tool_call_id, tool_name, content, raw_content, content_truncated, created_at_ms
                             FROM context_messages
                             WHERE session_id = ? AND element_type = 'tool'
                             ORDER BY message_id DESC
                             LIMIT ?
                             """,
-                    List.of(sessionId, MAX_COMPACTION_TOOL_SCAN_LIMIT),
+                    List.of(sessionId, toolScanLimit),
                     CompactionToolRow.class
             );
             if (toolRows.isFailure()) {
@@ -589,6 +686,8 @@ public final class DatabaseService {
                             row.toolCallId(),
                             row.toolName(),
                             row.content(),
+                            row.rawContent(),
+                            row.contentTruncated(),
                             row.createdAtMs()
                     ))
                     .toList();
@@ -612,7 +711,13 @@ public final class DatabaseService {
                             row.createdAtMs()
                     ))
                     .orElse(null);
-            return new SessionContextResult.CompactionStateLoaded(tools, todos, openTodoCount, latestSnapshot);
+            return new SessionContextResult.CompactionStateLoaded(
+                    tools,
+                    todos,
+                    openTodoCount,
+                    session.get().activeTodoId(),
+                    latestSnapshot
+            );
         } catch (Exception e) {
             return new CommonCommandResults.Failure("db_error", "Failed to load compaction state: " + e.getMessage());
         }
@@ -668,7 +773,7 @@ public final class DatabaseService {
         if (summaryContent == null || summaryContent.isBlank()) {
             return "";
         }
-        String marker = "[Protected State]";
+        String marker = "[Protected State JSON]";
         int index = summaryContent.indexOf(marker);
         if (index < 0) {
             return "";
@@ -690,16 +795,19 @@ public final class DatabaseService {
                     connection,
                     """
                             INSERT INTO context_messages(
-                                session_id, message_id, element_type, content, source_tag, tool_call_id, tool_name,
+                                session_id, message_id, element_type, content, raw_content, content_truncated,
+                                source_tag, tool_call_id, tool_name,
                                 input_domain, input_kind, source_id, correlation_id, metadata_json, tool_calls_json, created_at_ms
                             )
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                     List.of(
                             stored.sessionId(),
                             stored.messageId(),
                             stored.elementType(),
                             stored.content(),
+                            stored.rawContent(),
+                            stored.contentTruncated() ? 1 : 0,
                             stored.sourceTag(),
                             stored.toolCallId(),
                             stored.toolName(),
@@ -761,11 +869,54 @@ public final class DatabaseService {
         return result.first();
     }
 
+    private Optional<TodoRow> findMostRecentOpenTodo(Connection connection, String sessionId) {
+        SjResult<TodoRow> result = simplyJDBC.query(
+                connection,
+                """
+                        SELECT todo_id, session_id, title, details, status, created_at_ms, updated_at_ms
+                        FROM todos
+                        WHERE session_id = ? AND status = ?
+                        ORDER BY updated_at_ms DESC
+                        LIMIT 1
+                        """,
+                List.of(sessionId, STATUS_OPEN),
+                TodoRow.class
+        );
+        if (result.isFailure()) {
+            throw new IllegalStateException("Open todo focus lookup failed: " + errorMessage(result.error().orElse(null)));
+        }
+        return result.first();
+    }
+
+    private int countTodosByStatus(Connection connection, String sessionId, String status) {
+        SjResult<CountRow> result = simplyJDBC.query(
+                connection,
+                "SELECT COUNT(*) AS count FROM todos WHERE session_id = ? AND status = ?",
+                List.of(sessionId, status),
+                CountRow.class
+        );
+        if (result.isFailure()) {
+            throw new IllegalStateException("Todo count lookup failed: " + errorMessage(result.error().orElse(null)));
+        }
+        return result.first().map(CountRow::count).orElse(0);
+    }
+
+    private void setActiveTodoId(Connection connection, String sessionId, String activeTodoId, long now) {
+        SjResult<Integer> update = simplyJDBC.executeUpdate(
+                connection,
+                "UPDATE sessions SET active_todo_id = ?, updated_at_ms = ? WHERE session_id = ?",
+                List.of(activeTodoId == null ? "" : activeTodoId, now, sessionId)
+        );
+        if (update.isFailure()) {
+            throw new IllegalStateException("Failed to update active todo focus: " + errorMessage(update.error().orElse(null)));
+        }
+    }
+
     private Optional<SessionRow> findSession(Connection connection, String sessionId) {
         SjResult<SessionRow> result = simplyJDBC.query(
                 connection,
                 """
-                        SELECT session_id, agent_id, alias, sys_prompt_amount, next_message_id, dropped_message_ids_json,
+                        SELECT session_id, agent_id, alias, sys_prompt_amount, next_message_id, dropped_message_ids_json, active_todo_id,
                                created_at_ms, updated_at_ms
                         FROM sessions
                         WHERE session_id = ?
@@ -785,15 +936,18 @@ public final class DatabaseService {
         SjResult<Integer> insert = simplyJDBC.executeUpdate(
                 connection,
                 """
-                        INSERT INTO sessions(session_id, agent_id, alias, sys_prompt_amount, next_message_id, dropped_message_ids_json, created_at_ms, updated_at_ms)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO sessions(
+                            session_id, agent_id, alias, sys_prompt_amount, next_message_id,
+                            dropped_message_ids_json, active_todo_id, created_at_ms, updated_at_ms
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
-                List.of(sessionId, "", "", 0, 0, "[]", now, now)
+                List.of(sessionId, "", "", 0, 0, "[]", "", now, now)
         );
         if (insert.isFailure()) {
             throw new IllegalStateException("Session shell insert failed: " + errorMessage(insert.error().orElse(null)));
         }
-        return new SessionRow(sessionId, "", "", 0, 0, "[]", now, now);
+        return new SessionRow(sessionId, "", "", 0, 0, "[]", "", now, now);
     }
 
     private List<Integer> listAllMessageIds(Connection connection, String sessionId) {
@@ -826,7 +980,13 @@ public final class DatabaseService {
             case "system" -> new ContextElement.SystemMsg(row.content());
             case "user" -> new ContextElement.UserMsg(row.content());
             case "assistant" -> new ContextElement.AssistantMsg(row.content(), readToolCalls(row.toolCallsJson()));
-            case "tool" -> new ContextElement.ToolMsg(row.toolCallId(), row.toolName(), row.content());
+            case "tool" -> new ContextElement.ToolMsg(
+                    row.toolCallId(),
+                    row.toolName(),
+                    row.content(),
+                    row.rawContent(),
+                    row.contentTruncatedInt() != 0
+            );
             case "summary" -> new ContextElement.SummaryMsg(row.content(), row.sourceTag());
             case "inbound" -> new ContextElement.InboundMsg(
                     row.inputDomain(),
@@ -984,10 +1144,17 @@ public final class DatabaseService {
                             sys_prompt_amount INTEGER NOT NULL,
                             next_message_id INTEGER NOT NULL,
                             dropped_message_ids_json TEXT NOT NULL DEFAULT '[]',
+                            active_todo_id TEXT NOT NULL DEFAULT '',
                             created_at_ms INTEGER NOT NULL,
                             updated_at_ms INTEGER NOT NULL
                         )
                         """);
+        ensureColumnExists(
+                connection,
+                "sessions",
+                "active_todo_id",
+                "ALTER TABLE sessions ADD COLUMN active_todo_id TEXT NOT NULL DEFAULT ''"
+        );
 
         executeSchemaUpdate(connection,
                 """
@@ -996,6 +1163,8 @@ public final class DatabaseService {
                             message_id INTEGER NOT NULL,
                             element_type TEXT NOT NULL,
                             content TEXT NOT NULL,
+                            raw_content TEXT NOT NULL DEFAULT '',
+                            content_truncated INTEGER NOT NULL DEFAULT 0,
                             source_tag TEXT NOT NULL DEFAULT '',
                             tool_call_id TEXT NOT NULL DEFAULT '',
                             tool_name TEXT NOT NULL DEFAULT '',
@@ -1009,6 +1178,18 @@ public final class DatabaseService {
                             PRIMARY KEY (session_id, message_id)
                         )
                         """);
+        ensureColumnExists(
+                connection,
+                "context_messages",
+                "raw_content",
+                "ALTER TABLE context_messages ADD COLUMN raw_content TEXT NOT NULL DEFAULT ''"
+        );
+        ensureColumnExists(
+                connection,
+                "context_messages",
+                "content_truncated",
+                "ALTER TABLE context_messages ADD COLUMN content_truncated INTEGER NOT NULL DEFAULT 0"
+        );
         executeSchemaUpdate(connection,
                 "CREATE INDEX IF NOT EXISTS idx_context_messages_session ON context_messages(session_id, message_id)");
 
@@ -1032,6 +1213,31 @@ public final class DatabaseService {
         if (result.isFailure()) {
             throw new IllegalStateException("Schema update failed: " + sql + " -> " + errorMessage(result.error().orElse(null)));
         }
+    }
+
+    private void ensureColumnExists(Connection connection, String tableName, String columnName, String alterSql) {
+        if (columnExists(connection, tableName, columnName)) {
+            return;
+        }
+        executeSchemaUpdate(connection, alterSql);
+    }
+
+    private boolean columnExists(Connection connection, String tableName, String columnName) {
+        String safeTable = tableName == null ? "" : tableName.trim();
+        String safeColumn = columnName == null ? "" : columnName.trim();
+        if (safeTable.isEmpty() || safeColumn.isEmpty()) {
+            return false;
+        }
+        SjResult<TableInfoRow> result = simplyJDBC.query(
+                connection,
+                "PRAGMA table_info(" + safeTable + ")",
+                SimplyJDBC.NO_PARAMS,
+                TableInfoRow.class
+        );
+        if (result.isFailure()) {
+            return false;
+        }
+        return result.rows().stream().anyMatch(row -> safeColumn.equalsIgnoreCase(row.name()));
     }
 
     private SQLiteDataSource sqliteDataSource(Path dbFilePath) {
@@ -1059,6 +1265,8 @@ public final class DatabaseService {
             int messageId,
             String elementType,
             String content,
+            String rawContent,
+            boolean contentTruncated,
             String sourceTag,
             String toolCallId,
             String toolName,
@@ -1083,6 +1291,8 @@ public final class DatabaseService {
             String sourceTag = "";
             String toolCallId = "";
             String toolName = "";
+            String rawContent = message.content();
+            boolean contentTruncated = false;
             String inputDomain = "";
             String inputKind = "";
             String sourceId = "";
@@ -1095,6 +1305,8 @@ public final class DatabaseService {
                 case ContextElement.ToolMsg tool -> {
                     toolCallId = tool.toolCallId();
                     toolName = tool.toolName();
+                    rawContent = tool.rawContent();
+                    contentTruncated = tool.contentTruncated();
                 }
                 case ContextElement.SummaryMsg summary -> sourceTag = summary.sourceTag();
                 case ContextElement.InboundMsg inbound -> {
@@ -1113,6 +1325,8 @@ public final class DatabaseService {
                     messageId,
                     elementType,
                     message.content(),
+                    rawContent,
+                    contentTruncated,
                     sourceTag,
                     toolCallId,
                     toolName,
@@ -1154,8 +1368,13 @@ public final class DatabaseService {
             @SjColumn("tool_call_id") String toolCallId,
             @SjColumn("tool_name") String toolName,
             @SjColumn("content") String content,
+            @SjColumn("raw_content") String rawContent,
+            @SjColumn("content_truncated") int contentTruncatedInt,
             @SjColumn("created_at_ms") long createdAtMs
     ) {
+        boolean contentTruncated() {
+            return contentTruncatedInt != 0;
+        }
     }
 
     private record CompactionSnapshotRow(
@@ -1171,6 +1390,9 @@ public final class DatabaseService {
     private record CountRow(@SjColumn("count") int count) {
     }
 
+    private record TableInfoRow(@SjColumn("name") String name) {
+    }
+
     private record SessionRow(
             @SjColumn("session_id") String sessionId,
             @SjColumn("agent_id") String agentId,
@@ -1178,6 +1400,7 @@ public final class DatabaseService {
             @SjColumn("sys_prompt_amount") int sysPromptAmount,
             @SjColumn("next_message_id") int nextMessageId,
             @SjColumn("dropped_message_ids_json") String droppedMessageIdsJson,
+            @SjColumn("active_todo_id") String activeTodoId,
             @SjColumn("created_at_ms") long createdAtMs,
             @SjColumn("updated_at_ms") long updatedAtMs
     ) {
@@ -1188,6 +1411,8 @@ public final class DatabaseService {
             @SjColumn("message_id") int messageId,
             @SjColumn("element_type") String elementType,
             @SjColumn("content") String content,
+            @SjColumn("raw_content") String rawContent,
+            @SjColumn("content_truncated") int contentTruncatedInt,
             @SjColumn("source_tag") String sourceTag,
             @SjColumn("tool_call_id") String toolCallId,
             @SjColumn("tool_name") String toolName,

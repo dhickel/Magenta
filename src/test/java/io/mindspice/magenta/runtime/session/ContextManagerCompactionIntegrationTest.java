@@ -115,7 +115,7 @@ class ContextManagerCompactionIntegrationTest {
         assertThat(compacted.get(1)).isInstanceOf(ContextElement.SummaryMsg.class);
         ContextElement.SummaryMsg summary = (ContextElement.SummaryMsg) compacted.get(1);
         assertThat(summary.content()).contains("summary text");
-        assertThat(summary.content()).contains("[Protected State]");
+        assertThat(summary.content()).contains("[Protected State JSON]");
         assertThat(summary.content()).contains("recentToolCalls:");
     }
 
@@ -301,8 +301,7 @@ class ContextManagerCompactionIntegrationTest {
         assertThat(compacted.stream()
                 .filter(ContextElement.ToolMsg.class::isInstance)
                 .map(ContextElement.ToolMsg.class::cast)
-                .map(ContextElement.ToolMsg::content)
-                .anyMatch(content -> content.contains("[truncated_for_compaction chars=")))
+                .anyMatch(ContextElement.ToolMsg::contentTruncated))
                 .isTrue();
     }
 

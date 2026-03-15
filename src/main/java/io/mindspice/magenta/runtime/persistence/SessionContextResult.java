@@ -31,12 +31,14 @@ public sealed interface SessionContextResult permits CommonCommandResults.Succes
             List<SessionContextResult.CompactionToolMessage> recentToolMessages,
             List<SessionContextResult.CompactionTodoItem> todos,
             int openTodoCount,
+            String activeTodoId,
             SessionContextResult.CompactionSnapshot latestSnapshot
     ) implements SessionContextResult {
         public CompactionStateLoaded {
             recentToolMessages = recentToolMessages == null ? List.of() : List.copyOf(recentToolMessages);
             todos = todos == null ? List.of() : List.copyOf(todos);
             openTodoCount = Math.max(openTodoCount, 0);
+            activeTodoId = activeTodoId == null ? "" : activeTodoId;
         }
     }
 
@@ -45,6 +47,8 @@ public sealed interface SessionContextResult permits CommonCommandResults.Succes
             String toolCallId,
             String toolName,
             String content,
+            String rawContent,
+            boolean contentTruncated,
             long createdAtMs
     ) {
         public CompactionToolMessage {
@@ -52,6 +56,7 @@ public sealed interface SessionContextResult permits CommonCommandResults.Succes
             toolCallId = toolCallId == null ? "" : toolCallId;
             toolName = toolName == null ? "" : toolName;
             content = content == null ? "" : content;
+            rawContent = rawContent == null ? "" : rawContent;
             createdAtMs = Math.max(createdAtMs, 0L);
         }
     }

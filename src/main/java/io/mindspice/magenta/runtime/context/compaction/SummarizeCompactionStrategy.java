@@ -2,6 +2,7 @@ package io.mindspice.magenta.runtime.context.compaction;
 
 import io.mindspice.magenta.runtime.context.ContextElement;
 import io.mindspice.magenta.runtime.session.SessionTokenEstimator;
+import io.mindspice.magenta.runtime.tools.ToolPayloads;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -139,18 +140,18 @@ public final class SummarizeCompactionStrategy implements CompactionStrategy {
     }
 
     private ContextElement.ToolMsg compactToolMessage(ContextElement.ToolMsg message, int maxChars) {
-        String content = message.content() == null ? "" : message.content();
-        if (content.length() <= maxChars) {
+        String rawContent = message.rawContent() == null ? "" : message.rawContent();
+        String compacted = ToolPayloads.buildToolPreview(message.toolName(), rawContent, maxChars);
+        if (compacted.equals(message.content())) {
             return message;
         }
-
-        int markerReserve = 64;
-        int headLength = Math.max(0, maxChars - markerReserve);
-        String compacted = content.substring(0, headLength)
-                + "...[truncated_for_compaction chars="
-                + content.length()
-                + "]";
-        return new ContextElement.ToolMsg(message.toolCallId(), message.toolName(), compacted);
+        return new ContextElement.ToolMsg(
+                message.toolCallId(),
+                message.toolName(),
+                compacted,
+                rawContent,
+                !compacted.equals(rawContent)
+        );
     }
 
     private List<ContextElement> pruneOldestRecentUntilWithinBudget(

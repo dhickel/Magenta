@@ -34,7 +34,7 @@ class ModelRunnerMessageMappingTest {
     }
 
     @Test
-    void toolPayloadTruncationForContextAddsDeterministicMarker() throws Exception {
+    void toolPayloadTruncationForContextCompactsOversizedPayload() throws Exception {
         ModelRunner runner = new ModelRunner(new OllamaClient());
         Method truncator = ModelRunner.class.getDeclaredMethod("truncateToolContentForContext", String.class);
         truncator.setAccessible(true);
@@ -42,7 +42,7 @@ class ModelRunnerMessageMappingTest {
         String oversized = "x".repeat(5000);
         String truncated = (String) truncator.invoke(runner, oversized);
 
-        assertThat(truncated).contains("[truncated_for_context chars=5000]");
         assertThat(truncated.length()).isLessThan(oversized.length());
+        assertThat(truncated).endsWith("...");
     }
 }

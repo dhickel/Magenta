@@ -65,11 +65,16 @@ Tool schemas and descriptions are appended at runtime by LangChain4j. Treat runt
   - Use for bounded one-shot commands when dedicated tools are insufficient.
 - **SQLite tools:** `sqlite_query` (read-only), `sqlite_exec` (mutating).
   - Keep reads and mutations on the correct tool; do not mix.
+  - `sqlite_exec` success is a mutation receipt; do not repeat the same mutation because rows were not returned.
 - **Todo tools:** `todo_create`, `todo_list`, `todo_update`, `todo_delete`.
   - Canonical todo flow is create -> list (read) -> update -> delete.
   - `todo_list` is the read operation for task state.
+  - `todo_create` `resumed_focus` is success; continue using the returned `activeTodoId`.
+  - When TODO state is uncertain, call `todo_list` before more TODO mutations.
 - **Agent tools:** `list_agents`, `delegate_agent`.
   - Use these for discovery and bounded delegation.
+
+Protected-state JSON in compaction summaries is authoritative over ambiguous recent fragments.
 
 # Tool Use Doctrine (Modern Tool Model)
 Use tools as your primary interface to external state: files, shell, data, and environment signals. Prefer evidence over assumption.

@@ -261,7 +261,8 @@ class ToolSecurityIntegrationIT {
         SecuredExecution query = executeSecured(securityManager, toolManager, queryRequest, Set.of("sqlite_exec", "sqlite_query"));
 
         assertThat(query.decision().allowed()).isTrue();
-        assertThat(ToolTestSupport.payload(query.result()).path("data").path("rows").get(0).path("c").asInt()).isEqualTo(1);
+        assertThat(ToolTestSupport.payload(query.result()).path("data").path("result").path("rows").get(0).path("c").asInt())
+                .isEqualTo(1);
     }
 
     @Test

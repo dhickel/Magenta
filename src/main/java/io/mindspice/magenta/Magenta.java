@@ -525,13 +525,8 @@ public final class Magenta {
         if (!(result instanceof SessionContextResult.CompactionStateLoaded loaded)) {
             return "";
         }
-
         List<SessionContextResult.CompactionToolMessage> toolMessages = loaded.recentToolMessages();
         List<SessionContextResult.CompactionTodoItem> todos = loaded.todos();
-        List<SessionContextResult.CompactionTodoItem> openTodos = todos.stream()
-                .filter(todo -> "open".equalsIgnoreCase(todo.status()))
-                .limit(OPEN_TODO_QUEUE_LIMIT)
-                .toList();
         java.util.Map<String, SessionContextResult.CompactionTodoItem> todosById = todos.stream()
                 .filter(todo -> todo.todoId() != null && !todo.todoId().isBlank())
                 .collect(Collectors.toMap(
@@ -541,130 +536,119 @@ public final class Magenta {
                         java.util.LinkedHashMap::new
                 ));
 
-        List<ToolCallState> recentToolCalls = new ArrayList<>();
-        List<TodoUpdateState> recentTodoUpdates = new ArrayList<>();
-        java.util.Set<String> seenTodoUpdateIds = new java.util.LinkedHashSet<>();
-        FileState fileState = null;
-        String currentTodoId = "";
+        ObjectNode root = MAPPER.createObjectNode();
+        root.put("version", 2);
 
+        ObjectNode todosNode = root.putObject("todos");
+        String activeTodoId = loaded.activeTodoId() == null ? "" : loaded.activeTodoId();
+        todosNode.put("activeTodoId", activeTodoId);
+        SessionContextResult.CompactionTodoItem activeTodo = activeTodoId.isBlank() ? null : todosById.get(activeTodoId);
+        ObjectNode activeNode = todosNode.putObject("active");
+        if (activeTodo != null) {
+            activeNode.put("todoId", activeTodo.todoId());
+            activeNode.put("title", trimStateText(activeTodo.title()));
+            activeNode.put("status", activeTodo.status());
+            activeNode.put("updatedAtMs", activeTodo.updatedAtMs());
+        }
+        todosNode.put("openCount", loaded.openTodoCount());
+        var openQueue = todosNode.putArray("openQueue");
+        todos.stream()
+                .filter(todo -> "open".equalsIgnoreCase(todo.status()))
+                .limit(OPEN_TODO_QUEUE_LIMIT)
+                .forEach(todo -> {
+                    ObjectNode todoNode = openQueue.addObject();
+                    todoNode.put("todoId", todo.todoId());
+                    todoNode.put("title", trimStateText(todo.title()));
+                    todoNode.put("status", todo.status());
+                    todoNode.put("updatedAtMs", todo.updatedAtMs());
+                });
+        var recentUpdates = todosNode.putArray("recentUpdates");
+        java.util.Set<String> seenUpdateIds = new java.util.LinkedHashSet<>();
         for (SessionContextResult.CompactionToolMessage message : toolMessages) {
-            ParsedToolState parsed = parseToolState(message.toolName(), message.content());
-            if (recentToolCalls.size() < RECENT_TOOL_CALLS_LIMIT) {
-                recentToolCalls.add(new ToolCallState(
-                        message.toolCallId(),
-                        message.toolName(),
-                        parsed.status(),
-                        parsed.target(),
-                        parsed.targetName()
-                ));
+            if (!isTodoTool(message.toolName())) {
+                continue;
             }
-
-            if (fileState == null && parsed.path() != null && !parsed.path().isBlank()) {
-                fileState = new FileState(parsed.path(), fileActionFromTool(message.toolName()), parsed.snapshotId());
+            JsonNode data = parsePayloadData(message.rawContent());
+            String todoId = firstNonBlank(
+                    readText(data, "focus", "todoId"),
+                    readText(data, "nextFocus", "todoId"),
+                    readText(data, "deletedTodoId"),
+                    readText(data, "activeTodoId")
+            );
+            if (todoId.isBlank() || !seenUpdateIds.add(todoId) || recentUpdates.size() >= RECENT_TODO_UPDATES_LIMIT) {
+                continue;
             }
-
-            if (isTodoTool(message.toolName()) && currentTodoId.isBlank() && parsed.todoId() != null && !parsed.todoId().isBlank()) {
-                currentTodoId = parsed.todoId();
-            }
-
-            if (isTodoTool(message.toolName())
-                && parsed.todoId() != null
-                && !parsed.todoId().isBlank()
-                && recentTodoUpdates.size() < RECENT_TODO_UPDATES_LIMIT
-                && seenTodoUpdateIds.add(parsed.todoId())) {
-                SessionContextResult.CompactionTodoItem canonical = todosById.get(parsed.todoId());
-                String resolvedTitle = parsed.todoTitle().isBlank() && canonical != null ? canonical.title() : parsed.todoTitle();
-                String resolvedStatus = parsed.todoStatus().isBlank() && canonical != null ? canonical.status() : parsed.todoStatus();
-                long resolvedUpdatedAtMs = parsed.todoUpdatedAtMs() > 0
-                        ? parsed.todoUpdatedAtMs()
-                        : canonical != null
-                            ? canonical.updatedAtMs()
-                            : message.createdAtMs();
-                recentTodoUpdates.add(new TodoUpdateState(
-                        parsed.todoId(),
-                        resolvedTitle,
-                        resolvedStatus,
-                        resolvedUpdatedAtMs
-                ));
-            }
+            SessionContextResult.CompactionTodoItem canonical = todosById.get(todoId);
+            ObjectNode node = recentUpdates.addObject();
+            node.put("todoId", todoId);
+            node.put("title", trimStateText(firstNonBlank(
+                    readText(data, "focus", "title"),
+                    readText(data, "nextFocus", "title"),
+                    canonical == null ? "" : canonical.title()
+            )));
+            node.put("status", firstNonBlank(
+                    readText(data, "focus", "status"),
+                    readText(data, "nextFocus", "status"),
+                    canonical == null ? "" : canonical.status()
+            ));
+            node.put("updatedAtMs", firstLong(
+                    readLong(data, "focus", "updatedAtMs"),
+                    readLong(data, "nextFocus", "updatedAtMs"),
+                    canonical == null ? 0L : canonical.updatedAtMs(),
+                    message.createdAtMs()
+            ));
         }
 
-        if (recentTodoUpdates.size() < RECENT_TODO_UPDATES_LIMIT) {
-            for (SessionContextResult.CompactionTodoItem todo : todos) {
-                if (recentTodoUpdates.size() >= RECENT_TODO_UPDATES_LIMIT) {
-                    break;
-                }
-                if (todo.todoId() == null || todo.todoId().isBlank() || !seenTodoUpdateIds.add(todo.todoId())) {
-                    continue;
-                }
-                recentTodoUpdates.add(new TodoUpdateState(todo.todoId(), todo.title(), todo.status(), todo.updatedAtMs()));
+        ObjectNode files = root.putObject("files");
+        for (SessionContextResult.CompactionToolMessage message : toolMessages) {
+            if (!isFileTool(message.toolName())) {
+                continue;
             }
+            JsonNode data = parsePayloadData(message.rawContent());
+            String path = firstNonBlank(readText(data, "path"), readText(data, "rootPath"));
+            if (path.isBlank()) {
+                continue;
+            }
+            files.put("lastPath", path);
+            files.put("action", fileActionFromTool(message.toolName()));
+            files.put("snapshotId", firstNonBlank(
+                    readText(data, "snapshotIdAfter"),
+                    readText(data, "snapshotId"),
+                    readText(data, "snapshotIdBefore")
+            ));
+            break;
         }
 
-        StringBuilder sb = new StringBuilder();
-        sb.append("todos:\n");
-        sb.append("openTodoCount=").append(loaded.openTodoCount()).append('\n');
-        sb.append("openTodoQueue:\n");
-        if (openTodos.isEmpty()) {
-            sb.append("none\n");
-        } else {
-            for (int i = 0; i < openTodos.size(); i++) {
-                SessionContextResult.CompactionTodoItem todo = openTodos.get(i);
-                sb.append(i + 1)
-                        .append(") todoId=").append(stateValue(todo.todoId()))
-                        .append(" title=").append(stateValue(todo.title()))
-                        .append(" status=").append(stateValue(todo.status()))
-                        .append(" updatedAtMs=").append(todo.updatedAtMs())
-                        .append('\n');
+        ObjectNode sql = root.putObject("sql");
+        for (SessionContextResult.CompactionToolMessage message : toolMessages) {
+            if (!"sqlite_exec".equals(message.toolName())) {
+                continue;
             }
-        }
-        SessionContextResult.CompactionTodoItem currentTodo = currentTodoId.isBlank()
-                ? null
-                : todosById.get(currentTodoId);
-        sb.append("currentTodoId=").append(stateValue(currentTodoId)).append('\n');
-        sb.append("currentTodoStatus=").append(stateValue(currentTodo == null ? "" : currentTodo.status())).append('\n');
-        sb.append("currentTodoTitle=").append(stateValue(currentTodo == null ? "" : currentTodo.title())).append('\n');
-        sb.append("recentTodoUpdates:\n");
-        if (recentTodoUpdates.isEmpty()) {
-            sb.append("none\n");
-        } else {
-            for (int i = 0; i < recentTodoUpdates.size(); i++) {
-                TodoUpdateState update = recentTodoUpdates.get(i);
-                sb.append(i + 1)
-                        .append(") todoId=").append(stateValue(update.todoId()))
-                        .append(" title=").append(stateValue(update.title()))
-                        .append(" status=").append(stateValue(update.status()))
-                        .append(" updatedAtMs=").append(update.updatedAtMs())
-                        .append('\n');
-            }
+            JsonNode data = parsePayloadData(message.rawContent());
+            JsonNode receipt = data.path("receipt");
+            ObjectNode lastMutation = sql.putObject("lastMutation");
+            lastMutation.put("dbPath", readText(data.path("database"), "dbPath"));
+            lastMutation.put("statementCount", readInt(receipt, "statementCount"));
+            lastMutation.put("rowsAffected", readInt(receipt, "rowsAffected"));
+            lastMutation.put("lastInsertRowId", readLong(receipt, "lastInsertRowId"));
+            break;
         }
 
-        sb.append("files:\n");
-        if (fileState == null) {
-            sb.append("none\n");
-        } else {
-            sb.append("lastPath=").append(stateValue(fileState.path()))
-                    .append(" action=").append(stateValue(fileState.action()))
-                    .append(" snapshotId=").append(stateValue(fileState.snapshotId()))
-                    .append('\n');
+        var recentTools = root.putArray("recentTools");
+        int addedTools = 0;
+        for (SessionContextResult.CompactionToolMessage message : toolMessages) {
+            if (addedTools++ >= RECENT_TOOL_CALLS_LIMIT) {
+                break;
+            }
+            JsonNode rootPayload = parseJson(message.rawContent());
+            ObjectNode tool = recentTools.addObject();
+            tool.put("toolCallId", message.toolCallId());
+            tool.put("toolName", message.toolName());
+            tool.put("status", readText(rootPayload, "status"));
+            tool.put("code", readText(rootPayload, "code"));
         }
 
-        sb.append("recentToolCalls:\n");
-        if (recentToolCalls.isEmpty()) {
-            sb.append("none\n");
-        } else {
-            for (int i = 0; i < recentToolCalls.size(); i++) {
-                ToolCallState call = recentToolCalls.get(i);
-                sb.append(i + 1)
-                        .append(") id=").append(stateValue(call.toolCallId()))
-                        .append(" tool=").append(stateValue(call.toolName()))
-                        .append(" status=").append(stateValue(call.status()))
-                        .append(" target=").append(stateValue(call.target()))
-                        .append(" targetName=").append(stateValue(call.targetName()))
-                        .append('\n');
-            }
-        }
-        String block = capStateBlock(sb.toString().trim());
+        String block = trimProtectedStateJson(root);
         if (!block.isBlank()) {
             return block;
         }
@@ -672,57 +656,16 @@ public final class Magenta {
         if (snapshot == null || snapshot.manifestText().isBlank()) {
             return "";
         }
-        return capStateBlock(snapshot.manifestText());
+        JsonNode prior = parseJson(snapshot.manifestText());
+        if (!(prior instanceof ObjectNode priorObj)) {
+            return "";
+        }
+        return trimProtectedStateJson(priorObj);
     }
 
-    private ParsedToolState parseToolState(String toolName, String payloadContent) {
-        JsonNode root = parseJson(payloadContent);
-        JsonNode data = root == null ? null : root.path("data");
-
-        String status = readText(root, "status");
-        String path = firstNonBlank(
-                readText(data, "path"),
-                readText(data, "filePath"),
-                readText(data, "rootPath")
-        );
-        String snapshotId = firstNonBlank(
-                readText(data, "snapshotIdAfter"),
-                readText(data, "snapshotId"),
-                readText(data, "snapshotIdBefore")
-        );
-        String todoId = firstNonBlank(
-                readText(data, "todo", "todoId"),
-                readText(data, "todoId"),
-                readText(data, "id")
-        );
-        String todoTitle = firstNonBlank(
-                readText(data, "todo", "title"),
-                readText(data, "title")
-        );
-        String todoStatus = firstNonBlank(
-                readText(data, "todo", "status"),
-                readText(data, "status")
-        );
-        long todoUpdatedAtMs = firstLong(
-                readLong(data, "todo", "updatedAtMs"),
-                readLong(data, "updatedAtMs")
-        );
-
-        String target = firstNonBlank(
-                path,
-                todoId,
-                readText(data, "targetAgentId"),
-                readText(data, "dbPath")
-        );
-        String targetName = firstNonBlank(
-                todoTitle,
-                readText(data, "delegatedAlias"),
-                basename(path)
-        );
-        if (targetName.isBlank() && isTodoTool(toolName) && !todoId.isBlank()) {
-            targetName = "todo";
-        }
-        return new ParsedToolState(status, target, targetName, path, snapshotId, todoId, todoTitle, todoStatus, todoUpdatedAtMs);
+    private JsonNode parsePayloadData(String payload) {
+        JsonNode root = parseJson(payload);
+        return root == null ? MAPPER.createObjectNode() : root.path("data");
     }
 
     private JsonNode parseJson(String content) {
@@ -733,6 +676,42 @@ public final class Magenta {
             return MAPPER.readTree(content);
         } catch (Exception ignored) {
             return null;
+        }
+    }
+
+    private String trimProtectedStateJson(ObjectNode manifest) {
+        try {
+            ObjectNode working = manifest.deepCopy();
+            while (MAPPER.writeValueAsString(working).length() > PROTECTED_STATE_MAX_CHARS) {
+                boolean changed = false;
+                JsonNode recentTools = working.path("recentTools");
+                if (recentTools.isArray() && recentTools.size() > 0) {
+                    ((com.fasterxml.jackson.databind.node.ArrayNode) recentTools).remove(recentTools.size() - 1);
+                    changed = true;
+                } else {
+                    JsonNode recentUpdates = working.path("todos").path("recentUpdates");
+                    if (recentUpdates.isArray() && recentUpdates.size() > 0) {
+                        ((com.fasterxml.jackson.databind.node.ArrayNode) recentUpdates).remove(recentUpdates.size() - 1);
+                        changed = true;
+                    } else {
+                        JsonNode openQueue = working.path("todos").path("openQueue");
+                        if (openQueue.isArray() && openQueue.size() > 1) {
+                            ((com.fasterxml.jackson.databind.node.ArrayNode) openQueue).remove(openQueue.size() - 1);
+                            changed = true;
+                        }
+                    }
+                }
+                if (!changed) {
+                    break;
+                }
+            }
+            String json = MAPPER.writeValueAsString(working);
+            if (json.length() > PROTECTED_STATE_MAX_CHARS) {
+                return "";
+            }
+            return json;
+        } catch (Exception ignored) {
+            return "";
         }
     }
 
@@ -750,34 +729,25 @@ public final class Magenta {
         if (cursor == null || cursor.isMissingNode() || cursor.isNull()) {
             return "";
         }
-        if (cursor.isTextual()) {
-            return cursor.asText();
-        }
-        if (cursor.isNumber() || cursor.isBoolean()) {
+        if (cursor.isTextual() || cursor.isNumber() || cursor.isBoolean()) {
             return cursor.asText();
         }
         return "";
     }
 
-    private long readLong(JsonNode root, String... path) {
-        if (root == null || path == null || path.length == 0) {
-            return 0L;
-        }
-        JsonNode cursor = root;
-        for (String element : path) {
-            if (cursor == null || cursor.isMissingNode() || element == null || element.isBlank()) {
-                return 0L;
-            }
-            cursor = cursor.path(element);
-        }
-        if (cursor == null || cursor.isMissingNode() || cursor.isNull()) {
-            return 0L;
-        }
-        if (cursor.canConvertToLong()) {
-            return cursor.asLong();
-        }
+    private int readInt(JsonNode root, String... path) {
+        String value = readText(root, path);
         try {
-            return Long.parseLong(cursor.asText().trim());
+            return Integer.parseInt(value);
+        } catch (Exception ignored) {
+            return 0;
+        }
+    }
+
+    private long readLong(JsonNode root, String... path) {
+        String value = readText(root, path);
+        try {
+            return Long.parseLong(value);
         } catch (Exception ignored) {
             return 0L;
         }
@@ -800,20 +770,22 @@ public final class Magenta {
             return 0L;
         }
         for (long value : values) {
-            if (value > 0) {
+            if (value > 0L) {
                 return value;
             }
         }
         return 0L;
     }
 
-    private String basename(String path) {
-        if (path == null || path.isBlank()) {
-            return "";
+    private boolean isFileTool(String toolName) {
+        if (toolName == null || toolName.isBlank()) {
+            return false;
         }
-        String normalized = path.replace('\\', '/');
-        int slash = normalized.lastIndexOf('/');
-        return slash >= 0 ? normalized.substring(slash + 1) : normalized;
+        return switch (toolName) {
+            case "read_file", "file_metadata", "write_file", "search_replace", "delete_file", "list_directory", "grep_files" ->
+                    true;
+            default -> false;
+        };
     }
 
     private String fileActionFromTool(String toolName) {
@@ -833,10 +805,19 @@ public final class Magenta {
     }
 
     private boolean isTodoTool(String toolName) {
-        if (toolName == null || toolName.isBlank()) {
-            return false;
+        return toolName != null && toolName.startsWith("todo_");
+    }
+
+    private String trimStateText(String value) {
+        if (value == null) {
+            return "";
         }
-        return toolName.startsWith("todo_");
+        String normalized = value.replace('\n', ' ').replace('\r', ' ').trim();
+        int max = 120;
+        if (normalized.length() <= max) {
+            return normalized;
+        }
+        return normalized.substring(0, max - 3) + "...";
     }
 
     private String stateValue(String value) {
@@ -853,79 +834,6 @@ public final class Magenta {
         return normalized;
     }
 
-    private String capStateBlock(String block) {
-        if (block == null) {
-            return "";
-        }
-        String safe = block.trim();
-        if (safe.length() <= PROTECTED_STATE_MAX_CHARS) {
-            return safe;
-        }
-        String withoutTools = dropSection(safe, "recentToolCalls:");
-        if (withoutTools.length() <= PROTECTED_STATE_MAX_CHARS) {
-            return withoutTools;
-        }
-        String withoutRecentUpdates = dropSection(withoutTools, "recentTodoUpdates:");
-        if (withoutRecentUpdates.length() <= PROTECTED_STATE_MAX_CHARS) {
-            return withoutRecentUpdates;
-        }
-
-        String normalizedQueue = withoutRecentUpdates.replaceAll("(?m)title=([^\\n]{80})[^\\n]*", "title=$1...");
-        if (normalizedQueue.length() <= PROTECTED_STATE_MAX_CHARS) {
-            return normalizedQueue;
-        }
-
-        int queueStart = normalizedQueue.indexOf("openTodoQueue:");
-        if (queueStart >= 0) {
-            int reserve = Math.min(normalizedQueue.length(), Math.max(OPEN_TODO_QUEUE_MIN_RESERVE_CHARS, PROTECTED_STATE_MAX_CHARS / 3));
-            String queuePrefix = normalizedQueue.substring(queueStart, Math.min(normalizedQueue.length(), queueStart + reserve));
-            int max = Math.max(0, PROTECTED_STATE_MAX_CHARS - queuePrefix.length() - 20);
-            String head = normalizedQueue.substring(0, Math.min(max, normalizedQueue.length()));
-            return (head + "\n" + queuePrefix + "\n...[truncated]").substring(0, Math.min(PROTECTED_STATE_MAX_CHARS, head.length() + queuePrefix.length() + 17));
-        }
-
-        int max = Math.max(0, PROTECTED_STATE_MAX_CHARS - 16);
-        return normalizedQueue.substring(0, max) + "\n...[truncated]";
-    }
-
-    private String dropSection(String content, String sectionHeader) {
-        if (content == null || content.isBlank() || sectionHeader == null || sectionHeader.isBlank()) {
-            return content == null ? "" : content;
-        }
-        int sectionStart = content.indexOf(sectionHeader);
-        if (sectionStart < 0) {
-            return content;
-        }
-        int nextSectionStart = content.indexOf("\n", sectionStart + sectionHeader.length());
-        if (nextSectionStart < 0) {
-            return content.substring(0, sectionStart).trim();
-        }
-        int cursor = nextSectionStart + 1;
-        while (cursor < content.length()) {
-            int lineEnd = content.indexOf('\n', cursor);
-            if (lineEnd < 0) {
-                lineEnd = content.length();
-            }
-            String line = content.substring(cursor, lineEnd).trim();
-            boolean looksLikeSection = line.endsWith(":")
-                                       && !line.startsWith("1)")
-                                       && !line.startsWith("2)")
-                                       && !line.startsWith("3)");
-            if (looksLikeSection) {
-                break;
-            }
-            cursor = lineEnd + 1;
-        }
-        String before = content.substring(0, sectionStart).trim();
-        String after = cursor >= content.length() ? "" : content.substring(cursor).trim();
-        if (before.isBlank()) {
-            return after;
-        }
-        if (after.isBlank()) {
-            return before;
-        }
-        return before + "\n" + after;
-    }
 
     private String executeTurn(UUID sessionId, SessionInput input) {
         Session session = sessionManager.resume(sessionId);

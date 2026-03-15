@@ -17,6 +17,7 @@ import io.mindspice.magenta.runtime.session.Session;
 import io.mindspice.magenta.runtime.context.ContextElement;
 import io.mindspice.magenta.runtime.session.SessionHandle;
 import io.mindspice.magenta.runtime.session.SessionOutput;
+import io.mindspice.magenta.runtime.tools.ToolPayloads;
 import io.mindspice.magenta.runtime.tools.ToolRequest;
 import io.mindspice.magenta.runtime.tools.ToolResult;
 
@@ -183,11 +184,18 @@ public final class ModelRunner {
                 ToolResult toolResult = session.sessionConfig().toolBridge().apply(toolRequest);
                 executedAnyToolThisIteration = true;
                 String rawContent = safeText(toolResult.content());
-                String contextContent = truncateToolContentForContext(rawContent);
+                String contextContent = ToolPayloads.buildToolPreview(
+                        toolResult.toolName(),
+                        rawContent,
+                        MAX_CONTEXT_TOOL_PAYLOAD_CHARS
+                );
+                boolean contentTruncated = !contextContent.equals(rawContent);
                 ContextElement.ToolMsg toolMessage = new ContextElement.ToolMsg(
                         toolResult.toolCallId(),
                         toolResult.toolName(),
-                        contextContent
+                        contextContent,
+                        rawContent,
+                        contentTruncated
                 );
                 session.context().append(toolMessage);
                 safeOutputEmitter.accept(new OutputRoutingEvent(
@@ -298,16 +306,7 @@ public final class ModelRunner {
     }
 
     private String truncateToolContentForContext(String content) {
-        String safe = safeText(content);
-        if (safe.length() <= MAX_CONTEXT_TOOL_PAYLOAD_CHARS) {
-            return safe;
-        }
-        int markerReserve = 72;
-        int headLength = Math.max(0, MAX_CONTEXT_TOOL_PAYLOAD_CHARS - markerReserve);
-        return safe.substring(0, headLength)
-               + "...[truncated_for_context chars="
-               + safe.length()
-               + "]";
+        return ToolPayloads.buildToolPreview("", safeText(content), MAX_CONTEXT_TOOL_PAYLOAD_CHARS);
     }
 
     private String toolCallSignature(ContextElement.ToolCall toolCall) {

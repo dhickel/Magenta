@@ -162,7 +162,7 @@ public final class ContextManager {
             if (protectedState == null || protectedState.isBlank()) {
                 return summary;
             }
-            return summary.trim() + "\n\n[Protected State]\n" + protectedState.trim();
+            return summary.trim() + "\n\n[Protected State JSON]\n" + protectedState.trim();
         };
 
         CompactionStrategy strategy = CompactionStrategy.forName(modelConfig.compactionStrategyOrDefault(), effectiveSummarizer);

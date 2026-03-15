@@ -46,7 +46,7 @@ class SqliteToolsFunctionalTest {
         )));
 
         assertThat(payload.path("status").asText()).isEqualTo("ok");
-        assertThat(payload.path("data").path("rows").get(0).path("n").asInt()).isEqualTo(1);
+        assertThat(payload.path("data").path("result").path("rows").get(0).path("n").asInt()).isEqualTo(1);
     }
 
     @Test
@@ -62,8 +62,8 @@ class SqliteToolsFunctionalTest {
         )));
 
         assertThat(payload.path("status").asText()).isEqualTo("ok");
-        assertThat(payload.path("data").path("truncated").asBoolean()).isTrue();
-        assertThat(payload.path("data").path("rowCount").asInt()).isEqualTo(2);
+        assertThat(payload.path("data").path("result").path("truncated").asBoolean()).isTrue();
+        assertThat(payload.path("data").path("result").path("rowCount").asInt()).isEqualTo(2);
     }
 
     @Test
@@ -85,7 +85,7 @@ class SqliteToolsFunctionalTest {
                 "{\"dbPath\":\"db.sqlite\",\"sql\":\"SELECT COUNT(*) AS c FROM t\"}"
         )));
         assertThat(query.path("status").asText()).isEqualTo("ok");
-        assertThat(query.path("data").path("rows").get(0).path("c").asInt()).isEqualTo(1);
+        assertThat(query.path("data").path("result").path("rows").get(0).path("c").asInt()).isEqualTo(1);
     }
 
     @Test

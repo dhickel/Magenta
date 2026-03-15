@@ -81,13 +81,25 @@ final class ToolOutputFormatter {
                     "Applied Edits: " + intValue(data, "appliedEdits")
             );
             case "sqlite_query" -> List.of(
-                    "Database: " + text(data, "dbPath", "n/a"),
-                    "Rows: " + intValue(data, "rowCount")
-                            + (boolValue(data, "truncated") ? " (truncated)" : "")
+                    "Database: " + text(data == null ? null : data.path("database"), "dbPath", "n/a"),
+                    "Rows: " + intValue(data == null ? null : data.path("result"), "rowCount")
+                            + (boolValue(data == null ? null : data.path("result"), "truncated") ? " (truncated)" : "")
             );
             case "sqlite_exec" -> List.of(
-                    "Database: " + text(data, "dbPath", "n/a"),
-                    "Rows Affected: " + intValue(data, "rowsAffected")
+                    "Database: " + text(data == null ? null : data.path("database"), "dbPath", "n/a"),
+                    "Rows Affected: " + intValue(data == null ? null : data.path("receipt"), "rowsAffected")
+            );
+            case "todo_create", "todo_update" -> List.of(
+                    "Active Todo: " + text(data, "activeTodoId", "n/a"),
+                    "Action: " + text(data, "action", text(data, "kind", "todo_focus"))
+            );
+            case "todo_list" -> List.of(
+                    "Active Todo: " + text(data, "activeTodoId", "none"),
+                    "Open: " + intValue(data, "openCount") + ", Done: " + intValue(data, "doneCount")
+            );
+            case "todo_delete" -> List.of(
+                    "Deleted: " + text(data, "deletedTodoId", "n/a"),
+                    "Next Focus: " + text(data, "activeTodoId", "none")
             );
             case "shell_command" -> List.of(
                     "Command: " + compact(text(data, "command", "n/a")),
@@ -106,7 +118,10 @@ final class ToolOutputFormatter {
             case "read_file", "write_file", "delete_file", "search_replace", "file_metadata", "list_directory" ->
                     text(data, "path", "");
             case "grep_files" -> text(data, "rootPath", "");
-            case "sqlite_query", "sqlite_exec" -> text(data, "dbPath", "");
+            case "sqlite_query", "sqlite_exec" -> firstNonBlank(
+                    text(data, "dbPath", ""),
+                    text(data == null ? null : data.path("database"), "dbPath", "")
+            );
             case "shell_command" -> text(data, "command", "");
             default -> "";
         };
@@ -275,6 +290,18 @@ final class ToolOutputFormatter {
             }
         }
         return out.isEmpty() ? "Tool" : out.toString();
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return "";
     }
 
     private String normalizeToolName(String toolName) {

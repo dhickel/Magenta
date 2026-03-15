@@ -1,5 +1,7 @@
 package io.mindspice.magenta.runtime;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import io.mindspice.magenta.Magenta;
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
@@ -30,6 +32,7 @@ import java.util.function.Supplier;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class MagentaContextUsageTest {
+    private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
 
     @Test
     void contextUsageSupplierReturnsModelAndTokenSnapshot() {
@@ -197,9 +200,10 @@ class MagentaContextUsageTest {
         method.setAccessible(true);
         String protectedState = (String) method.invoke(magenta, handle.sessionId());
 
-        assertThat(protectedState).contains("openTodoQueue:");
-        assertThat(protectedState).contains("Select and summarize posts 51-60");
-        assertThat(protectedState).contains("Select and summarize posts 61-70");
+        JsonNode stateJson = MAPPER.readTree(protectedState);
+        assertThat(stateJson.path("todos").path("openQueue")).isNotEmpty();
+        assertThat(stateJson.path("todos").path("openQueue").toString()).contains("Select and summarize posts 51-60");
+        assertThat(stateJson.path("todos").path("openQueue").toString()).contains("Select and summarize posts 61-70");
 
         magenta.closeSession(handle);
     }

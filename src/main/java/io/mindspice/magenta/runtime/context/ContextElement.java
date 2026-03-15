@@ -28,11 +28,22 @@ public sealed interface ContextElement permits ContextElement.SystemMsg, Context
         }
     }
 
-    record ToolMsg(String toolCallId, String toolName, String content) implements ContextElement {
+    record ToolMsg(
+            String toolCallId,
+            String toolName,
+            String content,
+            String rawContent,
+            boolean contentTruncated
+    ) implements ContextElement {
+        public ToolMsg(String toolCallId, String toolName, String content) {
+            this(toolCallId, toolName, content, content, false);
+        }
+
         public ToolMsg {
             toolCallId = toolCallId == null ? "" : toolCallId;
             toolName = toolName == null ? "" : toolName;
             content = content == null ? "" : content;
+            rawContent = rawContent == null || rawContent.isBlank() ? content : rawContent;
         }
     }
 
