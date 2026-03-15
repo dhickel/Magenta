@@ -1,5 +1,6 @@
 package io.mindspice.magenta.runtime.tools.builtin;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.langchain4j.agent.tool.P;
@@ -149,7 +150,9 @@ public final class AnnotatedBuiltInToolCatalog {
     @Tool(name = SEARCH_REPLACE, value = {
             "Apply precise deterministic edits using anchors from read_file/grep_files and a current snapshotId.",
             "This is the default tool for editing existing files. Prefer this over write_file for partial changes.",
-            "Required: path, snapshotId, edits[]. Each edit needs startAnchor, endAnchor, replacement; expectedText is optional but recommended.",
+            "Required: path, snapshotId, edits[]. Each edit needs startAnchor, endAnchor, replacement; expectedText is optional.",
+            "Anchor semantics: startAnchor/endAnchor are 1-based inclusive anchors. expectedText (if provided) must match the exact inclusive slice.",
+            "For insertions, use a precise anchor range (often a single anchor for replace-in-place) and re-run read_file before retry after anchor mismatches.",
             "Do not invent anchors. If anchors/snapshot mismatch, re-read the file and retry with updated anchors."
     })
     public ToolResult searchReplace(
@@ -517,10 +520,14 @@ public final class AnnotatedBuiltInToolCatalog {
     }
 
     public record SearchReplaceEdit(
-            @P("Start line anchor in line:hh format") String startAnchor,
-            @P("End line anchor in line:hh format") String endAnchor,
+            @JsonAlias({"start", "fromAnchor"})
+            @P("Start anchor in line:hh format (1-based inclusive)") String startAnchor,
+            @JsonAlias({"end", "toAnchor"})
+            @P("End anchor in line:hh format (1-based inclusive)") String endAnchor,
+            @JsonAlias({"text"})
             @P("Replacement text for the anchored range") String replacement,
-            @P(value = "Optional exact text expected in anchored range", required = false) String expectedText
+            @JsonAlias({"expected"})
+            @P(value = "Optional exact text expected in the inclusive anchored range", required = false) String expectedText
     ) {
     }
 

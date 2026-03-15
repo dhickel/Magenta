@@ -405,6 +405,8 @@ class ToolManagerBuiltInsTest {
         assertThat(shell.description()).contains("single command invocation");
         assertThat(shell.description()).contains("operators/chaining");
         assertThat(searchReplace.description()).contains("startAnchor");
+        assertThat(searchReplace.description()).contains("1-based inclusive");
+        assertThat(searchReplace.description()).contains("exact inclusive slice");
         assertThat(searchReplace.description().toLowerCase(java.util.Locale.ROOT)).contains("do not invent anchors");
     }
 

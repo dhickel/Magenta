@@ -30,6 +30,7 @@ class ModelRunnerLoopGuardRecoveryTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
     private static final String WARNING_PREFIX = "[tool-loop-warning] repeated_calls=2/2; window_failures=1; recovery_attempt=1/1; required_action=change_approach_or_return_defeat";
+    private static final String SEARCH_REPLACE_WARNING_PREFIX = "[search-replace-warning]";
     private static final String CONTINUITY_PREFIX = "[continuity-check] empty assistant response received";
     private static final String EMPTY_TURN_STOP_PREFIX = "[model-empty-turn-stop]";
 
@@ -101,6 +102,61 @@ class ModelRunnerLoopGuardRecoveryTest {
                     .filteredOn(output -> output instanceof SessionOutput.FinalOutput)
                     .extracting(output -> ((SessionOutput.FinalOutput) output).text())
                     .noneMatch(text -> text.startsWith("[tool-loop-warning]"));
+        }
+    }
+
+    @Test
+    void repeatedSearchReplaceAnchorMismatchInjectsReadRefreshWarning() throws Exception {
+        try (StubOllamaServer stub = new StubOllamaServer(
+                toolCallResponseFor(
+                        "attempt one",
+                        "sr-call-1",
+                        "search_replace",
+                        """
+                        {
+                          "path": "sample.txt",
+                          "snapshotId": "snap-1",
+                          "edits": [{"startAnchor":"1:aa","endAnchor":"1:aa","replacement":"x"}]
+                        }
+                        """
+                ),
+                toolCallResponseFor(
+                        "attempt two",
+                        "sr-call-2",
+                        "search_replace",
+                        """
+                        {
+                          "path": "sample.txt",
+                          "snapshotId": "snap-1",
+                          "edits": [{"startAnchor":"1:aa","endAnchor":"1:aa","replacement":"x"}]
+                        }
+                        """
+                ),
+                finalResponse("changed approach after warning")
+        )) {
+            ModelRunner runner = new ModelRunner(new OllamaClient(10_000));
+            Session session = searchReplaceFailureSession(stub.endpoint());
+            SessionHandle handle = new SessionHandle(session.sessionId(), () -> true);
+
+            String result = runner.runTurn(
+                    session,
+                    handle,
+                    6,
+                    false,
+                    event -> {},
+                    () -> {},
+                    List.of(),
+                    new RuntimeConfig.ToolLoopGuardConfig(true, 8, 12, 1)
+            );
+
+            assertThat(result).isEqualTo("changed approach after warning");
+            assertThat(stub.requestBodies()).hasSize(3);
+            JsonNode thirdRequest = MAPPER.readTree(stub.requestBodies().get(2));
+            JsonNode firstMessage = thirdRequest.path("messages").get(0);
+            assertThat(firstMessage.path("role").asText()).isEqualTo("system");
+            assertThat(firstMessage.path("content").asText()).startsWith(SEARCH_REPLACE_WARNING_PREFIX);
+            assertThat(firstMessage.path("content").asText()).contains("path=sample.txt");
+            assertThat(firstMessage.path("content").asText()).contains("required_action=read_file_refresh_before_retry");
         }
     }
 
@@ -248,7 +304,74 @@ class ModelRunnerLoopGuardRecoveryTest {
         );
     }
 
+    private static Session searchReplaceFailureSession(String endpoint) {
+        Context context = new Context();
+        context.append(new ContextElement.SystemCoreMsg("base system prompt"));
+        context.append(new ContextElement.UserMsg("edit file"));
+        RuntimeConfig.ModelConfig modelConfig = new RuntimeConfig.ModelConfig(
+                "test-model",
+                "langchain4j",
+                "dummy",
+                endpoint,
+                2048,
+                2048,
+                1800,
+                0.0,
+                "rolling_window",
+                "cl100k_base",
+                true,
+                false,
+                true
+        );
+        SessionConfig sessionConfig = new SessionConfig(
+                SessionParams.ofBlocking(true),
+                request -> ToolResult.handled(
+                        request.toolCall().id(),
+                        request.toolCall().name(),
+                        """
+                        {
+                          "status":"failed",
+                          "code":"anchor_mismatch",
+                          "message":"expectedText does not match anchored inclusive range",
+                          "data":{
+                            "path":"sample.txt",
+                            "requiredAction":"read_file_refresh",
+                            "recoveryHint":"Run read_file and retry with fresh anchors.",
+                            "conflicts":[{"reason":"expected_text_mismatch"}]
+                          }
+                        }
+                        """
+                ),
+                ignored -> {}
+        );
+        return new Session(
+                UUID.randomUUID(),
+                "agent-test",
+                "alias",
+                modelConfig,
+                List.of("search_replace", "read_file"),
+                context,
+                sessionConfig,
+                Instant.now()
+        );
+    }
+
     private static String toolCallResponse(String text, String callId) {
+        return toolCallResponseFor(
+                text,
+                callId,
+                "write_file",
+                """
+                {
+                  "path": "notes.txt",
+                  "content": "data",
+                  "overwrite": false
+                }
+                """
+        );
+    }
+
+    private static String toolCallResponseFor(String text, String callId, String toolName, String argumentsJson) {
         return """
                 {
                   "message": {
@@ -259,12 +382,8 @@ class ModelRunnerLoopGuardRecoveryTest {
                         "id": "%s",
                         "type": "function",
                         "function": {
-                          "name": "write_file",
-                          "arguments": {
-                            "path": "notes.txt",
-                            "content": "data",
-                            "overwrite": false
-                          }
+                          "name": "%s",
+                          "arguments": %s
                         }
                       }
                     ]
@@ -272,7 +391,7 @@ class ModelRunnerLoopGuardRecoveryTest {
                   "done": true,
                   "done_reason": "stop"
                 }
-                """.formatted(text, callId);
+                """.formatted(text, callId, toolName, argumentsJson);
     }
 
     private static String finalResponse(String text) {
