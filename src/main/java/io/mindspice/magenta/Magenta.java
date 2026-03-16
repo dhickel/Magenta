@@ -85,6 +85,7 @@ public final class Magenta {
     private static final DateTimeFormatter STATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss");
     private static final int COMPLETION_GUARD_OPEN_TODO_LIST_LIMIT = 20;
     private static final String COMPLETION_GUARD_STOP_PREFIX = "[completion-guard-stop]";
+    private static final String EMPTY_TURN_STOP_PREFIX = "[model-empty-turn-stop]";
     private static final String TURN_ABORTED_TEXT = "[turn-aborted] request cancelled by user";
 
     private final RuntimeConfig runtimeConfig;
@@ -523,7 +524,7 @@ public final class Magenta {
         return configuredThreshold;
     }
 
-    private void updateStateSystemMessage(Session session) {
+    private void updateStateSystemMessage(Session session, SessionHandle handle, String agentId) {
         if (session == null || session.sessionId() == null) {
             return;
         }
@@ -542,6 +543,7 @@ public final class Magenta {
             return;
         }
         contextManager.upsertStateSystemMessage(session.context(), snapshotJson);
+        emitEvent(new SessionEvent.Action.StateSnapshotUpserted(handle, agentId, snapshotJson.length(), snapshotJson));
     }
 
     private String buildStateSnapshotJson(UUID sessionId, List<ContextElement> contextSnapshot) {
@@ -1032,7 +1034,7 @@ public final class Magenta {
                 ? toolManager.toolSpecificationsFor(yolo ? List.of("*") : activeToolIds)
                 : List.of();
         Runnable beforeModelCallHook = () -> {
-            updateStateSystemMessage(session);
+            updateStateSystemMessage(session, handle, session.agentId());
             boolean thresholdCompactionApplied = contextManager.compactIfNeeded(
                             session.sessionId(),
                             session.context(),
@@ -1470,6 +1472,12 @@ public final class Magenta {
                     toolMessageOutput.message().toolCallId(),
                     toolMessageOutput.message().content()
             ));
+            case SessionOutput.FinalOutput finalOutput -> {
+                String text = finalOutput.text() == null ? "" : finalOutput.text();
+                if (text.startsWith(EMPTY_TURN_STOP_PREFIX)) {
+                    emitEvent(new SessionEvent.Action.ModelEmptyTurnStop(handle, agentId, text));
+                }
+            }
             default -> {
                 // No action payload for non-tool output variants.
             }

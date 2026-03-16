@@ -76,6 +76,66 @@ class SessionEventLogSinkTest {
         assertThat(Files.exists(tempDir.resolve("logs/session-events.pretty.json"))).isFalse();
     }
 
+    @Test
+    void infoLevelLogsStateSnapshotUpsertAction() throws Exception {
+        SessionEventLogSink sink = new SessionEventLogSink(
+                tempDir,
+                new RuntimeConfig.ObservabilityConfig(RuntimeConfig.LogLevel.INFO, false)
+        );
+        SessionHandle handle = new SessionHandle(UUID.randomUUID(), () -> true);
+
+        sink.append(new SessionEvent.Action.StateSnapshotUpserted(
+                handle,
+                "agent-default",
+                321,
+                "{\"kind\":\"state_snapshot\",\"todos\":{\"activeTodoId\":\"todo-1\"}}"
+        ));
+
+        Path jsonl = tempDir.resolve("logs/session-events.jsonl");
+        String line = Files.readString(jsonl);
+        assertThat(line).contains("\"eventType\":\"StateSnapshotUpserted\"");
+        assertThat(line).contains("\"snapshotChars\":321");
+        assertThat(line).doesNotContain("\"activeTodoId\":\"todo-1\"");
+    }
+
+    @Test
+    void debugLevelLogsFullStateSnapshotMessage() throws Exception {
+        SessionEventLogSink sink = new SessionEventLogSink(
+                tempDir,
+                new RuntimeConfig.ObservabilityConfig(RuntimeConfig.LogLevel.DEBUG, false)
+        );
+        SessionHandle handle = new SessionHandle(UUID.randomUUID(), () -> true);
+
+        String snapshotMessage = "{\"kind\":\"state_snapshot\",\"todos\":{\"activeTodoId\":\"todo-1\"}}";
+        sink.append(new SessionEvent.Action.StateSnapshotUpserted(handle, "agent-default", snapshotMessage.length(), snapshotMessage));
+
+        Path jsonl = tempDir.resolve("logs/session-events.jsonl");
+        String line = Files.readString(jsonl);
+        assertThat(line).contains("\"eventType\":\"StateSnapshotUpserted\"");
+        assertThat(line).contains("\"snapshotChars\":" + snapshotMessage.length());
+        assertThat(line).contains("\\\"activeTodoId\\\":\\\"todo-1\\\"");
+    }
+
+    @Test
+    void infoLevelLogsModelEmptyTurnStopAction() throws Exception {
+        SessionEventLogSink sink = new SessionEventLogSink(
+                tempDir,
+                new RuntimeConfig.ObservabilityConfig(RuntimeConfig.LogLevel.INFO, false)
+        );
+        SessionHandle handle = new SessionHandle(UUID.randomUUID(), () -> true);
+
+        sink.append(new SessionEvent.Action.ModelEmptyTurnStop(
+                handle,
+                "agent-default",
+                "[model-empty-turn-stop] no assistant content after continuity retry (attempts=1/1)."
+        ));
+
+        Path jsonl = tempDir.resolve("logs/session-events.jsonl");
+        String line = Files.readString(jsonl);
+        assertThat(line).contains("\"eventType\":\"ModelEmptyTurnStop\"");
+        assertThat(line).contains("\"message\":\"[model-empty-turn-stop]");
+    }
+
     private SessionEvent.Action.ToolResult toolResultEvent(String content) {
         SessionHandle handle = new SessionHandle(UUID.randomUUID(), () -> true);
         return new SessionEvent.Action.ToolResult(handle, "agent-default", "read_file", "call-1", content);

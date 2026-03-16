@@ -200,6 +200,15 @@ public final class SessionEventLogSink {
             }
         }
 
+        if (event instanceof SessionEvent.Action.StateSnapshotUpserted stateSnapshotUpserted) {
+            return new SessionEvent.Action.StateSnapshotUpserted(
+                    stateSnapshotUpserted.sessionHandle(),
+                    stateSnapshotUpserted.agentId(),
+                    stateSnapshotUpserted.snapshotChars(),
+                    ""
+            );
+        }
+
         return event;
     }
 

@@ -49,9 +49,11 @@ public sealed interface SessionEvent permits SessionEvent.MessageIn,
 
     sealed interface Action extends SessionEvent permits Action.ToolCall,
             Action.ToolResult,
+            Action.StateSnapshotUpserted,
             Action.ContextCompacted,
             Action.ContextSendBudget,
             Action.ModelFailure,
+            Action.ModelEmptyTurnStop,
             Action.SessionStarted,
             Action.SessionClosed,
             Action.InputRouteAdded,
@@ -99,6 +101,29 @@ public sealed interface SessionEvent permits SessionEvent.MessageIn,
             @Override
             public String actionType() {
                 return "tool_result";
+            }
+        }
+
+        record StateSnapshotUpserted(
+                @NonNull SessionHandle sessionHandle,
+                @NonNull String agentId,
+                int snapshotChars,
+                @NonNull String snapshotMessage
+        ) implements Action {
+            public StateSnapshotUpserted(SessionHandle sessionHandle, String agentId, int snapshotChars) {
+                this(sessionHandle, agentId, snapshotChars, "");
+            }
+
+            public StateSnapshotUpserted {
+                Objects.requireNonNull(sessionHandle, "sessionHandle");
+                agentId = agentId == null ? "" : agentId;
+                snapshotChars = Math.max(snapshotChars, 0);
+                snapshotMessage = snapshotMessage == null ? "" : snapshotMessage;
+            }
+
+            @Override
+            public String actionType() {
+                return "state_snapshot_upserted";
             }
         }
 
@@ -167,6 +192,23 @@ public sealed interface SessionEvent permits SessionEvent.MessageIn,
             @Override
             public String actionType() {
                 return "model_failure";
+            }
+        }
+
+        record ModelEmptyTurnStop(
+                @NonNull SessionHandle sessionHandle,
+                @NonNull String agentId,
+                @NonNull String message
+        ) implements Action {
+            public ModelEmptyTurnStop {
+                Objects.requireNonNull(sessionHandle, "sessionHandle");
+                agentId = agentId == null ? "" : agentId;
+                message = message == null ? "" : message;
+            }
+
+            @Override
+            public String actionType() {
+                return "model_empty_turn_stop";
             }
         }
 

@@ -34,6 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class MagentaContextUsageTest {
     private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
     private static final String COMPLETION_GUARD_STOP_PREFIX = "[completion-guard-stop]";
+    private static final String EMPTY_TURN_STOP_PREFIX = "[model-empty-turn-stop]";
 
     @Test
     void contextUsageSupplierReturnsModelAndTokenSnapshot() {
@@ -226,6 +227,59 @@ class MagentaContextUsageTest {
 
             assertThat(chatCalls.get()).isEqualTo(2);
             assertThat(finalOutputs.get(finalOutputs.size() - 1)).startsWith(COMPLETION_GUARD_STOP_PREFIX);
+
+            magenta.closeSession(handle);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void emptyTurnStopEmitsDedicatedActionEvent() throws IOException {
+        AtomicInteger chatCalls = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/chat", exchange -> {
+            chatCalls.incrementAndGet();
+            String response = """
+                    {"model":"test-model","message":{"role":"assistant","content":""},"done":true}
+                    """;
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, response.getBytes(StandardCharsets.UTF_8).length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(response.getBytes(StandardCharsets.UTF_8));
+            }
+        });
+        server.start();
+
+        try {
+            RuntimeConfig config = runtimeConfigForEndpoint("http://127.0.0.1:" + server.getAddress().getPort());
+            Magenta magenta = new Magenta(config);
+            SessionHandle handle = magenta.startBaseSession("empty-turn-stop-event");
+            magenta.addInputRoute(handle, InputRoutePolicy.defaults());
+
+            AtomicReference<SessionEvent.Action.ModelEmptyTurnStop> eventRef = new AtomicReference<>();
+            magenta.addEventListener(handle, SessionEvent.Action.ModelEmptyTurnStop.class, eventRef::set);
+
+            List<String> finalOutputs = new ArrayList<>();
+            magenta.addOutputRoute(
+                    handle,
+                    io.mindspice.magenta.runtime.routing.OutputRoutePolicy.builder()
+                            .allowedOutputTags(java.util.Set.of(SessionOutput.FinalOutput.FILTER_TAG))
+                            .build(),
+                    event -> finalOutputs.add(event.output().text())
+            );
+
+            magenta.messageInputConsumer(handle).accept(SessionInput.userMessage("Continue"));
+            waitUntil(() -> chatCalls.get() == 2, 2);
+            waitUntil(() -> eventRef.get() != null, 2);
+            waitUntil(() -> !finalOutputs.isEmpty()
+                    && finalOutputs.get(finalOutputs.size() - 1).startsWith(EMPTY_TURN_STOP_PREFIX), 2);
+
+            SessionEvent.Action.ModelEmptyTurnStop event = eventRef.get();
+            assertThat(event).isNotNull();
+            assertThat(event.message()).startsWith(EMPTY_TURN_STOP_PREFIX);
+            assertThat(chatCalls.get()).isEqualTo(2);
+            assertThat(finalOutputs.get(finalOutputs.size() - 1)).startsWith(EMPTY_TURN_STOP_PREFIX);
 
             magenta.closeSession(handle);
         } finally {
