@@ -46,6 +46,15 @@ public final class WorkspaceHost {
         return activeWorkspaceId;
     }
 
+    public synchronized TWindow firstHiddenWindow() {
+        return windowsByWorkspace
+                .getOrDefault(activeWorkspaceId, List.of())
+                .stream()
+                .filter(TWindow::isHidden)
+                .findFirst()
+                .orElse(null);
+    }
+
     public synchronized String saveActiveWorkspaceSnapshot() {
         return "Workspace save placeholder for '" + activeWorkspaceId + "'";
     }
