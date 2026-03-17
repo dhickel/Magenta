@@ -3,9 +3,10 @@ package io.mindspice.magenta;
 import io.mindspice.magenta.runtime.config.RuntimeConfig;
 import io.mindspice.magenta.runtime.routing.RoutingEventLevel;
 import io.mindspice.magenta.runtime.session.config.SessionParams;
-import io.mindspice.magenta.ui.casciian.CasciianUiScaffold;
-import io.mindspice.magenta.ui.casciian.CasciianTerminalUiBootstrap;
-import io.mindspice.magenta.ui.TerminalUiBootstrap;
+import io.mindspice.magenta.ui.tui.TuiApplication;
+import io.mindspice.magenta.ui.tui.TuiTerminalUiBootstrap;
+import io.mindspice.magenta.ui.tui.TuiThemeRegistry;
+import io.mindspice.magenta.ui.tui.WorkspaceHost;
 import io.mindspice.magenta.ui.TerminalUiCallbacks;
 import io.mindspice.magenta.ui.TerminalUiConfig;
 import io.mindspice.magenta.ui.ToolApprovalPromptAdapter;
@@ -20,15 +21,15 @@ public class Main {
 
     public static void main(String[] args) {
         CliArgs cli = parseArgs(args);
-        String uiBackend = System.getenv().getOrDefault("MAGENTA_UI_BACKEND", "casciian")
+        String uiBackend = System.getenv().getOrDefault("MAGENTA_UI_BACKEND", "tui")
                 .trim()
                 .toLowerCase(java.util.Locale.ROOT);
-        if (uiBackend.equals("casciian-demo")) {
+        if (uiBackend.equals("tui-demo")) {
             try {
-                CasciianUiScaffold.runDemo();
+                new TuiApplication(new TuiThemeRegistry(), new WorkspaceHost()).run();
                 return;
             } catch (Exception e) {
-                throw new IllegalStateException("Failed to start Casciian demo UI", e);
+                throw new IllegalStateException("Failed to start TUI demo UI", e);
             }
         }
 
@@ -71,11 +72,7 @@ public class Main {
         );
 
         try {
-            if (uiBackend.equals("lanterna")) {
-                TerminalUiBootstrap.bootstrap(magenta, uiConfig, approvalAdapter).runLoop();
-            } else {
-                CasciianTerminalUiBootstrap.bootstrap(magenta, uiConfig, approvalAdapter).runLoop();
-            }
+            TuiTerminalUiBootstrap.bootstrap(magenta, uiConfig, approvalAdapter).runLoop();
         } catch (Exception e) {
             throw new IllegalStateException("Failed to start terminal UI", e);
         }
