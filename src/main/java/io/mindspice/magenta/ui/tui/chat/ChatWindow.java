@@ -35,7 +35,6 @@ public final class ChatWindow extends TWindow {
     private final TText transcript;
     private final ComposerEditor composer;
     private final TVScroller composerScroller;
-    private final TLabel metadataLine;
     private final TLabel statusLine;
 
     private final List<TranscriptBlock> blocks = new ArrayList<>();
@@ -55,7 +54,7 @@ public final class ChatWindow extends TWindow {
         this.showTimestamps = showTimestamps;
 
         this.transcriptPanel = addPanel(1, 1, Math.max(18, width - 2), Math.max(8, height - 8));
-        this.transcriptPanel.setTitle("Chat");
+        this.transcriptPanel.setTitle("");
         this.transcript = transcriptPanel.addText("", 1, 1,
                 Math.max(16, transcriptPanel.getWidth() - 2),
                 Math.max(MIN_TRANSCRIPT_ROWS, transcriptPanel.getHeight() - 2));
@@ -64,10 +63,10 @@ public final class ChatWindow extends TWindow {
         this.transcript.getVerticalScroller().setBottomValue(1);
 
         this.infoPanel = addPanel(1, Math.max(2, height - 9), Math.max(18, width - 2), 3);
-        this.infoPanel.setTitle("Context | Root | Model | Security | Yolo");
+        this.infoPanel.setTitle("");
 
         this.composerPanel = addPanel(1, Math.max(2, height - 6), Math.max(18, width - 2), 4);
-        this.composerPanel.setTitle("Input");
+        this.composerPanel.setTitle("");
         this.composer = new ComposerEditor(
                 composerPanel,
                 1,
@@ -86,9 +85,7 @@ public final class ChatWindow extends TWindow {
         this.composerScroller.setBottomValue(1);
         this.composerScroller.setValue(0);
 
-        this.metadataLine = addLabel("", 1, 1);
         this.statusLine = infoPanel.addLabel("", 1, 1);
-        this.metadataLine.setWidth(Math.max(12, width - 2));
         this.statusLine.setWidth(Math.max(12, width - 4));
 
         relayout();
@@ -103,11 +100,6 @@ public final class ChatWindow extends TWindow {
     public void setStatus(String status) {
         String text = status == null ? "" : status;
         statusLine.setLabel(compactSingleLine(text, Math.max(16, getWidth() - 4)));
-    }
-
-    public void setMetadata(String metadata) {
-        String text = metadata == null ? "" : metadata;
-        metadataLine.setLabel(compactSingleLine(text, Math.max(16, getWidth() - 4)));
     }
 
     public void setController(ChatController controller) {
@@ -167,11 +159,7 @@ public final class ChatWindow extends TWindow {
         int composerRows = Math.max(MIN_COMPOSER_ROWS, Math.min(6, usableRows / 4));
         int transcriptRows = Math.max(MIN_TRANSCRIPT_ROWS, usableRows - composerRows - 2);
 
-        metadataLine.setX(1);
-        metadataLine.setY(1);
-        metadataLine.setWidth(innerWidth);
-
-        transcriptPanel.setDimensions(1, 2, innerWidth, transcriptRows + 2);
+        transcriptPanel.setDimensions(1, 1, innerWidth, transcriptRows + 2);
         transcript.setDimensions(1, 1,
                 Math.max(16, transcriptPanel.getWidth() - 2),
                 Math.max(MIN_TRANSCRIPT_ROWS, transcriptPanel.getHeight() - 2));

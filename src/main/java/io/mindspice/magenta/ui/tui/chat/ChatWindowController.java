@@ -66,7 +66,6 @@ public final class ChatWindowController implements ChatController {
     }
 
     public void initializeWindowState() {
-        appendBlock("system", List.of("Commands: /help, /session, /clear, /new, /exit"));
         renderStatus();
         window.focusComposer();
     }
@@ -338,9 +337,6 @@ public final class ChatWindowController implements ChatController {
             String agent = (settings.agentId() == null || settings.agentId().isBlank()) ? "assistant" : settings.agentId();
             String shortSession = shortSessionId(usage.sessionId().toString());
             String title = "Chat | agent: " + agent + " | session: " + shortSession;
-            String metadata = "agent: " + agent
-                    + " | model: " + settings.modelId()
-                    + " | session: " + settings.alias() + " [" + shortSession + "]";
             String status = "context: " + usage.estimatedContextTokens() + "/" + usage.maxContextTokens()
                     + " (" + String.format(Locale.ROOT, "%.1f", usage.percentOfMaxContext()) + "%)"
                     + " | root: " + compactRoot(magenta.runtimeConfig().workspaceRoot().toString())
@@ -349,7 +345,6 @@ public final class ChatWindowController implements ChatController {
                     + " | yolo: " + (magenta.toolPolicy(binding.handle()).devYoloOverride() ? "on" : "off");
             appendUi(() -> {
                 window.setTitle(title);
-                window.setMetadata(metadata);
                 window.setStatus(status);
             });
         } catch (Exception e) {
