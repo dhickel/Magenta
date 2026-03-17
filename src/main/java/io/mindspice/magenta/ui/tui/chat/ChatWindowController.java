@@ -66,10 +66,7 @@ public final class ChatWindowController implements ChatController {
     }
 
     public void initializeWindowState() {
-        appendBlock("system", List.of(
-                "sessionId=" + binding.handle().sessionId(),
-                "Commands: /help, /session, /clear, /new, /exit"
-        ));
+        appendBlock("system", List.of("Commands: /help, /session, /clear, /new, /exit"));
         renderStatus();
         window.focusComposer();
     }
@@ -344,11 +341,12 @@ public final class ChatWindowController implements ChatController {
             String metadata = "agent: " + agent
                     + " | model: " + settings.modelId()
                     + " | session: " + settings.alias() + " [" + shortSession + "]";
-            String status = "session=" + settings.alias()
-                    + " model=" + settings.modelId()
-                    + " context=" + usage.estimatedContextTokens() + "/" + usage.maxContextTokens()
+            String status = "context: " + usage.estimatedContextTokens() + "/" + usage.maxContextTokens()
                     + " (" + String.format(Locale.ROOT, "%.1f", usage.percentOfMaxContext()) + "%)"
-                    + " busy=" + (turnBusy.get() ? "yes" : "no");
+                    + " | root: " + compactRoot(magenta.runtimeConfig().workspaceRoot().toString())
+                    + " | model: " + settings.modelId()
+                    + " | security: " + magenta.toolPolicy(binding.handle()).mode().name()
+                    + " | yolo: " + (magenta.toolPolicy(binding.handle()).devYoloOverride() ? "on" : "off");
             appendUi(() -> {
                 window.setTitle(title);
                 window.setMetadata(metadata);
@@ -387,6 +385,13 @@ public final class ChatWindowController implements ChatController {
             return "unknown";
         }
         return sessionId.length() <= 8 ? sessionId : sessionId.substring(0, 8);
+    }
+
+    private String compactRoot(String root) {
+        if (root == null || root.isBlank()) {
+            return ".";
+        }
+        return compact(root, 36);
     }
 
     private boolean shouldRenderSecurityEvent(

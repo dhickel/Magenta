@@ -5,6 +5,7 @@ import casciian.TKeypress;
 import casciian.TLabel;
 import casciian.TPanel;
 import casciian.TText;
+import casciian.TVScroller;
 import casciian.TWindow;
 import casciian.event.TKeypressEvent;
 import casciian.event.TResizeEvent;
@@ -29,9 +30,11 @@ public final class ChatWindow extends TWindow {
     private final boolean showTimestamps;
 
     private final TPanel transcriptPanel;
+    private final TPanel infoPanel;
     private final TPanel composerPanel;
     private final TText transcript;
     private final ComposerEditor composer;
+    private final TVScroller composerScroller;
     private final TLabel metadataLine;
     private final TLabel statusLine;
 
@@ -57,7 +60,11 @@ public final class ChatWindow extends TWindow {
                 Math.max(16, transcriptPanel.getWidth() - 2),
                 Math.max(MIN_TRANSCRIPT_ROWS, transcriptPanel.getHeight() - 2));
         this.transcript.getVerticalScroller().setVisible(true);
+        this.transcript.getHorizontalScroller().setVisible(false);
         this.transcript.getVerticalScroller().setBottomValue(1);
+
+        this.infoPanel = addPanel(1, Math.max(2, height - 9), Math.max(18, width - 2), 3);
+        this.infoPanel.setTitle("Context | Root | Model | Security | Yolo");
 
         this.composerPanel = addPanel(1, Math.max(2, height - 6), Math.max(18, width - 2), 4);
         this.composerPanel.setTitle("Input");
@@ -65,14 +72,24 @@ public final class ChatWindow extends TWindow {
                 composerPanel,
                 1,
                 1,
-                Math.max(16, composerPanel.getWidth() - 2),
+                Math.max(15, composerPanel.getWidth() - 3),
                 Math.max(MIN_COMPOSER_ROWS, composerPanel.getHeight() - 2)
         );
+        this.composer.setAutoWrap(true);
+        this.composerScroller = new TVScroller(
+                composerPanel,
+                Math.max(2, composerPanel.getWidth() - 2),
+                1,
+                Math.max(MIN_COMPOSER_ROWS, composerPanel.getHeight() - 2)
+        );
+        this.composerScroller.setTopValue(0);
+        this.composerScroller.setBottomValue(1);
+        this.composerScroller.setValue(0);
 
         this.metadataLine = addLabel("", 1, 1);
-        this.statusLine = addLabel("", 1, Math.max(1, height - 1));
+        this.statusLine = infoPanel.addLabel("", 1, 1);
         this.metadataLine.setWidth(Math.max(12, width - 2));
-        this.statusLine.setWidth(Math.max(12, width - 2));
+        this.statusLine.setWidth(Math.max(12, width - 4));
 
         relayout();
     }
@@ -107,6 +124,7 @@ public final class ChatWindow extends TWindow {
 
     public void clearComposer() {
         composer.setText("");
+        refreshComposerScrollIndicator();
     }
 
     public void clearTranscript() {
@@ -158,19 +176,25 @@ public final class ChatWindow extends TWindow {
                 Math.max(16, transcriptPanel.getWidth() - 2),
                 Math.max(MIN_TRANSCRIPT_ROWS, transcriptPanel.getHeight() - 2));
         transcript.getVerticalScroller().setVisible(true);
+        transcript.getHorizontalScroller().setVisible(false);
 
-        int statusY = transcriptPanel.getY() + transcriptPanel.getHeight();
+        int infoY = transcriptPanel.getY() + transcriptPanel.getHeight();
+        infoPanel.setDimensions(1, infoY, innerWidth, 3);
         statusLine.setX(1);
-        statusLine.setY(statusY);
-        statusLine.setWidth(innerWidth);
+        statusLine.setY(1);
+        statusLine.setWidth(Math.max(12, infoPanel.getWidth() - 2));
 
-        int composerY = statusY + 1;
+        int composerY = infoY + infoPanel.getHeight();
         composerPanel.setDimensions(1, composerY, innerWidth, composerRows + 2);
         composer.setDimensions(1, 1,
-                Math.max(16, composerPanel.getWidth() - 2),
+                Math.max(15, composerPanel.getWidth() - 3),
                 Math.max(MIN_COMPOSER_ROWS, composerPanel.getHeight() - 2));
+        composerScroller.setX(Math.max(2, composerPanel.getWidth() - 2));
+        composerScroller.setY(1);
+        composerScroller.setHeight(Math.max(MIN_COMPOSER_ROWS, composerPanel.getHeight() - 2));
 
         refreshTranscriptText();
+        refreshComposerScrollIndicator();
     }
 
     private void refreshTranscriptText() {
@@ -187,6 +211,14 @@ public final class ChatWindow extends TWindow {
         transcript.getVerticalScroller().setTopValue(0);
         transcript.getVerticalScroller().setBottomValue(Math.max(1, visualLines));
         transcript.toBottom();
+    }
+
+    private void refreshComposerScrollIndicator() {
+        int lineCount = Math.max(1, composer.getLineCount());
+        int editingRow = Math.max(0, composer.getEditingRowNumber());
+        composerScroller.setTopValue(0);
+        composerScroller.setBottomValue(lineCount);
+        composerScroller.setValue(Math.min(editingRow, lineCount - 1));
     }
 
     private String formatBlock(String title, List<String> lines) {
@@ -251,9 +283,11 @@ public final class ChatWindow extends TWindow {
                 if (controller.submitComposerText(submitted)) {
                     setText("");
                 }
+                refreshComposerScrollIndicator();
                 return;
             }
             super.onKeypress(event);
+            refreshComposerScrollIndicator();
         }
     }
 
