@@ -32,6 +32,7 @@ public final class ChatWindow extends TWindow {
     private final TPanel composerPanel;
     private final TText transcript;
     private final ComposerEditor composer;
+    private final TLabel metadataLine;
     private final TLabel statusLine;
 
     private final List<TranscriptBlock> blocks = new ArrayList<>();
@@ -51,13 +52,15 @@ public final class ChatWindow extends TWindow {
         this.showTimestamps = showTimestamps;
 
         this.transcriptPanel = addPanel(1, 1, Math.max(18, width - 2), Math.max(8, height - 8));
-        this.transcriptPanel.setTitle("Transcript");
+        this.transcriptPanel.setTitle("Chat");
         this.transcript = transcriptPanel.addText("", 1, 1,
                 Math.max(16, transcriptPanel.getWidth() - 2),
                 Math.max(MIN_TRANSCRIPT_ROWS, transcriptPanel.getHeight() - 2));
+        this.transcript.getVerticalScroller().setVisible(true);
+        this.transcript.getVerticalScroller().setBottomValue(1);
 
         this.composerPanel = addPanel(1, Math.max(2, height - 6), Math.max(18, width - 2), 4);
-        this.composerPanel.setTitle("Composer (Enter=submit, Ctrl+N=newline, Ctrl+C=abort)");
+        this.composerPanel.setTitle("Input");
         this.composer = new ComposerEditor(
                 composerPanel,
                 1,
@@ -66,7 +69,9 @@ public final class ChatWindow extends TWindow {
                 Math.max(MIN_COMPOSER_ROWS, composerPanel.getHeight() - 2)
         );
 
+        this.metadataLine = addLabel("", 1, 1);
         this.statusLine = addLabel("", 1, Math.max(1, height - 1));
+        this.metadataLine.setWidth(Math.max(12, width - 2));
         this.statusLine.setWidth(Math.max(12, width - 2));
 
         relayout();
@@ -81,6 +86,11 @@ public final class ChatWindow extends TWindow {
     public void setStatus(String status) {
         String text = status == null ? "" : status;
         statusLine.setLabel(compactSingleLine(text, Math.max(16, getWidth() - 4)));
+    }
+
+    public void setMetadata(String metadata) {
+        String text = metadata == null ? "" : metadata;
+        metadataLine.setLabel(compactSingleLine(text, Math.max(16, getWidth() - 4)));
     }
 
     public void setController(ChatController controller) {
@@ -135,24 +145,30 @@ public final class ChatWindow extends TWindow {
         int height = Math.max(12, getHeight());
 
         int innerWidth = Math.max(20, width - 2);
-        int usableRows = Math.max(8, height - 4);
+        int usableRows = Math.max(8, height - 6);
         int composerRows = Math.max(MIN_COMPOSER_ROWS, Math.min(6, usableRows / 4));
-        int transcriptRows = Math.max(MIN_TRANSCRIPT_ROWS, usableRows - composerRows - 1);
+        int transcriptRows = Math.max(MIN_TRANSCRIPT_ROWS, usableRows - composerRows - 2);
 
-        transcriptPanel.setDimensions(1, 1, innerWidth, transcriptRows + 2);
+        metadataLine.setX(1);
+        metadataLine.setY(1);
+        metadataLine.setWidth(innerWidth);
+
+        transcriptPanel.setDimensions(1, 2, innerWidth, transcriptRows + 2);
         transcript.setDimensions(1, 1,
                 Math.max(16, transcriptPanel.getWidth() - 2),
                 Math.max(MIN_TRANSCRIPT_ROWS, transcriptPanel.getHeight() - 2));
+        transcript.getVerticalScroller().setVisible(true);
 
-        int composerY = transcriptPanel.getY() + transcriptPanel.getHeight();
+        int statusY = transcriptPanel.getY() + transcriptPanel.getHeight();
+        statusLine.setX(1);
+        statusLine.setY(statusY);
+        statusLine.setWidth(innerWidth);
+
+        int composerY = statusY + 1;
         composerPanel.setDimensions(1, composerY, innerWidth, composerRows + 2);
         composer.setDimensions(1, 1,
                 Math.max(16, composerPanel.getWidth() - 2),
                 Math.max(MIN_COMPOSER_ROWS, composerPanel.getHeight() - 2));
-
-        statusLine.setX(1);
-        statusLine.setY(Math.max(composerY + composerPanel.getHeight(), 1));
-        statusLine.setWidth(innerWidth);
 
         refreshTranscriptText();
     }
@@ -165,8 +181,11 @@ public final class ChatWindow extends TWindow {
         if (streamingTitle != null) {
             rendered.add(formatBlock(streamingTitle, List.of(streamingText)));
         }
-        transcript.setText(String.join("\n\n", rendered));
-
+        String renderedText = String.join("\n\n", rendered);
+        transcript.setText(renderedText);
+        int visualLines = renderedText.isBlank() ? 1 : renderedText.split("\\R", -1).length;
+        transcript.getVerticalScroller().setTopValue(0);
+        transcript.getVerticalScroller().setBottomValue(Math.max(1, visualLines));
         transcript.toBottom();
     }
 

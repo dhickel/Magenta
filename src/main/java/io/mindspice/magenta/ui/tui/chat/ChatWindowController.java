@@ -338,12 +338,22 @@ public final class ChatWindowController implements ChatController {
         try {
             var usage = binding.contextUsage().get();
             var settings = magenta.settingsFor(binding.handle());
+            String agent = (settings.agentId() == null || settings.agentId().isBlank()) ? "assistant" : settings.agentId();
+            String shortSession = shortSessionId(usage.sessionId().toString());
+            String title = "Chat | agent: " + agent + " | session: " + shortSession;
+            String metadata = "agent: " + agent
+                    + " | model: " + settings.modelId()
+                    + " | session: " + settings.alias() + " [" + shortSession + "]";
             String status = "session=" + settings.alias()
                     + " model=" + settings.modelId()
                     + " context=" + usage.estimatedContextTokens() + "/" + usage.maxContextTokens()
                     + " (" + String.format(Locale.ROOT, "%.1f", usage.percentOfMaxContext()) + "%)"
                     + " busy=" + (turnBusy.get() ? "yes" : "no");
-            appendUi(() -> window.setStatus(status));
+            appendUi(() -> {
+                window.setTitle(title);
+                window.setMetadata(metadata);
+                window.setStatus(status);
+            });
         } catch (Exception e) {
             appendUi(() -> window.setStatus("status unavailable"));
         }
@@ -370,6 +380,13 @@ public final class ChatWindowController implements ChatController {
     private String assistantTitle() {
         String agentId = magenta.settingsFor(binding.handle()).agentId();
         return (agentId == null || agentId.isBlank()) ? "assistant" : agentId;
+    }
+
+    private String shortSessionId(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return "unknown";
+        }
+        return sessionId.length() <= 8 ? sessionId : sessionId.substring(0, 8);
     }
 
     private boolean shouldRenderSecurityEvent(
