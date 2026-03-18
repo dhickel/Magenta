@@ -62,7 +62,7 @@ public final class ChatWindowController implements ChatController {
         this.window = Objects.requireNonNull(window, "window");
         this.closeRuntime = Objects.requireNonNull(closeRuntime, "closeRuntime");
         this.slashRegistry = buildSlashRegistry();
-        this.outputWriter = new AssistantOutputWriter(new ChatOutputTarget(), false, assistantTitle());
+        this.outputWriter = new AssistantOutputWriter(new ChatOutputTarget(), false, assistantTitle(), false);
     }
 
     public void initializeWindowState() {
@@ -190,7 +190,8 @@ public final class ChatWindowController implements ChatController {
     }
 
     private boolean processInputLine(String line) {
-        String trimmed = line.trim();
+        String normalized = stripTrailingLineBreaks(line);
+        String trimmed = normalized.trim();
 
         if (config.behavior().isExitCommand(trimmed)) {
             closeRuntime.run();
@@ -201,9 +202,16 @@ public final class ChatWindowController implements ChatController {
             return false;
         }
 
-        appendBlock("user", List.of(line));
-        binding.messageIn().accept(SessionInput.userMessage(line));
+        appendBlock("user", List.of(normalized));
+        binding.messageIn().accept(SessionInput.userMessage(normalized));
         return true;
+    }
+
+    static String stripTrailingLineBreaks(String value) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        return value.replaceFirst("\\R++\\z", "");
     }
 
     private boolean dispatchSlashCommand(String line) {
@@ -353,7 +361,11 @@ public final class ChatWindowController implements ChatController {
     }
 
     private void appendBlock(String title, List<String> lines) {
-        appendUi(() -> window.appendBlock(title, lines));
+        appendStyledBlock(title, title, lines);
+    }
+
+    private void appendStyledBlock(String title, String styleKey, List<String> lines) {
+        appendUi(() -> window.appendBlock(title, styleKey, lines));
     }
 
     private void appendUi(Runnable runnable) {
@@ -436,21 +448,34 @@ public final class ChatWindowController implements ChatController {
     }
 
     private final class ChatOutputTarget implements AssistantOutputTarget {
+        private String lastFinalizedStreamText = "";
+
         @Override
         public synchronized void printAssistantToken(String token) {
             if (token == null || token.isEmpty()) {
                 return;
             }
+            if (!streamingEnabledForSession()) {
+                return;
+            }
             synchronized (streamLock) {
                 streamBuffer.append(token);
                 String content = streamBuffer.toString();
-                appendUi(() -> window.updateStreaming("assistant", content));
+                appendUi(() -> window.updateStreaming(assistantTitle(), "assistant", content));
             }
         }
 
         @Override
         public synchronized void finishAssistantStreamLine() {
+            if (!streamingEnabledForSession()) {
+                synchronized (streamLock) {
+                    streamBuffer.setLength(0);
+                    lastFinalizedStreamText = "";
+                }
+                return;
+            }
             synchronized (streamLock) {
+                lastFinalizedStreamText = streamBuffer.toString();
                 streamBuffer.setLength(0);
                 appendUi(window::finishStreaming);
             }
@@ -461,7 +486,14 @@ public final class ChatWindowController implements ChatController {
             if (text == null || text.isBlank()) {
                 return;
             }
-            appendBlock("assistant", List.of(text));
+            synchronized (streamLock) {
+                if (!lastFinalizedStreamText.isBlank() && lastFinalizedStreamText.equals(text)) {
+                    lastFinalizedStreamText = "";
+                    return;
+                }
+                lastFinalizedStreamText = "";
+            }
+            appendStyledBlock(assistantTitle(), "assistant", List.of(text));
         }
 
         @Override
@@ -482,6 +514,14 @@ public final class ChatWindowController implements ChatController {
                 return;
             }
             appendBlock("warn", List.of("stream-fallback> " + reason));
+        }
+
+        private boolean streamingEnabledForSession() {
+            try {
+                return magenta.settingsFor(binding.handle()).streamingEnabled();
+            } catch (Exception ignored) {
+                return false;
+            }
         }
 
         private List<String> renderToolLines(String title, List<String> lines) {

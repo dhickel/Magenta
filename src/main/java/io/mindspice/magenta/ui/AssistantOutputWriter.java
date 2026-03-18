@@ -8,25 +8,36 @@ public final class AssistantOutputWriter {
 
     private final AssistantOutputTarget target;
     private final String assistantPrefix;
+    private final boolean emitAssistantPrefix;
     private boolean streamInProgress = false;
 
     public AssistantOutputWriter(AssistantOutputTarget target) {
-        this(target, false, "assistant");
+        this(target, false, "assistant", true);
     }
 
     public AssistantOutputWriter(AssistantOutputTarget target, boolean emitFallbackNotice) {
-        this(target, emitFallbackNotice, "assistant");
+        this(target, emitFallbackNotice, "assistant", true);
     }
 
     public AssistantOutputWriter(AssistantOutputTarget target, boolean emitFallbackNotice, String assistantLabel) {
+        this(target, emitFallbackNotice, assistantLabel, true);
+    }
+
+    public AssistantOutputWriter(
+            AssistantOutputTarget target,
+            boolean emitFallbackNotice,
+            String assistantLabel,
+            boolean emitAssistantPrefix
+    ) {
         this.target = Objects.requireNonNull(target, "target");
         this.assistantPrefix = normalizeAssistantPrefix(assistantLabel);
+        this.emitAssistantPrefix = emitAssistantPrefix;
     }
 
     public void onOutput(SessionOutput output) {
         switch (output) {
             case SessionOutput.StreamedOutput stream -> {
-                if (!streamInProgress) {
+                if (!streamInProgress && emitAssistantPrefix) {
                     target.printAssistantToken(assistantPrefix);
                 }
                 streamInProgress = true;
@@ -38,7 +49,8 @@ public final class AssistantOutputWriter {
                     target.finishAssistantStreamLine();
                 } else {
                     if (hasFinalText) {
-                        target.printAssistantFinal(assistantPrefix + finalOutput.text());
+                        String text = emitAssistantPrefix ? assistantPrefix + finalOutput.text() : finalOutput.text();
+                        target.printAssistantFinal(text);
                     }
                 }
                 streamInProgress = false;

@@ -1,72 +1,62 @@
-# Design Document: Magenta2 vs. Codex CLI Comparison Report
+# Design: Magenta2 vs OpenAI Codex Technical Blueprint
 
 ## 1. Problem Statement
-Magenta2 (our repo) uses a granular `todo` tool (create/list/update/delete) with strict prompt-level enforcement (TODO discipline) to manage complex tasks like the `cannabis3.md` research workflow. However, we are seeing issues with models accurately mapping and adhering to these complex tasks. Other CLIs, specifically Codex CLI (openai/codex), seem to use different mechanisms (like an integrated 'Planning Phase' and `AGENTS.md`) for workflow and task adherence. We need a comprehensive comparison of these two approaches to identify improvements for Magenta2's autonomous agents.
+**Magenta2** is a Java-based runtime providing a foundation for agentic workflows through built-in tools, session management, and context compaction. To maintain its competitive edge, Magenta2 must be benchmarked against industry leaders like the **OpenAI Codex CLI**. This project will produce a high-quality "Technical Blueprint" report that analyzes Codex's tools, harnessing, and agentic workflows to identify gaps and drive future development for Magenta2.
 
 ## 2. Requirements
 
-### Functional Requirements:
-- **Code & Prompt Analysis:** Deep dive into Magenta2's `TodoTools.java` and `cannabis3.md` prompt discipline.
-- **Codex Research:** Detailed analysis of Codex CLI's 'Planning Phase' and its impact on task adherence.
-- **Comparison Matrix:** Generate a 'Feature vs. Outcome' matrix comparing 'todo' tool steps to 'Codex Planning Phase' steps.
-- **Improvement Roadmap:** Provide actionable recommendations for Magenta2 (e.g., Planning Phase, new tools/ideas) that help agents better navigate tasks.
-- **Future Feature Write-up:** A detailed write-up of suggested future features for robust autonomous agents.
+### Functional Requirements
+- **Comprehensive Tool Mapping**: 1:1 schema-level analysis of Codex (Rust) vs Magenta2 (Java) toolsets.
+- **Full Codex Tool Catalog**: Detailed descriptions, JSON-Schema argument definitions, and return types for all Codex tools.
+- **Harnessing & Safety Review**: Direct comparison of Codex's execution loops, safety gates, and environment isolation with Magenta2's `ToolManager`.
+- **Workflow & Context Analysis**: In-depth review of Codex's agentic interaction patterns, context management, and compaction techniques.
+- **Strategic Roadmap**: A 3-phase prioritized roadmap for future Magenta2 improvements.
 
-### Non-Functional Requirements:
-- **Simplicity:** Recommendations must prioritize simplicity and avoid "over-architecture," as this is a hobbyist project.
-- **Finality:** The only output is the comparison document and suggestions; no code edits or implementation plans for the improvements are required.
+### Non-Functional Requirements
+- **Technical Rigor**: Precision in schema definitions for direct Java implementation.
+- **Actionability**: Clear "how" and "why" for every recommendation.
+- **Monolithic Output**: A single, well-structured Markdown document.
 
-### Constraints:
-- No code modifications allowed.
-- Primary comparison baseline: `cannabis3.md` research workflow.
-- Primary external reference: `https://github.com/openai/codex`.
+### Constraints
+- **Language Gap**: Codex (Rust) to Magenta2 (Java) translation.
+- **No Code Execution**: Output is a document artifact only.
+- **Scope Boundary**: Functional core and agentic logic only (excluding UI/UX).
 
 ## 3. Approach
 
-### Selected Approach: Feature-Outcome Matrix
-We will conduct a side-by-side analysis of Magenta2's `todo` tool (via `TodoTools.java` and `cannabis3.md`) and Codex CLI's 'Planning Phase' (via `codex-rs` code and documentation). This matrix will map each granular 'todo' step (e.g., `todo_create`, `todo_update`) to a corresponding 'Codex Planning Phase' step (e.g., plan generation, user approval, execution state) for a comparable complex task. This approach is best for identifying granular differences in how task adherence is maintained and where friction points exist.
+### Selected Approach: Hybrid Capability-Schema Synthesis
+This approach balances high-level functional context with low-level technical specifications, organized by system layer.
 
-### Alternatives Considered:
-- **Lifecycle Walkthroughs:** Tracking a single complex task from start to finish in both systems. While good for workflow friction, it might miss granular tool implementation differences.
+- **System Layers**:
+  1. **Tooling Layer**: Direct schema comparison and cataloging.
+  2. **Harnessing Layer**: Reliability, safety, and execution loops.
+  3. **Workflow Layer**: Interaction models, context, and compaction.
+- **Analysis Methodology**: Recursive scanning of `openai/codex` and `io.mindspice.magenta`, normalization to a unified "Capability Schema," and synthesis of a strategic roadmap.
 
-### Selected Tooling:
-- `grep_search` and `read_file` for internal code/prompt analysis.
-- `web_fetch` and `google_web_search` for `openai/codex` repository research.
-- `technical_writer` subagent for document generation.
+## 4. Architecture
 
-## 4. Architecture (Document Structure)
-The final artifact will be a structured report with the following sections:
-1. **Executive Summary:** Overview of the comparison and key takeaways.
-2. **Magenta2 Internal Analysis:** Detailed look at the 'todo' toolset, its implementation in `TodoTools.java`, and the `cannabis3.md` prompt discipline.
-3. **Codex CLI External Analysis:** Analysis of the `openai/codex` repository, specifically its 'Planning Phase', `AGENTS.md` context, and `SKILL.md` workflows.
-4. **Feature-Outcome Comparison Matrix:** Side-by-side comparison of Magenta2's state-heavy tool use vs Codex's plan-centric workflow.
-5. **Recommendations for Improvement:** Practical, "no over-architected" tools or ideas from Codex (e.g., Planning Phase integration, simplified task state).
-6. **Future Feature Roadmap:** Suggestions for robust autonomous agent capabilities and tool-based intelligence.
+### Report Organization
+1. **Executive Summary**
+2. **Tooling Layer**: Parity matrix, full catalog, and Java-style recommendations.
+3. **Harnessing Layer**: Reliability, safety, and `ToolManager` updates.
+4. **Workflow & Context Layer**: Interaction models, persistence, and compaction logic.
+5. **Strategic Roadmap**: Phase 1 (Tools), Phase 2 (Harnessing), Phase 3 (Architecture).
 
-### Agent Team:
-- **Technical Writer:** Responsible for drafting and structuring the final comparison report and suggestions.
-- **Codebase Investigator:** Responsible for detailed internal analysis of Magenta2's `TodoTools.java` and prompt files (`cannabis3.md`, `system.md`).
-- **Generalist:** Responsible for deep research into the `openai/codex` repository and planning phase implementation.
+## 5. Agent Team
+- **Architect (`architect`)**: Comparative workflow and harnessing analysis.
+- **API Designer (`api_designer`)**: Tool layer and schema mapping (Rust to Java).
+- **Technical Writer (`technical_writer`)**: Synthesis and report generation.
+- **Code Reviewer (`code_reviewer`)**: Final quality gate and technical precision.
 
-## 5. Risk Assessment & Mitigation
+## 6. Risk Assessment & Mitigation
+- **Risk: Language Gap**: Use `api_designer` for primitive-level type mapping (Rust to Java).
+- **Risk: Hidden Context**: Use `google_web_search` and `web_fetch` to identify proprietary patterns.
+- **Risk: Scope Creep**: Strict adherence to the "Hybrid Synthesis" methodology and approved architecture.
 
-### Risk 1: Codex CLI Complexity
-Codex's `codex-rs` repository is a large, complex Rust workspace. It may be difficult to find the exact internal planning logic without deep analysis.
-- **Mitigation:** Focus research on the `codex-rs/core/` and `codex-rs/cli/` crates, specifically looking for `plan` and `state` related modules. Use `web_fetch` and `google_web_search` for targeted discovery.
-
-### Risk 2: 'No Over-Architecture' Constraint
-Codex CLI is a highly robust, professional tool. Its features (like MCP or TUI-based planning) may be too complex for a hobbyist project like Magenta2.
-- **Mitigation:** Distill Codex's high-level *principles* (e.g., "Planning before Execution," "Project-level Context") into simpler, tool-based implementations for Magenta2 that don't require a full UI or protocol rewrite.
-
-### Risk 3: Task Specificity
-The `cannabis3.md` workflow is very strict. Results may not generalize to all agent use cases.
-- **Mitigation:** While using `cannabis3.md` as the primary baseline, also consider the general-purpose `system.md` prompts to ensure recommendations are useful for broader agentic work.
-
-## 6. Success Criteria
-The task is successful if:
-- **Comprehensive Report:** A large, structured document is generated that compares Magenta2 and Codex CLI.
-- **Side-by-side Matrix:** A detailed 'Feature vs. Outcome' matrix mapping `todo` tools to the Codex Planning Phase.
-- **Actionable Recommendations:** Clear, practical suggestions for Magenta2 improvements (especially the Planning Phase).
-- **Future Feature Write-up:** A detailed, forward-looking roadmap for autonomous agent capabilities.
-- **Simplicity:** All recommendations and suggestions adhere to the "no over-architected" and "hobbyist project" constraints.
-- **Finality:** The report is complete and requires no code changes or implementation plans to fulfill the current user request.
+## 7. Success Criteria
+1. Monolithic Markdown report generated.
+2. Full Codex Tool Catalog included with descriptions and arguments.
+3. 80% of Codex tools mapped to Java-compatible JSON Schemas.
+4. Harnessing and Workflow gaps identified with actionable recommendations.
+5. 3-phase strategic roadmap included.
+6. Final technical quality gate passed.

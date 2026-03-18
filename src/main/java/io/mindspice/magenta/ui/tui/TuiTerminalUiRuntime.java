@@ -113,7 +113,7 @@ public final class TuiTerminalUiRuntime {
                 width,
                 height,
                 new NoOpChatController(),
-                config.rendering().showTimestamps()
+                config
         );
 
         this.chatController = new ChatWindowController(magenta, config, binding, chatWindow, this::close);

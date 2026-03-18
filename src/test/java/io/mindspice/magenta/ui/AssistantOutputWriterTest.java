@@ -104,6 +104,20 @@ class AssistantOutputWriterTest {
         assertThat(target.assistantFinals).singleElement().isEqualTo("magenta> Hello");
     }
 
+    @Test
+    void assistantPrefixCanBeSuppressedForStyledUiTargets() {
+        RecordingTarget target = new RecordingTarget();
+        AssistantOutputWriter writer = new AssistantOutputWriter(target, false, "magenta", false);
+
+        writer.onOutput(new SessionOutput.StreamedOutput("Hel"));
+        writer.onOutput(new SessionOutput.StreamedOutput("lo"));
+        writer.onOutput(new SessionOutput.FinalOutput("Hello"));
+
+        assertThat(target.assistantTokens).containsExactly("Hel", "lo");
+        assertThat(target.finishedStreamLines).isEqualTo(1);
+        assertThat(target.assistantFinals).isEmpty();
+    }
+
     private static final class RecordingTarget implements AssistantOutputTarget {
         private final List<String> assistantTokens = new ArrayList<>();
         private final List<String> assistantFinals = new ArrayList<>();

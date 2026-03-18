@@ -8,7 +8,8 @@ public sealed interface SlashCommandAction permits SlashCommandAction.ZeroArg,
         SlashCommandAction.OneArg,
         SlashCommandAction.OptionalOneArg,
         SlashCommandAction.TwoArg,
-        SlashCommandAction.ThreeArg {
+        SlashCommandAction.ThreeArg,
+        SlashCommandAction.VarArg {
 
     int minArity();
 
@@ -91,6 +92,18 @@ public sealed interface SlashCommandAction permits SlashCommandAction.ZeroArg,
         @Override
         public int maxArity() {
             return 3;
+        }
+    }
+
+    record VarArg(int minArity, int maxArity, Consumer<java.util.List<String>> handler) implements SlashCommandAction {
+        public VarArg {
+            if (minArity < 0) {
+                throw new IllegalArgumentException("minArity must be >= 0");
+            }
+            if (maxArity < minArity) {
+                throw new IllegalArgumentException("maxArity must be >= minArity");
+            }
+            Objects.requireNonNull(handler, "handler");
         }
     }
 }

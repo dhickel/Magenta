@@ -74,4 +74,17 @@ public record SlashCommandSpec(
     ) {
         return new SlashCommandSpec(name, aliases, help, usage, argHints, new SlashCommandAction.ThreeArg(handler));
     }
+
+    public static SlashCommandSpec varArg(
+            String name,
+            List<String> aliases,
+            String help,
+            String usage,
+            List<String> argHints,
+            int minArgs,
+            int maxArgs,
+            java.util.function.Consumer<List<String>> handler
+    ) {
+        return new SlashCommandSpec(name, aliases, help, usage, argHints, new SlashCommandAction.VarArg(minArgs, maxArgs, handler));
+    }
 }
