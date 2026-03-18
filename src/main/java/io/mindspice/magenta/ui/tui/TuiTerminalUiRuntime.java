@@ -106,7 +106,7 @@ public final class TuiTerminalUiRuntime {
         );
 
         int width = Math.max(72, app.getScreen().getWidth());
-        int height = Math.max(20, app.getScreen().getHeight() - 1);
+        int height = Math.max(20, app.getDesktopBottom() - app.getDesktopTop());
         ChatWindow chatWindow = new ChatWindow(
                 app,
                 "Chat",
@@ -121,6 +121,7 @@ public final class TuiTerminalUiRuntime {
         chatWindow.setController(chatController);
 
         app.registerWindow("default", "chat", chatWindow);
+        chatWindow.maximize();
         chatWindow.activate();
 
         magenta.addInputRoute(sessionHandle, InputRoutePolicy.defaults());

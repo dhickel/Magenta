@@ -34,6 +34,7 @@ public final class TuiApplication extends TApplication {
         super(BackendType.XTERM);
         this.themeRegistry = Objects.requireNonNull(themeRegistry, "themeRegistry");
         this.workspaceHost = Objects.requireNonNull(workspaceHost, "workspaceHost");
+        setHideStatusBar(true);
         this.themeRegistry.apply(this, TuiThemeRegistry.DEFAULT_THEME);
         installMenuShell();
         workspaceHost.switchWorkspace("default", this);
