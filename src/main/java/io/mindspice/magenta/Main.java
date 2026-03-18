@@ -7,6 +7,11 @@ import io.mindspice.magenta.ui.tui.TuiApplication;
 import io.mindspice.magenta.ui.tui.TuiTerminalUiBootstrap;
 import io.mindspice.magenta.ui.tui.TuiThemeRegistry;
 import io.mindspice.magenta.ui.tui.WorkspaceHost;
+import io.mindspice.magenta.ui.tui.workspace.WindowKindFactory;
+import io.mindspice.magenta.ui.tui.workspace.WindowKindFactoryRegistry;
+import io.mindspice.magenta.ui.tui.workspace.WorkspaceConfigLoader;
+import io.mindspice.magenta.ui.tui.workspace.WorkspaceDefinition;
+import io.mindspice.magenta.ui.tui.workspace.WorkspaceOverlayStore;
 import io.mindspice.magenta.ui.TerminalUiCallbacks;
 import io.mindspice.magenta.ui.TerminalUiConfig;
 import io.mindspice.magenta.ui.ToolApprovalPromptAdapter;
@@ -16,6 +21,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 public class Main {
 
@@ -26,7 +32,43 @@ public class Main {
                 .toLowerCase(java.util.Locale.ROOT);
         if (uiBackend.equals("tui-demo")) {
             try {
-                new TuiApplication(new TuiThemeRegistry(), new WorkspaceHost()).run();
+                WorkspaceDefinition demoWorkspace = new WorkspaceDefinition(
+                        WorkspaceConfigLoader.SUPPORTED_SCHEMA_VERSION,
+                        "default",
+                        "Default",
+                        WorkspaceDefinition.LayoutMode.TILED,
+                        List.of(new WorkspaceDefinition.WindowDescriptor(
+                                "chat-main",
+                                "chat",
+                                "Chat",
+                                true,
+                                new WorkspaceDefinition.Geometry(0, 0, 80, 24),
+                                Map.of("alias", "chat")
+                        ))
+                );
+                WorkspaceHost host = new WorkspaceHost(
+                        Map.of(demoWorkspace.id(), demoWorkspace),
+                        WindowKindFactoryRegistry.fromFactories(List.of(new WindowKindFactory() {
+                            @Override
+                            public String kind() {
+                                return "chat";
+                            }
+
+                            @Override
+                            public casciian.TWindow create(
+                                    io.mindspice.magenta.ui.tui.workspace.WorkspaceDefinition.WindowDescriptor descriptor,
+                                    TuiApplication app
+                            ) {
+                                return app.addWindow(descriptor.title(), 80, 24);
+                            }
+                        })),
+                        new WorkspaceOverlayStore(Path.of(".").toAbsolutePath().normalize()),
+                        event -> { },
+                        error -> { }
+                );
+                TuiApplication app = new TuiApplication(new TuiThemeRegistry(Path.of("configs").toAbsolutePath().normalize()), host);
+                app.activateInitialWorkspace();
+                app.run();
                 return;
             } catch (Exception e) {
                 throw new IllegalStateException("Failed to start TUI demo UI", e);

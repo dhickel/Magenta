@@ -1,0 +1,35 @@
+schemaVersion: 1
+name: Main Workspace
+layoutMode: tiled
+windows:
+  - id: chat-main
+    kind: chat
+    title: Chat
+    visible: true
+    bindings:
+      alias: chat
+    geometry:
+      x: 0
+      y: 0
+      width: 96
+      height: 26
+  - id: events-main
+    kind: event_viewer
+    title: Events
+    visible: true
+    geometry:
+      x: 97
+      y: 0
+      width: 64
+      height: 16
+  - id: docs-main
+    kind: document_viewer
+    title: Docs
+    visible: false
+    bindings:
+      path: AGENTS.md
+    geometry:
+      x: 97
+      y: 17
+      width: 64
+      height: 12

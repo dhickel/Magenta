@@ -484,15 +484,25 @@ public final class ChatWindow extends TWindow {
         private CellAttributes styleAttributes(BlockStyle style) {
             CellAttributes attr = new CellAttributes(getTheme().getColor(ColorTheme.TTEXT));
             switch (style) {
-                case USER -> attr.setForeColor(Color.WHITE);
-                case ASSISTANT -> attr.setForeColor(Color.GREEN);
-                case TOOL -> attr.setForeColor(Color.YELLOW);
-                case ERROR -> attr.setForeColor(Color.RED);
-                case INFO -> attr.setForeColor(Color.CYAN);
+                case USER -> attr.setTo(resolveRoleColor("magenta.transcript.user", Color.WHITE));
+                case ASSISTANT -> attr.setTo(resolveRoleColor("magenta.transcript.assistant", Color.GREEN));
+                case TOOL -> attr.setTo(resolveRoleColor("magenta.transcript.tool", Color.YELLOW));
+                case ERROR -> attr.setTo(resolveRoleColor("magenta.transcript.error", Color.RED));
+                case INFO -> attr.setTo(resolveRoleColor("magenta.transcript.info", Color.CYAN));
                 case DEFAULT -> {
                 }
             }
             return attr;
+        }
+
+        private CellAttributes resolveRoleColor(String key, Color fallback) {
+            CellAttributes roleColor = getTheme().getColor(key);
+            if (roleColor != null) {
+                return roleColor;
+            }
+            CellAttributes fallbackColor = new CellAttributes(getTheme().getColor(ColorTheme.TTEXT));
+            fallbackColor.setForeColor(fallback);
+            return fallbackColor;
         }
     }
 

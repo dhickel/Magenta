@@ -2,16 +2,20 @@
 
 ## Scope
 
-Defines the internal Lanterna terminal UI core under `io.mindspice.magenta.ui`.
+Defines the internal Casciian TUI core under `io.mindspice.magenta.ui.tui`.
 
-This package is internal-facing and composes existing `Magenta` lifecycle, route, callback, and security contracts.
+The TUI package is internal-facing and composes `Magenta` lifecycle, routing, callback, and security contracts.
 
 ## Core components
 
-- `TerminalUiBootstrap`: wires terminal/screen/TextGUI, session config callbacks, routes, prompt service, and slash registry.
-- `TerminalUiRuntime`: owns chat loop, status rendering, inline prompt pane, slash dispatch, and shutdown hygiene.
+- `TuiTerminalUiBootstrap`: wires runtime + prompt bridge.
+- `TuiTerminalUiRuntime`: owns session wiring, output routing, workspace host integration, and shutdown hygiene.
+- `TuiApplication`: Casciian `TApplication` menu shell and action dispatch.
+- `WorkspaceHost`: workspace lifecycle/switch/save/load/open behavior with overlay state and diagnostics.
+- `WindowKindFactoryRegistry`: extension-safe, fail-fast registry for window kind factories.
+- `WorkspaceConfigLoader`: strict workspace YAML loader/validator (`schemaVersion` gated, unknown-key fail-fast, kind/geometry constraints).
+- `TuiThemeRegistry` + `TuiThemeConfigLoader`: profile-driven theme loading and runtime switching.
 - `TerminalUiConfig`: immutable hierarchical config for session/render/behavior/prompt/callback wiring.
-- `TerminalUiSession`: immutable runtime wiring record (handle/routes/ingress/context usage supplier).
 - `ToolApprovalPromptAdapter`: bridges `SecurityManager.ApprovalCallback` to UI prompt flow.
 
 ## Slash command contract
@@ -41,13 +45,30 @@ This package is internal-facing and composes existing `Magenta` lifecycle, route
 
 ## Status and rendering contract
 
-- Status rendering remains type-driven through `UiStatusBar` and is mapped into Lanterna UI components.
+- Status and transcript rendering is window-local in Casciian windows (`ChatWindow`, `EventViewerWindow`, `DocumentViewerWindow`).
 - Transcript output is role/event typed (user, assistant, system, tool, security) and rendered through bounded, boxed rows for operator scanning.
-- Status corners are updated from facade reads:
-  - model name
-  - estimated context token usage
-  - percentage of max context
-  - tools/streaming/security mode summary
+- Transcript role colors are theme-driven via `magenta.transcript.*` color keys.
+
+## Workspace contract
+
+- Workspace defaults load from `configs/workspaces/*.yaml`.
+- Workspace identity is filename-derived (no inline id field).
+- User overlay state persists to `<workspaceRoot>/.magenta/ui/workspaces/<workspace-id>.yaml`.
+- Workspace schema is versioned via `schemaVersion` and currently supports `1`.
+- Validation is strict/fail-fast:
+  - unknown top-level YAML keys rejected,
+  - unsupported schema versions rejected,
+  - unknown window kinds rejected,
+  - duplicate window IDs rejected,
+  - invalid geometry rejected.
+- Validation failures use `WorkspaceValidationException` with structured fields (`status`, `code`, `workspaceId`, `field`).
+
+## Theme contract
+
+- Theme profiles load from `configs/themes/*.yaml` with filename-derived IDs.
+- Runtime supports menu-driven switching among loaded profiles.
+- Default profile is dark (non-framework-blue baseline).
+- Themes can override desktop/window/menu/editor and transcript role colors.
 
 ## Terminal config contract
 
@@ -71,4 +92,5 @@ This package is internal-facing and composes existing `Magenta` lifecycle, route
 - Session ingress/egress remains route-based (`SessionRouter`) through `Magenta` facade APIs.
 - Tool execution remains security-wrapped through runtime-owned `SessionConfig.toolBridge` path.
 - Approval prompts are callback-based, include tool reason + argument preview, and deny-by-default on prompt failures/interruption.
-- UI mutations are callback/event-driven and applied on the UI thread (`TextGUIThread.invokeLater`).
+- TUI window extension is registry-driven; unknown kinds fail fast.
+- Workspace/window lifecycle diagnostics are emitted as structured workspace events and surfaced in runtime event viewers.

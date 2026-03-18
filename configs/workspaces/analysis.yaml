@@ -1,0 +1,35 @@
+schemaVersion: 1
+name: Analysis Workspace
+layoutMode: cascade
+windows:
+  - id: chat-analysis
+    kind: chat
+    title: Analysis Chat
+    visible: true
+    bindings:
+      alias: chat
+    geometry:
+      x: 2
+      y: 1
+      width: 100
+      height: 28
+  - id: events-analysis
+    kind: event_viewer
+    title: Runtime Events
+    visible: true
+    geometry:
+      x: 14
+      y: 3
+      width: 80
+      height: 18
+  - id: docs-analysis
+    kind: document_viewer
+    title: Internal Docs
+    visible: true
+    bindings:
+      path: docs/internal/00-index.md
+    geometry:
+      x: 22
+      y: 5
+      width: 84
+      height: 16
