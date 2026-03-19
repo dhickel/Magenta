@@ -9,7 +9,7 @@ The TUI package is internal-facing and composes `Magenta` lifecycle, routing, ca
 ## Core components
 
 - `TuiTerminalUiBootstrap`: wires runtime + prompt bridge.
-- `TuiTerminalUiRuntime`: owns session wiring, output routing, workspace host integration, and shutdown hygiene.
+- `TuiTerminalUiRuntime`: owns chat-window session wiring, output routing, workspace host integration, and shutdown hygiene.
 - `TuiApplication`: Casciian `TApplication` menu shell and action dispatch.
 - `WorkspaceHost`: workspace lifecycle/switch/save/load/open behavior with overlay state and diagnostics.
 - `WindowKindFactoryRegistry`: extension-safe, fail-fast registry for window kind factories.
@@ -29,6 +29,7 @@ The TUI package is internal-facing and composes `Magenta` lifecycle, routing, ca
   - `TwoArg` (`BiConsumer<String, String>`)
   - `ThreeArg` (`TriConsumer<String, String, String>`)
 - Completion is intentionally deferred to a later phase; no JLine completer dependency is required for runtime operation.
+- Chat windows provide `/close` to close the active chat window and its backing session without exiting the full TUI runtime.
 
 ## Prompt contract
 
@@ -54,6 +55,14 @@ The TUI package is internal-facing and composes `Magenta` lifecycle, routing, ca
 - Workspace defaults load from `configs/workspaces/*.yaml`.
 - Workspace identity is filename-derived (no inline id field).
 - User overlay state persists to `<workspaceRoot>/.magenta/ui/workspaces/<workspace-id>.yaml`.
+- Overlay window state persists `visible`, `maximized`, `geometry`, and `normalGeometry`.
+- `geometry` is the last saved live bounds; `normalGeometry` is the last non-maximized restore target and is used to reapply maximized windows safely across restart/recreation.
+- The `Window` menu is rebuilt from active workspace state and is the primary focus/restore entrypoint for visible, hidden, and recreatable windows.
+- Workspace windows use native Casciian `hide()`, `show()`, `maximize()`, and `restore()` behavior; Magenta persists only the restore/layout state Casciian does not keep across process lifetime or true window recreation.
+- Workspace-window title-bar close is hide-on-close for normal workspace operation.
+- True close is an explicit host action from the `Window` menu or chat `/close` path.
+- Non-chat windows true-close by destroying the live instance while retaining overlay state so they can be recreated later from config plus overlay/default geometry.
+- Chat `/close` is a true-close operation that tears down the backing session, routes, listeners, and window without exiting the full TUI runtime.
 - Workspace schema is versioned via `schemaVersion` and currently supports `1`.
 - Validation is strict/fail-fast:
   - unknown top-level YAML keys rejected,
@@ -90,7 +99,9 @@ The TUI package is internal-facing and composes `Magenta` lifecycle, routing, ca
 ## Invariants
 
 - Session ingress/egress remains route-based (`SessionRouter`) through `Magenta` facade APIs.
+- Each live chat window owns its own session, routes, and session-event listeners so true-close can destroy that chat independently.
 - Tool execution remains security-wrapped through runtime-owned `SessionConfig.toolBridge` path.
 - Approval prompts are callback-based, include tool reason + argument preview, and deny-by-default on prompt failures/interruption.
 - TUI window extension is registry-driven; unknown kinds fail fast.
 - Workspace/window lifecycle diagnostics are emitted as structured workspace events and surfaced in runtime event viewers.
+- Layout transitions remain Casciian-native (`cmTile` / `cmCascade`), then synchronize back into overlay state so maximize/hide/restore semantics stay restart-safe.

@@ -5,13 +5,13 @@ import casciian.TKeypress;
 import casciian.TLabel;
 import casciian.TPanel;
 import casciian.TVScroller;
-import casciian.TWindow;
 import casciian.bits.CellAttributes;
 import casciian.bits.Color;
 import casciian.bits.ColorTheme;
 import casciian.event.TKeypressEvent;
 import io.mindspice.magenta.ui.TerminalUiConfig;
 import casciian.event.TResizeEvent;
+import io.mindspice.magenta.ui.tui.windows.WorkspaceTWindow;
 
 import java.time.Instant;
 import java.time.ZoneId;
@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 
-public final class ChatWindow extends TWindow {
+public final class ChatWindow extends WorkspaceTWindow {
     private static final DateTimeFormatter TS_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss")
             .withZone(ZoneId.systemDefault());
 
@@ -54,7 +54,7 @@ public final class ChatWindow extends TWindow {
             ChatController controller,
             TerminalUiConfig config
     ) {
-        super(application, title, width, height, RESIZABLE);
+        super(application, title, width, height);
         this.controller = Objects.requireNonNull(controller, "controller");
         this.config = Objects.requireNonNull(config, "config");
         this.showTimestamps = config.rendering().showTimestamps();
@@ -116,6 +116,10 @@ public final class ChatWindow extends TWindow {
 
     public void setController(ChatController controller) {
         this.controller = Objects.requireNonNull(controller, "controller");
+    }
+
+    public String requestCloseWindow() {
+        return controller.requestCloseWindow();
     }
 
     public void setComposerEnabled(boolean enabled) {

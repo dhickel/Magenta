@@ -4,4 +4,6 @@ public interface ChatController {
     boolean submitComposerText(String text);
 
     void requestAbort();
+
+    String requestCloseWindow();
 }

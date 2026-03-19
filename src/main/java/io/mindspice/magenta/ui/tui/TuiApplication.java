@@ -1,17 +1,17 @@
 package io.mindspice.magenta.ui.tui;
 
 import casciian.TApplication;
-import casciian.TInputBox;
-import casciian.TWindow;
+import casciian.TCommand;
+import casciian.event.TCommandEvent;
 import casciian.event.TMenuEvent;
 import casciian.menu.TMenu;
-import io.mindspice.magenta.ui.tui.WorkspaceHost.WindowOption;
+import io.mindspice.magenta.ui.tui.WorkspaceHost.WindowMenuEntry;
 import io.mindspice.magenta.ui.tui.WorkspaceHost.WorkspaceOption;
+import io.mindspice.magenta.ui.tui.workspace.WorkspaceDefinition;
 
 import java.io.UnsupportedEncodingException;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
@@ -20,17 +20,16 @@ public final class TuiApplication extends TApplication {
     private static final int MID_WORKSPACE_SAVE = 7102;
     private static final int MID_WORKSPACE_LOAD = 7103;
 
-    private static final int MID_WINDOW_ADD = 7201;
-    private static final int MID_WINDOW_HIDE_ACTIVE = 7202;
-    private static final int MID_WINDOW_OPEN_HIDDEN = 7203;
-    private static final int MID_WINDOW_MAXIMIZE_ACTIVE = 7204;
-    private static final int MID_WINDOW_RESTORE_ACTIVE = 7205;
-    private static final int MID_WINDOW_HIDDEN_LIST = 7206;
+    private static final int MID_WINDOW_SELECTOR_BASE = 7400;
+    private static final int MID_WINDOW_HIDE_ACTIVE = 7501;
+    private static final int MID_WINDOW_TOGGLE_MAXIMIZE = 7502;
+    private static final int MID_WINDOW_CLOSE_ACTIVE = 7503;
 
-    private static final int MID_THEME_BASE = 7300;
+    private static final int MID_THEME_BASE = 7600;
 
     private final TuiThemeRegistry themeRegistry;
     private final WorkspaceHost workspaceHost;
+    private final Map<Integer, String> dynamicWindowMenuIds = new LinkedHashMap<>();
     private final Map<Integer, String> themeMenuIds = new LinkedHashMap<>();
 
     public static void configureFrameworkChromeDefaults() {
@@ -49,6 +48,7 @@ public final class TuiApplication extends TApplication {
         this.workspaceHost = Objects.requireNonNull(workspaceHost, "workspaceHost");
         setHideStatusBar(true);
         this.themeRegistry.apply(this, TuiThemeRegistry.DEFAULT_THEME);
+        this.workspaceHost.addStateListener(() -> invokeLater(this::rebuildMenuShell));
         installMenuShell();
     }
 
@@ -57,15 +57,38 @@ public final class TuiApplication extends TApplication {
         return workspaceHost.switchWorkspace(initialId, this);
     }
 
+    public void rebuildMenuShell() {
+        closeMenu();
+        List<TMenu> existingMenus = List.copyOf(getAllMenus());
+        for (TMenu menu : existingMenus) {
+            removeMenu(menu);
+        }
+        dynamicWindowMenuIds.clear();
+        themeMenuIds.clear();
+        installMenuShell();
+    }
+
+    @Override
+    protected boolean onCommand(TCommandEvent event) {
+        if (event.equals(TCommand.cmTile)) {
+            workspaceHost.applyWorkspaceLayoutMode(this, WorkspaceDefinition.LayoutMode.TILED);
+            return true;
+        }
+        if (event.equals(TCommand.cmCascade)) {
+            workspaceHost.applyWorkspaceLayoutMode(this, WorkspaceDefinition.LayoutMode.CASCADE);
+            return true;
+        }
+        return super.onCommand(event);
+    }
+
     @Override
     protected boolean onMenu(TMenuEvent event) {
         int id = event.getId();
         if (id == MID_WORKSPACE_SWITCH) {
             WorkspaceOption selected = chooseWorkspace();
-            if (selected == null) {
-                return true;
+            if (selected != null) {
+                messageBox("Workspace", workspaceHost.switchWorkspace(selected.id(), this));
             }
-            messageBox("Workspace", workspaceHost.switchWorkspace(selected.id(), this));
             return true;
         }
         if (id == MID_WORKSPACE_SAVE) {
@@ -76,57 +99,36 @@ public final class TuiApplication extends TApplication {
             messageBox("Workspace", workspaceHost.loadActiveWorkspaceSnapshot(this));
             return true;
         }
-        if (id == MID_WINDOW_ADD) {
-            WindowOption selected = chooseWindow("Add Window", workspaceHost.addableWindows());
-            if (selected == null) {
-                return true;
-            }
-            messageBox("Window", workspaceHost.openWindow(selected.id(), this));
+        String windowId = dynamicWindowMenuIds.get(id);
+        if (windowId != null) {
+            maybeShowWindowFeedback(workspaceHost.focusOrRestoreWindow(windowId, this));
             return true;
         }
         if (id == MID_WINDOW_HIDE_ACTIVE) {
-            TWindow active = getActiveWindow();
-            if (active != null) {
-                active.hide();
-                workspaceHost.recordWindowAction("window_hide", active, "Hid active window");
-            }
+            maybeShowWindowFeedback(workspaceHost.hideActiveWindow(this));
             return true;
         }
-        if (id == MID_WINDOW_OPEN_HIDDEN) {
-            WindowOption selected = chooseWindow("Open Hidden Window", workspaceHost.hiddenWindows());
-            if (selected == null) {
-                return true;
-            }
-            messageBox("Window", workspaceHost.openWindow(selected.id(), this));
+        if (id == MID_WINDOW_TOGGLE_MAXIMIZE) {
+            maybeShowWindowFeedback(workspaceHost.toggleActiveWindowZoom(this));
             return true;
         }
-        if (id == MID_WINDOW_MAXIMIZE_ACTIVE) {
-            TWindow active = getActiveWindow();
-            if (active != null) {
-                active.maximize();
-                workspaceHost.recordWindowAction("window_maximize", active, "Maximized active window");
-            }
-            return true;
-        }
-        if (id == MID_WINDOW_RESTORE_ACTIVE) {
-            TWindow active = getActiveWindow();
-            if (active != null) {
-                active.restore();
-                workspaceHost.recordWindowAction("window_restore", active, "Restored active window");
-            }
-            return true;
-        }
-        if (id == MID_WINDOW_HIDDEN_LIST) {
-            messageBox("Window", workspaceHost.describeHiddenWindows());
+        if (id == MID_WINDOW_CLOSE_ACTIVE || id == TMenu.MID_WINDOW_CLOSE) {
+            maybeShowWindowFeedback(workspaceHost.closeActiveWindow(this));
             return true;
         }
         String themeId = themeMenuIds.get(id);
         if (themeId != null) {
             themeRegistry.apply(this, themeId);
             workspaceHost.recordWindowAction("theme_apply", null, "Applied theme: " + themeId);
+            rebuildMenuShell();
             return true;
         }
         return super.onMenu(event);
+    }
+
+    public void applyNativeWindowLayout(WorkspaceDefinition.LayoutMode mode) {
+        TCommand command = mode == WorkspaceDefinition.LayoutMode.CASCADE ? TCommand.cmCascade : TCommand.cmTile;
+        super.onCommand(new TCommandEvent(getBackend(), command));
     }
 
     private void installMenuShell() {
@@ -136,13 +138,7 @@ public final class TuiApplication extends TApplication {
         workspaceMenu.addItem(MID_WORKSPACE_LOAD, "&Load Layout");
 
         TMenu windowMenu = addWindowMenu();
-        windowMenu.addSeparator();
-        windowMenu.addItem(MID_WINDOW_ADD, "&Add Window...");
-        windowMenu.addItem(MID_WINDOW_OPEN_HIDDEN, "Open &Hidden Window...");
-        windowMenu.addItem(MID_WINDOW_HIDE_ACTIVE, "&Hide Active");
-        windowMenu.addItem(MID_WINDOW_MAXIMIZE_ACTIVE, "Ma&ximize Active");
-        windowMenu.addItem(MID_WINDOW_RESTORE_ACTIVE, "&Restore Active");
-        windowMenu.addItem(MID_WINDOW_HIDDEN_LIST, "&List Hidden");
+        addDynamicWindowEntries(windowMenu);
 
         TMenu viewMenu = addMenu("&View");
         int menuId = MID_THEME_BASE;
@@ -153,54 +149,44 @@ public final class TuiApplication extends TApplication {
         }
     }
 
+    private void addDynamicWindowEntries(TMenu windowMenu) {
+        windowMenu.addSeparator();
+        int menuId = MID_WINDOW_SELECTOR_BASE;
+        for (WindowMenuEntry entry : workspaceHost.windowMenuEntries()) {
+            dynamicWindowMenuIds.put(menuId, entry.windowId());
+            windowMenu.addItem(menuId, windowMenuLabel(entry));
+            menuId += 1;
+        }
+        windowMenu.addSeparator();
+        windowMenu.addItem(MID_WINDOW_HIDE_ACTIVE, "&Hide Active");
+        windowMenu.addItem(MID_WINDOW_TOGGLE_MAXIMIZE, "Toggle Ma&ximize");
+        windowMenu.addItem(MID_WINDOW_CLOSE_ACTIVE, "&Close Active");
+    }
+
     private WorkspaceOption chooseWorkspace() {
         List<WorkspaceOption> options = workspaceHost.workspaceOptions();
         if (options.isEmpty()) {
             messageBox("Workspace", "No workspaces available.");
             return null;
         }
-        return chooseOption(
-                "Switch Workspace",
-                options,
-                WorkspaceOption::id,
-                option -> option.name() + " [" + option.id() + "]"
-        );
-    }
-
-    private WindowOption chooseWindow(String title, List<WindowOption> options) {
-        if (options.isEmpty()) {
-            messageBox("Window", "No eligible windows found.");
-            return null;
-        }
-        return chooseOption(title, options, WindowOption::id, WindowOption::title);
-    }
-
-    private <T> T chooseOption(
-            String title,
-            List<T> options,
-            java.util.function.Function<T, String> idFn,
-            java.util.function.Function<T, String> labelFn
-    ) {
-        StringBuilder prompt = new StringBuilder();
-        prompt.append("Type an index or id:\n");
+        StringBuilder prompt = new StringBuilder("Type an index or id:\n");
         for (int i = 0; i < options.size(); i++) {
-            T option = options.get(i);
+            WorkspaceOption option = options.get(i);
             prompt.append(i + 1)
                     .append(") ")
-                    .append(labelFn.apply(option))
-                    .append('\n');
+                    .append(option.name())
+                    .append(" [")
+                    .append(option.id())
+                    .append("]\n");
         }
-
-        TInputBox input = inputBox(title, prompt.toString(), "1");
-        if (!input.isOk()) {
+        var input = inputBox("Switch Workspace", prompt.toString(), "1");
+        if (!input.isOk() || input.getText() == null) {
             return null;
         }
-
-        String selected = input.getText() == null ? "" : input.getText().trim();
+        String selected = input.getText().trim();
         if (selected.isEmpty()) {
             return null;
         }
-
         try {
             int index = Integer.parseInt(selected);
             if (index >= 1 && index <= options.size()) {
@@ -208,15 +194,35 @@ public final class TuiApplication extends TApplication {
             }
         } catch (NumberFormatException ignored) {
         }
+        return options.stream()
+                .filter(option -> option.id().equals(selected))
+                .findFirst()
+                .orElse(null);
+    }
 
-        String normalized = selected.toLowerCase(Locale.ROOT);
-        for (T option : options) {
-            if (idFn.apply(option).toLowerCase(Locale.ROOT).equals(normalized)) {
-                return option;
-            }
+    static String windowMenuLabel(WindowMenuEntry entry) {
+        String label = "Focus/Restore: " + entry.title();
+        if (!entry.visible()) {
+            return label + " [hidden]";
         }
+        if (entry.maximized()) {
+            return label + " [max]";
+        }
+        return label;
+    }
 
-        messageBox(title, "Invalid selection: " + selected);
-        return null;
+    private void maybeShowWindowFeedback(String message) {
+        if (message == null || message.isBlank()) {
+            return;
+        }
+        if (message.startsWith("No ")
+                || message.startsWith("Unknown ")
+                || message.startsWith("Cannot ")
+                || message.startsWith("Window ")
+                || message.startsWith("Active ")
+                || message.startsWith("Workspace action failed")
+                || message.startsWith("Chat controller")) {
+            messageBox("Window", message);
+        }
     }
 }

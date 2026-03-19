@@ -41,6 +41,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 public final class TuiTerminalUiRuntime {
     private final RuntimeConfig runtimeConfig;
@@ -52,11 +53,7 @@ public final class TuiTerminalUiRuntime {
 
     private final AtomicBoolean closed = new AtomicBoolean(false);
 
-    private final SessionHandle sessionHandle;
-    private final RouteHandle outputRoute;
-    private final List<SessionEventListenerHandle> eventListenerHandles;
-
-    private final Map<TWindow, ChatWindowController> chatControllersByWindow = new ConcurrentHashMap<>();
+    private final Map<TWindow, ChatRuntime> chatRuntimesByWindow = new ConcurrentHashMap<>();
     private final List<EventViewerWindow> eventViewers = new CopyOnWriteArrayList<>();
     private final RoutingEventFormatter routingFormatter = new RoutingEventFormatter();
 
@@ -74,31 +71,8 @@ public final class TuiTerminalUiRuntime {
         this.magenta = Objects.requireNonNull(magenta, "magenta");
         this.config = Objects.requireNonNull(config, "config");
 
-        SessionConfig sessionConfig = new SessionConfig(
-                config.session().params(),
-                magenta::executeTool,
-                config.session().routingEventLevel(),
-                this::onRoutingEvent,
-                this::onSecurityEvent,
-                this::onSessionError
-        );
-
-        this.sessionHandle = magenta.startBaseSession(config.session().alias(), sessionConfig);
-
-        ChatBinding binding = new ChatBinding(
-                sessionHandle,
-                input -> {
-                    if (input instanceof SessionInput.MessageInput messageInput) {
-                        magenta.messageInputConsumer(sessionHandle).accept(messageInput);
-                        return;
-                    }
-                    throw new IllegalArgumentException("Chat binding only accepts message inputs");
-                },
-                magenta.contextUsageSupplier(sessionHandle)
-        );
-
         List<WindowKindFactory> factories = List.of(
-                chatFactory(binding),
+                chatFactory(),
                 eventViewerFactory(),
                 documentViewerFactory()
         );
@@ -111,48 +85,13 @@ public final class TuiTerminalUiRuntime {
                 windowKindRegistry,
                 new WorkspaceOverlayStore(runtimeConfig.workspaceRoot()),
                 this::onWorkspaceEvent,
-                error -> onSessionError(new SessionException(sessionHandle, error))
+                error -> appendEvent("error", List.of(error.getMessage() == null ? "workspace error" : error.getMessage()))
         );
 
         TuiApplication.configureFrameworkChromeDefaults();
         this.themeRegistry = new TuiThemeRegistry(runtimeConfig.rootDir());
         this.app = new TuiApplication(themeRegistry, workspaceHost);
         this.app.activateInitialWorkspace();
-
-        magenta.addInputRoute(sessionHandle, InputRoutePolicy.defaults());
-        this.outputRoute = magenta.addOutputRoute(
-                sessionHandle,
-                OutputRoutePolicy.builder()
-                        .allowedOutputTags(Set.of(
-                                SessionOutput.StreamedOutput.FILTER_TAG,
-                                SessionOutput.FinalOutput.FILTER_TAG,
-                                SessionOutput.ToolCallOutput.FILTER_TAG,
-                                SessionOutput.ToolMessageOutput.FILTER_TAG
-                        ))
-                        .build(),
-                event -> onOutput(event.output())
-        );
-
-        List<SessionEventListenerHandle> listeners = new ArrayList<>();
-        listeners.add(magenta.addEventListener(sessionHandle, SessionEvent.Action.ContextCompacted.class, event -> {
-            ChatWindowController controller = activeChatController();
-            if (controller != null) {
-                controller.onContextCompacted(event);
-            }
-        }));
-        listeners.add(magenta.addEventListener(sessionHandle, SessionEvent.Action.ContextSendBudget.class, ignored -> {
-            ChatWindowController controller = activeChatController();
-            if (controller != null) {
-                controller.onContextBudgetUpdate();
-            }
-        }));
-        listeners.add(magenta.addEventListener(sessionHandle, SessionEvent.class, this::onSessionEvent));
-        this.eventListenerHandles = List.copyOf(listeners);
-
-        ChatWindowController controller = activeChatController();
-        if (controller != null) {
-            controller.initializeWindowState();
-        }
     }
 
     public void runLoop() {
@@ -172,28 +111,8 @@ public final class TuiTerminalUiRuntime {
             return;
         }
 
-        chatControllersByWindow.values().forEach(controller -> {
-            try {
-                controller.shutdown();
-            } catch (Exception ignored) {
-            }
-        });
-
-        for (SessionEventListenerHandle listenerHandle : eventListenerHandles) {
-            try {
-                magenta.removeEventListener(listenerHandle);
-            } catch (Exception ignored) {
-            }
-        }
-
-        try {
-            magenta.removeRoute(outputRoute);
-        } catch (Exception ignored) {
-        }
-
-        try {
-            magenta.closeSession(sessionHandle);
-        } catch (Exception ignored) {
+        for (TWindow window : List.copyOf(chatRuntimesByWindow.keySet())) {
+            closeChatWindow(window, true);
         }
 
         try {
@@ -202,72 +121,7 @@ public final class TuiTerminalUiRuntime {
         }
     }
 
-    private void onOutput(SessionOutput output) {
-        if (output == null || closed.get()) {
-            return;
-        }
-
-        ChatWindowController controller = activeChatController();
-        if (controller != null) {
-            controller.onOutput(output);
-        }
-
-        switch (output) {
-            case SessionOutput.ToolCallOutput toolCallOutput -> {
-                appendEvent("tool_call", List.of(toolCallOutput.toolCall().name()));
-            }
-            case SessionOutput.ToolMessageOutput toolMessageOutput -> {
-                appendEvent("tool_result", List.of(toolMessageOutput.message().toolName()));
-            }
-            case SessionOutput.FinalOutput finalOutput -> {
-                appendEvent("final", List.of(truncate(finalOutput.text(), 180)));
-            }
-            case SessionOutput.StreamedOutput ignored -> {
-            }
-        }
-    }
-
-    private void onRoutingEvent(RoutingEvent event) {
-        ChatWindowController controller = activeChatController();
-        if (controller != null) {
-            controller.onRoutingEvent(event);
-        }
-
-        appendEvent("routing", routingFormatter.format(event));
-        if (config.session().routingEventLevel() != RoutingEventLevel.NONE) {
-            config.callbacks().onRouting().accept(event);
-        }
-    }
-
-    private void onSecurityEvent(SecurityManager.SecurityEvent event) {
-        ChatWindowController controller = activeChatController();
-        if (controller != null) {
-            controller.onSecurityEvent(event);
-        }
-
-        appendEvent("security", List.of(event.decisionCode().name().toLowerCase(Locale.ROOT)
-                + " " + event.toolName()));
-        config.callbacks().onSecurity().accept(event);
-    }
-
-    private void onSessionError(SessionException error) {
-        ChatWindowController controller = activeChatController();
-        if (controller != null) {
-            controller.onSessionError(error);
-        }
-
-        appendEvent("error", List.of(error.getMessage() == null ? "session error" : error.getMessage()));
-        config.callbacks().onError().accept(error);
-    }
-
-    private void onSessionEvent(SessionEvent event) {
-        if (event == null) {
-            return;
-        }
-        appendEvent("session", List.of(event.getClass().getSimpleName()));
-    }
-
-    private WindowKindFactory chatFactory(ChatBinding binding) {
+    private WindowKindFactory chatFactory() {
         return new WindowKindFactory() {
             @Override
             public String kind() {
@@ -276,12 +130,8 @@ public final class TuiTerminalUiRuntime {
 
             @Override
             public TWindow create(WorkspaceDefinition.WindowDescriptor descriptor, TuiApplication app) {
-                int width = descriptor.geometry() == null
-                        ? 96
-                        : descriptor.geometry().width();
-                int height = descriptor.geometry() == null
-                        ? 26
-                        : descriptor.geometry().height();
+                int width = descriptor.geometry() == null ? 96 : descriptor.geometry().width();
+                int height = descriptor.geometry() == null ? 26 : descriptor.geometry().height();
 
                 ChatWindow chatWindow = new ChatWindow(
                         app,
@@ -291,13 +141,68 @@ public final class TuiTerminalUiRuntime {
                         new NoOpChatController(),
                         config
                 );
-                ChatWindowController controller = new ChatWindowController(magenta, config, binding, chatWindow, TuiTerminalUiRuntime.this::close);
-                chatWindow.setController(controller);
-                controller.initializeWindowState();
-                chatControllersByWindow.put(chatWindow, controller);
+                ChatRuntime runtime = createChatRuntime(chatWindow, descriptor);
+                chatWindow.setController(runtime.controller());
+                runtime.controller().initializeWindowState();
+                chatRuntimesByWindow.put(chatWindow, runtime);
                 return chatWindow;
             }
         };
+    }
+
+    private ChatRuntime createChatRuntime(ChatWindow chatWindow, WorkspaceDefinition.WindowDescriptor descriptor) {
+        AtomicReference<ChatWindowController> controllerRef = new AtomicReference<>();
+        SessionConfig sessionConfig = new SessionConfig(
+                config.session().params(),
+                magenta::executeTool,
+                config.session().routingEventLevel(),
+                event -> onRoutingEvent(controllerRef.get(), event),
+                event -> onSecurityEvent(controllerRef.get(), event),
+                error -> onSessionError(controllerRef.get(), error)
+        );
+
+        SessionHandle sessionHandle = magenta.startBaseSession(chatSessionAlias(descriptor), sessionConfig);
+        magenta.addInputRoute(sessionHandle, InputRoutePolicy.defaults());
+
+        ChatBinding binding = new ChatBinding(
+                sessionHandle,
+                input -> {
+                    if (input instanceof SessionInput.MessageInput messageInput) {
+                        magenta.messageInputConsumer(sessionHandle).accept(messageInput);
+                        return;
+                    }
+                    throw new IllegalArgumentException("Chat binding only accepts message inputs");
+                },
+                magenta.contextUsageSupplier(sessionHandle)
+        );
+
+        ChatWindowController controller = new ChatWindowController(
+                magenta,
+                config,
+                binding,
+                chatWindow,
+                () -> closeChatWindow(chatWindow, false)
+        );
+        controllerRef.set(controller);
+
+        RouteHandle outputRoute = magenta.addOutputRoute(
+                sessionHandle,
+                OutputRoutePolicy.builder()
+                        .allowedOutputTags(Set.of(
+                                SessionOutput.StreamedOutput.FILTER_TAG,
+                                SessionOutput.FinalOutput.FILTER_TAG,
+                                SessionOutput.ToolCallOutput.FILTER_TAG,
+                                SessionOutput.ToolMessageOutput.FILTER_TAG
+                        ))
+                        .build(),
+                event -> onOutput(controller, event.output())
+        );
+
+        List<SessionEventListenerHandle> listeners = new ArrayList<>();
+        listeners.add(magenta.addEventListener(sessionHandle, SessionEvent.Action.ContextCompacted.class, controller::onContextCompacted));
+        listeners.add(magenta.addEventListener(sessionHandle, SessionEvent.Action.ContextSendBudget.class, ignored -> controller.onContextBudgetUpdate()));
+        listeners.add(magenta.addEventListener(sessionHandle, SessionEvent.class, this::onSessionEvent));
+        return new ChatRuntime(sessionHandle, outputRoute, List.copyOf(listeners), controller);
     }
 
     private WindowKindFactory eventViewerFactory() {
@@ -309,14 +214,13 @@ public final class TuiTerminalUiRuntime {
 
             @Override
             public TWindow create(WorkspaceDefinition.WindowDescriptor descriptor, TuiApplication app) {
-                int width = descriptor.geometry() == null
-                        ? 64
-                        : descriptor.geometry().width();
-                int height = descriptor.geometry() == null
-                        ? 16
-                        : descriptor.geometry().height();
+                int width = descriptor.geometry() == null ? 64 : descriptor.geometry().width();
+                int height = descriptor.geometry() == null ? 16 : descriptor.geometry().height();
 
-                EventViewerWindow window = new EventViewerWindow(app, descriptor.title(), width, height, 800);
+                final EventViewerWindow[] holder = new EventViewerWindow[1];
+                EventViewerWindow window = new EventViewerWindow(app, descriptor.title(), width, height, 800,
+                        () -> eventViewers.remove(holder[0]));
+                holder[0] = window;
                 eventViewers.add(window);
                 return window;
             }
@@ -332,12 +236,8 @@ public final class TuiTerminalUiRuntime {
 
             @Override
             public TWindow create(WorkspaceDefinition.WindowDescriptor descriptor, TuiApplication app) {
-                int width = descriptor.geometry() == null
-                        ? 64
-                        : descriptor.geometry().width();
-                int height = descriptor.geometry() == null
-                        ? 14
-                        : descriptor.geometry().height();
+                int width = descriptor.geometry() == null ? 64 : descriptor.geometry().width();
+                int height = descriptor.geometry() == null ? 14 : descriptor.geometry().height();
 
                 DocumentViewerWindow window = new DocumentViewerWindow(
                         app,
@@ -355,12 +255,98 @@ public final class TuiTerminalUiRuntime {
         };
     }
 
-    private ChatWindowController activeChatController() {
-        TWindow chatWindow = workspaceHost.firstWindowByKind("chat");
-        if (chatWindow == null) {
-            return null;
+    private void closeChatWindow(TWindow window, boolean closingRuntime) {
+        if (!(window instanceof ChatWindow chatWindow)) {
+            return;
         }
-        return chatControllersByWindow.get(chatWindow);
+        ChatRuntime runtime = chatRuntimesByWindow.remove(chatWindow);
+        if (runtime == null) {
+            if (!closingRuntime && app.hasWindow(chatWindow)) {
+                chatWindow.close();
+            }
+            return;
+        }
+
+        try {
+            runtime.controller().shutdown();
+        } catch (Exception ignored) {
+        }
+        for (SessionEventListenerHandle listenerHandle : runtime.eventListenerHandles()) {
+            try {
+                magenta.removeEventListener(listenerHandle);
+            } catch (Exception ignored) {
+            }
+        }
+        try {
+            magenta.removeRoute(runtime.outputRoute());
+        } catch (Exception ignored) {
+        }
+        try {
+            magenta.closeSession(runtime.handle());
+        } catch (Exception ignored) {
+        }
+        try {
+            if (app.hasWindow(chatWindow)) {
+                chatWindow.close();
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void onOutput(ChatWindowController controller, SessionOutput output) {
+        if (output == null || closed.get()) {
+            return;
+        }
+
+        if (controller != null) {
+            controller.onOutput(output);
+        }
+
+        switch (output) {
+            case SessionOutput.ToolCallOutput toolCallOutput -> appendEvent("tool_call", List.of(toolCallOutput.toolCall().name()));
+            case SessionOutput.ToolMessageOutput toolMessageOutput ->
+                    appendEvent("tool_result", List.of(toolMessageOutput.message().toolName()));
+            case SessionOutput.FinalOutput finalOutput -> appendEvent("final", List.of(truncate(finalOutput.text(), 180)));
+            case SessionOutput.StreamedOutput ignored -> {
+            }
+        }
+    }
+
+    private void onRoutingEvent(ChatWindowController controller, RoutingEvent event) {
+        if (controller != null) {
+            controller.onRoutingEvent(event);
+        }
+
+        appendEvent("routing", routingFormatter.format(event));
+        if (config.session().routingEventLevel() != RoutingEventLevel.NONE) {
+            config.callbacks().onRouting().accept(event);
+        }
+    }
+
+    private void onSecurityEvent(ChatWindowController controller, SecurityManager.SecurityEvent event) {
+        if (controller != null) {
+            controller.onSecurityEvent(event);
+        }
+
+        appendEvent("security", List.of(event.decisionCode().name().toLowerCase(Locale.ROOT)
+                + " " + event.toolName()));
+        config.callbacks().onSecurity().accept(event);
+    }
+
+    private void onSessionError(ChatWindowController controller, SessionException error) {
+        if (controller != null) {
+            controller.onSessionError(error);
+        }
+
+        appendEvent("error", List.of(error.getMessage() == null ? "session error" : error.getMessage()));
+        config.callbacks().onError().accept(error);
+    }
+
+    private void onSessionEvent(SessionEvent event) {
+        if (event == null) {
+            return;
+        }
+        appendEvent("session", List.of(event.getClass().getSimpleName()));
     }
 
     private void onWorkspaceEvent(WorkspaceHost.WorkspaceEvent event) {
@@ -386,6 +372,14 @@ public final class TuiTerminalUiRuntime {
         }
     }
 
+    private String chatSessionAlias(WorkspaceDefinition.WindowDescriptor descriptor) {
+        String baseAlias = config.session().alias();
+        if (baseAlias == null || baseAlias.isBlank()) {
+            return descriptor.id();
+        }
+        return baseAlias + "-" + descriptor.id();
+    }
+
     private String truncate(String text, int maxChars) {
         if (text == null) {
             return "";
@@ -401,6 +395,14 @@ public final class TuiTerminalUiRuntime {
         return value == null ? "" : value;
     }
 
+    private record ChatRuntime(
+            SessionHandle handle,
+            RouteHandle outputRoute,
+            List<SessionEventListenerHandle> eventListenerHandles,
+            ChatWindowController controller
+    ) {
+    }
+
     private static final class NoOpChatController implements io.mindspice.magenta.ui.tui.chat.ChatController {
         @Override
         public boolean submitComposerText(String text) {
@@ -409,6 +411,11 @@ public final class TuiTerminalUiRuntime {
 
         @Override
         public void requestAbort() {
+        }
+
+        @Override
+        public String requestCloseWindow() {
+            return "Chat controller is not available";
         }
     }
 }

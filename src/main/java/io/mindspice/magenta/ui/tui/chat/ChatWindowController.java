@@ -179,6 +179,23 @@ public final class ChatWindowController implements ChatController {
         }
     }
 
+    @Override
+    public String requestCloseWindow() {
+        if (closed.get()) {
+            return "Chat window is already closed";
+        }
+        if (!binding.handle().isActive()) {
+            closeRuntime.run();
+            return "Closed chat window";
+        }
+        if (turnBusy.get() || magenta.turnInProgress(binding.handle())) {
+            appendBlock("warn", List.of("cannot close chat window while a turn is in progress; abort first"));
+            return "Cannot close chat window while a turn is in progress";
+        }
+        closeRuntime.run();
+        return "Closed chat window and backing session";
+    }
+
     public void shutdown() {
         if (!closed.compareAndSet(false, true)) {
             return;
@@ -274,6 +291,7 @@ public final class ChatWindowController implements ChatController {
                             lines.add("/session - Show current session + context usage");
                             lines.add("/clear - Clear visible transcript only");
                             lines.add("/new - Clear conversation and keep system/task prompts");
+                            lines.add("/close - Close this chat window and its backing session");
                             lines.add("/exit - Exit terminal UI");
                             appendBlock("help", lines);
                         }
@@ -318,6 +336,13 @@ public final class ChatWindowController implements ChatController {
                             List<Magenta.SystemMessageOccupancy> occupied = magenta.clearConversation(binding.handle());
                             appendBlock("info", List.of("conversation cleared; retained system messages => " + occupied.size()));
                         }
+                ),
+                SlashCommandSpec.zero(
+                        "close",
+                        List.of(),
+                        "Close this chat window and its backing session",
+                        "/close",
+                        () -> requestCloseWindow()
                 ),
                 SlashCommandSpec.zero(
                         "exit",

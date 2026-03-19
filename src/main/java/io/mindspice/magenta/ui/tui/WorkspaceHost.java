@@ -1,15 +1,15 @@
 package io.mindspice.magenta.ui.tui;
 
 import casciian.TApplication;
-import casciian.TCommand;
 import casciian.TWindow;
-import casciian.event.TCommandEvent;
+import io.mindspice.magenta.ui.tui.chat.ChatWindow;
 import io.mindspice.magenta.ui.tui.workspace.WindowKindFactoryRegistry;
 import io.mindspice.magenta.ui.tui.workspace.WorkspaceDefinition;
 import io.mindspice.magenta.ui.tui.workspace.WorkspaceOverlayStore;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -26,6 +26,8 @@ public final class WorkspaceHost {
     private final Consumer<RuntimeException> errorHandler;
 
     private final Map<String, WorkspaceState> statesByWorkspaceId = new LinkedHashMap<>();
+    private final Map<TWindow, WindowBinding> bindingsByWindow = new IdentityHashMap<>();
+    private final List<Runnable> stateListeners = new ArrayList<>();
     private String activeWorkspaceId;
 
     public WorkspaceHost(
@@ -53,6 +55,12 @@ public final class WorkspaceHost {
         return activeWorkspaceId;
     }
 
+    public synchronized void addStateListener(Runnable listener) {
+        if (listener != null) {
+            stateListeners.add(listener);
+        }
+    }
+
     public synchronized String switchWorkspace(String workspaceId, TuiApplication app) {
         return runAction("workspace_switch", activeWorkspaceId, null, () -> {
             Objects.requireNonNull(app, "app");
@@ -63,17 +71,16 @@ public final class WorkspaceHost {
             }
 
             WorkspaceState previous = statesByWorkspaceId.computeIfAbsent(activeWorkspaceId, ignored -> new WorkspaceState());
+            ensureOverlayState(activeWorkspace(), previous);
             hideWorkspace(previous, app);
 
             WorkspaceState next = statesByWorkspaceId.computeIfAbsent(targetWorkspaceId, ignored -> new WorkspaceState());
-            if (next.overlay == null) {
-                next.overlay = overlayStore.load(targetWorkspaceId);
-            }
-
-            showWorkspace(target, next, app);
+            ensureOverlayState(target, next);
             activeWorkspaceId = targetWorkspaceId;
+            showWorkspace(target, next, app);
             emit("workspace_switch", targetWorkspaceId, null, "success", "allowed",
                     "Switched workspace to '" + target.name() + "' (" + target.id() + ")");
+            notifyStateChanged();
             return "Switched workspace to '" + target.name() + "' (" + target.id() + ")";
         });
     }
@@ -83,9 +90,9 @@ public final class WorkspaceHost {
             Objects.requireNonNull(app, "app");
             WorkspaceDefinition workspace = activeWorkspace();
             WorkspaceState state = statesByWorkspaceId.computeIfAbsent(workspace.id(), ignored -> new WorkspaceState());
-            WorkspaceOverlayStore.Overlay overlay = buildOverlay(workspace, state, app);
+            ensureOverlayState(workspace, state);
+            WorkspaceOverlayStore.Overlay overlay = buildOverlay(state, app);
             overlayStore.save(workspace.id(), overlay);
-            state.overlay = overlay;
             String message = "Saved workspace layout overlay: " + workspace.id();
             emit("workspace_save", workspace.id(), null, "success", "allowed", message);
             return message;
@@ -101,64 +108,158 @@ public final class WorkspaceHost {
                 return "No saved layout overlay for workspace '" + workspace.id() + "'";
             }
             WorkspaceState state = statesByWorkspaceId.computeIfAbsent(workspace.id(), ignored -> new WorkspaceState());
-            state.overlay = overlay;
+            applyOverlay(workspace, state, overlay, true);
             showWorkspace(workspace, state, app);
             String message = "Loaded workspace layout overlay: " + workspace.id();
             emit("workspace_load", workspace.id(), null, "success", "allowed", message);
+            notifyStateChanged();
             return message;
         });
     }
 
-    public synchronized List<WindowOption> hiddenWindows() {
+    public synchronized List<WindowMenuEntry> windowMenuEntries() {
         WorkspaceDefinition workspace = activeWorkspace();
         WorkspaceState state = statesByWorkspaceId.computeIfAbsent(workspace.id(), ignored -> new WorkspaceState());
+        ensureOverlayState(workspace, state);
         return workspace.windows().stream()
-                .filter(descriptor -> {
+                .map(descriptor -> {
                     WindowInstance instance = state.instancesByWindowId.get(descriptor.id());
-                    return instance != null && instance.window.isHidden();
+                    WorkspaceOverlayStore.OverlayWindowState overlayState = state.overlayWindowsById.get(descriptor.id());
+                    boolean visible = instance != null ? !instance.window.isHidden() : Boolean.TRUE.equals(overlayState.visible());
+                    boolean instantiated = instance != null;
+                    boolean maximized = overlayState != null && Boolean.TRUE.equals(overlayState.maximized());
+                    return new WindowMenuEntry(descriptor.id(), descriptor.title(), visible, maximized, instantiated);
                 })
-                .map(descriptor -> new WindowOption(descriptor.id(), descriptor.title()))
                 .toList();
     }
 
-    public synchronized List<WindowOption> addableWindows() {
-        WorkspaceDefinition workspace = activeWorkspace();
-        WorkspaceState state = statesByWorkspaceId.computeIfAbsent(workspace.id(), ignored -> new WorkspaceState());
-        return workspace.windows().stream()
-                .filter(descriptor -> {
-                    WindowInstance instance = state.instancesByWindowId.get(descriptor.id());
-                    return instance == null || instance.window.isHidden();
-                })
-                .map(descriptor -> new WindowOption(descriptor.id(), descriptor.title()))
-                .toList();
-    }
-
-    public synchronized String openWindow(String windowId, TuiApplication app) {
-        return runAction("window_open", activeWorkspaceId, windowId, () -> {
+    public synchronized String focusOrRestoreWindow(String windowId, TuiApplication app) {
+        return runAction("window_focus", activeWorkspaceId, windowId, () -> {
             Objects.requireNonNull(app, "app");
             if (windowId == null || windowId.isBlank()) {
                 return "Window id is required";
             }
             WorkspaceDefinition workspace = activeWorkspace();
-            WorkspaceDefinition.WindowDescriptor descriptor = workspace.windows().stream()
-                    .filter(candidate -> candidate.id().equals(windowId.trim()))
-                    .findFirst()
-                    .orElse(null);
+            WorkspaceState state = statesByWorkspaceId.computeIfAbsent(workspace.id(), ignored -> new WorkspaceState());
+            ensureOverlayState(workspace, state);
+            WorkspaceDefinition.WindowDescriptor descriptor = descriptorFor(workspace, windowId.trim());
             if (descriptor == null) {
                 return "Unknown window for workspace '" + workspace.id() + "': " + windowId;
             }
 
-            WorkspaceState state = statesByWorkspaceId.computeIfAbsent(workspace.id(), ignored -> new WorkspaceState());
-            WindowInstance instance = ensureWindow(descriptor, state, app);
-            WorkspaceOverlayStore.OverlayWindowState overlayState = overlayWindowState(state.overlay, descriptor.id());
-            applyWindowState(instance.window, descriptor.geometry(), overlayState, app);
-            instance.window.show();
+            WindowInstance instance = state.instancesByWindowId.get(descriptor.id());
+            if (instance == null) {
+                WindowInstance created = ensureWindow(workspace.id(), descriptor, state, app);
+                WorkspaceOverlayStore.OverlayWindowState overlayState = state.overlayWindowsById.get(descriptor.id());
+                WorkspaceOverlayStore.OverlayWindowState openState = overlayStateForOpen(overlayState, descriptor.geometry());
+                withLifecycleSyncSuppressed(state, () -> {
+                    applyWindowState(created.window, descriptor.geometry(), openState, app);
+                    created.window.show();
+                });
+                syncWindowShown(created.window);
+                created.window.activate();
+                state.activeWindowHint = descriptor.id();
+                emit("window_open", workspace.id(), descriptor.id(), "success", "allowed",
+                        "Opened window '" + descriptor.title() + "'");
+                return "Opened window '" + descriptor.title() + "'";
+            }
+
+            if (instance.window.isHidden()) {
+                instance.window.show();
+                instance.window.activate();
+                state.activeWindowHint = descriptor.id();
+                emit("window_restore", workspace.id(), descriptor.id(), "success", "allowed",
+                        "Restored window '" + descriptor.title() + "'");
+                return "Restored window '" + descriptor.title() + "'";
+            }
+
             instance.window.activate();
             state.activeWindowHint = descriptor.id();
-            String message = "Opened window '" + descriptor.title() + "'";
-            emit("window_open", workspace.id(), descriptor.id(), "success", "allowed", message);
-            return message;
+            emit("window_focus", workspace.id(), descriptor.id(), "success", "allowed",
+                    "Focused window '" + descriptor.title() + "'");
+            return "Focused window '" + descriptor.title() + "'";
         });
+    }
+
+    public synchronized String hideActiveWindow(TuiApplication app) {
+        Objects.requireNonNull(app, "app");
+        TWindow activeWindow = app.getActiveWindow();
+        if (activeWindow == null) {
+            return "No active window to hide";
+        }
+        WindowBinding binding = bindingsByWindow.get(activeWindow);
+        if (binding == null) {
+            return "Active window is not managed by the workspace host";
+        }
+        if (activeWindow.isHidden()) {
+            return "Active window is already hidden";
+        }
+        activeWindow.hide();
+        return "Hid active window";
+    }
+
+    public synchronized String openWindow(String windowId, TuiApplication app) {
+        return focusOrRestoreWindow(windowId, app);
+    }
+
+    public synchronized String closeActiveWindow(TuiApplication app) {
+        Objects.requireNonNull(app, "app");
+        TWindow activeWindow = app.getActiveWindow();
+        if (activeWindow == null) {
+            return "No active window to close";
+        }
+        WindowBinding binding = bindingsByWindow.get(activeWindow);
+        if (binding == null) {
+            return "Active window is not managed by the workspace host";
+        }
+        return closeWindow(binding.windowId(), app);
+    }
+
+    public synchronized String closeWindow(String windowId, TuiApplication app) {
+        return runAction("window_close", activeWorkspaceId, windowId, () -> {
+            Objects.requireNonNull(app, "app");
+            if (windowId == null || windowId.isBlank()) {
+                return "Window id is required";
+            }
+            WorkspaceDefinition workspace = activeWorkspace();
+            WorkspaceState state = statesByWorkspaceId.computeIfAbsent(workspace.id(), ignored -> new WorkspaceState());
+            ensureOverlayState(workspace, state);
+            WindowInstance instance = state.instancesByWindowId.get(windowId.trim());
+            if (instance == null) {
+                return "Window is not currently open: " + windowId;
+            }
+            if (instance.window instanceof ChatWindow chatWindow) {
+                return chatWindow.requestCloseWindow();
+            }
+            instance.window.close();
+            return "Closed window '" + instance.descriptor().title() + "'";
+        });
+    }
+
+    public synchronized String toggleActiveWindowZoom(TuiApplication app) {
+        WorkspaceDefinition workspace = activeWorkspace();
+        WorkspaceState state = statesByWorkspaceId.computeIfAbsent(workspace.id(), ignored -> new WorkspaceState());
+        ensureOverlayState(workspace, state);
+        Objects.requireNonNull(app, "app");
+        TWindow activeWindow = app.getActiveWindow();
+        if (activeWindow == null) {
+            return "No active window to maximize or restore";
+        }
+        WindowBinding binding = bindingsByWindow.get(activeWindow);
+        if (binding == null) {
+            return "Active window is not managed by the workspace host";
+        }
+        boolean maximized = isWindowMaximized(activeWindow);
+        if (maximized) {
+            activeWindow.restore();
+            emit("window_restore", binding.workspaceId(), binding.windowId(), "success", "allowed", "Restored active window");
+            notifyStateChanged();
+            return "Restored active window";
+        }
+        activeWindow.maximize();
+        emit("window_maximize", binding.workspaceId(), binding.windowId(), "success", "allowed", "Maximized active window");
+        notifyStateChanged();
+        return "Maximized active window";
     }
 
     public synchronized TWindow firstWindowByKind(String kind) {
@@ -183,56 +284,173 @@ public final class WorkspaceHost {
         return null;
     }
 
-    public synchronized String describeHiddenWindows() {
-        List<WindowOption> hidden = hiddenWindows();
-        if (hidden.isEmpty()) {
-            return "No hidden windows in workspace '" + activeWorkspaceId + "'";
-        }
-        return "Hidden windows in workspace '" + activeWorkspaceId + "': "
-                + hidden.stream().map(WindowOption::title).reduce((left, right) -> left + ", " + right).orElse("");
-    }
-
     public synchronized void recordWindowAction(String actionType, TWindow window, String message) {
         if (window == null) {
             emit(actionType, activeWorkspaceId, null, "success", "allowed", message);
             return;
         }
-        WorkspaceState state = statesByWorkspaceId.get(activeWorkspaceId);
-        String windowId = null;
-        if (state != null) {
-            windowId = state.instancesByWindowId.values().stream()
-                    .filter(candidate -> candidate.window == window)
-                    .map(candidate -> candidate.descriptor.id())
-                    .findFirst()
-                    .orElse(null);
+        WindowBinding binding = bindingsByWindow.get(window);
+        emit(actionType, binding == null ? activeWorkspaceId : binding.workspaceId(), binding == null ? null : binding.windowId(),
+                "success", "allowed", message);
+    }
+
+    public synchronized boolean isLifecycleSyncSuppressed(TWindow window) {
+        WindowContext context = resolveWindowContext(window);
+        return context == null || context.state().lifecycleSyncDepth > 0;
+    }
+
+    public synchronized boolean isWindowMaximized(TWindow window) {
+        if (window == null) {
+            return false;
         }
-        emit(actionType, activeWorkspaceId, windowId, "success", "allowed", message);
+        return inferMaximized(window, window.getApplication());
+    }
+
+    public synchronized void beforeWindowMaximize(TWindow window) {
+        syncWindowResizedOrMoved(window, true);
+    }
+
+    public synchronized void syncWindowFocused(TWindow window) {
+        WindowContext context = resolveWindowContext(window);
+        if (context == null || context.state().lifecycleSyncDepth > 0) {
+            return;
+        }
+        context.state().activeWindowHint = context.windowId();
+    }
+
+    public synchronized void syncWindowShown(TWindow window) {
+        WindowContext context = resolveWindowContext(window);
+        if (context == null || context.state().lifecycleSyncDepth > 0) {
+            return;
+        }
+        WorkspaceOverlayStore.OverlayWindowState prior = stateForWindow(context);
+        WorkspaceDefinition.Geometry geometry = geometryFromWindow(window, window.getApplication());
+        boolean maximized = inferMaximized(window, window.getApplication());
+        WorkspaceDefinition.Geometry normalGeometry = maximized
+                ? effectiveNormalGeometry(prior, context.instance().descriptor().geometry())
+                : geometry;
+        updateWindowState(context, new WorkspaceOverlayStore.OverlayWindowState(
+                Boolean.TRUE,
+                maximized,
+                geometry,
+                normalGeometry
+        ));
+        context.state().activeWindowHint = context.windowId();
+        notifyStateChanged();
+    }
+
+    public synchronized void syncWindowHidden(TWindow window) {
+        WindowContext context = resolveWindowContext(window);
+        if (context == null || context.state().lifecycleSyncDepth > 0) {
+            return;
+        }
+        WorkspaceOverlayStore.OverlayWindowState prior = stateForWindow(context);
+        WorkspaceDefinition.Geometry geometry = geometryFromWindow(window, window.getApplication());
+        boolean maximized = inferMaximized(window, window.getApplication());
+        WorkspaceDefinition.Geometry normalGeometry = maximized
+                ? effectiveNormalGeometry(prior, context.instance().descriptor().geometry())
+                : geometry;
+        updateWindowState(context, new WorkspaceOverlayStore.OverlayWindowState(
+                Boolean.FALSE,
+                maximized,
+                geometry,
+                normalGeometry
+        ));
+        activatePreferredVisibleWindow(context.workspaceId(), context.windowId());
+        notifyStateChanged();
+    }
+
+    public synchronized void syncWindowClosed(TWindow window) {
+        WindowContext context = resolveWindowContext(window);
+        if (context == null) {
+            return;
+        }
+        WorkspaceOverlayStore.OverlayWindowState prior = stateForWindow(context);
+        WorkspaceDefinition.Geometry geometry = geometryFromWindow(window, window.getApplication());
+        WorkspaceDefinition.Geometry normalGeometry = effectiveNormalGeometry(prior, context.instance().descriptor().geometry());
+        updateWindowState(context, new WorkspaceOverlayStore.OverlayWindowState(
+                Boolean.FALSE,
+                Boolean.FALSE,
+                geometry,
+                normalGeometry
+        ));
+        context.state().instancesByWindowId.remove(context.windowId());
+        bindingsByWindow.remove(window);
+        emit("window_close", context.workspaceId(), context.windowId(), "success", "allowed",
+                "Closed window '" + context.instance().descriptor().title() + "'");
+        activatePreferredVisibleWindow(context.workspaceId(), context.windowId());
+        notifyStateChanged();
+    }
+
+    public synchronized void syncWindowResizedOrMoved(TWindow window, boolean allowNormalGeometryUpdate) {
+        WindowContext context = resolveWindowContext(window);
+        if (context == null || context.state().lifecycleSyncDepth > 0) {
+            return;
+        }
+        WorkspaceOverlayStore.OverlayWindowState prior = stateForWindow(context);
+        WorkspaceDefinition.Geometry geometry = geometryFromWindow(window, window.getApplication());
+        boolean maximized = inferMaximized(window, window.getApplication());
+        WorkspaceDefinition.Geometry normalGeometry = effectiveNormalGeometry(prior, context.instance().descriptor().geometry());
+        if (allowNormalGeometryUpdate && !maximized) {
+            normalGeometry = geometry;
+        }
+        updateWindowState(context, new WorkspaceOverlayStore.OverlayWindowState(
+                !window.isHidden(),
+                maximized,
+                geometry,
+                maximized ? normalGeometry : geometry
+        ));
+        if (!window.isHidden()) {
+            context.state().activeWindowHint = context.windowId();
+        }
+    }
+
+    public synchronized void applyWorkspaceLayoutMode(TuiApplication app, WorkspaceDefinition.LayoutMode mode) {
+        Objects.requireNonNull(app, "app");
+        Objects.requireNonNull(mode, "mode");
+        WorkspaceDefinition workspace = activeWorkspace();
+        WorkspaceState state = statesByWorkspaceId.computeIfAbsent(workspace.id(), ignored -> new WorkspaceState());
+        ensureOverlayState(workspace, state);
+        withLifecycleSyncSuppressed(state, () -> app.applyNativeWindowLayout(mode));
+        for (WindowInstance instance : state.instancesByWindowId.values()) {
+            if (instance.window.isHidden()) {
+                continue;
+            }
+            syncWindowResizedOrMoved(instance.window, true);
+        }
+        state.layoutInitialized = true;
+        emit("workspace_layout", workspace.id(), null, "success", "allowed", "Applied " + mode.name().toLowerCase(Locale.ROOT) + " layout");
+        notifyStateChanged();
     }
 
     private void showWorkspace(WorkspaceDefinition workspace, WorkspaceState state, TuiApplication app) {
+        boolean applyDefaultLayout = !state.layoutInitialized && !state.loadedFromOverlay;
         LinkedHashSet<String> visibleWindowIds = new LinkedHashSet<>();
-        for (WorkspaceDefinition.WindowDescriptor descriptor : workspace.windows()) {
-            WorkspaceOverlayStore.OverlayWindowState overlayState = overlayWindowState(state.overlay, descriptor.id());
-            boolean visible = overlayState != null && overlayState.visible() != null
-                    ? overlayState.visible()
-                    : descriptor.visible();
+        withLifecycleSyncSuppressed(state, () -> {
+            for (WorkspaceDefinition.WindowDescriptor descriptor : workspace.windows()) {
+                WorkspaceOverlayStore.OverlayWindowState overlayState = state.overlayWindowsById.get(descriptor.id());
+                boolean visible = overlayState != null && overlayState.visible() != null
+                        ? overlayState.visible()
+                        : descriptor.visible();
 
-            if (!visible) {
-                WindowInstance existing = state.instancesByWindowId.get(descriptor.id());
-                if (existing != null && app.hasWindow(existing.window)) {
-                    existing.window.hide();
+                if (!visible) {
+                    WindowInstance existing = state.instancesByWindowId.get(descriptor.id());
+                    if (existing != null && app.hasWindow(existing.window)) {
+                        existing.window.hide();
+                    }
+                    continue;
                 }
-                continue;
+
+                WindowInstance instance = ensureWindow(workspace.id(), descriptor, state, app);
+                applyWindowState(instance.window, descriptor.geometry(), overlayState, app);
+                instance.window.show();
+                visibleWindowIds.add(descriptor.id());
             }
+        });
 
-            WindowInstance instance = ensureWindow(descriptor, state, app);
-            applyWindowState(instance.window, descriptor.geometry(), overlayState, app);
-            instance.window.show();
-            visibleWindowIds.add(descriptor.id());
-        }
-
-        if (state.overlay == null) {
-            applyWorkspaceLayoutDefault(workspace, app);
+        if (applyDefaultLayout) {
+            applyWorkspaceLayoutMode(app, workspace.layoutMode());
+            state.layoutInitialized = true;
         }
 
         String activeWindowId = resolveActiveWindowHint(state, visibleWindowIds, workspace);
@@ -246,14 +464,17 @@ public final class WorkspaceHost {
     }
 
     private void hideWorkspace(WorkspaceState state, TuiApplication app) {
-        for (WindowInstance instance : state.instancesByWindowId.values()) {
-            if (app.hasWindow(instance.window) && !instance.window.isHidden()) {
-                instance.window.hide();
+        withLifecycleSyncSuppressed(state, () -> {
+            for (WindowInstance instance : state.instancesByWindowId.values()) {
+                if (app.hasWindow(instance.window) && !instance.window.isHidden()) {
+                    instance.window.hide();
+                }
             }
-        }
+        });
     }
 
     private WindowInstance ensureWindow(
+            String workspaceId,
             WorkspaceDefinition.WindowDescriptor descriptor,
             WorkspaceState state,
             TuiApplication app
@@ -264,57 +485,27 @@ public final class WorkspaceHost {
         }
 
         TWindow window = windowKindRegistry.require(descriptor.kind()).create(descriptor, app);
+        if (window instanceof WorkspaceWindowLifecycle lifecycle) {
+            lifecycle.bindWorkspaceHost(this, workspaceId, descriptor.id());
+        }
         WindowInstance created = new WindowInstance(descriptor, window);
         state.instancesByWindowId.put(descriptor.id(), created);
-        emit("window_open", activeWorkspaceId, descriptor.id(), "success", "allowed",
+        bindingsByWindow.put(window, new WindowBinding(workspaceId, descriptor.id()));
+        emit("window_open", workspaceId, descriptor.id(), "success", "allowed",
                 "Created window '" + descriptor.title() + "' with kind '" + descriptor.kind() + "'");
         return created;
     }
 
-    private WorkspaceOverlayStore.Overlay buildOverlay(
-            WorkspaceDefinition workspace,
-            WorkspaceState state,
-            TuiApplication app
-    ) {
-        Map<String, WorkspaceOverlayStore.OverlayWindowState> windows = new LinkedHashMap<>();
-        for (WorkspaceDefinition.WindowDescriptor descriptor : workspace.windows()) {
-            WindowInstance instance = state.instancesByWindowId.get(descriptor.id());
-            WorkspaceOverlayStore.OverlayWindowState prior = overlayWindowState(state.overlay, descriptor.id());
-            if (instance == null) {
-                windows.put(descriptor.id(), prior == null
-                        ? new WorkspaceOverlayStore.OverlayWindowState(descriptor.visible(), Boolean.FALSE, descriptor.geometry())
-                        : prior);
-                continue;
-            }
-            TWindow window = instance.window;
-            WorkspaceDefinition.Geometry geometry = geometryFromWindow(window, app);
-            windows.put(descriptor.id(), new WorkspaceOverlayStore.OverlayWindowState(
-                    !window.isHidden(),
-                    inferMaximized(window, app),
-                    geometry
-            ));
-        }
-
-        String activeWindowId = null;
+    private WorkspaceOverlayStore.Overlay buildOverlay(WorkspaceState state, TuiApplication app) {
+        String activeWindowId = state.activeWindowHint;
         TWindow activeWindow = app.getActiveWindow();
         if (activeWindow != null) {
-            activeWindowId = state.instancesByWindowId.values().stream()
-                    .filter(candidate -> candidate.window == activeWindow)
-                    .map(candidate -> candidate.descriptor.id())
-                    .findFirst()
-                    .orElse(state.activeWindowHint);
+            WindowBinding binding = bindingsByWindow.get(activeWindow);
+            if (binding != null && statesByWorkspaceId.get(binding.workspaceId()) == state) {
+                activeWindowId = binding.windowId();
+            }
         }
-        return new WorkspaceOverlayStore.Overlay(activeWindowId, windows);
-    }
-
-    private WorkspaceOverlayStore.OverlayWindowState overlayWindowState(
-            WorkspaceOverlayStore.Overlay overlay,
-            String windowId
-    ) {
-        if (overlay == null) {
-            return null;
-        }
-        return overlay.windows().get(windowId);
+        return new WorkspaceOverlayStore.Overlay(activeWindowId, new LinkedHashMap<>(state.overlayWindowsById));
     }
 
     private void applyWindowState(
@@ -326,21 +517,22 @@ public final class WorkspaceHost {
         WorkspaceDefinition.Geometry geometry = overlayState != null && overlayState.geometry() != null
                 ? overlayState.geometry()
                 : defaultGeometry;
-        if (geometry != null) {
-            applyGeometry(window, geometry, app);
+        WorkspaceDefinition.Geometry normalGeometry = overlayState != null && overlayState.normalGeometry() != null
+                ? overlayState.normalGeometry()
+                : geometry;
+        boolean shouldMaximize = overlayState != null && Boolean.TRUE.equals(overlayState.maximized());
+        if (inferMaximized(window, app)) {
+            window.restore();
         }
-
-        Boolean maximized = overlayState == null ? null : overlayState.maximized();
-        if (Boolean.TRUE.equals(maximized)) {
+        if (shouldMaximize) {
+            if (normalGeometry != null) {
+                applyGeometry(window, normalGeometry, app);
+            }
             window.maximize();
             return;
         }
-
-        if (inferMaximized(window, app)) {
-            window.restore();
-            if (geometry != null) {
-                applyGeometry(window, geometry, app);
-            }
+        if (geometry != null) {
+            applyGeometry(window, geometry, app);
         }
     }
 
@@ -371,22 +563,10 @@ public final class WorkspaceHost {
             return first.id();
         }
 
-        String overlayHint = state.overlay == null ? null : state.overlay.activeWindowId();
-        if (overlayHint != null && visibleWindowIds.contains(overlayHint)) {
-            return overlayHint;
-        }
         if (state.activeWindowHint != null && visibleWindowIds.contains(state.activeWindowHint)) {
             return state.activeWindowHint;
         }
         return visibleWindowIds.iterator().next();
-    }
-
-    private void applyWorkspaceLayoutDefault(WorkspaceDefinition workspace, TuiApplication app) {
-        if (workspace.layoutMode() == WorkspaceDefinition.LayoutMode.CASCADE) {
-            app.postMenuEvent(new TCommandEvent(app.getBackend(), TCommand.cmCascade));
-            return;
-        }
-        app.postMenuEvent(new TCommandEvent(app.getBackend(), TCommand.cmTile));
     }
 
     private WorkspaceDefinition activeWorkspace() {
@@ -406,6 +586,160 @@ public final class WorkspaceHost {
 
     private String normalizeKind(String kind) {
         return kind == null ? "" : kind.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private void ensureOverlayState(WorkspaceDefinition workspace, WorkspaceState state) {
+        if (state.overlayInitialized) {
+            return;
+        }
+        WorkspaceOverlayStore.Overlay overlay = overlayStore.load(workspace.id());
+        applyOverlay(workspace, state, overlay, overlay != null);
+    }
+
+    private void applyOverlay(
+            WorkspaceDefinition workspace,
+            WorkspaceState state,
+            WorkspaceOverlayStore.Overlay overlay,
+            boolean loadedFromOverlay
+    ) {
+        state.overlayWindowsById.clear();
+        for (WorkspaceDefinition.WindowDescriptor descriptor : workspace.windows()) {
+            WorkspaceOverlayStore.OverlayWindowState overlayState = overlay == null ? null : overlay.windows().get(descriptor.id());
+            state.overlayWindowsById.put(descriptor.id(), mergedWindowState(descriptor, overlayState));
+        }
+        state.activeWindowHint = overlay == null ? null : overlay.activeWindowId();
+        state.overlayInitialized = true;
+        state.loadedFromOverlay = loadedFromOverlay;
+        state.layoutInitialized = loadedFromOverlay;
+    }
+
+    private WorkspaceOverlayStore.OverlayWindowState mergedWindowState(
+            WorkspaceDefinition.WindowDescriptor descriptor,
+            WorkspaceOverlayStore.OverlayWindowState overlayState
+    ) {
+        WorkspaceDefinition.Geometry geometry = overlayState != null && overlayState.geometry() != null
+                ? overlayState.geometry()
+                : descriptor.geometry();
+        WorkspaceDefinition.Geometry normalGeometry = overlayState != null && overlayState.normalGeometry() != null
+                ? overlayState.normalGeometry()
+                : geometry;
+        Boolean visible = overlayState != null && overlayState.visible() != null
+                ? overlayState.visible()
+                : descriptor.visible();
+        Boolean maximized = overlayState != null && overlayState.maximized() != null
+                ? overlayState.maximized()
+                : Boolean.FALSE;
+        return new WorkspaceOverlayStore.OverlayWindowState(visible, maximized, geometry, normalGeometry);
+    }
+
+    private WorkspaceOverlayStore.OverlayWindowState stateForWindow(WindowContext context) {
+        return context.state().overlayWindowsById.get(context.windowId());
+    }
+
+    private WorkspaceDefinition.Geometry reopenGeometry(
+            WorkspaceDefinition.Geometry defaultGeometry,
+            WorkspaceOverlayStore.OverlayWindowState overlayState
+    ) {
+        if (overlayState == null || Boolean.TRUE.equals(overlayState.maximized())) {
+            return defaultGeometry;
+        }
+        return overlayState.normalGeometry() != null ? overlayState.normalGeometry() : defaultGeometry;
+    }
+
+    private WorkspaceOverlayStore.OverlayWindowState overlayStateForOpen(
+            WorkspaceOverlayStore.OverlayWindowState overlayState,
+            WorkspaceDefinition.Geometry defaultGeometry
+    ) {
+        if (overlayState == null) {
+            return null;
+        }
+        if (Boolean.TRUE.equals(overlayState.maximized())) {
+            return new WorkspaceOverlayStore.OverlayWindowState(
+                    Boolean.TRUE,
+                    Boolean.FALSE,
+                    effectiveNormalGeometry(overlayState, defaultGeometry),
+                    effectiveNormalGeometry(overlayState, defaultGeometry)
+            );
+        }
+        return new WorkspaceOverlayStore.OverlayWindowState(
+                Boolean.TRUE,
+                Boolean.FALSE,
+                reopenGeometry(defaultGeometry, overlayState),
+                effectiveNormalGeometry(overlayState, defaultGeometry)
+        );
+    }
+
+    private WorkspaceDefinition.Geometry effectiveNormalGeometry(
+            WorkspaceOverlayStore.OverlayWindowState state,
+            WorkspaceDefinition.Geometry defaultGeometry
+    ) {
+        if (state != null && state.normalGeometry() != null) {
+            return state.normalGeometry();
+        }
+        if (state != null && state.geometry() != null) {
+            return state.geometry();
+        }
+        return defaultGeometry;
+    }
+
+    private void updateWindowState(WindowContext context, WorkspaceOverlayStore.OverlayWindowState updatedState) {
+        context.state().overlayWindowsById.put(context.windowId(), updatedState);
+    }
+
+    private WorkspaceDefinition.WindowDescriptor descriptorFor(WorkspaceDefinition workspace, String windowId) {
+        return workspace.windows().stream()
+                .filter(candidate -> candidate.id().equals(windowId))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private void activatePreferredVisibleWindow(String workspaceId, String excludedWindowId) {
+        WorkspaceState state = statesByWorkspaceId.get(workspaceId);
+        WorkspaceDefinition workspace = workspacesById.get(workspaceId);
+        if (state == null || workspace == null) {
+            return;
+        }
+        for (WorkspaceDefinition.WindowDescriptor descriptor : workspace.windows()) {
+            if (descriptor.id().equals(excludedWindowId)) {
+                continue;
+            }
+            WindowInstance candidate = state.instancesByWindowId.get(descriptor.id());
+            if (candidate == null || candidate.window.isHidden()) {
+                continue;
+            }
+            candidate.window.activate();
+            state.activeWindowHint = descriptor.id();
+            return;
+        }
+        state.activeWindowHint = null;
+    }
+
+    private WindowContext resolveWindowContext(TWindow window) {
+        if (window == null) {
+            return null;
+        }
+        WindowBinding binding = bindingsByWindow.get(window);
+        if (binding == null) {
+            return null;
+        }
+        WorkspaceState state = statesByWorkspaceId.get(binding.workspaceId());
+        if (state == null) {
+            return null;
+        }
+        WindowInstance instance = state.instancesByWindowId.get(binding.windowId());
+        if (instance == null) {
+            return null;
+        }
+        return new WindowContext(binding.workspaceId(), binding.windowId(), state, instance);
+    }
+
+    private void withLifecycleSyncSuppressed(WorkspaceState state, Runnable action) {
+        state.lifecycleSyncDepth += 1;
+        try {
+            action.run();
+        } finally {
+            state.lifecycleSyncDepth -= 1;
+        }
     }
 
     private Map<String, WorkspaceDefinition> validateWorkspaceMap(Map<String, WorkspaceDefinition> workspacesById) {
@@ -444,6 +778,15 @@ public final class WorkspaceHost {
         observer.onEvent(new WorkspaceEvent(type, workspaceId, windowId, status, code, message));
     }
 
+    private void notifyStateChanged() {
+        for (Runnable listener : stateListeners) {
+            try {
+                listener.run();
+            } catch (RuntimeException ignored) {
+            }
+        }
+    }
+
     @FunctionalInterface
     private interface Action {
         String run();
@@ -467,15 +810,36 @@ public final class WorkspaceHost {
     public record WorkspaceOption(String id, String name) {
     }
 
-    public record WindowOption(String id, String title) {
+    public record WindowMenuEntry(
+            String windowId,
+            String title,
+            boolean visible,
+            boolean maximized,
+            boolean instantiated
+    ) {
     }
 
     private static final class WorkspaceState {
         private final Map<String, WindowInstance> instancesByWindowId = new LinkedHashMap<>();
-        private WorkspaceOverlayStore.Overlay overlay;
+        private final Map<String, WorkspaceOverlayStore.OverlayWindowState> overlayWindowsById = new LinkedHashMap<>();
         private String activeWindowHint;
+        private boolean overlayInitialized;
+        private boolean loadedFromOverlay;
+        private boolean layoutInitialized;
+        private int lifecycleSyncDepth;
     }
 
     private record WindowInstance(WorkspaceDefinition.WindowDescriptor descriptor, TWindow window) {
+    }
+
+    private record WindowBinding(String workspaceId, String windowId) {
+    }
+
+    private record WindowContext(
+            String workspaceId,
+            String windowId,
+            WorkspaceState state,
+            WindowInstance instance
+    ) {
     }
 }

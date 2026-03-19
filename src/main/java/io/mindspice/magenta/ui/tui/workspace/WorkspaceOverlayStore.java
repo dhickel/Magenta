@@ -69,12 +69,8 @@ public final class WorkspaceOverlayStore {
                 windows.put(state.id.trim(), new OverlayWindowState(
                         state.visible,
                         state.maximized,
-                        state.geometry == null ? null : new WorkspaceDefinition.Geometry(
-                                state.geometry.x == null ? 0 : state.geometry.x,
-                                state.geometry.y == null ? 0 : state.geometry.y,
-                                state.geometry.width == null ? 0 : state.geometry.width,
-                                state.geometry.height == null ? 0 : state.geometry.height
-                        )
+                        toGeometry(state.geometry),
+                        state.normalGeometry == null ? toGeometry(state.geometry) : toGeometry(state.normalGeometry)
                 ));
             }
         }
@@ -91,16 +87,36 @@ public final class WorkspaceOverlayStore {
             state.maximized = entry.getValue().maximized();
             WorkspaceDefinition.Geometry geometry = entry.getValue().geometry();
             if (geometry != null) {
-                GeometryDocument geometryDocument = new GeometryDocument();
-                geometryDocument.x = geometry.x();
-                geometryDocument.y = geometry.y();
-                geometryDocument.width = geometry.width();
-                geometryDocument.height = geometry.height();
-                state.geometry = geometryDocument;
+                state.geometry = fromGeometry(geometry);
+            }
+            WorkspaceDefinition.Geometry normalGeometry = entry.getValue().normalGeometry();
+            if (normalGeometry != null) {
+                state.normalGeometry = fromGeometry(normalGeometry);
             }
             return state;
         }).toList();
         return document;
+    }
+
+    private WorkspaceDefinition.Geometry toGeometry(GeometryDocument geometry) {
+        if (geometry == null) {
+            return null;
+        }
+        return new WorkspaceDefinition.Geometry(
+                geometry.x == null ? 0 : geometry.x,
+                geometry.y == null ? 0 : geometry.y,
+                geometry.width == null ? 0 : geometry.width,
+                geometry.height == null ? 0 : geometry.height
+        );
+    }
+
+    private GeometryDocument fromGeometry(WorkspaceDefinition.Geometry geometry) {
+        GeometryDocument geometryDocument = new GeometryDocument();
+        geometryDocument.x = geometry.x();
+        geometryDocument.y = geometry.y();
+        geometryDocument.width = geometry.width();
+        geometryDocument.height = geometry.height();
+        return geometryDocument;
     }
 
     public record Overlay(String activeWindowId, Map<String, OverlayWindowState> windows) {
@@ -109,7 +125,12 @@ public final class WorkspaceOverlayStore {
         }
     }
 
-    public record OverlayWindowState(Boolean visible, Boolean maximized, WorkspaceDefinition.Geometry geometry) {
+    public record OverlayWindowState(
+            Boolean visible,
+            Boolean maximized,
+            WorkspaceDefinition.Geometry geometry,
+            WorkspaceDefinition.Geometry normalGeometry
+    ) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = false)
@@ -130,6 +151,8 @@ public final class WorkspaceOverlayStore {
         private Boolean maximized;
         @JsonProperty("geometry")
         private GeometryDocument geometry;
+        @JsonProperty("normalGeometry")
+        private GeometryDocument normalGeometry;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = false)

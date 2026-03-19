@@ -3,7 +3,6 @@ package io.mindspice.magenta.ui.tui.windows;
 import casciian.TApplication;
 import casciian.TLabel;
 import casciian.TText;
-import casciian.TWindow;
 import casciian.event.TResizeEvent;
 
 import java.io.BufferedReader;
@@ -12,7 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-public final class DocumentViewerWindow extends TWindow {
+public final class DocumentViewerWindow extends WorkspaceTWindow {
     private static final int DEFAULT_MAX_LINES = 400;
     private static final int DEFAULT_MAX_CHARS = 40_000;
 
@@ -32,7 +31,7 @@ public final class DocumentViewerWindow extends TWindow {
             int maxLines,
             int maxChars
     ) {
-        super(application, title, width, height, RESIZABLE);
+        super(application, title, width, height);
         this.workspaceRoot = workspaceRoot.toAbsolutePath().normalize();
         this.maxLines = maxLines <= 0 ? DEFAULT_MAX_LINES : maxLines;
         this.maxChars = maxChars <= 0 ? DEFAULT_MAX_CHARS : maxChars;
