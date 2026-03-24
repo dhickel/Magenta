@@ -14,7 +14,7 @@ import io.mindspice.magenta.runtime.events.SessionEventListenerHandle;
 import io.mindspice.magenta.runtime.events.SessionEventLogSink;
 import io.mindspice.magenta.runtime.model.ModelClientException;
 import io.mindspice.magenta.runtime.model.ModelRunner;
-import io.mindspice.magenta.runtime.model.OllamaClient;
+import io.mindspice.magenta.runtime.model.RoutingModelClient;
 import io.mindspice.magenta.runtime.persistence.DatabaseService;
 import io.mindspice.magenta.runtime.persistence.SessionContextCommand;
 import io.mindspice.magenta.runtime.persistence.SessionContextResult;
@@ -126,7 +126,7 @@ public final class Magenta {
                 this.toolManager.securityDescriptorsByName()
         );
         this.contextManager = new ContextManager(sessionContextBridge);
-        this.modelRunner = new ModelRunner(new OllamaClient(runtimeConfig.modelRequestTimeoutMs()));
+        this.modelRunner = new ModelRunner(new RoutingModelClient(runtimeConfig.modelRequestTimeoutMs()));
         this.eventHub = new SessionEventHub(ignored -> {});
         this.eventLogSink = new SessionEventLogSink(runtimeConfig.workspaceRoot(), runtimeConfig.observability());
         this.sessionManager = new SessionManager(runtimeConfig, contextManager, this::executeTurn);

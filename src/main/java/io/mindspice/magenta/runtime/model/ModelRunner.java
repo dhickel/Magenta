@@ -40,10 +40,10 @@ public final class ModelRunner {
     private static final String SEARCH_REPLACE_WARNING_PREFIX = "[search-replace-warning]";
     private static final int SEARCH_REPLACE_MISMATCH_WARNING_THRESHOLD = 2;
 
-    private final OllamaClient ollamaClient;
+    private final ModelClient modelClient;
 
-    public ModelRunner(OllamaClient ollamaClient) {
-        this.ollamaClient = ollamaClient;
+    public ModelRunner(ModelClient modelClient) {
+        this.modelClient = modelClient;
     }
 
     public String runTurn(Session session, int maxIterations) {
@@ -119,8 +119,8 @@ public final class ModelRunner {
                     || !streamTokens
                     || !modelConfig.supportsStreaming();
             ChatResponse response = useBlocking
-                    ? ollamaClient.chatBlocking(modelConfig, request)
-                    : ollamaClient.chatStreaming(
+                    ? modelClient.chatBlocking(modelConfig, request)
+                    : modelClient.chatStreaming(
                             modelConfig,
                             request,
                             token -> safeOutputEmitter.accept(

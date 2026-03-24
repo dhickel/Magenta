@@ -1,0 +1,12 @@
+provider: "llama.cpp"
+model: "devstral2"
+endpoint: "http://192.168.1.112:8080"
+maxTokens: 30000
+maxContext: 32768
+compactThreshold: 28000
+temperature: 0.2
+compactionStrategy: "summarize"
+tokenizerEncoding: "cl100k_base"
+supportsToolCalling: true
+supportsStreaming: true
+enabled: true

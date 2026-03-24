@@ -38,42 +38,48 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
 
-public final class OllamaClient implements ModelClient {
+public final class OpenAiClient implements ModelClient {
 
     private static final int DEFAULT_REQUEST_TIMEOUT_MS = 600_000;
+    private static final String DEFAULT_BASE_URL = "http://localhost:8080";
+
     private final ObjectMapper json = new ObjectMapper().findAndRegisterModules();
     private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(30)).build();
     private final Duration requestTimeout;
 
-    public OllamaClient() {
+    public OpenAiClient() {
         this(DEFAULT_REQUEST_TIMEOUT_MS);
     }
 
-    public OllamaClient(int requestTimeoutMs) {
+    public OpenAiClient(int requestTimeoutMs) {
         if (requestTimeoutMs <= 0) {
             throw new IllegalArgumentException("requestTimeoutMs must be > 0");
         }
         this.requestTimeout = Duration.ofMillis(requestTimeoutMs);
     }
 
+    @Override
     public ChatResponse chatBlocking(RuntimeConfig.ModelConfig modelConfig, ChatRequest request) {
         String baseUrl = resolveBaseUrl(modelConfig.endpoint());
-        JsonNode payload = toOllamaPayload(modelConfig, request, false);
+        JsonNode payload = toOpenAiPayload(modelConfig, request, false);
 
-        HttpRequest httpRequest = HttpRequest.newBuilder()
-                .uri(URI.create(baseUrl + "/api/chat"))
+        HttpRequest.Builder httpRequest = HttpRequest.newBuilder()
+                .uri(URI.create(chatCompletionsUrl(baseUrl)))
                 .timeout(requestTimeout)
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(payload.toString(), StandardCharsets.UTF_8))
-                .build();
+                .header("Content-Type", "application/json");
+        applyAuthorizationHeader(httpRequest);
+        httpRequest.POST(HttpRequest.BodyPublishers.ofString(payload.toString(), StandardCharsets.UTF_8));
 
         try {
-            HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            HttpResponse<String> response = httpClient.send(httpRequest.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             if (response.statusCode() < 200 || response.statusCode() > 299) {
                 throw classifyHttpFailure("chat", response.statusCode(), response.body());
             }
@@ -83,28 +89,29 @@ public final class OllamaClient implements ModelClient {
             } catch (IOException parseError) {
                 throw new ModelClientException(
                         ModelClientException.Reason.MALFORMED_RESPONSE,
-                        "Ollama chat returned malformed JSON",
+                        "OpenAI-compatible chat returned malformed JSON",
                         response.statusCode(),
                         "",
                         preview(response.body()),
                         parseError
                 );
             }
-            ModelClientException doneReasonFailure = classifyDoneReasonFailure(
-                    body.path("done_reason").asText(""),
+            JsonNode choice = firstChoice(body, response.statusCode(), response.body());
+            ModelClientException finishReasonFailure = classifyFinishReasonFailure(
+                    choice.path("finish_reason").asText(""),
                     response.statusCode(),
                     body.toString()
             );
-            if (doneReasonFailure != null) {
-                throw doneReasonFailure;
+            if (finishReasonFailure != null) {
+                throw finishReasonFailure;
             }
-            return toChatResponse(modelConfig, body, null);
+            return toChatResponse(modelConfig, body, null, null);
         } catch (ModelClientException e) {
             throw e;
         } catch (IOException e) {
             throw new ModelClientException(
                     ModelClientException.Reason.HTTP_ERROR,
-                    "Ollama chat request failed",
+                    "OpenAI-compatible chat request failed",
                     0,
                     "",
                     "",
@@ -114,7 +121,7 @@ public final class OllamaClient implements ModelClient {
             Thread.currentThread().interrupt();
             throw new ModelClientException(
                     ModelClientException.Reason.HTTP_ERROR,
-                    "Ollama chat request interrupted",
+                    "OpenAI-compatible chat request interrupted",
                     0,
                     "",
                     "",
@@ -123,105 +130,104 @@ public final class OllamaClient implements ModelClient {
         }
     }
 
+    @Override
     public ChatResponse chatStreaming(RuntimeConfig.ModelConfig modelConfig, ChatRequest request, Consumer<String> tokenCallback) {
         String baseUrl = resolveBaseUrl(modelConfig.endpoint());
-        JsonNode payload = toOllamaPayload(modelConfig, request, true);
+        JsonNode payload = toOpenAiPayload(modelConfig, request, true);
 
-        HttpRequest httpRequest = HttpRequest.newBuilder()
-                .uri(URI.create(baseUrl + "/api/chat"))
+        HttpRequest.Builder httpRequest = HttpRequest.newBuilder()
+                .uri(URI.create(chatCompletionsUrl(baseUrl)))
                 .timeout(requestTimeout)
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(payload.toString(), StandardCharsets.UTF_8))
-                .build();
+                .header("Content-Type", "application/json");
+        applyAuthorizationHeader(httpRequest);
+        httpRequest.POST(HttpRequest.BodyPublishers.ofString(payload.toString(), StandardCharsets.UTF_8));
 
         try {
-            HttpResponse<InputStream> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofInputStream());
+            HttpResponse<InputStream> response = httpClient.send(httpRequest.build(), HttpResponse.BodyHandlers.ofInputStream());
             if (response.statusCode() < 200 || response.statusCode() > 299) {
                 String body = new String(response.body().readAllBytes(), StandardCharsets.UTF_8);
                 throw classifyHttpFailure("stream", response.statusCode(), body);
             }
 
             StringBuilder completeText = new StringBuilder();
-            JsonNode finalNode = null;
-            JsonNode streamedToolCalls = null;
-            String doneReason = "";
+            Map<Integer, StreamToolCallAccumulator> streamedToolCalls = new HashMap<>();
+            String finishReason = "";
 
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    if (line.isBlank()) {
+                    String trimmed = line.trim();
+                    if (trimmed.isBlank() || trimmed.startsWith(":")) {
                         continue;
                     }
+                    if (!trimmed.startsWith("data:")) {
+                        continue;
+                    }
+                    String payloadLine = trimmed.substring("data:".length()).trim();
+                    if ("[DONE]".equals(payloadLine)) {
+                        break;
+                    }
+
                     JsonNode node;
                     try {
-                        node = json.readTree(line);
+                        node = json.readTree(payloadLine);
                     } catch (IOException parseError) {
                         throw new ModelClientException(
                                 ModelClientException.Reason.MALFORMED_RESPONSE,
-                                "Ollama stream returned malformed JSON chunk",
+                                "OpenAI-compatible stream returned malformed JSON chunk",
                                 response.statusCode(),
                                 "",
-                                preview(line),
+                                preview(payloadLine),
                                 parseError
                         );
                     }
-                    JsonNode message = node.path("message");
-                    String partial = message.path("content").asText("");
+
+                    JsonNode choice = node.path("choices").isArray() && !node.path("choices").isEmpty()
+                            ? node.path("choices").get(0)
+                            : null;
+                    if (choice == null || choice.isMissingNode()) {
+                        continue;
+                    }
+                    String partialFinishReason = choice.path("finish_reason").asText("");
+                    if (!partialFinishReason.isBlank()) {
+                        finishReason = partialFinishReason;
+                    }
+
+                    JsonNode delta = choice.path("delta");
+                    String partial = delta.path("content").asText("");
                     if (!partial.isBlank()) {
                         completeText.append(partial);
                         tokenCallback.accept(partial);
                     }
-                    JsonNode toolCalls = message.path("tool_calls");
+                    JsonNode toolCalls = delta.path("tool_calls");
                     if (toolCalls.isArray() && !toolCalls.isEmpty()) {
-                        streamedToolCalls = toolCalls.deepCopy();
-                    }
-                    if (node.path("done").asBoolean(false)) {
-                        doneReason = node.path("done_reason").asText("");
-                        finalNode = node;
-                        break;
+                        mergeStreamedToolCalls(streamedToolCalls, toolCalls);
                     }
                 }
             }
 
-            if (finalNode == null) {
-                throw new ModelClientException(
-                        ModelClientException.Reason.STREAM_INCOMPLETE,
-                        "Ollama stream ended without a final done frame",
-                        response.statusCode(),
-                        "",
-                        preview(completeText.toString()),
-                        null
-                );
-            }
-            if ((finalNode.path("message").path("tool_calls").isMissingNode()
-                 || finalNode.path("message").path("tool_calls").isEmpty())
-                && streamedToolCalls != null) {
-                ObjectNode finalMessage = finalNode.path("message").isObject()
-                        ? (ObjectNode) finalNode.path("message")
-                        : json.createObjectNode();
-                finalMessage.set("tool_calls", streamedToolCalls);
-                if (!finalNode.path("message").isObject()) {
-                    ((ObjectNode) finalNode).set("message", finalMessage);
-                }
-            }
-
-            ModelClientException doneReasonFailure = classifyDoneReasonFailure(
-                    doneReason,
+            ModelClientException finishReasonFailure = classifyFinishReasonFailure(
+                    finishReason,
                     response.statusCode(),
-                    finalNode.toString()
+                    completeText.toString()
             );
-            if (doneReasonFailure != null) {
-                throw doneReasonFailure;
+            if (finishReasonFailure != null) {
+                throw finishReasonFailure;
             }
 
-            return toChatResponse(modelConfig, finalNode, completeText.toString());
+            return toChatResponse(
+                    modelConfig,
+                    null,
+                    completeText.toString(),
+                    streamedToolCalls.isEmpty() ? List.of() : toToolExecutionRequests(streamedToolCalls)
+            );
         } catch (ModelClientException e) {
             throw e;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new ModelClientException(
                     ModelClientException.Reason.HTTP_ERROR,
-                    "Ollama streaming request interrupted",
+                    "OpenAI-compatible streaming request interrupted",
                     0,
                     "",
                     "",
@@ -230,7 +236,7 @@ public final class OllamaClient implements ModelClient {
         } catch (IOException e) {
             throw new ModelClientException(
                     ModelClientException.Reason.HTTP_ERROR,
-                    "Ollama streaming request failed",
+                    "OpenAI-compatible streaming request failed",
                     0,
                     "",
                     "",
@@ -239,30 +245,49 @@ public final class OllamaClient implements ModelClient {
         }
     }
 
-    private String resolveBaseUrl(String endpoint) {
-        if (endpoint == null || endpoint.isBlank()) {
-            return "http://localhost:11434";
+    private void applyAuthorizationHeader(HttpRequest.Builder httpRequest) {
+        String apiKey = System.getenv("MAGENTA_OPENAI_API_KEY");
+        if (apiKey != null && !apiKey.isBlank()) {
+            httpRequest.header("Authorization", "Bearer " + apiKey.trim());
         }
-        if (endpoint.startsWith("http://") || endpoint.startsWith("https://")) {
-            return endpoint;
-        }
-
-        String env = System.getenv("MAGENTA_OLLAMA_URL");
-        if (env != null && !env.isBlank()) {
-            return env;
-        }
-
-        return "http://localhost:11434";
     }
 
-    private JsonNode toOllamaPayload(RuntimeConfig.ModelConfig modelCfg, ChatRequest request, boolean stream) {
-        var root = json.createObjectNode();
+    private String resolveBaseUrl(String endpoint) {
+        if (endpoint != null && !endpoint.isBlank()) {
+            return stripTrailingSlash(endpoint.trim());
+        }
+        String env = System.getenv("MAGENTA_OPENAI_URL");
+        if (env != null && !env.isBlank()) {
+            return stripTrailingSlash(env.trim());
+        }
+        return DEFAULT_BASE_URL;
+    }
+
+    private String stripTrailingSlash(String value) {
+        String stripped = value;
+        while (stripped.endsWith("/")) {
+            stripped = stripped.substring(0, stripped.length() - 1);
+        }
+        return stripped;
+    }
+
+    private String chatCompletionsUrl(String baseUrl) {
+        if (baseUrl.endsWith("/v1")) {
+            return baseUrl + "/chat/completions";
+        }
+        return baseUrl + "/v1/chat/completions";
+    }
+
+    private JsonNode toOpenAiPayload(RuntimeConfig.ModelConfig modelCfg, ChatRequest request, boolean stream) {
+        ObjectNode root = json.createObjectNode();
         root.put("model", modelCfg.model());
         root.put("stream", stream);
+        root.put("temperature", modelCfg.temperature());
+        root.put("max_tokens", modelCfg.maxTokens());
 
-        var messages = json.createArrayNode();
+        ArrayNode messages = json.createArrayNode();
         for (ChatMessage message : request.messages()) {
-            var msg = json.createObjectNode();
+            ObjectNode msg = json.createObjectNode();
             switch (message) {
                 case SystemMessage sys -> {
                     msg.put("role", "system");
@@ -282,7 +307,6 @@ public final class OllamaClient implements ModelClient {
                 case ToolExecutionResultMessage tool -> {
                     msg.put("role", "tool");
                     msg.put("content", tool.text());
-                    msg.put("name", tool.toolName());
                     msg.put("tool_call_id", tool.id());
                 }
                 default -> {
@@ -293,14 +317,11 @@ public final class OllamaClient implements ModelClient {
             messages.add(msg);
         }
         root.set("messages", messages);
+
         if (request.toolSpecifications() != null && !request.toolSpecifications().isEmpty()) {
             root.set("tools", toToolSpecificationsJson(request.toolSpecifications()));
+            root.put("tool_choice", "auto");
         }
-
-        var options = json.createObjectNode();
-        options.put("temperature", modelCfg.temperature());
-        options.put("num_ctx", modelCfg.maxContext());
-        root.set("options", options);
 
         return root;
     }
@@ -419,7 +440,7 @@ public final class OllamaClient implements ModelClient {
     }
 
     private JsonNode toToolCallsJson(List<ToolExecutionRequest> requests) {
-        var toolCalls = json.createArrayNode();
+        ArrayNode toolCalls = json.createArrayNode();
         if (requests == null || requests.isEmpty()) {
             return toolCalls;
         }
@@ -429,48 +450,103 @@ public final class OllamaClient implements ModelClient {
                 continue;
             }
 
-            var toolCall = json.createObjectNode();
+            ObjectNode toolCall = json.createObjectNode();
             String id = request.id();
             toolCall.put("id", id == null || id.isBlank() ? UUID.randomUUID().toString() : id);
             toolCall.put("type", "function");
 
-            var function = json.createObjectNode();
+            ObjectNode function = json.createObjectNode();
             function.put("name", request.name());
             String args = request.arguments();
-            if (args == null || args.isBlank()) {
-                function.set("arguments", json.createObjectNode());
-            } else {
-                try {
-                    function.set("arguments", json.readTree(args));
-                } catch (IOException e) {
-                    function.put("arguments", args);
-                }
-            }
+            function.put("arguments", args == null || args.isBlank() ? "{}" : args);
             toolCall.set("function", function);
             toolCalls.add(toolCall);
         }
         return toolCalls;
     }
 
-    private ChatResponse toChatResponse(RuntimeConfig.ModelConfig modelCfg, JsonNode body, String streamedContent) {
-        JsonNode message = body.path("message");
+    private void mergeStreamedToolCalls(Map<Integer, StreamToolCallAccumulator> streamedToolCalls, JsonNode toolCalls) {
+        for (JsonNode toolCallNode : toolCalls) {
+            int index = toolCallNode.path("index").asInt(streamedToolCalls.size());
+            StreamToolCallAccumulator accumulator = streamedToolCalls.computeIfAbsent(index, ignored -> new StreamToolCallAccumulator());
+            String id = toolCallNode.path("id").asText("");
+            if (!id.isBlank()) {
+                accumulator.id = id;
+            }
+            String type = toolCallNode.path("type").asText("");
+            if (!type.isBlank()) {
+                accumulator.type = type;
+            }
+            JsonNode functionNode = toolCallNode.path("function");
+            String name = functionNode.path("name").asText("");
+            if (!name.isBlank()) {
+                accumulator.name = name;
+            }
+            String arguments = functionNode.path("arguments").asText("");
+            if (!arguments.isBlank()) {
+                accumulator.arguments.append(arguments);
+            }
+        }
+    }
+
+    private List<ToolExecutionRequest> toToolExecutionRequests(Map<Integer, StreamToolCallAccumulator> streamedToolCalls) {
+        return streamedToolCalls.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey(Comparator.naturalOrder()))
+                .map(Map.Entry::getValue)
+                .filter(acc -> acc.name != null && !acc.name.isBlank())
+                .map(acc -> ToolExecutionRequest.builder()
+                        .id(acc.id == null || acc.id.isBlank() ? UUID.randomUUID().toString() : acc.id)
+                        .name(acc.name)
+                        .arguments(acc.arguments.isEmpty() ? "{}" : acc.arguments.toString())
+                        .build())
+                .toList();
+    }
+
+    private ChatResponse toChatResponse(
+            RuntimeConfig.ModelConfig modelCfg,
+            JsonNode body,
+            String streamedContent,
+            List<ToolExecutionRequest> streamedToolRequests
+    ) {
+        JsonNode choice = body == null ? null : body.path("choices").isArray() && !body.path("choices").isEmpty()
+                ? body.path("choices").get(0)
+                : null;
+        JsonNode message = choice == null ? null : choice.path("message");
         String text = streamedContent == null
-                ? message.path("content").asText("")
+                ? (message == null ? "" : message.path("content").asText(""))
                 : streamedContent;
 
-        List<ToolExecutionRequest> toolRequests = parseToolRequests(message.path("tool_calls"));
+        List<ToolExecutionRequest> toolRequests = streamedToolRequests != null
+                ? streamedToolRequests
+                : parseToolRequests(message == null ? null : message.path("tool_calls"));
         AiMessage aiMessage = toolRequests.isEmpty()
                 ? AiMessage.from(text)
                 : AiMessage.from(text, toolRequests);
 
+        JsonNode usage = body == null ? null : body.path("usage");
         return ChatResponse.builder()
                 .aiMessage(aiMessage)
                 .modelName(modelCfg.model())
                 .tokenUsage(new TokenUsage(
-                        nullableInt(body.path("prompt_eval_count")),
-                        nullableInt(body.path("eval_count"))
+                        nullableInt(usage == null ? null : usage.path("prompt_tokens")),
+                        nullableInt(usage == null ? null : usage.path("completion_tokens"))
                 ))
                 .build();
+    }
+
+    private JsonNode firstChoice(JsonNode body, int statusCode, String responseBody) {
+        JsonNode choices = body.path("choices");
+        if (!choices.isArray() || choices.isEmpty()) {
+            throw new ModelClientException(
+                    ModelClientException.Reason.MALFORMED_RESPONSE,
+                    "OpenAI-compatible chat response did not include choices",
+                    statusCode,
+                    "",
+                    preview(responseBody),
+                    null
+            );
+        }
+        return choices.get(0);
     }
 
     private Integer nullableInt(JsonNode node) {
@@ -493,13 +569,12 @@ public final class OllamaClient implements ModelClient {
             if (name.isBlank()) {
                 continue;
             }
-            JsonNode argsNode = function.path("arguments");
-            String args = argsNode.isMissingNode() ? "{}" : argsNode.toString();
+            String args = function.path("arguments").asText("{}");
 
             requests.add(ToolExecutionRequest.builder()
                     .id(id)
                     .name(name)
-                    .arguments(args)
+                    .arguments(args == null || args.isBlank() ? "{}" : args)
                     .build());
         }
         return requests;
@@ -514,7 +589,7 @@ public final class OllamaClient implements ModelClient {
         }
         return new ModelClientException(
                 reason,
-                "Ollama " + phase + " failed with status " + statusCode,
+                "OpenAI-compatible " + phase + " failed with status " + statusCode,
                 statusCode,
                 "",
                 preview(safeBody),
@@ -522,15 +597,15 @@ public final class OllamaClient implements ModelClient {
         );
     }
 
-    private ModelClientException classifyDoneReasonFailure(String doneReason, int statusCode, String previewText) {
-        String normalized = doneReason == null ? "" : doneReason.trim().toLowerCase(Locale.ROOT);
-        if (normalized.isBlank() || "stop".equals(normalized)) {
+    private ModelClientException classifyFinishReasonFailure(String finishReason, int statusCode, String previewText) {
+        String normalized = finishReason == null ? "" : finishReason.trim().toLowerCase(Locale.ROOT);
+        if (normalized.isBlank() || "stop".equals(normalized) || "tool_calls".equals(normalized)) {
             return null;
         }
         if ("length".equals(normalized) || normalized.contains("max_tokens")) {
             return new ModelClientException(
                     ModelClientException.Reason.OUTPUT_TRUNCATED,
-                    "Ollama generation stopped due to output length limit",
+                    "OpenAI-compatible generation stopped due to output length limit",
                     statusCode,
                     normalized,
                     preview(previewText),
@@ -540,7 +615,7 @@ public final class OllamaClient implements ModelClient {
         if (looksLikeContextOverflow(normalized)) {
             return new ModelClientException(
                     ModelClientException.Reason.CONTEXT_OVERFLOW,
-                    "Ollama generation stopped due to context pressure",
+                    "OpenAI-compatible generation stopped due to context pressure",
                     statusCode,
                     normalized,
                     preview(previewText),
@@ -556,7 +631,7 @@ public final class OllamaClient implements ModelClient {
         }
         return normalizedText.contains("context length")
                 || normalizedText.contains("context window")
-                || normalizedText.contains("num_ctx")
+                || normalizedText.contains("max context")
                 || normalizedText.contains("prompt is too long")
                 || normalizedText.contains("token limit")
                 || normalizedText.contains("context overflow");
@@ -569,5 +644,12 @@ public final class OllamaClient implements ModelClient {
             return safe;
         }
         return safe.substring(0, max);
+    }
+
+    private static final class StreamToolCallAccumulator {
+        private String id;
+        private String type = "function";
+        private String name;
+        private final StringBuilder arguments = new StringBuilder();
     }
 }
