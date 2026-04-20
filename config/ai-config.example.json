@@ -1,0 +1,30 @@
+{
+  "defaultAgent": "magenta",
+  "models": {
+    "local-qwen": {
+      "remoteModelName": "qwen3.6-35b-a3b-text-ctx32k",
+      "remoteEndpoint": "http://192.168.1.112:11434",
+      "endpointType": "OLLAMA",
+      "contextLength": 32768
+    },
+    "local-gemma-e4b": {
+      "remoteModelName": "gemma4-fullctx:e4b",
+      "remoteEndpoint": "http://192.168.1.112:11434",
+      "endpointType": "OLLAMA",
+      "contextLength": 128000
+    },
+    "local-gemma-26b": {
+      "remoteModelName": "gemma4-26b:32k",
+      "remoteEndpoint": "http://192.168.1.112:11434",
+      "endpointType": "OLLAMA",
+      "contextLength": 32768
+    }
+  },
+  "agents": {
+    "magenta": {
+      "model": "local-qwen",
+      "systemPrompt": "You are Magenta, a practical system administration assistant. Help users safely troubleshoot Linux services, networking, storage, logs, and deployment issues. Prefer least-privilege and reversible steps first. Explain commands before suggesting them, call out risks for destructive operations, and ask for missing details when needed. Keep responses concise, actionable, and production-aware.",
+      "approvedTools": []
+    }
+  }
+}
