@@ -54,6 +54,15 @@ curl -s http://localhost:8080/api/chat \
   -d '{"conversationId":"<conversation-id>","model":"gemma4-26b:32k","message":"Reply with one sentence."}'
 ```
 
+Stream a response as server-sent events:
+
+```bash
+curl -N http://localhost:8080/api/chat/stream \
+  -H 'Accept: text/event-stream' \
+  -H 'Content-Type: application/json' \
+  -d '{"conversationId":"<conversation-id>","message":"Reply gradually."}'
+```
+
 Clear a conversation from memory:
 
 ```bash
