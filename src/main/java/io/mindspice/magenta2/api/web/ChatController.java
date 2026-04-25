@@ -5,10 +5,10 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
-import io.mindspice.magenta2.ai.chat.model.ChatHistoryResponse;
+import io.mindspice.magenta2.ai.chat.model.ChatHistory;
 import io.mindspice.magenta2.ai.chat.model.ChatRequest;
 import io.mindspice.magenta2.ai.chat.model.ChatResponse;
-import io.mindspice.magenta2.ai.chat.model.ChatSessionsResponse;
+import io.mindspice.magenta2.ai.chat.model.ChatSessions;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.chat.service.ChatService.ResolvedChatRequest;
 import io.mindspice.magenta2.ai.chat.model.ChatStreamEvent;
@@ -75,7 +75,8 @@ public class ChatController {
                         ChatStreamEvent.message(
                             resolvedRequest.conversationId(),
                             resolvedRequest.model(),
-                            chatService.renderAssistantMessage(responseText.toString())
+                            chatService.renderAssistantMessage(responseText.toString()),
+                            chatService.contextUsage(resolvedRequest.conversationId(), resolvedRequest.model())
                         )
                     );
                 } catch (Exception e) {
@@ -99,7 +100,8 @@ public class ChatController {
                         ChatStreamEvent.message(
                             resolvedRequest.conversationId(),
                             resolvedRequest.model(),
-                            chatService.renderAssistantMessage(responseText.toString())
+                            chatService.renderAssistantMessage(responseText.toString()),
+                            chatService.contextUsage(resolvedRequest.conversationId(), resolvedRequest.model())
                         )
                     );
                     emitter.complete();
@@ -113,16 +115,17 @@ public class ChatController {
     }
 
     @GetMapping("/sessions")
-    public ChatSessionsResponse sessions() {
-        return new ChatSessionsResponse(chatService.listConversationIds());
+    public ChatSessions sessions() {
+        return new ChatSessions(chatService.listConversationIds());
     }
 
     @GetMapping("/{conversationId}/history")
-    public ChatHistoryResponse history(@PathVariable String conversationId) {
-        return new ChatHistoryResponse(
+    public ChatHistory history(@PathVariable String conversationId) {
+        return new ChatHistory(
             conversationId,
             chatService.storedConversationModel(conversationId),
-            chatService.history(conversationId)
+            chatService.history(conversationId),
+            chatService.contextUsage(conversationId, chatService.storedConversationModel(conversationId))
         );
     }
 
@@ -133,12 +136,15 @@ public class ChatController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "command is required");
         }
 
-        String[] parts = command.split("\\s+", 2);
-        String rootCommand = parts[0].startsWith("/") ? parts[0].substring(1) : parts[0];
+        String[] parts = command.split("\\s+");
+        String rootCommand = commandName(parts[0]);
         return switch (rootCommand.toLowerCase()) {
-            case "new" -> handleNew();
-            case "switch" -> handleSwitch(parts);
-            case "clear" -> handleClear(request.conversationId(), parts);
+            case "new" -> {
+                requireNoArguments(rootCommand, parts);
+                yield handleNew();
+            }
+            case "switch" -> handleSwitch(requiredSingleArgument(rootCommand, parts, "a conversation UUID"));
+            case "clear" -> handleClear(request.conversationId(), optionalSingleArgument(rootCommand, parts, "a conversation UUID"));
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "unknown command: " + rootCommand);
         };
     }
@@ -151,27 +157,20 @@ public class ChatController {
 
     private ChatResponse.CmdResponse handleNew() {
         String conversationId = chatService.newConversationId();
-        List<String> persistedConversationIds = chatService.listConversationIds();
-        List<String> conversationIds = persistedConversationIds;
-        if (!persistedConversationIds.contains(conversationId)) {
-            List<String> withNewConversation = new ArrayList<>(persistedConversationIds);
-            withNewConversation.add(0, conversationId);
-            conversationIds = List.copyOf(withNewConversation);
-        }
+        List<String> conversationIds = new ArrayList<>(chatService.listConversationIds());
+        conversationIds.add(0, conversationId);
         return new ChatResponse.CmdResponse(
             conversationId,
             null,
             "Created new session " + conversationId,
-            conversationIds,
-            chatService.history(conversationId)
+            List.copyOf(conversationIds),
+            chatService.history(conversationId),
+            chatService.contextUsage(conversationId, null)
         );
     }
 
-    private ChatResponse.CmdResponse handleSwitch(String[] parts) {
-        if (parts.length < 2) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "switch requires a conversation UUID");
-        }
-        String targetConversationId = normalize(parts[1]);
+    private ChatResponse.CmdResponse handleSwitch(String targetConversationId) {
+        targetConversationId = normalize(targetConversationId);
         if (targetConversationId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "switch requires a conversation UUID");
         }
@@ -184,12 +183,13 @@ public class ChatController {
             chatService.storedConversationModel(targetConversationId),
             "Switched to " + targetConversationId,
             chatService.listConversationIds(),
-            chatService.history(targetConversationId)
+            chatService.history(targetConversationId),
+            chatService.contextUsage(targetConversationId, chatService.storedConversationModel(targetConversationId))
         );
     }
 
-    private ChatResponse.CmdResponse handleClear(String requestConversationId, String[] parts) {
-        String targetConversationId = parts.length > 1 ? normalize(parts[1]) : normalize(requestConversationId);
+    private ChatResponse.CmdResponse handleClear(String requestConversationId, String commandConversationId) {
+        String targetConversationId = commandConversationId != null ? normalize(commandConversationId) : normalize(requestConversationId);
         if (targetConversationId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "clear requires conversationId or /clear <conversationId>");
         }
@@ -200,8 +200,40 @@ public class ChatController {
             null,
             "Cleared " + targetConversationId,
             chatService.listConversationIds(),
-            chatService.history(targetConversationId)
+            chatService.history(targetConversationId),
+            chatService.contextUsage(targetConversationId, null)
         );
+    }
+
+    private String commandName(String value) {
+        return value.startsWith("/") ? value.substring(1) : value;
+    }
+
+    private void requireNoArguments(String command, String[] parts) {
+        if (parts.length > 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, command + " does not accept arguments");
+        }
+    }
+
+    private String requiredSingleArgument(String command, String[] parts, String argumentDescription) {
+        if (parts.length < 2) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, command + " requires " + argumentDescription);
+        }
+        return singleArgument(command, parts, argumentDescription);
+    }
+
+    private String optionalSingleArgument(String command, String[] parts, String argumentDescription) {
+        if (parts.length < 2) {
+            return null;
+        }
+        return singleArgument(command, parts, argumentDescription);
+    }
+
+    private String singleArgument(String command, String[] parts, String argumentDescription) {
+        if (parts.length > 2) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, command + " accepts only " + argumentDescription);
+        }
+        return parts[1];
     }
 
     private String normalize(String value) {

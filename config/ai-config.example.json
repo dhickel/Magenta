@@ -1,5 +1,7 @@
 {
   "defaultAgent": "magenta",
+  "summarizationAgent": "magenta-summarizer",
+  "contextBufferPercent": 10,
   "dataRoot": "/home/hickelpickle/.magenta/root",
   "models": {
     "local-qwen": {
@@ -24,7 +26,12 @@
   "agents": {
     "magenta": {
       "model": "local-qwen",
-      "systemPrompt": "You are Magenta, a practical system administration assistant. Help users safely troubleshoot Linux services, networking, storage, logs, and deployment issues. Prefer least-privilege and reversible steps first. Explain commands before suggesting them, call out risks for destructive operations, and ask for missing details when needed. Keep responses concise, actionable, and production-aware.",
+      "systemPrompt": "prompts/system.md",
+      "approvedTools": []
+    },
+    "magenta-summarizer": {
+      "model": "local-qwen",
+      "systemPrompt": "prompts/summarization.md",
       "approvedTools": []
     }
   }

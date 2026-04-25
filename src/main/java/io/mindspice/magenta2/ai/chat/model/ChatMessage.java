@@ -1,6 +1,6 @@
 package io.mindspice.magenta2.ai.chat.model;
 
-public record ChatHistoryMessage(
+public record ChatMessage(
     String role,
     String text,
     String renderedHtml,

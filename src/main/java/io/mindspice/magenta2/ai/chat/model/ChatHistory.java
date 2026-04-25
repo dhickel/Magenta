@@ -2,9 +2,10 @@ package io.mindspice.magenta2.ai.chat.model;
 
 import java.util.List;
 
-public record ChatHistoryResponse(
+public record ChatHistory(
     String conversationId,
     String model,
-    List<ChatHistoryMessage> messages
+    List<ChatMessage> messages,
+    ContextUsage contextUsage
 ) {
 }

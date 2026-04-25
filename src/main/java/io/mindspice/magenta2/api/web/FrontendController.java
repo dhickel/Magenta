@@ -240,6 +240,14 @@ public class FrontendController {
                     border-color: #e1e3e6;
                 }
 
+                .chat-message-system {
+                    margin-left: 2rem;
+                    margin-right: 2rem;
+                    background: #fff8e5;
+                    border-color: #ead9a7;
+                    color: #4b4126;
+                }
+
                 .chat-message-role {
                     margin-bottom: 0.35rem;
                     font-size: 0.78rem;
@@ -266,6 +274,7 @@ public class FrontendController {
                 .chat-message-body ol,
                 .chat-message-body pre,
                 .chat-message-body blockquote,
+                .chat-message-body table,
                 .chat-message-body h1,
                 .chat-message-body h2,
                 .chat-message-body h3,
@@ -284,6 +293,33 @@ public class FrontendController {
 
                 .chat-message-body li {
                     margin: 0.2rem 0;
+                }
+
+                .chat-message-body table,
+                .chat-thinking-body table {
+                    display: block;
+                    max-width: 100%%;
+                    overflow-x: auto;
+                    border-collapse: collapse;
+                    font-size: 0.92rem;
+                    white-space: nowrap;
+                }
+
+                .chat-message-body th,
+                .chat-message-body td,
+                .chat-thinking-body th,
+                .chat-thinking-body td {
+                    border: 1px solid #d8dde6;
+                    padding: 0.35rem 0.5rem;
+                    text-align: left;
+                    vertical-align: top;
+                }
+
+                .chat-message-body th,
+                .chat-thinking-body th {
+                    background: #eef2f7;
+                    color: #263246;
+                    font-weight: 700;
                 }
 
                 .chat-thinking {
@@ -359,6 +395,7 @@ public class FrontendController {
                 .chat-thinking-body ol,
                 .chat-thinking-body pre,
                 .chat-thinking-body blockquote,
+                .chat-thinking-body table,
                 .chat-thinking-body h1,
                 .chat-thinking-body h2,
                 .chat-thinking-body h3,
@@ -397,6 +434,44 @@ public class FrontendController {
                     margin-top: 0.45rem;
                     color: #842029;
                     font-size: 0.92rem;
+                }
+
+                #chat-token-usage {
+                    position: fixed;
+                    right: 1rem;
+                    bottom: 1rem;
+                    z-index: 20;
+                    min-width: 10.5rem;
+                    border: 1px solid #c9d2de;
+                    border-radius: 6px;
+                    background: rgba(255, 255, 255, 0.96);
+                    box-shadow: 0 0.25rem 0.85rem rgba(18, 27, 38, 0.12);
+                    padding: 0.45rem 0.6rem;
+                    color: #263246;
+                    font-size: 0.82rem;
+                }
+
+                #chat-token-usage-label {
+                    display: flex;
+                    justify-content: space-between;
+                    gap: 0.75rem;
+                    margin-bottom: 0.28rem;
+                    font-weight: 700;
+                }
+
+                #chat-token-usage-bar {
+                    height: 0.38rem;
+                    overflow: hidden;
+                    border-radius: 999px;
+                    background: #e8edf4;
+                }
+
+                #chat-token-usage-fill {
+                    width: 0%%;
+                    height: 100%%;
+                    border-radius: inherit;
+                    background: #4f7fd3;
+                    transition: width 0.18s ease;
                 }
 
                 @media (max-width: 980px) {
@@ -449,6 +524,13 @@ public class FrontendController {
                         <div id="chat-error" role="status" aria-live="polite"></div>
                     </div>
                 </div>
+                <div id="chat-token-usage" aria-live="polite">
+                    <div id="chat-token-usage-label">
+                        <span>Context</span>
+                        <span id="chat-token-usage-text">0 / 0 (0%%)</span>
+                    </div>
+                    <div id="chat-token-usage-bar"><div id="chat-token-usage-fill"></div></div>
+                </div>
             </section>
             """;
 
@@ -460,7 +542,7 @@ public class FrontendController {
                     .withSubtitle("Session-backed chat bootstrap")
                     .build())
             .withTopNav(topNavBar)
-            .addCustomJs("/js/chat-client.js?v=7")
+            .addCustomJs("/js/chat-client.js?v=8")
             .buildTemplate();
 
     @GetMapping("/chat")

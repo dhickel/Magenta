@@ -1,0 +1,18 @@
+## Chat Model Package
+
+This package owns chat request, response, history, session, message, context usage, and stream event payloads.
+
+### Responsibilities
+- Keep DTOs small, stable, and easy to serialize.
+- Use Java records for request/response and data-carrier types where practical.
+- Keep transport shape explicit; avoid adding fields for speculative future clients.
+
+### Change guidance
+- Treat changes here as API surface changes when the type is returned from or accepted by controllers.
+- Prefer adding only fields required by the current workflow.
+- Keep model names direct and aligned with the API concept they represent.
+- Keep this guide updated when payload responsibilities or compatibility expectations change.
+
+### Validation
+- Update controller or service tests when request/response shapes change.
+- Check browser client usage when API payloads change.

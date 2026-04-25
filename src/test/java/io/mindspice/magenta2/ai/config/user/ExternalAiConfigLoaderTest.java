@@ -2,6 +2,7 @@ package io.mindspice.magenta2.ai.config.user;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -15,9 +16,15 @@ class ExternalAiConfigLoaderTest {
 
     @Test
     void loadsExternalYamlIntoConfigRecords(@TempDir Path tempDir) throws IOException {
+        Files.createDirectories(tempDir.resolve("prompts"));
+        Files.writeString(tempDir.resolve("prompts/support.md"), "You are support.");
+        Files.writeString(tempDir.resolve("prompts/planner.md"), "You are a planner.");
+
         Path yaml = tempDir.resolve("ai-config.yaml");
         Files.writeString(yaml, """
             defaultAgent: support
+            summarizationAgent: planner
+            contextBufferPercent: 10
             models:
               local-fast:
                 remoteModelName: qwen3:8b
@@ -32,11 +39,11 @@ class ExternalAiConfigLoaderTest {
             agents:
               support:
                 model: local-fast
-                systemPrompt: You are support.
+                systemPrompt: prompts/support.md
                 approvedTools: []
               planner:
                 model: remote-large
-                systemPrompt: You are a planner.
+                systemPrompt: prompts/planner.md
                 approvedTools:
                   - web_search
                   - sql_query
@@ -48,6 +55,8 @@ class ExternalAiConfigLoaderTest {
         assertNotNull(config.models());
         assertNotNull(config.agents());
         assertEquals("support", config.defaultAgent());
+        assertEquals("planner", config.summarizationAgent());
+        assertEquals(10, config.resolvedContextBufferPercent());
         assertEquals(2, config.models().size());
         assertEquals(2, config.agents().size());
 
@@ -68,10 +77,15 @@ class ExternalAiConfigLoaderTest {
 
     @Test
     void loadsExternalJsonIntoConfigRecords(@TempDir Path tempDir) throws IOException {
+        Files.createDirectories(tempDir.resolve("prompts"));
+        Files.writeString(tempDir.resolve("prompts/system.md"), "You are Magenta, a practical system administration assistant.");
+
         Path json = tempDir.resolve("ai-config.json");
         Files.writeString(json, """
             {
               "defaultAgent": "magenta",
+              "summarizationAgent": "magenta",
+              "contextBufferPercent": 10,
               "models": {
                 "local-qwen": {
                   "remoteModelName": "qwen3.6-35b-a3b-text-ctx32k",
@@ -83,7 +97,7 @@ class ExternalAiConfigLoaderTest {
               "agents": {
                 "magenta": {
                   "model": "local-qwen",
-                  "systemPrompt": "You are Magenta, a practical system administration assistant.",
+                  "systemPrompt": "prompts/system.md",
                   "approvedTools": []
                 }
               }
@@ -99,6 +113,183 @@ class ExternalAiConfigLoaderTest {
         assertEquals(1, config.models().size());
         assertEquals(1, config.agents().size());
         assertEquals("local-qwen", config.agents().get("magenta").model());
+        assertEquals(
+            "You are Magenta, a practical system administration assistant.",
+            config.agents().get("magenta").systemPrompt()
+        );
         assertEquals(EndpointType.OLLAMA, config.models().get("local-qwen").endpointType());
+    }
+
+    @Test
+    void resolvesPromptPathRelativeToConfigFileDirectory(@TempDir Path tempDir) throws IOException {
+        Path configDir = tempDir.resolve("config");
+        Files.createDirectories(configDir.resolve("prompts"));
+        Files.writeString(configDir.resolve("prompts/system.md"), "Prompt beside config.");
+
+        Path json = configDir.resolve("ai-config.json");
+        Files.writeString(json, """
+            {
+              "defaultAgent": "magenta",
+              "summarizationAgent": "magenta",
+              "models": {
+                "local-qwen": {
+                  "remoteModelName": "qwen3",
+                  "remoteEndpoint": "http://localhost:11434",
+                  "endpointType": "OLLAMA",
+                  "contextLength": 8192
+                }
+              },
+              "agents": {
+                "magenta": {
+                  "model": "local-qwen",
+                  "systemPrompt": "prompts/system.md",
+                  "approvedTools": []
+                }
+              }
+            }
+            """);
+
+        AiConfig config = ExternalAiConfigLoader.load(json);
+
+        assertEquals("Prompt beside config.", config.agents().get("magenta").systemPrompt());
+    }
+
+    @Test
+    void failsWhenPromptFileIsMissing(@TempDir Path tempDir) throws IOException {
+        Path json = tempDir.resolve("ai-config.json");
+        Files.writeString(json, """
+            {
+              "defaultAgent": "magenta",
+              "summarizationAgent": "magenta",
+              "models": {
+                "local-qwen": {
+                  "remoteModelName": "qwen3",
+                  "remoteEndpoint": "http://localhost:11434",
+                  "endpointType": "OLLAMA",
+                  "contextLength": 8192
+                }
+              },
+              "agents": {
+                "magenta": {
+                  "model": "local-qwen",
+                  "systemPrompt": "prompts/missing.md",
+                  "approvedTools": []
+                }
+              }
+            }
+            """);
+
+        IllegalArgumentException exception = assertThrows(
+            IllegalArgumentException.class,
+            () -> ExternalAiConfigLoader.load(json)
+        );
+        assertTrue(exception.getMessage().contains("systemPrompt file does not exist"));
+    }
+
+    @Test
+    void failsWhenPromptPathIsBlank(@TempDir Path tempDir) throws IOException {
+        Path json = tempDir.resolve("ai-config.json");
+        Files.writeString(json, """
+            {
+              "defaultAgent": "magenta",
+              "summarizationAgent": "magenta",
+              "models": {
+                "local-qwen": {
+                  "remoteModelName": "qwen3",
+                  "remoteEndpoint": "http://localhost:11434",
+                  "endpointType": "OLLAMA",
+                  "contextLength": 8192
+                }
+              },
+              "agents": {
+                "magenta": {
+                  "model": "local-qwen",
+                  "systemPrompt": " ",
+                  "approvedTools": []
+                }
+              }
+            }
+            """);
+
+        IllegalArgumentException exception = assertThrows(
+            IllegalArgumentException.class,
+            () -> ExternalAiConfigLoader.load(json)
+        );
+        assertTrue(exception.getMessage().contains("must configure a systemPrompt file path"));
+    }
+
+    @Test
+    void failsWhenSummarizationAgentIsMissing(@TempDir Path tempDir) throws IOException {
+        Files.createDirectories(tempDir.resolve("prompts"));
+        Files.writeString(tempDir.resolve("prompts/system.md"), "Prompt.");
+
+        Path json = tempDir.resolve("ai-config.json");
+        Files.writeString(json, """
+            {
+              "defaultAgent": "magenta",
+              "models": {
+                "local-qwen": {
+                  "remoteModelName": "qwen3",
+                  "remoteEndpoint": "http://localhost:11434",
+                  "endpointType": "OLLAMA",
+                  "contextLength": 8192
+                }
+              },
+              "agents": {
+                "magenta": {
+                  "model": "local-qwen",
+                  "systemPrompt": "prompts/system.md",
+                  "approvedTools": []
+                }
+              }
+            }
+            """);
+
+        IllegalArgumentException exception = assertThrows(
+            IllegalArgumentException.class,
+            () -> ExternalAiConfigLoader.load(json)
+        );
+        assertTrue(exception.getMessage().contains("must define summarizationAgent"));
+    }
+
+    @Test
+    void failsWhenSummarizationAgentReferencesMissingModel(@TempDir Path tempDir) throws IOException {
+        Files.createDirectories(tempDir.resolve("prompts"));
+        Files.writeString(tempDir.resolve("prompts/system.md"), "Prompt.");
+        Files.writeString(tempDir.resolve("prompts/summary.md"), "Summarize.");
+
+        Path json = tempDir.resolve("ai-config.json");
+        Files.writeString(json, """
+            {
+              "defaultAgent": "magenta",
+              "summarizationAgent": "summarizer",
+              "models": {
+                "local-qwen": {
+                  "remoteModelName": "qwen3",
+                  "remoteEndpoint": "http://localhost:11434",
+                  "endpointType": "OLLAMA",
+                  "contextLength": 8192
+                }
+              },
+              "agents": {
+                "magenta": {
+                  "model": "local-qwen",
+                  "systemPrompt": "prompts/system.md",
+                  "approvedTools": []
+                },
+                "summarizer": {
+                  "model": "missing-model",
+                  "systemPrompt": "prompts/summary.md",
+                  "approvedTools": []
+                }
+              }
+            }
+            """);
+
+        IllegalArgumentException exception = assertThrows(
+            IllegalArgumentException.class,
+            () -> ExternalAiConfigLoader.load(json)
+        );
+        assertTrue(exception.getMessage().contains("references missing model"));
     }
 }

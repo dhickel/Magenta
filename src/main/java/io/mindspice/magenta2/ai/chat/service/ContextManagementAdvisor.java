@@ -1,0 +1,355 @@
+package io.mindspice.magenta2.ai.chat.service;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+import io.mindspice.magenta2.ai.chat.model.ContextUsage;
+import io.mindspice.magenta2.ai.config.user.AgentConfig;
+import io.mindspice.magenta2.ai.config.user.AiConfig;
+import io.mindspice.magenta2.ai.config.user.ModelConfig;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.ChatClientRequest;
+import org.springframework.ai.chat.client.ChatClientResponse;
+import org.springframework.ai.chat.client.advisor.api.Advisor;
+import org.springframework.ai.chat.client.advisor.api.CallAdvisor;
+import org.springframework.ai.chat.client.advisor.api.CallAdvisorChain;
+import org.springframework.ai.chat.client.advisor.api.StreamAdvisor;
+import org.springframework.ai.chat.client.advisor.api.StreamAdvisorChain;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.memory.ChatMemoryRepository;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.ollama.api.OllamaChatOptions;
+import org.springframework.ai.tokenizer.TokenCountEstimator;
+import org.springframework.util.StringUtils;
+import reactor.core.publisher.Flux;
+
+public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
+    public static final String CONTEXT_USAGE_KEY = "magenta.contextUsage";
+    public static final String SUMMARY_PREFIX = "[[MAGENTA_CONTEXT_SUMMARY]]\n";
+    public static final String NOTICE_PREFIX = "[[MAGENTA_CONTEXT_COMPACTED_NOTICE]] ";
+    public static final String COMPACTION_NOTICE = "Context compacted to keep the conversation within the model window.";
+
+    private static final int MIN_TAIL_MESSAGES = 6;
+
+    private final ChatMemoryRepository chatMemoryRepository;
+    private final AiConfig aiConfig;
+    private final ChatClient summarizationClient;
+    private final TokenCountEstimator tokenCountEstimator;
+    private final ContextUsageTracker usageTracker;
+
+    public ContextManagementAdvisor(
+        ChatMemoryRepository chatMemoryRepository,
+        AiConfig aiConfig,
+        ChatClient summarizationClient,
+        TokenCountEstimator tokenCountEstimator,
+        ContextUsageTracker usageTracker
+    ) {
+        this.chatMemoryRepository = chatMemoryRepository;
+        this.aiConfig = aiConfig;
+        this.summarizationClient = summarizationClient;
+        this.tokenCountEstimator = tokenCountEstimator;
+        this.usageTracker = usageTracker;
+    }
+
+    @Override
+    public ChatClientResponse adviseCall(ChatClientRequest request, CallAdvisorChain chain) {
+        PreparedRequest prepared = prepare(request);
+        ChatClientResponse response = chain.nextCall(prepared.request());
+        saveAssistantMessages(prepared.conversationId(), assistantMessages(response));
+        ContextUsage usage = estimateStoredUsage(prepared.conversationId(), prepared.model());
+        usageTracker.record(prepared.conversationId(), usage);
+        return response.mutate()
+            .context(CONTEXT_USAGE_KEY, usage)
+            .build();
+    }
+
+    @Override
+    public Flux<ChatClientResponse> adviseStream(ChatClientRequest request, StreamAdvisorChain chain) {
+        PreparedRequest prepared = prepare(request);
+        return chain.nextStream(prepared.request())
+            .doOnComplete(() -> usageTracker.record(
+                prepared.conversationId(),
+                estimateStoredUsage(prepared.conversationId(), prepared.model())
+            ));
+    }
+
+    @Override
+    public String getName() {
+        return "MagentaContextManagementAdvisor";
+    }
+
+    @Override
+    public int getOrder() {
+        return Advisor.DEFAULT_CHAT_MEMORY_PRECEDENCE_ORDER;
+    }
+
+    public ContextUsage estimateStoredUsage(String conversationId, String remoteModelName) {
+        List<Message> messages = new ArrayList<>();
+        String systemPrompt = defaultSystemPrompt();
+        if (StringUtils.hasText(systemPrompt)) {
+            messages.add(new SystemMessage(systemPrompt));
+        }
+        messages.addAll(toModelMemory(chatMemoryRepository.findByConversationId(conversationId)));
+        return estimateUsage(messages, remoteModelName);
+    }
+
+    public ContextUsage estimateUsage(List<Message> messages, String remoteModelName) {
+        int maxTokens = maxTokens(remoteModelName);
+        int triggerTokens = triggerTokens(maxTokens);
+        int usedTokens = estimateTokens(messages);
+        double percent = maxTokens == 0 ? 0.0 : (usedTokens * 100.0) / maxTokens;
+        return new ContextUsage(usedTokens, maxTokens, triggerTokens, percent);
+    }
+
+    public boolean isHiddenSummary(Message message) {
+        return message instanceof SystemMessage && message.getText() != null && message.getText().startsWith(SUMMARY_PREFIX);
+    }
+
+    public boolean isCompactionNotice(Message message) {
+        return message instanceof SystemMessage && message.getText() != null && message.getText().startsWith(NOTICE_PREFIX);
+    }
+
+    public String visibleNoticeText(Message message) {
+        if (!isCompactionNotice(message)) {
+            return message.getText();
+        }
+        return message.getText().substring(NOTICE_PREFIX.length());
+    }
+
+    private PreparedRequest prepare(ChatClientRequest request) {
+        String conversationId = conversationId(request.context());
+        String model = modelName(request.prompt());
+        List<Message> storedMessages = chatMemoryRepository.findByConversationId(conversationId);
+        List<Message> promptMessages = buildPromptMessages(storedMessages, request.prompt().getInstructions());
+        ContextUsage usage = estimateUsage(promptMessages, model);
+
+        if (usage.usedTokens() > usage.triggerTokens()) {
+            storedMessages = compact(conversationId, storedMessages, request.prompt().getInstructions(), model);
+            promptMessages = buildPromptMessages(storedMessages, request.prompt().getInstructions());
+            usage = estimateUsage(promptMessages, model);
+        }
+        if (usage.usedTokens() > usage.triggerTokens()) {
+            storedMessages = trimToBudget(conversationId, storedMessages, request.prompt().getInstructions(), model);
+            promptMessages = buildPromptMessages(storedMessages, request.prompt().getInstructions());
+            usage = estimateUsage(promptMessages, model);
+        }
+        if (usage.usedTokens() > usage.triggerTokens()) {
+            throw new IllegalStateException(
+                "Context is too large to send safely after compaction: "
+                    + usage.usedTokens() + " estimated tokens exceeds trigger budget " + usage.triggerTokens()
+            );
+        }
+
+        Message currentMessage = request.prompt().getLastUserOrToolResponseMessage();
+        if (currentMessage != null) {
+            List<Message> updatedMemory = new ArrayList<>(storedMessages);
+            updatedMemory.add(currentMessage);
+            chatMemoryRepository.saveAll(conversationId, updatedMemory);
+        }
+
+        usageTracker.record(conversationId, usage);
+        Prompt prompt = request.prompt().mutate()
+            .messages(promptMessages)
+            .build();
+        return new PreparedRequest(
+            request.mutate()
+                .prompt(prompt)
+                .context(CONTEXT_USAGE_KEY, usage)
+                .build(),
+            conversationId,
+            model
+        );
+    }
+
+    private List<Message> compact(
+        String conversationId,
+        List<Message> storedMessages,
+        List<Message> currentInstructions,
+        String model
+    ) {
+        List<Message> compactable = storedMessages.stream()
+            .filter(message -> !isHiddenSummary(message))
+            .filter(message -> !isCompactionNotice(message))
+            .toList();
+        if (compactable.size() <= MIN_TAIL_MESSAGES) {
+            return storedMessages;
+        }
+
+        List<Message> tail = retainedTail(compactable, model);
+        List<Message> older = compactable.subList(0, Math.max(0, compactable.size() - tail.size()));
+        if (older.isEmpty()) {
+            return storedMessages;
+        }
+
+        String summary = summarize(older);
+        List<Message> compacted = new ArrayList<>();
+        compacted.add(new SystemMessage(SUMMARY_PREFIX + summary));
+        compacted.add(new SystemMessage(NOTICE_PREFIX + COMPACTION_NOTICE));
+        compacted.addAll(tail);
+        chatMemoryRepository.saveAll(conversationId, compacted);
+        return compacted;
+    }
+
+    private List<Message> trimToBudget(
+        String conversationId,
+        List<Message> storedMessages,
+        List<Message> currentInstructions,
+        String model
+    ) {
+        List<Message> trimmed = new ArrayList<>(storedMessages);
+        while (!trimmed.isEmpty() && estimateUsage(buildPromptMessages(trimmed, currentInstructions), model).usedTokens()
+            > triggerTokens(maxTokens(model))) {
+            int removeIndex = firstRemovableMessageIndex(trimmed);
+            if (removeIndex < 0) {
+                break;
+            }
+            trimmed.remove(removeIndex);
+        }
+        chatMemoryRepository.saveAll(conversationId, trimmed);
+        return trimmed;
+    }
+
+    private int firstRemovableMessageIndex(List<Message> messages) {
+        for (int i = 0; i < messages.size(); i++) {
+            Message message = messages.get(i);
+            if (!isHiddenSummary(message) && !isCompactionNotice(message)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private List<Message> retainedTail(List<Message> messages, String model) {
+        int maxTailTokens = Math.max(1_000, triggerTokens(maxTokens(model)) / 3);
+        List<Message> tail = new ArrayList<>();
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            tail.add(0, messages.get(i));
+            if (tail.size() >= MIN_TAIL_MESSAGES && estimateTokens(tail) >= maxTailTokens) {
+                tail.remove(0);
+                break;
+            }
+        }
+        return tail.isEmpty() ? messages.subList(Math.max(0, messages.size() - MIN_TAIL_MESSAGES), messages.size()) : tail;
+    }
+
+    private String summarize(List<Message> olderMessages) {
+        AgentConfig summarizationAgent = aiConfig.agents().get(aiConfig.summarizationAgent());
+        ModelConfig summarizationModel = aiConfig.models().get(summarizationAgent.model());
+        String renderedConversation = renderConversation(olderMessages);
+        String summary = summarizationClient.prompt()
+            .system(summarizationAgent.systemPrompt())
+            .user(renderedConversation)
+            .options(OllamaChatOptions.builder().model(summarizationModel.remoteModelName()).build())
+            .call()
+            .content();
+        if (!StringUtils.hasText(summary)) {
+            throw new IllegalStateException("Context compaction failed: summarization agent returned an empty summary");
+        }
+        return summary.trim();
+    }
+
+    private List<Message> buildPromptMessages(List<Message> storedMessages, List<Message> currentInstructions) {
+        List<Message> promptMessages = new ArrayList<>();
+        currentInstructions.stream()
+            .filter(SystemMessage.class::isInstance)
+            .forEach(promptMessages::add);
+        promptMessages.addAll(toModelMemory(storedMessages));
+        currentInstructions.stream()
+            .filter(message -> !(message instanceof SystemMessage))
+            .forEach(promptMessages::add);
+        return promptMessages;
+    }
+
+    private List<Message> toModelMemory(List<Message> storedMessages) {
+        return storedMessages.stream()
+            .filter(message -> !isCompactionNotice(message))
+            .map(message -> isHiddenSummary(message)
+                ? new SystemMessage("Previous compacted conversation summary:\n" + message.getText().substring(SUMMARY_PREFIX.length()))
+                : message)
+            .toList();
+    }
+
+    private List<Message> assistantMessages(ChatClientResponse response) {
+        if (response == null || response.chatResponse() == null) {
+            return List.of();
+        }
+        return response.chatResponse().getResults().stream()
+            .map(Generation::getOutput)
+            .filter(message -> message != null)
+            .map(message -> (Message) message)
+            .toList();
+    }
+
+    private void saveAssistantMessages(String conversationId, List<Message> messages) {
+        if (messages.isEmpty()) {
+            return;
+        }
+        List<Message> storedMessages = new ArrayList<>(chatMemoryRepository.findByConversationId(conversationId));
+        storedMessages.addAll(messages);
+        chatMemoryRepository.saveAll(conversationId, storedMessages);
+    }
+
+    private String renderConversation(List<Message> messages) {
+        StringBuilder builder = new StringBuilder();
+        for (Message message : messages) {
+            builder.append(message.getMessageType().getValue())
+                .append(": ")
+                .append(message.getText() == null ? "" : message.getText())
+                .append("\n\n");
+        }
+        return builder.toString().trim();
+    }
+
+    private int estimateTokens(List<Message> messages) {
+        return tokenCountEstimator.estimate(renderConversation(messages));
+    }
+
+    private int maxTokens(String remoteModelName) {
+        return aiConfig.models().values().stream()
+            .filter(model -> remoteModelName == null || remoteModelName.equals(model.remoteModelName()))
+            .findFirst()
+            .map(ModelConfig::contextLength)
+            .filter(value -> value != null && value > 0)
+            .orElseGet(() -> aiConfig.models().get(aiConfig.agents().get(aiConfig.defaultAgent()).model()).contextLength());
+    }
+
+    private int triggerTokens(int maxTokens) {
+        int bufferPercent = aiConfig.resolvedContextBufferPercent();
+        return Math.max(1, maxTokens - (int) Math.ceil(maxTokens * (bufferPercent / 100.0)));
+    }
+
+    private String modelName(Prompt prompt) {
+        ChatOptions options = prompt.getOptions();
+        if (options != null && StringUtils.hasText(options.getModel())) {
+            return options.getModel();
+        }
+        AgentConfig defaultAgent = aiConfig.agents().get(aiConfig.defaultAgent());
+        return aiConfig.models().get(defaultAgent.model()).remoteModelName();
+    }
+
+    private String defaultSystemPrompt() {
+        if (aiConfig == null || !StringUtils.hasText(aiConfig.defaultAgent()) || aiConfig.agents() == null) {
+            return null;
+        }
+        AgentConfig defaultAgent = aiConfig.agents().get(aiConfig.defaultAgent());
+        return defaultAgent == null ? null : defaultAgent.systemPrompt();
+    }
+
+    private String conversationId(Map<String, Object> context) {
+        Object conversationId = context.get(ChatMemory.CONVERSATION_ID);
+        if (conversationId instanceof String value && StringUtils.hasText(value)) {
+            return value;
+        }
+        return ChatMemory.DEFAULT_CONVERSATION_ID;
+    }
+
+    private record PreparedRequest(ChatClientRequest request, String conversationId, String model) {
+    }
+}

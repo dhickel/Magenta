@@ -44,6 +44,26 @@
         }
     }
 
+    function updateContextUsage(usage) {
+        const textEl = byId('chat-token-usage-text');
+        const fillEl = byId('chat-token-usage-fill');
+        if (!textEl || !fillEl) {
+            return;
+        }
+
+        if (!usage) {
+            textEl.textContent = '0 / 0 (0%)';
+            fillEl.style.width = '0%';
+            return;
+        }
+
+        const used = Number(usage.usedTokens || 0);
+        const max = Number(usage.maxTokens || 0);
+        const percent = max > 0 ? Math.min(100, Math.max(0, Number(usage.percentUsed || 0))) : 0;
+        textEl.textContent = used.toLocaleString() + ' / ' + max.toLocaleString() + ' (' + Math.round(percent) + '%)';
+        fillEl.style.width = percent.toFixed(1) + '%';
+    }
+
     function selectedModel() {
         const modelSelect = byId('chat-model-select');
         if (!modelSelect || !modelSelect.value) {
@@ -84,7 +104,7 @@
             const role = escapeHtml(rawRole);
             const roleClass = rawRole.toLowerCase() === 'user'
                 ? 'chat-message-user'
-                : 'chat-message-assistant';
+                : (rawRole.toLowerCase() === 'system' ? 'chat-message-system' : 'chat-message-assistant');
             const text = message.renderedHtml
                 ? String(message.renderedHtml)
                 : formatPlainText(message.text || '');
@@ -211,6 +231,7 @@
         const data = await getJson('/api/chat/' + encodeURIComponent(conversationId) + '/history');
         renderHistory(data.messages);
         syncModelSelection(data.model);
+        updateContextUsage(data.contextUsage);
     }
 
     async function sendMessage(message) {
@@ -253,6 +274,7 @@
                 }
                 if (event.name === 'done') {
                     updateStreamingAssistantMessage(assistantEl, data);
+                    updateContextUsage(data.contextUsage);
                     completedConversationId = data.conversationId;
                     return;
                 }
@@ -293,6 +315,7 @@
         syncModelSelection(data.model);
         renderHistory(data.history || []);
         renderSessions(data.conversationIds || []);
+        updateContextUsage(data.contextUsage);
         setStatus();
     }
 

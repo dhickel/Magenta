@@ -5,17 +5,22 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import io.mindspice.magenta2.ai.chat.model.ChatHistoryMessage;
+import io.mindspice.magenta2.ai.chat.model.ChatMessage;
 import io.mindspice.magenta2.ai.chat.model.ChatRequest;
 import io.mindspice.magenta2.ai.chat.model.ChatResponse;
+import io.mindspice.magenta2.ai.chat.model.ContextUsage;
 import io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer;
 import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
+import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
+import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
@@ -30,6 +35,8 @@ public class ChatService {
     private final ChatSessionMetadataRepository chatSessionMetadataRepository;
     private final ChatMarkdownRenderer chatMarkdownRenderer;
     private final AiConfig aiConfig;
+    private final ContextManagementAdvisor contextManagementAdvisor;
+    private final ContextUsageTracker contextUsageTracker;
 
     public ChatService(
         ChatClient chatClient,
@@ -39,12 +46,37 @@ public class ChatService {
         ChatMarkdownRenderer chatMarkdownRenderer,
         AiConfig aiConfig
     ) {
+        this(
+            chatClient,
+            chatMemory,
+            chatMemoryRepository,
+            chatSessionMetadataRepository,
+            chatMarkdownRenderer,
+            aiConfig,
+            null,
+            null
+        );
+    }
+
+    @Autowired
+    public ChatService(
+        ChatClient chatClient,
+        ChatMemory chatMemory,
+        ChatMemoryRepository chatMemoryRepository,
+        ChatSessionMetadataRepository chatSessionMetadataRepository,
+        ChatMarkdownRenderer chatMarkdownRenderer,
+        AiConfig aiConfig,
+        ContextManagementAdvisor contextManagementAdvisor,
+        ContextUsageTracker contextUsageTracker
+    ) {
         this.chatClient = chatClient;
         this.chatMemory = chatMemory;
         this.chatMemoryRepository = chatMemoryRepository;
         this.chatSessionMetadataRepository = chatSessionMetadataRepository;
         this.chatMarkdownRenderer = chatMarkdownRenderer;
         this.aiConfig = aiConfig;
+        this.contextManagementAdvisor = contextManagementAdvisor;
+        this.contextUsageTracker = contextUsageTracker;
     }
 
     public ChatResponse chat(ChatRequest request) {
@@ -59,9 +91,15 @@ public class ChatService {
         ResolvedChatRequest resolvedRequest = resolve(conversationId, message, model);
         ChatClient.ChatClientRequestSpec prompt = prompt(resolvedRequest);
 
-        String response = prompt.call().content();
+        ChatClientResponse chatClientResponse = prompt.call().chatClientResponse();
+        String response = chatClientResponse.chatResponse().getResult().getOutput().getText();
         chatSessionMetadataRepository.saveModel(resolvedRequest.conversationId(), resolvedRequest.model());
-        return new ChatResponse.MsgResponse(resolvedRequest.conversationId(), resolvedRequest.model(), response);
+        return new ChatResponse.MsgResponse(
+            resolvedRequest.conversationId(),
+            resolvedRequest.model(),
+            response,
+            contextUsage(resolvedRequest.conversationId(), resolvedRequest.model())
+        );
     }
 
     public ResolvedChatRequest resolve(ChatRequest request) {
@@ -73,17 +111,20 @@ public class ChatService {
 
     public Flux<String> stream(ResolvedChatRequest request) {
         chatSessionMetadataRepository.saveModel(request.conversationId(), request.model());
+        StringBuilder responseText = new StringBuilder();
         return prompt(request)
             .stream()
             .content()
-            .filter(chunk -> chunk != null);
+            .filter(chunk -> chunk != null)
+            .doOnNext(responseText::append)
+            .doOnComplete(() -> saveStreamedAssistantMessage(request.conversationId(), request.model(), responseText.toString()));
     }
 
-    public ChatHistoryMessage renderAssistantMessage(String text) {
+    public ChatMessage renderAssistantMessage(String text) {
         MessageParts messageParts = splitThinking(text == null ? "" : text);
         String visibleText = messageParts.visibleText();
         String thinkingText = messageParts.thinkingText();
-        return new ChatHistoryMessage(
+        return new ChatMessage(
             "assistant",
             visibleText,
             chatMarkdownRenderer.render(visibleText),
@@ -95,6 +136,9 @@ public class ChatService {
         if (StringUtils.hasText(conversationId)) {
             chatMemory.clear(conversationId);
             chatSessionMetadataRepository.deleteByConversationId(conversationId);
+            if (contextUsageTracker != null) {
+                contextUsageTracker.clear(conversationId);
+            }
         }
     }
 
@@ -109,9 +153,23 @@ public class ChatService {
         return chatMemoryRepository.findConversationIds().contains(conversationId);
     }
 
-    public List<ChatHistoryMessage> history(String conversationId) {
+    public List<ChatMessage> history(String conversationId) {
         List<Message> messages = chatMemoryRepository.findByConversationId(conversationId);
         return toHistory(messages);
+    }
+
+    public ContextUsage contextUsage(String conversationId, String model) {
+        if (contextUsageTracker != null) {
+            ContextUsage trackedUsage = contextUsageTracker.find(conversationId);
+            if (trackedUsage != null) {
+                return trackedUsage;
+            }
+        }
+        if (contextManagementAdvisor == null || chatMemoryRepository == null) {
+            return null;
+        }
+        String resolvedModel = StringUtils.hasText(model) ? model : storedConversationModel(conversationId);
+        return contextManagementAdvisor.estimateStoredUsage(conversationId, resolvedModel);
     }
 
     public String storedConversationModel(String conversationId) {
@@ -147,8 +205,14 @@ public class ChatService {
 
     private ChatClient.ChatClientRequestSpec prompt(ResolvedChatRequest request) {
         ChatClient.ChatClientRequestSpec prompt = chatClient.prompt()
-            .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, request.conversationId()))
-            .user(request.message());
+            .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, request.conversationId()));
+
+        String systemPrompt = defaultSystemPrompt();
+        if (StringUtils.hasText(systemPrompt)) {
+            prompt = prompt.system(systemPrompt);
+        }
+
+        prompt = prompt.user(request.message());
 
         if (StringUtils.hasText(request.model())) {
             prompt = prompt.options(OllamaChatOptions.builder().model(request.model()).build());
@@ -156,16 +220,27 @@ public class ChatService {
         return prompt;
     }
 
-    private List<ChatHistoryMessage> toHistory(List<Message> messages) {
+    String defaultSystemPrompt() {
+        if (aiConfig == null || !StringUtils.hasText(aiConfig.defaultAgent()) || aiConfig.agents() == null) {
+            return null;
+        }
+        AgentConfig defaultAgent = aiConfig.agents().get(aiConfig.defaultAgent());
+        return defaultAgent == null ? null : defaultAgent.systemPrompt();
+    }
+
+    private List<ChatMessage> toHistory(List<Message> messages) {
         return messages.stream()
+            .filter(message -> contextManagementAdvisor == null || !contextManagementAdvisor.isHiddenSummary(message))
             .map(message -> {
                 String role = message.getMessageType().getValue();
-                String sourceText = message.getText() == null ? "" : message.getText();
+                String sourceText = contextManagementAdvisor != null && contextManagementAdvisor.isCompactionNotice(message)
+                    ? contextManagementAdvisor.visibleNoticeText(message)
+                    : (message.getText() == null ? "" : message.getText());
                 MessageParts messageParts = isAssistantRole(role) ? splitThinking(sourceText) : new MessageParts(sourceText, "");
                 String visibleText = messageParts.visibleText();
                 String thinkingText = messageParts.thinkingText();
 
-                return new ChatHistoryMessage(
+                return new ChatMessage(
                     role,
                     visibleText,
                     chatMarkdownRenderer.render(visibleText),
@@ -177,6 +252,18 @@ public class ChatService {
 
     private boolean isAssistantRole(String role) {
         return "assistant".equalsIgnoreCase(role);
+    }
+
+    private void saveStreamedAssistantMessage(String conversationId, String model, String responseText) {
+        if (!StringUtils.hasText(responseText) || chatMemoryRepository == null) {
+            return;
+        }
+        List<Message> messages = new java.util.ArrayList<>(chatMemoryRepository.findByConversationId(conversationId));
+        messages.add(new AssistantMessage(responseText));
+        chatMemoryRepository.saveAll(conversationId, messages);
+        if (contextManagementAdvisor != null && contextUsageTracker != null) {
+            contextUsageTracker.record(conversationId, contextManagementAdvisor.estimateStoredUsage(conversationId, model));
+        }
     }
 
     private MessageParts splitThinking(String text) {
