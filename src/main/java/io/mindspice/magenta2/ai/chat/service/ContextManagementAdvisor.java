@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 
 import io.mindspice.magenta2.ai.chat.model.ContextUsage;
+import io.mindspice.magenta2.ai.chat.tool.ToolTranscriptService;
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.ai.config.user.ModelConfig;
@@ -43,19 +44,22 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
     private final ChatClient summarizationClient;
     private final TokenCountEstimator tokenCountEstimator;
     private final ContextUsageTracker usageTracker;
+    private final ToolTranscriptService toolTranscriptService;
 
     public ContextManagementAdvisor(
         ChatMemoryRepository chatMemoryRepository,
         AiConfig aiConfig,
         ChatClient summarizationClient,
         TokenCountEstimator tokenCountEstimator,
-        ContextUsageTracker usageTracker
+        ContextUsageTracker usageTracker,
+        ToolTranscriptService toolTranscriptService
     ) {
         this.chatMemoryRepository = chatMemoryRepository;
         this.aiConfig = aiConfig;
         this.summarizationClient = summarizationClient;
         this.tokenCountEstimator = tokenCountEstimator;
         this.usageTracker = usageTracker;
+        this.toolTranscriptService = toolTranscriptService;
     }
 
     @Override
@@ -123,21 +127,24 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
         return message.getText().substring(NOTICE_PREFIX.length());
     }
 
-    private PreparedRequest prepare(ChatClientRequest request) {
-        String conversationId = conversationId(request.context());
-        String model = modelName(request.prompt());
+    public PreparedPrompt preparePrompt(String conversationId, List<Message> currentInstructions, String model) {
         List<Message> storedMessages = chatMemoryRepository.findByConversationId(conversationId);
-        List<Message> promptMessages = buildPromptMessages(storedMessages, request.prompt().getInstructions());
+        List<Message> truncatedMessages = truncateExpiredToolResults(storedMessages);
+        if (truncatedMessages != storedMessages) {
+            storedMessages = truncatedMessages;
+            chatMemoryRepository.saveAll(conversationId, storedMessages);
+        }
+        List<Message> promptMessages = buildPromptMessages(storedMessages, currentInstructions);
         ContextUsage usage = estimateUsage(promptMessages, model);
 
         if (usage.usedTokens() > usage.triggerTokens()) {
-            storedMessages = compact(conversationId, storedMessages, request.prompt().getInstructions(), model);
-            promptMessages = buildPromptMessages(storedMessages, request.prompt().getInstructions());
+            storedMessages = compact(conversationId, storedMessages, currentInstructions, model);
+            promptMessages = buildPromptMessages(storedMessages, currentInstructions);
             usage = estimateUsage(promptMessages, model);
         }
         if (usage.usedTokens() > usage.triggerTokens()) {
-            storedMessages = trimToBudget(conversationId, storedMessages, request.prompt().getInstructions(), model);
-            promptMessages = buildPromptMessages(storedMessages, request.prompt().getInstructions());
+            storedMessages = trimToBudget(conversationId, storedMessages, currentInstructions, model);
+            promptMessages = buildPromptMessages(storedMessages, currentInstructions);
             usage = estimateUsage(promptMessages, model);
         }
         if (usage.usedTokens() > usage.triggerTokens()) {
@@ -147,7 +154,7 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
             );
         }
 
-        Message currentMessage = request.prompt().getLastUserOrToolResponseMessage();
+        Message currentMessage = new Prompt(currentInstructions).getLastUserOrToolResponseMessage();
         if (currentMessage != null) {
             List<Message> updatedMemory = new ArrayList<>(storedMessages);
             updatedMemory.add(currentMessage);
@@ -155,13 +162,29 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
         }
 
         usageTracker.record(conversationId, usage);
+        return new PreparedPrompt(promptMessages, usage);
+    }
+
+    public void saveAssistantMessages(String conversationId, List<Message> messages) {
+        if (messages.isEmpty()) {
+            return;
+        }
+        List<Message> storedMessages = new ArrayList<>(chatMemoryRepository.findByConversationId(conversationId));
+        storedMessages.addAll(messages);
+        chatMemoryRepository.saveAll(conversationId, storedMessages);
+    }
+
+    private PreparedRequest prepare(ChatClientRequest request) {
+        String conversationId = conversationId(request.context());
+        String model = modelName(request.prompt());
+        PreparedPrompt preparedPrompt = preparePrompt(conversationId, request.prompt().getInstructions(), model);
         Prompt prompt = request.prompt().mutate()
-            .messages(promptMessages)
+            .messages(preparedPrompt.messages())
             .build();
         return new PreparedRequest(
             request.mutate()
                 .prompt(prompt)
-                .context(CONTEXT_USAGE_KEY, usage)
+                .context(CONTEXT_USAGE_KEY, preparedPrompt.usage())
                 .build(),
             conversationId,
             model
@@ -272,6 +295,8 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
             .filter(message -> !isCompactionNotice(message))
             .map(message -> isHiddenSummary(message)
                 ? new SystemMessage("Previous compacted conversation summary:\n" + message.getText().substring(SUMMARY_PREFIX.length()))
+                : isToolTranscript(message)
+                    ? new SystemMessage(toolTranscriptService.renderForModel(message))
                 : message)
             .toList();
     }
@@ -287,24 +312,33 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
             .toList();
     }
 
-    private void saveAssistantMessages(String conversationId, List<Message> messages) {
-        if (messages.isEmpty()) {
-            return;
-        }
-        List<Message> storedMessages = new ArrayList<>(chatMemoryRepository.findByConversationId(conversationId));
-        storedMessages.addAll(messages);
-        chatMemoryRepository.saveAll(conversationId, storedMessages);
-    }
-
     private String renderConversation(List<Message> messages) {
         StringBuilder builder = new StringBuilder();
         for (Message message : messages) {
             builder.append(message.getMessageType().getValue())
                 .append(": ")
-                .append(message.getText() == null ? "" : message.getText())
+                .append(renderMessageText(message))
                 .append("\n\n");
         }
         return builder.toString().trim();
+    }
+
+    private String renderMessageText(Message message) {
+        if (isToolTranscript(message)) {
+            return toolTranscriptService.renderForModel(message);
+        }
+        return message.getText() == null ? "" : message.getText();
+    }
+
+    private List<Message> truncateExpiredToolResults(List<Message> messages) {
+        if (toolTranscriptService == null) {
+            return messages;
+        }
+        return toolTranscriptService.truncateExpiredLargeResults(messages);
+    }
+
+    private boolean isToolTranscript(Message message) {
+        return toolTranscriptService != null && toolTranscriptService.isToolTranscript(message);
     }
 
     private int estimateTokens(List<Message> messages) {
@@ -351,5 +385,8 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
     }
 
     private record PreparedRequest(ChatClientRequest request, String conversationId, String model) {
+    }
+
+    public record PreparedPrompt(List<Message> messages, ContextUsage usage) {
     }
 }

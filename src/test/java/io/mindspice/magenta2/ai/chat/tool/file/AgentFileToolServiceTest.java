@@ -1,0 +1,210 @@
+package io.mindspice.magenta2.ai.chat.tool.file;
+
+import java.io.IOException;
+import java.nio.file.FileSystemException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.stream.IntStream;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+class AgentFileToolServiceTest {
+
+    @TempDir
+    Path tempDir;
+
+    @Test
+    void rejectsTraversalOutsideRoot() throws IOException {
+        AgentFileToolService service = service();
+        Files.writeString(tempDir.resolveSibling("outside.txt"), "do not read");
+
+        assertThatThrownBy(() -> service.read("../outside.txt", 1, 10))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("escapes data root");
+    }
+
+    @Test
+    void rejectsSymlinkEscapeOutsideRoot() throws IOException {
+        Path outside = Files.createDirectories(tempDir.resolveSibling(tempDir.getFileName() + "-outside"));
+        Files.writeString(outside.resolve("secret.txt"), "do not read");
+        try {
+            Files.createSymbolicLink(tempDir.resolve("escape"), outside);
+        } catch (UnsupportedOperationException | FileSystemException exception) {
+            return;
+        }
+
+        AgentFileToolService service = service();
+
+        assertThatThrownBy(() -> service.read("escape/secret.txt", 1, 10))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("escapes data root");
+    }
+
+    @Test
+    void readsFileInChunksWithStableLineAnchors() throws IOException {
+        Files.writeString(tempDir.resolve("chunked.txt"), generatedLines(25));
+        AgentFileToolService service = service();
+
+        AgentFileToolService.FileReadResult firstChunk = service.read("chunked.txt", 6, 10);
+        AgentFileToolService.FileReadResult finalChunk = service.read("chunked.txt", 21, 10);
+
+        assertThat(firstChunk.totalLines()).isEqualTo(25);
+        assertThat(firstChunk.startLine()).isEqualTo(6);
+        assertThat(firstChunk.endLine()).isEqualTo(15);
+        assertThat(firstChunk.nextStartLine()).isEqualTo(16);
+        assertThat(firstChunk.lines()).hasSize(10);
+        assertThat(firstChunk.lines().getFirst()).contains("|fixture line 006 ");
+        assertThat(firstChunk.lines().getFirst()).matches("6:[0-9a-f]{12}\\|fixture line 006 .*");
+
+        assertThat(finalChunk.startLine()).isEqualTo(21);
+        assertThat(finalChunk.endLine()).isEqualTo(25);
+        assertThat(finalChunk.nextStartLine()).isNull();
+        assertThat(finalChunk.lines()).hasSize(5);
+    }
+
+    @Test
+    void readsEmptyFileAsEmptyChunk() throws IOException {
+        Files.writeString(tempDir.resolve("empty.txt"), "");
+        AgentFileToolService.FileReadResult result = service().read("empty.txt", 1, 10);
+
+        assertThat(result.totalLines()).isZero();
+        assertThat(result.startLine()).isEqualTo(1);
+        assertThat(result.endLine()).isZero();
+        assertThat(result.nextStartLine()).isNull();
+        assertThat(result.lines()).isEmpty();
+    }
+
+    @Test
+    void listsSingleFileMetadata() throws IOException {
+        Files.writeString(tempDir.resolve("single.txt"), "abc");
+
+        AgentFileToolService.FileListResult result = service().list("single.txt", false, 10);
+
+        assertThat(result.path()).isEqualTo("single.txt");
+        assertThat(result.truncated()).isFalse();
+        assertThat(result.entries()).hasSize(1);
+        assertThat(result.entries().getFirst().path()).isEqualTo("single.txt");
+        assertThat(result.entries().getFirst().type()).isEqualTo("file");
+        assertThat(result.entries().getFirst().size()).isEqualTo(3);
+    }
+
+    @Test
+    void searchesPlainTextCaseInsensitiveWithContext() throws IOException {
+        Files.createDirectories(tempDir.resolve("notes"));
+        Files.writeString(
+            tempDir.resolve("notes/a.txt"),
+            "before one\nNeedle alpha\nafter one\nplain line\nneedle beta\n"
+        );
+        Files.writeString(tempDir.resolve("notes/b.txt"), "nothing\nNEEDLE gamma\n");
+
+        AgentFileToolService.FileSearchResult result = service().search("notes", "needle", false, false, 1, 10);
+
+        assertThat(result.truncated()).isFalse();
+        assertThat(result.matches()).hasSize(3);
+        AgentFileToolService.SearchMatch first = result.matches().getFirst();
+        assertThat(first.path()).isEqualTo("notes/a.txt");
+        assertThat(first.lineNumber()).isEqualTo(2);
+        assertThat(first.hash()).matches("[0-9a-f]{12}");
+        assertThat(first.line()).isEqualTo("Needle alpha");
+        assertThat(first.before()).hasSize(1);
+        assertThat(first.before().getFirst()).matches("1:[0-9a-f]{12}\\|before one");
+        assertThat(first.after()).hasSize(1);
+        assertThat(first.after().getFirst()).matches("3:[0-9a-f]{12}\\|after one");
+    }
+
+    @Test
+    void searchesRegexCaseSensitiveAndTruncates() throws IOException {
+        Files.writeString(tempDir.resolve("matches.txt"), "ID-001\nid-002\nID-003\nID-004\n");
+
+        AgentFileToolService.FileSearchResult result = service().search("matches.txt", "ID-\\d+", true, true, 0, 2);
+
+        assertThat(result.truncated()).isTrue();
+        assertThat(result.matches())
+            .extracting(AgentFileToolService.SearchMatch::line)
+            .containsExactly("ID-001", "ID-003");
+    }
+
+    @Test
+    void replacesSingleAnchoredLineWithRepeatedContentAroundIt() throws IOException {
+        Files.writeString(tempDir.resolve("edit.txt"), "same\nmiddle\nsame\n");
+        AgentFileToolService service = service();
+        List<String> lines = service.read("edit.txt", 1, 10).lines();
+        String middleAnchor = anchor(lines.get(1));
+
+        AgentFileToolService.FileReplaceResult result = service.replace("edit.txt", middleAnchor, null, "changed");
+
+        assertThat(result.replacedLines()).isEqualTo(1);
+        assertThat(result.newLines()).isEqualTo(1);
+        assertThat(Files.readString(tempDir.resolve("edit.txt"))).isEqualTo("same\nchanged\nsame\n");
+    }
+
+    @Test
+    void replacesAnchoredLineRange() throws IOException {
+        Files.writeString(tempDir.resolve("range.txt"), "one\ntwo\nthree\nfour\n");
+        AgentFileToolService service = service();
+        List<String> lines = service.read("range.txt", 1, 10).lines();
+
+        service.replace("range.txt", anchor(lines.get(1)), anchor(lines.get(2)), "TWO\nTHREE");
+
+        assertThat(Files.readString(tempDir.resolve("range.txt"))).isEqualTo("one\nTWO\nTHREE\nfour\n");
+    }
+
+    @Test
+    void rejectsStaleAnchorWithoutChangingFile() throws IOException {
+        Path file = tempDir.resolve("stale.txt");
+        Files.writeString(file, "old\nkeep\n");
+        AgentFileToolService service = service();
+        String oldAnchor = anchor(service.read("stale.txt", 1, 10).lines().getFirst());
+        Files.writeString(file, "new\nkeep\n");
+
+        assertThatThrownBy(() -> service.replace("stale.txt", oldAnchor, null, "changed"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("hash does not match");
+        assertThat(Files.readString(file)).isEqualTo("new\nkeep\n");
+    }
+
+    @Test
+    void rejectsReversedAnchors() throws IOException {
+        Files.writeString(tempDir.resolve("reverse.txt"), "one\ntwo\nthree\n");
+        AgentFileToolService service = service();
+        List<String> lines = service.read("reverse.txt", 1, 10).lines();
+
+        assertThatThrownBy(() -> service.replace("reverse.txt", anchor(lines.get(2)), anchor(lines.get(0)), "bad"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("endAnchor must not be before startAnchor");
+    }
+
+    @Test
+    void writesNewFileAndHonorsOverwriteFlag() throws IOException {
+        AgentFileToolService service = service();
+
+        AgentFileToolService.FileWriteResult created = service.write("new/file.txt", "content", false);
+
+        assertThat(created.created()).isTrue();
+        assertThat(created.bytesWritten()).isEqualTo(7);
+        assertThat(Files.readString(tempDir.resolve("new/file.txt"))).isEqualTo("content");
+        assertThatThrownBy(() -> service.write("new/file.txt", "other", false))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("already exists");
+    }
+
+    private AgentFileToolService service() throws IOException {
+        return new AgentFileToolService(tempDir);
+    }
+
+    private String generatedLines(int count) {
+        return IntStream.rangeClosed(1, count)
+            .mapToObj(i -> "fixture line %03d lorem ipsum token %04d".formatted(i, i * 37))
+            .reduce((left, right) -> left + "\n" + right)
+            .orElse("") + "\n";
+    }
+
+    private String anchor(String formattedLine) {
+        return formattedLine.substring(0, formattedLine.indexOf('|'));
+    }
+}

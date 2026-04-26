@@ -3,6 +3,7 @@ package io.mindspice.magenta2.ai.chat.config;
 import io.mindspice.magenta2.ai.chat.repository.RepositoryBackedChatMemory;
 import io.mindspice.magenta2.ai.chat.service.ContextManagementAdvisor;
 import io.mindspice.magenta2.ai.chat.service.ContextUsageTracker;
+import io.mindspice.magenta2.ai.chat.tool.ToolTranscriptService;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
@@ -32,14 +33,16 @@ public class ChatBeanConfig {
         AiConfig aiConfig,
         ChatModel chatModel,
         TokenCountEstimator tokenCountEstimator,
-        ContextUsageTracker usageTracker
+        ContextUsageTracker usageTracker,
+        ToolTranscriptService toolTranscriptService
     ) {
         return new ContextManagementAdvisor(
             chatMemoryRepository,
             aiConfig,
             ChatClient.builder(chatModel).build(),
             tokenCountEstimator,
-            usageTracker
+            usageTracker,
+            toolTranscriptService
         );
     }
 

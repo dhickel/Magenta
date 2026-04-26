@@ -1,7 +1,9 @@
 package io.mindspice.magenta2.ai.chat.service;
 
 import java.util.UUID;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -11,6 +13,8 @@ import io.mindspice.magenta2.ai.chat.model.ChatResponse;
 import io.mindspice.magenta2.ai.chat.model.ContextUsage;
 import io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer;
 import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
+import io.mindspice.magenta2.ai.chat.tool.ChatToolRegistry;
+import io.mindspice.magenta2.ai.chat.tool.ToolTranscriptService;
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import org.springframework.ai.chat.client.ChatClient;
@@ -19,7 +23,15 @@ import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.ToolResponseMessage;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.model.tool.ToolCallingManager;
+import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -28,8 +40,10 @@ import reactor.core.publisher.Flux;
 @Service
 public class ChatService {
     private static final Pattern THINK_TAG_PATTERN = Pattern.compile("(?is)<think>(.*?)</think>");
+    private static final int MAX_TOOL_CALL_ITERATIONS = 8;
 
     private final ChatClient chatClient;
+    private final ChatModel chatModel;
     private final ChatMemory chatMemory;
     private final ChatMemoryRepository chatMemoryRepository;
     private final ChatSessionMetadataRepository chatSessionMetadataRepository;
@@ -37,6 +51,9 @@ public class ChatService {
     private final AiConfig aiConfig;
     private final ContextManagementAdvisor contextManagementAdvisor;
     private final ContextUsageTracker contextUsageTracker;
+    private final ToolCallingManager toolCallingManager;
+    private final ChatToolRegistry chatToolRegistry;
+    private final ToolTranscriptService toolTranscriptService;
 
     public ChatService(
         ChatClient chatClient,
@@ -54,6 +71,10 @@ public class ChatService {
             chatMarkdownRenderer,
             aiConfig,
             null,
+            null,
+            null,
+            null,
+            null,
             null
         );
     }
@@ -67,9 +88,14 @@ public class ChatService {
         ChatMarkdownRenderer chatMarkdownRenderer,
         AiConfig aiConfig,
         ContextManagementAdvisor contextManagementAdvisor,
-        ContextUsageTracker contextUsageTracker
+        ContextUsageTracker contextUsageTracker,
+        ChatModel chatModel,
+        ToolCallingManager toolCallingManager,
+        ChatToolRegistry chatToolRegistry,
+        ToolTranscriptService toolTranscriptService
     ) {
         this.chatClient = chatClient;
+        this.chatModel = chatModel;
         this.chatMemory = chatMemory;
         this.chatMemoryRepository = chatMemoryRepository;
         this.chatSessionMetadataRepository = chatSessionMetadataRepository;
@@ -77,6 +103,9 @@ public class ChatService {
         this.aiConfig = aiConfig;
         this.contextManagementAdvisor = contextManagementAdvisor;
         this.contextUsageTracker = contextUsageTracker;
+        this.toolCallingManager = toolCallingManager;
+        this.chatToolRegistry = chatToolRegistry;
+        this.toolTranscriptService = toolTranscriptService;
     }
 
     public ChatResponse chat(ChatRequest request) {
@@ -89,6 +118,10 @@ public class ChatService {
 
     public ChatResponse.MsgResponse chat(String conversationId, String message, String model) {
         ResolvedChatRequest resolvedRequest = resolve(conversationId, message, model);
+        List<ToolCallback> approvedTools = approvedTools();
+        if (!approvedTools.isEmpty()) {
+            return toolChat(resolvedRequest, approvedTools);
+        }
         ChatClient.ChatClientRequestSpec prompt = prompt(resolvedRequest);
 
         ChatClientResponse chatClientResponse = prompt.call().chatClientResponse();
@@ -110,6 +143,10 @@ public class ChatService {
     }
 
     public Flux<String> stream(ResolvedChatRequest request) {
+        List<ToolCallback> approvedTools = approvedTools();
+        if (!approvedTools.isEmpty()) {
+            return Flux.just(chat(request.conversationId(), request.message(), request.model()).response());
+        }
         chatSessionMetadataRepository.saveModel(request.conversationId(), request.model());
         StringBuilder responseText = new StringBuilder();
         return prompt(request)
@@ -194,6 +231,124 @@ public class ChatService {
             .toList();
     }
 
+    private ChatResponse.MsgResponse toolChat(ResolvedChatRequest request, List<ToolCallback> approvedTools) {
+        if (chatModel == null || toolCallingManager == null || contextManagementAdvisor == null || toolTranscriptService == null) {
+            throw new IllegalStateException("Tool execution requires ChatModel, ToolCallingManager, context management, and tool transcripts");
+        }
+        chatSessionMetadataRepository.saveModel(request.conversationId(), request.model());
+
+        List<Message> currentInstructions = currentInstructions(request);
+        ContextManagementAdvisor.PreparedPrompt preparedPrompt = contextManagementAdvisor.preparePrompt(
+            request.conversationId(),
+            currentInstructions,
+            request.model()
+        );
+        OllamaChatOptions options = toolOptions(request.model(), approvedTools);
+        Prompt prompt = new Prompt(preparedPrompt.messages(), options);
+        org.springframework.ai.chat.model.ChatResponse response = chatModel.call(prompt);
+        List<Message> messagesToPersist = new ArrayList<>();
+        int iterations = 0;
+
+        while (response != null && response.hasToolCalls()) {
+            if (++iterations > MAX_TOOL_CALL_ITERATIONS) {
+                throw new IllegalStateException("Tool execution exceeded " + MAX_TOOL_CALL_ITERATIONS + " iterations");
+            }
+            ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(prompt, response);
+            messagesToPersist.addAll(toolTranscriptMessages(response, toolExecutionResult));
+            prompt = new Prompt(toolExecutionResult.conversationHistory(), options);
+            response = chatModel.call(prompt);
+        }
+
+        AssistantMessage finalAssistantMessage = response == null || response.getResult() == null
+            ? new AssistantMessage("")
+            : response.getResult().getOutput();
+        if (finalAssistantMessage != null) {
+            messagesToPersist.add(finalAssistantMessage);
+        }
+        contextManagementAdvisor.saveAssistantMessages(request.conversationId(), messagesToPersist);
+        if (contextUsageTracker != null) {
+            contextUsageTracker.record(
+                request.conversationId(),
+                contextManagementAdvisor.estimateStoredUsage(request.conversationId(), request.model())
+            );
+        }
+        return new ChatResponse.MsgResponse(
+            request.conversationId(),
+            request.model(),
+            finalAssistantMessage == null ? "" : finalAssistantMessage.getText(),
+            contextUsage(request.conversationId(), request.model())
+        );
+    }
+
+    private List<Message> currentInstructions(ResolvedChatRequest request) {
+        List<Message> messages = new ArrayList<>();
+        String systemPrompt = defaultSystemPrompt();
+        if (StringUtils.hasText(systemPrompt)) {
+            messages.add(new SystemMessage(systemPrompt));
+        }
+        messages.add(new UserMessage(request.message()));
+        return messages;
+    }
+
+    private OllamaChatOptions toolOptions(String model, List<ToolCallback> approvedTools) {
+        OllamaChatOptions options = StringUtils.hasText(model)
+            ? OllamaChatOptions.builder().model(model).build()
+            : OllamaChatOptions.builder().build();
+        options.setInternalToolExecutionEnabled(false);
+        options.setToolCallbacks(approvedTools);
+        return options;
+    }
+
+    private List<Message> toolTranscriptMessages(
+        org.springframework.ai.chat.model.ChatResponse response,
+        ToolExecutionResult toolExecutionResult
+    ) {
+        if (toolExecutionResult == null || toolExecutionResult.conversationHistory() == null) {
+            return List.of();
+        }
+        List<AssistantMessage.ToolCall> toolCalls = response.getResult().getOutput().getToolCalls();
+        Map<String, AssistantMessage.ToolCall> callsById = toolCalls.stream()
+            .collect(java.util.stream.Collectors.toMap(
+                AssistantMessage.ToolCall::id,
+                java.util.function.Function.identity(),
+                (left, right) -> left
+            ));
+
+        ToolResponseMessage latestToolResponseMessage = null;
+        for (Message message : toolExecutionResult.conversationHistory()) {
+            if (message instanceof ToolResponseMessage toolResponseMessage) {
+                latestToolResponseMessage = toolResponseMessage;
+            }
+        }
+        if (latestToolResponseMessage == null) {
+            return List.of();
+        }
+
+        return latestToolResponseMessage.getResponses().stream()
+            .map(toolResponse -> {
+                AssistantMessage.ToolCall toolCall = callsById.get(toolResponse.id());
+                String arguments = toolCall == null ? "" : toolCall.arguments();
+                return (Message) toolTranscriptService.fullResult(
+                    toolResponse.id(),
+                    toolResponse.name(),
+                    arguments,
+                    toolResponse.responseData()
+                );
+            })
+            .toList();
+    }
+
+    private List<ToolCallback> approvedTools() {
+        if (chatToolRegistry == null || aiConfig == null || !StringUtils.hasText(aiConfig.defaultAgent())) {
+            return List.of();
+        }
+        AgentConfig defaultAgent = aiConfig.agents().get(aiConfig.defaultAgent());
+        if (defaultAgent == null) {
+            return List.of();
+        }
+        return chatToolRegistry.resolveApprovedTools(defaultAgent.approvedTools());
+    }
+
     private ResolvedChatRequest resolve(String conversationId, String message, String model) {
         String resolvedConversationId = StringUtils.hasText(conversationId) ? conversationId : UUID.randomUUID().toString();
         String storedModel = storedConversationModel(resolvedConversationId);
@@ -232,6 +387,15 @@ public class ChatService {
         return messages.stream()
             .filter(message -> contextManagementAdvisor == null || !contextManagementAdvisor.isHiddenSummary(message))
             .map(message -> {
+                if (toolTranscriptService != null && toolTranscriptService.isToolTranscript(message)) {
+                    String text = toolTranscriptService.renderForHistory(message);
+                    return new ChatMessage(
+                        "tool",
+                        text,
+                        chatMarkdownRenderer.render(text),
+                        null
+                    );
+                }
                 String role = message.getMessageType().getValue();
                 String sourceText = contextManagementAdvisor != null && contextManagementAdvisor.isCompactionNotice(message)
                     ? contextManagementAdvisor.visibleNoticeText(message)

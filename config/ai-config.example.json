@@ -27,7 +27,13 @@
     "magenta": {
       "model": "local-qwen",
       "systemPrompt": "prompts/system.md",
-      "approvedTools": []
+      "approvedTools": [
+        "file_list",
+        "file_read",
+        "file_search",
+        "file_write",
+        "file_replace"
+      ]
     },
     "magenta-summarizer": {
       "model": "local-qwen",
