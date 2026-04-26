@@ -9,7 +9,6 @@ import io.mindspice.magenta2.ai.chat.tool.ToolTranscriptService;
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.ai.config.user.ModelConfig;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.ChatClientRequest;
 import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
@@ -41,7 +40,7 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
 
     private final ChatMemoryRepository chatMemoryRepository;
     private final AiConfig aiConfig;
-    private final ChatClient summarizationClient;
+    private final ChatModelRouter chatModelRouter;
     private final TokenCountEstimator tokenCountEstimator;
     private final ContextUsageTracker usageTracker;
     private final ToolTranscriptService toolTranscriptService;
@@ -49,14 +48,14 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
     public ContextManagementAdvisor(
         ChatMemoryRepository chatMemoryRepository,
         AiConfig aiConfig,
-        ChatClient summarizationClient,
+        ChatModelRouter chatModelRouter,
         TokenCountEstimator tokenCountEstimator,
         ContextUsageTracker usageTracker,
         ToolTranscriptService toolTranscriptService
     ) {
         this.chatMemoryRepository = chatMemoryRepository;
         this.aiConfig = aiConfig;
-        this.summarizationClient = summarizationClient;
+        this.chatModelRouter = chatModelRouter;
         this.tokenCountEstimator = tokenCountEstimator;
         this.usageTracker = usageTracker;
         this.toolTranscriptService = toolTranscriptService;
@@ -266,7 +265,8 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
         AgentConfig summarizationAgent = aiConfig.agents().get(aiConfig.summarizationAgent());
         ModelConfig summarizationModel = aiConfig.models().get(summarizationAgent.model());
         String renderedConversation = renderConversation(olderMessages);
-        String summary = summarizationClient.prompt()
+        String summary = chatModelRouter.chatClient(summarizationModel.remoteModelName())
+            .prompt()
             .system(summarizationAgent.systemPrompt())
             .user(renderedConversation)
             .options(OllamaChatOptions.builder().model(summarizationModel.remoteModelName()).build())

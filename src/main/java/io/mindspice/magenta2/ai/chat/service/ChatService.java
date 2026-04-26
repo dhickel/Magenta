@@ -4,6 +4,9 @@ import java.util.UUID;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -26,11 +29,12 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
-import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.MessageAggregator;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
+import org.springframework.ai.retry.NonTransientAiException;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -41,9 +45,8 @@ import reactor.core.publisher.Flux;
 public class ChatService {
     private static final Pattern THINK_TAG_PATTERN = Pattern.compile("(?is)<think>(.*?)</think>");
     private static final int MAX_TOOL_CALL_ITERATIONS = 8;
+    private static final String OLLAMA_TOOLS_UNSUPPORTED_MESSAGE = "does not support tools";
 
-    private final ChatClient chatClient;
-    private final ChatModel chatModel;
     private final ChatMemory chatMemory;
     private final ChatMemoryRepository chatMemoryRepository;
     private final ChatSessionMetadataRepository chatSessionMetadataRepository;
@@ -51,12 +54,13 @@ public class ChatService {
     private final AiConfig aiConfig;
     private final ContextManagementAdvisor contextManagementAdvisor;
     private final ContextUsageTracker contextUsageTracker;
+    private final ChatModelRouter chatModelRouter;
     private final ToolCallingManager toolCallingManager;
     private final ChatToolRegistry chatToolRegistry;
     private final ToolTranscriptService toolTranscriptService;
+    private final Set<String> toolUnsupportedModels = ConcurrentHashMap.newKeySet();
 
     public ChatService(
-        ChatClient chatClient,
         ChatMemory chatMemory,
         ChatMemoryRepository chatMemoryRepository,
         ChatSessionMetadataRepository chatSessionMetadataRepository,
@@ -64,7 +68,6 @@ public class ChatService {
         AiConfig aiConfig
     ) {
         this(
-            chatClient,
             chatMemory,
             chatMemoryRepository,
             chatSessionMetadataRepository,
@@ -81,7 +84,6 @@ public class ChatService {
 
     @Autowired
     public ChatService(
-        ChatClient chatClient,
         ChatMemory chatMemory,
         ChatMemoryRepository chatMemoryRepository,
         ChatSessionMetadataRepository chatSessionMetadataRepository,
@@ -89,13 +91,11 @@ public class ChatService {
         AiConfig aiConfig,
         ContextManagementAdvisor contextManagementAdvisor,
         ContextUsageTracker contextUsageTracker,
-        ChatModel chatModel,
+        ChatModelRouter chatModelRouter,
         ToolCallingManager toolCallingManager,
         ChatToolRegistry chatToolRegistry,
         ToolTranscriptService toolTranscriptService
     ) {
-        this.chatClient = chatClient;
-        this.chatModel = chatModel;
         this.chatMemory = chatMemory;
         this.chatMemoryRepository = chatMemoryRepository;
         this.chatSessionMetadataRepository = chatSessionMetadataRepository;
@@ -103,6 +103,7 @@ public class ChatService {
         this.aiConfig = aiConfig;
         this.contextManagementAdvisor = contextManagementAdvisor;
         this.contextUsageTracker = contextUsageTracker;
+        this.chatModelRouter = chatModelRouter;
         this.toolCallingManager = toolCallingManager;
         this.chatToolRegistry = chatToolRegistry;
         this.toolTranscriptService = toolTranscriptService;
@@ -119,9 +120,20 @@ public class ChatService {
     public ChatResponse.MsgResponse chat(String conversationId, String message, String model) {
         ResolvedChatRequest resolvedRequest = resolve(conversationId, message, model);
         List<ToolCallback> approvedTools = approvedTools();
-        if (!approvedTools.isEmpty()) {
-            return toolChat(resolvedRequest, approvedTools);
+        if (!approvedTools.isEmpty() && supportsTools(resolvedRequest.model())) {
+            try {
+                return toolChat(resolvedRequest, approvedTools);
+            } catch (NonTransientAiException exception) {
+                if (!isToolUnsupported(exception)) {
+                    throw exception;
+                }
+                rememberToolUnsupportedModel(resolvedRequest.model());
+            }
         }
+        return plainChat(resolvedRequest);
+    }
+
+    private ChatResponse.MsgResponse plainChat(ResolvedChatRequest resolvedRequest) {
         ChatClient.ChatClientRequestSpec prompt = prompt(resolvedRequest);
 
         ChatClientResponse chatClientResponse = prompt.call().chatClientResponse();
@@ -144,9 +156,21 @@ public class ChatService {
 
     public Flux<String> stream(ResolvedChatRequest request) {
         List<ToolCallback> approvedTools = approvedTools();
-        if (!approvedTools.isEmpty()) {
-            return Flux.just(chat(request.conversationId(), request.message(), request.model()).response());
+        if (!approvedTools.isEmpty() && supportsTools(request.model())) {
+            // Try the tool-capable stream first. Models that reject tools are remembered and use plain streaming later.
+            return toolStream(request, approvedTools)
+                .onErrorResume(NonTransientAiException.class, exception -> {
+                    if (!isToolUnsupported(exception)) {
+                        return Flux.error(exception);
+                    }
+                    rememberToolUnsupportedModel(request.model());
+                    return plainStream(request);
+                });
         }
+        return plainStream(request);
+    }
+
+    private Flux<String> plainStream(ResolvedChatRequest request) {
         chatSessionMetadataRepository.saveModel(request.conversationId(), request.model());
         StringBuilder responseText = new StringBuilder();
         return prompt(request)
@@ -155,6 +179,79 @@ public class ChatService {
             .filter(chunk -> chunk != null)
             .doOnNext(responseText::append)
             .doOnComplete(() -> saveStreamedAssistantMessage(request.conversationId(), request.model(), responseText.toString()));
+    }
+
+    private Flux<String> toolStream(ResolvedChatRequest request, List<ToolCallback> approvedTools) {
+        if (chatModelRouter == null || toolCallingManager == null || contextManagementAdvisor == null || toolTranscriptService == null) {
+            throw new IllegalStateException("Tool streaming requires model routing, ToolCallingManager, context management, and tool transcripts");
+        }
+        chatSessionMetadataRepository.saveModel(request.conversationId(), request.model());
+
+        List<Message> currentInstructions = currentInstructions(request);
+        ContextManagementAdvisor.PreparedPrompt preparedPrompt = contextManagementAdvisor.preparePrompt(
+            request.conversationId(),
+            currentInstructions,
+            request.model()
+        );
+        OllamaChatOptions options = toolOptions(request.model(), approvedTools);
+        Prompt prompt = new Prompt(preparedPrompt.messages(), options);
+        return toolStreamPrompt(request, prompt, options, new ArrayList<>(), 0);
+    }
+
+    /*
+     * Stream text as soon as the model emits it, but keep an aggregated copy of the same model turn.
+     * Tool calls are only reliable once the turn is complete, so actual tool execution happens after
+     * the stream finishes. If tools were requested, continue with a new streamed model turn that includes
+     * the tool responses in the conversation history.
+     */
+    private Flux<String> toolStreamPrompt(
+        ResolvedChatRequest request,
+        Prompt prompt,
+        OllamaChatOptions options,
+        List<Message> messagesToPersist,
+        int iterations
+    ) {
+        if (iterations >= MAX_TOOL_CALL_ITERATIONS) {
+            return Flux.error(new IllegalStateException("Tool execution exceeded " + MAX_TOOL_CALL_ITERATIONS + " iterations"));
+        }
+
+        AtomicReference<org.springframework.ai.chat.model.ChatResponse> aggregate = new AtomicReference<>();
+        Flux<org.springframework.ai.chat.model.ChatResponse> responseStream = new MessageAggregator()
+            .aggregate(chatModelRouter.chatModel(request.model()).stream(prompt), aggregate::set);
+
+        return responseStream
+            .map(this::textChunk)
+            .filter(chunk -> chunk != null)
+            .concatWith(Flux.defer(() -> {
+                org.springframework.ai.chat.model.ChatResponse finalResponse = aggregate.get();
+                if (finalResponse != null && finalResponse.hasToolCalls()) {
+                    // Blocking is intentional here: tool calls mutate/read local state and must finish before the next turn.
+                    ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(prompt, finalResponse);
+                    messagesToPersist.addAll(toolTranscriptMessages(finalResponse, toolExecutionResult));
+                    Prompt nextPrompt = new Prompt(toolExecutionResult.conversationHistory(), options);
+                    return toolStreamPrompt(request, nextPrompt, options, messagesToPersist, iterations + 1);
+                }
+
+                AssistantMessage finalAssistantMessage = finalResponse == null || finalResponse.getResult() == null
+                    ? new AssistantMessage("")
+                    : finalResponse.getResult().getOutput();
+                messagesToPersist.add(finalAssistantMessage);
+                contextManagementAdvisor.saveAssistantMessages(request.conversationId(), messagesToPersist);
+                if (contextUsageTracker != null) {
+                    contextUsageTracker.record(
+                        request.conversationId(),
+                        contextManagementAdvisor.estimateStoredUsage(request.conversationId(), request.model())
+                    );
+                }
+                return Flux.empty();
+            }));
+    }
+
+    private String textChunk(org.springframework.ai.chat.model.ChatResponse response) {
+        if (response == null || response.getResult() == null || response.getResult().getOutput() == null) {
+            return null;
+        }
+        return response.getResult().getOutput().getText();
     }
 
     public ChatMessage renderAssistantMessage(String text) {
@@ -232,8 +329,8 @@ public class ChatService {
     }
 
     private ChatResponse.MsgResponse toolChat(ResolvedChatRequest request, List<ToolCallback> approvedTools) {
-        if (chatModel == null || toolCallingManager == null || contextManagementAdvisor == null || toolTranscriptService == null) {
-            throw new IllegalStateException("Tool execution requires ChatModel, ToolCallingManager, context management, and tool transcripts");
+        if (chatModelRouter == null || toolCallingManager == null || contextManagementAdvisor == null || toolTranscriptService == null) {
+            throw new IllegalStateException("Tool execution requires model routing, ToolCallingManager, context management, and tool transcripts");
         }
         chatSessionMetadataRepository.saveModel(request.conversationId(), request.model());
 
@@ -245,7 +342,7 @@ public class ChatService {
         );
         OllamaChatOptions options = toolOptions(request.model(), approvedTools);
         Prompt prompt = new Prompt(preparedPrompt.messages(), options);
-        org.springframework.ai.chat.model.ChatResponse response = chatModel.call(prompt);
+        org.springframework.ai.chat.model.ChatResponse response = chatModelRouter.chatModel(request.model()).call(prompt);
         List<Message> messagesToPersist = new ArrayList<>();
         int iterations = 0;
 
@@ -256,7 +353,7 @@ public class ChatService {
             ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(prompt, response);
             messagesToPersist.addAll(toolTranscriptMessages(response, toolExecutionResult));
             prompt = new Prompt(toolExecutionResult.conversationHistory(), options);
-            response = chatModel.call(prompt);
+            response = chatModelRouter.chatModel(request.model()).call(prompt);
         }
 
         AssistantMessage finalAssistantMessage = response == null || response.getResult() == null
@@ -349,6 +446,28 @@ public class ChatService {
         return chatToolRegistry.resolveApprovedTools(defaultAgent.approvedTools());
     }
 
+    private boolean supportsTools(String model) {
+        return !StringUtils.hasText(model) || !toolUnsupportedModels.contains(model);
+    }
+
+    private void rememberToolUnsupportedModel(String model) {
+        if (StringUtils.hasText(model)) {
+            toolUnsupportedModels.add(model);
+        }
+    }
+
+    static boolean isToolUnsupported(Throwable exception) {
+        Throwable current = exception;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null && message.contains(OLLAMA_TOOLS_UNSUPPORTED_MESSAGE)) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
     private ResolvedChatRequest resolve(String conversationId, String message, String model) {
         String resolvedConversationId = StringUtils.hasText(conversationId) ? conversationId : UUID.randomUUID().toString();
         String storedModel = storedConversationModel(resolvedConversationId);
@@ -359,6 +478,14 @@ public class ChatService {
     }
 
     private ChatClient.ChatClientRequestSpec prompt(ResolvedChatRequest request) {
+        ChatClient chatClient = chatModelRouter == null
+            ? null
+            : ChatClient.builder(chatModelRouter.chatModel(request.model()))
+                .defaultAdvisors(contextManagementAdvisor)
+                .build();
+        if (chatClient == null) {
+            throw new IllegalStateException("Chat execution requires model routing");
+        }
         ChatClient.ChatClientRequestSpec prompt = chatClient.prompt()
             .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, request.conversationId()));
 

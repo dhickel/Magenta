@@ -1,14 +1,13 @@
 package io.mindspice.magenta2.ai.chat.config;
 
 import io.mindspice.magenta2.ai.chat.repository.RepositoryBackedChatMemory;
+import io.mindspice.magenta2.ai.chat.service.ChatModelRouter;
 import io.mindspice.magenta2.ai.chat.service.ContextManagementAdvisor;
 import io.mindspice.magenta2.ai.chat.service.ContextUsageTracker;
 import io.mindspice.magenta2.ai.chat.tool.ToolTranscriptService;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
-import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.tokenizer.JTokkitTokenCountEstimator;
 import org.springframework.ai.tokenizer.TokenCountEstimator;
 import org.springframework.context.annotation.Bean;
@@ -31,7 +30,7 @@ public class ChatBeanConfig {
     ContextManagementAdvisor contextManagementAdvisor(
         ChatMemoryRepository chatMemoryRepository,
         AiConfig aiConfig,
-        ChatModel chatModel,
+        ChatModelRouter chatModelRouter,
         TokenCountEstimator tokenCountEstimator,
         ContextUsageTracker usageTracker,
         ToolTranscriptService toolTranscriptService
@@ -39,17 +38,10 @@ public class ChatBeanConfig {
         return new ContextManagementAdvisor(
             chatMemoryRepository,
             aiConfig,
-            ChatClient.builder(chatModel).build(),
+            chatModelRouter,
             tokenCountEstimator,
             usageTracker,
             toolTranscriptService
         );
-    }
-
-    @Bean
-    ChatClient chatClient(ChatModel chatModel, ContextManagementAdvisor contextManagementAdvisor) {
-        return ChatClient.builder(chatModel)
-            .defaultAdvisors(contextManagementAdvisor)
-            .build();
     }
 }

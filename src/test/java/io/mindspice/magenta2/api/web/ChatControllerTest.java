@@ -51,7 +51,7 @@ class ChatControllerTest {
         private final Map<String, String> modelsByConversationId;
 
         StubChatService(List<String> conversationIds, Map<String, String> modelsByConversationId) {
-            super(null, null, null, null, null, null);
+            super(null, null, null, null, null);
             this.conversationIds = conversationIds;
             this.modelsByConversationId = modelsByConversationId;
         }

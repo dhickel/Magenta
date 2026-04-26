@@ -4,6 +4,7 @@ This package owns chat use-case behavior.
 
 ### Responsibilities
 - Resolve conversation ids, selected models, prompts, context compaction, memory, streaming behavior, and history conversion.
+- Route configured chat models to their configured endpoint clients.
 - Keep controller logic thin by centralizing chat behavior here.
 - Use configuration from `ai.config.user` without duplicating config parsing rules.
 

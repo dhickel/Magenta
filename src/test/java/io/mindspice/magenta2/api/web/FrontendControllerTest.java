@@ -23,7 +23,7 @@ class FrontendControllerTest {
     private static class StubChatService extends ChatService {
 
         StubChatService() {
-            super(null, null, null, null, null, null);
+            super(null, null, null, null, null);
         }
 
         @Override

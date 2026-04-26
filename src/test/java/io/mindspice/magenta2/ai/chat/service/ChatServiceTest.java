@@ -7,13 +7,13 @@ import io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer;
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.retry.NonTransientAiException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ChatServiceTest {
 
     private final ChatService chatService = new ChatService(
-        null,
         null,
         null,
         null,
@@ -50,11 +50,20 @@ class ChatServiceTest {
             null,
             null,
             null,
-            null,
             new ChatMarkdownRenderer(),
             aiConfig
         );
 
         assertThat(service.defaultSystemPrompt()).isEqualTo("You are Magenta.");
+    }
+
+    @Test
+    void detectsOllamaToolUnsupportedErrors() {
+        NonTransientAiException exception = new NonTransientAiException(
+            "HTTP 400 - {\"error\":\"registry.ollama.ai/library/model:latest does not support tools\"}"
+        );
+
+        assertThat(ChatService.isToolUnsupported(exception)).isTrue();
+        assertThat(ChatService.isToolUnsupported(new NonTransientAiException("HTTP 500 - other failure"))).isFalse();
     }
 }
