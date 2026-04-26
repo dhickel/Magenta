@@ -25,20 +25,20 @@
   },
   "agents": {
     "magenta": {
-      "model": "local-qwen",
+      "model": "local-gemma-26b",
       "systemPrompt": "prompts/system.md",
       "approvedTools": [
-        "file_list",
-        "file_read",
-        "file_search",
-        "file_write",
-        "file_replace"
+        "*"
+      ],
+      "allowedShellCommands": [
+        "*"
       ]
     },
     "magenta-summarizer": {
       "model": "local-qwen",
       "systemPrompt": "prompts/summarization.md",
-      "approvedTools": []
+      "approvedTools": [],
+      "allowedShellCommands": []
     }
   }
 }

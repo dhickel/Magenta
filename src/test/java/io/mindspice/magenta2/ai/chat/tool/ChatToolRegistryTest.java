@@ -14,6 +14,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.chat.tool.file.AgentFileToolConfiguration;
 import io.mindspice.magenta2.ai.chat.tool.file.AgentFileToolService;
 import io.mindspice.magenta2.ai.chat.tool.file.AgentFileTools;
+import io.mindspice.magenta2.ai.chat.tool.shell.AgentShellToolConfiguration;
+import io.mindspice.magenta2.ai.chat.tool.shell.AgentShellToolService;
+import io.mindspice.magenta2.ai.chat.tool.shell.AgentShellTools;
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import org.junit.jupiter.api.Test;
@@ -53,7 +56,7 @@ class ChatToolRegistryTest {
         assertThat(callbacks.keySet())
             .containsExactlyInAnyOrder("file_list", "file_read", "file_search", "file_write", "file_replace");
 
-        assertTool(callbacks.get("file_list"), objectMapper, List.of(), "path", "recursive", "maxEntries");
+        assertTool(callbacks.get("file_list"), objectMapper, List.of(), "path", "recursive", "maxEntries", "glob");
         assertTool(callbacks.get("file_read"), objectMapper, List.of("path"), "path", "startLine", "maxLines");
         assertTool(
             callbacks.get("file_search"),
@@ -94,6 +97,38 @@ class ChatToolRegistryTest {
             .hasMessageContaining("missing_tool");
     }
 
+    @Test
+    void wildcardApprovesAllRegisteredTools() throws IOException {
+        ObjectMapper objectMapper = new ObjectMapper();
+        AgentFileToolService fileService = new AgentFileToolService(aiConfig());
+        AgentFileTools fileTools = new AgentFileTools(fileService, objectMapper);
+        ToolCallbackProvider fileProvider = new AgentFileToolConfiguration().agentFileToolCallbackProvider(fileTools);
+        AgentShellToolService shellService = new AgentShellToolService(aiConfig());
+        AgentShellTools shellTools = new AgentShellTools(shellService, objectMapper);
+        ToolCallbackProvider shellProvider = new AgentShellToolConfiguration().agentShellToolCallbackProvider(shellTools);
+        ChatToolRegistry registry = new ChatToolRegistry(List.of(), List.of(fileProvider, shellProvider));
+
+        assertThat(registry.resolveApprovedTools(List.of("*")))
+            .extracting(callback -> callback.getToolDefinition().name())
+            .containsExactlyInAnyOrder("file_list", "file_read", "file_search", "file_write", "file_replace", "shell_exec");
+    }
+
+    @Test
+    void exposesShellToolWithModelVisibleDescriptionsAndArgumentSchema() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        AgentShellToolService service = new AgentShellToolService(aiConfig());
+        AgentShellTools tools = new AgentShellTools(service, objectMapper);
+        ToolCallbackProvider provider = new AgentShellToolConfiguration().agentShellToolCallbackProvider(tools);
+        Map<String, ToolCallback> callbacks = Arrays.stream(provider.getToolCallbacks())
+            .collect(Collectors.toMap(callback -> callback.getToolDefinition().name(), Function.identity()));
+
+        assertThat(callbacks.keySet()).containsExactly("shell_exec");
+        assertTool(callbacks.get("shell_exec"), objectMapper, List.of("command"), "command", "args", "workingDirectory", "timeoutSeconds");
+        assertThat(callbacks.get("shell_exec").getToolDefinition().description())
+            .contains("allowed Linux executable")
+            .contains("structured arguments");
+    }
+
     private AiConfig aiConfig() {
         return new AiConfig(
             "magenta",
@@ -101,7 +136,7 @@ class ChatToolRegistryTest {
             10,
             tempDir,
             Map.of(),
-            Map.of("magenta", new AgentConfig("model", "prompt", List.of()))
+            Map.of("magenta", new AgentConfig("model", "prompt", List.of(), List.of("*")))
         );
     }
 

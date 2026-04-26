@@ -4,7 +4,7 @@ This package owns user-editable AI, model, endpoint, and agent configuration.
 
 ### Responsibilities
 - Load external JSON/YAML AI configuration.
-- Represent configured models, agents, summarization agent selection, context buffer policy, endpoint types, prompts, and approved tool names.
+- Represent configured models, agents, summarization agent selection, context buffer policy, endpoint types, prompts, approved tool names, and per-agent shell command allowlists.
 - Keep config records simple and close to the external file shape.
 - Treat external agent `systemPrompt` values as required prompt file paths, resolved relative to the config file directory.
 
@@ -13,7 +13,7 @@ This package owns user-editable AI, model, endpoint, and agent configuration.
 - Keep defaults and validation easy to explain.
 - Avoid coupling config loading to chat-specific behavior.
 - Return loaded `AgentConfig.systemPrompt()` values as prompt text after resolving the external path.
-- Keep this guide updated when the config file shape, validation rules, or supported endpoint types change.
+- Keep this guide updated when the config file shape, validation rules, supported endpoint types, or wildcard semantics change.
 
 ### Validation
 - Update loader tests for new or changed config fields.

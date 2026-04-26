@@ -13,7 +13,10 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class ChatToolRegistry {
+    private static final String WILDCARD = "*";
+
     private final Map<String, ToolCallback> toolsByName;
+    private final List<ToolCallback> allTools;
 
     public ChatToolRegistry(List<ToolCallback> toolCallbacks, List<ToolCallbackProvider> toolCallbackProviders) {
         List<ToolCallback> callbacks = new ArrayList<>();
@@ -26,6 +29,7 @@ public class ChatToolRegistry {
                 .flatMap(provider -> Arrays.stream(provider.getToolCallbacks()))
                 .forEach(callbacks::add);
         }
+        this.allTools = List.copyOf(callbacks);
         this.toolsByName = callbacks.stream()
             .collect(Collectors.toUnmodifiableMap(
                 callback -> callback.getToolDefinition().name(),
@@ -37,6 +41,9 @@ public class ChatToolRegistry {
     public List<ToolCallback> resolveApprovedTools(List<String> approvedToolNames) {
         if (approvedToolNames == null || approvedToolNames.isEmpty()) {
             return List.of();
+        }
+        if (approvedToolNames.contains(WILDCARD)) {
+            return allTools;
         }
         List<ToolCallback> resolved = new ArrayList<>();
         List<String> unknown = new ArrayList<>();

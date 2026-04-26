@@ -47,6 +47,9 @@ class ExternalAiConfigLoaderTest {
                 approvedTools:
                   - web_search
                   - sql_query
+                allowedShellCommands:
+                  - mv
+                  - rm
             """);
 
         AiConfig config = ExternalAiConfigLoader.load(yaml);
@@ -73,6 +76,10 @@ class ExternalAiConfigLoaderTest {
         assertEquals("You are support.", support.systemPrompt());
         assertNotNull(support.approvedTools());
         assertTrue(support.approvedTools().isEmpty());
+        assertEquals(
+            java.util.List.of("mv", "rm"),
+            config.agents().get("planner").allowedShellCommands()
+        );
     }
 
     @Test
@@ -98,7 +105,8 @@ class ExternalAiConfigLoaderTest {
                 "magenta": {
                   "model": "local-qwen",
                   "systemPrompt": "prompts/system.md",
-                  "approvedTools": []
+                  "approvedTools": ["*"],
+                  "allowedShellCommands": ["*"]
                 }
               }
             }
@@ -117,6 +125,8 @@ class ExternalAiConfigLoaderTest {
             "You are Magenta, a practical system administration assistant.",
             config.agents().get("magenta").systemPrompt()
         );
+        assertEquals(java.util.List.of("*"), config.agents().get("magenta").approvedTools());
+        assertEquals(java.util.List.of("*"), config.agents().get("magenta").allowedShellCommands());
         assertEquals(EndpointType.OLLAMA, config.models().get("local-qwen").endpointType());
     }
 

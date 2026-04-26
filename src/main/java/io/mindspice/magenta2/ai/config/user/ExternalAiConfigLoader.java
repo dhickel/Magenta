@@ -113,7 +113,8 @@ public final class ExternalAiConfigLoader {
             return new AgentConfig(
                 agentConfig.model(),
                 Files.readString(resolvedPromptPath),
-                agentConfig.approvedTools()
+                agentConfig.approvedTools(),
+                agentConfig.allowedShellCommands()
             );
         } catch (IOException e) {
             throw new IllegalArgumentException(

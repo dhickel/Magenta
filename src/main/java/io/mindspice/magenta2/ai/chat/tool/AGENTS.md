@@ -7,6 +7,7 @@ This package owns chat-scoped tool execution support.
 - Represent tool activity as Magenta-owned chat context messages.
 - Keep tool output retention and truncation policy local to chat tooling.
 - Own chat-approved file tools that operate inside the configured agent data root.
+- Own chat-approved shell execution for explicitly allowed Linux commands inside the configured agent data root.
 
 ### Change guidance
 - Do not add separate durable tool-result storage unless a concrete workflow requires it.
@@ -14,7 +15,9 @@ This package owns chat-scoped tool execution support.
 - Keep model-visible tool context concise and easy to inspect.
 - Keep file tool names and arguments plain, predictable, and friendly to smaller local models.
 - Keep file path confinement centralized and reject traversal or symlink escapes before file IO.
+- Keep shell command execution structured; do not accept raw shell command strings.
 
 ### Validation
 - Add focused tests for tool registry resolution, transcript rendering, and truncation policy changes.
 - Add focused tests for file path confinement, chunked reading, search output, and anchored edits.
+- Add focused tests for shell command allowlists, working-directory confinement, timeout handling, and output truncation.

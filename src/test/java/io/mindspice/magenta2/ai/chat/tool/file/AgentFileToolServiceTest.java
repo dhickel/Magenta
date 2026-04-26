@@ -94,6 +94,31 @@ class AgentFileToolServiceTest {
     }
 
     @Test
+    void filtersListEntriesWithGlobAfterDiscovery() throws IOException {
+        Files.createDirectories(tempDir.resolve("src/main"));
+        Files.createDirectories(tempDir.resolve("notes"));
+        Files.writeString(tempDir.resolve("src/main/App.java"), "class App {}\n");
+        Files.writeString(tempDir.resolve("src/main/App.md"), "# App\n");
+        Files.writeString(tempDir.resolve("notes/todo.md"), "# Todo\n");
+
+        AgentFileToolService.FileListResult result = service().list(".", true, 10, "**/*.md");
+
+        assertThat(result.truncated()).isFalse();
+        assertThat(result.entries())
+            .extracting(AgentFileToolService.FileEntry::path)
+            .containsExactly("notes/todo.md", "src/main/App.md");
+    }
+
+    @Test
+    void filtersSingleFileListWithGlob() throws IOException {
+        Files.writeString(tempDir.resolve("single.txt"), "abc");
+
+        AgentFileToolService.FileListResult result = service().list("single.txt", false, 10, "*.md");
+
+        assertThat(result.entries()).isEmpty();
+    }
+
+    @Test
     void searchesPlainTextCaseInsensitiveWithContext() throws IOException {
         Files.createDirectories(tempDir.resolve("notes"));
         Files.writeString(

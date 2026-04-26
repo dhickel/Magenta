@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.PathMatcher;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -17,6 +18,7 @@ import java.util.regex.PatternSyntaxException;
 import java.util.stream.Stream;
 
 import io.mindspice.magenta2.ai.config.user.AiConfig;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -33,6 +35,7 @@ public class AgentFileToolService {
 
     private final Path root;
 
+    @Autowired
     public AgentFileToolService(AiConfig aiConfig) throws IOException {
         if (aiConfig == null || aiConfig.dataRoot() == null) {
             throw new IllegalArgumentException("AI config dataRoot is required for file tools");
@@ -48,15 +51,24 @@ public class AgentFileToolService {
     }
 
     public FileListResult list(String path, boolean recursive, Integer maxEntries) throws IOException {
+        return list(path, recursive, maxEntries, null);
+    }
+
+    public FileListResult list(String path, boolean recursive, Integer maxEntries, String glob) throws IOException {
         Path target = resolveExisting(path);
         if (Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)) {
-            return new FileListResult(displayPath(target), List.of(fileEntry(target)), false);
+            return new FileListResult(
+                displayPath(target),
+                matchesGlob(target, glob) ? List.of(fileEntry(target)) : List.of(),
+                false
+            );
         }
         int limit = clamp(maxEntries, DEFAULT_MAX_ENTRIES, 1, MAX_ENTRIES);
         List<FileEntry> entries = new ArrayList<>();
         try (Stream<Path> stream = recursive ? Files.walk(target) : Files.list(target)) {
             List<Path> paths = stream
                 .filter(item -> !item.equals(target))
+                .filter(item -> matchesGlob(item, glob))
                 .sorted(Comparator.comparing(item -> relativePath(item).toString()))
                 .limit(limit + 1L)
                 .toList();
@@ -65,6 +77,14 @@ public class AgentFileToolService {
             }
             return new FileListResult(displayPath(target), entries, paths.size() > limit);
         }
+    }
+
+    private boolean matchesGlob(Path path, String glob) {
+        if (!StringUtils.hasText(glob)) {
+            return true;
+        }
+        PathMatcher matcher = root.getFileSystem().getPathMatcher("glob:" + glob.trim());
+        return matcher.matches(relativePath(path));
     }
 
     public FileReadResult read(String path, Integer startLine, Integer maxLines) throws IOException {

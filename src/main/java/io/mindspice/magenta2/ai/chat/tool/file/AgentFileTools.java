@@ -26,9 +26,19 @@ public class AgentFileTools {
         @ToolParam(required = false, description = "Set true to recursively list child directories. Prefer false for a quick first look.")
         Boolean recursive,
         @ToolParam(required = false, description = "Maximum entries to return. Defaults to 200 and is capped by the server.")
+        Integer maxEntries,
+        @ToolParam(required = false, description = "Optional Java glob matched against data-root-relative paths, such as '*.md' or '**/*.java'.")
+        String glob
+    ) throws Exception {
+        return json(fileToolService.list(path, Boolean.TRUE.equals(recursive), maxEntries, glob));
+    }
+
+    String list(
+        String path,
+        Boolean recursive,
         Integer maxEntries
     ) throws Exception {
-        return json(fileToolService.list(path, Boolean.TRUE.equals(recursive), maxEntries));
+        return json(fileToolService.list(path, Boolean.TRUE.equals(recursive), maxEntries, null));
     }
 
     @Tool(
