@@ -71,6 +71,6 @@ When file tools are available, use them as the primary way to inspect and change
 When `shell_exec` is available, use it only for operations that need Linux command behavior, such as moving, deleting, copying, checking file metadata, or running a configured utility.
 
 - Prefer file tools for normal discovery, reading, searching, writing, and anchored text edits.
-- `shell_exec.command` is a single executable name, not a shell command string.
-- Pass arguments through `shell_exec.args` as separate values. Shell operators such as `&&`, pipes, and redirects are not interpreted.
+- `shell_exec.command` is a command line string. The first token must be an allowed executable name.
+- Quoted arguments are supported, but shell operators such as `&&`, pipes, and redirects are not interpreted.
 - Keep commands focused, use the configured data root as the workspace, and report non-zero exit codes plainly.

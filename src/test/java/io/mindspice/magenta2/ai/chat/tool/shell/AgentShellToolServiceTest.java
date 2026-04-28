@@ -18,10 +18,10 @@ class AgentShellToolServiceTest {
     Path tempDir;
 
     @Test
-    void runsAllowedCommandWithStructuredArgs() throws Exception {
+    void runsAllowedCommandLine() throws Exception {
         AgentShellToolService service = new AgentShellToolService(tempDir, List.of("printf"));
 
-        AgentShellToolService.ShellExecResult result = service.exec("printf", List.of("hello"), ".", 5);
+        AgentShellToolService.ShellExecResult result = service.exec("printf hello", ".", 5);
 
         assertThat(result.exitCode()).isZero();
         assertThat(result.stdout()).isEqualTo("hello");
@@ -31,10 +31,21 @@ class AgentShellToolServiceTest {
     }
 
     @Test
-    void wildcardAllowsAnyBareCommand() throws Exception {
+    void parsesQuotedCommandLineArgs() throws Exception {
+        AgentShellToolService service = new AgentShellToolService(tempDir, List.of("printf"));
+
+        AgentShellToolService.ShellExecResult result = service.exec("printf \"hello world\"", ".", 5);
+
+        assertThat(result.exitCode()).isZero();
+        assertThat(result.stdout()).isEqualTo("hello world");
+        assertThat(result.args()).containsExactly("hello world");
+    }
+
+    @Test
+    void wildcardAllowsAnyCommandLine() throws Exception {
         AgentShellToolService service = new AgentShellToolService(tempDir, List.of("*"));
 
-        AgentShellToolService.ShellExecResult result = service.exec("printf", List.of("wild"), ".", 5);
+        AgentShellToolService.ShellExecResult result = service.exec("printf wild", ".", 5);
 
         assertThat(result.exitCode()).isZero();
         assertThat(result.stdout()).isEqualTo("wild");
@@ -44,25 +55,34 @@ class AgentShellToolServiceTest {
     void rejectsCommandOutsideAllowlist() throws IOException {
         AgentShellToolService service = new AgentShellToolService(tempDir, List.of("printf"));
 
-        assertThatThrownBy(() -> service.exec("pwd", List.of(), ".", 5))
+        assertThatThrownBy(() -> service.exec("pwd", ".", 5))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("not allowed");
     }
 
     @Test
-    void rejectsRawShellCommandText() throws IOException {
+    void rejectsExecutablePath() throws IOException {
         AgentShellToolService service = new AgentShellToolService(tempDir, List.of("*"));
 
-        assertThatThrownBy(() -> service.exec("bash -lc", List.of("pwd"), ".", 5))
+        assertThatThrownBy(() -> service.exec("/bin/bash -lc pwd", ".", 5))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("bare executable");
+    }
+
+    @Test
+    void rejectsUnterminatedQuote() throws IOException {
+        AgentShellToolService service = new AgentShellToolService(tempDir, List.of("*"));
+
+        assertThatThrownBy(() -> service.exec("printf \"bad", ".", 5))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("unterminated quote");
     }
 
     @Test
     void rejectsWorkingDirectoryTraversalOutsideRoot() throws IOException {
         AgentShellToolService service = new AgentShellToolService(tempDir, List.of("*"));
 
-        assertThatThrownBy(() -> service.exec("printf", List.of("bad"), "..", 5))
+        assertThatThrownBy(() -> service.exec("printf bad", "..", 5))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("escapes data root");
     }
@@ -78,7 +98,7 @@ class AgentShellToolServiceTest {
 
         AgentShellToolService service = new AgentShellToolService(tempDir, List.of("*"));
 
-        assertThatThrownBy(() -> service.exec("printf", List.of("bad"), "escape", 5))
+        assertThatThrownBy(() -> service.exec("printf bad", "escape", 5))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("escapes data root");
     }
@@ -87,7 +107,7 @@ class AgentShellToolServiceTest {
     void reportsFailedExitCode() throws Exception {
         AgentShellToolService service = new AgentShellToolService(tempDir, List.of("false"));
 
-        AgentShellToolService.ShellExecResult result = service.exec("false", List.of(), ".", 5);
+        AgentShellToolService.ShellExecResult result = service.exec("false", ".", 5);
 
         assertThat(result.exitCode()).isEqualTo(1);
         assertThat(result.timedOut()).isFalse();
@@ -97,7 +117,7 @@ class AgentShellToolServiceTest {
     void reportsTimeout() throws Exception {
         AgentShellToolService service = new AgentShellToolService(tempDir, List.of("sleep"));
 
-        AgentShellToolService.ShellExecResult result = service.exec("sleep", List.of("2"), ".", 1);
+        AgentShellToolService.ShellExecResult result = service.exec("sleep 2", ".", 1);
 
         assertThat(result.exitCode()).isNull();
         assertThat(result.timedOut()).isTrue();

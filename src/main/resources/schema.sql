@@ -3,6 +3,7 @@ create table if not exists ai_chat_memory (
     message_order integer not null,
     message_type text not null,
     message_text text,
+    message_metadata_json text,
     primary key (conversation_id, message_order)
 );
 

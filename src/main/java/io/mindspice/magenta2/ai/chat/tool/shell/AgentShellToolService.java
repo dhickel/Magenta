@@ -56,21 +56,15 @@ public class AgentShellToolService {
             .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
-    public ShellExecResult exec(String command, List<String> args, String workingDirectory, Integer timeoutSeconds)
+    public ShellExecResult exec(String command, String workingDirectory, Integer timeoutSeconds)
         throws IOException, InterruptedException {
-        String executable = validateCommand(command);
+        List<String> commandLine = parseCommandLine(command);
+        String executable = validateExecutable(commandLine.getFirst());
         if (!allowAllCommands && !allowedCommands.contains(executable)) {
             throw new IllegalArgumentException("shell command is not allowed: " + executable);
         }
         Path workingDir = resolveWorkingDirectory(workingDirectory);
         int timeout = clamp(timeoutSeconds, DEFAULT_TIMEOUT_SECONDS, 1, MAX_TIMEOUT_SECONDS);
-        List<String> commandLine = new ArrayList<>();
-        commandLine.add(executable);
-        if (args != null) {
-            for (String arg : args) {
-                commandLine.add(arg == null ? "" : arg);
-            }
-        }
 
         Process process = new ProcessBuilder(commandLine)
             .directory(workingDir.toFile())
@@ -88,6 +82,7 @@ public class AgentShellToolService {
         CapturedOutput err = stderr.join();
         return new ShellExecResult(
             executable,
+            command,
             List.copyOf(commandLine.subList(1, commandLine.size())),
             displayPath(workingDir),
             completed ? process.exitValue() : null,
@@ -120,15 +115,66 @@ public class AgentShellToolService {
         return new CapturedOutput(output.toString(StandardCharsets.UTF_8), truncated);
     }
 
-    private String validateCommand(String command) {
+    private List<String> parseCommandLine(String command) {
         if (!StringUtils.hasText(command)) {
             throw new IllegalArgumentException("command is required");
         }
-        String value = command.trim();
-        if (value.contains("/") || value.contains("\\") || value.chars().anyMatch(Character::isWhitespace)) {
+        List<String> tokens = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        Character quote = null;
+        boolean escaped = false;
+        for (int i = 0; i < command.length(); i++) {
+            char ch = command.charAt(i);
+            if (escaped) {
+                current.append(ch);
+                escaped = false;
+                continue;
+            }
+            if (ch == '\\') {
+                escaped = true;
+                continue;
+            }
+            if (quote != null) {
+                if (ch == quote) {
+                    quote = null;
+                } else {
+                    current.append(ch);
+                }
+                continue;
+            }
+            if (ch == '\'' || ch == '"') {
+                quote = ch;
+                continue;
+            }
+            if (Character.isWhitespace(ch)) {
+                if (!current.isEmpty()) {
+                    tokens.add(current.toString());
+                    current.setLength(0);
+                }
+                continue;
+            }
+            current.append(ch);
+        }
+        if (escaped) {
+            current.append('\\');
+        }
+        if (quote != null) {
+            throw new IllegalArgumentException("command has an unterminated quote");
+        }
+        if (!current.isEmpty()) {
+            tokens.add(current.toString());
+        }
+        if (tokens.isEmpty()) {
+            throw new IllegalArgumentException("command is required");
+        }
+        return List.copyOf(tokens);
+    }
+
+    private String validateExecutable(String executable) {
+        if (executable.contains("/") || executable.contains("\\") || executable.chars().anyMatch(Character::isWhitespace)) {
             throw new IllegalArgumentException("command must be a bare executable name");
         }
-        return value;
+        return executable;
     }
 
     private Path resolveWorkingDirectory(String workingDirectory) throws IOException {
@@ -163,6 +209,7 @@ public class AgentShellToolService {
 
     public record ShellExecResult(
         String command,
+        String commandLine,
         List<String> args,
         String workingDirectory,
         Integer exitCode,

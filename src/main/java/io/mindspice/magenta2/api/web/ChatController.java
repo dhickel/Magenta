@@ -6,6 +6,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
 import io.mindspice.magenta2.ai.chat.model.ChatHistory;
+import io.mindspice.magenta2.ai.chat.model.ChatMessage;
 import io.mindspice.magenta2.ai.chat.model.ChatRequest;
 import io.mindspice.magenta2.ai.chat.model.ChatResponse;
 import io.mindspice.magenta2.ai.chat.model.ChatSessions;
@@ -64,10 +65,8 @@ public class ChatController {
             return emitter;
         }
 
-        StringBuilder responseText = new StringBuilder();
         Disposable subscription = chatService.stream(resolvedRequest).subscribe(
-            chunk -> {
-                responseText.append(chunk);
+            message -> {
                 try {
                     sendEvent(
                         emitter,
@@ -75,7 +74,7 @@ public class ChatController {
                         ChatStreamEvent.message(
                             resolvedRequest.conversationId(),
                             resolvedRequest.model(),
-                            chatService.renderAssistantMessage(responseText.toString()),
+                            message,
                             chatService.contextUsage(resolvedRequest.conversationId(), resolvedRequest.model())
                         )
                     );
@@ -100,7 +99,7 @@ public class ChatController {
                         ChatStreamEvent.message(
                             resolvedRequest.conversationId(),
                             resolvedRequest.model(),
-                            chatService.renderAssistantMessage(responseText.toString()),
+                            lastAssistantMessage(resolvedRequest),
                             chatService.contextUsage(resolvedRequest.conversationId(), resolvedRequest.model())
                         )
                     );
@@ -112,6 +111,17 @@ public class ChatController {
         );
         subscriptionRef.set(subscription);
         return emitter;
+    }
+
+    private ChatMessage lastAssistantMessage(ResolvedChatRequest resolvedRequest) {
+        List<ChatMessage> history = chatService.history(resolvedRequest.conversationId());
+        if (!history.isEmpty()) {
+            ChatMessage lastMessage = history.get(history.size() - 1);
+            if ("assistant".equalsIgnoreCase(lastMessage.role())) {
+                return lastMessage;
+            }
+        }
+        return chatService.renderAssistantMessage("");
     }
 
     @GetMapping("/sessions")

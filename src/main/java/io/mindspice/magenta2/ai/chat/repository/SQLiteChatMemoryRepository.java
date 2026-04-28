@@ -1,7 +1,11 @@
 package io.mindspice.magenta2.ai.chat.repository;
 
+import java.util.Map;
 import java.util.List;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
@@ -11,14 +15,18 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 @Repository
 public class SQLiteChatMemoryRepository implements ChatMemoryRepository {
 
     private final JdbcTemplate jdbcTemplate;
+    private final ObjectMapper objectMapper;
 
-    public SQLiteChatMemoryRepository(JdbcTemplate jdbcTemplate) {
+    public SQLiteChatMemoryRepository(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
         this.jdbcTemplate = jdbcTemplate;
+        this.objectMapper = objectMapper;
+        ensureMetadataColumn();
     }
 
     @Override
@@ -34,11 +42,16 @@ public class SQLiteChatMemoryRepository implements ChatMemoryRepository {
         return jdbcTemplate.query(
             """
                 select message_type, message_text
+                     , message_metadata_json
                 from ai_chat_memory
                 where conversation_id = ?
                 order by message_order asc
                 """,
-            (rs, rowNum) -> toMessage(rs.getString("message_type"), rs.getString("message_text")),
+            (rs, rowNum) -> toMessage(
+                rs.getString("message_type"),
+                rs.getString("message_text"),
+                rs.getString("message_metadata_json")
+            ),
             conversationId
         );
     }
@@ -51,13 +64,14 @@ public class SQLiteChatMemoryRepository implements ChatMemoryRepository {
             Message message = messages.get(i);
             jdbcTemplate.update(
                 """
-                    insert into ai_chat_memory (conversation_id, message_order, message_type, message_text)
-                    values (?, ?, ?, ?)
+                    insert into ai_chat_memory (conversation_id, message_order, message_type, message_text, message_metadata_json)
+                    values (?, ?, ?, ?, ?)
                     """,
                 conversationId,
                 i,
                 message.getMessageType().getValue(),
-                message.getText()
+                message.getText(),
+                metadataJson(message)
             );
         }
     }
@@ -67,12 +81,58 @@ public class SQLiteChatMemoryRepository implements ChatMemoryRepository {
         jdbcTemplate.update("delete from ai_chat_memory where conversation_id = ?", conversationId);
     }
 
-    private Message toMessage(String messageTypeValue, String messageText) {
+    private void ensureMetadataColumn() {
+        jdbcTemplate.execute("""
+            create table if not exists ai_chat_memory (
+                conversation_id text not null,
+                message_order integer not null,
+                message_type text not null,
+                message_text text,
+                message_metadata_json text,
+                primary key (conversation_id, message_order)
+            )
+            """);
+        List<String> columns = jdbcTemplate.queryForList(
+            "select name from pragma_table_info('ai_chat_memory')",
+            String.class
+        );
+        if (!columns.contains("message_metadata_json")) {
+            jdbcTemplate.execute("alter table ai_chat_memory add column message_metadata_json text");
+        }
+    }
+
+    private Message toMessage(String messageTypeValue, String messageText, String metadataJson) {
         MessageType messageType = MessageType.fromValue(messageTypeValue);
+        Map<String, Object> metadata = metadata(metadataJson);
         return switch (messageType) {
             case USER -> new UserMessage(messageText);
             case SYSTEM -> new SystemMessage(messageText);
-            default -> new AssistantMessage(messageText);
+            default -> AssistantMessage.builder()
+                .content(messageText)
+                .properties(metadata)
+                .build();
         };
+    }
+
+    private String metadataJson(Message message) {
+        if (message.getMetadata() == null || message.getMetadata().isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(message.getMetadata());
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Failed to serialize chat message metadata", exception);
+        }
+    }
+
+    private Map<String, Object> metadata(String metadataJson) {
+        if (!StringUtils.hasText(metadataJson)) {
+            return Map.of();
+        }
+        try {
+            return objectMapper.readValue(metadataJson, new TypeReference<>() { });
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Failed to parse chat message metadata", exception);
+        }
     }
 }

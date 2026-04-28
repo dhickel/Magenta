@@ -64,7 +64,7 @@ public class ChatModelRouter {
 
         return OllamaChatModel.builder()
             .ollamaApi(OllamaApi.builder().baseUrl(modelConfig.remoteEndpoint()).build())
-            .defaultOptions(OllamaChatOptions.builder().model(modelConfig.remoteModelName()).build())
+            .defaultOptions(OllamaChatOptions.builder().model(modelConfig.remoteModelName()).enableThinking().build())
             .toolCallingManager(toolCallingManager)
             .observationRegistry(observationRegistry)
             .modelManagementOptions(ModelManagementOptions.defaults())

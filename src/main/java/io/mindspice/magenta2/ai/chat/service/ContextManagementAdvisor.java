@@ -306,10 +306,31 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
             return List.of();
         }
         return response.chatResponse().getResults().stream()
-            .map(Generation::getOutput)
+            .map(this::assistantMessage)
             .filter(message -> message != null)
             .map(message -> (Message) message)
             .toList();
+    }
+
+    private AssistantMessage assistantMessage(Generation generation) {
+        AssistantMessage output = generation == null ? null : generation.getOutput();
+        if (output == null) {
+            return null;
+        }
+        String thinking = generation.getMetadata() == null
+            ? null
+            : generation.getMetadata().get(ChatService.THINKING_METADATA_KEY);
+        if (!StringUtils.hasText(thinking)) {
+            return output;
+        }
+        Map<String, Object> metadata = new java.util.LinkedHashMap<>(output.getMetadata());
+        metadata.put(ChatService.MESSAGE_THINKING_METADATA_KEY, thinking);
+        return AssistantMessage.builder()
+            .content(output.getText())
+            .properties(metadata)
+            .toolCalls(output.getToolCalls())
+            .media(output.getMedia())
+            .build();
     }
 
     private String renderConversation(List<Message> messages) {

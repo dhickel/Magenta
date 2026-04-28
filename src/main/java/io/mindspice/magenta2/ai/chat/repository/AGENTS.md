@@ -4,6 +4,7 @@ This package owns chat persistence details.
 
 ### Responsibilities
 - Persist and retrieve chat memory and session metadata.
+- Preserve assistant message metadata needed by chat features, such as structured model thinking.
 - Keep SQL, schema assumptions, and storage-specific behavior localized here.
 - Preserve conversation identifiers and model metadata consistently.
 

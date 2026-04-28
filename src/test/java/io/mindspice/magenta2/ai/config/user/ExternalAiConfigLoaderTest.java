@@ -95,7 +95,7 @@ class ExternalAiConfigLoaderTest {
               "contextBufferPercent": 10,
               "models": {
                 "local-qwen": {
-                  "remoteModelName": "qwen3.6-35b-a3b-text-ctx32k",
+                  "remoteModelName": "qwen3.6:35b",
                   "remoteEndpoint": "http://192.168.1.112:11434",
                   "endpointType": "OLLAMA",
                   "contextLength": 32768

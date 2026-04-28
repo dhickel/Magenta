@@ -123,10 +123,10 @@ class ChatToolRegistryTest {
             .collect(Collectors.toMap(callback -> callback.getToolDefinition().name(), Function.identity()));
 
         assertThat(callbacks.keySet()).containsExactly("shell_exec");
-        assertTool(callbacks.get("shell_exec"), objectMapper, List.of("command"), "command", "args", "workingDirectory", "timeoutSeconds");
+        assertTool(callbacks.get("shell_exec"), objectMapper, List.of("command"), "command", "workingDirectory", "timeoutSeconds");
         assertThat(callbacks.get("shell_exec").getToolDefinition().description())
-            .contains("allowed Linux executable")
-            .contains("structured arguments");
+            .contains("allowed Linux command line")
+            .contains("command line");
     }
 
     private AiConfig aiConfig() {

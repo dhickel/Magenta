@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -29,7 +28,6 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
-import org.springframework.ai.chat.model.MessageAggregator;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionResult;
@@ -43,6 +41,9 @@ import reactor.core.publisher.Flux;
 
 @Service
 public class ChatService {
+    static final String THINKING_METADATA_KEY = "thinking";
+    static final String MESSAGE_THINKING_METADATA_KEY = "magenta.thinking";
+
     private static final Pattern THINK_TAG_PATTERN = Pattern.compile("(?is)<think>(.*?)</think>");
     private static final int MAX_TOOL_CALL_ITERATIONS = 8;
     private static final String OLLAMA_TOOLS_UNSUPPORTED_MESSAGE = "does not support tools";
@@ -154,11 +155,11 @@ public class ChatService {
         throw new IllegalArgumentException("message request is required");
     }
 
-    public Flux<String> stream(ResolvedChatRequest request) {
+    public Flux<ChatMessage> stream(ResolvedChatRequest request) {
         List<ToolCallback> approvedTools = approvedTools();
         if (!approvedTools.isEmpty() && supportsTools(request.model())) {
-            // Try the tool-capable stream first. Models that reject tools are remembered and use plain streaming later.
-            return toolStream(request, approvedTools)
+            // Try the tool-capable path first. Models that reject tools are remembered and use plain chat later.
+            return Flux.defer(() -> Flux.just(toolChatMessage(request, approvedTools)))
                 .onErrorResume(NonTransientAiException.class, exception -> {
                     if (!isToolUnsupported(exception)) {
                         return Flux.error(exception);
@@ -170,92 +171,41 @@ public class ChatService {
         return plainStream(request);
     }
 
-    private Flux<String> plainStream(ResolvedChatRequest request) {
+    private Flux<ChatMessage> plainStream(ResolvedChatRequest request) {
         chatSessionMetadataRepository.saveModel(request.conversationId(), request.model());
-        StringBuilder responseText = new StringBuilder();
-        return prompt(request)
-            .stream()
-            .content()
-            .filter(chunk -> chunk != null)
-            .doOnNext(responseText::append)
-            .doOnComplete(() -> saveStreamedAssistantMessage(request.conversationId(), request.model(), responseText.toString()));
-    }
-
-    private Flux<String> toolStream(ResolvedChatRequest request, List<ToolCallback> approvedTools) {
-        if (chatModelRouter == null || toolCallingManager == null || contextManagementAdvisor == null || toolTranscriptService == null) {
-            throw new IllegalStateException("Tool streaming requires model routing, ToolCallingManager, context management, and tool transcripts");
-        }
-        chatSessionMetadataRepository.saveModel(request.conversationId(), request.model());
-
-        List<Message> currentInstructions = currentInstructions(request);
-        ContextManagementAdvisor.PreparedPrompt preparedPrompt = contextManagementAdvisor.preparePrompt(
-            request.conversationId(),
-            currentInstructions,
-            request.model()
-        );
-        OllamaChatOptions options = toolOptions(request.model(), approvedTools);
-        Prompt prompt = new Prompt(preparedPrompt.messages(), options);
-        return toolStreamPrompt(request, prompt, options, new ArrayList<>(), 0);
-    }
-
-    /*
-     * Stream text as soon as the model emits it, but keep an aggregated copy of the same model turn.
-     * Tool calls are only reliable once the turn is complete, so actual tool execution happens after
-     * the stream finishes. If tools were requested, continue with a new streamed model turn that includes
-     * the tool responses in the conversation history.
-     */
-    private Flux<String> toolStreamPrompt(
-        ResolvedChatRequest request,
-        Prompt prompt,
-        OllamaChatOptions options,
-        List<Message> messagesToPersist,
-        int iterations
-    ) {
-        if (iterations >= MAX_TOOL_CALL_ITERATIONS) {
-            return Flux.error(new IllegalStateException("Tool execution exceeded " + MAX_TOOL_CALL_ITERATIONS + " iterations"));
-        }
-
-        AtomicReference<org.springframework.ai.chat.model.ChatResponse> aggregate = new AtomicReference<>();
-        Flux<org.springframework.ai.chat.model.ChatResponse> responseStream = new MessageAggregator()
-            .aggregate(chatModelRouter.chatModel(request.model()).stream(prompt), aggregate::set);
-
-        return responseStream
-            .map(this::textChunk)
-            .filter(chunk -> chunk != null)
-            .concatWith(Flux.defer(() -> {
-                org.springframework.ai.chat.model.ChatResponse finalResponse = aggregate.get();
-                if (finalResponse != null && finalResponse.hasToolCalls()) {
-                    // Blocking is intentional here: tool calls mutate/read local state and must finish before the next turn.
-                    ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(prompt, finalResponse);
-                    messagesToPersist.addAll(toolTranscriptMessages(finalResponse, toolExecutionResult));
-                    Prompt nextPrompt = new Prompt(toolExecutionResult.conversationHistory(), options);
-                    return toolStreamPrompt(request, nextPrompt, options, messagesToPersist, iterations + 1);
-                }
-
-                AssistantMessage finalAssistantMessage = finalResponse == null || finalResponse.getResult() == null
-                    ? new AssistantMessage("")
-                    : finalResponse.getResult().getOutput();
-                messagesToPersist.add(finalAssistantMessage);
-                contextManagementAdvisor.saveAssistantMessages(request.conversationId(), messagesToPersist);
-                if (contextUsageTracker != null) {
-                    contextUsageTracker.record(
-                        request.conversationId(),
-                        contextManagementAdvisor.estimateStoredUsage(request.conversationId(), request.model())
-                    );
-                }
-                return Flux.empty();
-            }));
-    }
-
-    private String textChunk(org.springframework.ai.chat.model.ChatResponse response) {
-        if (response == null || response.getResult() == null || response.getResult().getOutput() == null) {
-            return null;
-        }
-        return response.getResult().getOutput().getText();
+        return Flux.defer(() -> {
+            ChatClientResponse chatClientResponse = prompt(request).call().chatClientResponse();
+            return Flux.just(renderAssistantMessage(chatClientResponse.chatResponse()));
+        });
     }
 
     public ChatMessage renderAssistantMessage(String text) {
-        MessageParts messageParts = splitThinking(text == null ? "" : text);
+        MessageParts messageParts = splitThinkingFallback(text == null ? "" : text);
+        return renderAssistantMessage(messageParts);
+    }
+
+    public ChatMessage renderAssistantMessage(org.springframework.ai.chat.model.ChatResponse response) {
+        if (response == null || response.getResult() == null) {
+            return renderAssistantMessage("");
+        }
+        return renderAssistantMessage(response.getResult());
+    }
+
+    private ChatMessage renderAssistantMessage(org.springframework.ai.chat.model.Generation generation) {
+        if (generation == null) {
+            return renderAssistantMessage("");
+        }
+        String text = generation.getOutput() == null || generation.getOutput().getText() == null
+            ? ""
+            : generation.getOutput().getText();
+        String thinking = thinkingText(generation);
+        MessageParts messageParts = StringUtils.hasText(thinking)
+            ? new MessageParts(text, thinking)
+            : splitThinkingFallback(text);
+        return renderAssistantMessage(messageParts);
+    }
+
+    private ChatMessage renderAssistantMessage(MessageParts messageParts) {
         String visibleText = messageParts.visibleText();
         String thinkingText = messageParts.thinkingText();
         return new ChatMessage(
@@ -344,21 +294,24 @@ public class ChatService {
         Prompt prompt = new Prompt(preparedPrompt.messages(), options);
         org.springframework.ai.chat.model.ChatResponse response = chatModelRouter.chatModel(request.model()).call(prompt);
         List<Message> messagesToPersist = new ArrayList<>();
+        List<String> thinkingParts = new ArrayList<>();
         int iterations = 0;
 
         while (response != null && response.hasToolCalls()) {
             if (++iterations > MAX_TOOL_CALL_ITERATIONS) {
                 throw new IllegalStateException("Tool execution exceeded " + MAX_TOOL_CALL_ITERATIONS + " iterations");
             }
+            collectThinking(response, thinkingParts);
             ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(prompt, response);
             messagesToPersist.addAll(toolTranscriptMessages(response, toolExecutionResult));
             prompt = new Prompt(toolExecutionResult.conversationHistory(), options);
             response = chatModelRouter.chatModel(request.model()).call(prompt);
         }
+        collectThinking(response, thinkingParts);
 
         AssistantMessage finalAssistantMessage = response == null || response.getResult() == null
             ? new AssistantMessage("")
-            : response.getResult().getOutput();
+            : assistantMessageWithThinking(response.getResult(), combinedThinking(thinkingParts));
         if (finalAssistantMessage != null) {
             messagesToPersist.add(finalAssistantMessage);
         }
@@ -387,10 +340,22 @@ public class ChatService {
         return messages;
     }
 
+    private ChatMessage toolChatMessage(ResolvedChatRequest request, List<ToolCallback> approvedTools) {
+        ChatResponse.MsgResponse response = toolChat(request, approvedTools);
+        List<ChatMessage> history = history(request.conversationId());
+        if (!history.isEmpty()) {
+            ChatMessage lastMessage = history.get(history.size() - 1);
+            if (isAssistantRole(lastMessage.role())) {
+                return lastMessage;
+            }
+        }
+        return renderAssistantMessage(response.response());
+    }
+
     private OllamaChatOptions toolOptions(String model, List<ToolCallback> approvedTools) {
         OllamaChatOptions options = StringUtils.hasText(model)
-            ? OllamaChatOptions.builder().model(model).build()
-            : OllamaChatOptions.builder().build();
+            ? OllamaChatOptions.builder().model(model).enableThinking().build()
+            : OllamaChatOptions.builder().enableThinking().build();
         options.setInternalToolExecutionEnabled(false);
         options.setToolCallbacks(approvedTools);
         return options;
@@ -497,7 +462,7 @@ public class ChatService {
         prompt = prompt.user(request.message());
 
         if (StringUtils.hasText(request.model())) {
-            prompt = prompt.options(OllamaChatOptions.builder().model(request.model()).build());
+            prompt = prompt.options(OllamaChatOptions.builder().model(request.model()).enableThinking().build());
         }
         return prompt;
     }
@@ -527,7 +492,9 @@ public class ChatService {
                 String sourceText = contextManagementAdvisor != null && contextManagementAdvisor.isCompactionNotice(message)
                     ? contextManagementAdvisor.visibleNoticeText(message)
                     : (message.getText() == null ? "" : message.getText());
-                MessageParts messageParts = isAssistantRole(role) ? splitThinking(sourceText) : new MessageParts(sourceText, "");
+                MessageParts messageParts = isAssistantRole(role)
+                    ? assistantMessageParts(message, sourceText)
+                    : new MessageParts(sourceText, "");
                 String visibleText = messageParts.visibleText();
                 String thinkingText = messageParts.thinkingText();
 
@@ -545,19 +512,68 @@ public class ChatService {
         return "assistant".equalsIgnoreCase(role);
     }
 
-    private void saveStreamedAssistantMessage(String conversationId, String model, String responseText) {
-        if (!StringUtils.hasText(responseText) || chatMemoryRepository == null) {
+    private MessageParts assistantMessageParts(Message message, String sourceText) {
+        String thinkingText = message == null || message.getMetadata() == null
+            ? null
+            : stringValue(message.getMetadata().get(MESSAGE_THINKING_METADATA_KEY));
+        return StringUtils.hasText(thinkingText)
+            ? new MessageParts(sourceText, thinkingText)
+            : splitThinkingFallback(sourceText);
+    }
+
+    AssistantMessage assistantMessageWithThinking(org.springframework.ai.chat.model.Generation generation) {
+        return assistantMessageWithThinking(generation, thinkingText(generation));
+    }
+
+    AssistantMessage assistantMessageWithThinking(
+        org.springframework.ai.chat.model.Generation generation,
+        String thinking
+    ) {
+        AssistantMessage output = generation == null ? null : generation.getOutput();
+        if (output == null) {
+            return new AssistantMessage("");
+        }
+        if (!StringUtils.hasText(thinking)) {
+            return output;
+        }
+        Map<String, Object> metadata = new java.util.LinkedHashMap<>(output.getMetadata());
+        metadata.put(MESSAGE_THINKING_METADATA_KEY, thinking);
+        return AssistantMessage.builder()
+            .content(output.getText())
+            .properties(metadata)
+            .toolCalls(output.getToolCalls())
+            .media(output.getMedia())
+            .build();
+    }
+
+    private void collectThinking(org.springframework.ai.chat.model.ChatResponse response, List<String> thinkingParts) {
+        if (response == null || response.getResult() == null) {
             return;
         }
-        List<Message> messages = new java.util.ArrayList<>(chatMemoryRepository.findByConversationId(conversationId));
-        messages.add(new AssistantMessage(responseText));
-        chatMemoryRepository.saveAll(conversationId, messages);
-        if (contextManagementAdvisor != null && contextUsageTracker != null) {
-            contextUsageTracker.record(conversationId, contextManagementAdvisor.estimateStoredUsage(conversationId, model));
+        String thinking = thinkingText(response.getResult());
+        if (StringUtils.hasText(thinking)) {
+            thinkingParts.add(thinking.trim());
         }
     }
 
-    private MessageParts splitThinking(String text) {
+    private String combinedThinking(List<String> thinkingParts) {
+        return thinkingParts.stream()
+            .filter(StringUtils::hasText)
+            .collect(java.util.stream.Collectors.joining("\n\n"));
+    }
+
+    private String thinkingText(org.springframework.ai.chat.model.Generation generation) {
+        if (generation == null || generation.getMetadata() == null) {
+            return null;
+        }
+        return stringValue(generation.getMetadata().get(THINKING_METADATA_KEY));
+    }
+
+    private String stringValue(Object value) {
+        return value instanceof String text && StringUtils.hasText(text) ? text : null;
+    }
+
+    private MessageParts splitThinkingFallback(String text) {
         Matcher matcher = THINK_TAG_PATTERN.matcher(text);
         StringBuilder visible = new StringBuilder();
         StringBuilder thinking = new StringBuilder();

@@ -1,5 +1,6 @@
 package io.mindspice.magenta2.ai.chat.service;
 
+import java.util.List;
 import java.util.Map;
 
 import io.mindspice.magenta2.ai.chat.model.ChatMessage;
@@ -7,6 +8,10 @@ import io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer;
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.retry.NonTransientAiException;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -22,7 +27,7 @@ class ChatServiceTest {
     );
 
     @Test
-    void renderAssistantMessageSplitsThinkingAndRendersMarkdown() {
+    void renderAssistantMessageUsesLegacyThinkTagsAsFallback() {
         ChatMessage message = chatService.renderAssistantMessage(
             "<think>private **notes**</think>\n\nVisible **answer**"
         );
@@ -31,6 +36,41 @@ class ChatServiceTest {
         assertThat(message.text()).isEqualTo("Visible **answer**");
         assertThat(message.renderedHtml()).contains("<strong>answer</strong>");
         assertThat(message.thinkingHtml()).contains("<strong>notes</strong>");
+    }
+
+    @Test
+    void renderAssistantMessagePrefersStructuredThinkingMetadata() {
+        ChatResponse response = new ChatResponse(List.of(new Generation(
+            new AssistantMessage("<think>literal tag</think>\n\nVisible **answer**"),
+            ChatGenerationMetadata.builder()
+                .metadata(ChatService.THINKING_METADATA_KEY, "structured **notes**")
+                .build()
+        )));
+
+        ChatMessage message = chatService.renderAssistantMessage(response);
+
+        assertThat(message.text()).isEqualTo("<think>literal tag</think>\n\nVisible **answer**");
+        assertThat(message.renderedHtml()).contains("<strong>answer</strong>");
+        assertThat(message.thinkingHtml()).contains("<strong>notes</strong>");
+    }
+
+    @Test
+    void assistantMessageCanCarryCombinedToolAndFinalThinking() {
+        Generation finalGeneration = new Generation(
+            new AssistantMessage("Visible answer"),
+            ChatGenerationMetadata.builder()
+                .metadata(ChatService.THINKING_METADATA_KEY, "final notes")
+                .build()
+        );
+
+        AssistantMessage message = chatService.assistantMessageWithThinking(
+            finalGeneration,
+            "tool-call notes\n\nfinal notes"
+        );
+
+        assertThat(message.getText()).isEqualTo("Visible answer");
+        assertThat(message.getMetadata())
+            .containsEntry(ChatService.MESSAGE_THINKING_METADATA_KEY, "tool-call notes\n\nfinal notes");
     }
 
     @Test
