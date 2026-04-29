@@ -205,6 +205,33 @@ public class FrontendController {
                     border: 1px solid #dde4ef;
                 }
 
+                #chat-plan-status {
+                    display: none;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 0.75rem;
+                    border: 1px solid #cdd7e3;
+                    border-radius: 6px;
+                    background: #f8fafc;
+                    padding: 0.55rem 0.7rem;
+                    margin-bottom: 0.7rem;
+                    color: #263246;
+                    font-size: 0.88rem;
+                }
+
+                #chat-plan-status.active {
+                    display: flex;
+                }
+
+                #chat-plan-title {
+                    font-weight: 700;
+                }
+
+                #chat-plan-hint {
+                    color: #5a6779;
+                    font-size: 0.82rem;
+                }
+
                 #chat-history {
                     display: flex;
                     flex-direction: column;
@@ -516,6 +543,10 @@ public class FrontendController {
                             <span>Session</span>
                             <code id="chat-active-session">%s</code>
                         </div>
+                        <div id="chat-plan-status" aria-live="polite">
+                            <span id="chat-plan-title"></span>
+                            <span id="chat-plan-hint"></span>
+                        </div>
                         <div id="chat-history"></div>
                         <form id="chat-form">
                             <textarea id="chat-input" name="message" autocomplete="off" placeholder="Type a message (Enter to send, Shift+Enter newline)" rows="6"></textarea>
@@ -542,7 +573,7 @@ public class FrontendController {
                     .withSubtitle("Session-backed chat bootstrap")
                     .build())
             .withTopNav(topNavBar)
-            .addCustomJs("/js/chat-client.js?v=8")
+            .addCustomJs("/js/chat-client.js?v=9")
             .buildTemplate();
 
     @GetMapping("/chat")

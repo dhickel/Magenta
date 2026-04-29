@@ -10,9 +10,14 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import io.mindspice.magenta2.ai.chat.model.ChatMessage;
+import io.mindspice.magenta2.ai.chat.model.ChatPlanState;
 import io.mindspice.magenta2.ai.chat.model.ChatRequest;
 import io.mindspice.magenta2.ai.chat.model.ChatResponse;
 import io.mindspice.magenta2.ai.chat.model.ContextUsage;
+import io.mindspice.magenta2.ai.chat.plan.PlanMode;
+import io.mindspice.magenta2.ai.chat.plan.PlanService;
+import io.mindspice.magenta2.ai.chat.plan.PlanToolContext;
+import io.mindspice.magenta2.ai.chat.plan.PlanToolExecutionContext;
 import io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer;
 import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
 import io.mindspice.magenta2.ai.chat.tool.ChatToolRegistry;
@@ -47,6 +52,9 @@ public class ChatService {
     private static final Pattern THINK_TAG_PATTERN = Pattern.compile("(?is)<think>(.*?)</think>");
     private static final int MAX_TOOL_CALL_ITERATIONS = 8;
     private static final String OLLAMA_TOOLS_UNSUPPORTED_MESSAGE = "does not support tools";
+    private static final List<String> PLAN_MODE_TOOLS = List.of("file_list", "file_read", "file_search", "plan_save");
+    private static final List<String> EXECUTION_BLOCKED_TOOLS = List.of("plan_save");
+    private static final String EXECUTE_PLAN_MESSAGE = "Execute the saved plan now. Work through the plan directly and report the completed result.";
 
     private final ChatMemory chatMemory;
     private final ChatMemoryRepository chatMemoryRepository;
@@ -59,6 +67,7 @@ public class ChatService {
     private final ToolCallingManager toolCallingManager;
     private final ChatToolRegistry chatToolRegistry;
     private final ToolTranscriptService toolTranscriptService;
+    private final PlanService planService;
     private final Set<String> toolUnsupportedModels = ConcurrentHashMap.newKeySet();
 
     public ChatService(
@@ -74,6 +83,7 @@ public class ChatService {
             chatSessionMetadataRepository,
             chatMarkdownRenderer,
             aiConfig,
+            null,
             null,
             null,
             null,
@@ -95,7 +105,8 @@ public class ChatService {
         ChatModelRouter chatModelRouter,
         ToolCallingManager toolCallingManager,
         ChatToolRegistry chatToolRegistry,
-        ToolTranscriptService toolTranscriptService
+        ToolTranscriptService toolTranscriptService,
+        @Autowired(required = false) PlanService planService
     ) {
         this.chatMemory = chatMemory;
         this.chatMemoryRepository = chatMemoryRepository;
@@ -108,6 +119,7 @@ public class ChatService {
         this.toolCallingManager = toolCallingManager;
         this.chatToolRegistry = chatToolRegistry;
         this.toolTranscriptService = toolTranscriptService;
+        this.planService = planService;
     }
 
     public ChatResponse chat(ChatRequest request) {
@@ -120,7 +132,7 @@ public class ChatService {
 
     public ChatResponse.MsgResponse chat(String conversationId, String message, String model) {
         ResolvedChatRequest resolvedRequest = resolve(conversationId, message, model);
-        List<ToolCallback> approvedTools = approvedTools();
+        List<ToolCallback> approvedTools = approvedTools(resolvedRequest);
         if (!approvedTools.isEmpty() && supportsTools(resolvedRequest.model())) {
             try {
                 return toolChat(resolvedRequest, approvedTools);
@@ -144,7 +156,8 @@ public class ChatService {
             resolvedRequest.conversationId(),
             resolvedRequest.model(),
             response,
-            contextUsage(resolvedRequest.conversationId(), resolvedRequest.model())
+            contextUsage(resolvedRequest.conversationId(), resolvedRequest.model()),
+            planState(resolvedRequest.conversationId())
         );
     }
 
@@ -156,7 +169,7 @@ public class ChatService {
     }
 
     public Flux<ChatMessage> stream(ResolvedChatRequest request) {
-        List<ToolCallback> approvedTools = approvedTools();
+        List<ToolCallback> approvedTools = approvedTools(request);
         if (!approvedTools.isEmpty() && supportsTools(request.model())) {
             // Try the tool-capable path first. Models that reject tools are remembered and use plain chat later.
             return Flux.defer(() -> Flux.just(toolChatMessage(request, approvedTools)))
@@ -220,14 +233,61 @@ public class ChatService {
         if (StringUtils.hasText(conversationId)) {
             chatMemory.clear(conversationId);
             chatSessionMetadataRepository.deleteByConversationId(conversationId);
+            if (planService != null) {
+                planService.exitPlan(conversationId);
+            }
             if (contextUsageTracker != null) {
                 contextUsageTracker.clear(conversationId);
             }
         }
     }
 
+    public void beginPlan(String conversationId, String goal) {
+        requirePlanService();
+        planService.beginPlan(conversationId, goal);
+    }
+
+    public void exitPlan(String conversationId) {
+        requirePlanService();
+        planService.exitPlan(conversationId);
+        if (contextUsageTracker != null) {
+            contextUsageTracker.clear(conversationId);
+        }
+    }
+
+    public ChatResponse.MsgResponse executeSavedPlan(String conversationId, boolean clearContext) {
+        requirePlanService();
+        String model = storedConversationModel(conversationId);
+        if (clearContext) {
+            planService.clearConversationForExecution(conversationId);
+            if (contextUsageTracker != null) {
+                contextUsageTracker.clear(conversationId);
+            }
+        }
+        planService.markExecuting(conversationId);
+        try {
+            ChatResponse.MsgResponse response = chat(conversationId, EXECUTE_PLAN_MESSAGE, model);
+            planService.markCompleted(conversationId);
+            return response;
+        } catch (RuntimeException exception) {
+            throw exception;
+        }
+    }
+
+    public ChatPlanState planState(String conversationId) {
+        return planService == null ? ChatPlanState.normal() : planService.view(conversationId);
+    }
+
     public List<String> listConversationIds() {
-        return chatMemoryRepository.findConversationIds();
+        List<String> conversationIds = new ArrayList<>(chatMemoryRepository.findConversationIds());
+        if (planService != null) {
+            for (String planConversationId : planService.listConversationIds()) {
+                if (!conversationIds.contains(planConversationId)) {
+                    conversationIds.add(planConversationId);
+                }
+            }
+        }
+        return conversationIds;
     }
 
     public boolean conversationExists(String conversationId) {
@@ -292,47 +352,54 @@ public class ChatService {
         );
         OllamaChatOptions options = toolOptions(request.model(), approvedTools);
         Prompt prompt = new Prompt(preparedPrompt.messages(), options);
-        org.springframework.ai.chat.model.ChatResponse response = chatModelRouter.chatModel(request.model()).call(prompt);
-        List<Message> messagesToPersist = new ArrayList<>();
-        List<String> thinkingParts = new ArrayList<>();
-        int iterations = 0;
+        PlanMode mode = planService == null ? PlanMode.NORMAL : planService.mode(request.conversationId());
+        PlanToolExecutionContext.set(new PlanToolContext(request.conversationId(), mode));
+        try {
+            org.springframework.ai.chat.model.ChatResponse response = chatModelRouter.chatModel(request.model()).call(prompt);
+            List<Message> messagesToPersist = new ArrayList<>();
+            List<String> thinkingParts = new ArrayList<>();
+            int iterations = 0;
 
-        while (response != null && response.hasToolCalls()) {
-            if (++iterations > MAX_TOOL_CALL_ITERATIONS) {
-                throw new IllegalStateException("Tool execution exceeded " + MAX_TOOL_CALL_ITERATIONS + " iterations");
+            while (response != null && response.hasToolCalls()) {
+                if (++iterations > MAX_TOOL_CALL_ITERATIONS) {
+                    throw new IllegalStateException("Tool execution exceeded " + MAX_TOOL_CALL_ITERATIONS + " iterations");
+                }
+                collectThinking(response, thinkingParts);
+                ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(prompt, response);
+                messagesToPersist.addAll(toolTranscriptMessages(response, toolExecutionResult));
+                prompt = new Prompt(toolExecutionResult.conversationHistory(), options);
+                response = chatModelRouter.chatModel(request.model()).call(prompt);
             }
             collectThinking(response, thinkingParts);
-            ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(prompt, response);
-            messagesToPersist.addAll(toolTranscriptMessages(response, toolExecutionResult));
-            prompt = new Prompt(toolExecutionResult.conversationHistory(), options);
-            response = chatModelRouter.chatModel(request.model()).call(prompt);
-        }
-        collectThinking(response, thinkingParts);
 
-        AssistantMessage finalAssistantMessage = response == null || response.getResult() == null
-            ? new AssistantMessage("")
-            : assistantMessageWithThinking(response.getResult(), combinedThinking(thinkingParts));
-        if (finalAssistantMessage != null) {
-            messagesToPersist.add(finalAssistantMessage);
-        }
-        contextManagementAdvisor.saveAssistantMessages(request.conversationId(), messagesToPersist);
-        if (contextUsageTracker != null) {
-            contextUsageTracker.record(
+            AssistantMessage finalAssistantMessage = response == null || response.getResult() == null
+                ? new AssistantMessage("")
+                : assistantMessageWithThinking(response.getResult(), combinedThinking(thinkingParts));
+            if (finalAssistantMessage != null) {
+                messagesToPersist.add(finalAssistantMessage);
+            }
+            contextManagementAdvisor.saveAssistantMessages(request.conversationId(), messagesToPersist);
+            if (contextUsageTracker != null) {
+                contextUsageTracker.record(
+                    request.conversationId(),
+                    contextManagementAdvisor.estimateStoredUsage(request.conversationId(), request.model())
+                );
+            }
+            return new ChatResponse.MsgResponse(
                 request.conversationId(),
-                contextManagementAdvisor.estimateStoredUsage(request.conversationId(), request.model())
+                request.model(),
+                finalAssistantMessage == null ? "" : finalAssistantMessage.getText(),
+                contextUsage(request.conversationId(), request.model()),
+                planState(request.conversationId())
             );
+        } finally {
+            PlanToolExecutionContext.clear();
         }
-        return new ChatResponse.MsgResponse(
-            request.conversationId(),
-            request.model(),
-            finalAssistantMessage == null ? "" : finalAssistantMessage.getText(),
-            contextUsage(request.conversationId(), request.model())
-        );
     }
 
     private List<Message> currentInstructions(ResolvedChatRequest request) {
         List<Message> messages = new ArrayList<>();
-        String systemPrompt = defaultSystemPrompt();
+        String systemPrompt = effectiveSystemPrompt(request);
         if (StringUtils.hasText(systemPrompt)) {
             messages.add(new SystemMessage(systemPrompt));
         }
@@ -400,7 +467,7 @@ public class ChatService {
             .toList();
     }
 
-    private List<ToolCallback> approvedTools() {
+    private List<ToolCallback> approvedTools(ResolvedChatRequest request) {
         if (chatToolRegistry == null || aiConfig == null || !StringUtils.hasText(aiConfig.defaultAgent())) {
             return List.of();
         }
@@ -408,7 +475,13 @@ public class ChatService {
         if (defaultAgent == null) {
             return List.of();
         }
-        return chatToolRegistry.resolveApprovedTools(defaultAgent.approvedTools());
+        PlanMode mode = planService == null ? PlanMode.NORMAL : planService.mode(request.conversationId());
+        if (mode == PlanMode.PLAN) {
+            return chatToolRegistry.resolveApprovedTools(defaultAgent.approvedTools(), PLAN_MODE_TOOLS);
+        }
+        return chatToolRegistry.resolveApprovedTools(defaultAgent.approvedTools()).stream()
+            .filter(callback -> !EXECUTION_BLOCKED_TOOLS.contains(callback.getToolDefinition().name()))
+            .toList();
     }
 
     private boolean supportsTools(String model) {
@@ -454,7 +527,7 @@ public class ChatService {
         ChatClient.ChatClientRequestSpec prompt = chatClient.prompt()
             .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, request.conversationId()));
 
-        String systemPrompt = defaultSystemPrompt();
+        String systemPrompt = effectiveSystemPrompt(request);
         if (StringUtils.hasText(systemPrompt)) {
             prompt = prompt.system(systemPrompt);
         }
@@ -473,6 +546,24 @@ public class ChatService {
         }
         AgentConfig defaultAgent = aiConfig.agents().get(aiConfig.defaultAgent());
         return defaultAgent == null ? null : defaultAgent.systemPrompt();
+    }
+
+    String effectiveSystemPrompt(ResolvedChatRequest request) {
+        String systemPrompt = defaultSystemPrompt();
+        String runtimePrompt = planService == null ? "" : planService.runtimeInstructions(request.conversationId());
+        if (!StringUtils.hasText(runtimePrompt)) {
+            return systemPrompt;
+        }
+        if (!StringUtils.hasText(systemPrompt)) {
+            return runtimePrompt;
+        }
+        return systemPrompt + "\n\n" + runtimePrompt;
+    }
+
+    private void requirePlanService() {
+        if (planService == null) {
+            throw new IllegalStateException("Plan service is not available");
+        }
     }
 
     private List<ChatMessage> toHistory(List<Message> messages) {

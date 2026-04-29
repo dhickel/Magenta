@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 import io.mindspice.magenta2.ai.chat.model.ChatMessage;
+import io.mindspice.magenta2.ai.chat.model.ChatPlanState;
 import io.mindspice.magenta2.ai.chat.model.ChatRequest;
 import io.mindspice.magenta2.ai.chat.model.ChatResponse;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
@@ -18,7 +19,7 @@ class ChatControllerTest {
 
     private static final String CONVERSATION_ID = "00000000-0000-0000-0000-000000000001";
 
-    private final ChatService chatService = new StubChatService(
+    private final StubChatService chatService = new StubChatService(
         List.of(CONVERSATION_ID),
         Map.of(CONVERSATION_ID, "qwen3")
     );
@@ -46,9 +47,56 @@ class ChatControllerTest {
             });
     }
 
+    @Test
+    void planCommandAcceptsGoalRemainder() {
+        ChatResponse.CmdResponse response = chatController.command(
+            new ChatRequest.CmdRequest(CONVERSATION_ID, "/plan add reminder support")
+        );
+
+        assertThat(response.message()).isEqualTo("Entered plan mode for: add reminder support");
+        assertThat(response.planState().mode()).isEqualTo("PLAN");
+        assertThat(response.planState().goal()).isEqualTo("add reminder support");
+    }
+
+    @Test
+    void exitPlanCommandDropsPlanState() {
+        chatController.command(new ChatRequest.CmdRequest(CONVERSATION_ID, "/plan add reminder support"));
+
+        ChatResponse.CmdResponse response = chatController.command(
+            new ChatRequest.CmdRequest(CONVERSATION_ID, "/exit-plan")
+        );
+
+        assertThat(response.planState().mode()).isEqualTo("NORMAL");
+        assertThat(response.message()).contains("Exited plan mode");
+    }
+
+    @Test
+    void execPlanCommandRunsSavedPlan() {
+        chatService.savedPlan = true;
+
+        ChatResponse.CmdResponse response = chatController.command(
+            new ChatRequest.CmdRequest(CONVERSATION_ID, "/exec-plan")
+        );
+
+        assertThat(response.message()).isEqualTo("executed plan");
+        assertThat(chatService.executedWithClearContext).isFalse();
+    }
+
+    @Test
+    void clearExecPlanCommandRunsSavedPlanAfterClearingContext() {
+        chatService.savedPlan = true;
+
+        chatController.command(new ChatRequest.CmdRequest(CONVERSATION_ID, "/clr-exec-plan"));
+
+        assertThat(chatService.executedWithClearContext).isTrue();
+    }
+
     private static class StubChatService extends ChatService {
         private final List<String> conversationIds;
         private final Map<String, String> modelsByConversationId;
+        private ChatPlanState planState = ChatPlanState.normal();
+        private boolean savedPlan;
+        private boolean executedWithClearContext;
 
         StubChatService(List<String> conversationIds, Map<String, String> modelsByConversationId) {
             super(null, null, null, null, null);
@@ -74,6 +122,31 @@ class ChatControllerTest {
         @Override
         public String storedConversationModel(String conversationId) {
             return modelsByConversationId.get(conversationId);
+        }
+
+        @Override
+        public void beginPlan(String conversationId, String goal) {
+            planState = new ChatPlanState("PLAN", "DRAFT", null, null, goal, List.of());
+        }
+
+        @Override
+        public void exitPlan(String conversationId) {
+            planState = ChatPlanState.normal();
+        }
+
+        @Override
+        public ChatResponse.MsgResponse executeSavedPlan(String conversationId, boolean clearContext) {
+            if (!savedPlan) {
+                throw new IllegalStateException("No saved plan exists for this conversation");
+            }
+            executedWithClearContext = clearContext;
+            planState = new ChatPlanState("NORMAL", "COMPLETED", "Saved Plan", null, null, List.of("Step"));
+            return new ChatResponse.MsgResponse(conversationId, "qwen3", "executed plan", null, planState);
+        }
+
+        @Override
+        public ChatPlanState planState(String conversationId) {
+            return planState;
         }
     }
 }

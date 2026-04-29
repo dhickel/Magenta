@@ -6,6 +6,7 @@ public record ChatHistory(
     String conversationId,
     String model,
     List<ChatMessage> messages,
-    ContextUsage contextUsage
+    ContextUsage contextUsage,
+    ChatPlanState planState
 ) {
 }

@@ -59,7 +59,12 @@ public class ChatController {
         emitter.onError(error -> cancelSubscription.run());
 
         try {
-            sendEvent(emitter, "start", ChatStreamEvent.start(resolvedRequest.conversationId(), resolvedRequest.model()));
+            sendEvent(
+                emitter,
+                "start",
+                ChatStreamEvent.start(resolvedRequest.conversationId(), resolvedRequest.model())
+                    .withPlanState(chatService.planState(resolvedRequest.conversationId()))
+            );
         } catch (Exception e) {
             emitter.completeWithError(e);
             return emitter;
@@ -76,7 +81,7 @@ public class ChatController {
                             resolvedRequest.model(),
                             message,
                             chatService.contextUsage(resolvedRequest.conversationId(), resolvedRequest.model())
-                        )
+                        ).withPlanState(chatService.planState(resolvedRequest.conversationId()))
                     );
                 } catch (Exception e) {
                     cancelSubscription.run();
@@ -101,7 +106,7 @@ public class ChatController {
                             resolvedRequest.model(),
                             lastAssistantMessage(resolvedRequest),
                             chatService.contextUsage(resolvedRequest.conversationId(), resolvedRequest.model())
-                        )
+                        ).withPlanState(chatService.planState(resolvedRequest.conversationId()))
                     );
                     emitter.complete();
                 } catch (Exception e) {
@@ -135,7 +140,8 @@ public class ChatController {
             conversationId,
             chatService.storedConversationModel(conversationId),
             chatService.history(conversationId),
-            chatService.contextUsage(conversationId, chatService.storedConversationModel(conversationId))
+            chatService.contextUsage(conversationId, chatService.storedConversationModel(conversationId)),
+            chatService.planState(conversationId)
         );
     }
 
@@ -155,6 +161,19 @@ public class ChatController {
             }
             case "switch" -> handleSwitch(requiredSingleArgument(rootCommand, parts, "a conversation UUID"));
             case "clear" -> handleClear(request.conversationId(), optionalSingleArgument(rootCommand, parts, "a conversation UUID"));
+            case "plan" -> handlePlan(request.conversationId(), optionalRemainder(command));
+            case "exit-plan" -> {
+                requireNoArguments(rootCommand, parts);
+                yield handleExitPlan(request.conversationId());
+            }
+            case "exec-plan" -> {
+                requireNoArguments(rootCommand, parts);
+                yield handleExecPlan(request.conversationId(), false);
+            }
+            case "clr-exec-plan" -> {
+                requireNoArguments(rootCommand, parts);
+                yield handleExecPlan(request.conversationId(), true);
+            }
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "unknown command: " + rootCommand);
         };
     }
@@ -175,7 +194,8 @@ public class ChatController {
             "Created new session " + conversationId,
             List.copyOf(conversationIds),
             chatService.history(conversationId),
-            chatService.contextUsage(conversationId, null)
+            chatService.contextUsage(conversationId, null),
+            chatService.planState(conversationId)
         );
     }
 
@@ -194,7 +214,8 @@ public class ChatController {
             "Switched to " + targetConversationId,
             chatService.listConversationIds(),
             chatService.history(targetConversationId),
-            chatService.contextUsage(targetConversationId, chatService.storedConversationModel(targetConversationId))
+            chatService.contextUsage(targetConversationId, chatService.storedConversationModel(targetConversationId)),
+            chatService.planState(targetConversationId)
         );
     }
 
@@ -211,7 +232,68 @@ public class ChatController {
             "Cleared " + targetConversationId,
             chatService.listConversationIds(),
             chatService.history(targetConversationId),
-            chatService.contextUsage(targetConversationId, null)
+            chatService.contextUsage(targetConversationId, null),
+            chatService.planState(targetConversationId)
+        );
+    }
+
+    private ChatResponse.CmdResponse handlePlan(String requestConversationId, String goal) {
+        String conversationId = normalize(requestConversationId);
+        if (conversationId == null) {
+            conversationId = chatService.newConversationId();
+        }
+        chatService.beginPlan(conversationId, goal);
+        List<String> conversationIds = new ArrayList<>(chatService.listConversationIds());
+        if (!conversationIds.contains(conversationId)) {
+            conversationIds.add(0, conversationId);
+        }
+        String message = normalize(goal) == null
+            ? "Entered plan mode. Send the goal or context, then save the plan with plan_save."
+            : "Entered plan mode for: " + goal;
+        return new ChatResponse.CmdResponse(
+            conversationId,
+            chatService.storedConversationModel(conversationId),
+            message,
+            List.copyOf(conversationIds),
+            chatService.history(conversationId),
+            chatService.contextUsage(conversationId, chatService.storedConversationModel(conversationId)),
+            chatService.planState(conversationId)
+        );
+    }
+
+    private ChatResponse.CmdResponse handleExitPlan(String requestConversationId) {
+        String conversationId = requiredConversationId(requestConversationId, "exit-plan requires an active conversation");
+        chatService.exitPlan(conversationId);
+        return new ChatResponse.CmdResponse(
+            conversationId,
+            chatService.storedConversationModel(conversationId),
+            "Exited plan mode and discarded the draft plan.",
+            chatService.listConversationIds(),
+            chatService.history(conversationId),
+            chatService.contextUsage(conversationId, chatService.storedConversationModel(conversationId)),
+            chatService.planState(conversationId)
+        );
+    }
+
+    private ChatResponse.CmdResponse handleExecPlan(String requestConversationId, boolean clearContext) {
+        String conversationId = requiredConversationId(
+            requestConversationId,
+            clearContext ? "clr-exec-plan requires an active conversation" : "exec-plan requires an active conversation"
+        );
+        ChatResponse.MsgResponse response;
+        try {
+            response = chatService.executeSavedPlan(conversationId, clearContext);
+        } catch (IllegalStateException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
+        return new ChatResponse.CmdResponse(
+            conversationId,
+            response.model(),
+            response.response(),
+            chatService.listConversationIds(),
+            chatService.history(conversationId),
+            response.contextUsage(),
+            chatService.planState(conversationId)
         );
     }
 
@@ -237,6 +319,23 @@ public class ChatController {
             return null;
         }
         return singleArgument(command, parts, argumentDescription);
+    }
+
+    private String optionalRemainder(String command) {
+        int firstWhitespace = command.indexOf(' ');
+        if (firstWhitespace < 0) {
+            return null;
+        }
+        return normalize(command.substring(firstWhitespace + 1));
+    }
+
+    private String requiredConversationId(String conversationId, String message) {
+        String normalized = normalize(conversationId);
+        if (normalized == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
+        }
+        requireValidUuid(normalized);
+        return normalized;
     }
 
     private String singleArgument(String command, String[] parts, String argumentDescription) {

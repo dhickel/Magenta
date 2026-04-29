@@ -60,4 +60,14 @@ public class ChatToolRegistry {
         }
         return List.copyOf(resolved);
     }
+
+    public List<ToolCallback> resolveApprovedTools(List<String> approvedToolNames, List<String> allowedToolNames) {
+        if (allowedToolNames == null || allowedToolNames.isEmpty()) {
+            return List.of();
+        }
+        List<ToolCallback> approved = resolveApprovedTools(approvedToolNames);
+        return approved.stream()
+            .filter(callback -> allowedToolNames.contains(callback.getToolDefinition().name()))
+            .toList();
+    }
 }

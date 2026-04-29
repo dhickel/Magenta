@@ -64,6 +64,29 @@
         fillEl.style.width = percent.toFixed(1) + '%';
     }
 
+    function updatePlanStatus(planState) {
+        const statusEl = byId('chat-plan-status');
+        const titleEl = byId('chat-plan-title');
+        const hintEl = byId('chat-plan-hint');
+        if (!statusEl || !titleEl || !hintEl) {
+            return;
+        }
+        const mode = planState && planState.mode ? String(planState.mode) : 'NORMAL';
+        if (mode === 'NORMAL' && !(planState && planState.title)) {
+            statusEl.classList.remove('active');
+            titleEl.textContent = '';
+            hintEl.textContent = '';
+            return;
+        }
+        const title = planState && planState.title ? String(planState.title) : (planState && planState.goal ? String(planState.goal) : 'Draft plan');
+        const status = planState && planState.status ? String(planState.status).toLowerCase() : 'active';
+        titleEl.textContent = mode === 'PLAN' ? 'Plan mode: ' + title : 'Plan: ' + title + ' (' + status + ')';
+        hintEl.textContent = mode === 'PLAN'
+            ? 'Use /exec-plan, /clr-exec-plan, or /exit-plan'
+            : 'Saved execution plan';
+        statusEl.classList.add('active');
+    }
+
     function selectedModel() {
         const modelSelect = byId('chat-model-select');
         if (!modelSelect || !modelSelect.value) {
@@ -232,6 +255,7 @@
         renderHistory(data.messages);
         syncModelSelection(data.model);
         updateContextUsage(data.contextUsage);
+        updatePlanStatus(data.planState);
     }
 
     async function sendMessage(message) {
@@ -265,6 +289,7 @@
                 if (event.name === 'start') {
                     setActiveConversationId(data.conversationId);
                     syncModelSelection(data.model);
+                    updatePlanStatus(data.planState);
                     completedConversationId = data.conversationId;
                     return;
                 }
@@ -275,6 +300,7 @@
                 if (event.name === 'done') {
                     updateStreamingAssistantMessage(assistantEl, data);
                     updateContextUsage(data.contextUsage);
+                    updatePlanStatus(data.planState);
                     completedConversationId = data.conversationId;
                     return;
                 }
@@ -316,6 +342,7 @@
         renderHistory(data.history || []);
         renderSessions(data.conversationIds || []);
         updateContextUsage(data.contextUsage);
+        updatePlanStatus(data.planState);
         setStatus();
     }
 
