@@ -1,4 +1,6 @@
 (function() {
+    let requestInFlight = false;
+
     function byId(id) {
         return document.getElementById(id);
     }
@@ -259,6 +261,11 @@
     }
 
     async function sendMessage(message) {
+        if (requestInFlight) {
+            return;
+        }
+        requestInFlight = true;
+        setFormDisabled(true);
         const payload = {
             conversationId: activeConversationId(),
             message: message,
@@ -322,28 +329,53 @@
                 // Keep the original streaming error visible.
             }
             throw error;
+        } finally {
+            requestInFlight = false;
+            setFormDisabled(false);
         }
     }
 
     async function sendCommand(command) {
+        if (requestInFlight) {
+            return;
+        }
+        requestInFlight = true;
+        setFormDisabled(true);
         const payload = {
             conversationId: activeConversationId(),
             command: command
         };
 
-        const data = await getJson('/api/chat/commands', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
+        try {
+            const data = await getJson('/api/chat/commands', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
 
-        setActiveConversationId(data.conversationId);
-        syncModelSelection(data.model);
-        renderHistory(data.history || []);
-        renderSessions(data.conversationIds || []);
-        updateContextUsage(data.contextUsage);
-        updatePlanStatus(data.planState);
-        setStatus();
+            setActiveConversationId(data.conversationId);
+            syncModelSelection(data.model);
+            renderHistory(data.history || []);
+            renderSessions(data.conversationIds || []);
+            updateContextUsage(data.contextUsage);
+            updatePlanStatus(data.planState);
+            setStatus();
+        } finally {
+            requestInFlight = false;
+            setFormDisabled(false);
+        }
+    }
+
+    function setFormDisabled(disabled) {
+        const input = byId('chat-input');
+        const form = byId('chat-form');
+        const button = form ? form.querySelector('button[type="submit"]') : null;
+        if (input) {
+            input.disabled = disabled;
+        }
+        if (button) {
+            button.disabled = disabled;
+        }
     }
 
     function escapeHtml(value) {
@@ -451,6 +483,9 @@
 
         byId('chat-form').addEventListener('submit', async function(event) {
             event.preventDefault();
+            if (requestInFlight) {
+                return;
+            }
             const text = input.value.trim();
             if (!text) {
                 return;

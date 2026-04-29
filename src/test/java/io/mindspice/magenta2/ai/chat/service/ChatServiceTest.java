@@ -3,16 +3,23 @@ package io.mindspice.magenta2.ai.chat.service;
 import java.util.List;
 import java.util.Map;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.chat.model.ChatMessage;
+import io.mindspice.magenta2.ai.chat.plan.ChatPlanRepository;
+import io.mindspice.magenta2.ai.chat.plan.PlanService;
 import io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer;
+import io.mindspice.magenta2.ai.chat.repository.SQLiteChatMemoryRepository;
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.retry.NonTransientAiException;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -98,6 +105,48 @@ class ChatServiceTest {
     }
 
     @Test
+    void planModeSystemPromptReplacesDefaultSystemPrompt() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        PlanService planService = new PlanService(
+            new ChatPlanRepository(jdbcTemplate, new ObjectMapper()),
+            new SQLiteChatMemoryRepository(jdbcTemplate, new ObjectMapper())
+        );
+        planService.beginPlan("conversation-1");
+        AiConfig aiConfig = new AiConfig(
+            "magenta",
+            "magenta",
+            10,
+            null,
+            Map.of(),
+            Map.of("magenta", new AgentConfig("local-qwen", "You are the default agent.", java.util.List.of()))
+        );
+        ChatService service = new ChatService(
+            null,
+            null,
+            null,
+            new ChatMarkdownRenderer(),
+            aiConfig,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            planService
+        );
+
+        String prompt = service.effectiveSystemPrompt(new ChatService.ResolvedChatRequest(
+            "conversation-1",
+            "message",
+            "local-qwen"
+        ));
+
+        assertThat(prompt)
+            .contains("You are Magenta in PLAN mode")
+            .doesNotContain("You are the default agent.");
+    }
+
+    @Test
     void detectsOllamaToolUnsupportedErrors() {
         NonTransientAiException exception = new NonTransientAiException(
             "HTTP 400 - {\"error\":\"registry.ollama.ai/library/model:latest does not support tools\"}"
@@ -105,5 +154,34 @@ class ChatServiceTest {
 
         assertThat(ChatService.isToolUnsupported(exception)).isTrue();
         assertThat(ChatService.isToolUnsupported(new NonTransientAiException("HTTP 500 - other failure"))).isFalse();
+    }
+
+    @Test
+    void discardLastUserMessageRemovesOnlyMatchingDanglingUserTurn() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        SQLiteChatMemoryRepository memoryRepository = new SQLiteChatMemoryRepository(jdbcTemplate, new ObjectMapper());
+        memoryRepository.saveAll("conversation-1", java.util.List.of(
+            new UserMessage("keep"),
+            new AssistantMessage("answer"),
+            new UserMessage("failed")
+        ));
+        ChatService service = new ChatService(
+            null,
+            memoryRepository,
+            null,
+            new ChatMarkdownRenderer(),
+            null
+        );
+
+        service.discardLastUserMessage("conversation-1", "failed");
+
+        assertThat(memoryRepository.findByConversationId("conversation-1"))
+            .extracting(message -> message.getText())
+            .containsExactly("keep", "answer");
+    }
+
+    private JdbcTemplate jdbcTemplate() {
+        SingleConnectionDataSource dataSource = new SingleConnectionDataSource("jdbc:sqlite::memory:", true);
+        return new JdbcTemplate(dataSource);
     }
 }

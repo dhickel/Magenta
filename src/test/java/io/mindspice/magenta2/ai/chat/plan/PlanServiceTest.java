@@ -22,7 +22,7 @@ class PlanServiceTest {
         PlanService service = new PlanService(new ChatPlanRepository(jdbcTemplate, new ObjectMapper()), memoryRepository);
 
         memoryRepository.saveAll("conversation-1", List.of(new UserMessage("before")));
-        service.beginPlan("conversation-1", "Goal");
+        service.beginPlan("conversation-1");
         memoryRepository.saveAll("conversation-1", List.of(new UserMessage("before"), new UserMessage("during")));
 
         service.exitPlan("conversation-1");
@@ -39,11 +39,13 @@ class PlanServiceTest {
         SQLiteChatMemoryRepository memoryRepository = new SQLiteChatMemoryRepository(jdbcTemplate, new ObjectMapper());
         PlanService service = new PlanService(new ChatPlanRepository(jdbcTemplate, new ObjectMapper()), memoryRepository);
 
-        service.beginPlan("conversation-1", "Add plan mode");
+        service.beginPlan("conversation-1");
         service.saveDraftPlan(
             "conversation-1",
+            "Add plan mode",
             "Plan Mode",
             "Add streamlined planning.",
+            "Do not alter existing command names.",
             List.of("Add state", "Inject prompt"),
             List.of("Use slash commands")
         );
@@ -52,8 +54,25 @@ class PlanServiceTest {
         assertThat(service.runtimeInstructions("conversation-1"))
             .contains("Mode: EXECUTE_PLAN")
             .contains("Plan: Plan Mode")
+            .contains("Notes: Do not alter existing command names.")
             .contains("1. Add state")
             .contains("Use slash commands");
+    }
+
+    @Test
+    void planModeInstructionsAreStandalonePlanningPrompt() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        SQLiteChatMemoryRepository memoryRepository = new SQLiteChatMemoryRepository(jdbcTemplate, new ObjectMapper());
+        PlanService service = new PlanService(new ChatPlanRepository(jdbcTemplate, new ObjectMapper()), memoryRepository);
+
+        service.beginPlan("conversation-1");
+
+        assertThat(service.runtimeInstructions("conversation-1"))
+            .contains("You are Magenta in PLAN mode")
+            .contains("Begin by asking the user what goal they want to plan")
+            .contains("Do not perform the work")
+            .contains("call plan_save with the clarified goal")
+            .contains("notes");
     }
 
     private JdbcTemplate jdbcTemplate() {

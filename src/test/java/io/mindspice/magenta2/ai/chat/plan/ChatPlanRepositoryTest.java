@@ -22,6 +22,7 @@ class ChatPlanRepositoryTest {
 
         ExecutionPlan saved = repository.find("conversation-1").orElseThrow();
         assertThat(saved.title()).isEqualTo("Second");
+        assertThat(saved.notes()).isEqualTo("Plan notes");
         assertThat(saved.steps()).extracting(PlanStep::text).containsExactly("Execute");
         assertThat(saved.assumptions()).containsExactly("Use commands");
     }
@@ -35,6 +36,7 @@ class ChatPlanRepositoryTest {
             "Goal",
             title,
             "Summary",
+            "Plan notes",
             List.of("Use commands"),
             steps.stream()
                 .map(step -> new PlanStep(steps.indexOf(step) + 1, step))

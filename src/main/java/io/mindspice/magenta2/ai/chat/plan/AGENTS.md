@@ -4,7 +4,7 @@ This package owns chat-scoped plan mode and saved execution plan state.
 
 ### Responsibilities
 - Persist the current conversation planning mode and saved execution plan.
-- Provide compact model-visible runtime instructions for plan and execution modes.
+- Provide the standalone plan-mode system prompt and compact execution-mode runtime instructions.
 - Keep plan lifecycle operations explicit and command-driven.
 - Keep plan state separate from transient chat history and generic todo tracking.
 
@@ -12,7 +12,8 @@ This package owns chat-scoped plan mode and saved execution plan state.
 - Do not add general orchestration, scheduling, or subagent coordination here.
 - Keep plan schemas small and tied to the current chat workflow.
 - Keep the database as the source of truth; model tool calls request state changes but do not own state.
-- Prefer compact prompt state over replaying long planning transcripts.
+- In PLAN mode, keep the model-visible prompt focused on planning-only behavior and read-only exploration.
+- Prefer compact execution prompt state over replaying long planning transcripts.
 
 ### Validation
 - Add repository tests for schema and persistence changes.

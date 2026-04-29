@@ -19,6 +19,7 @@ public class ToolTranscriptService {
     public static final String SUMMARY_PREFIX = "[[MAGENTA_TOOL_RESULT_SUMMARY]]\n";
 
     private static final int RAW_OUTPUT_CHARACTER_LIMIT = 4_000;
+    private static final int STORED_RAW_OUTPUT_CHARACTER_LIMIT = 40_000;
     private static final int RETAIN_FULL_OUTPUT_USER_TURNS = 4;
     private static final int ARGUMENT_SUMMARY_CHARACTER_LIMIT = 500;
 
@@ -35,10 +36,10 @@ public class ToolTranscriptService {
             toolName,
             summarizeArguments(argumentsJson),
             summarizeResult(resultText),
-            resultText == null ? "" : resultText,
+            storedResultText(resultText),
             "completed",
             Instant.now().toString(),
-            false,
+            resultText != null && resultText.length() > STORED_RAW_OUTPUT_CHARACTER_LIMIT,
             resultText != null && resultText.length() > RAW_OUTPUT_CHARACTER_LIMIT
         );
         return new SystemMessage(FULL_PREFIX + serialize(entry));
@@ -167,6 +168,13 @@ public class ToolTranscriptService {
             return text;
         }
         return text.substring(0, Math.max(0, maxLength - 15)).trim() + " ... [truncated]";
+    }
+
+    private String storedResultText(String resultText) {
+        if (resultText == null) {
+            return "";
+        }
+        return truncate(resultText, STORED_RAW_OUTPUT_CHARACTER_LIMIT);
     }
 
     private String valueOrGenerated(String value) {

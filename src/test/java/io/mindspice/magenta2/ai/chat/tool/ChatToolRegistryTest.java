@@ -54,7 +54,7 @@ class ChatToolRegistryTest {
             .collect(Collectors.toMap(callback -> callback.getToolDefinition().name(), Function.identity()));
 
         assertThat(callbacks.keySet())
-            .containsExactlyInAnyOrder("file_list", "file_read", "file_search", "file_write", "file_replace");
+            .containsExactlyInAnyOrder("file_list", "file_read", "file_search", "file_write", "file_append", "file_replace");
 
         assertTool(callbacks.get("file_list"), objectMapper, List.of(), "path", "recursive", "maxEntries", "glob");
         assertTool(callbacks.get("file_read"), objectMapper, List.of("path"), "path", "startLine", "maxLines");
@@ -70,6 +70,7 @@ class ChatToolRegistryTest {
             "maxMatches"
         );
         assertTool(callbacks.get("file_write"), objectMapper, List.of("path", "content"), "path", "content", "overwrite");
+        assertTool(callbacks.get("file_append"), objectMapper, List.of("path", "content"), "path", "content", "create");
         assertTool(
             callbacks.get("file_replace"),
             objectMapper,
@@ -86,6 +87,9 @@ class ChatToolRegistryTest {
         assertThat(callbacks.get("file_replace").getToolDefinition().description())
             .contains("lineNumber:hash anchors")
             .contains("avoid stale edits");
+        assertThat(callbacks.get("file_append").getToolDefinition().description())
+            .contains("Append UTF-8 text")
+            .contains("instead of rewriting existing file content");
     }
 
     @Test
@@ -110,7 +114,15 @@ class ChatToolRegistryTest {
 
         assertThat(registry.resolveApprovedTools(List.of("*")))
             .extracting(callback -> callback.getToolDefinition().name())
-            .containsExactlyInAnyOrder("file_list", "file_read", "file_search", "file_write", "file_replace", "shell_exec");
+            .containsExactlyInAnyOrder(
+                "file_list",
+                "file_read",
+                "file_search",
+                "file_write",
+                "file_append",
+                "file_replace",
+                "shell_exec"
+            );
     }
 
     @Test

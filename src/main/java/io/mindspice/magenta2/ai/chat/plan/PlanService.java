@@ -21,7 +21,7 @@ public class PlanService {
         this.chatMemoryRepository = chatMemoryRepository;
     }
 
-    public ExecutionPlan beginPlan(String conversationId, String goal) {
+    public ExecutionPlan beginPlan(String conversationId) {
         int startOrder = chatMemoryRepository.findByConversationId(conversationId).size();
         Instant now = Instant.now();
         ExecutionPlan existing = planRepository.find(conversationId).orElse(null);
@@ -29,7 +29,8 @@ public class PlanService {
             conversationId,
             PlanMode.PLAN,
             PlanStatus.DRAFT,
-            normalize(goal),
+            null,
+            null,
             null,
             null,
             List.of(),
@@ -56,8 +57,10 @@ public class PlanService {
 
     public ExecutionPlan saveDraftPlan(
         String conversationId,
+        String goal,
         String title,
         String summary,
+        String notes,
         List<String> steps,
         List<String> assumptions
     ) {
@@ -76,6 +79,9 @@ public class PlanService {
         if (!StringUtils.hasText(title)) {
             throw new IllegalArgumentException("plan_save requires a title");
         }
+        if (!StringUtils.hasText(goal)) {
+            throw new IllegalArgumentException("plan_save requires a goal");
+        }
         if (orderedSteps.isEmpty()) {
             throw new IllegalArgumentException("plan_save requires at least one step");
         }
@@ -83,9 +89,10 @@ public class PlanService {
             conversationId,
             PlanMode.PLAN,
             PlanStatus.DRAFT,
-            existing.goal(),
+            goal.trim(),
             title.trim(),
             normalize(summary),
+            normalize(notes),
             cleanList(assumptions),
             orderedSteps,
             existing.planStartMessageOrder(),
@@ -130,22 +137,34 @@ public class PlanService {
     private String runtimeInstructions(ExecutionPlan plan) {
         if (plan.mode() == PlanMode.PLAN) {
             StringBuilder builder = new StringBuilder();
-            builder.append("Runtime state:\n")
-                .append("Mode: PLAN\n");
+            builder.append("""
+You are Magenta in PLAN mode.
+
+Your only job is to help the user turn an intent into a clear execution plan. Do not perform the work, do not edit files, do not run side-effectful commands, and do not claim that implementation is complete.
+
+Tool rules:
+- You may use read-only exploration tools to inspect files, search the codebase, or gather facts needed for planning.
+- Treat file, repository, and environment inspection as read-only planning research.
+- Use plan_save only when the plan is complete enough for execution.
+
+Conversation flow:
+- Begin by asking the user what goal they want to plan.
+- After the user gives the goal, ask whether they have a preferred approach, constraints, or anything they explicitly do or do not want.
+- Keep the planning conversation progressive and natural. Restate your understanding, ask targeted clarifying questions, inspect read-only context when that can answer implementation questions, and explain the approach you are considering.
+- Ask for corrections whenever your understanding, approach, constraints, or tradeoffs may be off.
+- Continue until the goal, approach, constraints, assumptions, risks, and execution steps are clear enough that another model or engineer could execute without guessing.
+- When ready, call plan_save with the clarified goal, title, summary, notes, ordered execution steps, and assumptions.
+- After saving, tell the user the plan is ready for approval and they can run /exec-plan or /clr-exec-plan.
+
+Runtime state:
+Mode: PLAN
+""");
             if (StringUtils.hasText(plan.goal())) {
                 builder.append("Goal: ").append(plan.goal()).append("\n");
             }
             if (plan.hasSavedPlan()) {
                 builder.append("Saved draft: ").append(plan.title()).append("\n");
             }
-            builder.append("""
-
-Plan mode rules:
-- Do not execute the work or perform side effects.
-- Ask concise clarifying questions only when needed.
-- When the plan is ready, call plan_save with title, summary, steps, and assumptions.
-- After saving, tell the user to run /exec-plan or /clr-exec-plan.
-""");
             return builder.toString().trim();
         }
         if (plan.mode() == PlanMode.EXECUTE_PLAN && plan.hasSavedPlan()) {
@@ -155,6 +174,9 @@ Plan mode rules:
                 .append("Plan: ").append(plan.title()).append("\n");
             if (StringUtils.hasText(plan.summary())) {
                 builder.append("Summary: ").append(plan.summary()).append("\n");
+            }
+            if (StringUtils.hasText(plan.notes())) {
+                builder.append("Notes: ").append(plan.notes()).append("\n");
             }
             builder.append("Steps:\n");
             for (PlanStep step : plan.steps()) {
@@ -178,6 +200,7 @@ Plan mode rules:
             plan.title(),
             plan.summary(),
             plan.goal(),
+            plan.notes(),
             plan.steps().stream().map(PlanStep::text).toList()
         );
     }
@@ -203,6 +226,7 @@ Plan mode rules:
             plan.goal(),
             plan.title(),
             plan.summary(),
+            plan.notes(),
             plan.assumptions(),
             plan.steps(),
             plan.planStartMessageOrder(),

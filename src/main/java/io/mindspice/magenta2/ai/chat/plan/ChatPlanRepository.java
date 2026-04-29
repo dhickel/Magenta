@@ -29,7 +29,7 @@ public class ChatPlanRepository {
         }
         return jdbcTemplate.query(
             """
-                select conversation_id, mode, status, goal, title, summary, assumptions_json,
+                select conversation_id, mode, status, goal, title, summary, notes, assumptions_json,
                        plan_start_message_order, created_at, updated_at
                 from ai_chat_plans
                 where conversation_id = ?
@@ -46,6 +46,7 @@ public class ChatPlanRepository {
                     rs.getString("goal"),
                     rs.getString("title"),
                     rs.getString("summary"),
+                    rs.getString("notes"),
                     assumptions(rs.getString("assumptions_json")),
                     steps(id),
                     rs.getInt("plan_start_message_order"),
@@ -71,16 +72,17 @@ public class ChatPlanRepository {
         jdbcTemplate.update(
             """
                 insert into ai_chat_plans (
-                    conversation_id, mode, status, goal, title, summary, assumptions_json,
+                    conversation_id, mode, status, goal, title, summary, notes, assumptions_json,
                     plan_start_message_order, created_at, updated_at
                 )
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict(conversation_id) do update set
                     mode = excluded.mode,
                     status = excluded.status,
                     goal = excluded.goal,
                     title = excluded.title,
                     summary = excluded.summary,
+                    notes = excluded.notes,
                     assumptions_json = excluded.assumptions_json,
                     plan_start_message_order = excluded.plan_start_message_order,
                     updated_at = excluded.updated_at
@@ -91,6 +93,7 @@ public class ChatPlanRepository {
             plan.goal(),
             plan.title(),
             plan.summary(),
+            plan.notes(),
             assumptionsJson(plan.assumptions()),
             plan.planStartMessageOrder(),
             createdAt.toString(),
@@ -116,6 +119,7 @@ public class ChatPlanRepository {
             plan.goal(),
             plan.title(),
             plan.summary(),
+            plan.notes(),
             plan.assumptions() == null ? List.of() : List.copyOf(plan.assumptions()),
             List.copyOf(steps),
             plan.planStartMessageOrder(),
@@ -177,12 +181,20 @@ public class ChatPlanRepository {
                 goal text,
                 title text,
                 summary text,
+                notes text,
                 assumptions_json text,
                 plan_start_message_order integer not null,
                 created_at text not null,
                 updated_at text not null
             )
             """);
+        List<String> planColumns = jdbcTemplate.queryForList(
+            "select name from pragma_table_info('ai_chat_plans')",
+            String.class
+        );
+        if (!planColumns.contains("notes")) {
+            jdbcTemplate.execute("alter table ai_chat_plans add column notes text");
+        }
         jdbcTemplate.execute("""
             create table if not exists ai_chat_plan_steps (
                 conversation_id text not null,

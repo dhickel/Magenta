@@ -90,6 +90,7 @@ public class ChatController {
             },
             error -> {
                 try {
+                    chatService.discardLastUserMessage(resolvedRequest.conversationId(), resolvedRequest.message());
                     sendEvent(emitter, "error", ChatStreamEvent.error(error.getMessage()));
                     emitter.complete();
                 } catch (Exception sendError) {
@@ -161,7 +162,10 @@ public class ChatController {
             }
             case "switch" -> handleSwitch(requiredSingleArgument(rootCommand, parts, "a conversation UUID"));
             case "clear" -> handleClear(request.conversationId(), optionalSingleArgument(rootCommand, parts, "a conversation UUID"));
-            case "plan" -> handlePlan(request.conversationId(), optionalRemainder(command));
+            case "plan" -> {
+                requireNoArguments(rootCommand, parts);
+                yield handlePlan(request.conversationId());
+            }
             case "exit-plan" -> {
                 requireNoArguments(rootCommand, parts);
                 yield handleExitPlan(request.conversationId());
@@ -237,26 +241,23 @@ public class ChatController {
         );
     }
 
-    private ChatResponse.CmdResponse handlePlan(String requestConversationId, String goal) {
+    private ChatResponse.CmdResponse handlePlan(String requestConversationId) {
         String conversationId = normalize(requestConversationId);
         if (conversationId == null) {
             conversationId = chatService.newConversationId();
         }
-        chatService.beginPlan(conversationId, goal);
+        ChatResponse.MsgResponse response = chatService.beginPlan(conversationId);
         List<String> conversationIds = new ArrayList<>(chatService.listConversationIds());
         if (!conversationIds.contains(conversationId)) {
             conversationIds.add(0, conversationId);
         }
-        String message = normalize(goal) == null
-            ? "Entered plan mode. Send the goal or context, then save the plan with plan_save."
-            : "Entered plan mode for: " + goal;
         return new ChatResponse.CmdResponse(
             conversationId,
-            chatService.storedConversationModel(conversationId),
-            message,
+            response.model(),
+            response.response(),
             List.copyOf(conversationIds),
             chatService.history(conversationId),
-            chatService.contextUsage(conversationId, chatService.storedConversationModel(conversationId)),
+            response.contextUsage(),
             chatService.planState(conversationId)
         );
     }
@@ -319,14 +320,6 @@ public class ChatController {
             return null;
         }
         return singleArgument(command, parts, argumentDescription);
-    }
-
-    private String optionalRemainder(String command) {
-        int firstWhitespace = command.indexOf(' ');
-        if (firstWhitespace < 0) {
-            return null;
-        }
-        return normalize(command.substring(firstWhitespace + 1));
     }
 
     private String requiredConversationId(String conversationId, String message) {

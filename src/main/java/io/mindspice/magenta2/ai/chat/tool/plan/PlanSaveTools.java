@@ -24,10 +24,14 @@ public class PlanSaveTools {
         description = "Save or replace the current draft execution plan. Use this only when plan mode has a complete plan ready."
     )
     public String save(
+        @ToolParam(description = "The clarified user goal this plan is intended to accomplish.")
+        String goal,
         @ToolParam(description = "Short title for the plan.")
         String title,
         @ToolParam(required = false, description = "One or two sentence summary of the intended work.")
         String summary,
+        @ToolParam(required = false, description = "Extra planning notes or vital details that are not execution steps.")
+        String notes,
         @ToolParam(description = "Ordered execution steps. Each step should be concise and actionable.")
         List<String> steps,
         @ToolParam(required = false, description = "Important assumptions or defaults chosen for the plan.")
@@ -37,7 +41,7 @@ public class PlanSaveTools {
         if (context == null || context.mode() != PlanMode.PLAN) {
             throw new IllegalStateException("plan_save is available only in plan mode");
         }
-        ExecutionPlan plan = planService.saveDraftPlan(context.conversationId(), title, summary, steps, assumptions);
+        ExecutionPlan plan = planService.saveDraftPlan(context.conversationId(), goal, title, summary, notes, steps, assumptions);
         return "Saved plan: " + plan.title();
     }
 }

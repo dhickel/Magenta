@@ -8,9 +8,10 @@ public record ChatPlanState(
     String title,
     String summary,
     String goal,
+    String notes,
     List<String> steps
 ) {
     public static ChatPlanState normal() {
-        return new ChatPlanState("NORMAL", null, null, null, null, List.of());
+        return new ChatPlanState("NORMAL", null, null, null, null, null, List.of());
     }
 }

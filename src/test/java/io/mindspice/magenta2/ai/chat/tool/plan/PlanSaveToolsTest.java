@@ -26,19 +26,21 @@ class PlanSaveToolsTest {
             new ChatPlanRepository(jdbcTemplate, new ObjectMapper()),
             new SQLiteChatMemoryRepository(jdbcTemplate, new ObjectMapper())
         );
-        service.beginPlan("conversation-1", "Goal");
+        service.beginPlan("conversation-1");
         PlanSaveTools tools = new PlanSaveTools(service);
 
         PlanToolExecutionContext.set(new PlanToolContext("conversation-1", PlanMode.PLAN));
         try {
-            assertThat(tools.save("Plan", "Summary", List.of("Step"), List.of()))
+            assertThat(tools.save("Clarified goal", "Plan", "Summary", "Important note", List.of("Step"), List.of()))
                 .isEqualTo("Saved plan: Plan");
         } finally {
             PlanToolExecutionContext.clear();
         }
 
         assertThat(service.activePlan("conversation-1").orElseThrow().title()).isEqualTo("Plan");
-        assertThatThrownBy(() -> tools.save("Plan", null, List.of("Step"), List.of()))
+        assertThat(service.activePlan("conversation-1").orElseThrow().goal()).isEqualTo("Clarified goal");
+        assertThat(service.activePlan("conversation-1").orElseThrow().notes()).isEqualTo("Important note");
+        assertThatThrownBy(() -> tools.save("Clarified goal", "Plan", null, null, List.of("Step"), List.of()))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("plan mode");
     }

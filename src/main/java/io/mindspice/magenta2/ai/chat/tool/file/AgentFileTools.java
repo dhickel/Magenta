@@ -43,7 +43,7 @@ public class AgentFileTools {
 
     @Tool(
         name = "file_read",
-        description = "Read a UTF-8 text file chunk under the configured agent data root. Output lines use lineNumber:hash|content anchors for later file_replace edits."
+        description = "Read a UTF-8 text file chunk under the configured agent data root. Large files must be read in chunks with startLine and nextStartLine. Output lines use lineNumber:hash|content anchors for later file_replace edits."
     )
     public String read(
         @ToolParam(description = "Relative file path to read.")
@@ -58,7 +58,7 @@ public class AgentFileTools {
 
     @Tool(
         name = "file_search",
-        description = "Search UTF-8 text files under a relative file or directory path. Use this to find relevant files or anchored edit locations before reading large content."
+        description = "Search UTF-8 text files under a relative file or directory path, including large files. Results include matched line numbers, line hashes, and optional context lines."
     )
     public String search(
         @ToolParam(required = false, description = "Relative file or directory path. Use '.' for the root.")
@@ -97,6 +97,21 @@ public class AgentFileTools {
         Boolean overwrite
     ) throws Exception {
         return json(fileToolService.write(path, content, Boolean.TRUE.equals(overwrite)));
+    }
+
+    @Tool(
+        name = "file_append",
+        description = "Append UTF-8 text to the end of a file under the configured agent data root. Use this for log, note, report, and outline accumulation instead of rewriting existing file content."
+    )
+    public String append(
+        @ToolParam(description = "Relative file path to append to.")
+        String path,
+        @ToolParam(description = "Text to append exactly as provided. Include leading or trailing newlines when needed.")
+        String content,
+        @ToolParam(required = false, description = "Set true to create the file when it does not exist. Defaults to false.")
+        Boolean create
+    ) throws Exception {
+        return json(fileToolService.append(path, content, Boolean.TRUE.equals(create)));
     }
 
     @Tool(

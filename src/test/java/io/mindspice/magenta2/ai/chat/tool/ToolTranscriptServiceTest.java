@@ -56,4 +56,14 @@ class ToolTranscriptServiceTest {
             .contains("Tool read_note completed")
             .doesNotContain("sensitive raw result");
     }
+
+    @Test
+    void hardCapsStoredRawOutput() {
+        SystemMessage toolResult = service.fullResult("call-1", "large_tool", "{}", "x".repeat(50_000));
+
+        assertThat(toolResult.getText()).hasSizeLessThan(45_000);
+        assertThat(service.renderForModel(toolResult))
+            .contains("Raw output: truncated")
+            .doesNotContain("x".repeat(1_000));
+    }
 }

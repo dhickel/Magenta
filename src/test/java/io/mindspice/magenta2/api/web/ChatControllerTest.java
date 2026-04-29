@@ -48,19 +48,30 @@ class ChatControllerTest {
     }
 
     @Test
-    void planCommandAcceptsGoalRemainder() {
+    void planCommandStartsPlanningTurn() {
         ChatResponse.CmdResponse response = chatController.command(
-            new ChatRequest.CmdRequest(CONVERSATION_ID, "/plan add reminder support")
+            new ChatRequest.CmdRequest(CONVERSATION_ID, "/plan")
         );
 
-        assertThat(response.message()).isEqualTo("Entered plan mode for: add reminder support");
+        assertThat(response.message()).isEqualTo("What goal should we plan?");
         assertThat(response.planState().mode()).isEqualTo("PLAN");
-        assertThat(response.planState().goal()).isEqualTo("add reminder support");
+        assertThat(response.planState().goal()).isNull();
+    }
+
+    @Test
+    void planCommandRejectsArguments() {
+        assertThatThrownBy(() -> chatController.command(
+            new ChatRequest.CmdRequest(CONVERSATION_ID, "/plan add reminder support")
+        ))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(exception.getReason()).isEqualTo("plan does not accept arguments");
+            });
     }
 
     @Test
     void exitPlanCommandDropsPlanState() {
-        chatController.command(new ChatRequest.CmdRequest(CONVERSATION_ID, "/plan add reminder support"));
+        chatController.command(new ChatRequest.CmdRequest(CONVERSATION_ID, "/plan"));
 
         ChatResponse.CmdResponse response = chatController.command(
             new ChatRequest.CmdRequest(CONVERSATION_ID, "/exit-plan")
@@ -125,8 +136,9 @@ class ChatControllerTest {
         }
 
         @Override
-        public void beginPlan(String conversationId, String goal) {
-            planState = new ChatPlanState("PLAN", "DRAFT", null, null, goal, List.of());
+        public ChatResponse.MsgResponse beginPlan(String conversationId) {
+            planState = new ChatPlanState("PLAN", "DRAFT", null, null, null, null, List.of());
+            return new ChatResponse.MsgResponse(conversationId, "qwen3", "What goal should we plan?", null, planState);
         }
 
         @Override
@@ -140,7 +152,7 @@ class ChatControllerTest {
                 throw new IllegalStateException("No saved plan exists for this conversation");
             }
             executedWithClearContext = clearContext;
-            planState = new ChatPlanState("NORMAL", "COMPLETED", "Saved Plan", null, null, List.of("Step"));
+            planState = new ChatPlanState("NORMAL", "COMPLETED", "Saved Plan", null, null, null, List.of("Step"));
             return new ChatResponse.MsgResponse(conversationId, "qwen3", "executed plan", null, planState);
         }
 

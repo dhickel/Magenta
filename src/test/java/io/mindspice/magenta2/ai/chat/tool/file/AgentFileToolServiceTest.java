@@ -80,6 +80,19 @@ class AgentFileToolServiceTest {
     }
 
     @Test
+    void readsLargeFilesInRequestedChunks() throws IOException {
+        Files.writeString(tempDir.resolve("large.txt"), "x".repeat(1_000_001));
+
+        AgentFileToolService.FileReadResult result = service().read("large.txt", 1, 1);
+
+        assertThat(result.totalLines()).isEqualTo(1);
+        assertThat(result.lines()).hasSize(1);
+        assertThat(result.lines().getFirst()).contains("[line truncated");
+        assertThat(result.lines().getFirst().length()).isLessThan(2_200);
+        assertThat(result.nextStartLine()).isNull();
+    }
+
+    @Test
     void listsSingleFileMetadata() throws IOException {
         Files.writeString(tempDir.resolve("single.txt"), "abc");
 
@@ -155,6 +168,25 @@ class AgentFileToolServiceTest {
     }
 
     @Test
+    void searchesLargeFilesAndReportsMatchLineNumbers() throws IOException {
+        Files.writeString(
+            tempDir.resolve("large-search.txt"),
+            "x".repeat(1_000_001) + "\nneedle line\ntrailing context\n"
+        );
+
+        AgentFileToolService.FileSearchResult result = service().search("large-search.txt", "needle", false, false, 1, 10);
+
+        assertThat(result.truncated()).isFalse();
+        assertThat(result.matches()).hasSize(1);
+        AgentFileToolService.SearchMatch match = result.matches().getFirst();
+        assertThat(match.lineNumber()).isEqualTo(2);
+        assertThat(match.line()).isEqualTo("needle line");
+        assertThat(match.before()).hasSize(1);
+        assertThat(match.after()).hasSize(1);
+        assertThat(match.after().getFirst()).contains("trailing context");
+    }
+
+    @Test
     void replacesSingleAnchoredLineWithRepeatedContentAroundIt() throws IOException {
         Files.writeString(tempDir.resolve("edit.txt"), "same\nmiddle\nsame\n");
         AgentFileToolService service = service();
@@ -216,6 +248,32 @@ class AgentFileToolServiceTest {
         assertThatThrownBy(() -> service.write("new/file.txt", "other", false))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("already exists");
+    }
+
+    @Test
+    void appendsToExistingFileWithoutRewritingPriorContent() throws IOException {
+        Files.writeString(tempDir.resolve("notes.md"), "first\n");
+        AgentFileToolService service = service();
+
+        AgentFileToolService.FileAppendResult result = service.append("notes.md", "second\n", false);
+
+        assertThat(result.created()).isFalse();
+        assertThat(result.bytesAppended()).isEqualTo(7);
+        assertThat(Files.readString(tempDir.resolve("notes.md"))).isEqualTo("first\nsecond\n");
+    }
+
+    @Test
+    void appendsCanCreateFileWhenRequested() throws IOException {
+        AgentFileToolService service = service();
+
+        AgentFileToolService.FileAppendResult result = service.append("new/log.txt", "entry\n", true);
+
+        assertThat(result.created()).isTrue();
+        assertThat(result.bytesAppended()).isEqualTo(6);
+        assertThat(Files.readString(tempDir.resolve("new/log.txt"))).isEqualTo("entry\n");
+        assertThatThrownBy(() -> service.append("missing.txt", "entry\n", false))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("path does not exist");
     }
 
     private AgentFileToolService service() throws IOException {

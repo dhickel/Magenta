@@ -55,6 +55,7 @@ public class ChatService {
     private static final List<String> PLAN_MODE_TOOLS = List.of("file_list", "file_read", "file_search", "plan_save");
     private static final List<String> EXECUTION_BLOCKED_TOOLS = List.of("plan_save");
     private static final String EXECUTE_PLAN_MESSAGE = "Execute the saved plan now. Work through the plan directly and report the completed result.";
+    private static final String BEGIN_PLAN_MESSAGE = "The user is ready to plan. Begin the planning conversation.";
 
     private final ChatMemory chatMemory;
     private final ChatMemoryRepository chatMemoryRepository;
@@ -242,9 +243,10 @@ public class ChatService {
         }
     }
 
-    public void beginPlan(String conversationId, String goal) {
+    public ChatResponse.MsgResponse beginPlan(String conversationId) {
         requirePlanService();
-        planService.beginPlan(conversationId, goal);
+        planService.beginPlan(conversationId);
+        return chat(conversationId, BEGIN_PLAN_MESSAGE, storedConversationModel(conversationId));
     }
 
     public void exitPlan(String conversationId) {
@@ -300,6 +302,21 @@ public class ChatService {
     public List<ChatMessage> history(String conversationId) {
         List<Message> messages = chatMemoryRepository.findByConversationId(conversationId);
         return toHistory(messages);
+    }
+
+    public void discardLastUserMessage(String conversationId, String messageText) {
+        if (!StringUtils.hasText(conversationId)) {
+            return;
+        }
+        List<Message> messages = new ArrayList<>(chatMemoryRepository.findByConversationId(conversationId));
+        if (messages.isEmpty()) {
+            return;
+        }
+        Message lastMessage = messages.get(messages.size() - 1);
+        if (lastMessage instanceof UserMessage && java.util.Objects.equals(lastMessage.getText(), messageText)) {
+            messages.remove(messages.size() - 1);
+            chatMemoryRepository.saveAll(conversationId, messages);
+        }
     }
 
     public ContextUsage contextUsage(String conversationId, String model) {
@@ -549,8 +566,12 @@ public class ChatService {
     }
 
     String effectiveSystemPrompt(ResolvedChatRequest request) {
+        PlanMode mode = planService == null ? PlanMode.NORMAL : planService.mode(request.conversationId());
         String systemPrompt = defaultSystemPrompt();
         String runtimePrompt = planService == null ? "" : planService.runtimeInstructions(request.conversationId());
+        if (mode == PlanMode.PLAN) {
+            return runtimePrompt;
+        }
         if (!StringUtils.hasText(runtimePrompt)) {
             return systemPrompt;
         }

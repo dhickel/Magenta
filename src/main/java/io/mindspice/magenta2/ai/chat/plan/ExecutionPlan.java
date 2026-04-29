@@ -10,6 +10,7 @@ public record ExecutionPlan(
     String goal,
     String title,
     String summary,
+    String notes,
     List<String> assumptions,
     List<PlanStep> steps,
     int planStartMessageOrder,

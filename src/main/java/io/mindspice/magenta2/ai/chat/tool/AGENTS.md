@@ -15,6 +15,7 @@ This package owns chat-scoped tool execution support.
 - Avoid replay, approval, or orchestration behavior without an explicit user-facing tool use case.
 - Keep model-visible tool context concise and easy to inspect.
 - Keep file tool names and arguments plain, predictable, and friendly to smaller local models.
+- Prefer `file_append` for accumulating notes, outlines, reports, or logs; use `file_write` only when writing the complete desired file content.
 - Keep file path confinement centralized and reject traversal or symlink escapes before file IO.
 - Keep shell command execution structured; do not accept raw shell command strings.
 - Keep planning tools narrow; they should save or inspect plan state, not orchestrate execution.

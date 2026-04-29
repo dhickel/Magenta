@@ -22,6 +22,7 @@ create table if not exists ai_chat_plans (
     goal text,
     title text,
     summary text,
+    notes text,
     assumptions_json text,
     plan_start_message_order integer not null,
     created_at text not null,
