@@ -147,6 +147,11 @@ class ChatServiceTest {
     }
 
     @Test
+    void planModeAllowsShellExecutionTool() {
+        assertThat(ChatService.PLAN_MODE_TOOLS).contains("shell_exec");
+    }
+
+    @Test
     void detectsOllamaToolUnsupportedErrors() {
         NonTransientAiException exception = new NonTransientAiException(
             "HTTP 400 - {\"error\":\"registry.ollama.ai/library/model:latest does not support tools\"}"

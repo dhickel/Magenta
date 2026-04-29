@@ -12,7 +12,7 @@ This package owns chat-scoped plan mode and saved execution plan state.
 - Do not add general orchestration, scheduling, or subagent coordination here.
 - Keep plan schemas small and tied to the current chat workflow.
 - Keep the database as the source of truth; model tool calls request state changes but do not own state.
-- In PLAN mode, keep the model-visible prompt focused on planning-only behavior and read-only exploration.
+- In PLAN mode, keep the model-visible prompt focused on planning-only behavior. Shell access is allowed for planning research, including local database/schema inspection.
 - Prefer compact execution prompt state over replaying long planning transcripts.
 
 ### Validation

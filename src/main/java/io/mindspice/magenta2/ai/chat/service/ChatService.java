@@ -52,7 +52,13 @@ public class ChatService {
     private static final Pattern THINK_TAG_PATTERN = Pattern.compile("(?is)<think>(.*?)</think>");
     private static final int MAX_TOOL_CALL_ITERATIONS = 8;
     private static final String OLLAMA_TOOLS_UNSUPPORTED_MESSAGE = "does not support tools";
-    private static final List<String> PLAN_MODE_TOOLS = List.of("file_list", "file_read", "file_search", "plan_save");
+    static final List<String> PLAN_MODE_TOOLS = List.of(
+        "file_list",
+        "file_read",
+        "file_search",
+        "shell_exec",
+        "plan_save"
+    );
     private static final List<String> EXECUTION_BLOCKED_TOOLS = List.of("plan_save");
     private static final String EXECUTE_PLAN_MESSAGE = "Execute the saved plan now. Work through the plan directly and report the completed result.";
     private static final String BEGIN_PLAN_MESSAGE = "The user is ready to plan. Begin the planning conversation.";

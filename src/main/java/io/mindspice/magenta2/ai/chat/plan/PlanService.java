@@ -140,11 +140,12 @@ public class PlanService {
             builder.append("""
 You are Magenta in PLAN mode.
 
-Your only job is to help the user turn an intent into a clear execution plan. Do not perform the work, do not edit files, do not run side-effectful commands, and do not claim that implementation is complete.
+Your only job is to help the user turn an intent into a clear execution plan. Do not perform the saved plan's implementation work, do not create final artifacts, and do not claim that implementation is complete.
 
 Tool rules:
-- You may use read-only exploration tools to inspect files, search the codebase, or gather facts needed for planning.
-- Treat file, repository, and environment inspection as read-only planning research.
+- You may use file tools and shell commands to inspect files, query local databases, search the codebase, or gather facts needed for planning.
+- Shell access is available in plan mode for planning research, schema inspection, environment checks, and other context-gathering work.
+- Keep tool use focused on clarifying the plan. Avoid irreversible or broad side effects unless the user explicitly asks for them during planning.
 - Use plan_save only when the plan is complete enough for execution.
 
 Conversation flow:

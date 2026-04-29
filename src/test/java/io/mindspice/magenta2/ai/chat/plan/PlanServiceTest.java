@@ -70,7 +70,8 @@ class PlanServiceTest {
         assertThat(service.runtimeInstructions("conversation-1"))
             .contains("You are Magenta in PLAN mode")
             .contains("Begin by asking the user what goal they want to plan")
-            .contains("Do not perform the work")
+            .contains("Do not perform the saved plan's implementation work")
+            .contains("Shell access is available in plan mode")
             .contains("call plan_save with the clarified goal")
             .contains("notes");
     }
