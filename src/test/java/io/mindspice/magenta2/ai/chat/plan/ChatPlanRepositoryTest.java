@@ -25,6 +25,8 @@ class ChatPlanRepositoryTest {
         assertThat(saved.notes()).isEqualTo("Plan notes");
         assertThat(saved.steps()).extracting(PlanStep::text).containsExactly("Execute");
         assertThat(saved.assumptions()).containsExactly("Use commands");
+        assertThat(saved.acceptanceCriteria()).containsExactly("Show evidence");
+        assertThat(saved.executionEvidence()).containsExactly("Evidence: checked");
     }
 
     private ExecutionPlan plan(String conversationId, String title, List<String> steps) {
@@ -41,6 +43,8 @@ class ChatPlanRepositoryTest {
             steps.stream()
                 .map(step -> new PlanStep(steps.indexOf(step) + 1, step))
                 .toList(),
+            List.of("Show evidence"),
+            List.of("Evidence: checked"),
             3,
             now,
             now

@@ -13,6 +13,8 @@ public record ExecutionPlan(
     String notes,
     List<String> assumptions,
     List<PlanStep> steps,
+    List<String> acceptanceCriteria,
+    List<String> executionEvidence,
     int planStartMessageOrder,
     Instant createdAt,
     Instant updatedAt

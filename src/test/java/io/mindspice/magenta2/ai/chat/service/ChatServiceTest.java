@@ -13,15 +13,19 @@ import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.retry.NonTransientAiException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ChatServiceTest {
 
@@ -162,6 +166,51 @@ class ChatServiceTest {
     }
 
     @Test
+    void toolLoopGuardStopsAfterFiveIdenticalToolCalls() {
+        ChatService.ToolLoopGuard guard = new ChatService.ToolLoopGuard();
+        AssistantMessage.ToolCall call = new AssistantMessage.ToolCall("call-1", "function", "file_read", "{\"path\":\"a\"}");
+
+        for (int i = 0; i < 4; i++) {
+            guard.recordToolCalls(List.of(call));
+        }
+
+        assertThatThrownBy(() -> guard.recordToolCalls(List.of(call)))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("5 identical calls to file_read");
+    }
+
+    @Test
+    void toolLoopGuardStopsAfterFiveErrorsInEightResponses() {
+        ChatService.ToolLoopGuard guard = new ChatService.ToolLoopGuard();
+
+        for (String response : List.of(
+            "{\"exitCode\":1}",
+            "{\"ok\":true}",
+            "startAnchor hash does not match current file content",
+            "{\"ok\":true}",
+            "file not found",
+            "permission denied",
+            "{\"ok\":true}"
+        )) {
+            guard.recordToolResponses(toolResult(response));
+        }
+
+        assertThatThrownBy(() -> guard.recordToolResponses(toolResult("tool failed")))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("5 errors in the last 8 tool responses");
+    }
+
+    @Test
+    void toolLoopGuardAllowsLongSuccessfulToolSequences() {
+        ChatService.ToolLoopGuard guard = new ChatService.ToolLoopGuard();
+
+        for (int i = 0; i < 20; i++) {
+            guard.recordToolCalls(List.of(new AssistantMessage.ToolCall("call-" + i, "function", "file_read", "{\"path\":\"" + i + "\"}")));
+            guard.recordToolResponses(toolResult("{\"ok\":true}"));
+        }
+    }
+
+    @Test
     void discardLastUserMessageRemovesOnlyMatchingDanglingUserTurn() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         SQLiteChatMemoryRepository memoryRepository = new SQLiteChatMemoryRepository(jdbcTemplate, new ObjectMapper());
@@ -188,5 +237,14 @@ class ChatServiceTest {
     private JdbcTemplate jdbcTemplate() {
         SingleConnectionDataSource dataSource = new SingleConnectionDataSource("jdbc:sqlite::memory:", true);
         return new JdbcTemplate(dataSource);
+    }
+
+    private ToolExecutionResult toolResult(String responseData) {
+        Message responseMessage = ToolResponseMessage.builder()
+            .responses(List.of(new ToolResponseMessage.ToolResponse("call-1", "tool", responseData)))
+            .build();
+        return ToolExecutionResult.builder()
+            .conversationHistory(List.of(responseMessage))
+            .build();
     }
 }

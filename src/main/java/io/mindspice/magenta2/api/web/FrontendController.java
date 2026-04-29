@@ -207,8 +207,8 @@ public class FrontendController {
 
                 #chat-plan-status {
                     display: none;
-                    align-items: center;
-                    justify-content: space-between;
+                    flex-direction: column;
+                    align-items: stretch;
                     gap: 0.75rem;
                     border: 1px solid #cdd7e3;
                     border-radius: 6px;
@@ -223,12 +223,26 @@ public class FrontendController {
                     display: flex;
                 }
 
+                .chat-plan-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 0.75rem;
+                }
+
                 #chat-plan-title {
                     font-weight: 700;
                 }
 
                 #chat-plan-hint {
                     color: #5a6779;
+                    font-size: 0.82rem;
+                }
+
+                #chat-plan-evidence ul {
+                    margin: 0;
+                    padding-left: 1.1rem;
+                    color: #344154;
                     font-size: 0.82rem;
                 }
 
@@ -544,8 +558,11 @@ public class FrontendController {
                             <code id="chat-active-session">%s</code>
                         </div>
                         <div id="chat-plan-status" aria-live="polite">
-                            <span id="chat-plan-title"></span>
-                            <span id="chat-plan-hint"></span>
+                            <div class="chat-plan-header">
+                                <span id="chat-plan-title"></span>
+                                <span id="chat-plan-hint"></span>
+                            </div>
+                            <div id="chat-plan-evidence"></div>
                         </div>
                         <div id="chat-history"></div>
                         <form id="chat-form">
@@ -573,7 +590,7 @@ public class FrontendController {
                     .withSubtitle("Session-backed chat bootstrap")
                     .build())
             .withTopNav(topNavBar)
-            .addCustomJs("/js/chat-client.js?v=9")
+            .addCustomJs("/js/chat-client.js?v=10")
             .buildTemplate();
 
     @GetMapping("/chat")

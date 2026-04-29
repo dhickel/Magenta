@@ -2,6 +2,8 @@ package io.mindspice.magenta2.ai.chat.service;
 
 import java.util.UUID;
 import java.util.ArrayList;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -50,7 +52,9 @@ public class ChatService {
     static final String MESSAGE_THINKING_METADATA_KEY = "magenta.thinking";
 
     private static final Pattern THINK_TAG_PATTERN = Pattern.compile("(?is)<think>(.*?)</think>");
-    private static final int MAX_TOOL_CALL_ITERATIONS = 8;
+    private static final int TOOL_ERROR_WINDOW_SIZE = 8;
+    private static final int TOOL_ERROR_WINDOW_LIMIT = 5;
+    private static final int IDENTICAL_TOOL_CALL_LIMIT = 5;
     private static final String OLLAMA_TOOLS_UNSUPPORTED_MESSAGE = "does not support tools";
     static final List<String> PLAN_MODE_TOOLS = List.of(
         "file_list",
@@ -59,6 +63,7 @@ public class ChatService {
         "shell_exec",
         "plan_save"
     );
+    private static final List<String> NORMAL_BLOCKED_TOOLS = List.of("plan_save", "plan_report");
     private static final List<String> EXECUTION_BLOCKED_TOOLS = List.of("plan_save");
     private static final String EXECUTE_PLAN_MESSAGE = "Execute the saved plan now. Work through the plan directly and report the completed result.";
     private static final String BEGIN_PLAN_MESSAGE = "The user is ready to plan. Begin the planning conversation.";
@@ -275,8 +280,15 @@ public class ChatService {
         planService.markExecuting(conversationId);
         try {
             ChatResponse.MsgResponse response = chat(conversationId, EXECUTE_PLAN_MESSAGE, model);
-            planService.markCompleted(conversationId);
-            return response;
+            planService.recordFallbackExecutionEvidence(conversationId);
+            planService.markNeedsReview(conversationId);
+            return new ChatResponse.MsgResponse(
+                response.conversationId(),
+                response.model(),
+                response.response(),
+                response.contextUsage(),
+                planState(conversationId)
+            );
         } catch (RuntimeException exception) {
             throw exception;
         }
@@ -381,14 +393,13 @@ public class ChatService {
             org.springframework.ai.chat.model.ChatResponse response = chatModelRouter.chatModel(request.model()).call(prompt);
             List<Message> messagesToPersist = new ArrayList<>();
             List<String> thinkingParts = new ArrayList<>();
-            int iterations = 0;
+            ToolLoopGuard toolLoopGuard = new ToolLoopGuard();
 
             while (response != null && response.hasToolCalls()) {
-                if (++iterations > MAX_TOOL_CALL_ITERATIONS) {
-                    throw new IllegalStateException("Tool execution exceeded " + MAX_TOOL_CALL_ITERATIONS + " iterations");
-                }
+                toolLoopGuard.recordToolCalls(response.getResult().getOutput().getToolCalls());
                 collectThinking(response, thinkingParts);
                 ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(prompt, response);
+                toolLoopGuard.recordToolResponses(toolExecutionResult);
                 messagesToPersist.addAll(toolTranscriptMessages(response, toolExecutionResult));
                 prompt = new Prompt(toolExecutionResult.conversationHistory(), options);
                 response = chatModelRouter.chatModel(request.model()).call(prompt);
@@ -490,6 +501,93 @@ public class ChatService {
             .toList();
     }
 
+    static final class ToolLoopGuard {
+        private final Map<String, Integer> identicalToolCallCounts = new java.util.HashMap<>();
+        private final Deque<Boolean> recentToolErrors = new ArrayDeque<>();
+        private int recentErrorCount = 0;
+
+        void recordToolCalls(List<AssistantMessage.ToolCall> toolCalls) {
+            for (AssistantMessage.ToolCall toolCall : toolCalls == null ? List.<AssistantMessage.ToolCall>of() : toolCalls) {
+                String key = toolCall.name() + "\n" + normalizeArguments(toolCall.arguments());
+                int count = identicalToolCallCounts.merge(key, 1, Integer::sum);
+                if (count >= IDENTICAL_TOOL_CALL_LIMIT) {
+                    throw new IllegalStateException(
+                        "Tool execution stopped after " + count + " identical calls to " + toolCall.name()
+                    );
+                }
+            }
+        }
+
+        void recordToolResponses(ToolExecutionResult toolExecutionResult) {
+            ToolResponseMessage latestToolResponseMessage = latestToolResponseMessage(toolExecutionResult);
+            if (latestToolResponseMessage == null) {
+                recordToolResult(false);
+                return;
+            }
+            for (ToolResponseMessage.ToolResponse response : latestToolResponseMessage.getResponses()) {
+                recordToolResult(isToolError(response.responseData()));
+            }
+        }
+
+        private ToolResponseMessage latestToolResponseMessage(ToolExecutionResult toolExecutionResult) {
+            if (toolExecutionResult == null || toolExecutionResult.conversationHistory() == null) {
+                return null;
+            }
+            ToolResponseMessage latest = null;
+            for (Message message : toolExecutionResult.conversationHistory()) {
+                if (message instanceof ToolResponseMessage toolResponseMessage) {
+                    latest = toolResponseMessage;
+                }
+            }
+            return latest;
+        }
+
+        private void recordToolResult(boolean error) {
+            recentToolErrors.addLast(error);
+            if (error) {
+                recentErrorCount++;
+            }
+            while (recentToolErrors.size() > TOOL_ERROR_WINDOW_SIZE) {
+                if (Boolean.TRUE.equals(recentToolErrors.removeFirst())) {
+                    recentErrorCount--;
+                }
+            }
+            if (recentToolErrors.size() == TOOL_ERROR_WINDOW_SIZE && recentErrorCount >= TOOL_ERROR_WINDOW_LIMIT) {
+                throw new IllegalStateException(
+                    "Tool execution stopped after " + recentErrorCount + " errors in the last "
+                        + TOOL_ERROR_WINDOW_SIZE + " tool responses"
+                );
+            }
+        }
+
+        private boolean isToolError(String responseData) {
+            if (!StringUtils.hasText(responseData)) {
+                return false;
+            }
+            String normalized = responseData.toLowerCase(java.util.Locale.ROOT);
+            return normalized.contains("\"exitcode\":1")
+                || normalized.contains("\"exitcode\":2")
+                || normalized.contains("\"exitcode\":3")
+                || normalized.contains("\"exitcode\":4")
+                || normalized.contains("\"exitcode\":5")
+                || normalized.contains("\"exitcode\":6")
+                || normalized.contains("\"exitcode\":7")
+                || normalized.contains("\"exitcode\":8")
+                || normalized.contains("\"exitcode\":9")
+                || normalized.contains("\"timedout\":true")
+                || normalized.contains("exception")
+                || normalized.contains("error")
+                || normalized.contains("failed")
+                || normalized.contains("does not match current file content")
+                || normalized.contains("not found")
+                || normalized.contains("permission denied");
+        }
+
+        private String normalizeArguments(String arguments) {
+            return StringUtils.hasText(arguments) ? arguments.replaceAll("\\s+", " ").trim() : "";
+        }
+    }
+
     private List<ToolCallback> approvedTools(ResolvedChatRequest request) {
         if (chatToolRegistry == null || aiConfig == null || !StringUtils.hasText(aiConfig.defaultAgent())) {
             return List.of();
@@ -502,8 +600,13 @@ public class ChatService {
         if (mode == PlanMode.PLAN) {
             return chatToolRegistry.resolveApprovedTools(defaultAgent.approvedTools(), PLAN_MODE_TOOLS);
         }
+        if (mode == PlanMode.EXECUTE_PLAN) {
+            return chatToolRegistry.resolveApprovedTools(defaultAgent.approvedTools()).stream()
+                .filter(callback -> !EXECUTION_BLOCKED_TOOLS.contains(callback.getToolDefinition().name()))
+                .toList();
+        }
         return chatToolRegistry.resolveApprovedTools(defaultAgent.approvedTools()).stream()
-            .filter(callback -> !EXECUTION_BLOCKED_TOOLS.contains(callback.getToolDefinition().name()))
+            .filter(callback -> !NORMAL_BLOCKED_TOOLS.contains(callback.getToolDefinition().name()))
             .toList();
     }
 

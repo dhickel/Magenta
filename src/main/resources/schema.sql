@@ -24,6 +24,8 @@ create table if not exists ai_chat_plans (
     summary text,
     notes text,
     assumptions_json text,
+    acceptance_criteria_json text,
+    execution_evidence_json text,
     plan_start_message_order integer not null,
     created_at text not null,
     updated_at text not null

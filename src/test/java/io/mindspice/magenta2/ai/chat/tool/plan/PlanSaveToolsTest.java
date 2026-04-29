@@ -31,7 +31,15 @@ class PlanSaveToolsTest {
 
         PlanToolExecutionContext.set(new PlanToolContext("conversation-1", PlanMode.PLAN));
         try {
-            assertThat(tools.save("Clarified goal", "Plan", "Summary", "Important note", List.of("Step"), List.of()))
+            assertThat(tools.save(
+                "Clarified goal",
+                "Plan",
+                "Summary",
+                "Important note",
+                List.of("Step"),
+                List.of(),
+                List.of("Show evidence")
+            ))
                 .isEqualTo("Saved plan: Plan");
         } finally {
             PlanToolExecutionContext.clear();
@@ -40,9 +48,43 @@ class PlanSaveToolsTest {
         assertThat(service.activePlan("conversation-1").orElseThrow().title()).isEqualTo("Plan");
         assertThat(service.activePlan("conversation-1").orElseThrow().goal()).isEqualTo("Clarified goal");
         assertThat(service.activePlan("conversation-1").orElseThrow().notes()).isEqualTo("Important note");
-        assertThatThrownBy(() -> tools.save("Clarified goal", "Plan", null, null, List.of("Step"), List.of()))
+        assertThat(service.activePlan("conversation-1").orElseThrow().acceptanceCriteria()).containsExactly("Show evidence");
+        assertThatThrownBy(() -> tools.save("Clarified goal", "Plan", null, null, List.of("Step"), List.of(), List.of()))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("plan mode");
+    }
+
+    @Test
+    void reportsOnlyWhileExecutingPlan() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        PlanService service = new PlanService(
+            new ChatPlanRepository(jdbcTemplate, new ObjectMapper()),
+            new SQLiteChatMemoryRepository(jdbcTemplate, new ObjectMapper())
+        );
+        service.beginPlan("conversation-1");
+        service.saveDraftPlan("conversation-1", "Goal", "Plan", null, null, List.of("Step"), List.of(), List.of());
+        service.markExecuting("conversation-1");
+        PlanSaveTools tools = new PlanSaveTools(service);
+
+        PlanToolExecutionContext.set(new PlanToolContext("conversation-1", PlanMode.EXECUTE_PLAN));
+        try {
+            assertThat(tools.report(
+                "Done",
+                List.of("Actual count: 1"),
+                List.of(),
+                List.of(),
+                List.of("report.md")
+            )).isEqualTo("Recorded execution evidence for plan: Plan");
+        } finally {
+            PlanToolExecutionContext.clear();
+        }
+
+        assertThat(service.activePlan("conversation-1").orElseThrow().executionEvidence())
+            .contains("Summary: Done")
+            .contains("Artifact: report.md");
+        assertThatThrownBy(() -> tools.report(null, List.of(), List.of(), List.of(), List.of()))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("executing");
     }
 
     private JdbcTemplate jdbcTemplate() {

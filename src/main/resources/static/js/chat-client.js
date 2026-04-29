@@ -70,7 +70,8 @@
         const statusEl = byId('chat-plan-status');
         const titleEl = byId('chat-plan-title');
         const hintEl = byId('chat-plan-hint');
-        if (!statusEl || !titleEl || !hintEl) {
+        const evidenceEl = byId('chat-plan-evidence');
+        if (!statusEl || !titleEl || !hintEl || !evidenceEl) {
             return;
         }
         const mode = planState && planState.mode ? String(planState.mode) : 'NORMAL';
@@ -78,6 +79,7 @@
             statusEl.classList.remove('active');
             titleEl.textContent = '';
             hintEl.textContent = '';
+            evidenceEl.innerHTML = '';
             return;
         }
         const title = planState && planState.title ? String(planState.title) : (planState && planState.goal ? String(planState.goal) : 'Draft plan');
@@ -85,7 +87,13 @@
         titleEl.textContent = mode === 'PLAN' ? 'Plan mode: ' + title : 'Plan: ' + title + ' (' + status + ')';
         hintEl.textContent = mode === 'PLAN'
             ? 'Use /exec-plan, /clr-exec-plan, or /exit-plan'
-            : 'Saved execution plan';
+            : (status === 'needs_review' ? 'Review execution evidence before trusting completion' : 'Saved execution plan');
+        const evidence = Array.isArray(planState && planState.executionEvidence) ? planState.executionEvidence : [];
+        evidenceEl.innerHTML = evidence.length
+            ? '<ul>' + evidence.map(function(item) {
+                return '<li>' + escapeHtml(item) + '</li>';
+            }).join('') + '</ul>'
+            : '';
         statusEl.classList.add('active');
     }
 

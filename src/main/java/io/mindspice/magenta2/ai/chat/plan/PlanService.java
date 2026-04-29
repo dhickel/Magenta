@@ -35,6 +35,8 @@ public class PlanService {
             null,
             List.of(),
             List.of(),
+            List.of(),
+            List.of(),
             startOrder,
             existing == null ? now : existing.createdAt(),
             now
@@ -62,7 +64,8 @@ public class PlanService {
         String summary,
         String notes,
         List<String> steps,
-        List<String> assumptions
+        List<String> assumptions,
+        List<String> acceptanceCriteria
     ) {
         ExecutionPlan existing = requirePlanConversation(conversationId);
         if (existing.mode() != PlanMode.PLAN) {
@@ -95,6 +98,8 @@ public class PlanService {
             normalize(notes),
             cleanList(assumptions),
             orderedSteps,
+            cleanList(acceptanceCriteria),
+            List.of(),
             existing.planStartMessageOrder(),
             existing.createdAt(),
             Instant.now()
@@ -103,12 +108,69 @@ public class PlanService {
 
     public ExecutionPlan markExecuting(String conversationId) {
         ExecutionPlan plan = requireSavedPlan(conversationId);
-        return planRepository.save(copyWith(plan, PlanMode.EXECUTE_PLAN, PlanStatus.EXECUTING));
+        return planRepository.save(new ExecutionPlan(
+            plan.conversationId(),
+            PlanMode.EXECUTE_PLAN,
+            PlanStatus.EXECUTING,
+            plan.goal(),
+            plan.title(),
+            plan.summary(),
+            plan.notes(),
+            plan.assumptions(),
+            plan.steps(),
+            plan.acceptanceCriteria(),
+            List.of(),
+            plan.planStartMessageOrder(),
+            plan.createdAt(),
+            Instant.now()
+        ));
     }
 
     public ExecutionPlan markCompleted(String conversationId) {
         ExecutionPlan plan = requirePlanConversation(conversationId);
         return planRepository.save(copyWith(plan, PlanMode.NORMAL, PlanStatus.COMPLETED));
+    }
+
+    public ExecutionPlan markNeedsReview(String conversationId) {
+        ExecutionPlan plan = requirePlanConversation(conversationId);
+        return planRepository.save(copyWith(plan, PlanMode.NORMAL, PlanStatus.NEEDS_REVIEW));
+    }
+
+    public ExecutionPlan recordExecutionReport(
+        String conversationId,
+        String summary,
+        List<String> evidence,
+        List<String> deviations,
+        List<String> unmetCriteria,
+        List<String> artifactPaths
+    ) {
+        ExecutionPlan plan = requirePlanConversation(conversationId);
+        if (plan.mode() != PlanMode.EXECUTE_PLAN) {
+            throw new IllegalStateException("plan_report is available only while executing a saved plan");
+        }
+        List<String> entries = new ArrayList<>();
+        addLabeled(entries, "Summary", normalize(summary));
+        addLabeled(entries, "Evidence", cleanList(evidence));
+        addLabeled(entries, "Deviation", cleanList(deviations));
+        addLabeled(entries, "Unmet criterion", cleanList(unmetCriteria));
+        addLabeled(entries, "Artifact", cleanList(artifactPaths));
+        if (entries.isEmpty()) {
+            entries.add("Summary: execution reported no details.");
+        }
+        List<String> updatedEvidence = new ArrayList<>(plan.executionEvidence());
+        updatedEvidence.addAll(entries);
+        return planRepository.save(withExecutionEvidence(plan, updatedEvidence));
+    }
+
+    public ExecutionPlan recordFallbackExecutionEvidence(String conversationId) {
+        ExecutionPlan plan = requirePlanConversation(conversationId);
+        if (!plan.executionEvidence().isEmpty()) {
+            return plan;
+        }
+        return planRepository.save(withExecutionEvidence(
+            plan,
+            List.of("Deviation: execution returned without a structured plan_report ledger.")
+        ));
     }
 
     public void exitPlan(String conversationId) {
@@ -147,6 +209,7 @@ Tool rules:
 - Shell access is available in plan mode for planning research, schema inspection, environment checks, and other context-gathering work.
 - Keep tool use focused on clarifying the plan. Avoid irreversible or broad side effects unless the user explicitly asks for them during planning.
 - Use plan_save only when the plan is complete enough for execution.
+- Include acceptance criteria in plan_save whenever the user gives measurable requirements, such as counts, files, validation checks, or output quality bars.
 
 Conversation flow:
 - Begin by asking the user what goal they want to plan.
@@ -154,7 +217,7 @@ Conversation flow:
 - Keep the planning conversation progressive and natural. Restate your understanding, ask targeted clarifying questions, inspect read-only context when that can answer implementation questions, and explain the approach you are considering.
 - Ask for corrections whenever your understanding, approach, constraints, or tradeoffs may be off.
 - Continue until the goal, approach, constraints, assumptions, risks, and execution steps are clear enough that another model or engineer could execute without guessing.
-- When ready, call plan_save with the clarified goal, title, summary, notes, ordered execution steps, and assumptions.
+- When ready, call plan_save with the clarified goal, title, summary, notes, ordered execution steps, assumptions, and acceptance criteria.
 - After saving, tell the user the plan is ready for approval and they can run /exec-plan or /clr-exec-plan.
 
 Runtime state:
@@ -189,6 +252,20 @@ Mode: PLAN
                     builder.append("- ").append(assumption).append("\n");
                 }
             }
+            if (!plan.acceptanceCriteria().isEmpty()) {
+                builder.append("Acceptance criteria:\n");
+                for (String criterion : plan.acceptanceCriteria()) {
+                    builder.append("- ").append(criterion).append("\n");
+                }
+            }
+            builder.append("""
+Execution reporting:
+- Track acceptance criteria explicitly while working.
+- Call plan_report before your final answer with actual evidence, artifact paths, deviations, and any unmet criteria.
+- Report actual counts and deviations before synthesis.
+- Do not claim the plan is complete when criteria are unmet.
+- When you create generated evidence artifacts, read them back before using them for final synthesis.
+""");
             return builder.toString().trim();
         }
         return "";
@@ -202,7 +279,9 @@ Mode: PLAN
             plan.summary(),
             plan.goal(),
             plan.notes(),
-            plan.steps().stream().map(PlanStep::text).toList()
+            plan.steps().stream().map(PlanStep::text).toList(),
+            plan.acceptanceCriteria(),
+            plan.executionEvidence()
         );
     }
 
@@ -230,10 +309,43 @@ Mode: PLAN
             plan.notes(),
             plan.assumptions(),
             plan.steps(),
+            plan.acceptanceCriteria(),
+            plan.executionEvidence(),
             plan.planStartMessageOrder(),
             plan.createdAt(),
             Instant.now()
         );
+    }
+
+    private ExecutionPlan withExecutionEvidence(ExecutionPlan plan, List<String> executionEvidence) {
+        return new ExecutionPlan(
+            plan.conversationId(),
+            plan.mode(),
+            plan.status(),
+            plan.goal(),
+            plan.title(),
+            plan.summary(),
+            plan.notes(),
+            plan.assumptions(),
+            plan.steps(),
+            plan.acceptanceCriteria(),
+            executionEvidence == null ? List.of() : List.copyOf(executionEvidence),
+            plan.planStartMessageOrder(),
+            plan.createdAt(),
+            Instant.now()
+        );
+    }
+
+    private void addLabeled(List<String> entries, String label, String value) {
+        if (StringUtils.hasText(value)) {
+            entries.add(label + ": " + value);
+        }
+    }
+
+    private void addLabeled(List<String> entries, String label, List<String> values) {
+        for (String value : values) {
+            entries.add(label + ": " + value);
+        }
     }
 
     private void trimConversation(String conversationId, int messageCount) {

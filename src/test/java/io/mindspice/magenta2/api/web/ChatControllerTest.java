@@ -137,7 +137,7 @@ class ChatControllerTest {
 
         @Override
         public ChatResponse.MsgResponse beginPlan(String conversationId) {
-            planState = new ChatPlanState("PLAN", "DRAFT", null, null, null, null, List.of());
+            planState = new ChatPlanState("PLAN", "DRAFT", null, null, null, null, List.of(), List.of(), List.of());
             return new ChatResponse.MsgResponse(conversationId, "qwen3", "What goal should we plan?", null, planState);
         }
 
@@ -152,7 +152,17 @@ class ChatControllerTest {
                 throw new IllegalStateException("No saved plan exists for this conversation");
             }
             executedWithClearContext = clearContext;
-            planState = new ChatPlanState("NORMAL", "COMPLETED", "Saved Plan", null, null, null, List.of("Step"));
+            planState = new ChatPlanState(
+                "NORMAL",
+                "NEEDS_REVIEW",
+                "Saved Plan",
+                null,
+                null,
+                null,
+                List.of("Step"),
+                List.of("Do the work"),
+                List.of("Evidence: ran")
+            );
             return new ChatResponse.MsgResponse(conversationId, "qwen3", "executed plan", null, planState);
         }
 

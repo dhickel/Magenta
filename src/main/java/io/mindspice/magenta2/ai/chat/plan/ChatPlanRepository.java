@@ -30,6 +30,7 @@ public class ChatPlanRepository {
         return jdbcTemplate.query(
             """
                 select conversation_id, mode, status, goal, title, summary, notes, assumptions_json,
+                       acceptance_criteria_json, execution_evidence_json,
                        plan_start_message_order, created_at, updated_at
                 from ai_chat_plans
                 where conversation_id = ?
@@ -47,8 +48,10 @@ public class ChatPlanRepository {
                     rs.getString("title"),
                     rs.getString("summary"),
                     rs.getString("notes"),
-                    assumptions(rs.getString("assumptions_json")),
+                    stringList(rs.getString("assumptions_json")),
                     steps(id),
+                    stringList(rs.getString("acceptance_criteria_json")),
+                    stringList(rs.getString("execution_evidence_json")),
                     rs.getInt("plan_start_message_order"),
                     Instant.parse(rs.getString("created_at")),
                     Instant.parse(rs.getString("updated_at"))
@@ -73,9 +76,9 @@ public class ChatPlanRepository {
             """
                 insert into ai_chat_plans (
                     conversation_id, mode, status, goal, title, summary, notes, assumptions_json,
-                    plan_start_message_order, created_at, updated_at
+                    acceptance_criteria_json, execution_evidence_json, plan_start_message_order, created_at, updated_at
                 )
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict(conversation_id) do update set
                     mode = excluded.mode,
                     status = excluded.status,
@@ -84,6 +87,8 @@ public class ChatPlanRepository {
                     summary = excluded.summary,
                     notes = excluded.notes,
                     assumptions_json = excluded.assumptions_json,
+                    acceptance_criteria_json = excluded.acceptance_criteria_json,
+                    execution_evidence_json = excluded.execution_evidence_json,
                     plan_start_message_order = excluded.plan_start_message_order,
                     updated_at = excluded.updated_at
                 """,
@@ -94,7 +99,9 @@ public class ChatPlanRepository {
             plan.title(),
             plan.summary(),
             plan.notes(),
-            assumptionsJson(plan.assumptions()),
+            stringListJson(plan.assumptions()),
+            stringListJson(plan.acceptanceCriteria()),
+            stringListJson(plan.executionEvidence()),
             plan.planStartMessageOrder(),
             createdAt.toString(),
             updatedAt.toString()
@@ -122,6 +129,8 @@ public class ChatPlanRepository {
             plan.notes(),
             plan.assumptions() == null ? List.of() : List.copyOf(plan.assumptions()),
             List.copyOf(steps),
+            plan.acceptanceCriteria() == null ? List.of() : List.copyOf(plan.acceptanceCriteria()),
+            plan.executionEvidence() == null ? List.of() : List.copyOf(plan.executionEvidence()),
             plan.planStartMessageOrder(),
             createdAt,
             updatedAt
@@ -150,25 +159,25 @@ public class ChatPlanRepository {
         );
     }
 
-    private List<String> assumptions(String json) {
+    private List<String> stringList(String json) {
         if (!StringUtils.hasText(json)) {
             return List.of();
         }
         try {
             return objectMapper.readValue(json, new TypeReference<>() { });
         } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("Failed to parse plan assumptions", exception);
+            throw new IllegalStateException("Failed to parse plan list", exception);
         }
     }
 
-    private String assumptionsJson(List<String> assumptions) {
-        if (assumptions == null || assumptions.isEmpty()) {
+    private String stringListJson(List<String> values) {
+        if (values == null || values.isEmpty()) {
             return null;
         }
         try {
-            return objectMapper.writeValueAsString(assumptions);
+            return objectMapper.writeValueAsString(values);
         } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("Failed to serialize plan assumptions", exception);
+            throw new IllegalStateException("Failed to serialize plan list", exception);
         }
     }
 
@@ -183,6 +192,8 @@ public class ChatPlanRepository {
                 summary text,
                 notes text,
                 assumptions_json text,
+                acceptance_criteria_json text,
+                execution_evidence_json text,
                 plan_start_message_order integer not null,
                 created_at text not null,
                 updated_at text not null
@@ -194,6 +205,12 @@ public class ChatPlanRepository {
         );
         if (!planColumns.contains("notes")) {
             jdbcTemplate.execute("alter table ai_chat_plans add column notes text");
+        }
+        if (!planColumns.contains("acceptance_criteria_json")) {
+            jdbcTemplate.execute("alter table ai_chat_plans add column acceptance_criteria_json text");
+        }
+        if (!planColumns.contains("execution_evidence_json")) {
+            jdbcTemplate.execute("alter table ai_chat_plans add column execution_evidence_json text");
         }
         jdbcTemplate.execute("""
             create table if not exists ai_chat_plan_steps (
