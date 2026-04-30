@@ -2,6 +2,9 @@ package io.mindspice.magenta2.api.web;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import io.mindspice.magenta2.ai.chat.model.ChatMessage;
 import io.mindspice.magenta2.ai.chat.model.ChatPlanState;
@@ -10,7 +13,9 @@ import io.mindspice.magenta2.ai.chat.model.ChatResponse;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.web.server.ResponseStatusException;
+import reactor.core.publisher.Flux;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -102,6 +107,26 @@ class ChatControllerTest {
         assertThat(chatService.executedWithClearContext).isTrue();
     }
 
+    @Test
+    void streamReturnsBeforeDelayedChatStreamCompletes() throws Exception {
+        BlockingStreamChatService blockingChatService = new BlockingStreamChatService(
+            List.of(CONVERSATION_ID),
+            Map.of(CONVERSATION_ID, "qwen3")
+        );
+        ChatController controller = new ChatController(blockingChatService);
+
+        CompletableFuture<SseEmitter> response = CompletableFuture.supplyAsync(() ->
+            controller.stream(new ChatRequest.MsgRequest(CONVERSATION_ID, "use tools", "qwen3"))
+        );
+
+        assertThat(blockingChatService.subscribed.await(1, TimeUnit.SECONDS)).isTrue();
+        SseEmitter emitter = response.get(200, TimeUnit.MILLISECONDS);
+        assertThat(emitter).isNotNull();
+
+        blockingChatService.release.countDown();
+        response.get(1, TimeUnit.SECONDS);
+    }
+
     private static class StubChatService extends ChatService {
         private final List<String> conversationIds;
         private final Map<String, String> modelsByConversationId;
@@ -169,6 +194,40 @@ class ChatControllerTest {
         @Override
         public ChatPlanState planState(String conversationId) {
             return planState;
+        }
+    }
+
+    private static class BlockingStreamChatService extends StubChatService {
+        private final CountDownLatch subscribed = new CountDownLatch(1);
+        private final CountDownLatch release = new CountDownLatch(1);
+
+        BlockingStreamChatService(List<String> conversationIds, Map<String, String> modelsByConversationId) {
+            super(conversationIds, modelsByConversationId);
+        }
+
+        @Override
+        public ResolvedChatRequest resolve(ChatRequest request) {
+            return new ResolvedChatRequest(CONVERSATION_ID, "use tools", "qwen3");
+        }
+
+        @Override
+        public Flux<ChatMessage> stream(ResolvedChatRequest request) {
+            return Flux.create(sink -> {
+                subscribed.countDown();
+                try {
+                    release.await(2, TimeUnit.SECONDS);
+                    sink.next(new ChatMessage("assistant", "done", "<p>done</p>", null));
+                    sink.complete();
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    sink.error(exception);
+                }
+            });
+        }
+
+        @Override
+        public List<ChatMessage> history(String conversationId) {
+            return List.of(new ChatMessage("assistant", "done", "<p>done</p>", null));
         }
     }
 }

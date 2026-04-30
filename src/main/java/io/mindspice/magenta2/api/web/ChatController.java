@@ -26,6 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.Disposable;
+import reactor.core.scheduler.Schedulers;
 
 @RestController
 @RequestMapping("/api/chat")
@@ -70,7 +71,9 @@ public class ChatController {
             return emitter;
         }
 
-        Disposable subscription = chatService.stream(resolvedRequest).subscribe(
+        Disposable subscription = chatService.stream(resolvedRequest)
+            .subscribeOn(Schedulers.boundedElastic())
+            .subscribe(
             message -> {
                 try {
                     if ("tool".equalsIgnoreCase(message.role())) {
