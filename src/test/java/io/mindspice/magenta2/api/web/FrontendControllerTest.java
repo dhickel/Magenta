@@ -18,6 +18,8 @@ class FrontendControllerTest {
         assertThat(html).contains("max-width: 100%;");
         assertThat(html).contains("id=\"chat-token-usage\"");
         assertThat(html).contains("id=\"chat-plan-evidence\"");
+        assertThat(html).contains(".chat-tool");
+        assertThat(html).contains("/js/chat-client.js?v=11");
         assertThat(html).contains("data-active-conversation-id=\"00000000-0000-0000-0000-000000000001\"");
     }
 

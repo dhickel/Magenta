@@ -6,12 +6,13 @@ public record ChatStreamEvent(
     String text,
     String renderedHtml,
     String thinkingHtml,
+    ChatToolActivity toolActivity,
     ContextUsage contextUsage,
     ChatPlanState planState,
     String message
 ) {
     public static ChatStreamEvent start(String conversationId, String model) {
-        return new ChatStreamEvent(conversationId, model, null, null, null, null, null, null);
+        return new ChatStreamEvent(conversationId, model, null, null, null, null, null, null, null);
     }
 
     public static ChatStreamEvent message(String conversationId, String model, ChatMessage message) {
@@ -30,14 +31,29 @@ public record ChatStreamEvent(
             message.text(),
             message.renderedHtml(),
             message.thinkingHtml(),
+            message.toolActivity(),
             contextUsage,
             null,
             null
         );
     }
 
+    public static ChatStreamEvent tool(String conversationId, String model, ChatMessage message) {
+        return new ChatStreamEvent(
+            conversationId,
+            model,
+            message.text(),
+            message.renderedHtml(),
+            message.thinkingHtml(),
+            message.toolActivity(),
+            null,
+            null,
+            null
+        );
+    }
+
     public static ChatStreamEvent error(String message) {
-        return new ChatStreamEvent(null, null, null, null, null, null, null, message);
+        return new ChatStreamEvent(null, null, null, null, null, null, null, null, message);
     }
 
     public ChatStreamEvent withPlanState(ChatPlanState planState) {
@@ -47,6 +63,7 @@ public record ChatStreamEvent(
             text,
             renderedHtml,
             thinkingHtml,
+            toolActivity,
             contextUsage,
             planState,
             message

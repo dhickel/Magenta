@@ -6,7 +6,9 @@ import java.util.List;
 import java.util.UUID;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mindspice.magenta2.ai.chat.model.ChatToolActivity;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
@@ -20,6 +22,9 @@ public class ToolTranscriptService {
 
     private static final int RAW_OUTPUT_CHARACTER_LIMIT = 4_000;
     private static final int STORED_RAW_OUTPUT_CHARACTER_LIMIT = 40_000;
+    private static final int STORED_ARGUMENT_CHARACTER_LIMIT = 40_000;
+    private static final int DISPLAY_DETAIL_CHARACTER_LIMIT = 2_000;
+    private static final int DISPLAY_PREVIEW_CHARACTER_LIMIT = 240;
     private static final int RETAIN_FULL_OUTPUT_USER_TURNS = 4;
     private static final int ARGUMENT_SUMMARY_CHARACTER_LIMIT = 500;
 
@@ -30,18 +35,30 @@ public class ToolTranscriptService {
     }
 
     public SystemMessage fullResult(String toolCallId, String toolName, String argumentsJson, String resultText) {
+        return message(fullResultEntry(toolCallId, toolName, argumentsJson, resultText));
+    }
+
+    public ToolTranscriptEntry fullResultEntry(String toolCallId, String toolName, String argumentsJson, String resultText) {
+        String status = resultLooksLikeError(resultText) ? "error" : "completed";
         ToolTranscriptEntry entry = new ToolTranscriptEntry(
             UUID.randomUUID().toString(),
             valueOrGenerated(toolCallId),
             toolName,
             summarizeArguments(argumentsJson),
-            summarizeResult(resultText),
+            storedArgumentText(argumentsJson),
+            summarizeResult(toolName, resultText),
+            preview(argumentsJson),
+            preview(resultText),
             storedResultText(resultText),
-            "completed",
+            status,
             Instant.now().toString(),
             resultText != null && resultText.length() > STORED_RAW_OUTPUT_CHARACTER_LIMIT,
             resultText != null && resultText.length() > RAW_OUTPUT_CHARACTER_LIMIT
         );
+        return entry;
+    }
+
+    public SystemMessage message(ToolTranscriptEntry entry) {
         return new SystemMessage(FULL_PREFIX + serialize(entry));
     }
 
@@ -111,6 +128,33 @@ public class ToolTranscriptService {
             + ". " + entry.resultSummary();
     }
 
+    public ChatToolActivity activityFor(Message message) {
+        ToolTranscriptEntry entry = parse(message);
+        return entry == null ? null : activityFor(entry);
+    }
+
+    public ChatToolActivity activityFor(ToolTranscriptEntry entry) {
+        if (entry == null) {
+            return null;
+        }
+        String callDetail = displayDetail(entry.argumentsText());
+        String resultDetail = displayDetail(entry.resultText());
+        return new ChatToolActivity(
+            entry.id(),
+            entry.toolCallId(),
+            entry.toolName(),
+            entry.status(),
+            entry.createdAt(),
+            entry.resultSummary(),
+            valueOrFallback(entry.argumentsSummary(), "No arguments."),
+            callDetail,
+            valueOrFallback(entry.resultPreview(), entry.resultSummary()),
+            resultDetail,
+            isDisplayTruncated(entry.argumentsText()),
+            entry.truncated() || isDisplayTruncated(entry.resultText())
+        );
+    }
+
     private int userTurnsAfter(List<Message> messages, int index) {
         int count = 0;
         for (int i = index + 1; i < messages.size(); i++) {
@@ -156,18 +200,169 @@ public class ToolTranscriptService {
         return truncate(argumentsJson.replaceAll("\\s+", " ").trim(), ARGUMENT_SUMMARY_CHARACTER_LIMIT);
     }
 
-    private String summarizeResult(String resultText) {
+    private String summarizeResult(String toolName, String resultText) {
         if (!StringUtils.hasText(resultText)) {
             return "Tool returned no text.";
         }
-        return "Returned " + resultText.length() + " characters.";
+        JsonNode root = jsonNode(resultText);
+        if (root == null) {
+            return "Returned " + resultText.length() + " characters.";
+        }
+        String name = toolName == null ? "" : toolName;
+        return switch (name) {
+            case "file_list" -> fileListSummary(root);
+            case "file_read" -> fileReadSummary(root);
+            case "file_search" -> fileSearchSummary(root);
+            case "file_write" -> fileWriteSummary(root);
+            case "file_append" -> fileAppendSummary(root);
+            case "file_replace" -> fileReplaceSummary(root);
+            case "shell_exec" -> shellSummary(root);
+            case "web_search" -> webSearchSummary(root);
+            case "web_fetch" -> webFetchSummary(root);
+            case "plan_save", "plan_report" -> textSummary(resultText);
+            default -> "Returned " + resultText.length() + " characters.";
+        };
+    }
+
+    private String fileListSummary(JsonNode root) {
+        String path = text(root, "path", ".");
+        int count = root.path("entries").isArray() ? root.path("entries").size() : 0;
+        return "Listed " + count + " entries under " + path + truncationSuffix(root.path("truncated").asBoolean(false));
+    }
+
+    private String fileReadSummary(JsonNode root) {
+        String path = text(root, "path", "file");
+        int start = root.path("startLine").asInt(0);
+        int end = root.path("endLine").asInt(0);
+        int total = root.path("totalLines").asInt(0);
+        String range = start > 0 && end >= start ? " lines " + start + "-" + end : "";
+        return "Read " + path + range + " of " + total + " total lines.";
+    }
+
+    private String fileSearchSummary(JsonNode root) {
+        int count = root.path("matches").isArray() ? root.path("matches").size() : 0;
+        return "Found " + count + " file matches" + truncationSuffix(root.path("truncated").asBoolean(false));
+    }
+
+    private String fileWriteSummary(JsonNode root) {
+        return "Wrote " + root.path("bytesWritten").asInt(0) + " bytes to " + text(root, "path", "file")
+            + (root.path("created").asBoolean(false) ? " (created)." : ".");
+    }
+
+    private String fileAppendSummary(JsonNode root) {
+        return "Appended " + root.path("bytesAppended").asInt(0) + " bytes to " + text(root, "path", "file")
+            + (root.path("created").asBoolean(false) ? " (created)." : ".");
+    }
+
+    private String fileReplaceSummary(JsonNode root) {
+        return "Replaced " + root.path("replacedLines").asInt(0) + " lines in " + text(root, "path", "file")
+            + " with " + root.path("newLines").asInt(0) + " lines.";
+    }
+
+    private String shellSummary(JsonNode root) {
+        String commandLine = text(root, "commandLine", text(root, "command", "command"));
+        String status = root.path("timedOut").asBoolean(false)
+            ? "timed out"
+            : "exit " + (root.path("exitCode").isMissingNode() || root.path("exitCode").isNull()
+                ? "unknown"
+                : root.path("exitCode").asText());
+        return "Ran `" + commandLine + "` in " + text(root, "workingDirectory", ".") + " (" + status + ")"
+            + truncationSuffix(root.path("truncated").asBoolean(false));
+    }
+
+    private String webSearchSummary(JsonNode root) {
+        int count = root.path("results").isArray() ? root.path("results").size() : 0;
+        return "Searched web for `" + text(root, "query", "") + "` and returned " + count + " results"
+            + truncationSuffix(root.path("truncated").asBoolean(false));
+    }
+
+    private String webFetchSummary(JsonNode root) {
+        String title = text(root, "title", "");
+        String titlePart = StringUtils.hasText(title) ? " (" + title + ")" : "";
+        return "Fetched " + text(root, "url", "URL") + titlePart
+            + truncationSuffix(root.path("truncated").asBoolean(false));
+    }
+
+    private String textSummary(String text) {
+        return truncate(text.replaceAll("\\s+", " ").trim(), ARGUMENT_SUMMARY_CHARACTER_LIMIT);
+    }
+
+    private String truncationSuffix(boolean truncated) {
+        return truncated ? " [truncated]." : ".";
+    }
+
+    private boolean resultLooksLikeError(String resultText) {
+        if (!StringUtils.hasText(resultText)) {
+            return false;
+        }
+        JsonNode root = jsonNode(resultText);
+        if (root != null) {
+            if (root.path("timedOut").asBoolean(false)) {
+                return true;
+            }
+            JsonNode exitCode = root.path("exitCode");
+            if (!exitCode.isMissingNode() && !exitCode.isNull() && exitCode.asInt(0) != 0) {
+                return true;
+            }
+        }
+        String normalized = resultText.toLowerCase(java.util.Locale.ROOT);
+        return normalized.contains("exception")
+            || normalized.contains("error")
+            || normalized.contains("failed")
+            || normalized.contains("permission denied");
+    }
+
+    private JsonNode jsonNode(String text) {
+        if (!StringUtils.hasText(text)) {
+            return null;
+        }
+        try {
+            return objectMapper.readTree(text);
+        } catch (JsonProcessingException ignored) {
+            return null;
+        }
+    }
+
+    private String text(JsonNode node, String field, String fallback) {
+        String value = node.path(field).asText("");
+        return StringUtils.hasText(value) ? value : fallback;
+    }
+
+    private String displayDetail(String text) {
+        if (!StringUtils.hasText(text)) {
+            return "";
+        }
+        return truncate(text, DISPLAY_DETAIL_CHARACTER_LIMIT);
+    }
+
+    private boolean isDisplayTruncated(String text) {
+        return text != null && text.length() > DISPLAY_DETAIL_CHARACTER_LIMIT;
+    }
+
+    private String preview(String text) {
+        if (!StringUtils.hasText(text)) {
+            return "";
+        }
+        return truncate(text.replaceAll("\\s+", " ").trim(), DISPLAY_PREVIEW_CHARACTER_LIMIT);
+    }
+
+    private String valueOrFallback(String value, String fallback) {
+        return StringUtils.hasText(value) ? value : fallback;
+    }
+
+    private String storedArgumentText(String argumentsJson) {
+        if (argumentsJson == null) {
+            return "";
+        }
+        return truncate(argumentsJson, STORED_ARGUMENT_CHARACTER_LIMIT);
     }
 
     private String truncate(String text, int maxLength) {
         if (text.length() <= maxLength) {
             return text;
         }
-        return text.substring(0, Math.max(0, maxLength - 15)).trim() + " ... [truncated]";
+        String marker = " ... [truncated]";
+        return text.substring(0, Math.max(0, maxLength - marker.length())).trim() + marker;
     }
 
     private String storedResultText(String resultText) {
@@ -186,7 +381,10 @@ public class ToolTranscriptService {
         String toolCallId,
         String toolName,
         String argumentsSummary,
+        String argumentsText,
         String resultSummary,
+        String callPreview,
+        String resultPreview,
         String resultText,
         String status,
         String createdAt,
@@ -199,7 +397,10 @@ public class ToolTranscriptService {
                 toolCallId,
                 toolName,
                 argumentsSummary,
+                argumentsText,
                 resultSummary,
+                callPreview,
+                resultPreview,
                 "",
                 status,
                 createdAt,

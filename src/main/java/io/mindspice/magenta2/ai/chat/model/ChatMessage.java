@@ -4,6 +4,10 @@ public record ChatMessage(
     String role,
     String text,
     String renderedHtml,
-    String thinkingHtml
+    String thinkingHtml,
+    ChatToolActivity toolActivity
 ) {
+    public ChatMessage(String role, String text, String renderedHtml, String thinkingHtml) {
+        this(role, text, renderedHtml, thinkingHtml, null);
+    }
 }

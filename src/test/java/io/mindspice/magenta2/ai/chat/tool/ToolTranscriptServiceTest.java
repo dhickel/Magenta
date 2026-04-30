@@ -66,4 +66,38 @@ class ToolTranscriptServiceTest {
             .contains("Raw output: truncated")
             .doesNotContain("x".repeat(1_000));
     }
+
+    @Test
+    void createsToolSpecificDisplayActivity() {
+        SystemMessage toolResult = service.fullResult(
+            "call-1",
+            "file_read",
+            "{\"path\":\"notes/today.md\",\"startLine\":2}",
+            "{\"path\":\"notes/today.md\",\"totalLines\":10,\"startLine\":2,\"endLine\":4,\"nextStartLine\":5,\"lines\":[\"2:abc|hello\"]}"
+        );
+
+        var activity = service.activityFor(toolResult);
+
+        assertThat(activity.toolName()).isEqualTo("file_read");
+        assertThat(activity.summary()).isEqualTo("Read notes/today.md lines 2-4 of 10 total lines.");
+        assertThat(activity.callDetail()).contains("\"path\":\"notes/today.md\"");
+        assertThat(activity.resultDetail()).contains("\"nextStartLine\":5");
+    }
+
+    @Test
+    void displayActivityCapsExpandedArgumentsAndResults() {
+        SystemMessage toolResult = service.fullResult(
+            "call-1",
+            "file_write",
+            "{\"path\":\"big.md\",\"content\":\"" + "a".repeat(3_000) + "\"}",
+            "{\"path\":\"big.md\",\"bytesWritten\":3000,\"created\":true,\"echo\":\"" + "b".repeat(3_000) + "\"}"
+        );
+
+        var activity = service.activityFor(toolResult);
+
+        assertThat(activity.callDetail()).hasSizeLessThanOrEqualTo(2_000);
+        assertThat(activity.resultDetail()).hasSizeLessThanOrEqualTo(2_000);
+        assertThat(activity.callTruncated()).isTrue();
+        assertThat(activity.resultTruncated()).isTrue();
+    }
 }

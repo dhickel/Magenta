@@ -137,7 +137,9 @@
             const role = escapeHtml(rawRole);
             const roleClass = rawRole.toLowerCase() === 'user'
                 ? 'chat-message-user'
-                : (rawRole.toLowerCase() === 'system' ? 'chat-message-system' : 'chat-message-assistant');
+                : (rawRole.toLowerCase() === 'system'
+                    ? 'chat-message-system'
+                    : (rawRole.toLowerCase() === 'tool' ? 'chat-message-tool' : 'chat-message-assistant'));
             const text = message.renderedHtml
                 ? String(message.renderedHtml)
                 : formatPlainText(message.text || '');
@@ -150,12 +152,59 @@
                     + '<div class="chat-thinking-body">' + String(message.thinkingHtml) + '</div>'
                     + '</details>'
                 : '';
+            const toolActivity = message.toolActivity ? renderToolActivity(message.toolActivity) : '';
             return '<div class="chat-message ' + roleClass + '">'
                 + '<div class="chat-message-role">' + role + '</div>'
                 + thinking
-                + '<div class="chat-message-body">' + text + '</div>'
+                + (toolActivity || '<div class="chat-message-body">' + text + '</div>')
                 + '</div>';
         }).join('');
+        historyEl.scrollTop = historyEl.scrollHeight;
+    }
+
+    function renderToolActivity(activity) {
+        const name = activity && activity.toolName ? String(activity.toolName) : 'tool';
+        const status = activity && activity.status ? String(activity.status) : 'completed';
+        const summary = activity && activity.summary ? String(activity.summary) : 'Tool call completed.';
+        const callPreview = activity && activity.callPreview ? String(activity.callPreview) : 'No arguments.';
+        const callDetail = activity && activity.callDetail ? String(activity.callDetail) : '';
+        const resultPreview = activity && activity.resultPreview ? String(activity.resultPreview) : '';
+        const resultDetail = activity && activity.resultDetail ? String(activity.resultDetail) : '';
+        const createdAt = activity && activity.createdAt ? String(activity.createdAt) : '';
+        const callTruncated = activity && activity.callTruncated ? ' <span class="chat-tool-muted">truncated</span>' : '';
+        const resultTruncated = activity && activity.resultTruncated ? ' <span class="chat-tool-muted">truncated</span>' : '';
+
+        return '<details class="chat-tool">'
+            + '<summary class="chat-tool-toggle">'
+            + '<span class="chat-tool-name">' + escapeHtml(name) + '</span>'
+            + '<span class="chat-tool-status">' + escapeHtml(status) + '</span>'
+            + '<span class="chat-tool-summary">' + escapeHtml(summary) + '</span>'
+            + '</summary>'
+            + '<div class="chat-tool-body">'
+            + (createdAt ? '<div class="chat-tool-meta">' + escapeHtml(createdAt) + '</div>' : '')
+            + '<div class="chat-tool-section"><div class="chat-tool-label">Call' + callTruncated + '</div>'
+            + '<pre>' + escapeHtml(callDetail || callPreview) + '</pre></div>'
+            + '<div class="chat-tool-section"><div class="chat-tool-label">Result' + resultTruncated + '</div>'
+            + '<pre>' + escapeHtml(resultDetail || resultPreview || summary) + '</pre></div>'
+            + '</div>'
+            + '</details>';
+    }
+
+    function appendToolActivity(eventData, beforeEl) {
+        const historyEl = byId('chat-history');
+        if (historyEl.textContent.trim() === 'No messages in this session yet.') {
+            historyEl.innerHTML = '';
+        }
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'chat-message chat-message-tool';
+        wrapper.innerHTML = '<div class="chat-message-role">tool</div>'
+            + renderToolActivity(eventData.toolActivity || {});
+        if (beforeEl && beforeEl.parentNode === historyEl) {
+            historyEl.insertBefore(wrapper, beforeEl);
+        } else {
+            historyEl.appendChild(wrapper);
+        }
         historyEl.scrollTop = historyEl.scrollHeight;
     }
 
@@ -310,6 +359,11 @@
                 }
                 if (event.name === 'chunk') {
                     updateStreamingAssistantMessage(assistantEl, data);
+                    return;
+                }
+                if (event.name === 'tool') {
+                    appendToolActivity(data, assistantEl);
+                    updatePlanStatus(data.planState);
                     return;
                 }
                 if (event.name === 'done') {

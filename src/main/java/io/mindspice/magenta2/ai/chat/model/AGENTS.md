@@ -3,7 +3,7 @@
 This package owns chat request, response, history, session, message, context usage, and stream event payloads.
 
 ### Responsibilities
-- Keep DTOs small, stable, and easy to serialize, including minimal plan state returned to chat clients.
+- Keep DTOs small, stable, and easy to serialize, including minimal plan state and structured tool activity returned to chat clients.
 - Use Java records for request/response and data-carrier types where practical.
 - Keep transport shape explicit; avoid adding fields for speculative future clients.
 

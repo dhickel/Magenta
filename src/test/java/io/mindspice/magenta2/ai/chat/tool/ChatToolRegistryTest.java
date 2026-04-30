@@ -17,8 +17,12 @@ import io.mindspice.magenta2.ai.chat.tool.file.AgentFileTools;
 import io.mindspice.magenta2.ai.chat.tool.shell.AgentShellToolConfiguration;
 import io.mindspice.magenta2.ai.chat.tool.shell.AgentShellToolService;
 import io.mindspice.magenta2.ai.chat.tool.shell.AgentShellTools;
+import io.mindspice.magenta2.ai.chat.tool.web.AgentWebToolConfiguration;
+import io.mindspice.magenta2.ai.chat.tool.web.AgentWebToolService;
+import io.mindspice.magenta2.ai.chat.tool.web.AgentWebTools;
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
+import io.mindspice.magenta2.ai.config.user.WebSearchConfig;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.ai.tool.ToolCallback;
@@ -110,7 +114,10 @@ class ChatToolRegistryTest {
         AgentShellToolService shellService = new AgentShellToolService(aiConfig());
         AgentShellTools shellTools = new AgentShellTools(shellService, objectMapper);
         ToolCallbackProvider shellProvider = new AgentShellToolConfiguration().agentShellToolCallbackProvider(shellTools);
-        ChatToolRegistry registry = new ChatToolRegistry(List.of(), List.of(fileProvider, shellProvider));
+        AgentWebToolService webService = new AgentWebToolService(aiConfig(), objectMapper);
+        AgentWebTools webTools = new AgentWebTools(webService, objectMapper);
+        ToolCallbackProvider webProvider = new AgentWebToolConfiguration().agentWebToolCallbackProvider(webTools, aiConfig());
+        ChatToolRegistry registry = new ChatToolRegistry(List.of(), List.of(fileProvider, shellProvider, webProvider));
 
         assertThat(registry.resolveApprovedTools(List.of("*")))
             .extracting(callback -> callback.getToolDefinition().name())
@@ -121,7 +128,9 @@ class ChatToolRegistryTest {
                 "file_write",
                 "file_append",
                 "file_replace",
-                "shell_exec"
+                "shell_exec",
+                "web_search",
+                "web_fetch"
             );
     }
 
@@ -141,12 +150,33 @@ class ChatToolRegistryTest {
             .contains("command line");
     }
 
+    @Test
+    void exposesWebToolsWithModelVisibleDescriptionsAndArgumentSchemas() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        AgentWebToolService service = new AgentWebToolService(aiConfig(), objectMapper);
+        AgentWebTools tools = new AgentWebTools(service, objectMapper);
+        ToolCallbackProvider provider = new AgentWebToolConfiguration().agentWebToolCallbackProvider(tools, aiConfig());
+        Map<String, ToolCallback> callbacks = Arrays.stream(provider.getToolCallbacks())
+            .collect(Collectors.toMap(callback -> callback.getToolDefinition().name(), Function.identity()));
+
+        assertThat(callbacks.keySet()).containsExactlyInAnyOrder("web_search", "web_fetch");
+        assertTool(callbacks.get("web_search"), objectMapper, List.of("query"), "query", "maxResults");
+        assertTool(callbacks.get("web_fetch"), objectMapper, List.of("url"), "url", "maxCharacters");
+        assertThat(callbacks.get("web_search").getToolDefinition().description())
+            .contains("SearXNG")
+            .contains("web_fetch");
+        assertThat(callbacks.get("web_fetch").getToolDefinition().description())
+            .contains("http or https URL")
+            .contains("cite");
+    }
+
     private AiConfig aiConfig() {
         return new AiConfig(
             "magenta",
             "magenta",
             10,
             tempDir,
+            new WebSearchConfig(true, "searxng", "http://localhost:8080"),
             Map.of(),
             Map.of("magenta", new AgentConfig("model", "prompt", List.of(), List.of("*")))
         );

@@ -289,6 +289,14 @@ public class FrontendController {
                     color: #4b4126;
                 }
 
+                .chat-message-tool {
+                    margin-left: 1.6rem;
+                    margin-right: 1.1rem;
+                    background: #f4f7fa;
+                    border-color: #d7e0ea;
+                    color: #253244;
+                }
+
                 .chat-message-role {
                     margin-bottom: 0.35rem;
                     font-size: 0.78rem;
@@ -457,6 +465,104 @@ public class FrontendController {
                     margin: 0.2rem 0;
                 }
 
+                .chat-tool {
+                    margin: 0;
+                    border: 1px solid #ccd6e2;
+                    border-radius: 8px;
+                    background: #ffffff;
+                    overflow: hidden;
+                }
+
+                .chat-tool-toggle {
+                    display: grid;
+                    grid-template-columns: auto auto minmax(0, 1fr);
+                    align-items: center;
+                    gap: 0.45rem;
+                    padding: 0.48rem 0.65rem;
+                    cursor: pointer;
+                    user-select: none;
+                    list-style: none;
+                    font-size: 0.82rem;
+                }
+
+                .chat-tool-toggle::-webkit-details-marker {
+                    display: none;
+                }
+
+                .chat-tool-toggle::before {
+                    content: "";
+                    width: 0.4rem;
+                    height: 0.4rem;
+                    border-right: 2px solid #607087;
+                    border-bottom: 2px solid #607087;
+                    transform: rotate(-45deg);
+                    transition: transform 0.16s ease;
+                    margin-top: -0.08rem;
+                }
+
+                .chat-tool[open] .chat-tool-toggle::before {
+                    transform: rotate(45deg);
+                }
+
+                .chat-tool-name {
+                    font-weight: 700;
+                    color: #223149;
+                    white-space: nowrap;
+                }
+
+                .chat-tool-status {
+                    border: 1px solid #c9d3df;
+                    border-radius: 999px;
+                    padding: 0.05rem 0.38rem;
+                    color: #405066;
+                    background: #f6f8fb;
+                    font-size: 0.74rem;
+                    white-space: nowrap;
+                }
+
+                .chat-tool-summary {
+                    min-width: 0;
+                    color: #3e4c60;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }
+
+                .chat-tool-body {
+                    border-top: 1px solid #e3e8ee;
+                    padding: 0.6rem 0.7rem 0.75rem 0.7rem;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 0.55rem;
+                }
+
+                .chat-tool-meta,
+                .chat-tool-label,
+                .chat-tool-muted {
+                    color: #5d6a7d;
+                    font-size: 0.78rem;
+                }
+
+                .chat-tool-label {
+                    margin-bottom: 0.22rem;
+                    font-weight: 700;
+                }
+
+                .chat-tool-section pre {
+                    margin: 0;
+                    max-height: 18rem;
+                    overflow: auto;
+                    white-space: pre-wrap;
+                    word-break: break-word;
+                    border: 1px solid #d7dee8;
+                    border-radius: 6px;
+                    background: #f8fafc;
+                    padding: 0.55rem 0.62rem;
+                    color: #1f2937;
+                    font-size: 0.82rem;
+                    line-height: 1.4;
+                }
+
                 #chat-form {
                     margin-top: 0.8rem;
                     display: flex;
@@ -590,7 +696,7 @@ public class FrontendController {
                     .withSubtitle("Session-backed chat bootstrap")
                     .build())
             .withTopNav(topNavBar)
-            .addCustomJs("/js/chat-client.js?v=10")
+            .addCustomJs("/js/chat-client.js?v=11")
             .buildTemplate();
 
     @GetMapping("/chat")

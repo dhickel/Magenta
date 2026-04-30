@@ -25,6 +25,10 @@ class ExternalAiConfigLoaderTest {
             defaultAgent: support
             summarizationAgent: planner
             contextBufferPercent: 10
+            webSearch:
+              enabled: true
+              provider: searxng
+              baseUrl: http://localhost:8080
             models:
               local-fast:
                 remoteModelName: qwen3:8b
@@ -60,6 +64,10 @@ class ExternalAiConfigLoaderTest {
         assertEquals("support", config.defaultAgent());
         assertEquals("planner", config.summarizationAgent());
         assertEquals(10, config.resolvedContextBufferPercent());
+        assertNotNull(config.webSearch());
+        assertTrue(config.webSearch().isEnabled());
+        assertEquals("searxng", config.webSearch().provider());
+        assertEquals("http://localhost:8080", config.webSearch().baseUrl());
         assertEquals(2, config.models().size());
         assertEquals(2, config.agents().size());
 

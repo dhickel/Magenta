@@ -46,6 +46,7 @@ public final class ExternalAiConfigLoader {
             config.summarizationAgent(),
             config.contextBufferPercent(),
             config.dataRoot(),
+            config.webSearch(),
             config.models(),
             agents
         );

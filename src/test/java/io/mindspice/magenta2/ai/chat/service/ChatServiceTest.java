@@ -9,6 +9,7 @@ import io.mindspice.magenta2.ai.chat.plan.ChatPlanRepository;
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
 import io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer;
 import io.mindspice.magenta2.ai.chat.repository.SQLiteChatMemoryRepository;
+import io.mindspice.magenta2.ai.chat.tool.ToolTranscriptService;
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import org.junit.jupiter.api.Test;
@@ -153,6 +154,7 @@ class ChatServiceTest {
     @Test
     void planModeAllowsShellExecutionTool() {
         assertThat(ChatService.PLAN_MODE_TOOLS).contains("shell_exec");
+        assertThat(ChatService.PLAN_MODE_TOOLS).contains("web_search", "web_fetch");
     }
 
     @Test
@@ -232,6 +234,43 @@ class ChatServiceTest {
         assertThat(memoryRepository.findByConversationId("conversation-1"))
             .extracting(message -> message.getText())
             .containsExactly("keep", "answer");
+    }
+
+    @Test
+    void historyIncludesStructuredToolActivity() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        SQLiteChatMemoryRepository memoryRepository = new SQLiteChatMemoryRepository(jdbcTemplate, objectMapper);
+        ToolTranscriptService transcriptService = new ToolTranscriptService(objectMapper);
+        memoryRepository.saveAll("conversation-1", java.util.List.of(
+            transcriptService.fullResult(
+                "call-1",
+                "shell_exec",
+                "{\"command\":\"pwd\",\"workingDirectory\":\".\"}",
+                "{\"command\":\"pwd\",\"commandLine\":\"pwd\",\"args\":[],\"workingDirectory\":\".\",\"exitCode\":0,\"stdout\":\"/tmp\\n\",\"stderr\":\"\",\"timedOut\":false,\"truncated\":false}"
+            )
+        ));
+        ChatService service = new ChatService(
+            null,
+            memoryRepository,
+            null,
+            new ChatMarkdownRenderer(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            transcriptService,
+            null
+        );
+
+        ChatMessage message = service.history("conversation-1").getFirst();
+
+        assertThat(message.role()).isEqualTo("tool");
+        assertThat(message.toolActivity()).isNotNull();
+        assertThat(message.toolActivity().summary()).contains("Ran `pwd`");
+        assertThat(message.toolActivity().callDetail()).contains("\"command\":\"pwd\"");
     }
 
     private JdbcTemplate jdbcTemplate() {

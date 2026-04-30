@@ -73,6 +73,18 @@ public class ChatController {
         Disposable subscription = chatService.stream(resolvedRequest).subscribe(
             message -> {
                 try {
+                    if ("tool".equalsIgnoreCase(message.role())) {
+                        sendEvent(
+                            emitter,
+                            "tool",
+                            ChatStreamEvent.tool(
+                                resolvedRequest.conversationId(),
+                                resolvedRequest.model(),
+                                message
+                            ).withPlanState(chatService.planState(resolvedRequest.conversationId()))
+                        );
+                        return;
+                    }
                     sendEvent(
                         emitter,
                         "chunk",
@@ -294,7 +306,8 @@ public class ChatController {
             chatService.listConversationIds(),
             chatService.history(conversationId),
             response.contextUsage(),
-            chatService.planState(conversationId)
+            chatService.planState(conversationId),
+            response.toolActivities()
         );
     }
 

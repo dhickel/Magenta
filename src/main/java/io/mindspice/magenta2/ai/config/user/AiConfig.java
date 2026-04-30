@@ -8,6 +8,7 @@ public record AiConfig(
     String summarizationAgent,
     Integer contextBufferPercent,
     Path dataRoot,
+    WebSearchConfig webSearch,
     Map<String, ModelConfig> models,
     Map<String, AgentConfig> agents
 ) {
@@ -16,4 +17,14 @@ public record AiConfig(
         return contextBufferPercent == null ? 10 : contextBufferPercent;
     }
 
+    public AiConfig(
+        String defaultAgent,
+        String summarizationAgent,
+        Integer contextBufferPercent,
+        Path dataRoot,
+        Map<String, ModelConfig> models,
+        Map<String, AgentConfig> agents
+    ) {
+        this(defaultAgent, summarizationAgent, contextBufferPercent, dataRoot, null, models, agents);
+    }
 }

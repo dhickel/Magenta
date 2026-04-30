@@ -74,3 +74,12 @@ When `shell_exec` is available, use it only for operations that need Linux comma
 - `shell_exec.command` is a command line string. The first token must be an allowed executable name.
 - Quoted arguments are supported, but shell operators such as `&&`, pipes, and redirects are not interpreted.
 - Keep commands focused, use the configured data root as the workspace, and report non-zero exit codes plainly.
+
+# Web Tool Usage
+When `web_search` and `web_fetch` are available, use them for current public web information.
+
+- Use `web_search` before `web_fetch` unless the user provides a specific URL.
+- Fetch only the most relevant pages needed to answer accurately.
+- Cite source URLs in the final answer when web information affects the answer.
+- Report search or fetch failures plainly.
+- Do not use web tools for login-only, private, unsupported binary/media, or obviously unsafe URLs.
