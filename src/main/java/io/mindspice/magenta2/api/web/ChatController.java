@@ -14,6 +14,7 @@ import io.mindspice.magenta2.ai.chat.model.ChatSessions;
 import io.mindspice.magenta2.ai.chat.model.ChatPlanState;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.chat.service.ChatService.ResolvedChatRequest;
+import io.mindspice.magenta2.ai.chat.service.ContextManagementAdvisor;
 import io.mindspice.magenta2.ai.chat.model.ChatStreamEvent;
 import io.mindspice.magenta2.ai.execution.ActiveTurnRegistry;
 import io.mindspice.magenta2.ai.execution.ActiveTurnRegistry.ActiveTurn;
@@ -173,6 +174,22 @@ public class ChatController {
             () -> {
                 try {
                     activeTurnRegistry.complete(activeTurn.turnId());
+                    ChatService.StoredContextUsage contextUsage = chatService.maintainContextUsage(
+                        resolvedRequest.conversationId(),
+                        resolvedRequest.model()
+                    );
+                    if (contextUsage.compacted()) {
+                        sendEvent(
+                            emitter,
+                            "system",
+                            ChatStreamEvent.message(
+                                resolvedRequest.conversationId(),
+                                resolvedRequest.model(),
+                                chatService.systemNotice(ContextManagementAdvisor.COMPACTION_NOTICE),
+                                contextUsage.usage()
+                            ).withPlanState(chatService.planState(resolvedRequest.conversationId()))
+                        );
+                    }
                     sendEvent(
                         emitter,
                         "done",
@@ -180,7 +197,7 @@ public class ChatController {
                             resolvedRequest.conversationId(),
                             resolvedRequest.model(),
                             lastAssistantMessage(resolvedRequest),
-                            chatService.contextUsage(resolvedRequest.conversationId(), resolvedRequest.model())
+                            contextUsage.usage()
                         ).withPlanState(chatService.planState(resolvedRequest.conversationId()))
                     );
                     emitter.complete();
@@ -222,13 +239,15 @@ public class ChatController {
 
     @GetMapping("/{conversationId}/history")
     public ChatHistory history(@PathVariable String conversationId) {
+        String model = chatService.storedConversationModel(conversationId);
+        ChatService.StoredContextUsage contextUsage = chatService.maintainContextUsage(conversationId, model);
         return new ChatHistory(
             conversationId,
             chatService.conversationTitle(conversationId),
             chatService.conversationTitleJobStatus(conversationId),
-            chatService.storedConversationModel(conversationId),
+            model,
             chatService.history(conversationId),
-            chatService.contextUsage(conversationId, chatService.storedConversationModel(conversationId)),
+            contextUsage.usage(),
             chatService.planState(conversationId)
         );
     }
@@ -323,13 +342,15 @@ public class ChatController {
         if (!chatService.conversationExists(targetConversationId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "conversation not found: " + targetConversationId);
         }
+        String model = chatService.storedConversationModel(targetConversationId);
+        ChatService.StoredContextUsage contextUsage = chatService.maintainContextUsage(targetConversationId, model);
         return new ChatResponse.CmdResponse(
             targetConversationId,
-            chatService.storedConversationModel(targetConversationId),
+            model,
             "Switched to " + targetConversationId,
             chatService.listConversationIds(),
             chatService.history(targetConversationId),
-            chatService.contextUsage(targetConversationId, chatService.storedConversationModel(targetConversationId)),
+            contextUsage.usage(),
             chatService.planState(targetConversationId)
         );
     }
@@ -376,13 +397,15 @@ public class ChatController {
     private ChatResponse.CmdResponse handleExitPlan(String requestConversationId) {
         String conversationId = requiredConversationId(requestConversationId, "exit-plan requires an active conversation");
         chatService.exitPlan(conversationId);
+        String model = chatService.storedConversationModel(conversationId);
+        ChatService.StoredContextUsage contextUsage = chatService.maintainContextUsage(conversationId, model);
         return new ChatResponse.CmdResponse(
             conversationId,
-            chatService.storedConversationModel(conversationId),
+            model,
             "Exited plan mode and discarded the draft plan.",
             chatService.listConversationIds(),
             chatService.history(conversationId),
-            chatService.contextUsage(conversationId, chatService.storedConversationModel(conversationId)),
+            contextUsage.usage(),
             chatService.planState(conversationId)
         );
     }

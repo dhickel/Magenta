@@ -108,6 +108,36 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
         return estimateUsage(messages, remoteModelName);
     }
 
+    public StoredContextMaintenance maintainStoredContext(String conversationId, String remoteModelName) {
+        List<Message> storedMessages = chatMemoryRepository.findByConversationId(conversationId);
+        boolean compacted = false;
+        List<Message> truncatedMessages = truncateExpiredToolResults(storedMessages);
+        if (truncatedMessages != storedMessages) {
+            storedMessages = truncatedMessages;
+            chatMemoryRepository.saveAll(conversationId, storedMessages);
+        }
+
+        ContextUsage usage = estimateStoredUsage(conversationId, remoteModelName);
+        if (usage.usedTokens() > usage.triggerTokens()) {
+            storedMessages = compact(conversationId, storedMessages, storedMaintenanceInstructions(), remoteModelName);
+            usage = estimateStoredUsage(conversationId, remoteModelName);
+            compacted = true;
+        }
+        if (usage.usedTokens() > usage.triggerTokens()) {
+            storedMessages = trimToBudget(conversationId, storedMessages, storedMaintenanceInstructions(), remoteModelName);
+            usage = estimateStoredUsage(conversationId, remoteModelName);
+        }
+        if (usage.usedTokens() > usage.triggerTokens()) {
+            throw new IllegalStateException(
+                "Context is too large to store safely after compaction: "
+                    + usage.usedTokens() + " estimated tokens exceeds trigger budget " + usage.triggerTokens()
+            );
+        }
+
+        usageTracker.record(conversationId, usage);
+        return new StoredContextMaintenance(usage, compacted);
+    }
+
     public ContextUsage estimateUsage(List<Message> messages, String remoteModelName) {
         int maxTokens = maxTokens(remoteModelName);
         int triggerTokens = triggerTokens(maxTokens);
@@ -378,6 +408,11 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
         return messages;
     }
 
+    private List<Message> storedMaintenanceInstructions() {
+        String systemPrompt = defaultSystemPrompt();
+        return StringUtils.hasText(systemPrompt) ? List.of(new SystemMessage(systemPrompt)) : List.of();
+    }
+
     private List<Message> compactActiveToolMessages(List<Message> activeMessages) {
         if (activeMessages.size() <= MIN_TAIL_MESSAGES) {
             return activeMessages;
@@ -535,5 +570,8 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
         boolean toolUseAllowed,
         boolean compacted
     ) {
+    }
+
+    public record StoredContextMaintenance(ContextUsage usage, boolean compacted) {
     }
 }

@@ -102,6 +102,44 @@ class ContextManagementAdvisorTest {
         assertThat(summaryModel.lastPromptText).contains("active old");
     }
 
+    @Test
+    void maintainStoredContextCompactsBeforeReturningUsage() {
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
+        SummaryChatModel summaryModel = new SummaryChatModel();
+        ContextManagementAdvisor advisor = new ContextManagementAdvisor(
+            memoryRepository,
+            aiConfig(),
+            new SummaryRouter(summaryModel),
+            new CharacterTokenEstimator(),
+            new ContextUsageTracker(),
+            new ToolTranscriptService(new ObjectMapper())
+        );
+        memoryRepository.saveAll("conversation-1", List.of(
+            new UserMessage("older message " + "x".repeat(250)),
+            new AssistantMessage("older answer " + "x".repeat(250)),
+            new UserMessage("older message " + "x".repeat(250)),
+            new AssistantMessage("older answer " + "x".repeat(250)),
+            new UserMessage("tail one " + "x".repeat(60)),
+            new AssistantMessage("tail two " + "x".repeat(60)),
+            new UserMessage("tail three " + "x".repeat(60)),
+            new AssistantMessage("tail four " + "x".repeat(60)),
+            new UserMessage("tail five " + "x".repeat(60)),
+            new AssistantMessage("tail six " + "x".repeat(60))
+        ));
+
+        ContextManagementAdvisor.StoredContextMaintenance maintenance = advisor.maintainStoredContext("conversation-1", "qwen3");
+
+        assertThat(maintenance.compacted()).isTrue();
+        assertThat(maintenance.usage().usedTokens()).isLessThanOrEqualTo(maintenance.usage().triggerTokens());
+        assertThat(memoryRepository.findByConversationId("conversation-1"))
+            .filteredOn(advisor::isHiddenSummary)
+            .hasSize(1);
+        assertThat(memoryRepository.findByConversationId("conversation-1"))
+            .filteredOn(advisor::isCompactionNotice)
+            .hasSize(1);
+    }
+
     private AiConfig aiConfig() {
         return new AiConfig(
             "magenta",

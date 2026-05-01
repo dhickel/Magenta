@@ -239,7 +239,7 @@ public class ChatService {
             resolvedRequest.conversationId(),
             resolvedRequest.model(),
             response,
-            contextUsage(resolvedRequest.conversationId(), resolvedRequest.model()),
+            maintainContextUsage(resolvedRequest.conversationId(), resolvedRequest.model()).usage(),
             planState(resolvedRequest.conversationId())
         );
     }
@@ -318,6 +318,13 @@ public class ChatService {
         chatSessionMetadataRepository.saveModel(request.conversationId(), request.model());
         return Flux.defer(() -> {
             ChatClientResponse chatClientResponse = prompt(request).call().chatClientResponse();
+            StoredContextUsage maintenance = maintainContextUsage(request.conversationId(), request.model());
+            if (maintenance.compacted()) {
+                return Flux.just(
+                    systemMessage(ContextManagementAdvisor.COMPACTION_NOTICE),
+                    renderAssistantMessage(chatClientResponse.chatResponse())
+                );
+            }
             return Flux.just(renderAssistantMessage(chatClientResponse.chatResponse()));
         }).doOnComplete(() -> enqueueTitleJobIfFirstTurn(request));
     }
@@ -487,14 +494,28 @@ public class ChatService {
         if (contextUsageTracker != null) {
             ContextUsage trackedUsage = contextUsageTracker.find(conversationId);
             if (trackedUsage != null) {
-                return trackedUsage;
+                if (trackedUsage.usedTokens() <= trackedUsage.triggerTokens() || contextManagementAdvisor == null) {
+                    return trackedUsage;
+                }
+                return maintainContextUsage(conversationId, model).usage();
             }
         }
         if (contextManagementAdvisor == null || chatMemoryRepository == null) {
             return null;
         }
         String resolvedModel = StringUtils.hasText(model) ? model : storedConversationModel(conversationId);
-        return contextManagementAdvisor.estimateStoredUsage(conversationId, resolvedModel);
+        return maintainContextUsage(conversationId, resolvedModel).usage();
+    }
+
+    public StoredContextUsage maintainContextUsage(String conversationId, String model) {
+        if (contextManagementAdvisor == null || chatMemoryRepository == null) {
+            ContextUsage trackedUsage = contextUsageTracker == null ? null : contextUsageTracker.find(conversationId);
+            return new StoredContextUsage(trackedUsage, false);
+        }
+        String resolvedModel = StringUtils.hasText(model) ? model : storedConversationModel(conversationId);
+        ContextManagementAdvisor.StoredContextMaintenance maintenance =
+            contextManagementAdvisor.maintainStoredContext(conversationId, resolvedModel);
+        return new StoredContextUsage(maintenance.usage(), maintenance.compacted());
     }
 
     public String storedConversationModel(String conversationId) {
@@ -668,7 +689,6 @@ public class ChatService {
                     currentSystemInstructions,
                     request.model()
                 );
-                recordContextUsage(request.conversationId(), checkpoint.usage());
                 activeToolMessages = new ArrayList<>(checkpoint.activeMessages());
                 conversationHistory = new ArrayList<>(checkpoint.messages());
                 prompt = new Prompt(conversationHistory, options);
@@ -681,14 +701,15 @@ public class ChatService {
                         toolMessageConsumer.accept(systemMessage(ContextManagementAdvisor.COMPACTION_NOTICE));
                     }
                 }
-                if (toolMessageConsumer != null) {
-                    pendingToolMessages.forEach(toolMessageConsumer);
-                }
                 if (!checkpoint.toolUseAllowed()) {
                     toolUseAbort = new ToolUseAbort(
                         "Context is too large to safely continue tool use after compaction."
                     );
                     break;
+                }
+                recordContextUsage(request.conversationId(), checkpoint.usage());
+                if (toolMessageConsumer != null) {
+                    pendingToolMessages.forEach(toolMessageConsumer);
                 }
                 phase(activeTurn, ActiveTurnPhase.MODEL_CALL);
                 response = chatModelRouter.chatModel(request.model()).call(prompt);
@@ -725,17 +746,15 @@ public class ChatService {
                 messagesToPersist.add(finalAssistantMessage);
             }
             contextManagementAdvisor.saveAssistantMessages(request.conversationId(), messagesToPersist);
-            if (contextUsageTracker != null) {
-                contextUsageTracker.record(
-                    request.conversationId(),
-                    contextManagementAdvisor.estimateStoredUsage(request.conversationId(), request.model())
-                );
+            StoredContextUsage maintenance = maintainContextUsage(request.conversationId(), request.model());
+            if (maintenance.compacted() && toolMessageConsumer != null) {
+                toolMessageConsumer.accept(systemMessage(ContextManagementAdvisor.COMPACTION_NOTICE));
             }
             ChatResponse.MsgResponse chatResponse = new ChatResponse.MsgResponse(
                 request.conversationId(),
                 request.model(),
                 finalAssistantMessage == null ? "" : finalAssistantMessage.getText(),
-                contextUsage(request.conversationId(), request.model()),
+                maintenance.usage(),
                 planState(request.conversationId()),
                 List.copyOf(toolActivities)
             );
@@ -783,6 +802,10 @@ public class ChatService {
 
     private ChatMessage systemMessage(String text) {
         return new ChatMessage("system", text, chatMarkdownRenderer.render(text), null);
+    }
+
+    public ChatMessage systemNotice(String text) {
+        return systemMessage(text);
     }
 
     private void recordContextUsage(String conversationId, io.mindspice.magenta2.ai.chat.model.ContextUsage usage) {
@@ -1250,6 +1273,9 @@ public class ChatService {
     }
 
     private record ToolChatResult(ChatResponse.MsgResponse response, ChatMessage finalMessage) {
+    }
+
+    public record StoredContextUsage(ContextUsage usage, boolean compacted) {
     }
 
     private <T> T await(java.util.concurrent.CompletableFuture<T> future) {

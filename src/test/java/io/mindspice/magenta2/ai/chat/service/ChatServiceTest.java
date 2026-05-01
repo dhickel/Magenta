@@ -26,10 +26,12 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.content.MediaContent;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.retry.NonTransientAiException;
+import org.springframework.ai.tokenizer.TokenCountEstimator;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.DefaultToolDefinition;
 import org.springframework.ai.tool.definition.ToolDefinition;
@@ -399,6 +401,52 @@ class ChatServiceTest {
         assertThat(chatModel.finalPromptText()).contains("Context is too large to safely continue tool use");
     }
 
+    @Test
+    void toolChatCompactsStoredContextBeforeReturningUsage() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        ToolTranscriptService transcriptService = new ToolTranscriptService(objectMapper);
+        ContextUsageTracker usageTracker = new ContextUsageTracker();
+        MultiToolThenFinalChatModel chatModel = new MultiToolThenFinalChatModel();
+        ContextManagementAdvisor contextAdvisor = new ContextManagementAdvisor(
+            memoryRepository,
+            compactingToolAiConfig(),
+            new SummaryRouter(chatModel),
+            new CharacterTokenEstimator(),
+            usageTracker,
+            transcriptService
+        );
+        ChatService service = new ChatService(
+            null,
+            memoryRepository,
+            new ChatSessionMetadataRepository(jdbcTemplate),
+            new ChatMarkdownRenderer(),
+            compactingToolAiConfig(),
+            contextAdvisor,
+            usageTracker,
+            new FakeChatModelRouter(chatModel),
+            new SuccessfulToolCallingManager(),
+            new ChatToolRegistry(List.of(new FakeToolCallback()), List.of()),
+            transcriptService,
+            null
+        );
+
+        io.mindspice.magenta2.ai.chat.model.ChatResponse.MsgResponse response = service.chat(
+            "conversation-1",
+            "use several tools",
+            "qwen3"
+        );
+
+        assertThat(response.contextUsage().usedTokens()).isLessThanOrEqualTo(response.contextUsage().triggerTokens());
+        assertThat(memoryRepository.findByConversationId("conversation-1"))
+            .filteredOn(contextAdvisor::isHiddenSummary)
+            .hasSize(1);
+        assertThat(memoryRepository.findByConversationId("conversation-1"))
+            .filteredOn(contextAdvisor::isCompactionNotice)
+            .hasSize(1);
+    }
+
     private JdbcTemplate jdbcTemplate() {
         SingleConnectionDataSource dataSource = new SingleConnectionDataSource("jdbc:sqlite::memory:", true);
         return new JdbcTemplate(dataSource);
@@ -422,6 +470,57 @@ class ChatServiceTest {
             Map.of("local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 8192)),
             Map.of("magenta", new AgentConfig("local-qwen", "You are Magenta.", List.of("test_tool")))
         );
+    }
+
+    private AiConfig compactingToolAiConfig() {
+        return new AiConfig(
+            "magenta",
+            "summary",
+            10,
+            null,
+            Map.of(
+                "local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 1400),
+                "summary", new ModelConfig("summary-model", "http://localhost:11434", EndpointType.OLLAMA, 512)
+            ),
+            Map.of("magenta", new AgentConfig("local-qwen", "You are Magenta.", List.of("test_tool")))
+        );
+    }
+
+    private static final class CharacterTokenEstimator implements TokenCountEstimator {
+        @Override
+        public int estimate(String text) {
+            return text == null ? 0 : text.length();
+        }
+
+        @Override
+        public int estimate(MediaContent content) {
+            return content == null ? 0 : estimate(content.getText());
+        }
+
+        @Override
+        public int estimate(Iterable<MediaContent> contents) {
+            int total = 0;
+            if (contents != null) {
+                for (MediaContent content : contents) {
+                    total += estimate(content);
+                }
+            }
+            return total;
+        }
+    }
+
+    private static final class SummaryRouter extends ChatModelRouter {
+        private final org.springframework.ai.chat.client.ChatClient chatClient;
+
+        SummaryRouter(ChatModel chatModel) {
+            super(null, null, null);
+            this.chatClient = org.springframework.ai.chat.client.ChatClient.builder(chatModel).build();
+        }
+
+        @Override
+        public org.springframework.ai.chat.client.ChatClient chatClient(String model) {
+            return chatClient;
+        }
     }
 
     private static final class FakeContextManagementAdvisor extends ContextManagementAdvisor {
@@ -452,6 +551,11 @@ class ChatServiceTest {
         @Override
         public io.mindspice.magenta2.ai.chat.model.ContextUsage estimateStoredUsage(String conversationId, String remoteModelName) {
             return new io.mindspice.magenta2.ai.chat.model.ContextUsage(0, 8192, 7372, 0.0);
+        }
+
+        @Override
+        public StoredContextMaintenance maintainStoredContext(String conversationId, String remoteModelName) {
+            return new StoredContextMaintenance(estimateStoredUsage(conversationId, remoteModelName), false);
         }
 
         @Override
@@ -524,6 +628,33 @@ class ChatServiceTest {
         }
     }
 
+    private static final class MultiToolThenFinalChatModel implements ChatModel {
+        private int calls;
+
+        @Override
+        public ChatResponse call(Prompt prompt) {
+            calls++;
+            String promptText = prompt.getInstructions().stream()
+                .map(message -> message.getText() == null ? "" : message.getText())
+                .collect(java.util.stream.Collectors.joining("\n"));
+            if (promptText.contains("Summarize the previous Magenta conversation")) {
+                return new ChatResponse(List.of(new Generation(new AssistantMessage("short tool summary"))));
+            }
+            if (calls <= 7) {
+                return new ChatResponse(List.of(new Generation(AssistantMessage.builder()
+                    .content("")
+                    .toolCalls(List.of(new AssistantMessage.ToolCall(
+                        "call-" + calls,
+                        "function",
+                        "test_tool",
+                        "{\"attempt\":" + calls + "}"
+                    )))
+                    .build())));
+            }
+            return new ChatResponse(List.of(new Generation(new AssistantMessage("final answer " + "x".repeat(500)))));
+        }
+    }
+
     private static final class FakeToolCallingManager implements ToolCallingManager {
         private int count = 0;
 
@@ -540,6 +671,33 @@ class ChatServiceTest {
                     "call-" + count,
                     "test_tool",
                     "tool failed " + count
+                )))
+                .build();
+            List<Message> history = new java.util.ArrayList<>(prompt.getInstructions());
+            history.add(chatResponse.getResult().getOutput());
+            history.add(responseMessage);
+            return ToolExecutionResult.builder()
+                .conversationHistory(history)
+                .build();
+        }
+    }
+
+    private static final class SuccessfulToolCallingManager implements ToolCallingManager {
+        private int count = 0;
+
+        @Override
+        public List<ToolDefinition> resolveToolDefinitions(ToolCallingChatOptions chatOptions) {
+            return List.of();
+        }
+
+        @Override
+        public ToolExecutionResult executeToolCalls(Prompt prompt, ChatResponse chatResponse) {
+            count++;
+            Message responseMessage = ToolResponseMessage.builder()
+                .responses(List.of(new ToolResponseMessage.ToolResponse(
+                    "call-" + count,
+                    "test_tool",
+                    "{\"ok\":true,\"result\":\"" + "x".repeat(80) + "\"}"
                 )))
                 .build();
             List<Message> history = new java.util.ArrayList<>(prompt.getInstructions());
