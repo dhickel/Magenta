@@ -5,4 +5,10 @@ public sealed interface ChatRequest {
 
     record CmdRequest(String conversationId, String command) implements ChatRequest { }
 
+    record Archive(boolean archived) implements ChatRequest { }
+
+    record Favorite(boolean isFavorite) implements ChatRequest { }
+
+    record SetTitle(String title) implements ChatRequest { }
+
 }

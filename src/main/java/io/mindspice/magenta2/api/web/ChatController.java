@@ -10,9 +10,6 @@ import io.mindspice.magenta2.ai.chat.model.ChatMessage;
 import io.mindspice.magenta2.ai.chat.model.ChatRequest;
 import io.mindspice.magenta2.ai.chat.model.ChatResponse;
 import io.mindspice.magenta2.ai.chat.model.ChatSession;
-import io.mindspice.magenta2.ai.chat.model.ChatSessionArchiveRequest;
-import io.mindspice.magenta2.ai.chat.model.ChatSessionFavoriteRequest;
-import io.mindspice.magenta2.ai.chat.model.ChatSessionTitleRequest;
 import io.mindspice.magenta2.ai.chat.model.ChatSessions;
 import io.mindspice.magenta2.ai.chat.model.ChatPlanState;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
@@ -170,11 +167,13 @@ public class ChatController {
     }
 
     @PatchMapping("/{conversationId}/title")
-    public ChatSession rename(@PathVariable String conversationId, @RequestBody ChatSessionTitleRequest request) {
+    public ChatSession rename(@PathVariable String conversationId, @RequestBody ChatRequest.SetTitle request) {
         requireValidUuid(conversationId);
+
         if (!chatService.conversationExists(conversationId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "conversation not found: " + conversationId);
         }
+
         String title = normalize(request == null ? null : request.title());
         if (title == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "title is required");
@@ -183,13 +182,13 @@ public class ChatController {
     }
 
     @PatchMapping("/{conversationId}/favorite")
-    public ChatSession favorite(@PathVariable String conversationId, @RequestBody ChatSessionFavoriteRequest request) {
+    public ChatSession favorite(@PathVariable String conversationId, @RequestBody ChatRequest.Favorite request) {
         requireExistingConversation(conversationId);
-        return chatService.setConversationFavorite(conversationId, request != null && request.favorite());
+        return chatService.setConversationFavorite(conversationId, request != null && request.isFavorite());
     }
 
     @PatchMapping("/{conversationId}/archive")
-    public ChatSession archive(@PathVariable String conversationId, @RequestBody ChatSessionArchiveRequest request) {
+    public ChatSession archive(@PathVariable String conversationId, @RequestBody ChatRequest.Archive request) {
         requireExistingConversation(conversationId);
         return chatService.setConversationArchived(conversationId, request != null && request.archived());
     }

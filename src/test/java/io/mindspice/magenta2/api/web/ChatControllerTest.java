@@ -11,9 +11,6 @@ import io.mindspice.magenta2.ai.chat.model.ChatPlanState;
 import io.mindspice.magenta2.ai.chat.model.ChatRequest;
 import io.mindspice.magenta2.ai.chat.model.ChatResponse;
 import io.mindspice.magenta2.ai.chat.model.ChatSession;
-import io.mindspice.magenta2.ai.chat.model.ChatSessionArchiveRequest;
-import io.mindspice.magenta2.ai.chat.model.ChatSessionFavoriteRequest;
-import io.mindspice.magenta2.ai.chat.model.ChatSessionTitleRequest;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -97,7 +94,7 @@ class ChatControllerTest {
     void renameUpdatesConversationTitle() {
         ChatSession response = chatController.rename(
             CONVERSATION_ID,
-            new ChatSessionTitleRequest("  Updated   Session  ")
+            new ChatRequest.SetTitle("  Updated   Session  ")
         );
 
         assertThat(response.conversationId()).isEqualTo(CONVERSATION_ID);
@@ -107,7 +104,7 @@ class ChatControllerTest {
 
     @Test
     void renameRejectsBlankTitle() {
-        assertThatThrownBy(() -> chatController.rename(CONVERSATION_ID, new ChatSessionTitleRequest(" ")))
+        assertThatThrownBy(() -> chatController.rename(CONVERSATION_ID, new ChatRequest.SetTitle(" ")))
             .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
                 assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
                 assertThat(exception.getReason()).isEqualTo("title is required");
@@ -116,7 +113,7 @@ class ChatControllerTest {
 
     @Test
     void favoriteUpdatesConversationFavoriteState() {
-        ChatSession response = chatController.favorite(CONVERSATION_ID, new ChatSessionFavoriteRequest(true));
+        ChatSession response = chatController.favorite(CONVERSATION_ID, new ChatRequest.Favorite(true));
 
         assertThat(response.favorite()).isTrue();
         assertThat(chatService.favorite).isTrue();
@@ -124,7 +121,7 @@ class ChatControllerTest {
 
     @Test
     void archiveUpdatesConversationArchiveState() {
-        ChatSession response = chatController.archive(CONVERSATION_ID, new ChatSessionArchiveRequest(true));
+        ChatSession response = chatController.archive(CONVERSATION_ID, new ChatRequest.Archive(true));
 
         assertThat(response.archived()).isTrue();
         assertThat(chatService.archived).isTrue();
