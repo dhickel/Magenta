@@ -1,4 +1,4 @@
-package io.mindspice.magenta2.ai.agent.job;
+package io.mindspice.magenta2.ai.chat.repository;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -6,6 +6,9 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
+import io.mindspice.magenta2.ai.agent.job.AgentJob;
+import io.mindspice.magenta2.ai.agent.job.AgentJobStatus;
+import io.mindspice.magenta2.ai.agent.job.AgentJobType;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.UncategorizedSQLException;

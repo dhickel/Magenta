@@ -875,7 +875,7 @@ public class FrontendController {
                     .withSubtitle("Session-backed chat bootstrap")
                     .build())
             .withTopNav(topNavBar)
-            .addCustomJs("/js/chat-client.js?v=20")
+            .addCustomJs("/js/chat-client.js?v=21")
             .buildTemplate();
 
     @GetMapping("/chat")

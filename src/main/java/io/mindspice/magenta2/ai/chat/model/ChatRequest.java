@@ -11,4 +11,6 @@ public sealed interface ChatRequest {
 
     record SetTitle(String title) implements ChatRequest { }
 
+    record TurnInterrupt(String conversationId, String interruptToken, String message) implements ChatRequest { }
+
 }

@@ -3,6 +3,7 @@ package io.mindspice.magenta2.ai.chat.tool.plan;
 import java.util.List;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mindspice.magenta2.ai.chat.repository.ChatMemoryRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
@@ -12,7 +13,6 @@ import io.mindspice.magenta2.ai.chat.plan.PlanMode;
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
 import io.mindspice.magenta2.ai.chat.plan.PlanToolContext;
 import io.mindspice.magenta2.ai.chat.plan.PlanToolExecutionContext;
-import io.mindspice.magenta2.ai.chat.repository.SQLiteChatMemoryRepository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -24,7 +24,7 @@ class PlanSaveToolsTest {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         PlanService service = new PlanService(
             new ChatPlanRepository(jdbcTemplate, new ObjectMapper()),
-            new SQLiteChatMemoryRepository(jdbcTemplate, new ObjectMapper())
+            new ChatMemoryRepository(jdbcTemplate, new ObjectMapper())
         );
         service.beginPlan("conversation-1");
         PlanSaveTools tools = new PlanSaveTools(service);
@@ -59,7 +59,7 @@ class PlanSaveToolsTest {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         PlanService service = new PlanService(
             new ChatPlanRepository(jdbcTemplate, new ObjectMapper()),
-            new SQLiteChatMemoryRepository(jdbcTemplate, new ObjectMapper())
+            new ChatMemoryRepository(jdbcTemplate, new ObjectMapper())
         );
         service.beginPlan("conversation-1");
         service.saveDraftPlan("conversation-1", "Goal", "Plan", null, null, List.of("Step"), List.of(), List.of());

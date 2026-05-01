@@ -25,7 +25,7 @@ class FrontendControllerTest {
         assertThat(html).contains("grid-template-columns: auto minmax(5rem, 10rem) auto minmax(0, 1fr);");
         assertThat(html).contains("flex-direction: column;");
         assertThat(html).contains("width: 100%;");
-        assertThat(html).contains("/js/chat-client.js?v=20");
+        assertThat(html).contains("/js/chat-client.js?v=21");
         assertThat(html).contains(".chat-session-actions");
         assertThat(html).contains(".chat-session-rename");
         assertThat(html).contains(".chat-session-topline");

@@ -15,8 +15,12 @@ import io.mindspice.magenta2.ai.chat.model.ChatPlanState;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.chat.service.ChatService.ResolvedChatRequest;
 import io.mindspice.magenta2.ai.chat.model.ChatStreamEvent;
+import io.mindspice.magenta2.ai.execution.ActiveTurnRegistry;
+import io.mindspice.magenta2.ai.execution.ActiveTurnRegistry.ActiveTurn;
+import io.mindspice.magenta2.ai.execution.InterruptResult;
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -36,9 +40,16 @@ import reactor.core.scheduler.Schedulers;
 public class ChatController {
 
     private final ChatService chatService;
+    private final ActiveTurnRegistry activeTurnRegistry;
 
     public ChatController(ChatService chatService) {
+        this(chatService, new ActiveTurnRegistry());
+    }
+
+    @Autowired
+    public ChatController(ChatService chatService, ActiveTurnRegistry activeTurnRegistry) {
         this.chatService = chatService;
+        this.activeTurnRegistry = activeTurnRegistry;
     }
 
     @PostMapping
@@ -49,6 +60,7 @@ public class ChatController {
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter stream(@RequestBody ChatRequest.MsgRequest request) {
         ResolvedChatRequest resolvedRequest = chatService.resolve(request);
+        ActiveTurn activeTurn = activeTurnRegistry.register(resolvedRequest.conversationId());
         SseEmitter emitter = new SseEmitter(0L);
         AtomicReference<Disposable> subscriptionRef = new AtomicReference<>();
         Runnable cancelSubscription = () -> {
@@ -56,6 +68,7 @@ public class ChatController {
             if (subscription != null && !subscription.isDisposed()) {
                 subscription.dispose();
             }
+            activeTurnRegistry.complete(activeTurn.turnId());
         };
 
         emitter.onCompletion(cancelSubscription);
@@ -66,7 +79,12 @@ public class ChatController {
             sendEvent(
                 emitter,
                 "start",
-                ChatStreamEvent.start(resolvedRequest.conversationId(), resolvedRequest.model())
+                ChatStreamEvent.start(
+                    resolvedRequest.conversationId(),
+                    resolvedRequest.model(),
+                    activeTurn.turnId(),
+                    activeTurn.token()
+                )
                     .withPlanState(chatService.planState(resolvedRequest.conversationId()))
             );
         } catch (Exception e) {
@@ -74,7 +92,7 @@ public class ChatController {
             return emitter;
         }
 
-        Disposable subscription = chatService.stream(resolvedRequest)
+        Disposable subscription = chatService.stream(resolvedRequest, activeTurn)
             .subscribeOn(Schedulers.boundedElastic())
             .subscribe(
             message -> {
@@ -84,6 +102,18 @@ public class ChatController {
                             emitter,
                             "tool",
                             ChatStreamEvent.tool(
+                                resolvedRequest.conversationId(),
+                                resolvedRequest.model(),
+                                message
+                            ).withPlanState(chatService.planState(resolvedRequest.conversationId()))
+                        );
+                        return;
+                    }
+                    if ("user".equalsIgnoreCase(message.role())) {
+                        sendEvent(
+                            emitter,
+                            "interrupt",
+                            ChatStreamEvent.message(
                                 resolvedRequest.conversationId(),
                                 resolvedRequest.model(),
                                 message
@@ -108,6 +138,7 @@ public class ChatController {
             },
             error -> {
                 try {
+                    activeTurnRegistry.complete(activeTurn.turnId());
                     chatService.discardLastUserMessage(resolvedRequest.conversationId(), resolvedRequest.message());
                     sendEvent(emitter, "error", ChatStreamEvent.error(error.getMessage()));
                     emitter.complete();
@@ -117,6 +148,7 @@ public class ChatController {
             },
             () -> {
                 try {
+                    activeTurnRegistry.complete(activeTurn.turnId());
                     sendEvent(
                         emitter,
                         "done",
@@ -135,6 +167,17 @@ public class ChatController {
         );
         subscriptionRef.set(subscription);
         return emitter;
+    }
+
+    @PostMapping("/turns/{turnId}/interrupt")
+    public InterruptResult interrupt(@PathVariable String turnId, @RequestBody ChatRequest.TurnInterrupt request) {
+        String conversationId = normalize(request == null ? null : request.conversationId());
+        String token = request == null ? null : request.interruptToken();
+        String message = normalize(request == null ? null : request.message());
+        if (conversationId == null || token == null || message == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "conversationId, interruptToken, and message are required");
+        }
+        return activeTurnRegistry.interrupt(turnId, conversationId, token, message);
     }
 
     private ChatMessage lastAssistantMessage(ResolvedChatRequest resolvedRequest) {

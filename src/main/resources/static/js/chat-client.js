@@ -1,5 +1,8 @@
 (function() {
     let requestInFlight = false;
+    let activeTurnId = null;
+    let activeInterruptToken = null;
+    const queuedMessages = [];
     let titlePollTimer = null;
     let editingSessionId = null;
     let latestSessions = [];
@@ -580,10 +583,11 @@
 
     async function sendMessage(message) {
         if (requestInFlight) {
+            await sendInterruptOrQueue(message);
             return;
         }
         requestInFlight = true;
-        setFormDisabled(true);
+        setFormBusy(true);
         const payload = {
             conversationId: activeConversationId(),
             message: message,
@@ -613,6 +617,8 @@
                 const data = event.data || {};
                 if (event.name === 'start') {
                     setActiveConversationId(data.conversationId);
+                    activeTurnId = data.turnId || null;
+                    activeInterruptToken = data.interruptToken || null;
                     syncModelSelection(data.model);
                     updatePlanStatus(data.planState);
                     completedConversationId = data.conversationId;
@@ -624,6 +630,11 @@
                 }
                 if (event.name === 'tool') {
                     appendToolActivity(data, assistantEl);
+                    updatePlanStatus(data.planState);
+                    return;
+                }
+                if (event.name === 'interrupt') {
+                    appendPendingUserMessage(data.text || '');
                     updatePlanStatus(data.planState);
                     return;
                 }
@@ -658,8 +669,57 @@
             throw error;
         } finally {
             requestInFlight = false;
-            setFormDisabled(false);
+            activeTurnId = null;
+            activeInterruptToken = null;
+            setFormBusy(false);
+            sendNextQueuedMessage();
         }
+    }
+
+    async function sendInterruptOrQueue(message) {
+        if (!activeTurnId || !activeInterruptToken || !activeConversationId()) {
+            queueMessage(message);
+            return;
+        }
+        try {
+            const result = await getJson('/api/chat/turns/' + encodeURIComponent(activeTurnId) + '/interrupt', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    conversationId: activeConversationId(),
+                    interruptToken: activeInterruptToken,
+                    message: message
+                })
+            });
+            if (result && result.status === 'ACCEPTED') {
+                setStatus();
+                return;
+            }
+            queueMessage(message);
+        } catch (error) {
+            queueMessage(message);
+        }
+    }
+
+    function queueMessage(message) {
+        queuedMessages.push(message);
+        setError('Message queued for the next turn.');
+    }
+
+    function sendNextQueuedMessage() {
+        if (requestInFlight || queuedMessages.length === 0) {
+            return;
+        }
+        const nextMessage = queuedMessages.shift();
+        window.setTimeout(function() {
+            sendMessage(nextMessage).catch(function(error) {
+                const input = byId('chat-input');
+                if (input && !input.value) {
+                    input.value = nextMessage;
+                }
+                setError(error.message);
+            });
+        }, 0);
     }
 
     async function sendCommand(command) {
@@ -690,6 +750,15 @@
         } finally {
             requestInFlight = false;
             setFormDisabled(false);
+        }
+    }
+
+    function setFormBusy(busy) {
+        const form = byId('chat-form');
+        const button = form ? form.querySelector('button[type="submit"]') : null;
+        if (button) {
+            button.disabled = false;
+            button.textContent = busy ? 'Send update' : 'Send';
         }
     }
 
@@ -810,9 +879,6 @@
 
         byId('chat-form').addEventListener('submit', async function(event) {
             event.preventDefault();
-            if (requestInFlight) {
-                return;
-            }
             const text = input.value.trim();
             if (!text) {
                 return;
@@ -820,8 +886,11 @@
 
             input.value = '';
             try {
-                if (text.startsWith('/')) {
+                if (text.startsWith('/') && !requestInFlight) {
                     await sendCommand(text);
+                } else if (text.startsWith('/')) {
+                    input.value = text;
+                    setError('Commands are available after the active turn finishes.');
                 } else {
                     await sendMessage(text);
                 }

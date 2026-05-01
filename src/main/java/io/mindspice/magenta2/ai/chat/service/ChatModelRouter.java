@@ -99,6 +99,5 @@ public class ChatModelRouter {
         return defaultModel.remoteModelName();
     }
 
-    private record ResolvedModel(String key, ModelConfig config) {
-    }
+    private record ResolvedModel(String key, ModelConfig config) { }
 }

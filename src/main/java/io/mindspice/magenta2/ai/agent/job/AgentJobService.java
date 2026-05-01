@@ -7,10 +7,13 @@ import java.util.UUID;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mindspice.magenta2.ai.chat.repository.AgentJobRepository;
 import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
 import io.mindspice.magenta2.ai.chat.service.ChatModelRouter;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.ai.config.user.ModelConfig;
+import io.mindspice.magenta2.ai.execution.MagentaWorkExecutor;
+import io.mindspice.magenta2.ai.execution.MagentaWorkRequest;
 import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
@@ -35,6 +38,7 @@ public class AgentJobService {
     private final AiConfig aiConfig;
     private final ObjectMapper objectMapper;
     private final TaskExecutor agentJobTaskExecutor;
+    private final MagentaWorkExecutor magentaWorkExecutor;
 
     @Autowired
     public AgentJobService(
@@ -43,7 +47,8 @@ public class AgentJobService {
         ChatModelRouter chatModelRouter,
         AiConfig aiConfig,
         ObjectMapper objectMapper,
-        @Qualifier("agentJobTaskExecutor") TaskExecutor agentJobTaskExecutor
+        @Qualifier("agentJobTaskExecutor") TaskExecutor agentJobTaskExecutor,
+        @Autowired(required = false) MagentaWorkExecutor magentaWorkExecutor
     ) {
         this.agentJobRepository = agentJobRepository;
         this.chatSessionMetadataRepository = chatSessionMetadataRepository;
@@ -51,6 +56,18 @@ public class AgentJobService {
         this.aiConfig = aiConfig;
         this.objectMapper = objectMapper;
         this.agentJobTaskExecutor = agentJobTaskExecutor;
+        this.magentaWorkExecutor = magentaWorkExecutor;
+    }
+
+    AgentJobService(
+        AgentJobRepository agentJobRepository,
+        ChatSessionMetadataRepository chatSessionMetadataRepository,
+        ChatModelRouter chatModelRouter,
+        AiConfig aiConfig,
+        ObjectMapper objectMapper,
+        TaskExecutor agentJobTaskExecutor
+    ) {
+        this(agentJobRepository, chatSessionMetadataRepository, chatModelRouter, aiConfig, objectMapper, agentJobTaskExecutor, null);
     }
 
     AgentJobService(
@@ -60,7 +77,7 @@ public class AgentJobService {
         ObjectMapper objectMapper,
         TaskExecutor agentJobTaskExecutor
     ) {
-        this(agentJobRepository, chatSessionMetadataRepository, chatModelRouter, null, objectMapper, agentJobTaskExecutor);
+        this(agentJobRepository, chatSessionMetadataRepository, chatModelRouter, null, objectMapper, agentJobTaskExecutor, null);
     }
 
     public Optional<AgentJob> submitConversationTitle(String conversationId, String selectedModel, String firstUserMessage) {
@@ -78,7 +95,21 @@ public class AgentJobService {
             titleModel,
             json(Map.of("firstUserMessage", firstUserMessage))
         );
-        enqueued.ifPresent(job -> agentJobTaskExecutor.execute(() -> runConversationTitleJob(job.id())));
+        enqueued.ifPresent(job -> {
+            if (magentaWorkExecutor != null) {
+                magentaWorkExecutor.submitBackground(
+                    job.conversationId(),
+                    MagentaWorkRequest.BACKGROUND_PRIORITY,
+                    "conversation title " + job.conversationId(),
+                    () -> {
+                        runConversationTitleJob(job.id());
+                        return null;
+                    }
+                );
+                return;
+            }
+            agentJobTaskExecutor.execute(() -> runConversationTitleJob(job.id()));
+        });
         return enqueued;
     }
 

@@ -33,13 +33,6 @@ public class AgentFileTools {
         return json(fileToolService.list(path, Boolean.TRUE.equals(recursive), maxEntries, glob));
     }
 
-    String list(
-        String path,
-        Boolean recursive,
-        Integer maxEntries
-    ) throws Exception {
-        return json(fileToolService.list(path, Boolean.TRUE.equals(recursive), maxEntries, null));
-    }
 
     @Tool(
         name = "file_read",

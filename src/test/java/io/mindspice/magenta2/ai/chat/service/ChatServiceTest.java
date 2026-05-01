@@ -8,7 +8,7 @@ import io.mindspice.magenta2.ai.chat.model.ChatMessage;
 import io.mindspice.magenta2.ai.chat.plan.ChatPlanRepository;
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
 import io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer;
-import io.mindspice.magenta2.ai.chat.repository.SQLiteChatMemoryRepository;
+import io.mindspice.magenta2.ai.chat.repository.ChatMemoryRepository;
 import io.mindspice.magenta2.ai.chat.tool.ToolTranscriptService;
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
@@ -114,7 +114,7 @@ class ChatServiceTest {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         PlanService planService = new PlanService(
             new ChatPlanRepository(jdbcTemplate, new ObjectMapper()),
-            new SQLiteChatMemoryRepository(jdbcTemplate, new ObjectMapper())
+            new ChatMemoryRepository(jdbcTemplate, new ObjectMapper())
         );
         planService.beginPlan("conversation-1");
         AiConfig aiConfig = new AiConfig(
@@ -215,7 +215,7 @@ class ChatServiceTest {
     @Test
     void discardLastUserMessageRemovesOnlyMatchingDanglingUserTurn() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
-        SQLiteChatMemoryRepository memoryRepository = new SQLiteChatMemoryRepository(jdbcTemplate, new ObjectMapper());
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
         memoryRepository.saveAll("conversation-1", java.util.List.of(
             new UserMessage("keep"),
             new AssistantMessage("answer"),
@@ -240,7 +240,7 @@ class ChatServiceTest {
     void historyIncludesStructuredToolActivity() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         ObjectMapper objectMapper = new ObjectMapper();
-        SQLiteChatMemoryRepository memoryRepository = new SQLiteChatMemoryRepository(jdbcTemplate, objectMapper);
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
         ToolTranscriptService transcriptService = new ToolTranscriptService(objectMapper);
         memoryRepository.saveAll("conversation-1", java.util.List.of(
             transcriptService.fullResult(

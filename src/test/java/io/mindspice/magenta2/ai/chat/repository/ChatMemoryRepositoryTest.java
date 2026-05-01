@@ -12,7 +12,7 @@ import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class SQLiteChatMemoryRepositoryTest {
+class ChatMemoryRepositoryTest {
 
     @Test
     void preservesAssistantMessageMetadata() {
@@ -27,7 +27,7 @@ class SQLiteChatMemoryRepositoryTest {
             )
             """);
 
-        SQLiteChatMemoryRepository repository = new SQLiteChatMemoryRepository(jdbcTemplate, new ObjectMapper());
+        ChatMemoryRepository repository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
         AssistantMessage message = AssistantMessage.builder()
             .content("Visible answer")
             .properties(Map.of("magenta.thinking", "structured notes"))

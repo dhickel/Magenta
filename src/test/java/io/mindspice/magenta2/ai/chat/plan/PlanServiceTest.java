@@ -1,7 +1,6 @@
 package io.mindspice.magenta2.ai.chat.plan;
 
 import java.util.List;
-import java.util.Map;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -9,7 +8,7 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
-import io.mindspice.magenta2.ai.chat.repository.SQLiteChatMemoryRepository;
+import io.mindspice.magenta2.ai.chat.repository.ChatMemoryRepository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -18,7 +17,7 @@ class PlanServiceTest {
     @Test
     void exitPlanTrimsMessagesCreatedAfterPlanStarted() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
-        SQLiteChatMemoryRepository memoryRepository = new SQLiteChatMemoryRepository(jdbcTemplate, new ObjectMapper());
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
         PlanService service = new PlanService(new ChatPlanRepository(jdbcTemplate, new ObjectMapper()), memoryRepository);
 
         memoryRepository.saveAll("conversation-1", List.of(new UserMessage("before")));
@@ -36,7 +35,7 @@ class PlanServiceTest {
     @Test
     void runtimeInstructionsExposeCompactPlanState() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
-        SQLiteChatMemoryRepository memoryRepository = new SQLiteChatMemoryRepository(jdbcTemplate, new ObjectMapper());
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
         PlanService service = new PlanService(new ChatPlanRepository(jdbcTemplate, new ObjectMapper()), memoryRepository);
 
         service.beginPlan("conversation-1");
@@ -66,7 +65,7 @@ class PlanServiceTest {
     @Test
     void planModeInstructionsAreStandalonePlanningPrompt() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
-        SQLiteChatMemoryRepository memoryRepository = new SQLiteChatMemoryRepository(jdbcTemplate, new ObjectMapper());
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
         PlanService service = new PlanService(new ChatPlanRepository(jdbcTemplate, new ObjectMapper()), memoryRepository);
 
         service.beginPlan("conversation-1");
@@ -84,7 +83,7 @@ class PlanServiceTest {
     @Test
     void executionReportPersistsEvidenceAndNeedsReviewState() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
-        SQLiteChatMemoryRepository memoryRepository = new SQLiteChatMemoryRepository(jdbcTemplate, new ObjectMapper());
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
         PlanService service = new PlanService(new ChatPlanRepository(jdbcTemplate, new ObjectMapper()), memoryRepository);
 
         service.beginPlan("conversation-1");

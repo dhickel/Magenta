@@ -12,6 +12,7 @@ import io.mindspice.magenta2.ai.chat.model.ChatRequest;
 import io.mindspice.magenta2.ai.chat.model.ChatResponse;
 import io.mindspice.magenta2.ai.chat.model.ChatSession;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
+import io.mindspice.magenta2.ai.execution.ActiveTurnRegistry.ActiveTurn;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -333,6 +334,11 @@ class ChatControllerTest {
 
         @Override
         public Flux<ChatMessage> stream(ResolvedChatRequest request) {
+            return stream(request, null);
+        }
+
+        @Override
+        public Flux<ChatMessage> stream(ResolvedChatRequest request, ActiveTurn activeTurn) {
             return Flux.create(sink -> {
                 subscribed.countDown();
                 try {
