@@ -1,6 +1,9 @@
 (function() {
     let requestInFlight = false;
     let titlePollTimer = null;
+    let editingSessionId = null;
+    let latestSessions = [];
+    const selectedSessionIds = new Set();
 
     function byId(id) {
         return document.getElementById(id);
@@ -300,24 +303,54 @@
         }).filter(function(session) {
             return session.conversationId;
         });
+        latestSessions = sessions;
+        pruneSelectedSessions(sessions);
         const activeId = activeConversationId();
 
         if (sessions.length === 0) {
             sessionsEl.innerHTML = '<li class="chat-session-empty">No persisted sessions yet.</li>';
+            syncSelectAllCheckbox();
             return;
         }
 
         sessionsEl.innerHTML = sessions.map(function(session) {
             const id = String(session.conversationId);
             const escaped = escapeHtml(id);
-            const title = session.title ? String(session.title) : id;
+            const title = sessionDisplayName(session);
             const escapedTitle = escapeHtml(title);
+            const shortId = shortConversationLabel(id);
+            const escapedShortId = escapeHtml(shortId);
             const activeClass = id === activeId ? ' active' : '';
-            return '<li><a href="#" class="chat-session-entry' + activeClass + '" data-switch-id="' + escaped + '">'
-                + '<span>' + escapedTitle + '</span>'
-                + (session.title ? '<code>' + escaped + '</code>' : '')
-                + '</a></li>';
+            const checked = selectedSessionIds.has(id) ? ' checked' : '';
+            const checkbox = '<label class="chat-session-check" title="Select chat">'
+                + '<input type="checkbox" data-bulk-select="' + escaped + '" aria-label="Select ' + escapedTitle + '"' + checked + '>'
+                + '</label>';
+            if (editingSessionId === id) {
+                return '<li class="chat-session-item editing">'
+                    + '<div class="chat-session-entry' + activeClass + '">'
+                    + '<div class="chat-session-topline">' + checkbox + '</div>'
+                    + '<form class="chat-session-rename" data-rename-form="' + escaped + '">'
+                    + '<input name="title" value="' + escapedTitle + '" autocomplete="off" aria-label="Chat title">'
+                    + '<button type="submit" title="Save title" aria-label="Save title">&#10003;</button>'
+                    + '<button type="button" title="Cancel rename" aria-label="Cancel rename" data-cancel-rename="' + escaped + '">&#215;</button>'
+                    + '</form></div></li>';
+            }
+            return '<li class="chat-session-item">'
+                + '<div class="chat-session-entry' + activeClass + '">'
+                + '<div class="chat-session-topline">'
+                + checkbox
+                + '<code class="chat-session-inline-hash" title="' + escaped + '">' + escapedShortId + '</code>'
+                + '<div class="chat-session-actions">'
+                + '<button type="button" class="' + (session.favorite ? 'favorite' : '') + '" title="' + (session.favorite ? 'Remove favorite' : 'Favorite chat') + '" aria-label="' + (session.favorite ? 'Remove favorite ' : 'Favorite chat ') + escapedTitle + '" data-favorite-id="' + escaped + '" data-favorite-next="' + (session.favorite ? 'false' : 'true') + '">' + (session.favorite ? '&#9733;' : '&#9734;') + '</button>'
+                + '<button type="button" title="Archive chat" aria-label="Archive chat ' + escapedTitle + '" data-archive-id="' + escaped + '" data-archive-name="' + escapedTitle + '">&#128230;</button>'
+                + '<button type="button" title="Rename chat" aria-label="Rename chat ' + escapedTitle + '" data-rename-id="' + escaped + '">&#9998;</button>'
+                + '<button type="button" title="Delete chat" aria-label="Delete chat ' + escapedTitle + '" data-delete-id="' + escaped + '" data-delete-name="' + escapedTitle + '">&#128465;</button>'
+                + '</div></div>'
+                + '<a href="#" class="chat-session-title" data-switch-id="' + escaped + '">'
+                + '<span class="chat-session-title-label"><span class="chat-session-title-text">' + escapedTitle + '</span></span>'
+                + '</a></div></li>';
         }).join('');
+        syncSelectAllCheckbox();
 
         const activeSession = sessions.find(function(session) {
             return session.conversationId === activeId;
@@ -325,12 +358,173 @@
         if (activeSession) {
             setActiveConversationId(activeSession.conversationId, activeSession.title);
         }
+        if (editingSessionId) {
+            const input = sessionsEl.querySelector('[data-rename-form="' + cssEscape(editingSessionId) + '"] input[name="title"]');
+            if (input) {
+                input.focus();
+                input.select();
+            }
+        }
+    }
+
+    function sessionDisplayName(session) {
+        if (session && session.title) {
+            return String(session.title);
+        }
+        return session && session.conversationId ? 'Chat' : 'New chat';
+    }
+
+    function shortConversationLabel(conversationId) {
+        return '#' + String(conversationId || '').replace(/-/g, '').slice(0, 8);
+    }
+
+    function pruneSelectedSessions(sessions) {
+        const ids = new Set(sessions.map(function(session) {
+            return String(session.conversationId);
+        }));
+        Array.from(selectedSessionIds).forEach(function(id) {
+            if (!ids.has(id)) {
+                selectedSessionIds.delete(id);
+            }
+        });
+    }
+
+    function syncSelectAllCheckbox() {
+        const checkbox = byId('chat-session-select-all');
+        if (!checkbox) {
+            return;
+        }
+        const visibleIds = latestSessions.map(function(session) {
+            return String(session.conversationId);
+        });
+        const selectedVisibleCount = visibleIds.filter(function(id) {
+            return selectedSessionIds.has(id);
+        }).length;
+        checkbox.disabled = visibleIds.length === 0;
+        checkbox.checked = visibleIds.length > 0 && selectedVisibleCount === visibleIds.length;
+        checkbox.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleIds.length;
     }
 
     async function loadSessions() {
         const data = await getJson('/api/chat/sessions');
         renderSessions(data.sessions || data.conversationIds);
         return data;
+    }
+
+    async function renameSession(conversationId, title) {
+        const session = await getJson('/api/chat/' + encodeURIComponent(conversationId) + '/title', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: title })
+        });
+        editingSessionId = null;
+        await loadSessions();
+        if (activeConversationId() === conversationId) {
+            setActiveConversationId(session.conversationId, session.title);
+        }
+    }
+
+    async function deleteSession(conversationId, displayName) {
+        const confirmed = window.confirm(
+            'Delete chat "' + displayName + '"?\n\nConversation ID: ' + conversationId + '\n\nThis cannot be undone.'
+        );
+        if (!confirmed) {
+            return;
+        }
+        const response = await fetch('/api/chat/' + encodeURIComponent(conversationId), { method: 'DELETE' });
+        if (!response.ok) {
+            throw await responseError(response);
+        }
+        if (activeConversationId() === conversationId) {
+            setActiveConversationId(null);
+            renderHistory([]);
+            updateContextUsage(null);
+            updatePlanStatus(null);
+        }
+        await loadSessions();
+    }
+
+    async function setFavoriteSession(conversationId, favorite) {
+        await getJson('/api/chat/' + encodeURIComponent(conversationId) + '/favorite', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ favorite: Boolean(favorite) })
+        });
+        await loadSessions();
+    }
+
+    async function archiveSession(conversationId, displayName) {
+        const confirmed = window.confirm(
+            'Archive chat "' + displayName + '"?\n\nConversation ID: ' + conversationId
+        );
+        if (!confirmed) {
+            return;
+        }
+        await archiveSessionWithoutPrompt(conversationId);
+        await loadSessions();
+    }
+
+    async function archiveSessionWithoutPrompt(conversationId) {
+        await getJson('/api/chat/' + encodeURIComponent(conversationId) + '/archive', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ archived: true })
+        });
+        selectedSessionIds.delete(conversationId);
+        if (activeConversationId() === conversationId) {
+            setActiveConversationId(null);
+            renderHistory([]);
+            updateContextUsage(null);
+            updatePlanStatus(null);
+        }
+    }
+
+    async function bulkAction(action) {
+        const selected = latestSessions.filter(function(session) {
+            return selectedSessionIds.has(String(session.conversationId));
+        });
+        if (selected.length === 0) {
+            setError('Select at least one chat');
+            return false;
+        }
+        if (action === 'favorite') {
+            for (const session of selected) {
+                await setFavoriteSession(String(session.conversationId), true);
+            }
+            selectedSessionIds.clear();
+            await loadSessions();
+            return true;
+        }
+        const summary = selected.map(function(session) {
+            return '- ' + sessionDisplayName(session) + ' (' + session.conversationId + ')';
+        }).join('\n');
+        const verb = action === 'archive' ? 'Archive' : 'Delete';
+        const warning = action === 'delete' ? '\n\nThis cannot be undone.' : '';
+        const confirmed = window.confirm(verb + ' these chats?\n\n' + summary + warning);
+        if (!confirmed) {
+            return false;
+        }
+        for (const session of selected) {
+            const id = String(session.conversationId);
+            if (action === 'archive') {
+                await archiveSessionWithoutPrompt(id);
+            } else if (action === 'delete') {
+                const response = await fetch('/api/chat/' + encodeURIComponent(id), { method: 'DELETE' });
+                if (!response.ok) {
+                    throw await responseError(response);
+                }
+                selectedSessionIds.delete(id);
+                if (activeConversationId() === id) {
+                    setActiveConversationId(null);
+                    renderHistory([]);
+                    updateContextUsage(null);
+                    updatePlanStatus(null);
+                }
+            }
+        }
+        selectedSessionIds.clear();
+        await loadSessions();
+        return true;
     }
 
     async function loadHistory(conversationId) {
@@ -638,6 +832,72 @@
         });
 
         byId('chat-session-list').addEventListener('click', async function(event) {
+            const favoriteButton = event.target.closest('[data-favorite-id]');
+            if (favoriteButton) {
+                event.preventDefault();
+                try {
+                    await setFavoriteSession(
+                        favoriteButton.getAttribute('data-favorite-id'),
+                        favoriteButton.getAttribute('data-favorite-next') === 'true'
+                    );
+                    setStatus();
+                } catch (error) {
+                    setError(error.message);
+                }
+                return;
+            }
+            const archiveButton = event.target.closest('[data-archive-id]');
+            if (archiveButton) {
+                event.preventDefault();
+                try {
+                    await archiveSession(
+                        archiveButton.getAttribute('data-archive-id'),
+                        archiveButton.getAttribute('data-archive-name') || archiveButton.getAttribute('data-archive-id')
+                    );
+                    setStatus();
+                } catch (error) {
+                    setError(error.message);
+                }
+                return;
+            }
+            const renameButton = event.target.closest('[data-rename-id]');
+            if (renameButton) {
+                event.preventDefault();
+                editingSessionId = renameButton.getAttribute('data-rename-id');
+                try {
+                    await loadSessions();
+                    setStatus();
+                } catch (error) {
+                    setError(error.message);
+                }
+                return;
+            }
+            const cancelButton = event.target.closest('[data-cancel-rename]');
+            if (cancelButton) {
+                event.preventDefault();
+                editingSessionId = null;
+                try {
+                    await loadSessions();
+                    setStatus();
+                } catch (error) {
+                    setError(error.message);
+                }
+                return;
+            }
+            const deleteButton = event.target.closest('[data-delete-id]');
+            if (deleteButton) {
+                event.preventDefault();
+                try {
+                    await deleteSession(
+                        deleteButton.getAttribute('data-delete-id'),
+                        deleteButton.getAttribute('data-delete-name') || deleteButton.getAttribute('data-delete-id')
+                    );
+                    setStatus();
+                } catch (error) {
+                    setError(error.message);
+                }
+                return;
+            }
             const target = event.target.closest('[data-switch-id]');
             if (!target) {
                 return;
@@ -655,6 +915,70 @@
             }
         });
 
+        byId('chat-session-list').addEventListener('change', function(event) {
+            const checkbox = event.target.closest('[data-bulk-select]');
+            if (!checkbox) {
+                return;
+            }
+            const id = checkbox.getAttribute('data-bulk-select');
+            if (checkbox.checked) {
+                selectedSessionIds.add(id);
+            } else {
+                selectedSessionIds.delete(id);
+            }
+            syncSelectAllCheckbox();
+        });
+
+        const selectAllCheckbox = byId('chat-session-select-all');
+        if (selectAllCheckbox) {
+            selectAllCheckbox.addEventListener('change', function(event) {
+                const checked = event.target.checked;
+                latestSessions.forEach(function(session) {
+                    const id = String(session.conversationId);
+                    if (checked) {
+                        selectedSessionIds.add(id);
+                    } else {
+                        selectedSessionIds.delete(id);
+                    }
+                });
+                renderSessions(latestSessions);
+            });
+        }
+
+        document.querySelectorAll('[data-bulk-action]').forEach(function(button) {
+            button.addEventListener('click', async function() {
+                try {
+                    const completed = await bulkAction(button.getAttribute('data-bulk-action'));
+                    if (completed) {
+                        setStatus();
+                    }
+                } catch (error) {
+                    setError(error.message);
+                }
+            });
+        });
+
+        byId('chat-session-list').addEventListener('submit', async function(event) {
+            const form = event.target.closest('[data-rename-form]');
+            if (!form) {
+                return;
+            }
+            event.preventDefault();
+            const conversationId = form.getAttribute('data-rename-form');
+            const input = form.querySelector('input[name="title"]');
+            const title = input ? input.value.trim() : '';
+            if (!title) {
+                setError('Title is required');
+                return;
+            }
+            try {
+                await renameSession(conversationId, title);
+                setStatus();
+            } catch (error) {
+                setError(error.message);
+            }
+        });
+
         try {
             await loadHistory(activeConversationId());
             await loadSessions();
@@ -666,4 +990,11 @@
     document.addEventListener('DOMContentLoaded', function() {
         init();
     });
+
+    function cssEscape(value) {
+        if (window.CSS && typeof window.CSS.escape === 'function') {
+            return window.CSS.escape(value);
+        }
+        return String(value).replace(/"/g, '\\"');
+    }
 })();

@@ -11,6 +11,9 @@ import io.mindspice.magenta2.ai.chat.model.ChatPlanState;
 import io.mindspice.magenta2.ai.chat.model.ChatRequest;
 import io.mindspice.magenta2.ai.chat.model.ChatResponse;
 import io.mindspice.magenta2.ai.chat.model.ChatSession;
+import io.mindspice.magenta2.ai.chat.model.ChatSessionArchiveRequest;
+import io.mindspice.magenta2.ai.chat.model.ChatSessionFavoriteRequest;
+import io.mindspice.magenta2.ai.chat.model.ChatSessionTitleRequest;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -88,6 +91,43 @@ class ChatControllerTest {
 
         assertThat(response.conversationId()).isEqualTo(CONVERSATION_ID);
         assertThat(response.title()).isEqualTo("Reminder Followup");
+    }
+
+    @Test
+    void renameUpdatesConversationTitle() {
+        ChatSession response = chatController.rename(
+            CONVERSATION_ID,
+            new ChatSessionTitleRequest("  Updated   Session  ")
+        );
+
+        assertThat(response.conversationId()).isEqualTo(CONVERSATION_ID);
+        assertThat(response.title()).isEqualTo("Updated Session");
+        assertThat(chatService.title).isEqualTo("Updated Session");
+    }
+
+    @Test
+    void renameRejectsBlankTitle() {
+        assertThatThrownBy(() -> chatController.rename(CONVERSATION_ID, new ChatSessionTitleRequest(" ")))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(exception.getReason()).isEqualTo("title is required");
+            });
+    }
+
+    @Test
+    void favoriteUpdatesConversationFavoriteState() {
+        ChatSession response = chatController.favorite(CONVERSATION_ID, new ChatSessionFavoriteRequest(true));
+
+        assertThat(response.favorite()).isTrue();
+        assertThat(chatService.favorite).isTrue();
+    }
+
+    @Test
+    void archiveUpdatesConversationArchiveState() {
+        ChatSession response = chatController.archive(CONVERSATION_ID, new ChatSessionArchiveRequest(true));
+
+        assertThat(response.archived()).isTrue();
+        assertThat(chatService.archived).isTrue();
     }
 
     @Test
@@ -174,6 +214,8 @@ class ChatControllerTest {
         private int newConversationIdCalls;
         private String title;
         private String titleJobStatus;
+        private boolean favorite;
+        private boolean archived;
 
         StubChatService(List<String> conversationIds, Map<String, String> modelsByConversationId) {
             super(null, null, null, null, null);
@@ -189,7 +231,7 @@ class ChatControllerTest {
         @Override
         public List<ChatSession> listSessions() {
             return conversationIds.stream()
-                .map(conversationId -> new ChatSession(conversationId, title, titleJobStatus))
+                .map(conversationId -> new ChatSession(conversationId, title, titleJobStatus, favorite, archived, null))
                 .toList();
         }
 
@@ -222,6 +264,24 @@ class ChatControllerTest {
         @Override
         public String conversationTitleJobStatus(String conversationId) {
             return titleJobStatus;
+        }
+
+        @Override
+        public ChatSession renameConversation(String conversationId, String title) {
+            this.title = title.trim().replaceAll("\\s+", " ");
+            return new ChatSession(conversationId, this.title, titleJobStatus, favorite, archived, null);
+        }
+
+        @Override
+        public ChatSession setConversationFavorite(String conversationId, boolean favorite) {
+            this.favorite = favorite;
+            return new ChatSession(conversationId, title, titleJobStatus, favorite, archived, null);
+        }
+
+        @Override
+        public ChatSession setConversationArchived(String conversationId, boolean archived) {
+            this.archived = archived;
+            return new ChatSession(conversationId, title, titleJobStatus, favorite, archived, null);
         }
 
         @Override

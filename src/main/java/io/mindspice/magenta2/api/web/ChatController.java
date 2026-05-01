@@ -9,6 +9,10 @@ import io.mindspice.magenta2.ai.chat.model.ChatHistory;
 import io.mindspice.magenta2.ai.chat.model.ChatMessage;
 import io.mindspice.magenta2.ai.chat.model.ChatRequest;
 import io.mindspice.magenta2.ai.chat.model.ChatResponse;
+import io.mindspice.magenta2.ai.chat.model.ChatSession;
+import io.mindspice.magenta2.ai.chat.model.ChatSessionArchiveRequest;
+import io.mindspice.magenta2.ai.chat.model.ChatSessionFavoriteRequest;
+import io.mindspice.magenta2.ai.chat.model.ChatSessionTitleRequest;
 import io.mindspice.magenta2.ai.chat.model.ChatSessions;
 import io.mindspice.magenta2.ai.chat.model.ChatPlanState;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
@@ -19,6 +23,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -162,6 +167,31 @@ public class ChatController {
             chatService.contextUsage(conversationId, chatService.storedConversationModel(conversationId)),
             chatService.planState(conversationId)
         );
+    }
+
+    @PatchMapping("/{conversationId}/title")
+    public ChatSession rename(@PathVariable String conversationId, @RequestBody ChatSessionTitleRequest request) {
+        requireValidUuid(conversationId);
+        if (!chatService.conversationExists(conversationId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "conversation not found: " + conversationId);
+        }
+        String title = normalize(request == null ? null : request.title());
+        if (title == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "title is required");
+        }
+        return chatService.renameConversation(conversationId, title);
+    }
+
+    @PatchMapping("/{conversationId}/favorite")
+    public ChatSession favorite(@PathVariable String conversationId, @RequestBody ChatSessionFavoriteRequest request) {
+        requireExistingConversation(conversationId);
+        return chatService.setConversationFavorite(conversationId, request != null && request.favorite());
+    }
+
+    @PatchMapping("/{conversationId}/archive")
+    public ChatSession archive(@PathVariable String conversationId, @RequestBody ChatSessionArchiveRequest request) {
+        requireExistingConversation(conversationId);
+        return chatService.setConversationArchived(conversationId, request != null && request.archived());
     }
 
     @PostMapping("/commands")
@@ -347,6 +377,13 @@ public class ChatController {
         return normalized;
     }
 
+    private void requireExistingConversation(String conversationId) {
+        requireValidUuid(conversationId);
+        if (!chatService.conversationExists(conversationId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "conversation not found: " + conversationId);
+        }
+    }
+
     private String singleArgument(String command, String[] parts, String argumentDescription) {
         if (parts.length > 2) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, command + " accepts only " + argumentDescription);
@@ -373,4 +410,5 @@ public class ChatController {
     private void sendEvent(SseEmitter emitter, String eventName, ChatStreamEvent event) throws Exception {
         emitter.send(SseEmitter.event().name(eventName).data(event, MediaType.APPLICATION_JSON));
     }
+
 }

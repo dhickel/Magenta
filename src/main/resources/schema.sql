@@ -13,7 +13,10 @@ create index if not exists idx_ai_chat_memory_conversation
 create table if not exists ai_chat_session_metadata (
     conversation_id text primary key,
     model text,
-    title text
+    title text,
+    favorite integer not null default 0,
+    archived integer not null default 0,
+    updated_at text
 );
 
 create table if not exists agent_jobs (

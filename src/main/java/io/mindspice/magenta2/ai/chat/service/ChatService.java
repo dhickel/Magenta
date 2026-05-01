@@ -356,6 +356,12 @@ public class ChatService {
     }
 
     public List<String> listConversationIds() {
+        return listSessions().stream()
+            .map(ChatSession::conversationId)
+            .toList();
+    }
+
+    private List<String> rawConversationIds() {
         List<String> conversationIds = new ArrayList<>(chatMemoryRepository.findConversationIds());
         if (planService != null) {
             for (String planConversationId : planService.listConversationIds()) {
@@ -368,12 +374,23 @@ public class ChatService {
     }
 
     public List<ChatSession> listSessions() {
-        return listConversationIds().stream()
+        return rawConversationIds().stream()
             .map(conversationId -> new ChatSession(
                 conversationId,
                 conversationTitle(conversationId),
-                conversationTitleJobStatus(conversationId)
+                conversationTitleJobStatus(conversationId),
+                chatSessionMetadataRepository.isFavorite(conversationId),
+                chatSessionMetadataRepository.isArchived(conversationId),
+                chatSessionMetadataRepository.findUpdatedAt(conversationId).orElse(null)
             ))
+            .filter(session -> !session.archived())
+            .sorted(java.util.Comparator
+                .comparing(ChatSession::favorite).reversed()
+                .thenComparing(
+                    session -> session.updatedAt() == null ? "" : session.updatedAt(),
+                    java.util.Comparator.reverseOrder()
+                )
+                .thenComparing(ChatSession::conversationId))
             .toList();
     }
 
@@ -381,7 +398,7 @@ public class ChatService {
         if (!StringUtils.hasText(conversationId)) {
             return false;
         }
-        return chatMemoryRepository.findConversationIds().contains(conversationId);
+        return rawConversationIds().contains(conversationId);
     }
 
     public List<ChatMessage> history(String conversationId) {
@@ -424,6 +441,48 @@ public class ChatService {
 
     public String conversationTitle(String conversationId) {
         return chatSessionMetadataRepository.findTitle(conversationId).orElse(null);
+    }
+
+    public ChatSession renameConversation(String conversationId, String title) {
+        if (!StringUtils.hasText(conversationId)) {
+            throw new IllegalArgumentException("conversationId is required");
+        }
+        if (!StringUtils.hasText(title)) {
+            throw new IllegalArgumentException("title is required");
+        }
+        String normalizedTitle = title.trim().replaceAll("\\s+", " ");
+        if (normalizedTitle.length() > 120) {
+            normalizedTitle = normalizedTitle.substring(0, 120).replaceAll("\\s+\\S*$", "").trim();
+        }
+        chatSessionMetadataRepository.updateTitle(conversationId, normalizedTitle);
+        return session(conversationId);
+    }
+
+    public ChatSession setConversationFavorite(String conversationId, boolean favorite) {
+        if (!StringUtils.hasText(conversationId)) {
+            throw new IllegalArgumentException("conversationId is required");
+        }
+        chatSessionMetadataRepository.setFavorite(conversationId, favorite);
+        return session(conversationId);
+    }
+
+    public ChatSession setConversationArchived(String conversationId, boolean archived) {
+        if (!StringUtils.hasText(conversationId)) {
+            throw new IllegalArgumentException("conversationId is required");
+        }
+        chatSessionMetadataRepository.setArchived(conversationId, archived);
+        return session(conversationId);
+    }
+
+    private ChatSession session(String conversationId) {
+        return new ChatSession(
+            conversationId,
+            conversationTitle(conversationId),
+            conversationTitleJobStatus(conversationId),
+            chatSessionMetadataRepository.isFavorite(conversationId),
+            chatSessionMetadataRepository.isArchived(conversationId),
+            chatSessionMetadataRepository.findUpdatedAt(conversationId).orElse(null)
+        );
     }
 
     public String conversationTitleJobStatus(String conversationId) {

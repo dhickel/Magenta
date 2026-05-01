@@ -14,6 +14,7 @@ import io.mindspice.magenta2.ai.config.user.ModelConfig;
 import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.stereotype.Service;
@@ -35,6 +36,7 @@ public class AgentJobService {
     private final ObjectMapper objectMapper;
     private final TaskExecutor agentJobTaskExecutor;
 
+    @Autowired
     public AgentJobService(
         AgentJobRepository agentJobRepository,
         ChatSessionMetadataRepository chatSessionMetadataRepository,
@@ -91,7 +93,7 @@ public class AgentJobService {
         try {
             String title = generateTitle(job.selectedModel(), firstUserMessage(job.inputJson()));
             if (StringUtils.hasText(title)) {
-                chatSessionMetadataRepository.saveTitle(job.conversationId(), title);
+                chatSessionMetadataRepository.saveTitleIfAbsent(job.conversationId(), title);
             }
             agentJobRepository.markSucceeded(job.id(), json(Map.of("title", title == null ? "" : title)));
         } catch (RuntimeException exception) {

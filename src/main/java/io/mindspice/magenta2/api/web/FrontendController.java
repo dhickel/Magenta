@@ -149,14 +149,57 @@ public class FrontendController {
                     overflow: auto;
                 }
 
+                .chat-session-bulk {
+                    border-top: 1px solid #dde4ef;
+                    padding: 0.35rem 0.4rem;
+                }
+
+                .chat-session-bulk-actions {
+                    display: grid;
+                    grid-template-columns: auto repeat(3, minmax(0, 1fr));
+                    align-items: center;
+                    gap: 0.25rem;
+                }
+
+                .chat-session-select-all {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 1.8rem;
+                    height: 1.8rem;
+                    border: 1px solid #cbd5e1;
+                    border-radius: 4px;
+                    background: #ffffff;
+                }
+
+                .chat-session-select-all input {
+                    width: 1rem;
+                    height: 1rem;
+                    margin: 0;
+                    cursor: pointer;
+                }
+
+                .chat-session-bulk-actions button {
+                    min-height: 1.8rem;
+                    border: 1px solid #cbd5e1;
+                    border-radius: 4px;
+                    background: #ffffff;
+                    color: #334155;
+                    cursor: pointer;
+                    font-size: 0.78rem;
+                }
+
+                .chat-session-item {
+                    display: block;
+                }
+
                 .chat-session-entry {
                     display: flex;
                     flex-direction: column;
-                    gap: 0.16rem;
+                    gap: 0.24rem;
                     border: 1px solid #dbe2ec;
                     border-radius: 6px;
-                    padding: 0.42rem 0.52rem;
-                    text-decoration: none;
+                    padding: 0.36rem 0.45rem 0.45rem;
                     color: #2f3a4a;
                     background: #f8fafc;
                     user-select: text;
@@ -164,9 +207,108 @@ public class FrontendController {
                     word-break: break-word;
                 }
 
-                .chat-session-entry code {
-                    color: #667386;
-                    font-size: 0.74rem;
+                .chat-session-topline {
+                    display: grid;
+                    grid-template-columns: auto minmax(0, 1fr) auto;
+                    align-items: center;
+                    gap: 0.35rem;
+                    min-height: 1.75rem;
+                }
+
+                .chat-session-check {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    min-width: 1.4rem;
+                    height: 1.4rem;
+                }
+
+                .chat-session-check input {
+                    width: 1rem;
+                    height: 1rem;
+                    margin: 0;
+                    cursor: pointer;
+                }
+
+                .chat-session-actions {
+                    display: flex;
+                    flex-direction: row;
+                    flex-wrap: wrap;
+                    justify-content: flex-end;
+                    gap: 0.2rem;
+                }
+
+                .chat-session-actions button,
+                .chat-session-rename button {
+                    width: 1.75rem;
+                    height: 1.75rem;
+                    border: 1px solid #cbd5e1;
+                    border-radius: 4px;
+                    background: #ffffff;
+                    color: #334155;
+                    cursor: pointer;
+                    line-height: 1;
+                }
+
+                .chat-session-actions button.favorite {
+                    color: #9a6700;
+                }
+
+                .chat-session-actions button:hover,
+                .chat-session-rename button:hover {
+                    border-color: #94a3b8;
+                    background: #f1f5f9;
+                }
+
+                .chat-session-rename {
+                    display: grid;
+                    grid-template-columns: minmax(0, 1fr) auto auto;
+                    gap: 0.25rem;
+                    align-items: center;
+                }
+
+                .chat-session-rename input {
+                    min-width: 0;
+                    height: 1.75rem;
+                    box-sizing: border-box;
+                    border: 1px solid #94a3b8;
+                    border-radius: 4px;
+                    padding: 0.2rem 0.35rem;
+                }
+
+                .chat-session-inline-hash {
+                    min-width: 0;
+                    justify-self: start;
+                    color: #64748b;
+                    font-size: 0.68rem;
+                    line-height: 1;
+                    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }
+
+                .chat-session-title {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: flex-start;
+                    text-decoration: none;
+                    color: inherit;
+                }
+
+                .chat-session-title-label {
+                    display: block;
+                    max-width: 100%%;
+                    color: #263246;
+                    font-weight: 700;
+                    font-size: 0.9rem;
+                    line-height: 1.2;
+                }
+
+                .chat-session-title-text {
+                    display: block;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
                 }
 
                 .chat-session-entry:hover {
@@ -680,6 +822,16 @@ public class FrontendController {
                     <aside class="chat-sessions">
                         <details open>
                             <summary><span class="chat-sessions-label">Sessions</span></summary>
+                            <div class="chat-session-bulk">
+                                <div class="chat-session-bulk-actions">
+                                    <label class="chat-session-select-all" title="Select all chats">
+                                        <input type="checkbox" id="chat-session-select-all" aria-label="Select all chats">
+                                    </label>
+                                    <button type="button" data-bulk-action="delete">Delete</button>
+                                    <button type="button" data-bulk-action="archive">Archive</button>
+                                    <button type="button" data-bulk-action="favorite">Favorite</button>
+                                </div>
+                            </div>
                             <ul id="chat-session-list"></ul>
                         </details>
                     </aside>
@@ -723,7 +875,7 @@ public class FrontendController {
                     .withSubtitle("Session-backed chat bootstrap")
                     .build())
             .withTopNav(topNavBar)
-            .addCustomJs("/js/chat-client.js?v=13")
+            .addCustomJs("/js/chat-client.js?v=20")
             .buildTemplate();
 
     @GetMapping("/chat")

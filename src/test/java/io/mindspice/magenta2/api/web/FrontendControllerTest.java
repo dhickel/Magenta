@@ -25,7 +25,17 @@ class FrontendControllerTest {
         assertThat(html).contains("grid-template-columns: auto minmax(5rem, 10rem) auto minmax(0, 1fr);");
         assertThat(html).contains("flex-direction: column;");
         assertThat(html).contains("width: 100%;");
-        assertThat(html).contains("/js/chat-client.js?v=13");
+        assertThat(html).contains("/js/chat-client.js?v=20");
+        assertThat(html).contains(".chat-session-actions");
+        assertThat(html).contains(".chat-session-rename");
+        assertThat(html).contains(".chat-session-topline");
+        assertThat(html).contains(".chat-session-inline-hash");
+        assertThat(html).contains(".chat-session-title-label");
+        assertThat(html).doesNotContain(".chat-session-title-label::before");
+        assertThat(html).doesNotContain(".chat-session-hash-chip");
+        assertThat(html).contains("id=\"chat-session-select-all\"");
+        assertThat(html).contains("data-bulk-action=\"delete\"");
+        assertThat(html).doesNotContain("id=\"chat-session-bulk-list\"");
         assertThat(html).contains("data-active-conversation-id=\"\"");
         assertThat(html).contains("<code id=\"chat-active-session\">New chat</code>");
     }
@@ -38,6 +48,24 @@ class FrontendControllerTest {
         assertThat(js).contains("activeEl.textContent = title || conversationId || 'New chat';");
         assertThat(js).contains("renderSessions(data.sessions || data.conversationIds);");
         assertThat(js).contains("pollConversationTitle(completedConversationId);");
+        assertThat(js).contains("data-rename-id");
+        assertThat(js).contains("data-delete-id");
+        assertThat(js).contains("data-favorite-id");
+        assertThat(js).contains("data-archive-id");
+        assertThat(js).contains("data-bulk-select");
+        assertThat(js).contains("data-bulk-action");
+        assertThat(js).contains("shortConversationLabel");
+        assertThat(js).contains("syncSelectAllCheckbox");
+        assertThat(js).contains("slice(0, 8)");
+        assertThat(js).contains("chat-session-inline-hash");
+        assertThat(js).contains("chat-session-title-label");
+        assertThat(js).contains("chat-session-title-text");
+        assertThat(js).doesNotContain("chat-session-hash-chip");
+        assertThat(js).contains("selectedSessionIds.clear();");
+        assertThat(js).contains("Delete chat");
+        assertThat(js).contains("Archive chat");
+        assertThat(js).contains("method: 'PATCH'");
+        assertThat(js).contains("method: 'DELETE'");
         assertThat(js).contains("if (!conversationId) {");
         assertThat(js).contains("renderHistory([]);");
     }

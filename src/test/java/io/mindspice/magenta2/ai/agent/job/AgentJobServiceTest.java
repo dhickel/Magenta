@@ -51,6 +51,26 @@ class AgentJobServiceTest {
     }
 
     @Test
+    void titleJobDoesNotReplaceManualTitle() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        AgentJobRepository jobRepository = new AgentJobRepository(jdbcTemplate);
+        ChatSessionMetadataRepository metadataRepository = new ChatSessionMetadataRepository(jdbcTemplate);
+        AgentJob job = jobRepository.enqueue(
+            "job-1",
+            AgentJobType.CONVERSATION_TITLE,
+            "conversation-1",
+            "qwen3",
+            "{\"firstUserMessage\":\"Please help me plan reminders\"}"
+        ).orElseThrow();
+        metadataRepository.updateTitle("conversation-1", "Manual Title");
+        AgentJobService service = new FixedTitleAgentJobService(jobRepository, metadataRepository, new SyncTaskExecutor(), "Generated Title");
+
+        service.runConversationTitleJob(job.id());
+
+        assertThat(metadataRepository.findTitle("conversation-1")).contains("Manual Title");
+    }
+
+    @Test
     void titleJobUsesConfiguredSummeryModel() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         AgentJobRepository jobRepository = new AgentJobRepository(jdbcTemplate);
