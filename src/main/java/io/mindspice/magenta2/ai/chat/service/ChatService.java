@@ -590,6 +590,9 @@ public class ChatService {
         chatSessionMetadataRepository.saveModel(request.conversationId(), request.model());
 
         List<Message> currentInstructions = currentInstructions(request);
+        List<Message> currentSystemInstructions = currentInstructions.stream()
+            .filter(SystemMessage.class::isInstance)
+            .toList();
         ContextManagementAdvisor.PreparedPrompt preparedPrompt = contextManagementAdvisor.preparePrompt(
             request.conversationId(),
             currentInstructions,
@@ -606,14 +609,25 @@ public class ChatService {
             List<ChatToolActivity> toolActivities = new ArrayList<>();
             List<String> thinkingParts = new ArrayList<>();
             ToolLoopGuard toolLoopGuard = new ToolLoopGuard();
+            List<Message> activeToolMessages = new ArrayList<>();
+            boolean compactionNoticeEmitted = false;
 
+            ToolUseAbort toolUseAbort = null;
+            List<Message> conversationHistory = null;
             while (response != null && response.hasToolCalls()) {
-                toolLoopGuard.recordToolCalls(response.getResult().getOutput().getToolCalls());
+                try {
+                    toolLoopGuard.recordToolCalls(response.getResult().getOutput().getToolCalls());
+                } catch (ToolUseAbort abort) {
+                    toolUseAbort = abort;
+                    conversationHistory = new ArrayList<>(prompt.getInstructions());
+                    break;
+                }
                 collectThinking(response, thinkingParts);
                 phase(activeTurn, ActiveTurnPhase.TOOL_CALL);
+                int promptMessageCount = prompt.getInstructions().size();
                 ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(prompt, response);
-                toolLoopGuard.recordToolResponses(toolExecutionResult);
                 List<ToolTranscriptEntry> toolTranscriptEntries = toolTranscriptEntries(response, toolExecutionResult);
+                List<ChatMessage> pendingToolMessages = new ArrayList<>();
                 for (ToolTranscriptEntry entry : toolTranscriptEntries) {
                     Message transcriptMessage = toolTranscriptService.message(entry);
                     messagesToPersist.add(transcriptMessage);
@@ -621,11 +635,12 @@ public class ChatService {
                     if (toolMessage.toolActivity() != null) {
                         toolActivities.add(toolMessage.toolActivity());
                     }
-                    if (toolMessageConsumer != null) {
-                        toolMessageConsumer.accept(toolMessage);
-                    }
+                    pendingToolMessages.add(toolMessage);
                 }
-                List<Message> conversationHistory = new ArrayList<>(toolExecutionResult.conversationHistory());
+                conversationHistory = new ArrayList<>(toolExecutionResult.conversationHistory());
+                if (conversationHistory.size() > promptMessageCount) {
+                    activeToolMessages.addAll(conversationHistory.subList(promptMessageCount, conversationHistory.size()));
+                }
                 phase(activeTurn, ActiveTurnPhase.TOOL_CHECKPOINT);
                 if (activeTurn != null) {
                     java.util.Optional<String> nextInterrupt = activeTurn.pollInterrupt();
@@ -633,6 +648,7 @@ public class ChatService {
                         String interrupt = nextInterrupt.get();
                         UserMessage interruptMessage = new UserMessage(interrupt);
                         conversationHistory.add(interruptMessage);
+                        activeToolMessages.add(interruptMessage);
                         messagesToPersist.add(interruptMessage);
                         if (toolMessageConsumer != null) {
                             toolMessageConsumer.accept(userMessage(interrupt));
@@ -640,7 +656,62 @@ public class ChatService {
                         nextInterrupt = activeTurn.pollInterrupt();
                     }
                 }
+                try {
+                    toolLoopGuard.recordToolResponses(toolExecutionResult);
+                } catch (ToolUseAbort abort) {
+                    toolUseAbort = abort;
+                    break;
+                }
+                ContextManagementAdvisor.ToolLoopPrompt checkpoint = contextManagementAdvisor.prepareToolLoopPrompt(
+                    request.conversationId(),
+                    activeToolMessages,
+                    currentSystemInstructions,
+                    request.model()
+                );
+                recordContextUsage(request.conversationId(), checkpoint.usage());
+                activeToolMessages = new ArrayList<>(checkpoint.activeMessages());
+                conversationHistory = new ArrayList<>(checkpoint.messages());
                 prompt = new Prompt(conversationHistory, options);
+                if (checkpoint.compacted() && !compactionNoticeEmitted) {
+                    compactionNoticeEmitted = true;
+                    if (!hasCompactionNotice(request.conversationId())) {
+                        messagesToPersist.add(compactionNoticeMessage());
+                    }
+                    if (toolMessageConsumer != null) {
+                        toolMessageConsumer.accept(systemMessage(ContextManagementAdvisor.COMPACTION_NOTICE));
+                    }
+                }
+                if (toolMessageConsumer != null) {
+                    pendingToolMessages.forEach(toolMessageConsumer);
+                }
+                if (!checkpoint.toolUseAllowed()) {
+                    toolUseAbort = new ToolUseAbort(
+                        "Context is too large to safely continue tool use after compaction."
+                    );
+                    break;
+                }
+                phase(activeTurn, ActiveTurnPhase.MODEL_CALL);
+                response = chatModelRouter.chatModel(request.model()).call(prompt);
+            }
+            if (toolUseAbort != null) {
+                Message controlMessage = toolUseAbortControlMessage(toolUseAbort);
+                messagesToPersist.add(controlMessage);
+                activeToolMessages.add(controlMessage);
+                ContextManagementAdvisor.ToolLoopPrompt checkpoint = contextManagementAdvisor.prepareToolLoopPrompt(
+                    request.conversationId(),
+                    activeToolMessages,
+                    currentSystemInstructions,
+                    request.model()
+                );
+                recordContextUsage(request.conversationId(), checkpoint.usage());
+                if (!checkpoint.toolUseAllowed()) {
+                    throw new IllegalStateException(
+                        "Context is too large to send safely after tool compaction: "
+                            + checkpoint.usage().usedTokens() + " estimated tokens exceeds trigger budget "
+                            + checkpoint.usage().triggerTokens()
+                    );
+                }
+                prompt = new Prompt(checkpoint.messages(), toolFinalOptions(request.model()));
                 phase(activeTurn, ActiveTurnPhase.MODEL_CALL);
                 response = chatModelRouter.chatModel(request.model()).call(prompt);
             }
@@ -710,6 +781,28 @@ public class ChatService {
         return new ChatMessage("user", text, chatMarkdownRenderer.render(text), null);
     }
 
+    private ChatMessage systemMessage(String text) {
+        return new ChatMessage("system", text, chatMarkdownRenderer.render(text), null);
+    }
+
+    private void recordContextUsage(String conversationId, io.mindspice.magenta2.ai.chat.model.ContextUsage usage) {
+        if (contextUsageTracker != null) {
+            contextUsageTracker.record(conversationId, usage);
+        }
+    }
+
+    private SystemMessage compactionNoticeMessage() {
+        return new SystemMessage(ContextManagementAdvisor.NOTICE_PREFIX + ContextManagementAdvisor.COMPACTION_NOTICE);
+    }
+
+    private boolean hasCompactionNotice(String conversationId) {
+        if (chatMemoryRepository == null || contextManagementAdvisor == null) {
+            return false;
+        }
+        return chatMemoryRepository.findByConversationId(conversationId).stream()
+            .anyMatch(contextManagementAdvisor::isCompactionNotice);
+    }
+
     private void phase(ActiveTurn activeTurn, ActiveTurnPhase phase) {
         if (activeTurn != null) {
             activeTurn.phase(phase);
@@ -723,6 +816,33 @@ public class ChatService {
         options.setInternalToolExecutionEnabled(false);
         options.setToolCallbacks(approvedTools);
         return options;
+    }
+
+    private OllamaChatOptions toolFinalOptions(String model) {
+        OllamaChatOptions options = StringUtils.hasText(model)
+            ? OllamaChatOptions.builder().model(model).enableThinking().build()
+            : OllamaChatOptions.builder().enableThinking().build();
+        options.setInternalToolExecutionEnabled(false);
+        options.setToolCallbacks(List.of());
+        return options;
+    }
+
+    private SystemMessage toolUseAbortControlMessage(ToolUseAbort abort) {
+        StringBuilder message = new StringBuilder("""
+            Tool use was aborted by Magenta before another tool call was allowed.
+            Reason: %s
+            """.formatted(abort.getMessage()).trim());
+        if (!abort.recentErrors().isEmpty()) {
+            message.append("\nRecent tool errors:");
+            for (String error : abort.recentErrors()) {
+                message.append("\n- ").append(error);
+            }
+        }
+        message.append(
+            "\nThe prior tool results remain available in the conversation context. "
+                + "Do not request more tools for this turn; explain the failure state or continue from the available information."
+        );
+        return new SystemMessage(message.toString());
     }
 
     private List<ToolTranscriptEntry> toolTranscriptEntries(
@@ -777,7 +897,7 @@ public class ChatService {
 
     static final class ToolLoopGuard {
         private final Map<String, Integer> identicalToolCallCounts = new java.util.HashMap<>();
-        private final Deque<Boolean> recentToolErrors = new ArrayDeque<>();
+        private final Deque<ToolOutcome> recentToolOutcomes = new ArrayDeque<>();
         private int recentErrorCount = 0;
 
         void recordToolCalls(List<AssistantMessage.ToolCall> toolCalls) {
@@ -785,9 +905,7 @@ public class ChatService {
                 String key = toolCall.name() + "\n" + normalizeArguments(toolCall.arguments());
                 int count = identicalToolCallCounts.merge(key, 1, Integer::sum);
                 if (count >= IDENTICAL_TOOL_CALL_LIMIT) {
-                    throw new IllegalStateException(
-                        "Tool execution stopped after " + count + " identical calls to " + toolCall.name()
-                    );
+                    throw new ToolUseAbort("Tool execution stopped after " + count + " identical calls to " + toolCall.name());
                 }
             }
         }
@@ -795,11 +913,12 @@ public class ChatService {
         void recordToolResponses(ToolExecutionResult toolExecutionResult) {
             ToolResponseMessage latestToolResponseMessage = latestToolResponseMessage(toolExecutionResult);
             if (latestToolResponseMessage == null) {
-                recordToolResult(false);
+                recordToolResult(false, null);
                 return;
             }
             for (ToolResponseMessage.ToolResponse response : latestToolResponseMessage.getResponses()) {
-                recordToolResult(isToolError(response.responseData()));
+                String responseData = response.responseData();
+                recordToolResult(isToolError(responseData), responseData);
             }
         }
 
@@ -816,22 +935,39 @@ public class ChatService {
             return latest;
         }
 
-        private void recordToolResult(boolean error) {
-            recentToolErrors.addLast(error);
+        private void recordToolResult(boolean error, String responseData) {
+            recentToolOutcomes.addLast(new ToolOutcome(error, error ? summarizeToolError(responseData) : null));
             if (error) {
                 recentErrorCount++;
             }
-            while (recentToolErrors.size() > TOOL_ERROR_WINDOW_SIZE) {
-                if (Boolean.TRUE.equals(recentToolErrors.removeFirst())) {
+            while (recentToolOutcomes.size() > TOOL_ERROR_WINDOW_SIZE) {
+                if (recentToolOutcomes.removeFirst().error()) {
                     recentErrorCount--;
                 }
             }
-            if (recentToolErrors.size() == TOOL_ERROR_WINDOW_SIZE && recentErrorCount >= TOOL_ERROR_WINDOW_LIMIT) {
-                throw new IllegalStateException(
+            if (recentToolOutcomes.size() == TOOL_ERROR_WINDOW_SIZE && recentErrorCount >= TOOL_ERROR_WINDOW_LIMIT) {
+                throw new ToolUseAbort(
                     "Tool execution stopped after " + recentErrorCount + " errors in the last "
-                        + TOOL_ERROR_WINDOW_SIZE + " tool responses"
+                        + TOOL_ERROR_WINDOW_SIZE + " tool responses",
+                    recentErrors()
                 );
             }
+        }
+
+        private List<String> recentErrors() {
+            return recentToolOutcomes.stream()
+                .filter(ToolOutcome::error)
+                .map(ToolOutcome::detail)
+                .filter(StringUtils::hasText)
+                .toList();
+        }
+
+        private String summarizeToolError(String responseData) {
+            if (!StringUtils.hasText(responseData)) {
+                return "Tool returned an empty error response.";
+            }
+            String summary = responseData.replaceAll("\\s+", " ").trim();
+            return summary.length() > 500 ? summary.substring(0, 500) + " [truncated]" : summary;
         }
 
         private boolean isToolError(String responseData) {
@@ -859,6 +995,26 @@ public class ChatService {
 
         private String normalizeArguments(String arguments) {
             return StringUtils.hasText(arguments) ? arguments.replaceAll("\\s+", " ").trim() : "";
+        }
+
+        private record ToolOutcome(boolean error, String detail) {
+        }
+    }
+
+    static final class ToolUseAbort extends IllegalStateException {
+        private final List<String> recentErrors;
+
+        ToolUseAbort(String message) {
+            this(message, List.of());
+        }
+
+        ToolUseAbort(String message, List<String> recentErrors) {
+            super(message);
+            this.recentErrors = recentErrors == null ? List.of() : List.copyOf(recentErrors);
+        }
+
+        List<String> recentErrors() {
+            return recentErrors;
         }
     }
 

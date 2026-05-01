@@ -1,5 +1,7 @@
 package io.mindspice.magenta2.ai.chat.model;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+
 public sealed interface ChatRequest {
     record MsgRequest(String conversationId, String message, String model) implements ChatRequest { }
 
@@ -7,7 +9,7 @@ public sealed interface ChatRequest {
 
     record Archive(boolean archived) implements ChatRequest { }
 
-    record Favorite(boolean isFavorite) implements ChatRequest { }
+    record Favorite(@JsonAlias("isFavorite") boolean favorite) implements ChatRequest { }
 
     record SetTitle(String title) implements ChatRequest { }
 

@@ -104,7 +104,8 @@ public class ChatController {
                             ChatStreamEvent.tool(
                                 resolvedRequest.conversationId(),
                                 resolvedRequest.model(),
-                                message
+                                message,
+                                chatService.contextUsage(resolvedRequest.conversationId(), resolvedRequest.model())
                             ).withPlanState(chatService.planState(resolvedRequest.conversationId()))
                         );
                         return;
@@ -116,11 +117,34 @@ public class ChatController {
                             ChatStreamEvent.message(
                                 resolvedRequest.conversationId(),
                                 resolvedRequest.model(),
-                                message
+                                message,
+                                chatService.contextUsage(resolvedRequest.conversationId(), resolvedRequest.model())
                             ).withPlanState(chatService.planState(resolvedRequest.conversationId()))
                         );
                         return;
                     }
+                    if ("system".equalsIgnoreCase(message.role())) {
+                        sendEvent(
+                            emitter,
+                            "system",
+                            ChatStreamEvent.message(
+                                resolvedRequest.conversationId(),
+                                resolvedRequest.model(),
+                                message,
+                                chatService.contextUsage(resolvedRequest.conversationId(), resolvedRequest.model())
+                            ).withPlanState(chatService.planState(resolvedRequest.conversationId()))
+                        );
+                        return;
+                    }
+                    sendEvent(
+                        emitter,
+                        "context",
+                        ChatStreamEvent.context(
+                            resolvedRequest.conversationId(),
+                            resolvedRequest.model(),
+                            chatService.contextUsage(resolvedRequest.conversationId(), resolvedRequest.model())
+                        ).withPlanState(chatService.planState(resolvedRequest.conversationId()))
+                    );
                     sendEvent(
                         emitter,
                         "chunk",
@@ -227,7 +251,7 @@ public class ChatController {
     @PatchMapping("/{conversationId}/favorite")
     public ChatSession favorite(@PathVariable String conversationId, @RequestBody ChatRequest.Favorite request) {
         requireExistingConversation(conversationId);
-        return chatService.setConversationFavorite(conversationId, request != null && request.isFavorite());
+        return chatService.setConversationFavorite(conversationId, request != null && request.favorite());
     }
 
     @PatchMapping("/{conversationId}/archive")

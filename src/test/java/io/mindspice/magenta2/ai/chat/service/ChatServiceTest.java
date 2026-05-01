@@ -9,19 +9,30 @@ import io.mindspice.magenta2.ai.chat.plan.ChatPlanRepository;
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
 import io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer;
 import io.mindspice.magenta2.ai.chat.repository.ChatMemoryRepository;
+import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
+import io.mindspice.magenta2.ai.chat.tool.ChatToolRegistry;
 import io.mindspice.magenta2.ai.chat.tool.ToolTranscriptService;
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
+import io.mindspice.magenta2.ai.config.user.EndpointType;
+import io.mindspice.magenta2.ai.config.user.ModelConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
+import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.model.tool.ToolCallingChatOptions;
+import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.retry.NonTransientAiException;
+import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.definition.DefaultToolDefinition;
+import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
@@ -213,6 +224,53 @@ class ChatServiceTest {
     }
 
     @Test
+    void repeatedToolErrorsArePersistedBeforeControlMessageAndFinalModelCall() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        ToolTranscriptService transcriptService = new ToolTranscriptService(objectMapper);
+        FakeChatModel chatModel = new FakeChatModel();
+        FakeToolCallingManager toolCallingManager = new FakeToolCallingManager();
+        ChatService service = new ChatService(
+            null,
+            memoryRepository,
+            new ChatSessionMetadataRepository(jdbcTemplate),
+            new ChatMarkdownRenderer(),
+            toolAiConfig(),
+            new FakeContextManagementAdvisor(memoryRepository),
+            null,
+            new FakeChatModelRouter(chatModel),
+            toolCallingManager,
+            new ChatToolRegistry(List.of(new FakeToolCallback()), List.of()),
+            transcriptService,
+            null
+        );
+
+        io.mindspice.magenta2.ai.chat.model.ChatResponse.MsgResponse response = service.chat(
+            "conversation-1",
+            "try the tool",
+            "qwen3"
+        );
+
+        assertThat(response.response()).isEqualTo("I could not continue using tools after repeated errors.");
+        assertThat(chatModel.prompts).hasSize(9);
+        assertThat(chatModel.finalPromptText())
+            .contains("Tool use was aborted by Magenta")
+            .contains("8 errors in the last 8 tool responses")
+            .contains("Recent tool errors:")
+            .contains("tool failed 8");
+        assertThat(((ToolCallingChatOptions) chatModel.prompts.getLast().getOptions()).getToolCallbacks()).isEmpty();
+
+        List<Message> storedMessages = memoryRepository.findByConversationId("conversation-1");
+        assertThat(storedMessages)
+            .extracting(Message::getText)
+            .anySatisfy(text -> assertThat(text).contains("tool failed 8"))
+            .anySatisfy(text -> assertThat(text).contains("Tool use was aborted by Magenta"))
+            .last()
+            .satisfies(text -> assertThat(text).isEqualTo("I could not continue using tools after repeated errors."));
+    }
+
+    @Test
     void discardLastUserMessageRemovesOnlyMatchingDanglingUserTurn() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
@@ -273,6 +331,74 @@ class ChatServiceTest {
         assertThat(message.toolActivity().callDetail()).contains("\"command\" : \"pwd\"");
     }
 
+    @Test
+    void historyIncludesCompactionNoticeAsSystemMessage() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
+        memoryRepository.saveAll("conversation-1", java.util.List.of(
+            new org.springframework.ai.chat.messages.SystemMessage(
+                ContextManagementAdvisor.NOTICE_PREFIX + ContextManagementAdvisor.COMPACTION_NOTICE
+            )
+        ));
+        ChatService service = new ChatService(
+            null,
+            memoryRepository,
+            null,
+            new ChatMarkdownRenderer(),
+            null,
+            new FakeContextManagementAdvisor(memoryRepository),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+        );
+
+        ChatMessage message = service.history("conversation-1").getFirst();
+
+        assertThat(message.role()).isEqualTo("system");
+        assertThat(message.text()).isEqualTo(ContextManagementAdvisor.COMPACTION_NOTICE);
+        assertThat(message.renderedHtml()).contains("Context compacted");
+    }
+
+    @Test
+    void toolLoopStopsToolsWhenContextCheckpointCannotContinue() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        ToolTranscriptService transcriptService = new ToolTranscriptService(objectMapper);
+        FakeChatModel chatModel = new FakeChatModel();
+        FakeToolCallingManager toolCallingManager = new FakeToolCallingManager();
+        FakeContextManagementAdvisor contextAdvisor = new FakeContextManagementAdvisor(memoryRepository);
+        contextAdvisor.allowToolUse = false;
+        ChatService service = new ChatService(
+            null,
+            memoryRepository,
+            new ChatSessionMetadataRepository(jdbcTemplate),
+            new ChatMarkdownRenderer(),
+            toolAiConfig(),
+            contextAdvisor,
+            null,
+            new FakeChatModelRouter(chatModel),
+            toolCallingManager,
+            new ChatToolRegistry(List.of(new FakeToolCallback()), List.of()),
+            transcriptService,
+            null
+        );
+
+        io.mindspice.magenta2.ai.chat.model.ChatResponse.MsgResponse response = service.chat(
+            "conversation-1",
+            "try the tool",
+            "qwen3"
+        );
+
+        assertThat(response.response()).isEqualTo("I could not continue using tools after repeated errors.");
+        assertThat(chatModel.prompts).hasSize(2);
+        assertThat(((ToolCallingChatOptions) chatModel.prompts.getLast().getOptions()).getToolCallbacks()).isEmpty();
+        assertThat(chatModel.finalPromptText()).contains("Context is too large to safely continue tool use");
+    }
+
     private JdbcTemplate jdbcTemplate() {
         SingleConnectionDataSource dataSource = new SingleConnectionDataSource("jdbc:sqlite::memory:", true);
         return new JdbcTemplate(dataSource);
@@ -285,5 +411,159 @@ class ChatServiceTest {
         return ToolExecutionResult.builder()
             .conversationHistory(List.of(responseMessage))
             .build();
+    }
+
+    private AiConfig toolAiConfig() {
+        return new AiConfig(
+            "magenta",
+            "magenta",
+            10,
+            null,
+            Map.of("local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 8192)),
+            Map.of("magenta", new AgentConfig("local-qwen", "You are Magenta.", List.of("test_tool")))
+        );
+    }
+
+    private static final class FakeContextManagementAdvisor extends ContextManagementAdvisor {
+        private final ChatMemoryRepository memoryRepository;
+        private boolean allowToolUse = true;
+        private int toolLoopPromptCalls = 0;
+
+        FakeContextManagementAdvisor(ChatMemoryRepository memoryRepository) {
+            super(null, null, null, null, null, null);
+            this.memoryRepository = memoryRepository;
+        }
+
+        @Override
+        public PreparedPrompt preparePrompt(String conversationId, List<Message> currentInstructions, String model) {
+            List<Message> storedMessages = new java.util.ArrayList<>(memoryRepository.findByConversationId(conversationId));
+            storedMessages.add(new Prompt(currentInstructions).getLastUserOrToolResponseMessage());
+            memoryRepository.saveAll(conversationId, storedMessages);
+            return new PreparedPrompt(currentInstructions, new io.mindspice.magenta2.ai.chat.model.ContextUsage(0, 8192, 7372, 0.0));
+        }
+
+        @Override
+        public void saveAssistantMessages(String conversationId, List<Message> messages) {
+            List<Message> storedMessages = new java.util.ArrayList<>(memoryRepository.findByConversationId(conversationId));
+            storedMessages.addAll(messages);
+            memoryRepository.saveAll(conversationId, storedMessages);
+        }
+
+        @Override
+        public io.mindspice.magenta2.ai.chat.model.ContextUsage estimateStoredUsage(String conversationId, String remoteModelName) {
+            return new io.mindspice.magenta2.ai.chat.model.ContextUsage(0, 8192, 7372, 0.0);
+        }
+
+        @Override
+        public ToolLoopPrompt prepareToolLoopPrompt(
+            String conversationId,
+            List<Message> activeMessages,
+            List<Message> currentSystemInstructions,
+            String model
+        ) {
+            toolLoopPromptCalls++;
+            List<Message> messages = new java.util.ArrayList<>();
+            messages.addAll(currentSystemInstructions == null ? List.of() : currentSystemInstructions);
+            messages.addAll(memoryRepository.findByConversationId(conversationId));
+            messages.addAll(activeMessages == null ? List.of() : activeMessages);
+            return new ToolLoopPrompt(
+                messages,
+                activeMessages == null ? List.of() : List.copyOf(activeMessages),
+                new io.mindspice.magenta2.ai.chat.model.ContextUsage(0, 8192, 7372, 0.0),
+                allowToolUse || toolLoopPromptCalls > 1,
+                false
+            );
+        }
+    }
+
+    private static final class FakeChatModelRouter extends ChatModelRouter {
+        private final ChatModel chatModel;
+
+        FakeChatModelRouter(ChatModel chatModel) {
+            super(null, null, null);
+            this.chatModel = chatModel;
+        }
+
+        @Override
+        public ChatModel chatModel(String model) {
+            return chatModel;
+        }
+    }
+
+    private static final class FakeChatModel implements ChatModel {
+        private final List<Prompt> prompts = new java.util.ArrayList<>();
+
+        @Override
+        public ChatResponse call(Prompt prompt) {
+            prompts.add(prompt);
+            if (prompt.getOptions() instanceof ToolCallingChatOptions options && options.getToolCallbacks().isEmpty()) {
+                return new ChatResponse(List.of(new Generation(new AssistantMessage(
+                    "I could not continue using tools after repeated errors."
+                ))));
+            }
+            if (prompts.size() <= 8) {
+                return new ChatResponse(List.of(new Generation(AssistantMessage.builder()
+                    .content("")
+                    .toolCalls(List.of(new AssistantMessage.ToolCall(
+                        "call-" + prompts.size(),
+                        "function",
+                        "test_tool",
+                        "{\"attempt\":" + prompts.size() + "}"
+                    )))
+                    .build())));
+            }
+            return new ChatResponse(List.of(new Generation(new AssistantMessage(
+                "I could not continue using tools after repeated errors."
+            ))));
+        }
+
+        private String finalPromptText() {
+            return prompts.getLast().getInstructions().stream()
+                .map(message -> message.getText() == null ? "" : message.getText())
+                .collect(java.util.stream.Collectors.joining("\n"));
+        }
+    }
+
+    private static final class FakeToolCallingManager implements ToolCallingManager {
+        private int count = 0;
+
+        @Override
+        public List<ToolDefinition> resolveToolDefinitions(ToolCallingChatOptions chatOptions) {
+            return List.of();
+        }
+
+        @Override
+        public ToolExecutionResult executeToolCalls(Prompt prompt, ChatResponse chatResponse) {
+            count++;
+            Message responseMessage = ToolResponseMessage.builder()
+                .responses(List.of(new ToolResponseMessage.ToolResponse(
+                    "call-" + count,
+                    "test_tool",
+                    "tool failed " + count
+                )))
+                .build();
+            List<Message> history = new java.util.ArrayList<>(prompt.getInstructions());
+            history.add(chatResponse.getResult().getOutput());
+            history.add(responseMessage);
+            return ToolExecutionResult.builder()
+                .conversationHistory(history)
+                .build();
+        }
+    }
+
+    private static final class FakeToolCallback implements ToolCallback {
+        @Override
+        public ToolDefinition getToolDefinition() {
+            return DefaultToolDefinition.builder()
+                .name("test_tool")
+                .description("Test tool")
+                .inputSchema("{}")
+                .build();
+        }
+
+        @Override
+        public String call(String toolInput) {
+            return "{}";
+        }
     }
 }

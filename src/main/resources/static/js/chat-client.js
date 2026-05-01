@@ -75,6 +75,12 @@
         fillEl.style.width = percent.toFixed(1) + '%';
     }
 
+    function updateContextUsageIfPresent(usage) {
+        if (usage) {
+            updateContextUsage(usage);
+        }
+    }
+
     function updatePlanStatus(planState) {
         const statusEl = byId('chat-plan-status');
         const titleEl = byId('chat-plan-title');
@@ -209,6 +215,27 @@
         wrapper.className = 'chat-message chat-message-tool';
         wrapper.innerHTML = '<div class="chat-message-role">tool</div>'
             + renderToolActivity(eventData.toolActivity || {});
+        if (beforeEl && beforeEl.parentNode === historyEl) {
+            historyEl.insertBefore(wrapper, beforeEl);
+        } else {
+            historyEl.appendChild(wrapper);
+        }
+        historyEl.scrollTop = historyEl.scrollHeight;
+    }
+
+    function appendSystemMessage(eventData, beforeEl) {
+        const historyEl = byId('chat-history');
+        if (historyEl.textContent.trim() === 'No messages in this session yet.') {
+            historyEl.innerHTML = '';
+        }
+
+        const text = eventData && eventData.renderedHtml
+            ? String(eventData.renderedHtml)
+            : formatPlainText(eventData && eventData.text ? eventData.text : '');
+        const wrapper = document.createElement('div');
+        wrapper.className = 'chat-message chat-message-system';
+        wrapper.innerHTML = '<div class="chat-message-role">system</div>'
+            + '<div class="chat-message-body">' + text + '</div>';
         if (beforeEl && beforeEl.parentNode === historyEl) {
             historyEl.insertBefore(wrapper, beforeEl);
         } else {
@@ -625,11 +652,30 @@
                     return;
                 }
                 if (event.name === 'chunk') {
+                    updateContextUsageIfPresent(data.contextUsage);
                     updateStreamingAssistantMessage(assistantEl, data);
                     return;
                 }
                 if (event.name === 'tool') {
                     appendToolActivity(data, assistantEl);
+                    updateContextUsageIfPresent(data.contextUsage);
+                    updatePlanStatus(data.planState);
+                    return;
+                }
+                if (event.name === 'system') {
+                    appendSystemMessage(data, assistantEl);
+                    updateContextUsageIfPresent(data.contextUsage);
+                    updatePlanStatus(data.planState);
+                    return;
+                }
+                if (event.name === 'interrupt') {
+                    appendPendingUserMessage(data.text || '');
+                    updateContextUsageIfPresent(data.contextUsage);
+                    updatePlanStatus(data.planState);
+                    return;
+                }
+                if (event.name === 'context') {
+                    updateContextUsageIfPresent(data.contextUsage);
                     updatePlanStatus(data.planState);
                     return;
                 }

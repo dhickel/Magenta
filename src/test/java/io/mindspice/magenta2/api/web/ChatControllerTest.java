@@ -6,6 +6,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.chat.model.ChatMessage;
 import io.mindspice.magenta2.ai.chat.model.ChatPlanState;
 import io.mindspice.magenta2.ai.chat.model.ChatRequest;
@@ -118,6 +119,16 @@ class ChatControllerTest {
 
         assertThat(response.favorite()).isTrue();
         assertThat(chatService.favorite).isTrue();
+    }
+
+    @Test
+    void favoriteRequestBindsBrowserPayload() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatRequest.Favorite request = objectMapper.readValue("{\"favorite\":true}", ChatRequest.Favorite.class);
+        ChatRequest.Favorite legacyRequest = objectMapper.readValue("{\"isFavorite\":true}", ChatRequest.Favorite.class);
+
+        assertThat(request.favorite()).isTrue();
+        assertThat(legacyRequest.favorite()).isTrue();
     }
 
     @Test

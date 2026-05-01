@@ -47,6 +47,15 @@ public record ChatStreamEvent(
     }
 
     public static ChatStreamEvent tool(String conversationId, String model, ChatMessage message) {
+        return tool(conversationId, model, message, null);
+    }
+
+    public static ChatStreamEvent tool(
+        String conversationId,
+        String model,
+        ChatMessage message,
+        ContextUsage contextUsage
+    ) {
         return new ChatStreamEvent(
             conversationId,
             model,
@@ -54,12 +63,16 @@ public record ChatStreamEvent(
             message.renderedHtml(),
             message.thinkingHtml(),
             message.toolActivity(),
-            null,
+            contextUsage,
             null,
             null,
             null,
             null
         );
+    }
+
+    public static ChatStreamEvent context(String conversationId, String model, ContextUsage contextUsage) {
+        return new ChatStreamEvent(conversationId, model, null, null, null, null, contextUsage, null, null, null, null);
     }
 
     public static ChatStreamEvent error(String message) {

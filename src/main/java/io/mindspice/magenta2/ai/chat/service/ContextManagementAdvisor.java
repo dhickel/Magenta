@@ -169,6 +169,53 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
         return new PreparedPrompt(promptMessages, usage);
     }
 
+    public ToolLoopPrompt prepareToolLoopPrompt(
+        String conversationId,
+        List<Message> activeMessages,
+        List<Message> currentSystemInstructions,
+        String model
+    ) {
+        List<Message> storedMessages = chatMemoryRepository.findByConversationId(conversationId);
+        List<Message> truncatedMessages = truncateExpiredToolResults(storedMessages);
+        if (truncatedMessages != storedMessages) {
+            storedMessages = truncatedMessages;
+            chatMemoryRepository.saveAll(conversationId, storedMessages);
+        }
+
+        List<Message> active = new ArrayList<>(activeMessages == null ? List.of() : activeMessages);
+        List<Message> promptMessages = buildToolLoopPromptMessages(storedMessages, currentSystemInstructions, active);
+        ContextUsage usage = estimateUsage(promptMessages, model);
+        boolean compacted = false;
+
+        if (usage.usedTokens() > usage.triggerTokens()) {
+            storedMessages = compact(conversationId, storedMessages, activeSystemInstructions(currentSystemInstructions, active), model);
+            promptMessages = buildToolLoopPromptMessages(storedMessages, currentSystemInstructions, active);
+            usage = estimateUsage(promptMessages, model);
+            compacted = true;
+        }
+        if (usage.usedTokens() > usage.triggerTokens()) {
+            storedMessages = trimToBudget(conversationId, storedMessages, activeSystemInstructions(currentSystemInstructions, active), model);
+            promptMessages = buildToolLoopPromptMessages(storedMessages, currentSystemInstructions, active);
+            usage = estimateUsage(promptMessages, model);
+            compacted = true;
+        }
+        if (usage.usedTokens() > usage.triggerTokens()) {
+            active = compactActiveToolMessages(active);
+            promptMessages = buildToolLoopPromptMessages(storedMessages, currentSystemInstructions, active);
+            usage = estimateUsage(promptMessages, model);
+            compacted = true;
+        }
+        if (usage.usedTokens() > usage.triggerTokens()) {
+            active = trimActiveToolMessages(active, storedMessages, currentSystemInstructions, model);
+            promptMessages = buildToolLoopPromptMessages(storedMessages, currentSystemInstructions, active);
+            usage = estimateUsage(promptMessages, model);
+            compacted = true;
+        }
+
+        usageTracker.record(conversationId, usage);
+        return new ToolLoopPrompt(promptMessages, active, usage, usage.usedTokens() <= usage.triggerTokens(), compacted);
+    }
+
     public void saveAssistantMessages(String conversationId, List<Message> messages) {
         if (messages.isEmpty()) {
             return;
@@ -201,6 +248,12 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
         List<Message> currentInstructions,
         String model
     ) {
+        List<Message> previousSummaries = storedMessages.stream()
+            .filter(this::isHiddenSummary)
+            .map(message -> (Message) new SystemMessage(
+                "Previous compacted conversation summary:\n" + message.getText().substring(SUMMARY_PREFIX.length())
+            ))
+            .toList();
         List<Message> compactable = storedMessages.stream()
             .filter(message -> !isHiddenSummary(message))
             .filter(message -> !isCompactionNotice(message))
@@ -215,7 +268,9 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
             return storedMessages;
         }
 
-        String summary = summarize(older);
+        List<Message> summaryInput = new ArrayList<>(previousSummaries);
+        summaryInput.addAll(older);
+        String summary = summarize(summaryInput);
         List<Message> compacted = new ArrayList<>();
         compacted.add(new SystemMessage(SUMMARY_PREFIX + summary));
         compacted.add(new SystemMessage(NOTICE_PREFIX + COMPACTION_NOTICE));
@@ -292,6 +347,64 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
             .filter(message -> !(message instanceof SystemMessage))
             .forEach(promptMessages::add);
         return promptMessages;
+    }
+
+    private List<Message> buildToolLoopPromptMessages(
+        List<Message> storedMessages,
+        List<Message> currentSystemInstructions,
+        List<Message> activeMessages
+    ) {
+        List<Message> promptMessages = new ArrayList<>();
+        if (currentSystemInstructions != null) {
+            currentSystemInstructions.stream()
+                .filter(SystemMessage.class::isInstance)
+                .forEach(promptMessages::add);
+        }
+        promptMessages.addAll(toModelMemory(storedMessages));
+        if (activeMessages != null) {
+            promptMessages.addAll(activeMessages);
+        }
+        return promptMessages;
+    }
+
+    private List<Message> activeSystemInstructions(List<Message> currentSystemInstructions, List<Message> activeMessages) {
+        List<Message> messages = new ArrayList<>();
+        if (currentSystemInstructions != null) {
+            messages.addAll(currentSystemInstructions);
+        }
+        if (activeMessages != null) {
+            messages.addAll(activeMessages);
+        }
+        return messages;
+    }
+
+    private List<Message> compactActiveToolMessages(List<Message> activeMessages) {
+        if (activeMessages.size() <= MIN_TAIL_MESSAGES) {
+            return activeMessages;
+        }
+        List<Message> tail = activeMessages.subList(activeMessages.size() - MIN_TAIL_MESSAGES, activeMessages.size());
+        List<Message> older = activeMessages.subList(0, activeMessages.size() - MIN_TAIL_MESSAGES);
+        String summary = summarize(older);
+        List<Message> compacted = new ArrayList<>();
+        compacted.add(new SystemMessage("Compacted active tool-use summary:\n" + summary));
+        compacted.addAll(tail);
+        return compacted;
+    }
+
+    private List<Message> trimActiveToolMessages(
+        List<Message> activeMessages,
+        List<Message> storedMessages,
+        List<Message> currentSystemInstructions,
+        String model
+    ) {
+        List<Message> trimmed = new ArrayList<>(activeMessages);
+        while (!trimmed.isEmpty()
+            && estimateUsage(buildToolLoopPromptMessages(storedMessages, currentSystemInstructions, trimmed), model).usedTokens()
+                > triggerTokens(maxTokens(model))
+            && trimmed.size() > 2) {
+            trimmed.remove(0);
+        }
+        return trimmed;
     }
 
     private List<Message> toModelMemory(List<Message> storedMessages) {
@@ -413,5 +526,14 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
     }
 
     public record PreparedPrompt(List<Message> messages, ContextUsage usage) {
+    }
+
+    public record ToolLoopPrompt(
+        List<Message> messages,
+        List<Message> activeMessages,
+        ContextUsage usage,
+        boolean toolUseAllowed,
+        boolean compacted
+    ) {
     }
 }
