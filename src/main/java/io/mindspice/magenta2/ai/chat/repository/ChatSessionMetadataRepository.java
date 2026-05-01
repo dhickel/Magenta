@@ -13,6 +13,7 @@ public class ChatSessionMetadataRepository {
 
     public ChatSessionMetadataRepository(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
+        ensureSchema();
     }
 
     public void saveModel(String conversationId, String model) {
@@ -27,6 +28,21 @@ public class ChatSessionMetadataRepository {
                 """,
             conversationId,
             model
+        );
+    }
+
+    public void saveTitle(String conversationId, String title) {
+        if (!StringUtils.hasText(conversationId) || !StringUtils.hasText(title)) {
+            return;
+        }
+        jdbcTemplate.update(
+            """
+                insert into ai_chat_session_metadata (conversation_id, title)
+                values (?, ?)
+                on conflict(conversation_id) do update set title = excluded.title
+                """,
+            conversationId,
+            title
         );
     }
 
@@ -51,6 +67,27 @@ public class ChatSessionMetadataRepository {
         );
     }
 
+    public Optional<String> findTitle(String conversationId) {
+        if (!StringUtils.hasText(conversationId)) {
+            return Optional.empty();
+        }
+        return jdbcTemplate.query(
+            """
+                select title
+                from ai_chat_session_metadata
+                where conversation_id = ?
+                """,
+            rs -> {
+                if (!rs.next()) {
+                    return Optional.<String>empty();
+                }
+                String title = rs.getString("title");
+                return StringUtils.hasText(title) ? Optional.of(title) : Optional.empty();
+            },
+            conversationId
+        );
+    }
+
     public void deleteByConversationId(String conversationId) {
         if (!StringUtils.hasText(conversationId)) {
             return;
@@ -59,5 +96,22 @@ public class ChatSessionMetadataRepository {
             "delete from ai_chat_session_metadata where conversation_id = ?",
             conversationId
         );
+    }
+
+    private void ensureSchema() {
+        jdbcTemplate.execute("""
+            create table if not exists ai_chat_session_metadata (
+                conversation_id text primary key,
+                model text,
+                title text
+            )
+            """);
+        java.util.List<String> columns = jdbcTemplate.queryForList(
+            "select name from pragma_table_info('ai_chat_session_metadata')",
+            String.class
+        );
+        if (!columns.contains("title")) {
+            jdbcTemplate.execute("alter table ai_chat_session_metadata add column title text");
+        }
     }
 }

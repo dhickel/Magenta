@@ -43,7 +43,7 @@ public final class ExternalAiConfigLoader {
             ));
         return new AiConfig(
             config.defaultAgent(),
-            config.summarizationAgent(),
+            config.summeryModel(),
             config.contextBufferPercent(),
             config.dataRoot(),
             config.webSearch(),
@@ -62,31 +62,16 @@ public final class ExternalAiConfigLoader {
         if (config.models() == null || config.models().isEmpty()) {
             throw new IllegalArgumentException("AI config must define models");
         }
-        if (!StringUtils.hasText(config.summarizationAgent())) {
-            throw new IllegalArgumentException("AI config must define summarizationAgent");
+        String summeryModelKey = config.resolvedSummeryModelKey();
+        if (!StringUtils.hasText(summeryModelKey)) {
+            throw new IllegalArgumentException("AI config must define summeryModel");
         }
-        AgentConfig summarizationAgent = config.agents().get(config.summarizationAgent());
-        if (summarizationAgent == null) {
-            throw new IllegalArgumentException(
-                "summarizationAgent does not match a configured agent: " + config.summarizationAgent()
-            );
+        ModelConfig summeryModel = config.models().get(summeryModelKey);
+        if (summeryModel == null) {
+            throw new IllegalArgumentException("summeryModel references missing model: " + summeryModelKey);
         }
-        if (!StringUtils.hasText(summarizationAgent.model())) {
-            throw new IllegalArgumentException(
-                "summarizationAgent '" + config.summarizationAgent() + "' must configure a model"
-            );
-        }
-        ModelConfig summarizationModel = config.models().get(summarizationAgent.model());
-        if (summarizationModel == null) {
-            throw new IllegalArgumentException(
-                "summarizationAgent '" + config.summarizationAgent() + "' references missing model: "
-                    + summarizationAgent.model()
-            );
-        }
-        if (summarizationModel.contextLength() == null || summarizationModel.contextLength() <= 0) {
-            throw new IllegalArgumentException(
-                "summarizationAgent '" + config.summarizationAgent() + "' model must define a positive contextLength"
-            );
+        if (summeryModel.contextLength() == null || summeryModel.contextLength() <= 0) {
+            throw new IllegalArgumentException("summeryModel must define a positive contextLength: " + summeryModelKey);
         }
         int bufferPercent = config.resolvedContextBufferPercent();
         if (bufferPercent < 1 || bufferPercent > 50) {

@@ -23,7 +23,7 @@ class ExternalAiConfigLoaderTest {
         Path yaml = tempDir.resolve("ai-config.yaml");
         Files.writeString(yaml, """
             defaultAgent: support
-            summarizationAgent: planner
+            summeryModel: local-fast
             contextBufferPercent: 10
             webSearch:
               enabled: true
@@ -62,7 +62,8 @@ class ExternalAiConfigLoaderTest {
         assertNotNull(config.models());
         assertNotNull(config.agents());
         assertEquals("support", config.defaultAgent());
-        assertEquals("planner", config.summarizationAgent());
+        assertEquals("local-fast", config.summeryModel());
+        assertEquals("local-fast", config.resolvedSummeryModelKey());
         assertEquals(10, config.resolvedContextBufferPercent());
         assertNotNull(config.webSearch());
         assertTrue(config.webSearch().isEnabled());
@@ -99,7 +100,7 @@ class ExternalAiConfigLoaderTest {
         Files.writeString(json, """
             {
               "defaultAgent": "magenta",
-              "summarizationAgent": "magenta",
+              "summeryModel": "local-qwen",
               "contextBufferPercent": 10,
               "models": {
                 "local-qwen": {
@@ -126,6 +127,8 @@ class ExternalAiConfigLoaderTest {
         assertNotNull(config.models());
         assertNotNull(config.agents());
         assertEquals("magenta", config.defaultAgent());
+        assertEquals("local-qwen", config.summeryModel());
+        assertEquals("local-qwen", config.resolvedSummeryModelKey());
         assertEquals(1, config.models().size());
         assertEquals(1, config.agents().size());
         assertEquals("local-qwen", config.agents().get("magenta").model());
@@ -148,7 +151,7 @@ class ExternalAiConfigLoaderTest {
         Files.writeString(json, """
             {
               "defaultAgent": "magenta",
-              "summarizationAgent": "magenta",
+              "summeryModel": "local-qwen",
               "models": {
                 "local-qwen": {
                   "remoteModelName": "qwen3",
@@ -178,7 +181,7 @@ class ExternalAiConfigLoaderTest {
         Files.writeString(json, """
             {
               "defaultAgent": "magenta",
-              "summarizationAgent": "magenta",
+              "summeryModel": "local-qwen",
               "models": {
                 "local-qwen": {
                   "remoteModelName": "qwen3",
@@ -210,7 +213,7 @@ class ExternalAiConfigLoaderTest {
         Files.writeString(json, """
             {
               "defaultAgent": "magenta",
-              "summarizationAgent": "magenta",
+              "summeryModel": "local-qwen",
               "models": {
                 "local-qwen": {
                   "remoteModelName": "qwen3",
@@ -237,7 +240,7 @@ class ExternalAiConfigLoaderTest {
     }
 
     @Test
-    void failsWhenSummarizationAgentIsMissing(@TempDir Path tempDir) throws IOException {
+    void failsWhenSummeryModelIsMissing(@TempDir Path tempDir) throws IOException {
         Files.createDirectories(tempDir.resolve("prompts"));
         Files.writeString(tempDir.resolve("prompts/system.md"), "Prompt.");
 
@@ -267,20 +270,19 @@ class ExternalAiConfigLoaderTest {
             IllegalArgumentException.class,
             () -> ExternalAiConfigLoader.load(json)
         );
-        assertTrue(exception.getMessage().contains("must define summarizationAgent"));
+        assertTrue(exception.getMessage().contains("must define summeryModel"));
     }
 
     @Test
-    void failsWhenSummarizationAgentReferencesMissingModel(@TempDir Path tempDir) throws IOException {
+    void failsWhenSummeryModelReferencesMissingModel(@TempDir Path tempDir) throws IOException {
         Files.createDirectories(tempDir.resolve("prompts"));
         Files.writeString(tempDir.resolve("prompts/system.md"), "Prompt.");
-        Files.writeString(tempDir.resolve("prompts/summary.md"), "Summarize.");
 
         Path json = tempDir.resolve("ai-config.json");
         Files.writeString(json, """
             {
               "defaultAgent": "magenta",
-              "summarizationAgent": "summarizer",
+              "summeryModel": "missing-model",
               "models": {
                 "local-qwen": {
                   "remoteModelName": "qwen3",
@@ -294,11 +296,6 @@ class ExternalAiConfigLoaderTest {
                   "model": "local-qwen",
                   "systemPrompt": "prompts/system.md",
                   "approvedTools": []
-                },
-                "summarizer": {
-                  "model": "missing-model",
-                  "systemPrompt": "prompts/summary.md",
-                  "approvedTools": []
                 }
               }
             }
@@ -308,6 +305,6 @@ class ExternalAiConfigLoaderTest {
             IllegalArgumentException.class,
             () -> ExternalAiConfigLoader.load(json)
         );
-        assertTrue(exception.getMessage().contains("references missing model"));
+        assertTrue(exception.getMessage().contains("summeryModel references missing model"));
     }
 }

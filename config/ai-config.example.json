@@ -1,6 +1,6 @@
 {
   "defaultAgent": "magenta",
-  "summarizationAgent": "magenta-summarizer",
+  "summeryModel": "local-qwen",
   "contextBufferPercent": 10,
   "dataRoot": "/home/hickelpickle/.magenta/root",
   "webSearch": {
@@ -38,12 +38,6 @@
       "allowedShellCommands": [
         "*"
       ]
-    },
-    "magenta-summarizer": {
-      "model": "local-qwen",
-      "systemPrompt": "prompts/summarization.md",
-      "approvedTools": [],
-      "allowedShellCommands": []
     }
   }
 }

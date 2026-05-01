@@ -1,5 +1,6 @@
 (function() {
     let requestInFlight = false;
+    let titlePollTimer = null;
 
     function byId(id) {
         return document.getElementById(id);
@@ -24,14 +25,16 @@
     }
 
     function activeConversationId() {
-        return root().getAttribute('data-active-conversation-id');
+        const value = root().getAttribute('data-active-conversation-id');
+        return value ? value : null;
     }
 
-    function setActiveConversationId(conversationId) {
-        root().setAttribute('data-active-conversation-id', conversationId);
+    function setActiveConversationId(conversationId, title) {
+        const displayValue = conversationId || '';
+        root().setAttribute('data-active-conversation-id', displayValue);
         const activeEl = byId('chat-active-session');
         if (activeEl) {
-            activeEl.textContent = conversationId;
+            activeEl.textContent = title || conversationId || 'New chat';
         }
     }
 
@@ -287,34 +290,98 @@
         }
     }
 
-    function renderSessions(conversationIds) {
+    function renderSessions(sessionsOrIds) {
         const sessionsEl = byId('chat-session-list');
-        const ids = conversationIds || [];
+        const sessions = (sessionsOrIds || []).map(function(item) {
+            if (typeof item === 'string') {
+                return { conversationId: item, title: null, titleJobStatus: null };
+            }
+            return item || {};
+        }).filter(function(session) {
+            return session.conversationId;
+        });
         const activeId = activeConversationId();
 
-        if (ids.length === 0) {
+        if (sessions.length === 0) {
             sessionsEl.innerHTML = '<li class="chat-session-empty">No persisted sessions yet.</li>';
             return;
         }
 
-        sessionsEl.innerHTML = ids.map(function(id) {
+        sessionsEl.innerHTML = sessions.map(function(session) {
+            const id = String(session.conversationId);
             const escaped = escapeHtml(id);
+            const title = session.title ? String(session.title) : id;
+            const escapedTitle = escapeHtml(title);
             const activeClass = id === activeId ? ' active' : '';
-            return '<li><a href="#" class="chat-session-entry' + activeClass + '" data-switch-id="' + escaped + '"><code>' + escaped + '</code></a></li>';
+            return '<li><a href="#" class="chat-session-entry' + activeClass + '" data-switch-id="' + escaped + '">'
+                + '<span>' + escapedTitle + '</span>'
+                + (session.title ? '<code>' + escaped + '</code>' : '')
+                + '</a></li>';
         }).join('');
+
+        const activeSession = sessions.find(function(session) {
+            return session.conversationId === activeId;
+        });
+        if (activeSession) {
+            setActiveConversationId(activeSession.conversationId, activeSession.title);
+        }
     }
 
     async function loadSessions() {
         const data = await getJson('/api/chat/sessions');
-        renderSessions(data.conversationIds);
+        renderSessions(data.sessions || data.conversationIds);
+        return data;
     }
 
     async function loadHistory(conversationId) {
+        if (!conversationId) {
+            renderHistory([]);
+            updateContextUsage(null);
+            updatePlanStatus(null);
+            return;
+        }
         const data = await getJson('/api/chat/' + encodeURIComponent(conversationId) + '/history');
+        setActiveConversationId(data.conversationId, data.title);
         renderHistory(data.messages);
         syncModelSelection(data.model);
         updateContextUsage(data.contextUsage);
         updatePlanStatus(data.planState);
+        return data;
+    }
+
+    function pollConversationTitle(conversationId) {
+        if (!conversationId) {
+            return;
+        }
+        if (titlePollTimer) {
+            window.clearTimeout(titlePollTimer);
+            titlePollTimer = null;
+        }
+        let attempts = 0;
+        const poll = async function() {
+            attempts += 1;
+            try {
+                const data = await loadSessions();
+                const sessions = data && Array.isArray(data.sessions) ? data.sessions : [];
+                const session = sessions.find(function(item) {
+                    return item.conversationId === conversationId;
+                });
+                const status = session && session.titleJobStatus ? String(session.titleJobStatus) : null;
+                if (session && session.title) {
+                    setActiveConversationId(conversationId, session.title);
+                    return;
+                }
+                if (status === 'SUCCEEDED' || status === 'FAILED' || attempts >= 8) {
+                    return;
+                }
+            } catch (error) {
+                if (attempts >= 8) {
+                    return;
+                }
+            }
+            titlePollTimer = window.setTimeout(poll, 750);
+        };
+        titlePollTimer = window.setTimeout(poll, 750);
     }
 
     async function sendMessage(message) {
@@ -380,12 +447,16 @@
 
             await loadHistory(completedConversationId);
             await loadSessions();
+            pollConversationTitle(completedConversationId);
             setStatus();
         } catch (error) {
             clearPendingUserMessage();
             removeStreamingAssistantMessage(assistantEl);
             try {
-                await loadHistory(activeConversationId());
+                const activeId = activeConversationId();
+                if (activeId) {
+                    await loadHistory(activeId);
+                }
                 await loadSessions();
             } catch (reloadError) {
                 // Keep the original streaming error visible.
@@ -418,7 +489,7 @@
             setActiveConversationId(data.conversationId);
             syncModelSelection(data.model);
             renderHistory(data.history || []);
-            renderSessions(data.conversationIds || []);
+            renderSessions(data.sessions || data.conversationIds || []);
             updateContextUsage(data.contextUsage);
             updatePlanStatus(data.planState);
             setStatus();

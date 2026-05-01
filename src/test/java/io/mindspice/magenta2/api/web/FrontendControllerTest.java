@@ -1,5 +1,7 @@
 package io.mindspice.magenta2.api.web;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 import io.mindspice.magenta2.ai.chat.service.ChatService;
@@ -19,8 +21,25 @@ class FrontendControllerTest {
         assertThat(html).contains("id=\"chat-token-usage\"");
         assertThat(html).contains("id=\"chat-plan-evidence\"");
         assertThat(html).contains(".chat-tool");
-        assertThat(html).contains("/js/chat-client.js?v=11");
-        assertThat(html).contains("data-active-conversation-id=\"00000000-0000-0000-0000-000000000001\"");
+        assertThat(html).contains(".chat-sessions summary::after");
+        assertThat(html).contains("grid-template-columns: auto minmax(5rem, 10rem) auto minmax(0, 1fr);");
+        assertThat(html).contains("flex-direction: column;");
+        assertThat(html).contains("width: 100%;");
+        assertThat(html).contains("/js/chat-client.js?v=13");
+        assertThat(html).contains("data-active-conversation-id=\"\"");
+        assertThat(html).contains("<code id=\"chat-active-session\">New chat</code>");
+    }
+
+    @Test
+    void chatClientHandlesUnsavedConversationState() throws Exception {
+        String js = Files.readString(Path.of("src/main/resources/static/js/chat-client.js"));
+
+        assertThat(js).contains("return value ? value : null;");
+        assertThat(js).contains("activeEl.textContent = title || conversationId || 'New chat';");
+        assertThat(js).contains("renderSessions(data.sessions || data.conversationIds);");
+        assertThat(js).contains("pollConversationTitle(completedConversationId);");
+        assertThat(js).contains("if (!conversationId) {");
+        assertThat(js).contains("renderHistory([]);");
     }
 
     private static class StubChatService extends ChatService {
@@ -31,7 +50,7 @@ class FrontendControllerTest {
 
         @Override
         public String newConversationId() {
-            return "00000000-0000-0000-0000-000000000001";
+            throw new AssertionError("/chat should not allocate a conversation id");
         }
 
         @Override

@@ -81,6 +81,7 @@ public class FrontendController {
                     display: flex;
                     align-items: center;
                     gap: 0.45rem;
+                    position: relative;
                     cursor: pointer;
                     user-select: none;
                     list-style: none;
@@ -113,17 +114,28 @@ public class FrontendController {
 
                 .chat-sessions summary::before {
                     content: "";
-                    width: 0.42rem;
-                    height: 0.42rem;
-                    border-right: 2px solid #5f6774;
+                    width: 1rem;
+                    height: 0.78rem;
+                    border: 2px solid #5f6774;
+                    border-radius: 0.42rem;
+                    box-sizing: border-box;
+                    position: relative;
+                }
+
+                .chat-sessions summary::after {
+                    content: "";
+                    width: 0.35rem;
+                    height: 0.35rem;
+                    border-left: 2px solid #5f6774;
                     border-bottom: 2px solid #5f6774;
-                    transform: rotate(-45deg);
-                    transition: transform 0.16s ease;
-                    margin-top: -0.08rem;
+                    transform: rotate(-18deg);
+                    position: absolute;
+                    left: 0.98rem;
+                    top: 1.08rem;
                 }
 
                 .chat-sessions details[open] summary::before {
-                    transform: rotate(135deg);
+                    border-color: #40506a;
                 }
 
                 #chat-session-list {
@@ -138,7 +150,9 @@ public class FrontendController {
                 }
 
                 .chat-session-entry {
-                    display: block;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 0.16rem;
                     border: 1px solid #dbe2ec;
                     border-radius: 6px;
                     padding: 0.42rem 0.52rem;
@@ -148,6 +162,11 @@ public class FrontendController {
                     user-select: text;
                     overflow-wrap: anywhere;
                     word-break: break-word;
+                }
+
+                .chat-session-entry code {
+                    color: #667386;
+                    font-size: 0.74rem;
                 }
 
                 .chat-session-entry:hover {
@@ -290,8 +309,8 @@ public class FrontendController {
                 }
 
                 .chat-message-tool {
-                    margin-left: 1.6rem;
-                    margin-right: 1.1rem;
+                    margin-left: 1.2rem;
+                    margin-right: 0.65rem;
                     background: #f4f7fa;
                     border-color: #d7e0ea;
                     color: #253244;
@@ -475,7 +494,7 @@ public class FrontendController {
 
                 .chat-tool-toggle {
                     display: grid;
-                    grid-template-columns: auto auto minmax(0, 1fr);
+                    grid-template-columns: auto minmax(5rem, 10rem) auto minmax(0, 1fr);
                     align-items: center;
                     gap: 0.45rem;
                     padding: 0.48rem 0.65rem;
@@ -508,6 +527,8 @@ public class FrontendController {
                     font-weight: 700;
                     color: #223149;
                     white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
                 }
 
                 .chat-tool-status {
@@ -566,14 +587,20 @@ public class FrontendController {
                 #chat-form {
                     margin-top: 0.8rem;
                     display: flex;
+                    flex-direction: column;
                     gap: 0.55rem;
-                    align-items: flex-end;
+                    align-items: stretch;
                 }
 
                 #chat-input {
-                    flex: 1;
+                    width: 100%%;
+                    box-sizing: border-box;
                     resize: vertical;
                     min-height: 8rem;
+                }
+
+                #chat-form button[type="submit"] {
+                    align-self: flex-end;
                 }
 
                 #chat-error {
@@ -696,7 +723,7 @@ public class FrontendController {
                     .withSubtitle("Session-backed chat bootstrap")
                     .build())
             .withTopNav(topNavBar)
-            .addCustomJs("/js/chat-client.js?v=11")
+            .addCustomJs("/js/chat-client.js?v=13")
             .buildTemplate();
 
     @GetMapping("/chat")
@@ -705,8 +732,7 @@ public class FrontendController {
             @RequestHeader(value = "HX-Request", required = false) String hxRequest,
             HttpServletResponse response
     ) {
-        String conversationId = chatService.newConversationId();
-        String view = chatInterface.formatted(conversationId, buildModelOptionsHtml(), conversationId);
+        String view = chatInterface.formatted("", buildModelOptionsHtml(), "New chat");
         return chatShell.renderWithContent(RawHtml.create(view));
     }
 

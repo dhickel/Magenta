@@ -10,6 +10,7 @@ import io.mindspice.magenta2.ai.chat.model.ChatMessage;
 import io.mindspice.magenta2.ai.chat.model.ChatPlanState;
 import io.mindspice.magenta2.ai.chat.model.ChatRequest;
 import io.mindspice.magenta2.ai.chat.model.ChatResponse;
+import io.mindspice.magenta2.ai.chat.model.ChatSession;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -50,6 +51,43 @@ class ChatControllerTest {
                 assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
                 assertThat(exception.getReason()).isEqualTo("switch accepts only a conversation UUID");
             });
+    }
+
+    @Test
+    void newCommandStartsUnsavedChatWithoutCreatingConversationId() {
+        ChatResponse.CmdResponse response = chatController.command(
+            new ChatRequest.CmdRequest(CONVERSATION_ID, "/new")
+        );
+
+        assertThat(response.conversationId()).isNull();
+        assertThat(response.model()).isNull();
+        assertThat(response.message()).isEqualTo("New chat");
+        assertThat(response.conversationIds()).containsExactly(CONVERSATION_ID);
+        assertThat(response.history()).isEmpty();
+        assertThat(response.contextUsage()).isNull();
+        assertThat(response.planState().mode()).isEqualTo("NORMAL");
+        assertThat(chatService.newConversationIdCalls).isZero();
+    }
+
+    @Test
+    void sessionsPayloadIncludesNullableTitles() {
+        chatService.title = "Reminder Followup";
+        chatService.titleJobStatus = "SUCCEEDED";
+
+        var response = chatController.sessions();
+
+        assertThat(response.conversationIds()).containsExactly(CONVERSATION_ID);
+        assertThat(response.sessions()).containsExactly(new ChatSession(CONVERSATION_ID, "Reminder Followup", "SUCCEEDED"));
+    }
+
+    @Test
+    void historyPayloadIncludesConversationTitle() {
+        chatService.title = "Reminder Followup";
+
+        var response = chatController.history(CONVERSATION_ID);
+
+        assertThat(response.conversationId()).isEqualTo(CONVERSATION_ID);
+        assertThat(response.title()).isEqualTo("Reminder Followup");
     }
 
     @Test
@@ -133,6 +171,9 @@ class ChatControllerTest {
         private ChatPlanState planState = ChatPlanState.normal();
         private boolean savedPlan;
         private boolean executedWithClearContext;
+        private int newConversationIdCalls;
+        private String title;
+        private String titleJobStatus;
 
         StubChatService(List<String> conversationIds, Map<String, String> modelsByConversationId) {
             super(null, null, null, null, null);
@@ -146,8 +187,21 @@ class ChatControllerTest {
         }
 
         @Override
+        public List<ChatSession> listSessions() {
+            return conversationIds.stream()
+                .map(conversationId -> new ChatSession(conversationId, title, titleJobStatus))
+                .toList();
+        }
+
+        @Override
         public boolean conversationExists(String conversationId) {
             return conversationIds.contains(conversationId);
+        }
+
+        @Override
+        public String newConversationId() {
+            newConversationIdCalls++;
+            return "00000000-0000-0000-0000-000000000002";
         }
 
         @Override
@@ -158,6 +212,16 @@ class ChatControllerTest {
         @Override
         public String storedConversationModel(String conversationId) {
             return modelsByConversationId.get(conversationId);
+        }
+
+        @Override
+        public String conversationTitle(String conversationId) {
+            return title;
+        }
+
+        @Override
+        public String conversationTitleJobStatus(String conversationId) {
+            return titleJobStatus;
         }
 
         @Override

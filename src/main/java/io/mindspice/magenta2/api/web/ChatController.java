@@ -10,6 +10,7 @@ import io.mindspice.magenta2.ai.chat.model.ChatMessage;
 import io.mindspice.magenta2.ai.chat.model.ChatRequest;
 import io.mindspice.magenta2.ai.chat.model.ChatResponse;
 import io.mindspice.magenta2.ai.chat.model.ChatSessions;
+import io.mindspice.magenta2.ai.chat.model.ChatPlanState;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.chat.service.ChatService.ResolvedChatRequest;
 import io.mindspice.magenta2.ai.chat.model.ChatStreamEvent;
@@ -147,13 +148,15 @@ public class ChatController {
 
     @GetMapping("/sessions")
     public ChatSessions sessions() {
-        return new ChatSessions(chatService.listConversationIds());
+        return new ChatSessions(chatService.listConversationIds(), chatService.listSessions());
     }
 
     @GetMapping("/{conversationId}/history")
     public ChatHistory history(@PathVariable String conversationId) {
         return new ChatHistory(
             conversationId,
+            chatService.conversationTitle(conversationId),
+            chatService.conversationTitleJobStatus(conversationId),
             chatService.storedConversationModel(conversationId),
             chatService.history(conversationId),
             chatService.contextUsage(conversationId, chatService.storedConversationModel(conversationId)),
@@ -204,17 +207,14 @@ public class ChatController {
     }
 
     private ChatResponse.CmdResponse handleNew() {
-        String conversationId = chatService.newConversationId();
-        List<String> conversationIds = new ArrayList<>(chatService.listConversationIds());
-        conversationIds.add(0, conversationId);
         return new ChatResponse.CmdResponse(
-            conversationId,
             null,
-            "Created new session " + conversationId,
-            List.copyOf(conversationIds),
-            chatService.history(conversationId),
-            chatService.contextUsage(conversationId, null),
-            chatService.planState(conversationId)
+            null,
+            "New chat",
+            chatService.listConversationIds(),
+            List.of(),
+            null,
+            ChatPlanState.normal()
         );
     }
 

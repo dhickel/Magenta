@@ -12,8 +12,32 @@ create index if not exists idx_ai_chat_memory_conversation
 
 create table if not exists ai_chat_session_metadata (
     conversation_id text primary key,
-    model text
+    model text,
+    title text
 );
+
+create table if not exists agent_jobs (
+    id text primary key,
+    type text not null,
+    status text not null,
+    conversation_id text,
+    selected_model text,
+    input_json text,
+    result_json text,
+    error_text text,
+    created_at text not null,
+    updated_at text not null,
+    started_at text,
+    completed_at text
+);
+
+create index if not exists idx_agent_jobs_conversation
+    on agent_jobs (conversation_id);
+
+create unique index if not exists idx_agent_jobs_conversation_title_active
+    on agent_jobs (type, conversation_id)
+    where type = 'CONVERSATION_TITLE'
+      and status in ('QUEUED', 'RUNNING', 'SUCCEEDED');
 
 create table if not exists ai_chat_plans (
     conversation_id text primary key,

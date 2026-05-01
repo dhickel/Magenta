@@ -35,6 +35,11 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
     public static final String SUMMARY_PREFIX = "[[MAGENTA_CONTEXT_SUMMARY]]\n";
     public static final String NOTICE_PREFIX = "[[MAGENTA_CONTEXT_COMPACTED_NOTICE]] ";
     public static final String COMPACTION_NOTICE = "Context compacted to keep the conversation within the model window.";
+    static final String SUMMARY_SYSTEM_PROMPT = """
+        Summarize the previous Magenta conversation for future context.
+        Preserve user goals, decisions, constraints, active tasks, important facts, tool results, and unresolved questions.
+        Be concise, factual, and do not add new instructions.
+        """;
 
     private static final int MIN_TAIL_MESSAGES = 6;
 
@@ -262,18 +267,17 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
     }
 
     private String summarize(List<Message> olderMessages) {
-        AgentConfig summarizationAgent = aiConfig.agents().get(aiConfig.summarizationAgent());
-        ModelConfig summarizationModel = aiConfig.models().get(summarizationAgent.model());
+        ModelConfig summeryModel = aiConfig.models().get(aiConfig.resolvedSummeryModelKey());
         String renderedConversation = renderConversation(olderMessages);
-        String summary = chatModelRouter.chatClient(summarizationModel.remoteModelName())
+        String summary = chatModelRouter.chatClient(summeryModel.remoteModelName())
             .prompt()
-            .system(summarizationAgent.systemPrompt())
+            .system(SUMMARY_SYSTEM_PROMPT)
             .user(renderedConversation)
-            .options(OllamaChatOptions.builder().model(summarizationModel.remoteModelName()).build())
+            .options(OllamaChatOptions.builder().model(summeryModel.remoteModelName()).build())
             .call()
             .content();
         if (!StringUtils.hasText(summary)) {
-            throw new IllegalStateException("Context compaction failed: summarization agent returned an empty summary");
+            throw new IllegalStateException("Context compaction failed: summery model returned an empty summary");
         }
         return summary.trim();
     }

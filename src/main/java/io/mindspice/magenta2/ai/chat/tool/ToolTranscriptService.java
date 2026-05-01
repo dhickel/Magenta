@@ -23,8 +23,11 @@ public class ToolTranscriptService {
     private static final int RAW_OUTPUT_CHARACTER_LIMIT = 4_000;
     private static final int STORED_RAW_OUTPUT_CHARACTER_LIMIT = 40_000;
     private static final int STORED_ARGUMENT_CHARACTER_LIMIT = 40_000;
-    private static final int DISPLAY_DETAIL_CHARACTER_LIMIT = 2_000;
+    private static final int DISPLAY_DETAIL_CHARACTER_LIMIT = 10_000;
     private static final int DISPLAY_PREVIEW_CHARACTER_LIMIT = 240;
+    private static final int DISPLAY_SUMMARY_CHARACTER_LIMIT = 180;
+    private static final int SHELL_COMMAND_SUMMARY_CHARACTER_LIMIT = 96;
+    private static final int SHELL_DIRECTORY_SUMMARY_CHARACTER_LIMIT = 64;
     private static final int RETAIN_FULL_OUTPUT_USER_TURNS = 4;
     private static final int ARGUMENT_SUMMARY_CHARACTER_LIMIT = 500;
 
@@ -209,7 +212,7 @@ public class ToolTranscriptService {
             return "Returned " + resultText.length() + " characters.";
         }
         String name = toolName == null ? "" : toolName;
-        return switch (name) {
+        String summary = switch (name) {
             case "file_list" -> fileListSummary(root);
             case "file_read" -> fileReadSummary(root);
             case "file_search" -> fileSearchSummary(root);
@@ -222,6 +225,7 @@ public class ToolTranscriptService {
             case "plan_save", "plan_report" -> textSummary(resultText);
             default -> "Returned " + resultText.length() + " characters.";
         };
+        return truncate(summary, DISPLAY_SUMMARY_CHARACTER_LIMIT);
     }
 
     private String fileListSummary(JsonNode root) {
@@ -260,13 +264,14 @@ public class ToolTranscriptService {
     }
 
     private String shellSummary(JsonNode root) {
-        String commandLine = text(root, "commandLine", text(root, "command", "command"));
+        String commandLine = truncate(text(root, "commandLine", text(root, "command", "command")), SHELL_COMMAND_SUMMARY_CHARACTER_LIMIT);
+        String workingDirectory = truncate(text(root, "workingDirectory", "."), SHELL_DIRECTORY_SUMMARY_CHARACTER_LIMIT);
         String status = root.path("timedOut").asBoolean(false)
             ? "timed out"
             : "exit " + (root.path("exitCode").isMissingNode() || root.path("exitCode").isNull()
                 ? "unknown"
                 : root.path("exitCode").asText());
-        return "Ran `" + commandLine + "` in " + text(root, "workingDirectory", ".") + " (" + status + ")"
+        return "Ran `" + commandLine + "` in " + workingDirectory + " (" + status + ")"
             + truncationSuffix(root.path("truncated").asBoolean(false));
     }
 
@@ -332,11 +337,26 @@ public class ToolTranscriptService {
         if (!StringUtils.hasText(text)) {
             return "";
         }
-        return truncate(text, DISPLAY_DETAIL_CHARACTER_LIMIT);
+        return truncate(displayText(text), DISPLAY_DETAIL_CHARACTER_LIMIT);
     }
 
     private boolean isDisplayTruncated(String text) {
-        return text != null && text.length() > DISPLAY_DETAIL_CHARACTER_LIMIT;
+        return text != null && displayText(text).length() > DISPLAY_DETAIL_CHARACTER_LIMIT;
+    }
+
+    private String displayText(String text) {
+        if (!StringUtils.hasText(text)) {
+            return "";
+        }
+        JsonNode root = jsonNode(text);
+        if (root == null) {
+            return text;
+        }
+        try {
+            return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(root);
+        } catch (JsonProcessingException ignored) {
+            return text;
+        }
     }
 
     private String preview(String text) {

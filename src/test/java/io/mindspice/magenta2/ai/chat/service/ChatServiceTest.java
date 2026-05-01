@@ -270,7 +270,7 @@ class ChatServiceTest {
         assertThat(message.role()).isEqualTo("tool");
         assertThat(message.toolActivity()).isNotNull();
         assertThat(message.toolActivity().summary()).contains("Ran `pwd`");
-        assertThat(message.toolActivity().callDetail()).contains("\"command\":\"pwd\"");
+        assertThat(message.toolActivity().callDetail()).contains("\"command\" : \"pwd\"");
     }
 
     private JdbcTemplate jdbcTemplate() {

@@ -27,6 +27,7 @@ public sealed interface ChatResponse {
             String model,
             String message,
             List<String> conversationIds,
+            List<ChatSession> sessions,
             List<ChatMessage> history,
             ContextUsage contextUsage,
             ChatPlanState planState,
@@ -41,7 +42,44 @@ public sealed interface ChatResponse {
             ContextUsage contextUsage,
             ChatPlanState planState
         ) {
-            this(conversationId, model, message, conversationIds, history, contextUsage, planState, List.of());
+            this(
+                conversationId,
+                model,
+                message,
+                conversationIds,
+                conversationIds == null
+                    ? List.of()
+                    : conversationIds.stream().map(id -> new ChatSession(id, null, null)).toList(),
+                history,
+                contextUsage,
+                planState,
+                List.of()
+            );
+        }
+
+        public CmdResponse(
+            String conversationId,
+            String model,
+            String message,
+            List<String> conversationIds,
+            List<ChatMessage> history,
+            ContextUsage contextUsage,
+            ChatPlanState planState,
+            List<ChatToolActivity> toolActivities
+        ) {
+            this(
+                conversationId,
+                model,
+                message,
+                conversationIds,
+                conversationIds == null
+                    ? List.of()
+                    : conversationIds.stream().map(id -> new ChatSession(id, null, null)).toList(),
+                history,
+                contextUsage,
+                planState,
+                toolActivities
+            );
         }
     }
 }

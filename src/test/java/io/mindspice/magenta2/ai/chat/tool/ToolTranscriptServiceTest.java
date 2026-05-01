@@ -80,8 +80,8 @@ class ToolTranscriptServiceTest {
 
         assertThat(activity.toolName()).isEqualTo("file_read");
         assertThat(activity.summary()).isEqualTo("Read notes/today.md lines 2-4 of 10 total lines.");
-        assertThat(activity.callDetail()).contains("\"path\":\"notes/today.md\"");
-        assertThat(activity.resultDetail()).contains("\"nextStartLine\":5");
+        assertThat(activity.callDetail()).contains("\"path\" : \"notes/today.md\"");
+        assertThat(activity.resultDetail()).contains("\"nextStartLine\" : 5");
     }
 
     @Test
@@ -89,15 +89,30 @@ class ToolTranscriptServiceTest {
         SystemMessage toolResult = service.fullResult(
             "call-1",
             "file_write",
-            "{\"path\":\"big.md\",\"content\":\"" + "a".repeat(3_000) + "\"}",
-            "{\"path\":\"big.md\",\"bytesWritten\":3000,\"created\":true,\"echo\":\"" + "b".repeat(3_000) + "\"}"
+            "{\"path\":\"big.md\",\"content\":\"" + "a".repeat(12_000) + "\"}",
+            "{\"path\":\"big.md\",\"bytesWritten\":12000,\"created\":true,\"echo\":\"" + "b".repeat(12_000) + "\"}"
         );
 
         var activity = service.activityFor(toolResult);
 
-        assertThat(activity.callDetail()).hasSizeLessThanOrEqualTo(2_000);
-        assertThat(activity.resultDetail()).hasSizeLessThanOrEqualTo(2_000);
+        assertThat(activity.callDetail()).hasSizeLessThanOrEqualTo(10_000);
+        assertThat(activity.resultDetail()).hasSizeLessThanOrEqualTo(10_000);
         assertThat(activity.callTruncated()).isTrue();
         assertThat(activity.resultTruncated()).isTrue();
+    }
+
+    @Test
+    void shellSummariesAreCappedForCollapsedToolCards() {
+        SystemMessage toolResult = service.fullResult(
+            "call-1",
+            "shell_exec",
+            "{\"command\":\"printf\",\"args\":[\"" + "a".repeat(300) + "\"]}",
+            "{\"commandLine\":\"printf " + "a".repeat(300) + "\",\"workingDirectory\":\"/tmp/" + "b".repeat(200) + "\",\"exitCode\":0,\"stdout\":\"ok\",\"stderr\":\"\",\"timedOut\":false,\"truncated\":false}"
+        );
+
+        var activity = service.activityFor(toolResult);
+
+        assertThat(activity.summary()).hasSizeLessThanOrEqualTo(180);
+        assertThat(activity.summary()).contains("[truncated]");
     }
 }
