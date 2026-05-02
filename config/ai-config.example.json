@@ -1,6 +1,7 @@
 {
   "defaultAgent": "magenta",
   "summeryModel": "local-qwen",
+  "planningModel": "local-gemma-26b",
   "contextBufferPercent": 10,
   "dataRoot": "/home/hickelpickle/.magenta/root",
   "webSearch": {

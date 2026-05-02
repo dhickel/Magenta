@@ -222,7 +222,8 @@ public class ToolTranscriptService {
             case "shell_exec" -> shellSummary(root);
             case "web_search" -> webSearchSummary(root);
             case "web_fetch" -> webFetchSummary(root);
-            case "plan_save", "plan_report" -> textSummary(resultText);
+            case "plan_update", "plan_set_goal", "plan_set_task", "plan_put_item", "plan_delete_item",
+                "plan_ask_questions", "plan_ready_for_approval", "plan_report", "plan_complete" -> textSummary(resultText);
             default -> "Returned " + resultText.length() + " characters.";
         };
         return truncate(summary, DISPLAY_SUMMARY_CHARACTER_LIMIT);

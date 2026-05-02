@@ -3,79 +3,188 @@ package io.mindspice.magenta2.ai.chat.tool.plan;
 import java.util.List;
 
 import io.mindspice.magenta2.ai.chat.plan.ExecutionPlan;
+import io.mindspice.magenta2.ai.chat.plan.PlanCompletionService;
 import io.mindspice.magenta2.ai.chat.plan.PlanMode;
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
 import io.mindspice.magenta2.ai.chat.plan.PlanToolContext;
 import io.mindspice.magenta2.ai.chat.plan.PlanToolExecutionContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 @Component
 public class PlanSaveTools {
     private final PlanService planService;
+    private final ObjectProvider<PlanCompletionService> planCompletionServiceProvider;
 
     public PlanSaveTools(PlanService planService) {
+        this(planService, null);
+    }
+
+    @Autowired
+    public PlanSaveTools(
+        PlanService planService,
+        @Autowired(required = false) ObjectProvider<PlanCompletionService> planCompletionServiceProvider
+    ) {
         this.planService = planService;
+        this.planCompletionServiceProvider = planCompletionServiceProvider;
     }
 
     @Tool(
-        name = "plan_save",
-        description = "Save or replace the current draft execution plan. Use this only when plan mode has a complete plan ready."
+        name = "plan_update",
+        description = "Legacy broad draft update. Prefer plan_set_goal, plan_set_task, plan_put_item, and plan_delete_item for deterministic keyed edits."
     )
-    public String save(
-        @ToolParam(description = "The clarified user goal this plan is intended to accomplish.")
+    public String update(
+        @ToolParam(required = false, description = "The clarified user goal this plan is intended to accomplish.")
         String goal,
-        @ToolParam(description = "Short title for the plan.")
+        @ToolParam(required = false, description = "Short title for the plan.")
         String title,
         @ToolParam(required = false, description = "One or two sentence summary of the intended work.")
         String summary,
-        @ToolParam(required = false, description = "Extra planning notes or vital details that are not execution steps.")
+        @ToolParam(required = false, description = "Planning notes, constraints, risks, gotchas, and context that do not fit elsewhere.")
         String notes,
-        @ToolParam(description = "Ordered execution steps. Each step should be concise and actionable.")
-        List<String> steps,
-        @ToolParam(required = false, description = "Important assumptions or defaults chosen for the plan.")
+        @ToolParam(required = false, description = "Concrete expected user-facing outputs or work products.")
+        List<String> deliverables,
+        @ToolParam(required = false, description = "Optional named execution-time inputs for future reusable tasks. Omit when none exist.")
+        List<String> inputs,
+        @ToolParam(required = false, description = "Expected model/work outputs. These render as deliverables to the user.")
+        List<String> outputs,
+        @ToolParam(required = false, description = "Explicit defaults, decisions, or assumptions locked into the plan.")
         List<String> assumptions,
-        @ToolParam(required = false, description = "Measurable criteria for judging whether execution succeeded, such as required counts, files, validation checks, or output quality bars.")
-        List<String> acceptanceCriteria
+        @ToolParam(required = false, description = "Ordered execution steps. Each step must state what to inspect or change and how to verify it.")
+        List<String> steps,
+        @ToolParam(required = false, description = "Criteria for judging whether execution succeeded.")
+        List<String> validationCriteria
     ) {
-        PlanToolContext context = PlanToolExecutionContext.current();
-        if (context == null || context.mode() != PlanMode.PLAN) {
-            throw new IllegalStateException("plan_save is available only in plan mode");
-        }
-        ExecutionPlan plan = planService.saveDraftPlan(
+        PlanToolContext context = requireMode(PlanMode.PLAN, "plan_update");
+        ExecutionPlan plan = planService.updateDraftPlan(
             context.conversationId(),
             goal,
             title,
             summary,
             notes,
-            steps,
+            deliverables,
+            inputs,
+            outputs,
             assumptions,
-            acceptanceCriteria
+            steps,
+            validationCriteria
         );
-        return "Saved plan: " + plan.title();
+        return "Updated plan draft: " + (plan.title() == null ? "untitled" : plan.title());
+    }
+
+    String update(
+        String goal,
+        String title,
+        String summary,
+        String notes,
+        List<String> deliverables,
+        List<String> steps,
+        List<String> validationCriteria
+    ) {
+        return update(goal, title, summary, notes, deliverables, null, null, null, steps, validationCriteria);
+    }
+
+    @Tool(
+        name = "plan_set_goal",
+        description = "Set or replace the single goal for the active draft plan. Use this as soon as the user's goal is known."
+    )
+    public String setGoal(
+        @ToolParam(description = "The clarified user goal this plan is intended to accomplish.")
+        String goal
+    ) {
+        PlanToolContext context = requireMode(PlanMode.PLAN, "plan_set_goal");
+        ExecutionPlan plan = planService.setGoal(context.conversationId(), goal);
+        return "Set plan goal: " + plan.goal();
+    }
+
+    @Tool(
+        name = "plan_set_task",
+        description = "Set the current planning task or phase, such as goal_and_deliverables, collect_user_guidance, clarify_and_elaborate, build_plan_steps, or approval_readiness."
+    )
+    public String setTask(
+        @ToolParam(description = "Short snake_case name for the current planning task.")
+        String planningTask
+    ) {
+        PlanToolContext context = requireMode(PlanMode.PLAN, "plan_set_task");
+        ExecutionPlan plan = planService.setPlanningTask(context.conversationId(), planningTask);
+        return "Set current planning task: " + plan.planningTask();
+    }
+
+    @Tool(
+        name = "plan_put_item",
+        description = "Add or replace one keyed plan item. Sections: deliverable, input, output, assumption, note, step, validation_criterion. The key is a positive integer; using an existing key replaces that item."
+    )
+    public String putItem(
+        @ToolParam(description = "Plan section to edit: deliverable, input, output, assumption, note, step, or validation_criterion.")
+        String section,
+        @ToolParam(description = "Positive integer key for this item.")
+        Integer key,
+        @ToolParam(description = "Complete item text. Step text must include concrete work and verification details.")
+        String text
+    ) {
+        PlanToolContext context = requireMode(PlanMode.PLAN, "plan_put_item");
+        ExecutionPlan plan = planService.putItem(context.conversationId(), section, key, text);
+        return "Updated " + section + " " + key + " for plan: " + (plan.title() == null ? "untitled" : plan.title());
+    }
+
+    @Tool(
+        name = "plan_delete_item",
+        description = "Delete one keyed plan item. Sections: deliverable, input, output, assumption, note, step, validation_criterion."
+    )
+    public String deleteItem(
+        @ToolParam(description = "Plan section to edit: deliverable, input, output, assumption, note, step, or validation_criterion.")
+        String section,
+        @ToolParam(description = "Positive integer key to delete.")
+        Integer key
+    ) {
+        PlanToolContext context = requireMode(PlanMode.PLAN, "plan_delete_item");
+        planService.deleteItem(context.conversationId(), section, key);
+        return "Deleted " + section + " " + key + ".";
+    }
+
+    @Tool(
+        name = "plan_ask_questions",
+        description = "Ask the user one to five free-response planning questions. Use this whenever the plan is not ready for approval or would otherwise depend on guessed user preferences, constraints, or tradeoffs. The UI displays them one at a time with progress."
+    )
+    public String askQuestions(
+        @ToolParam(description = "One to five concrete planning questions for the user.")
+        List<String> questions
+    ) {
+        PlanToolContext context = requireMode(PlanMode.PLAN, "plan_ask_questions");
+        ExecutionPlan plan = planService.askQuestions(context.conversationId(), questions);
+        return "Queued " + plan.pendingQuestions().size() + " planning question(s) for the user.";
+    }
+
+    @Tool(
+        name = "plan_ready_for_approval",
+        description = "Mark the current draft plan ready for user approval only after goal, deliverables/outputs, assumptions, detailed steps, and validation criteria are clear enough to execute without guessing."
+    )
+    public String readyForApproval() {
+        PlanToolContext context = requireMode(PlanMode.PLAN, "plan_ready_for_approval");
+        ExecutionPlan plan = planService.markReadyForApproval(context.conversationId());
+        return "Plan ready for approval: " + plan.title();
     }
 
     @Tool(
         name = "plan_report",
-        description = "Record compact execution evidence for the active saved plan. Use this before the final answer while executing a plan."
+        description = "Record compact execution evidence for the active saved plan. Use plan_complete, not plan_report, when requesting final completion validation."
     )
     public String report(
         @ToolParam(required = false, description = "Brief execution result summary.")
         String summary,
         @ToolParam(required = false, description = "Evidence that supports the result, including actual counts, source queries, source ids, or files read back.")
         List<String> evidence,
-        @ToolParam(required = false, description = "Any deviations from the saved plan or acceptance criteria.")
+        @ToolParam(required = false, description = "Any deviations from the saved plan or validation criteria.")
         List<String> deviations,
-        @ToolParam(required = false, description = "Acceptance criteria that were not met.")
+        @ToolParam(required = false, description = "Validation criteria that were not met.")
         List<String> unmetCriteria,
         @ToolParam(required = false, description = "Artifacts created or used during execution, such as reports, scripts, or evidence files.")
         List<String> artifactPaths
     ) {
-        PlanToolContext context = PlanToolExecutionContext.current();
-        if (context == null || context.mode() != PlanMode.EXECUTE_PLAN) {
-            throw new IllegalStateException("plan_report is available only while executing a saved plan");
-        }
+        PlanToolContext context = requireMode(PlanMode.EXECUTE_PLAN, "plan_report");
         ExecutionPlan plan = planService.recordExecutionReport(
             context.conversationId(),
             summary,
@@ -85,5 +194,46 @@ public class PlanSaveTools {
             artifactPaths
         );
         return "Recorded execution evidence for plan: " + plan.title();
+    }
+
+    @Tool(
+        name = "plan_complete",
+        description = "Request final validation for an executed saved plan. A validator reviews the approved plan and evidence; if validation fails, continue with the returned remediation."
+    )
+    public String complete(
+        @ToolParam(required = false, description = "Brief execution result summary.")
+        String summary,
+        @ToolParam(required = false, description = "Evidence that supports completion, including files, checks, counts, and read-back results.")
+        List<String> evidence,
+        @ToolParam(required = false, description = "Any deviations from the saved plan or validation criteria.")
+        List<String> deviations,
+        @ToolParam(required = false, description = "Validation criteria that remain unmet.")
+        List<String> unmetCriteria,
+        @ToolParam(required = false, description = "Artifacts created or used during execution.")
+        List<String> artifactPaths
+    ) {
+        PlanToolContext context = requireMode(PlanMode.EXECUTE_PLAN, "plan_complete");
+        PlanCompletionService planCompletionService = planCompletionServiceProvider == null
+            ? null
+            : planCompletionServiceProvider.getIfAvailable();
+        if (planCompletionService == null) {
+            throw new IllegalStateException("plan_complete requires PlanCompletionService");
+        }
+        return planCompletionService.complete(
+            context.conversationId(),
+            summary,
+            evidence,
+            deviations,
+            unmetCriteria,
+            artifactPaths
+        );
+    }
+
+    private PlanToolContext requireMode(PlanMode mode, String toolName) {
+        PlanToolContext context = PlanToolExecutionContext.current();
+        if (context == null || context.mode() != mode) {
+            throw new IllegalStateException(toolName + " is available only in " + mode.name().toLowerCase() + " mode");
+        }
+        return context;
     }
 }

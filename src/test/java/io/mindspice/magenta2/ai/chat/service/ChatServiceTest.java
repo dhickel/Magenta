@@ -447,6 +447,90 @@ class ChatServiceTest {
             .hasSize(1);
     }
 
+    @Test
+    void planModeRetriesThinkingOnlyFinalResponseBeforePersistingAssistantMessage() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        PlanService planService = new PlanService(
+            new ChatPlanRepository(jdbcTemplate, objectMapper),
+            memoryRepository
+        );
+        planService.beginPlan("conversation-1");
+        ToolTranscriptService transcriptService = new ToolTranscriptService(objectMapper);
+        ThinkingOnlyThenFinalChatModel chatModel = new ThinkingOnlyThenFinalChatModel();
+        ChatService service = new ChatService(
+            null,
+            memoryRepository,
+            new ChatSessionMetadataRepository(jdbcTemplate),
+            new ChatMarkdownRenderer(),
+            planToolAiConfig(),
+            new FakeContextManagementAdvisor(memoryRepository),
+            null,
+            new FakeChatModelRouter(chatModel),
+            new SuccessfulToolCallingManager(),
+            new ChatToolRegistry(List.of(new FakeToolCallback("plan_set_goal")), List.of()),
+            transcriptService,
+            planService
+        );
+
+        io.mindspice.magenta2.ai.chat.model.ChatResponse.MsgResponse response = service.chat(
+            "conversation-1",
+            "start planning",
+            "qwen3"
+        );
+
+        assertThat(response.response()).isEqualTo("What should we clarify, change, or add before continuing this plan?");
+        assertThat(response.planState().promptQuestion()).isEqualTo("What should we clarify, change, or add before continuing this plan?");
+        assertThat(chatModel.prompts).hasSize(4);
+        assertThat(chatModel.finalPromptText())
+            .contains("Your previous response had thinking but no user-visible message and no tool calls")
+            .contains("Continue the PLAN-mode turn now");
+        List<Message> storedMessages = memoryRepository.findByConversationId("conversation-1");
+        assertThat(storedMessages).extracting(Message::getText)
+            .doesNotContain("")
+            .last()
+            .isEqualTo("What should we clarify, change, or add before continuing this plan?");
+    }
+
+    @Test
+    void planAnswerDoesNotResumeModelUntilQueuedQuestionsAreComplete() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        PlanService planService = new PlanService(
+            new ChatPlanRepository(jdbcTemplate, objectMapper),
+            memoryRepository
+        );
+        planService.beginPlan("conversation-1");
+        planService.askQuestions("conversation-1", List.of("First?", "Second?"));
+        FakeChatModel chatModel = new FakeChatModel();
+        ChatService service = new ChatService(
+            null,
+            memoryRepository,
+            new ChatSessionMetadataRepository(jdbcTemplate),
+            new ChatMarkdownRenderer(),
+            planToolAiConfig(),
+            null,
+            null,
+            new FakeChatModelRouter(chatModel),
+            null,
+            null,
+            null,
+            planService
+        );
+
+        io.mindspice.magenta2.ai.chat.model.ChatResponse.MsgResponse first = service.submitPlanAnswer(
+            "conversation-1",
+            "A",
+            null,
+            1
+        );
+
+        assertThat(first.planState().promptQuestion()).isEqualTo("Second?");
+        assertThat(chatModel.prompts).isEmpty();
+    }
+
     private JdbcTemplate jdbcTemplate() {
         SingleConnectionDataSource dataSource = new SingleConnectionDataSource("jdbc:sqlite::memory:", true);
         return new JdbcTemplate(dataSource);
@@ -483,6 +567,18 @@ class ChatServiceTest {
                 "summary", new ModelConfig("summary-model", "http://localhost:11434", EndpointType.OLLAMA, 512)
             ),
             Map.of("magenta", new AgentConfig("local-qwen", "You are Magenta.", List.of("test_tool")))
+        );
+    }
+
+    private AiConfig planToolAiConfig() {
+        return new AiConfig(
+            "magenta",
+            "local-qwen",
+            "local-qwen",
+            10,
+            null,
+            Map.of("local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 8192)),
+            Map.of("magenta", new AgentConfig("local-qwen", "You are Magenta.", List.of("plan_set_goal")))
         );
     }
 
@@ -655,6 +751,32 @@ class ChatServiceTest {
         }
     }
 
+    private static final class ThinkingOnlyThenFinalChatModel implements ChatModel {
+        private final List<Prompt> prompts = new java.util.ArrayList<>();
+
+        @Override
+        public ChatResponse call(Prompt prompt) {
+            prompts.add(prompt);
+            if (prompts.size() == 1) {
+                return new ChatResponse(List.of(new Generation(
+                    new AssistantMessage(""),
+                    ChatGenerationMetadata.builder()
+                        .metadata(ChatService.THINKING_METADATA_KEY, "draft analysis")
+                        .build()
+                )));
+            }
+            return new ChatResponse(List.of(new Generation(new AssistantMessage(
+                "What constraint should guide this plan?"
+            ))));
+        }
+
+        private String finalPromptText() {
+            return prompts.getLast().getInstructions().stream()
+                .map(message -> message.getText() == null ? "" : message.getText())
+                .collect(java.util.stream.Collectors.joining("\n"));
+        }
+    }
+
     private static final class FakeToolCallingManager implements ToolCallingManager {
         private int count = 0;
 
@@ -710,10 +832,20 @@ class ChatServiceTest {
     }
 
     private static final class FakeToolCallback implements ToolCallback {
+        private final String name;
+
+        private FakeToolCallback() {
+            this("test_tool");
+        }
+
+        private FakeToolCallback(String name) {
+            this.name = name;
+        }
+
         @Override
         public ToolDefinition getToolDefinition() {
             return DefaultToolDefinition.builder()
-                .name("test_tool")
+                .name(name)
                 .description("Test tool")
                 .inputSchema("{}")
                 .build();

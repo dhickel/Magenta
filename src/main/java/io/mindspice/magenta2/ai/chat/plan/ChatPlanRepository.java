@@ -29,8 +29,10 @@ public class ChatPlanRepository {
         }
         return jdbcTemplate.query(
             """
-                select conversation_id, mode, status, goal, title, summary, notes, assumptions_json,
-                       acceptance_criteria_json, execution_evidence_json,
+                select conversation_id, mode, status, goal, title, summary, notes,
+                       planning_task, deliverables_json, inputs_json, outputs_json, assumptions_json,
+                       acceptance_criteria_json, execution_evidence_json, validation_feedback_json,
+                       pre_planning_model, pending_questions_json, pending_question_index,
                        plan_start_message_order, created_at, updated_at
                 from ai_chat_plans
                 where conversation_id = ?
@@ -39,19 +41,26 @@ public class ChatPlanRepository {
                 if (!rs.next()) {
                     return Optional.empty();
                 }
-                String id = rs.getString("conversation_id");
                 return Optional.of(new ExecutionPlan(
-                    id,
+                    rs.getString("conversation_id"),
                     PlanMode.valueOf(rs.getString("mode")),
                     PlanStatus.valueOf(rs.getString("status")),
+                    rs.getString("planning_task"),
                     rs.getString("goal"),
                     rs.getString("title"),
                     rs.getString("summary"),
                     rs.getString("notes"),
+                    stringList(rs.getString("deliverables_json")),
+                    stringList(rs.getString("inputs_json")),
+                    stringList(rs.getString("outputs_json")),
                     stringList(rs.getString("assumptions_json")),
-                    steps(id),
+                    steps(rs.getString("conversation_id")),
                     stringList(rs.getString("acceptance_criteria_json")),
                     stringList(rs.getString("execution_evidence_json")),
+                    stringList(rs.getString("validation_feedback_json")),
+                    rs.getString("pre_planning_model"),
+                    stringList(rs.getString("pending_questions_json")),
+                    rs.getInt("pending_question_index"),
                     rs.getInt("plan_start_message_order"),
                     Instant.parse(rs.getString("created_at")),
                     Instant.parse(rs.getString("updated_at"))
@@ -75,40 +84,59 @@ public class ChatPlanRepository {
         jdbcTemplate.update(
             """
                 insert into ai_chat_plans (
-                    conversation_id, mode, status, goal, title, summary, notes, assumptions_json,
-                    acceptance_criteria_json, execution_evidence_json, plan_start_message_order, created_at, updated_at
+                    conversation_id, mode, status, planning_task, goal, title, summary, notes,
+                    deliverables_json, inputs_json, outputs_json, assumptions_json,
+                    acceptance_criteria_json, execution_evidence_json, validation_feedback_json,
+                    pre_planning_model, pending_questions_json, pending_question_index,
+                    plan_start_message_order, created_at, updated_at
                 )
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict(conversation_id) do update set
                     mode = excluded.mode,
                     status = excluded.status,
+                    planning_task = excluded.planning_task,
                     goal = excluded.goal,
                     title = excluded.title,
                     summary = excluded.summary,
                     notes = excluded.notes,
+                    deliverables_json = excluded.deliverables_json,
+                    inputs_json = excluded.inputs_json,
+                    outputs_json = excluded.outputs_json,
                     assumptions_json = excluded.assumptions_json,
                     acceptance_criteria_json = excluded.acceptance_criteria_json,
                     execution_evidence_json = excluded.execution_evidence_json,
+                    validation_feedback_json = excluded.validation_feedback_json,
+                    pre_planning_model = excluded.pre_planning_model,
+                    pending_questions_json = excluded.pending_questions_json,
+                    pending_question_index = excluded.pending_question_index,
                     plan_start_message_order = excluded.plan_start_message_order,
                     updated_at = excluded.updated_at
                 """,
             plan.conversationId(),
             plan.mode().name(),
             plan.status().name(),
+            plan.planningTask(),
             plan.goal(),
             plan.title(),
             plan.summary(),
             plan.notes(),
+            stringListJson(plan.deliverables()),
+            stringListJson(plan.inputs()),
+            stringListJson(plan.outputs()),
             stringListJson(plan.assumptions()),
             stringListJson(plan.acceptanceCriteria()),
             stringListJson(plan.executionEvidence()),
+            stringListJson(plan.validationFeedback()),
+            plan.prePlanningModel(),
+            stringListJson(plan.pendingQuestions()),
+            plan.pendingQuestionIndex(),
             plan.planStartMessageOrder(),
             createdAt.toString(),
             updatedAt.toString()
         );
+
         jdbcTemplate.update("delete from ai_chat_plan_steps where conversation_id = ?", plan.conversationId());
-        List<PlanStep> steps = plan.steps() == null ? List.of() : plan.steps();
-        for (PlanStep step : steps) {
+        for (PlanStep step : plan.steps()) {
             jdbcTemplate.update(
                 """
                     insert into ai_chat_plan_steps (conversation_id, step_order, step_text)
@@ -123,14 +151,22 @@ public class ChatPlanRepository {
             plan.conversationId(),
             plan.mode(),
             plan.status(),
+            plan.planningTask(),
             plan.goal(),
             plan.title(),
             plan.summary(),
             plan.notes(),
-            plan.assumptions() == null ? List.of() : List.copyOf(plan.assumptions()),
-            List.copyOf(steps),
-            plan.acceptanceCriteria() == null ? List.of() : List.copyOf(plan.acceptanceCriteria()),
-            plan.executionEvidence() == null ? List.of() : List.copyOf(plan.executionEvidence()),
+            plan.deliverables(),
+            plan.inputs(),
+            plan.outputs(),
+            plan.assumptions(),
+            plan.steps(),
+            plan.acceptanceCriteria(),
+            plan.executionEvidence(),
+            plan.validationFeedback(),
+            plan.prePlanningModel(),
+            plan.pendingQuestions(),
+            plan.pendingQuestionIndex(),
             plan.planStartMessageOrder(),
             createdAt,
             updatedAt
@@ -187,31 +223,42 @@ public class ChatPlanRepository {
                 conversation_id text primary key,
                 mode text not null,
                 status text not null,
+                planning_task text,
                 goal text,
                 title text,
                 summary text,
                 notes text,
+                deliverables_json text,
+                inputs_json text,
+                outputs_json text,
                 assumptions_json text,
                 acceptance_criteria_json text,
                 execution_evidence_json text,
+                validation_feedback_json text,
+                pre_planning_model text,
+                pending_questions_json text,
+                pending_question_index integer not null default 0,
                 plan_start_message_order integer not null,
                 created_at text not null,
                 updated_at text not null
             )
             """);
-        List<String> planColumns = jdbcTemplate.queryForList(
+        List<String> columns = jdbcTemplate.queryForList(
             "select name from pragma_table_info('ai_chat_plans')",
             String.class
         );
-        if (!planColumns.contains("notes")) {
-            jdbcTemplate.execute("alter table ai_chat_plans add column notes text");
-        }
-        if (!planColumns.contains("acceptance_criteria_json")) {
-            jdbcTemplate.execute("alter table ai_chat_plans add column acceptance_criteria_json text");
-        }
-        if (!planColumns.contains("execution_evidence_json")) {
-            jdbcTemplate.execute("alter table ai_chat_plans add column execution_evidence_json text");
-        }
+        addColumn(columns, "planning_task", "alter table ai_chat_plans add column planning_task text");
+        addColumn(columns, "notes", "alter table ai_chat_plans add column notes text");
+        addColumn(columns, "deliverables_json", "alter table ai_chat_plans add column deliverables_json text");
+        addColumn(columns, "inputs_json", "alter table ai_chat_plans add column inputs_json text");
+        addColumn(columns, "outputs_json", "alter table ai_chat_plans add column outputs_json text");
+        addColumn(columns, "assumptions_json", "alter table ai_chat_plans add column assumptions_json text");
+        addColumn(columns, "acceptance_criteria_json", "alter table ai_chat_plans add column acceptance_criteria_json text");
+        addColumn(columns, "execution_evidence_json", "alter table ai_chat_plans add column execution_evidence_json text");
+        addColumn(columns, "validation_feedback_json", "alter table ai_chat_plans add column validation_feedback_json text");
+        addColumn(columns, "pre_planning_model", "alter table ai_chat_plans add column pre_planning_model text");
+        addColumn(columns, "pending_questions_json", "alter table ai_chat_plans add column pending_questions_json text");
+        addColumn(columns, "pending_question_index", "alter table ai_chat_plans add column pending_question_index integer not null default 0");
         jdbcTemplate.execute("""
             create table if not exists ai_chat_plan_steps (
                 conversation_id text not null,
@@ -221,5 +268,11 @@ public class ChatPlanRepository {
                 foreign key (conversation_id) references ai_chat_plans(conversation_id) on delete cascade
             )
             """);
+    }
+
+    private void addColumn(List<String> columns, String column, String ddl) {
+        if (!columns.contains(column)) {
+            jdbcTemplate.execute(ddl);
+        }
     }
 }

@@ -23,6 +23,7 @@ import io.mindspice.magenta2.ai.chat.model.ChatResponse;
 import io.mindspice.magenta2.ai.chat.model.ChatSession;
 import io.mindspice.magenta2.ai.chat.model.ChatToolActivity;
 import io.mindspice.magenta2.ai.chat.model.ContextUsage;
+import io.mindspice.magenta2.ai.chat.plan.ExecutionPlan;
 import io.mindspice.magenta2.ai.chat.plan.PlanMode;
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
 import io.mindspice.magenta2.ai.chat.plan.PlanToolContext;
@@ -34,6 +35,7 @@ import io.mindspice.magenta2.ai.chat.tool.ToolTranscriptService;
 import io.mindspice.magenta2.ai.chat.tool.ToolTranscriptService.ToolTranscriptEntry;
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
+import io.mindspice.magenta2.ai.config.user.ModelConfig;
 import io.mindspice.magenta2.ai.execution.ActiveTurnPhase;
 import io.mindspice.magenta2.ai.execution.ActiveTurnRegistry.ActiveTurn;
 import io.mindspice.magenta2.ai.execution.ConversationTurnCoordinator;
@@ -67,6 +69,8 @@ public class ChatService {
     private static final int TOOL_ERROR_WINDOW_SIZE = 8;
     private static final int TOOL_ERROR_WINDOW_LIMIT = 5;
     private static final int IDENTICAL_TOOL_CALL_LIMIT = 5;
+    private static final int EMPTY_FINAL_RESPONSE_RETRY_LIMIT = 2;
+    private static final int PLAN_TURN_REPAIR_RETRY_LIMIT = 2;
     private static final String OLLAMA_TOOLS_UNSUPPORTED_MESSAGE = "does not support tools";
     static final List<String> PLAN_MODE_TOOLS = List.of(
         "file_list",
@@ -75,12 +79,23 @@ public class ChatService {
         "shell_exec",
         "web_search",
         "web_fetch",
-        "plan_save"
+        "plan_set_goal",
+        "plan_set_task",
+        "plan_put_item",
+        "plan_delete_item",
+        "plan_ask_questions",
+        "plan_ready_for_approval"
     );
-    private static final List<String> NORMAL_BLOCKED_TOOLS = List.of("plan_save", "plan_report");
-    private static final List<String> EXECUTION_BLOCKED_TOOLS = List.of("plan_save");
+    private static final List<String> NORMAL_BLOCKED_TOOLS = List.of(
+        "plan_update", "plan_set_goal", "plan_set_task", "plan_put_item", "plan_delete_item",
+        "plan_ask_questions", "plan_ready_for_approval", "plan_report", "plan_complete"
+    );
+    private static final List<String> EXECUTION_BLOCKED_TOOLS = List.of(
+        "plan_update", "plan_set_goal", "plan_set_task", "plan_put_item", "plan_delete_item",
+        "plan_ask_questions", "plan_ready_for_approval"
+    );
     private static final String EXECUTE_PLAN_MESSAGE = "Execute the saved plan now. Work through the plan directly and report the completed result.";
-    private static final String BEGIN_PLAN_MESSAGE = "The user is ready to plan. Begin the planning conversation.";
+    private static final String BEGIN_PLAN_MESSAGE = "The user is ready to plan. Begin the structured planning workflow by asking the user about their goal.";
 
     private final ChatMemory chatMemory;
     private final ChatMemoryRepository chatMemoryRepository;
@@ -258,6 +273,9 @@ public class ChatService {
         String selectedModel = StringUtils.hasText(model)
                 ? model
                 : (StringUtils.hasText(storedModel) ? storedModel : defaultModel());
+        if (planService != null && planService.mode(resolvedConversationId) == PlanMode.PLAN) {
+            selectedModel = planningModel();
+        }
         return new ResolvedChatRequest(resolvedConversationId, message, selectedModel, newConversation, true);
     }
 
@@ -380,33 +398,90 @@ public class ChatService {
     }
 
     public ChatResponse.MsgResponse beginPlan(String conversationId) {
+        return beginPlan(conversationId, null);
+    }
+
+    public ChatResponse.MsgResponse beginPlan(String conversationId, String selectedModel) {
         requirePlanService();
-        planService.beginPlan(conversationId);
-        return chat(resolve(conversationId, BEGIN_PLAN_MESSAGE, storedConversationModel(conversationId)).withoutTitleJob());
+        String prePlanningModel = StringUtils.hasText(selectedModel)
+            ? selectedModel
+            : storedConversationModel(conversationId);
+        if (!StringUtils.hasText(prePlanningModel)) {
+            prePlanningModel = defaultModel();
+        }
+        planService.beginPlan(conversationId, prePlanningModel);
+        return chat(resolve(conversationId, BEGIN_PLAN_MESSAGE, planningModel()).withoutTitleJob());
     }
 
     public void exitPlan(String conversationId) {
         requirePlanService();
+        String prePlanningModel = planService.prePlanningModel(conversationId);
         planService.exitPlan(conversationId);
+        if (StringUtils.hasText(prePlanningModel)) {
+            chatSessionMetadataRepository.saveModel(conversationId, prePlanningModel);
+        }
         if (contextUsageTracker != null) {
             contextUsageTracker.clear(conversationId);
         }
     }
 
-    public ChatResponse.MsgResponse executeSavedPlan(String conversationId, boolean clearContext) {
+    public ChatResponse.MsgResponse submitPlanAnswer(String conversationId, String answer, String notes) {
+        return submitPlanAnswer(conversationId, answer, notes, null);
+    }
+
+    public ChatResponse.MsgResponse submitPlanAnswer(String conversationId, String answer, String notes, Integer questionIndex) {
         requirePlanService();
-        String model = storedConversationModel(conversationId);
-        if (clearContext) {
-            planService.clearConversationForExecution(conversationId);
-            if (contextUsageTracker != null) {
-                contextUsageTracker.clear(conversationId);
-            }
+        ExecutionPlan plan = planService.recordPromptAnswer(conversationId, answer, notes, questionIndex);
+        if (plan.hasPendingQuestion()) {
+            String model = planningModel();
+            return new ChatResponse.MsgResponse(
+                conversationId,
+                model,
+                "",
+                maintainContextUsage(conversationId, model).usage(),
+                planState(conversationId)
+            );
         }
-        planService.markExecuting(conversationId);
+        return chat(resolve(conversationId, "Continue planning using the updated structured planning state.", planningModel()).withoutTitleJob());
+    }
+
+    public ChatPlanState approvePlan(String conversationId) {
+        requirePlanService();
+        planService.approvePlan(conversationId);
+        return planState(conversationId);
+    }
+
+    public ChatPlanState continuePlanning(String conversationId) {
+        requirePlanService();
+        planService.askQuestions(
+            conversationId,
+            List.of("What should we clarify, change, or add before approving this plan?")
+        );
+        return planState(conversationId);
+    }
+
+    public ChatPlanState savePlanAsTask(String conversationId) {
+        requirePlanService();
+        String prePlanningModel = planService.prePlanningModel(conversationId);
+        planService.saveAsTask(conversationId);
+        if (StringUtils.hasText(prePlanningModel)) {
+            chatSessionMetadataRepository.saveModel(conversationId, prePlanningModel);
+        }
+        return planState(conversationId);
+    }
+
+    public ChatResponse.MsgResponse executeSavedPlan(String conversationId, boolean clearContext) {
+        return executeSavedPlan(conversationId);
+    }
+
+    public ChatResponse.MsgResponse executeSavedPlan(String conversationId) {
+        ResolvedChatRequest request = resolveSavedPlanExecution(conversationId);
         try {
-            ChatResponse.MsgResponse response = chat(resolve(conversationId, EXECUTE_PLAN_MESSAGE, model).withoutTitleJob());
+            ChatResponse.MsgResponse response = chat(request);
             planService.recordFallbackExecutionEvidence(conversationId);
-            planService.markNeedsReview(conversationId);
+            if (planService.mode(conversationId) == PlanMode.EXECUTE_PLAN) {
+                planService.markNeedsReview(conversationId);
+            }
             return new ChatResponse.MsgResponse(
                 response.conversationId(),
                 response.model(),
@@ -416,8 +491,65 @@ public class ChatService {
                 response.toolActivities()
             );
         } catch (RuntimeException exception) {
-            throw exception;
+            recordExecutionFailure(conversationId, exception);
+            throw new IllegalStateException("Plan execution failed: " + rootCauseMessage(exception), exception);
         }
+    }
+
+    public ResolvedChatRequest resolveSavedPlanExecution(String conversationId) {
+        requirePlanService();
+        String model = planService.prePlanningModel(conversationId);
+        if (!StringUtils.hasText(model)) {
+            model = storedConversationModel(conversationId);
+        }
+        if (!StringUtils.hasText(model)) {
+            model = defaultModel();
+        }
+        planService.clearConversationForExecution(conversationId);
+        if (contextUsageTracker != null) {
+            contextUsageTracker.clear(conversationId);
+        }
+        planService.markExecuting(conversationId);
+        return resolve(conversationId, EXECUTE_PLAN_MESSAGE, model).withoutTitleJob();
+    }
+
+    public void handlePlanExecutionStreamFinished(String conversationId) {
+        requirePlanService();
+        planService.recordFallbackExecutionEvidence(conversationId);
+        if (planService.mode(conversationId) == PlanMode.EXECUTE_PLAN) {
+            planService.markNeedsReview(conversationId);
+        }
+    }
+
+    public void recordExecutionFailure(String conversationId, RuntimeException exception) {
+        requirePlanService();
+        try {
+            planService.recordExecutionReport(
+                conversationId,
+                "Execution failed before completion.",
+                List.of(),
+                List.of(rootCauseMessage(exception)),
+                List.of("Saved plan execution did not complete."),
+                List.of()
+            );
+            planService.markNeedsReview(conversationId);
+        } catch (RuntimeException reportException) {
+            exception.addSuppressed(reportException);
+        }
+    }
+
+    private String rootCauseMessage(Throwable throwable) {
+        Throwable current = throwable;
+        Throwable root = throwable;
+        while (current != null) {
+            root = current;
+            current = current.getCause();
+        }
+        String message = root == null ? null : root.getMessage();
+        if (!StringUtils.hasText(message) && throwable != null) {
+            message = throwable.getMessage();
+        }
+        return StringUtils.hasText(message) ? message : "unknown execution error";
     }
 
     public ChatPlanState planState(String conversationId) {
@@ -523,7 +655,22 @@ public class ChatService {
     }
 
     public String conversationTitle(String conversationId) {
-        return chatSessionMetadataRepository.findTitle(conversationId).orElse(null);
+        String storedTitle = chatSessionMetadataRepository.findTitle(conversationId).orElse(null);
+        if (StringUtils.hasText(storedTitle)) {
+            return storedTitle;
+        }
+        if (planService == null) {
+            return null;
+        }
+        return planService.activePlan(conversationId)
+            .map(plan -> {
+                if (StringUtils.hasText(plan.goal())) {
+                    return "Plan for " + compactTitle(plan.goal());
+                }
+                return StringUtils.hasText(plan.title()) ? plan.title() : null;
+            })
+            .filter(StringUtils::hasText)
+            .orElse(null);
     }
 
     public ChatSession renameConversation(String conversationId, String title) {
@@ -539,6 +686,16 @@ public class ChatService {
         }
         chatSessionMetadataRepository.updateTitle(conversationId, normalizedTitle);
         return session(conversationId);
+    }
+
+    private String compactTitle(String value) {
+        String title = value.trim().replaceAll("\\s+", " ");
+        String prefix = "Plan for ";
+        int maxGoalLength = Math.max(16, 80 - prefix.length());
+        if (title.length() <= maxGoalLength) {
+            return title;
+        }
+        return title.substring(0, maxGoalLength).replaceAll("\\s+\\S*$", "").trim();
     }
 
     public ChatSession setConversationFavorite(String conversationId, boolean favorite) {
@@ -585,6 +742,15 @@ public class ChatService {
         String defaultAgentName = aiConfig.defaultAgent();
         String modelKey = aiConfig.agents().get(defaultAgentName).model();
         return aiConfig.models().get(modelKey).remoteModelName();
+    }
+
+    public String planningModel() {
+        if (aiConfig == null || aiConfig.models() == null) {
+            return defaultModel();
+        }
+        String modelKey = aiConfig.resolvedPlanningModelKey();
+        ModelConfig model = aiConfig.models().get(modelKey);
+        return model == null ? defaultModel() : model.remoteModelName();
     }
 
     public List<String> availableModels() {
@@ -635,111 +801,154 @@ public class ChatService {
 
             ToolUseAbort toolUseAbort = null;
             List<Message> conversationHistory = null;
-            while (response != null && response.hasToolCalls()) {
-                try {
-                    toolLoopGuard.recordToolCalls(response.getResult().getOutput().getToolCalls());
-                } catch (ToolUseAbort abort) {
-                    toolUseAbort = abort;
-                    conversationHistory = new ArrayList<>(prompt.getInstructions());
-                    break;
-                }
-                collectThinking(response, thinkingParts);
-                phase(activeTurn, ActiveTurnPhase.TOOL_CALL);
-                int promptMessageCount = prompt.getInstructions().size();
-                ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(prompt, response);
-                List<ToolTranscriptEntry> toolTranscriptEntries = toolTranscriptEntries(response, toolExecutionResult);
-                List<ChatMessage> pendingToolMessages = new ArrayList<>();
-                for (ToolTranscriptEntry entry : toolTranscriptEntries) {
-                    Message transcriptMessage = toolTranscriptService.message(entry);
-                    messagesToPersist.add(transcriptMessage);
-                    ChatMessage toolMessage = toolMessage(transcriptMessage);
-                    if (toolMessage.toolActivity() != null) {
-                        toolActivities.add(toolMessage.toolActivity());
+            int emptyFinalResponseRetries = 0;
+            int planTurnRepairRetries = 0;
+            boolean continueModelLoop = true;
+            while (continueModelLoop) {
+                continueModelLoop = false;
+                while (response != null && response.hasToolCalls()) {
+                    try {
+                        toolLoopGuard.recordToolCalls(response.getResult().getOutput().getToolCalls());
+                    } catch (ToolUseAbort abort) {
+                        toolUseAbort = abort;
+                        conversationHistory = new ArrayList<>(prompt.getInstructions());
+                        break;
                     }
-                    pendingToolMessages.add(toolMessage);
-                }
-                conversationHistory = new ArrayList<>(toolExecutionResult.conversationHistory());
-                if (conversationHistory.size() > promptMessageCount) {
-                    activeToolMessages.addAll(conversationHistory.subList(promptMessageCount, conversationHistory.size()));
-                }
-                phase(activeTurn, ActiveTurnPhase.TOOL_CHECKPOINT);
-                if (activeTurn != null) {
-                    java.util.Optional<String> nextInterrupt = activeTurn.pollInterrupt();
-                    while (nextInterrupt.isPresent()) {
-                        String interrupt = nextInterrupt.get();
-                        UserMessage interruptMessage = new UserMessage(interrupt);
-                        conversationHistory.add(interruptMessage);
-                        activeToolMessages.add(interruptMessage);
-                        messagesToPersist.add(interruptMessage);
-                        if (toolMessageConsumer != null) {
-                            toolMessageConsumer.accept(userMessage(interrupt));
+                    collectThinking(response, thinkingParts);
+                    phase(activeTurn, ActiveTurnPhase.TOOL_CALL);
+                    int promptMessageCount = prompt.getInstructions().size();
+                    ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(prompt, response);
+                    List<ToolTranscriptEntry> toolTranscriptEntries = toolTranscriptEntries(response, toolExecutionResult);
+                    List<ChatMessage> pendingToolMessages = new ArrayList<>();
+                    for (ToolTranscriptEntry entry : toolTranscriptEntries) {
+                        Message transcriptMessage = toolTranscriptService.message(entry);
+                        messagesToPersist.add(transcriptMessage);
+                        ChatMessage toolMessage = toolMessage(transcriptMessage);
+                        if (toolMessage.toolActivity() != null) {
+                            toolActivities.add(toolMessage.toolActivity());
                         }
-                        nextInterrupt = activeTurn.pollInterrupt();
+                        pendingToolMessages.add(toolMessage);
                     }
-                }
-                try {
-                    toolLoopGuard.recordToolResponses(toolExecutionResult);
-                } catch (ToolUseAbort abort) {
-                    toolUseAbort = abort;
-                    break;
-                }
-                ContextManagementAdvisor.ToolLoopPrompt checkpoint = contextManagementAdvisor.prepareToolLoopPrompt(
-                    request.conversationId(),
-                    activeToolMessages,
-                    currentSystemInstructions,
-                    request.model()
-                );
-                activeToolMessages = new ArrayList<>(checkpoint.activeMessages());
-                conversationHistory = new ArrayList<>(checkpoint.messages());
-                prompt = new Prompt(conversationHistory, options);
-                if (checkpoint.compacted() && !compactionNoticeEmitted) {
-                    compactionNoticeEmitted = true;
-                    if (!hasCompactionNotice(request.conversationId())) {
-                        messagesToPersist.add(compactionNoticeMessage());
+                    conversationHistory = new ArrayList<>(toolExecutionResult.conversationHistory());
+                    if (conversationHistory.size() > promptMessageCount) {
+                        activeToolMessages.addAll(conversationHistory.subList(promptMessageCount, conversationHistory.size()));
                     }
+                    phase(activeTurn, ActiveTurnPhase.TOOL_CHECKPOINT);
+                    if (activeTurn != null) {
+                        java.util.Optional<String> nextInterrupt = activeTurn.pollInterrupt();
+                        while (nextInterrupt.isPresent()) {
+                            String interrupt = nextInterrupt.get();
+                            UserMessage interruptMessage = new UserMessage(interrupt);
+                            conversationHistory.add(interruptMessage);
+                            activeToolMessages.add(interruptMessage);
+                            messagesToPersist.add(interruptMessage);
+                            if (toolMessageConsumer != null) {
+                                toolMessageConsumer.accept(userMessage(interrupt));
+                            }
+                            nextInterrupt = activeTurn.pollInterrupt();
+                        }
+                    }
+                    try {
+                        toolLoopGuard.recordToolResponses(toolExecutionResult);
+                    } catch (ToolUseAbort abort) {
+                        toolUseAbort = abort;
+                        break;
+                    }
+                    ContextManagementAdvisor.ToolLoopPrompt checkpoint = contextManagementAdvisor.prepareToolLoopPrompt(
+                        request.conversationId(),
+                        activeToolMessages,
+                        currentSystemInstructions,
+                        request.model()
+                    );
+                    activeToolMessages = new ArrayList<>(checkpoint.activeMessages());
+                    conversationHistory = new ArrayList<>(checkpoint.messages());
+                    prompt = new Prompt(conversationHistory, options);
+                    if (checkpoint.compacted() && !compactionNoticeEmitted) {
+                        compactionNoticeEmitted = true;
+                        if (!hasCompactionNotice(request.conversationId())) {
+                            messagesToPersist.add(compactionNoticeMessage());
+                        }
+                        if (toolMessageConsumer != null) {
+                            toolMessageConsumer.accept(systemMessage(ContextManagementAdvisor.COMPACTION_NOTICE));
+                        }
+                    }
+                    if (!checkpoint.toolUseAllowed()) {
+                        toolUseAbort = new ToolUseAbort(
+                            "Context is too large to safely continue tool use after compaction."
+                        );
+                        break;
+                    }
+                    recordContextUsage(request.conversationId(), checkpoint.usage());
                     if (toolMessageConsumer != null) {
-                        toolMessageConsumer.accept(systemMessage(ContextManagementAdvisor.COMPACTION_NOTICE));
+                        pendingToolMessages.forEach(toolMessageConsumer);
                     }
+                    phase(activeTurn, ActiveTurnPhase.MODEL_CALL);
+                    response = chatModelRouter.chatModel(request.model()).call(prompt);
                 }
-                if (!checkpoint.toolUseAllowed()) {
-                    toolUseAbort = new ToolUseAbort(
-                        "Context is too large to safely continue tool use after compaction."
+
+                if (toolUseAbort != null) {
+                    Message controlMessage = toolUseAbortControlMessage(toolUseAbort);
+                    messagesToPersist.add(controlMessage);
+                    activeToolMessages.add(controlMessage);
+                    ContextManagementAdvisor.ToolLoopPrompt checkpoint = contextManagementAdvisor.prepareToolLoopPrompt(
+                        request.conversationId(),
+                        activeToolMessages,
+                        currentSystemInstructions,
+                        request.model()
                     );
-                    break;
+                    recordContextUsage(request.conversationId(), checkpoint.usage());
+                    if (!checkpoint.toolUseAllowed()) {
+                        throw new IllegalStateException(
+                            "Context is too large to send safely after tool compaction: "
+                                + checkpoint.usage().usedTokens() + " estimated tokens exceeds trigger budget "
+                                + checkpoint.usage().triggerTokens()
+                        );
+                    }
+                    prompt = new Prompt(checkpoint.messages(), toolFinalOptions(request.model()));
+                    phase(activeTurn, ActiveTurnPhase.MODEL_CALL);
+                    response = chatModelRouter.chatModel(request.model()).call(prompt);
+                    toolUseAbort = null;
+                    continueModelLoop = true;
+                    continue;
                 }
-                recordContextUsage(request.conversationId(), checkpoint.usage());
-                if (toolMessageConsumer != null) {
-                    pendingToolMessages.forEach(toolMessageConsumer);
+
+                if (isEmptyFinalResponse(response) && emptyFinalResponseRetries < EMPTY_FINAL_RESPONSE_RETRY_LIMIT) {
+                    collectThinking(response, thinkingParts);
+                    emptyFinalResponseRetries++;
+                    Message controlMessage = emptyFinalResponseControlMessage(mode);
+                    List<Message> retryMessages = new ArrayList<>(prompt.getInstructions());
+                    retryMessages.add(controlMessage);
+                    prompt = new Prompt(retryMessages, prompt.getOptions());
+                    phase(activeTurn, ActiveTurnPhase.MODEL_CALL);
+                    response = chatModelRouter.chatModel(request.model()).call(prompt);
+                    continueModelLoop = true;
+                    continue;
                 }
-                phase(activeTurn, ActiveTurnPhase.MODEL_CALL);
-                response = chatModelRouter.chatModel(request.model()).call(prompt);
+
+                if (requiresPlanTurnRepair(request.conversationId(), mode)
+                    && planTurnRepairRetries < PLAN_TURN_REPAIR_RETRY_LIMIT) {
+                    collectThinking(response, thinkingParts);
+                    planTurnRepairRetries++;
+                    Message controlMessage = invalidPlanTurnControlMessage();
+                    List<Message> retryMessages = new ArrayList<>(prompt.getInstructions());
+                    retryMessages.add(controlMessage);
+                    prompt = new Prompt(retryMessages, prompt.getOptions());
+                    phase(activeTurn, ActiveTurnPhase.MODEL_CALL);
+                    response = chatModelRouter.chatModel(request.model()).call(prompt);
+                    continueModelLoop = true;
+                }
             }
-            if (toolUseAbort != null) {
-                Message controlMessage = toolUseAbortControlMessage(toolUseAbort);
-                messagesToPersist.add(controlMessage);
-                activeToolMessages.add(controlMessage);
-                ContextManagementAdvisor.ToolLoopPrompt checkpoint = contextManagementAdvisor.prepareToolLoopPrompt(
-                    request.conversationId(),
-                    activeToolMessages,
-                    currentSystemInstructions,
-                    request.model()
-                );
-                recordContextUsage(request.conversationId(), checkpoint.usage());
-                if (!checkpoint.toolUseAllowed()) {
-                    throw new IllegalStateException(
-                        "Context is too large to send safely after tool compaction: "
-                            + checkpoint.usage().usedTokens() + " estimated tokens exceeds trigger budget "
-                            + checkpoint.usage().triggerTokens()
-                    );
-                }
-                prompt = new Prompt(checkpoint.messages(), toolFinalOptions(request.model()));
-                phase(activeTurn, ActiveTurnPhase.MODEL_CALL);
-                response = chatModelRouter.chatModel(request.model()).call(prompt);
+            String forcedPlanningQuestion = null;
+            if (requiresPlanTurnRepair(request.conversationId(), mode)) {
+                forcedPlanningQuestion = "What should we clarify, change, or add before continuing this plan?";
+                planService.askQuestions(request.conversationId(), List.of(forcedPlanningQuestion));
             }
             phase(activeTurn, ActiveTurnPhase.COMPLETING);
             collectThinking(response, thinkingParts);
 
-            AssistantMessage finalAssistantMessage = response == null || response.getResult() == null
+            AssistantMessage finalAssistantMessage = StringUtils.hasText(forcedPlanningQuestion)
+                ? new AssistantMessage(forcedPlanningQuestion)
+                : response == null || response.getResult() == null
                 ? new AssistantMessage("")
                 : assistantMessageWithThinking(response.getResult(), combinedThinking(thinkingParts));
             if (finalAssistantMessage != null) {
@@ -866,6 +1075,54 @@ public class ChatService {
                 + "Do not request more tools for this turn; explain the failure state or continue from the available information."
         );
         return new SystemMessage(message.toString());
+    }
+
+    private boolean isEmptyFinalResponse(org.springframework.ai.chat.model.ChatResponse response) {
+        if (response == null || response.getResult() == null || response.hasToolCalls()) {
+            return false;
+        }
+        AssistantMessage output = response.getResult().getOutput();
+        return output == null || !StringUtils.hasText(output.getText());
+    }
+
+    private SystemMessage emptyFinalResponseControlMessage(PlanMode mode) {
+        String instruction = switch (mode) {
+            case PLAN -> """
+                Your previous response had thinking but no user-visible message and no tool calls, so Magenta cannot treat it as a completed planning turn.
+                Continue the PLAN-mode turn now. Use planning edit tools if the draft state should change, then end by calling plan_ask_questions or plan_ready_for_approval.
+                Do not return an empty assistant message.
+                """;
+            case EXECUTE_PLAN -> """
+                Your previous response had thinking but no user-visible message and no tool calls, so Magenta cannot treat it as completed saved-plan execution.
+                Continue executing the approved plan now. Use tools as needed and call plan_complete before any final user-visible completion answer.
+                Do not return an empty assistant message.
+                """;
+            case NORMAL -> """
+                Your previous response had thinking but no user-visible message and no tool calls.
+                Continue the turn now with a concise user-visible answer or an appropriate tool call.
+                Do not return an empty assistant message.
+                """;
+        };
+        return new SystemMessage(instruction.trim());
+    }
+
+    private boolean requiresPlanTurnRepair(String conversationId, PlanMode mode) {
+        if (mode != PlanMode.PLAN || planService == null) {
+            return false;
+        }
+        ChatPlanState state = planService.view(conversationId);
+        return !"READY_FOR_APPROVAL".equals(state.status())
+            && !StringUtils.hasText(state.promptQuestion());
+    }
+
+    private SystemMessage invalidPlanTurnControlMessage() {
+        return new SystemMessage("""
+            Your PLAN-mode turn attempted to finish without a queued clarification question or a plan ready for approval.
+            Continue the same turn now. Update the draft with keyed planning tools as needed, then call exactly one terminal planning tool:
+            - plan_ask_questions if the user needs to clarify, choose an approach, confirm constraints, or provide more context.
+            - plan_ready_for_approval only when the plan is complete enough to execute without guessing.
+            Do not finish with ordinary assistant text.
+            """.trim());
     }
 
     private List<ToolTranscriptEntry> toolTranscriptEntries(

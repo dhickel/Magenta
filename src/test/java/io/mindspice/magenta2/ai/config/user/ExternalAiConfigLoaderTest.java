@@ -24,6 +24,7 @@ class ExternalAiConfigLoaderTest {
         Files.writeString(yaml, """
             defaultAgent: support
             summeryModel: local-fast
+            planningModel: remote-large
             contextBufferPercent: 10
             webSearch:
               enabled: true
@@ -64,6 +65,7 @@ class ExternalAiConfigLoaderTest {
         assertEquals("support", config.defaultAgent());
         assertEquals("local-fast", config.summeryModel());
         assertEquals("local-fast", config.resolvedSummeryModelKey());
+        assertEquals("remote-large", config.resolvedPlanningModelKey());
         assertEquals(10, config.resolvedContextBufferPercent());
         assertNotNull(config.webSearch());
         assertTrue(config.webSearch().isEnabled());
@@ -101,6 +103,7 @@ class ExternalAiConfigLoaderTest {
             {
               "defaultAgent": "magenta",
               "summeryModel": "local-qwen",
+              "planningModel": "local-qwen",
               "contextBufferPercent": 10,
               "models": {
                 "local-qwen": {
@@ -129,6 +132,7 @@ class ExternalAiConfigLoaderTest {
         assertEquals("magenta", config.defaultAgent());
         assertEquals("local-qwen", config.summeryModel());
         assertEquals("local-qwen", config.resolvedSummeryModelKey());
+        assertEquals("local-qwen", config.resolvedPlanningModelKey());
         assertEquals(1, config.models().size());
         assertEquals(1, config.agents().size());
         assertEquals("local-qwen", config.agents().get("magenta").model());
@@ -152,6 +156,7 @@ class ExternalAiConfigLoaderTest {
             {
               "defaultAgent": "magenta",
               "summeryModel": "local-qwen",
+              "planningModel": "local-qwen",
               "models": {
                 "local-qwen": {
                   "remoteModelName": "qwen3",

@@ -9,8 +9,8 @@ This package owns chat-scoped tool execution support.
 - Own chat-approved file tools that operate inside the configured agent data root.
 - Own chat-approved shell execution for explicitly allowed Linux commands inside the configured agent data root.
 - Own chat-approved public web search and fetch tools backed by configured web search services.
-- Own lightweight chat planning tools that mutate Magenta-owned plan state through services.
-- Own compact plan execution evidence reporting through `plan_report`.
+- Own lightweight keyed chat planning tools that mutate Magenta-owned plan state through services.
+- Own compact plan execution evidence reporting through `plan_report` and validator-gated completion through `plan_complete`.
 
 ### Change guidance
 - Do not add separate durable tool-result storage unless a concrete workflow requires it.
@@ -21,7 +21,7 @@ This package owns chat-scoped tool execution support.
 - Keep file path confinement centralized and reject traversal or symlink escapes before file IO.
 - Keep shell command execution structured; do not accept raw shell command strings.
 - Keep web tool names and outputs compact, citation-friendly, and explicit about failures/truncation.
-- Keep planning tools narrow; they should save or inspect plan state, not orchestrate execution.
+- Keep planning tools narrow; they should set the goal/current planning task, add/replace/delete one keyed plan item, queue free-response questions, mark approval readiness, or request completion validation, not orchestrate execution.
 - Keep plan execution evidence concise, user-auditable, and tied to the active saved plan.
 
 ### Validation

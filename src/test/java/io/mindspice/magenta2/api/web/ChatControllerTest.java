@@ -182,16 +182,16 @@ class ChatControllerTest {
         );
 
         assertThat(response.message()).isEqualTo("executed plan");
-        assertThat(chatService.executedWithClearContext).isFalse();
+        assertThat(chatService.executed).isTrue();
     }
 
     @Test
-    void clearExecPlanCommandRunsSavedPlanAfterClearingContext() {
-        chatService.savedPlan = true;
-
-        chatController.command(new ChatRequest.CmdRequest(CONVERSATION_ID, "/clr-exec-plan"));
-
-        assertThat(chatService.executedWithClearContext).isTrue();
+    void clearExecPlanCommandIsRemoved() {
+        assertThatThrownBy(() -> chatController.command(new ChatRequest.CmdRequest(CONVERSATION_ID, "/clr-exec-plan")))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(exception.getReason()).isEqualTo("unknown command: clr-exec-plan");
+            });
     }
 
     @Test
@@ -219,7 +219,7 @@ class ChatControllerTest {
         private final Map<String, String> modelsByConversationId;
         private ChatPlanState planState = ChatPlanState.normal();
         private boolean savedPlan;
-        private boolean executedWithClearContext;
+        private boolean executed;
         private int newConversationIdCalls;
         private String title;
         private String titleJobStatus;
@@ -300,16 +300,21 @@ class ChatControllerTest {
         }
 
         @Override
+        public ChatResponse.MsgResponse beginPlan(String conversationId, String selectedModel) {
+            return beginPlan(conversationId);
+        }
+
+        @Override
         public void exitPlan(String conversationId) {
             planState = ChatPlanState.normal();
         }
 
         @Override
-        public ChatResponse.MsgResponse executeSavedPlan(String conversationId, boolean clearContext) {
+        public ChatResponse.MsgResponse executeSavedPlan(String conversationId) {
             if (!savedPlan) {
                 throw new IllegalStateException("No saved plan exists for this conversation");
             }
-            executedWithClearContext = clearContext;
+            executed = true;
             planState = new ChatPlanState(
                 "NORMAL",
                 "NEEDS_REVIEW",

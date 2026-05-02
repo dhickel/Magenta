@@ -44,6 +44,7 @@ public final class ExternalAiConfigLoader {
         return new AiConfig(
             config.defaultAgent(),
             config.summeryModel(),
+            config.planningModel(),
             config.contextBufferPercent(),
             config.dataRoot(),
             config.webSearch(),
@@ -72,6 +73,14 @@ public final class ExternalAiConfigLoader {
         }
         if (summeryModel.contextLength() == null || summeryModel.contextLength() <= 0) {
             throw new IllegalArgumentException("summeryModel must define a positive contextLength: " + summeryModelKey);
+        }
+        String planningModelKey = config.resolvedPlanningModelKey();
+        ModelConfig planningModel = config.models().get(planningModelKey);
+        if (planningModel == null) {
+            throw new IllegalArgumentException("planningModel references missing model: " + planningModelKey);
+        }
+        if (planningModel.contextLength() == null || planningModel.contextLength() <= 0) {
+            throw new IllegalArgumentException("planningModel must define a positive contextLength: " + planningModelKey);
         }
         int bufferPercent = config.resolvedContextBufferPercent();
         if (bufferPercent < 1 || bufferPercent > 50) {

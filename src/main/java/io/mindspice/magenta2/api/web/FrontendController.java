@@ -407,6 +407,89 @@ public class FrontendController {
                     font-size: 0.82rem;
                 }
 
+                #chat-planning-panel {
+                    display: none;
+                    border: 1px solid #cbd7e6;
+                    border-radius: 8px;
+                    background: #ffffff;
+                    padding: 0.75rem;
+                    margin-top: 0.8rem;
+                    color: #243247;
+                }
+
+                #chat-planning-panel.active {
+                    display: block;
+                }
+
+                .planning-panel-title {
+                    font-weight: 700;
+                    margin-bottom: 0.45rem;
+                }
+
+                .planning-panel-progress {
+                    color: #5b687a;
+                    font-size: 0.8rem;
+                    font-weight: 700;
+                    margin-bottom: 0.3rem;
+                }
+
+                .planning-panel-body {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 0.55rem;
+                }
+
+                .planning-options {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+                    gap: 0.4rem;
+                }
+
+                .planning-options label {
+                    display: flex;
+                    align-items: flex-start;
+                    gap: 0.35rem;
+                    border: 1px solid #d8e0ea;
+                    border-radius: 6px;
+                    padding: 0.45rem 0.5rem;
+                    background: #f8fafc;
+                    cursor: pointer;
+                }
+
+                #chat-planning-panel textarea {
+                    width: 100%%;
+                    min-height: 3.2rem;
+                    box-sizing: border-box;
+                    resize: vertical;
+                }
+
+                .planning-actions {
+                    display: flex;
+                    flex-wrap: wrap;
+                    justify-content: flex-end;
+                    gap: 0.45rem;
+                }
+
+                .planning-preview-document {
+                    margin: 0;
+                    word-break: break-word;
+                    border: 1px solid #d7dee8;
+                    border-radius: 6px;
+                    background: #ffffff;
+                    padding: 0.7rem 0.8rem;
+                    color: #1f2937;
+                    font-size: 0.9rem;
+                    line-height: 1.45;
+                }
+
+                .planning-preview-document > :first-child {
+                    margin-top: 0;
+                }
+
+                .planning-preview-document > :last-child {
+                    margin-bottom: 0;
+                }
+
                 #chat-history {
                     display: flex;
                     flex-direction: column;
@@ -456,6 +539,11 @@ public class FrontendController {
                     background: #f4f7fa;
                     border-color: #d7e0ea;
                     color: #253244;
+                }
+
+                .chat-message-transient {
+                    border-style: dashed;
+                    color: #42526a;
                 }
 
                 .chat-message-role {
@@ -850,6 +938,7 @@ public class FrontendController {
                             <div id="chat-plan-evidence"></div>
                         </div>
                         <div id="chat-history"></div>
+                        <div id="chat-planning-panel" aria-live="polite"></div>
                         <form id="chat-form">
                             <textarea id="chat-input" name="message" autocomplete="off" placeholder="Type a message (Enter to send, Shift+Enter newline)" rows="6"></textarea>
                             <button type="submit">Send</button>
@@ -875,7 +964,7 @@ public class FrontendController {
                     .withSubtitle("Session-backed chat bootstrap")
                     .build())
             .withTopNav(topNavBar)
-            .addCustomJs("/js/chat-client.js?v=21")
+            .addCustomJs("/js/chat-client.js?v=23")
             .buildTemplate();
 
     @GetMapping("/chat")

@@ -95,21 +95,116 @@
             titleEl.textContent = '';
             hintEl.textContent = '';
             evidenceEl.innerHTML = '';
+            renderPlanningPanel(planState);
+            syncPlanningApprovalPreview(planState);
             return;
         }
         const title = planState && planState.title ? String(planState.title) : (planState && planState.goal ? String(planState.goal) : 'Draft plan');
         const status = planState && planState.status ? String(planState.status).toLowerCase() : 'active';
         titleEl.textContent = mode === 'PLAN' ? 'Plan mode: ' + title : 'Plan: ' + title + ' (' + status + ')';
         hintEl.textContent = mode === 'PLAN'
-            ? 'Use /exec-plan, /clr-exec-plan, or /exit-plan'
+            ? 'Use the planning panel, /exec-plan, or /exit-plan'
             : (status === 'needs_review' ? 'Review execution evidence before trusting completion' : 'Saved execution plan');
         const evidence = Array.isArray(planState && planState.executionEvidence) ? planState.executionEvidence : [];
-        evidenceEl.innerHTML = evidence.length
-            ? '<ul>' + evidence.map(function(item) {
+        const validationFeedback = Array.isArray(planState && planState.validationFeedback) ? planState.validationFeedback : [];
+        const evidenceItems = evidence.concat(validationFeedback);
+        evidenceEl.innerHTML = evidenceItems.length
+            ? '<ul>' + evidenceItems.map(function(item) {
                 return '<li>' + escapeHtml(item) + '</li>';
             }).join('') + '</ul>'
             : '';
         statusEl.classList.add('active');
+        renderPlanningPanel(planState);
+        syncPlanningApprovalPreview(planState);
+    }
+
+    function syncPlanningApprovalPreview(planState) {
+        const historyEl = byId('chat-history');
+        if (!historyEl) {
+            return;
+        }
+        historyEl.querySelectorAll('[data-planning-approval-preview="true"]').forEach(function(el) {
+            el.remove();
+        });
+        const status = planState && planState.status ? String(planState.status) : '';
+        const rendered = planState && planState.approvalHtml ? String(planState.approvalHtml) : '';
+        if (status !== 'READY_FOR_APPROVAL' || !rendered) {
+            return;
+        }
+        if (historyEl.textContent.trim() === 'No messages in this session yet.') {
+            historyEl.innerHTML = '';
+        }
+        const wrapper = document.createElement('div');
+        wrapper.className = 'chat-message chat-message-assistant';
+        wrapper.setAttribute('data-planning-approval-preview', 'true');
+        wrapper.innerHTML = '<div class="chat-message-role">assistant</div>'
+            + '<div class="chat-message-body">'
+            + '<div class="planning-preview-document">' + rendered + '</div>'
+            + '</div>';
+        historyEl.appendChild(wrapper);
+        historyEl.scrollTop = historyEl.scrollHeight;
+    }
+
+    function renderPlanningPanel(planState) {
+        const panel = byId('chat-planning-panel');
+        if (!panel) {
+            return;
+        }
+        const mode = planState && planState.mode ? String(planState.mode) : 'NORMAL';
+        const status = planState && planState.status ? String(planState.status) : '';
+        if (mode !== 'PLAN' && status !== 'APPROVED') {
+            panel.classList.remove('active');
+            panel.innerHTML = '';
+            return;
+        }
+
+        const question = planState && planState.promptQuestion ? String(planState.promptQuestion) : '';
+        let body = '';
+        const questionIndex = Number(planState && planState.promptQuestionIndex ? planState.promptQuestionIndex : 0);
+        const questionCount = Number(planState && planState.promptQuestionCount ? planState.promptQuestionCount : 0);
+        if (question) {
+            const progress = questionCount > 0 ? 'Question ' + questionIndex + '/' + questionCount : 'Question';
+            body = '<form data-planning-answer-form="questions">'
+                + '<div class="planning-panel-progress">' + escapeHtml(progress) + '</div>'
+                + '<div class="planning-panel-title">' + escapeHtml(question) + '</div>'
+                + '<input type="hidden" name="questionIndex" value="' + escapeHtml(questionIndex) + '">'
+                + '<textarea name="answer" rows="3" placeholder="Answer"></textarea>'
+                + planningActions('<button type="submit">Submit answer</button>')
+                + '</form>';
+        } else if (status === 'READY_FOR_APPROVAL') {
+            body = '<div class="planning-panel-body">'
+                + '<div class="planning-panel-title">Plan ready for approval</div>'
+                + planningActions('<button type="button" data-plan-action="approve">Approve plan</button><button type="button" data-plan-action="continue">Continue planning</button>')
+                + '</div>';
+        } else if (status === 'APPROVED') {
+            body = '<div class="planning-panel-body">'
+                + '<div class="planning-panel-title">Approved plan</div>'
+                + planningActions('<button type="button" data-plan-action="execute">Execute now</button><button type="button" data-plan-action="save-task">Save as task</button>')
+                + '</div>';
+        } else {
+            body = '<div class="planning-panel-body">'
+                + '<div class="planning-panel-title">Planning active</div>'
+                + planningActions('')
+                + '</div>';
+        }
+        panel.innerHTML = body;
+        panel.classList.add('active');
+    }
+
+    function clearPlanningPanel() {
+        const panel = byId('chat-planning-panel');
+        if (!panel) {
+            return;
+        }
+        panel.classList.remove('active');
+        panel.innerHTML = '';
+    }
+
+    function planningActions(primaryButtons) {
+        return '<div class="planning-actions">'
+            + primaryButtons
+            + '<button type="button" data-plan-action="cancel">Cancel planning</button>'
+            + '</div>';
     }
 
     function selectedModel() {
@@ -265,6 +360,31 @@
         const pending = byId('chat-history').querySelector('[data-pending-user="true"]');
         if (pending) {
             pending.remove();
+        }
+    }
+
+    function appendTransientAssistantMessage(message) {
+        const historyEl = byId('chat-history');
+        if (!historyEl) {
+            return null;
+        }
+        if (historyEl.textContent.trim() === 'No messages in this session yet.') {
+            historyEl.innerHTML = '';
+        }
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'chat-message chat-message-assistant chat-message-transient';
+        wrapper.setAttribute('data-transient-assistant', 'true');
+        wrapper.innerHTML = '<div class="chat-message-role">assistant</div>'
+            + '<div class="chat-message-body">' + formatPlainText(message) + '</div>';
+        historyEl.appendChild(wrapper);
+        historyEl.scrollTop = historyEl.scrollHeight;
+        return wrapper;
+    }
+
+    function removeTransientAssistantMessage(messageEl) {
+        if (messageEl && messageEl.parentNode) {
+            messageEl.remove();
         }
     }
 
@@ -772,11 +892,19 @@
         if (requestInFlight) {
             return;
         }
+        if (command === '/exec-plan') {
+            await executePlanStream();
+            return;
+        }
         requestInFlight = true;
         setFormDisabled(true);
+        const transientEl = command === '/plan'
+            ? appendTransientAssistantMessage('Planning mode received. I am setting up the planning workspace...')
+            : null;
         const payload = {
             conversationId: activeConversationId(),
-            command: command
+            command: command,
+            model: selectedModel()
         };
 
         try {
@@ -792,6 +920,152 @@
             renderSessions(data.sessions || data.conversationIds || []);
             updateContextUsage(data.contextUsage);
             updatePlanStatus(data.planState);
+            setStatus();
+        } finally {
+            removeTransientAssistantMessage(transientEl);
+            requestInFlight = false;
+            setFormDisabled(false);
+        }
+    }
+
+    async function executePlanStream() {
+        const conversationId = activeConversationId();
+        if (!conversationId || requestInFlight) {
+            return;
+        }
+        requestInFlight = true;
+        setFormDisabled(true);
+        clearPlanningPanel();
+        appendTransientAssistantMessage('Execution request received. I am clearing context and starting from the approved plan...');
+        renderHistory([]);
+        const assistantEl = appendStreamingAssistantMessage();
+        try {
+            const response = await fetch('/api/chat/' + encodeURIComponent(conversationId) + '/plan/execute/stream', {
+                method: 'POST',
+                headers: { 'Accept': 'text/event-stream' }
+            });
+            if (!response.ok) {
+                throw await responseError(response);
+            }
+            await readSse(response, async function(event) {
+                const data = event.data || {};
+                if (event.name === 'start') {
+                    setActiveConversationId(data.conversationId);
+                    activeTurnId = data.turnId || null;
+                    activeInterruptToken = data.interruptToken || null;
+                    syncModelSelection(data.model);
+                    updatePlanStatus(data.planState);
+                    return;
+                }
+                if (event.name === 'chunk') {
+                    updateContextUsageIfPresent(data.contextUsage);
+                    updateStreamingAssistantMessage(assistantEl, data);
+                    return;
+                }
+                if (event.name === 'tool') {
+                    appendToolActivity(data, assistantEl);
+                    updateContextUsageIfPresent(data.contextUsage);
+                    updatePlanStatus(data.planState);
+                    return;
+                }
+                if (event.name === 'system') {
+                    appendSystemMessage(data, assistantEl);
+                    updateContextUsageIfPresent(data.contextUsage);
+                    updatePlanStatus(data.planState);
+                    return;
+                }
+                if (event.name === 'context') {
+                    updateContextUsageIfPresent(data.contextUsage);
+                    updatePlanStatus(data.planState);
+                    return;
+                }
+                if (event.name === 'done') {
+                    updateStreamingAssistantMessage(assistantEl, data);
+                    updateContextUsage(data.contextUsage);
+                    updatePlanStatus(data.planState);
+                    return;
+                }
+                if (event.name === 'error') {
+                    throw new Error(data.message || 'stream failed');
+                }
+            });
+            await loadHistory(conversationId);
+            await loadSessions();
+            setStatus();
+        } catch (error) {
+            removeStreamingAssistantMessage(assistantEl);
+            try {
+                await loadHistory(conversationId);
+                await loadSessions();
+            } catch (reloadError) {
+                // Keep the original streaming error visible.
+            }
+            throw error;
+        } finally {
+            requestInFlight = false;
+            activeTurnId = null;
+            activeInterruptToken = null;
+            setFormDisabled(false);
+        }
+    }
+
+    async function submitPlanningAnswer(form) {
+        const conversationId = activeConversationId();
+        if (!conversationId || requestInFlight) {
+            return;
+        }
+        const formData = new FormData(form);
+        const answer = String(formData.get('answer') || '').trim();
+        const notes = String(formData.get('notes') || '').trim();
+        const questionIndex = Number(formData.get('questionIndex') || 0);
+        requestInFlight = true;
+        setFormDisabled(true);
+        try {
+            const data = await getJson('/api/chat/' + encodeURIComponent(conversationId) + '/plan/answers', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ answer: answer, notes: notes, questionIndex: questionIndex || null })
+            });
+            syncModelSelection(data.model);
+            updateContextUsage(data.contextUsage);
+            updatePlanStatus(data.planState);
+            await loadHistory(data.conversationId || conversationId);
+            await loadSessions();
+            setStatus();
+        } finally {
+            requestInFlight = false;
+            setFormDisabled(false);
+        }
+    }
+
+    async function runPlanningAction(action) {
+        const conversationId = activeConversationId();
+        if (!conversationId || requestInFlight) {
+            return;
+        }
+        if (action === 'cancel') {
+            await sendCommand('/exit-plan');
+            return;
+        }
+        if (action === 'execute') {
+            await sendCommand('/exec-plan');
+            return;
+        }
+        const endpoint = action === 'approve'
+            ? '/plan/approve'
+            : (action === 'save-task' ? '/plan/save-task' : (action === 'continue' ? '/plan/continue' : null));
+        if (!endpoint) {
+            return;
+        }
+        requestInFlight = true;
+        setFormDisabled(true);
+        try {
+            const data = await getJson('/api/chat/' + encodeURIComponent(conversationId) + endpoint, {
+                method: 'PATCH'
+            });
+            updatePlanStatus(data);
+            await loadHistory(conversationId);
+            await loadSessions();
             setStatus();
         } finally {
             requestInFlight = false;
@@ -945,6 +1219,35 @@
                 setError(error.message);
             }
         });
+
+        const planningPanel = byId('chat-planning-panel');
+        if (planningPanel) {
+            planningPanel.addEventListener('submit', async function(event) {
+                const form = event.target.closest('[data-planning-answer-form]');
+                if (!form) {
+                    return;
+                }
+                event.preventDefault();
+                try {
+                    await submitPlanningAnswer(form);
+                } catch (error) {
+                    setError(error.message);
+                }
+            });
+
+            planningPanel.addEventListener('click', async function(event) {
+                const button = event.target.closest('[data-plan-action]');
+                if (!button) {
+                    return;
+                }
+                event.preventDefault();
+                try {
+                    await runPlanningAction(button.getAttribute('data-plan-action'));
+                } catch (error) {
+                    setError(error.message);
+                }
+            });
+        }
 
         byId('chat-session-list').addEventListener('click', async function(event) {
             const favoriteButton = event.target.closest('[data-favorite-id]');

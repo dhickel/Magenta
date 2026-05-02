@@ -369,10 +369,18 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
 
     private List<Message> buildPromptMessages(List<Message> storedMessages, List<Message> currentInstructions) {
         List<Message> promptMessages = new ArrayList<>();
-        currentInstructions.stream()
-            .filter(SystemMessage.class::isInstance)
-            .forEach(promptMessages::add);
+        boolean planning = containsPlanningState(currentInstructions);
+        if (!planning) {
+            currentInstructions.stream()
+                .filter(SystemMessage.class::isInstance)
+                .forEach(promptMessages::add);
+        }
         promptMessages.addAll(toModelMemory(storedMessages));
+        if (planning) {
+            currentInstructions.stream()
+                .filter(SystemMessage.class::isInstance)
+                .forEach(promptMessages::add);
+        }
         currentInstructions.stream()
             .filter(message -> !(message instanceof SystemMessage))
             .forEach(promptMessages::add);
@@ -385,16 +393,29 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
         List<Message> activeMessages
     ) {
         List<Message> promptMessages = new ArrayList<>();
-        if (currentSystemInstructions != null) {
+        boolean planning = containsPlanningState(currentSystemInstructions);
+        if (currentSystemInstructions != null && !planning) {
             currentSystemInstructions.stream()
                 .filter(SystemMessage.class::isInstance)
                 .forEach(promptMessages::add);
         }
         promptMessages.addAll(toModelMemory(storedMessages));
+        if (currentSystemInstructions != null && planning) {
+            currentSystemInstructions.stream()
+                .filter(SystemMessage.class::isInstance)
+                .forEach(promptMessages::add);
+        }
         if (activeMessages != null) {
             promptMessages.addAll(activeMessages);
         }
         return promptMessages;
+    }
+
+    private boolean containsPlanningState(List<Message> messages) {
+        return messages != null && messages.stream()
+            .filter(SystemMessage.class::isInstance)
+            .map(Message::getText)
+            .anyMatch(text -> text != null && text.contains("Runtime planning state:"));
     }
 
     private List<Message> activeSystemInstructions(List<Message> currentSystemInstructions, List<Message> activeMessages) {

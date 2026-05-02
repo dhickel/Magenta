@@ -33,6 +33,11 @@ This project is currently a Spring Boot and Spring AI application with SQLite-ba
 - Read the closest package guide before changing code in that package.
 - Keep package guides updated whenever a change alters that package's domain responsibility, public surface, or local conventions.
 
+### Validation expectations
+- After nontrivial code changes, run the relevant automated tests.
+- Before considering backend or application-wiring work complete, smoke test that the Spring Boot application context starts successfully. Prefer a bounded startup command such as `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` unless the task has a more specific startup path.
+- If startup cannot be run because required local services or secrets are unavailable, report that explicitly with the blocking dependency.
+
 ## `.internal-dev` Development Document Store
 
 `.internal-dev/` is the persistent engineering document store for plans, bugs, changelogs, reviews, notes, and reusable knowledge.

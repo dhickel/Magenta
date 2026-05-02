@@ -6,22 +6,38 @@ import java.util.List;
 import java.util.Optional;
 
 import io.mindspice.magenta2.ai.chat.model.ChatPlanState;
+import io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 @Service
 public class PlanService {
+    private static final int MAX_QUEUED_QUESTIONS = 5;
+
     private final ChatPlanRepository planRepository;
     private final ChatMemoryRepository chatMemoryRepository;
+    private final ChatMarkdownRenderer markdownRenderer;
 
     public PlanService(ChatPlanRepository planRepository, ChatMemoryRepository chatMemoryRepository) {
-        this.planRepository = planRepository;
-        this.chatMemoryRepository = chatMemoryRepository;
+        this(planRepository, chatMemoryRepository, new ChatMarkdownRenderer());
     }
 
-    public ExecutionPlan beginPlan(String conversationId) {
+    @Autowired
+    public PlanService(
+        ChatPlanRepository planRepository,
+        ChatMemoryRepository chatMemoryRepository,
+        ChatMarkdownRenderer markdownRenderer
+    ) {
+        this.planRepository = planRepository;
+        this.chatMemoryRepository = chatMemoryRepository;
+        this.markdownRenderer = markdownRenderer;
+    }
+
+    public ExecutionPlan beginPlan(String conversationId, String prePlanningModel) {
         int startOrder = chatMemoryRepository.findByConversationId(conversationId).size();
         Instant now = Instant.now();
         ExecutionPlan existing = planRepository.find(conversationId).orElse(null);
@@ -29,6 +45,7 @@ public class PlanService {
             conversationId,
             PlanMode.PLAN,
             PlanStatus.DRAFT,
+            "goal_and_deliverables",
             null,
             null,
             null,
@@ -37,10 +54,21 @@ public class PlanService {
             List.of(),
             List.of(),
             List.of(),
+            List.of(),
+            List.of(),
+            List.of(),
+            List.of(),
+            normalize(prePlanningModel),
+            List.of(),
+            0,
             startOrder,
             existing == null ? now : existing.createdAt(),
             now
         ));
+    }
+
+    public ExecutionPlan beginPlan(String conversationId) {
+        return beginPlan(conversationId, null);
     }
 
     public Optional<ExecutionPlan> activePlan(String conversationId) {
@@ -57,6 +85,78 @@ public class PlanService {
             .orElse(PlanMode.NORMAL);
     }
 
+    public String prePlanningModel(String conversationId) {
+        return planRepository.find(conversationId)
+            .map(ExecutionPlan::prePlanningModel)
+            .filter(StringUtils::hasText)
+            .orElse(null);
+    }
+
+    public ExecutionPlan updateDraftPlan(
+        String conversationId,
+        String goal,
+        String title,
+        String summary,
+        String notes,
+        List<String> deliverables,
+        List<String> steps,
+        List<String> acceptanceCriteria
+    ) {
+        return updateDraftPlan(
+            conversationId,
+            goal,
+            title,
+            summary,
+            notes,
+            deliverables,
+            null,
+            null,
+            null,
+            steps,
+            acceptanceCriteria
+        );
+    }
+
+    public ExecutionPlan updateDraftPlan(
+        String conversationId,
+        String goal,
+        String title,
+        String summary,
+        String notes,
+        List<String> deliverables,
+        List<String> inputs,
+        List<String> outputs,
+        List<String> assumptions,
+        List<String> steps,
+        List<String> acceptanceCriteria
+    ) {
+        ExecutionPlan existing = requirePlanMode(conversationId, "plan_update");
+        return planRepository.save(new ExecutionPlan(
+            existing.conversationId(),
+            PlanMode.PLAN,
+            PlanStatus.DRAFT,
+            existing.planningTask(),
+            choose(goal, existing.goal()),
+            choose(title, existing.title()),
+            choose(summary, existing.summary()),
+            mergeNotes(existing.notes(), notes),
+            deliverables == null ? existing.deliverables() : cleanList(deliverables),
+            inputs == null ? existing.inputs() : cleanList(inputs),
+            outputs == null ? existing.outputs() : cleanList(outputs),
+            assumptions == null ? existing.assumptions() : cleanList(assumptions),
+            steps == null ? existing.steps() : orderedSteps(steps),
+            acceptanceCriteria == null ? existing.acceptanceCriteria() : cleanList(acceptanceCriteria),
+            existing.executionEvidence(),
+            existing.validationFeedback(),
+            existing.prePlanningModel(),
+            existing.pendingQuestions(),
+            existing.pendingQuestionIndex(),
+            existing.planStartMessageOrder(),
+            existing.createdAt(),
+            Instant.now()
+        ));
+    }
+
     public ExecutionPlan saveDraftPlan(
         String conversationId,
         String goal,
@@ -67,43 +167,190 @@ public class PlanService {
         List<String> assumptions,
         List<String> acceptanceCriteria
     ) {
-        ExecutionPlan existing = requirePlanConversation(conversationId);
-        if (existing.mode() != PlanMode.PLAN) {
-            throw new IllegalStateException("plan_save is available only in plan mode");
-        }
-        List<PlanStep> orderedSteps = new ArrayList<>();
-        List<String> safeSteps = steps == null ? List.of() : steps;
-        for (int i = 0; i < safeSteps.size(); i++) {
-            String step = normalize(safeSteps.get(i));
-            if (step != null) {
-                orderedSteps.add(new PlanStep(i + 1, step));
-            }
-        }
-        if (!StringUtils.hasText(title)) {
-            throw new IllegalArgumentException("plan_save requires a title");
-        }
-        if (!StringUtils.hasText(goal)) {
-            throw new IllegalArgumentException("plan_save requires a goal");
-        }
-        if (orderedSteps.isEmpty()) {
-            throw new IllegalArgumentException("plan_save requires at least one step");
+        return updateDraftPlan(
+            conversationId,
+            goal,
+            title,
+            summary,
+            notes,
+            StringUtils.hasText(title) ? List.of(title.trim()) : null,
+            null,
+            null,
+            assumptions,
+            steps,
+            acceptanceCriteria
+        );
+    }
+
+    public ExecutionPlan setGoal(String conversationId, String goal) {
+        ExecutionPlan existing = requirePlanMode(conversationId, "plan_set_goal");
+        String normalizedGoal = normalize(goal);
+        if (normalizedGoal == null) {
+            throw new IllegalArgumentException("plan_set_goal requires a goal");
         }
         return planRepository.save(new ExecutionPlan(
-            conversationId,
+            existing.conversationId(),
             PlanMode.PLAN,
             PlanStatus.DRAFT,
-            goal.trim(),
-            title.trim(),
-            normalize(summary),
-            normalize(notes),
-            cleanList(assumptions),
-            orderedSteps,
-            cleanList(acceptanceCriteria),
-            List.of(),
+            nextTaskAfterGoal(existing),
+            normalizedGoal,
+            choose(existing.title(), titleFromGoal(normalizedGoal)),
+            existing.summary(),
+            existing.notes(),
+            existing.deliverables(),
+            existing.inputs(),
+            existing.outputs(),
+            existing.assumptions(),
+            existing.steps(),
+            existing.acceptanceCriteria(),
+            existing.executionEvidence(),
+            existing.validationFeedback(),
+            existing.prePlanningModel(),
+            existing.pendingQuestions(),
+            existing.pendingQuestionIndex(),
             existing.planStartMessageOrder(),
             existing.createdAt(),
             Instant.now()
         ));
+    }
+
+    public ExecutionPlan setPlanningTask(String conversationId, String planningTask) {
+        ExecutionPlan existing = requirePlanMode(conversationId, "plan_set_task");
+        String normalizedTask = normalize(planningTask);
+        if (normalizedTask == null) {
+            throw new IllegalArgumentException("plan_set_task requires a current planning task");
+        }
+        return saveWithPlanningTask(existing, normalizedTask);
+    }
+
+    public ExecutionPlan putItem(String conversationId, String sectionName, Integer key, String text) {
+        ExecutionPlan existing = requirePlanMode(conversationId, "plan_put_item");
+        PlanSection section = PlanSection.fromToolName(sectionName);
+        int itemKey = requirePositiveKey(key, "plan_put_item");
+        String normalizedText = normalize(text);
+        if (normalizedText == null) {
+            throw new IllegalArgumentException("plan_put_item requires text");
+        }
+        return saveWithSection(
+            existing,
+            section,
+            itemKey,
+            normalizedText,
+            false
+        );
+    }
+
+    public ExecutionPlan deleteItem(String conversationId, String sectionName, Integer key) {
+        ExecutionPlan existing = requirePlanMode(conversationId, "plan_delete_item");
+        PlanSection section = PlanSection.fromToolName(sectionName);
+        int itemKey = requirePositiveKey(key, "plan_delete_item");
+        return saveWithSection(existing, section, itemKey, null, true);
+    }
+
+    public ExecutionPlan askQuestions(String conversationId, List<String> questions) {
+        ExecutionPlan existing = requirePlanMode(conversationId, "plan_ask_questions");
+        List<String> cleanQuestions = cleanList(questions);
+        if (cleanQuestions.isEmpty()) {
+            throw new IllegalArgumentException("plan_ask_questions requires at least one question");
+        }
+        if (cleanQuestions.size() > MAX_QUEUED_QUESTIONS) {
+            throw new IllegalArgumentException("plan_ask_questions accepts at most five questions");
+        }
+        return planRepository.save(new ExecutionPlan(
+            existing.conversationId(),
+            PlanMode.PLAN,
+            PlanStatus.DRAFT,
+            "clarification_questions",
+            existing.goal(),
+            existing.title(),
+            existing.summary(),
+            existing.notes(),
+            existing.deliverables(),
+            existing.inputs(),
+            existing.outputs(),
+            existing.assumptions(),
+            existing.steps(),
+            existing.acceptanceCriteria(),
+            existing.executionEvidence(),
+            existing.validationFeedback(),
+            existing.prePlanningModel(),
+            cleanQuestions,
+            0,
+            existing.planStartMessageOrder(),
+            existing.createdAt(),
+            Instant.now()
+        ));
+    }
+
+    public ExecutionPlan recordPromptAnswer(String conversationId, String answer, String notes) {
+        return recordPromptAnswer(conversationId, answer, notes, null);
+    }
+
+    public ExecutionPlan recordPromptAnswer(String conversationId, String answer, String notes, Integer expectedQuestionIndex) {
+        ExecutionPlan plan = requirePlanMode(conversationId, "planning answer");
+        if (!plan.hasPendingQuestion()) {
+            throw new IllegalStateException("No active planning question exists for this conversation");
+        }
+        int currentQuestionIndex = plan.pendingQuestionIndex() + 1;
+        if (expectedQuestionIndex != null && expectedQuestionIndex != currentQuestionIndex) {
+            throw new IllegalStateException(
+                "Stale planning answer. Expected question " + currentQuestionIndex + " but received " + expectedQuestionIndex
+            );
+        }
+        if (!StringUtils.hasText(answer) && !StringUtils.hasText(notes)) {
+            throw new IllegalArgumentException("Planning answer requires an answer");
+        }
+        String question = plan.currentQuestion();
+        appendPlanningAnswer(conversationId, question, answer, notes);
+        int nextIndex = plan.pendingQuestionIndex() + 1;
+        List<String> pendingQuestions = nextIndex >= plan.pendingQuestions().size()
+            ? List.of()
+            : plan.pendingQuestions();
+        return planRepository.save(new ExecutionPlan(
+            plan.conversationId(),
+            PlanMode.PLAN,
+            PlanStatus.DRAFT,
+            plan.planningTask(),
+            plan.goal(),
+            plan.title(),
+            plan.summary(),
+            plan.notes(),
+            plan.deliverables(),
+            plan.inputs(),
+            plan.outputs(),
+            plan.assumptions(),
+            plan.steps(),
+            plan.acceptanceCriteria(),
+            plan.executionEvidence(),
+            plan.validationFeedback(),
+            plan.prePlanningModel(),
+            pendingQuestions,
+            pendingQuestions.isEmpty() ? 0 : nextIndex,
+            plan.planStartMessageOrder(),
+            plan.createdAt(),
+            Instant.now()
+        ));
+    }
+
+    public ExecutionPlan markReadyForApproval(String conversationId) {
+        ExecutionPlan plan = requirePlanMode(conversationId, "plan_ready_for_approval");
+        if (plan.hasPendingQuestion()) {
+            throw new IllegalStateException("plan_ready_for_approval requires all queued planning questions to be answered");
+        }
+        validateComplete(plan, "plan_ready_for_approval");
+        return planRepository.save(copyWith(plan, PlanMode.PLAN, PlanStatus.READY_FOR_APPROVAL, List.of(), 0));
+    }
+
+    public ExecutionPlan approvePlan(String conversationId) {
+        ExecutionPlan plan = requirePlanMode(conversationId, "approve plan");
+        validateComplete(plan, "approve plan");
+        return planRepository.save(copyWith(plan, PlanMode.PLAN, PlanStatus.APPROVED, List.of(), 0));
+    }
+
+    public ExecutionPlan saveAsTask(String conversationId) {
+        ExecutionPlan plan = requirePlanConversation(conversationId);
+        validateComplete(plan, "save as task");
+        return planRepository.save(copyWith(plan, PlanMode.NORMAL, PlanStatus.SAVED_TASK, List.of(), 0));
     }
 
     public ExecutionPlan markExecuting(String conversationId) {
@@ -112,14 +359,22 @@ public class PlanService {
             plan.conversationId(),
             PlanMode.EXECUTE_PLAN,
             PlanStatus.EXECUTING,
+            null,
             plan.goal(),
             plan.title(),
             plan.summary(),
             plan.notes(),
+            plan.deliverables(),
+            plan.inputs(),
+            plan.outputs(),
             plan.assumptions(),
             plan.steps(),
             plan.acceptanceCriteria(),
             List.of(),
+            List.of(),
+            plan.prePlanningModel(),
+            List.of(),
+            0,
             plan.planStartMessageOrder(),
             plan.createdAt(),
             Instant.now()
@@ -128,12 +383,12 @@ public class PlanService {
 
     public ExecutionPlan markCompleted(String conversationId) {
         ExecutionPlan plan = requirePlanConversation(conversationId);
-        return planRepository.save(copyWith(plan, PlanMode.NORMAL, PlanStatus.COMPLETED));
+        return planRepository.save(copyWith(plan, PlanMode.NORMAL, PlanStatus.COMPLETED, List.of(), 0));
     }
 
     public ExecutionPlan markNeedsReview(String conversationId) {
         ExecutionPlan plan = requirePlanConversation(conversationId);
-        return planRepository.save(copyWith(plan, PlanMode.NORMAL, PlanStatus.NEEDS_REVIEW));
+        return planRepository.save(copyWith(plan, PlanMode.NORMAL, PlanStatus.NEEDS_REVIEW, List.of(), 0));
     }
 
     public ExecutionPlan recordExecutionReport(
@@ -169,7 +424,35 @@ public class PlanService {
         }
         return planRepository.save(withExecutionEvidence(
             plan,
-            List.of("Deviation: execution returned without a structured plan_report ledger.")
+            List.of("Deviation: execution returned without a structured completion ledger.")
+        ));
+    }
+
+    public ExecutionPlan recordValidationFeedback(String conversationId, List<String> feedback) {
+        ExecutionPlan plan = requirePlanConversation(conversationId);
+        return planRepository.save(new ExecutionPlan(
+            plan.conversationId(),
+            plan.mode(),
+            plan.status(),
+            plan.planningTask(),
+            plan.goal(),
+            plan.title(),
+            plan.summary(),
+            plan.notes(),
+            plan.deliverables(),
+            plan.inputs(),
+            plan.outputs(),
+            plan.assumptions(),
+            plan.steps(),
+            plan.acceptanceCriteria(),
+            plan.executionEvidence(),
+            cleanList(feedback),
+            plan.prePlanningModel(),
+            plan.pendingQuestions(),
+            plan.pendingQuestionIndex(),
+            plan.planStartMessageOrder(),
+            plan.createdAt(),
+            Instant.now()
         ));
     }
 
@@ -196,95 +479,149 @@ public class PlanService {
             .orElse("");
     }
 
-    private String runtimeInstructions(ExecutionPlan plan) {
-        if (plan.mode() == PlanMode.PLAN) {
-            StringBuilder builder = new StringBuilder();
-            builder.append("""
-You are Magenta in PLAN mode.
+    public String approvalMarkdown(String conversationId) {
+        ExecutionPlan plan = requirePlanConversation(conversationId);
+        return plan.hasSavedPlan() ? approvalMarkdown(plan) : null;
+    }
 
-Your only job is to help the user turn an intent into a clear execution plan. Do not perform the saved plan's implementation work, do not create final artifacts, and do not claim that implementation is complete.
-
-Tool rules:
-- You may use file tools and shell commands to inspect files, query local databases, search the codebase, or gather facts needed for planning.
-- Shell access is available in plan mode for planning research, schema inspection, environment checks, and other context-gathering work.
-- Keep tool use focused on clarifying the plan. Avoid irreversible or broad side effects unless the user explicitly asks for them during planning.
-- Use plan_save only when the plan is complete enough for execution.
-- Include acceptance criteria in plan_save whenever the user gives measurable requirements, such as counts, files, validation checks, or output quality bars.
-
-Conversation flow:
-- Begin by asking the user what goal they want to plan, what is the final output/outcome to be produced.
-- After the user gives the goal, ask whether they have a preferred approach, constraints, or anything they explicitly do or do not want.
-- Have the user elaborate and clarify as needed, continuing the query the user for their preferred approach out of multiple options, if they approve the constrains and work to be done.
-- Keep the planning conversation progressive and natural. Restate your understanding, ask targeted clarifying questions, inspect read-only context when that can answer implementation questions, and explain the approach you are considering.
-- Ask for corrections whenever your understanding, approach, constraints, or tradeoffs may be off.
-- Continue until the goal, approach, constraints, assumptions, risks, and execution steps are clear enough that another model or engineer could execute without guessing.
-- When ready, call plan_save with the clarified goal, title, summary, notes, ordered execution steps, assumptions, and acceptance criteria.
-- You should always present the user with the full formatted version of the plan that you are about to commit before saving it. Never call plan_save without  explicitly ask the user for their approval.
-- Only after you have a user approval on a complete plan shall you use use plan_save to save the plan.
-- After saving, tell the user the plan is ready and they can run /exec-plan or /clr-exec-plan.
-
-Runtime state:
-Mode: PLAN
-""");
-            if (StringUtils.hasText(plan.goal())) {
-                builder.append("Goal: ").append(plan.goal()).append("\n");
-            }
-            if (plan.hasSavedPlan()) {
-                builder.append("Saved draft: ").append(plan.title()).append("\n");
-            }
-            return builder.toString().trim();
-        }
-        if (plan.mode() == PlanMode.EXECUTE_PLAN && plan.hasSavedPlan()) {
-            StringBuilder builder = new StringBuilder();
-            builder.append("Runtime state:\n")
-                .append("Mode: EXECUTE_PLAN\n")
-                .append("Plan: ").append(plan.title()).append("\n");
-            if (StringUtils.hasText(plan.summary())) {
-                builder.append("Summary: ").append(plan.summary()).append("\n");
-            }
-            if (StringUtils.hasText(plan.notes())) {
-                builder.append("Notes: ").append(plan.notes()).append("\n");
-            }
-            builder.append("Steps:\n");
+    public String approvalMarkdown(ExecutionPlan plan) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("# ").append(planTitle(plan)).append("\n\n");
+        appendMarkdownValue(builder, "Goal", plan.goal());
+        appendMarkdownValue(builder, "Summary", plan.summary());
+        appendMarkdownList(builder, "Deliverables", effectiveDeliverables(plan));
+        appendMarkdownList(builder, "Inputs", plan.inputs());
+        appendMarkdownList(builder, "Assumptions", plan.assumptions());
+        appendMarkdownValue(builder, "Notes", plan.notes());
+        if (!plan.steps().isEmpty()) {
+            builder.append("## Execution Steps\n\n");
             for (PlanStep step : plan.steps()) {
                 builder.append(step.order()).append(". ").append(step.text()).append("\n");
             }
-            if (!plan.assumptions().isEmpty()) {
-                builder.append("Assumptions:\n");
-                for (String assumption : plan.assumptions()) {
-                    builder.append("- ").append(assumption).append("\n");
-                }
-            }
-            if (!plan.acceptanceCriteria().isEmpty()) {
-                builder.append("Acceptance criteria:\n");
-                for (String criterion : plan.acceptanceCriteria()) {
-                    builder.append("- ").append(criterion).append("\n");
-                }
-            }
-            builder.append("""
-Execution reporting:
-- Track acceptance criteria explicitly while working.
-- Call plan_report before your final answer with actual evidence, artifact paths, deviations, and any unmet criteria.
-- Report actual counts and deviations before synthesis.
-- Do not claim the plan is complete when criteria are unmet.
-- When you create generated evidence artifacts, read them back before using them for final synthesis.
-""");
-            return builder.toString().trim();
+            builder.append("\n");
+        }
+        appendMarkdownList(builder, "Validation Criteria", plan.acceptanceCriteria());
+        return builder.toString().trim();
+    }
+
+    private String runtimeInstructions(ExecutionPlan plan) {
+        if (plan.mode() == PlanMode.PLAN) {
+            return planningInstructions(plan);
+        }
+        if (plan.mode() == PlanMode.EXECUTE_PLAN && plan.hasSavedPlan()) {
+            return executionInstructions(plan);
         }
         return "";
     }
 
+    private String planningInstructions(ExecutionPlan plan) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("""
+You are Magenta in PLAN mode.
+
+Your job is to turn the user's intent into a clear, approved execution plan. Do not perform implementation work in PLAN mode.
+
+Required workflow:
+1. Ask the user to describe their goal via plan_ask_questions. Do NOT call plan_set_goal until the user has told you what they want.
+2. After the user responds, set the goal with plan_set_goal and define concrete deliverables with plan_put_item using integer keys.
+3. Ask the user to describe the task and any relevant information: preferred approaches, workflow expectations, constraints, gotchas, and known details via plan_ask_questions.
+4. After the user responds, build a structured approach: use plan_put_item with integer keys to add steps, assumptions, notes, and validation criteria. Interact via plan_ask_questions to clarify ambiguities, information needs, or approach choices. Formulate each step with associated assumptions, notes, and validation criteria.
+5. When the draft is complete, call plan_ready_for_approval. Do not send a normal message asking for approval, and do not claim approval until the user approves through the planning UI.
+
+Turn contract:
+- Stay self-iterating while useful planning work remains available: call as many read-only tools, research tools, and keyed planning edit tools as needed before relinquishing control to the user.
+- Every PLAN-mode assistant turn that relinquishes control to the user must move planning forward by ending in one of these states:
+  - one specific queued planning question through plan_ask_questions,
+  - a queued series of planning questions through plan_ask_questions,
+  - a complete draft marked with plan_ready_for_approval.
+- Each user-visible message must be the result of queued questions or approval-ready state. Do not end with free-form planning discussion.
+- Do not end a PLAN-mode turn with only a conversational summary, analysis, or draft text.
+- If the draft is not ready for approval, ask the next concrete planning question instead of inventing preferences or silently locking assumptions.
+- A plan is not ready for approval until user-facing intent and tradeoffs have either been answered by the user or are explicitly confirmed as assumptions for approval.
+- Once the draft is ready, call plan_ready_for_approval instead of messaging the user directly.
+
+Tool rules:
+- Use plan_set_goal for the goal only AFTER the user has described their goal. Use plan_set_task to update the current planning task when moving between workflow phases.
+- Use plan_put_item with section and integer key to add or replace exactly one item in any section: deliverable, input, output, assumption, note, step, or validation_criterion. All plan fields use this same integer-key API.
+- Use plan_delete_item with section and integer key to remove one keyed item.
+- Use assumptions for explicit defaults or choices being locked into the plan.
+- Inputs are optional and only for values a future reusable task would require at execution time.
+- Outputs are expected model/work products; they are rendered as deliverables for users.
+- Research gate: before keyed edits set or revise fact-dependent deliverables, steps, notes, or validation criteria, use available research tools first.
+- Use plan_ask_questions with 1 to 5 free-response questions. The UI shows them one at a time. Prefer one focused question when that is enough.
+- Use plan_ready_for_approval only after goal, deliverables/outputs, steps, assumptions, and validation criteria are complete enough to execute without guessing.
+- Shell and file tools are allowed for planning research only.
+- Strive for clarity, detailed specification, and robust implementation/execution steps.
+
+Runtime planning state:
+Mode: PLAN
+Status: """).append(" ").append(plan.status().name()).append("\n");
+        appendValue(builder, "Current planning task", plan.planningTask());
+        appendPlanState(builder, plan);
+        if (plan.hasPendingQuestion()) {
+            appendValue(builder, "Pending question", plan.currentQuestion());
+            builder.append("Pending question progress: ")
+                .append(plan.pendingQuestionIndex() + 1)
+                .append("/")
+                .append(plan.pendingQuestions().size())
+                .append("\n");
+        }
+        return builder.toString().trim();
+    }
+
+    private String executionInstructions(ExecutionPlan plan) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("""
+You are Magenta executing an approved plan in a fresh chat context.
+
+Work through the plan directly. Track validation criteria explicitly while working. Before your final answer, call plan_complete with actual evidence, artifact paths, deviations, and any unmet criteria. Magenta will run a validator pass; if validation fails, use the returned remediation details and continue work before trying plan_complete again.
+
+Approved plan:
+
+""").append(approvalMarkdown(plan)).append("\n\n");
+        appendList(builder, "Prior validation feedback to address", plan.validationFeedback());
+        return builder.toString().trim();
+    }
+
+    private void appendPlanState(StringBuilder builder, ExecutionPlan plan) {
+        appendValue(builder, "Goal", plan.goal());
+        appendValue(builder, "Title", plan.title());
+        appendValue(builder, "Summary", plan.summary());
+        appendList(builder, "Deliverables", plan.deliverables());
+        appendList(builder, "Inputs", plan.inputs());
+        appendList(builder, "Outputs", plan.outputs());
+        appendList(builder, "Assumptions", plan.assumptions());
+        appendValue(builder, "Notes", plan.notes());
+        appendSteps(builder, plan.steps());
+        appendList(builder, "Validation criteria", plan.acceptanceCriteria());
+        appendList(builder, "Validation feedback", plan.validationFeedback());
+    }
+
     private ChatPlanState view(ExecutionPlan plan) {
+        String approvalMarkdown = plan.status() == PlanStatus.READY_FOR_APPROVAL ? approvalMarkdown(plan) : null;
         return new ChatPlanState(
             plan.mode().name(),
             plan.status().name(),
+            plan.planningTask(),
             plan.title(),
             plan.summary(),
             plan.goal(),
             plan.notes(),
+            plan.deliverables(),
+            plan.inputs(),
+            plan.outputs(),
+            plan.assumptions(),
             plan.steps().stream().map(PlanStep::text).toList(),
             plan.acceptanceCriteria(),
-            plan.executionEvidence()
+            plan.executionEvidence(),
+            plan.validationFeedback(),
+            plan.hasPendingQuestion() ? "questions" : null,
+            plan.currentQuestion(),
+            List.of(),
+            plan.hasPendingQuestion() ? plan.pendingQuestionIndex() + 1 : 0,
+            plan.hasPendingQuestion() ? plan.pendingQuestions().size() : 0,
+            approvalMarkdown,
+            approvalMarkdown == null ? null : markdownRenderer.render(approvalMarkdown)
         );
     }
 
@@ -296,24 +633,46 @@ Execution reporting:
         return plan;
     }
 
+    private ExecutionPlan requirePlanMode(String conversationId, String action) {
+        ExecutionPlan plan = requirePlanConversation(conversationId);
+        if (plan.mode() != PlanMode.PLAN) {
+            throw new IllegalStateException(action + " is available only in plan mode");
+        }
+        return plan;
+    }
+
     private ExecutionPlan requirePlanConversation(String conversationId) {
         return planRepository.find(conversationId)
             .orElseThrow(() -> new IllegalStateException("No plan exists for this conversation"));
     }
 
-    private ExecutionPlan copyWith(ExecutionPlan plan, PlanMode mode, PlanStatus status) {
+    private ExecutionPlan copyWith(
+        ExecutionPlan plan,
+        PlanMode mode,
+        PlanStatus status,
+        List<String> pendingQuestions,
+        int pendingQuestionIndex
+    ) {
         return new ExecutionPlan(
             plan.conversationId(),
             mode,
             status,
+            status == PlanStatus.READY_FOR_APPROVAL ? "approval" : plan.planningTask(),
             plan.goal(),
             plan.title(),
             plan.summary(),
             plan.notes(),
+            plan.deliverables(),
+            plan.inputs(),
+            plan.outputs(),
             plan.assumptions(),
             plan.steps(),
             plan.acceptanceCriteria(),
             plan.executionEvidence(),
+            plan.validationFeedback(),
+            plan.prePlanningModel(),
+            pendingQuestions,
+            pendingQuestionIndex,
             plan.planStartMessageOrder(),
             plan.createdAt(),
             Instant.now()
@@ -325,18 +684,253 @@ Execution reporting:
             plan.conversationId(),
             plan.mode(),
             plan.status(),
+            plan.planningTask(),
             plan.goal(),
             plan.title(),
             plan.summary(),
             plan.notes(),
+            plan.deliverables(),
+            plan.inputs(),
+            plan.outputs(),
             plan.assumptions(),
             plan.steps(),
             plan.acceptanceCriteria(),
             executionEvidence == null ? List.of() : List.copyOf(executionEvidence),
+            plan.validationFeedback(),
+            plan.prePlanningModel(),
+            plan.pendingQuestions(),
+            plan.pendingQuestionIndex(),
             plan.planStartMessageOrder(),
             plan.createdAt(),
             Instant.now()
         );
+    }
+
+    private ExecutionPlan saveWithPlanningTask(ExecutionPlan plan, String planningTask) {
+        return planRepository.save(new ExecutionPlan(
+            plan.conversationId(),
+            plan.mode(),
+            plan.status(),
+            planningTask,
+            plan.goal(),
+            plan.title(),
+            plan.summary(),
+            plan.notes(),
+            plan.deliverables(),
+            plan.inputs(),
+            plan.outputs(),
+            plan.assumptions(),
+            plan.steps(),
+            plan.acceptanceCriteria(),
+            plan.executionEvidence(),
+            plan.validationFeedback(),
+            plan.prePlanningModel(),
+            plan.pendingQuestions(),
+            plan.pendingQuestionIndex(),
+            plan.planStartMessageOrder(),
+            plan.createdAt(),
+            Instant.now()
+        ));
+    }
+
+    private ExecutionPlan saveWithSection(
+        ExecutionPlan plan,
+        PlanSection section,
+        int key,
+        String text,
+        boolean delete
+    ) {
+        return planRepository.save(new ExecutionPlan(
+            plan.conversationId(),
+            plan.mode(),
+            plan.status(),
+            nextTaskAfterSection(plan, section),
+            plan.goal(),
+            plan.title(),
+            plan.summary(),
+            section == PlanSection.NOTE ? keyedNoteText(plan.notes(), key, text, delete) : plan.notes(),
+            section == PlanSection.DELIVERABLE ? keyedList(plan.deliverables(), key, text, delete) : plan.deliverables(),
+            section == PlanSection.INPUT ? keyedList(plan.inputs(), key, text, delete) : plan.inputs(),
+            section == PlanSection.OUTPUT ? keyedList(plan.outputs(), key, text, delete) : plan.outputs(),
+            section == PlanSection.ASSUMPTION ? keyedList(plan.assumptions(), key, text, delete) : plan.assumptions(),
+            section == PlanSection.STEP ? keyedSteps(plan.steps(), key, text, delete) : plan.steps(),
+            section == PlanSection.VALIDATION_CRITERION
+                ? keyedList(plan.acceptanceCriteria(), key, text, delete)
+                : plan.acceptanceCriteria(),
+            plan.executionEvidence(),
+            plan.validationFeedback(),
+            plan.prePlanningModel(),
+            plan.pendingQuestions(),
+            plan.pendingQuestionIndex(),
+            plan.planStartMessageOrder(),
+            plan.createdAt(),
+            Instant.now()
+        ));
+    }
+
+    private int requirePositiveKey(Integer key, String toolName) {
+        if (key == null || key < 1) {
+            throw new IllegalArgumentException(toolName + " requires a positive integer key");
+        }
+        return key;
+    }
+
+    private List<String> keyedList(List<String> values, int key, String text, boolean delete) {
+        List<String> updated = new ArrayList<>(values == null ? List.of() : values);
+        int index = key - 1;
+        if (delete) {
+            if (index < updated.size()) {
+                updated.remove(index);
+            }
+            return List.copyOf(updated);
+        }
+        while (updated.size() < index) {
+            updated.add("");
+        }
+        if (index < updated.size()) {
+            updated.set(index, text);
+        } else {
+            updated.add(text);
+        }
+        return updated.stream()
+            .map(this::normalize)
+            .filter(value -> value != null)
+            .toList();
+    }
+
+    private List<PlanStep> keyedSteps(List<PlanStep> steps, int key, String text, boolean delete) {
+        List<PlanStep> updated = new ArrayList<>(steps == null ? List.of() : steps);
+        updated.removeIf(step -> step.order() == key);
+        if (!delete) {
+            updated.add(new PlanStep(key, text));
+        }
+        return updated.stream()
+            .sorted(java.util.Comparator.comparingInt(PlanStep::order))
+            .toList();
+    }
+
+    private String keyedNoteText(String notes, int key, String text, boolean delete) {
+        List<String> updated = keyedList(noteLines(notes), key, text, delete);
+        return updated.isEmpty() ? null : String.join("\n", updated);
+    }
+
+    private List<String> noteLines(String notes) {
+        if (!StringUtils.hasText(notes)) {
+            return List.of();
+        }
+        return notes.lines()
+            .map(this::normalize)
+            .filter(value -> value != null)
+            .toList();
+    }
+
+    private String nextTaskAfterGoal(ExecutionPlan plan) {
+        return plan.deliverables().isEmpty() && plan.outputs().isEmpty()
+            ? "define_deliverables"
+            : "collect_user_guidance";
+    }
+
+    private String nextTaskAfterSection(ExecutionPlan plan, PlanSection section) {
+        if (section == PlanSection.DELIVERABLE || section == PlanSection.OUTPUT) {
+            return "collect_user_guidance";
+        }
+        if (section == PlanSection.ASSUMPTION || section == PlanSection.NOTE || section == PlanSection.INPUT) {
+            return "clarify_and_elaborate";
+        }
+        if (section == PlanSection.STEP) {
+            return "build_plan_steps";
+        }
+        if (section == PlanSection.VALIDATION_CRITERION) {
+            return "approval_readiness";
+        }
+        return plan.planningTask();
+    }
+
+    private String titleFromGoal(String goal) {
+        String compact = goal.trim().replaceAll("\\s+", " ");
+        if (compact.length() <= 64) {
+            return "Plan for " + compact;
+        }
+        return "Plan for " + compact.substring(0, 64).replaceAll("\\s+\\S*$", "").trim();
+    }
+
+    private String planTitle(ExecutionPlan plan) {
+        if (StringUtils.hasText(plan.title())) {
+            return plan.title();
+        }
+        if (StringUtils.hasText(plan.goal())) {
+            return titleFromGoal(plan.goal());
+        }
+        return "New Plan";
+    }
+
+    private void validateComplete(ExecutionPlan plan, String action) {
+        if (!StringUtils.hasText(plan.goal())) {
+            throw new IllegalArgumentException(action + " requires a goal");
+        }
+        if (effectiveDeliverables(plan).isEmpty()) {
+            throw new IllegalArgumentException(action + " requires at least one deliverable or output");
+        }
+        if (plan.steps().isEmpty()) {
+            throw new IllegalArgumentException(action + " requires at least one step");
+        }
+        if (plan.acceptanceCriteria().isEmpty()) {
+            throw new IllegalArgumentException(action + " requires at least one validation criterion");
+        }
+    }
+
+    private void appendPlanningAnswer(String conversationId, String question, String answer, String notes) {
+        StringBuilder message = new StringBuilder();
+        message.append("Planning answer\n\n");
+        message.append("Question: ").append(question).append("\n\n");
+        if (StringUtils.hasText(answer)) {
+            message.append("Answer: ").append(answer.trim()).append("\n");
+        }
+        if (StringUtils.hasText(notes)) {
+            message.append("Notes: ").append(notes.trim()).append("\n");
+        }
+        List<Message> messages = new ArrayList<>(chatMemoryRepository.findByConversationId(conversationId));
+        messages.add(new UserMessage(message.toString().trim()));
+        chatMemoryRepository.saveAll(conversationId, messages);
+    }
+
+    private List<String> effectiveDeliverables(ExecutionPlan plan) {
+        List<String> values = new ArrayList<>();
+        values.addAll(plan.deliverables());
+        for (String output : plan.outputs()) {
+            if (!values.contains(output)) {
+                values.add(output);
+            }
+        }
+        return List.copyOf(values);
+    }
+
+    private List<PlanStep> orderedSteps(List<String> steps) {
+        List<PlanStep> orderedSteps = new ArrayList<>();
+        for (String rawStep : steps == null ? List.<String>of() : steps) {
+            String step = normalize(rawStep);
+            if (step != null) {
+                orderedSteps.add(new PlanStep(orderedSteps.size() + 1, step));
+            }
+        }
+        return List.copyOf(orderedSteps);
+    }
+
+    private String choose(String value, String fallback) {
+        String normalized = normalize(value);
+        return normalized == null ? fallback : normalized;
+    }
+
+    private String mergeNotes(String existing, String addition) {
+        String cleanExisting = normalize(existing);
+        String cleanAddition = normalize(addition);
+        if (cleanExisting == null) {
+            return cleanAddition;
+        }
+        if (cleanAddition == null || cleanExisting.contains(cleanAddition)) {
+            return cleanExisting;
+        }
+        return cleanExisting + "\n" + cleanAddition;
     }
 
     private void addLabeled(List<String> entries, String label, String value) {
@@ -373,5 +967,48 @@ Execution reporting:
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private void appendValue(StringBuilder builder, String label, String value) {
+        if (StringUtils.hasText(value)) {
+            builder.append(label).append(": ").append(value).append("\n");
+        }
+    }
+
+    private void appendList(StringBuilder builder, String label, List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return;
+        }
+        builder.append(label).append(":\n");
+        for (String value : values) {
+            builder.append("- ").append(value).append("\n");
+        }
+    }
+
+    private void appendSteps(StringBuilder builder, List<PlanStep> steps) {
+        if (steps == null || steps.isEmpty()) {
+            return;
+        }
+        builder.append("Steps:\n");
+        for (PlanStep step : steps) {
+            builder.append(step.order()).append(". ").append(step.text()).append("\n");
+        }
+    }
+
+    private void appendMarkdownValue(StringBuilder builder, String label, String value) {
+        if (StringUtils.hasText(value)) {
+            builder.append("## ").append(label).append("\n\n").append(value.trim()).append("\n\n");
+        }
+    }
+
+    private void appendMarkdownList(StringBuilder builder, String label, List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return;
+        }
+        builder.append("## ").append(label).append("\n\n");
+        for (String value : values) {
+            builder.append("- ").append(value).append("\n");
+        }
+        builder.append("\n");
     }
 }

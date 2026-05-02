@@ -25,7 +25,10 @@ class FrontendControllerTest {
         assertThat(html).contains("grid-template-columns: auto minmax(5rem, 10rem) auto minmax(0, 1fr);");
         assertThat(html).contains("flex-direction: column;");
         assertThat(html).contains("width: 100%;");
-        assertThat(html).contains("/js/chat-client.js?v=21");
+        assertThat(html).contains("/js/chat-client.js?v=23");
+        assertThat(html).contains("id=\"chat-planning-panel\"");
+        assertThat(html).contains(".planning-preview-document");
+        assertThat(html).contains(".chat-message-transient");
         assertThat(html).contains(".chat-session-actions");
         assertThat(html).contains(".chat-session-rename");
         assertThat(html).contains(".chat-session-topline");
@@ -68,6 +71,13 @@ class FrontendControllerTest {
         assertThat(js).contains("method: 'DELETE'");
         assertThat(js).contains("if (!conversationId) {");
         assertThat(js).contains("renderHistory([]);");
+        assertThat(js).contains("data-planning-approval-preview");
+        assertThat(js).contains("approvalHtml");
+        assertThat(js).contains("Planning mode received.");
+        assertThat(js).contains("Execution request received.");
+        assertThat(js).contains("data-transient-assistant");
+        assertThat(js).contains("function clearPlanningPanel()");
+        assertThat(js).contains("clearPlanningPanel();");
     }
 
     private static class StubChatService extends ChatService {

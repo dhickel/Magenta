@@ -22,9 +22,10 @@ class ChatPlanRepositoryTest {
 
         ExecutionPlan saved = repository.find("conversation-1").orElseThrow();
         assertThat(saved.title()).isEqualTo("Second");
-        assertThat(saved.notes()).isEqualTo("Plan notes");
-        assertThat(saved.steps()).extracting(PlanStep::text).containsExactly("Execute");
+        assertThat(saved.notes()).contains("Plan notes");
         assertThat(saved.assumptions()).containsExactly("Use commands");
+        assertThat(saved.deliverables()).containsExactly("Deliverable");
+        assertThat(saved.steps()).extracting(PlanStep::text).containsExactly("Execute");
         assertThat(saved.acceptanceCriteria()).containsExactly("Show evidence");
         assertThat(saved.executionEvidence()).containsExactly("Evidence: checked");
     }
@@ -39,12 +40,16 @@ class ChatPlanRepositoryTest {
             title,
             "Summary",
             "Plan notes",
+            List.of("Deliverable"),
             List.of("Use commands"),
             steps.stream()
                 .map(step -> new PlanStep(steps.indexOf(step) + 1, step))
                 .toList(),
             List.of("Show evidence"),
             List.of("Evidence: checked"),
+            "qwen3",
+            PlanPrompt.none(),
+            List.of(new PlanAnswer("Question?", "Answer", "Notes", now.toString())),
             3,
             now,
             now

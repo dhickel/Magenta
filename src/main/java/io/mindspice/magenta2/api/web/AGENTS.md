@@ -4,7 +4,7 @@ This package owns HTTP and web-facing entry points.
 
 ### Responsibilities
 - Expose chat REST endpoints, SSE streaming endpoints, command endpoints, context usage payloads, structured tool activity updates, and simple web routes.
-- Expose chat plan state, including lightweight acceptance criteria and execution evidence.
+- Expose chat plan state, queued planning questions/actions, approval/continue actions, validation criteria, deliverables, validation feedback, and execution evidence.
 - Keep controllers thin and delegate behavior to services.
 - Keep HTTP status handling clear and local to the web layer.
 

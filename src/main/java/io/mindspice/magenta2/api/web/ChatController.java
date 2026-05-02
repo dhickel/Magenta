@@ -61,6 +61,20 @@ public class ChatController {
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter stream(@RequestBody ChatRequest.MsgRequest request) {
         ResolvedChatRequest resolvedRequest = chatService.resolve(request);
+        return streamResolved(resolvedRequest, false);
+    }
+
+    @PostMapping(value = "/{conversationId}/plan/execute/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamPlanExecution(@PathVariable String conversationId) {
+        requireValidUuid(conversationId);
+        try {
+            return streamResolved(chatService.resolveSavedPlanExecution(conversationId), true);
+        } catch (IllegalStateException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
+    }
+
+    private SseEmitter streamResolved(ResolvedChatRequest resolvedRequest, boolean planExecution) {
         ActiveTurn activeTurn = activeTurnRegistry.register(resolvedRequest.conversationId());
         SseEmitter emitter = new SseEmitter(0L);
         AtomicReference<Disposable> subscriptionRef = new AtomicReference<>();
@@ -164,7 +178,11 @@ public class ChatController {
             error -> {
                 try {
                     activeTurnRegistry.complete(activeTurn.turnId());
-                    chatService.discardLastUserMessage(resolvedRequest.conversationId(), resolvedRequest.message());
+                    if (planExecution && error instanceof RuntimeException runtimeException) {
+                        chatService.recordExecutionFailure(resolvedRequest.conversationId(), runtimeException);
+                    } else {
+                        chatService.discardLastUserMessage(resolvedRequest.conversationId(), resolvedRequest.message());
+                    }
                     sendEvent(emitter, "error", ChatStreamEvent.error(error.getMessage()));
                     emitter.complete();
                 } catch (Exception sendError) {
@@ -174,6 +192,9 @@ public class ChatController {
             () -> {
                 try {
                     activeTurnRegistry.complete(activeTurn.turnId());
+                    if (planExecution) {
+                        chatService.handlePlanExecutionStreamFinished(resolvedRequest.conversationId());
+                    }
                     ChatService.StoredContextUsage contextUsage = chatService.maintainContextUsage(
                         resolvedRequest.conversationId(),
                         resolvedRequest.model()
@@ -297,7 +318,7 @@ public class ChatController {
             case "clear" -> handleClear(request.conversationId(), optionalSingleArgument(rootCommand, parts, "a conversation UUID"));
             case "plan" -> {
                 requireNoArguments(rootCommand, parts);
-                yield handlePlan(request.conversationId());
+                yield handlePlan(request.conversationId(), request.model());
             }
             case "exit-plan" -> {
                 requireNoArguments(rootCommand, parts);
@@ -305,11 +326,7 @@ public class ChatController {
             }
             case "exec-plan" -> {
                 requireNoArguments(rootCommand, parts);
-                yield handleExecPlan(request.conversationId(), false);
-            }
-            case "clr-exec-plan" -> {
-                requireNoArguments(rootCommand, parts);
-                yield handleExecPlan(request.conversationId(), true);
+                yield handleExecPlan(request.conversationId());
             }
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "unknown command: " + rootCommand);
         };
@@ -319,6 +336,66 @@ public class ChatController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void clear(@PathVariable String conversationId) {
         chatService.clearConversation(conversationId);
+    }
+
+    @PostMapping("/{conversationId}/plan/answers")
+    public ChatResponse.MsgResponse answerPlanPrompt(
+        @PathVariable String conversationId,
+        @RequestBody ChatRequest.PlanAnswer request
+    ) {
+        requireValidUuid(conversationId);
+        try {
+            return chatService.submitPlanAnswer(
+                conversationId,
+                request == null ? null : request.answer(),
+                request == null ? null : request.notes(),
+                request == null ? null : request.questionIndex()
+            );
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
+    }
+
+    @PatchMapping("/{conversationId}/plan/approve")
+    public ChatPlanState approvePlan(@PathVariable String conversationId) {
+        requireValidUuid(conversationId);
+        try {
+            return chatService.approvePlan(conversationId);
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
+    }
+
+    @PatchMapping("/{conversationId}/plan/continue")
+    public ChatPlanState continuePlanning(@PathVariable String conversationId) {
+        requireValidUuid(conversationId);
+        try {
+            return chatService.continuePlanning(conversationId);
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
+    }
+
+    @PatchMapping("/{conversationId}/plan/save-task")
+    public ChatPlanState savePlanAsTask(@PathVariable String conversationId) {
+        requireValidUuid(conversationId);
+        try {
+            return chatService.savePlanAsTask(conversationId);
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
+    }
+
+    @PostMapping("/{conversationId}/plan/execute")
+    public ChatResponse.CmdResponse executePlan(@PathVariable String conversationId) {
+        requireValidUuid(conversationId);
+        return handleExecPlan(conversationId);
+    }
+
+    @DeleteMapping("/{conversationId}/plan")
+    public ChatResponse.CmdResponse cancelPlan(@PathVariable String conversationId) {
+        requireValidUuid(conversationId);
+        return handleExitPlan(conversationId);
     }
 
     private ChatResponse.CmdResponse handleNew() {
@@ -373,12 +450,12 @@ public class ChatController {
         );
     }
 
-    private ChatResponse.CmdResponse handlePlan(String requestConversationId) {
+    private ChatResponse.CmdResponse handlePlan(String requestConversationId, String selectedModel) {
         String conversationId = normalize(requestConversationId);
         if (conversationId == null) {
             conversationId = chatService.newConversationId();
         }
-        ChatResponse.MsgResponse response = chatService.beginPlan(conversationId);
+        ChatResponse.MsgResponse response = chatService.beginPlan(conversationId, selectedModel);
         List<String> conversationIds = new ArrayList<>(chatService.listConversationIds());
         if (!conversationIds.contains(conversationId)) {
             conversationIds.add(0, conversationId);
@@ -410,14 +487,14 @@ public class ChatController {
         );
     }
 
-    private ChatResponse.CmdResponse handleExecPlan(String requestConversationId, boolean clearContext) {
+    private ChatResponse.CmdResponse handleExecPlan(String requestConversationId) {
         String conversationId = requiredConversationId(
             requestConversationId,
-            clearContext ? "clr-exec-plan requires an active conversation" : "exec-plan requires an active conversation"
+            "exec-plan requires an active conversation"
         );
         ChatResponse.MsgResponse response;
         try {
-            response = chatService.executeSavedPlan(conversationId, clearContext);
+            response = chatService.executeSavedPlan(conversationId);
         } catch (IllegalStateException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }

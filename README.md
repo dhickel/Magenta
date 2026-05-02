@@ -96,6 +96,11 @@ Supported commands:
 - `/switch <uuid>`
 - `/clear`
 - `/clear <uuid>`
+- `/plan`
+- `/exit-plan`
+- `/exec-plan`
+
+Planning mode uses the configured `planningModel`, records goal, deliverables, optional inputs/outputs, assumptions, notes, detailed steps, and validation criteria. The planner can queue up to five free-response questions in the browser planning panel. `/exec-plan` clears chat context, streams execution from the approved plan, and requires `plan_complete` validation before the plan is marked completed.
 
 ## Browser demo
 
