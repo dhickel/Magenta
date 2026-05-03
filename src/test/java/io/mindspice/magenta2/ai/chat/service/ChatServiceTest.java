@@ -17,6 +17,7 @@ import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.ai.config.user.EndpointType;
 import io.mindspice.magenta2.ai.config.user.ModelConfig;
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.ollama.api.OllamaChatOptions;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
@@ -551,7 +552,7 @@ class ChatServiceTest {
             "magenta",
             10,
             null,
-            Map.of("local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 8192)),
+            Map.of("local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 8192, false)),
             Map.of("magenta", new AgentConfig("local-qwen", "You are Magenta.", List.of("test_tool")))
         );
     }
@@ -563,8 +564,8 @@ class ChatServiceTest {
             10,
             null,
             Map.of(
-                "local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 1400),
-                "summary", new ModelConfig("summary-model", "http://localhost:11434", EndpointType.OLLAMA, 512)
+                "local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 1400, false),
+                "summary", new ModelConfig("summary-model", "http://localhost:11434", EndpointType.OLLAMA, 512, false)
             ),
             Map.of("magenta", new AgentConfig("local-qwen", "You are Magenta.", List.of("test_tool")))
         );
@@ -577,7 +578,7 @@ class ChatServiceTest {
             "local-qwen",
             10,
             null,
-            Map.of("local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 8192)),
+            Map.of("local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 8192, false)),
             Map.of("magenta", new AgentConfig("local-qwen", "You are Magenta.", List.of("plan_set_goal")))
         );
     }
@@ -616,6 +617,16 @@ class ChatServiceTest {
         @Override
         public org.springframework.ai.chat.client.ChatClient chatClient(String model) {
             return chatClient;
+        }
+
+        @Override
+        public OllamaChatOptions ollamaOptions(String model) {
+            return OllamaChatOptions.builder().model(model).build();
+        }
+
+        @Override
+        public OllamaChatOptions.Builder ollamaOptionsBuilder(String model) {
+            return OllamaChatOptions.builder().model(model);
         }
     }
 
@@ -687,6 +698,16 @@ class ChatServiceTest {
         @Override
         public ChatModel chatModel(String model) {
             return chatModel;
+        }
+
+        @Override
+        public OllamaChatOptions ollamaOptions(String model) {
+            return OllamaChatOptions.builder().model(model).build();
+        }
+
+        @Override
+        public OllamaChatOptions.Builder ollamaOptionsBuilder(String model) {
+            return OllamaChatOptions.builder().model(model);
         }
     }
 

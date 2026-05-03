@@ -4,11 +4,13 @@ import java.nio.file.Path;
 import java.util.Map;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import org.springframework.util.StringUtils;
 
 public record AiConfig(
     String defaultAgent,
     @JsonProperty("summeryModel") String summeryModel,
     String planningModel,
+    @JsonProperty("compactionModel") String compactionModel,
     Integer contextBufferPercent,
     Path dataRoot,
     WebSearchConfig webSearch,
@@ -28,6 +30,10 @@ public record AiConfig(
         return planningModel == null || planningModel.isBlank() ? "local-gemma-26b" : planningModel;
     }
 
+    public String resolvedCompactionModelKey() {
+        return StringUtils.hasText(compactionModel) ? compactionModel : summeryModel;
+    }
+
     public AiConfig(
         String defaultAgent,
         String summeryModel,
@@ -37,7 +43,7 @@ public record AiConfig(
         Map<String, ModelConfig> models,
         Map<String, AgentConfig> agents
     ) {
-        this(defaultAgent, summeryModel, planningModel, contextBufferPercent, dataRoot, null, models, agents);
+        this(defaultAgent, summeryModel, planningModel, null, contextBufferPercent, dataRoot, null, models, agents);
     }
 
     public AiConfig(
@@ -49,7 +55,7 @@ public record AiConfig(
         Map<String, ModelConfig> models,
         Map<String, AgentConfig> agents
     ) {
-        this(defaultAgent, summeryModel, null, contextBufferPercent, dataRoot, webSearch, models, agents);
+        this(defaultAgent, summeryModel, null, null, contextBufferPercent, dataRoot, webSearch, models, agents);
     }
 
     public AiConfig(
@@ -60,7 +66,7 @@ public record AiConfig(
         Map<String, ModelConfig> models,
         Map<String, AgentConfig> agents
     ) {
-        this(defaultAgent, summeryModel, null, contextBufferPercent, dataRoot, null, models, agents);
+        this(defaultAgent, summeryModel, null, null, contextBufferPercent, dataRoot, null, models, agents);
     }
 
 }

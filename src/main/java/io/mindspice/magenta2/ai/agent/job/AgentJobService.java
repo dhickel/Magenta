@@ -16,7 +16,6 @@ import io.mindspice.magenta2.ai.execution.MagentaWorkExecutor;
 import io.mindspice.magenta2.ai.execution.MagentaWorkRequest;
 import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.ollama.api.OllamaChatOptions;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.task.TaskExecutor;
@@ -140,7 +139,7 @@ public class AgentJobService {
                     new org.springframework.ai.chat.messages.SystemMessage(TITLE_SYSTEM_PROMPT),
                     new org.springframework.ai.chat.messages.UserMessage("Title this conversation:\n\n" + firstUserMessage)
                 ),
-                OllamaChatOptions.builder().model(selectedModel).build()
+                chatModelRouter.ollamaOptions(selectedModel)
             ))
             .call()
             .chatClientResponse();

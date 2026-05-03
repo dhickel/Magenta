@@ -45,6 +45,7 @@ public final class ExternalAiConfigLoader {
             config.defaultAgent(),
             config.summeryModel(),
             config.planningModel(),
+            config.compactionModel(),
             config.contextBufferPercent(),
             config.dataRoot(),
             config.webSearch(),
@@ -81,6 +82,16 @@ public final class ExternalAiConfigLoader {
         }
         if (planningModel.contextLength() == null || planningModel.contextLength() <= 0) {
             throw new IllegalArgumentException("planningModel must define a positive contextLength: " + planningModelKey);
+        }
+        if (StringUtils.hasText(config.compactionModel())) {
+            String compactionModelKey = config.resolvedCompactionModelKey();
+            ModelConfig compactionModel = config.models().get(compactionModelKey);
+            if (compactionModel == null) {
+                throw new IllegalArgumentException("compactionModel references missing model: " + compactionModelKey);
+            }
+            if (compactionModel.contextLength() == null || compactionModel.contextLength() <= 0) {
+                throw new IllegalArgumentException("compactionModel must define a positive contextLength: " + compactionModelKey);
+            }
         }
         int bufferPercent = config.resolvedContextBufferPercent();
         if (bufferPercent < 1 || bufferPercent > 50) {

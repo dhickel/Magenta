@@ -32,7 +32,7 @@ public class ChatPlanRepository {
                 select conversation_id, mode, status, goal, title, summary, notes,
                        planning_task, deliverables_json, inputs_json, outputs_json, assumptions_json,
                        acceptance_criteria_json, execution_evidence_json, validation_feedback_json,
-                       pre_planning_model, pending_questions_json, pending_question_index,
+                       pre_planning_model, execution_model, pending_questions_json, pending_question_index,
                        plan_start_message_order, created_at, updated_at
                 from ai_chat_plans
                 where conversation_id = ?
@@ -59,6 +59,7 @@ public class ChatPlanRepository {
                     stringList(rs.getString("execution_evidence_json")),
                     stringList(rs.getString("validation_feedback_json")),
                     rs.getString("pre_planning_model"),
+                    rs.getString("execution_model"),
                     stringList(rs.getString("pending_questions_json")),
                     rs.getInt("pending_question_index"),
                     rs.getInt("plan_start_message_order"),
@@ -87,10 +88,10 @@ public class ChatPlanRepository {
                     conversation_id, mode, status, planning_task, goal, title, summary, notes,
                     deliverables_json, inputs_json, outputs_json, assumptions_json,
                     acceptance_criteria_json, execution_evidence_json, validation_feedback_json,
-                    pre_planning_model, pending_questions_json, pending_question_index,
+                    pre_planning_model, execution_model, pending_questions_json, pending_question_index,
                     plan_start_message_order, created_at, updated_at
                 )
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict(conversation_id) do update set
                     mode = excluded.mode,
                     status = excluded.status,
@@ -107,6 +108,7 @@ public class ChatPlanRepository {
                     execution_evidence_json = excluded.execution_evidence_json,
                     validation_feedback_json = excluded.validation_feedback_json,
                     pre_planning_model = excluded.pre_planning_model,
+                    execution_model = excluded.execution_model,
                     pending_questions_json = excluded.pending_questions_json,
                     pending_question_index = excluded.pending_question_index,
                     plan_start_message_order = excluded.plan_start_message_order,
@@ -128,6 +130,7 @@ public class ChatPlanRepository {
             stringListJson(plan.executionEvidence()),
             stringListJson(plan.validationFeedback()),
             plan.prePlanningModel(),
+            plan.executionModel(),
             stringListJson(plan.pendingQuestions()),
             plan.pendingQuestionIndex(),
             plan.planStartMessageOrder(),
@@ -165,6 +168,7 @@ public class ChatPlanRepository {
             plan.executionEvidence(),
             plan.validationFeedback(),
             plan.prePlanningModel(),
+            plan.executionModel(),
             plan.pendingQuestions(),
             plan.pendingQuestionIndex(),
             plan.planStartMessageOrder(),
@@ -236,6 +240,7 @@ public class ChatPlanRepository {
                 execution_evidence_json text,
                 validation_feedback_json text,
                 pre_planning_model text,
+                execution_model text,
                 pending_questions_json text,
                 pending_question_index integer not null default 0,
                 plan_start_message_order integer not null,
@@ -257,6 +262,7 @@ public class ChatPlanRepository {
         addColumn(columns, "execution_evidence_json", "alter table ai_chat_plans add column execution_evidence_json text");
         addColumn(columns, "validation_feedback_json", "alter table ai_chat_plans add column validation_feedback_json text");
         addColumn(columns, "pre_planning_model", "alter table ai_chat_plans add column pre_planning_model text");
+        addColumn(columns, "execution_model", "alter table ai_chat_plans add column execution_model text");
         addColumn(columns, "pending_questions_json", "alter table ai_chat_plans add column pending_questions_json text");
         addColumn(columns, "pending_question_index", "alter table ai_chat_plans add column pending_question_index integer not null default 0");
         jdbcTemplate.execute("""

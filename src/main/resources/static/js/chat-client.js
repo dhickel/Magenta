@@ -1018,6 +1018,8 @@
         const answer = String(formData.get('answer') || '').trim();
         const notes = String(formData.get('notes') || '').trim();
         const questionIndex = Number(formData.get('questionIndex') || 0);
+        appendPendingUserMessage(answer);
+        clearPlanningPanel();
         requestInFlight = true;
         setFormDisabled(true);
         try {

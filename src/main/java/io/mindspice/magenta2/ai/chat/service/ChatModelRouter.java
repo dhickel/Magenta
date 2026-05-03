@@ -51,6 +51,20 @@ public class ChatModelRouter {
         return resolve(model).config();
     }
 
+    public OllamaChatOptions ollamaOptions(String model) {
+        return ollamaOptionsBuilder(model).build();
+    }
+
+    public OllamaChatOptions.Builder ollamaOptionsBuilder(String model) {
+        ModelConfig config = modelConfig(model);
+        OllamaChatOptions.Builder builder = OllamaChatOptions.builder()
+            .model(config.remoteModelName());
+        if (config.think()) {
+            builder.enableThinking();
+        }
+        return builder;
+    }
+
     private ChatModel buildModel(ModelConfig modelConfig) {
         if (modelConfig.endpointType() != EndpointType.OLLAMA) {
             throw new IllegalStateException("Unsupported chat endpoint type: " + modelConfig.endpointType());
@@ -62,9 +76,14 @@ public class ChatModelRouter {
             throw new IllegalStateException("Ollama model must define remoteModelName");
         }
 
+        OllamaChatOptions.Builder optionsBuilder = OllamaChatOptions.builder()
+            .model(modelConfig.remoteModelName());
+        if (modelConfig.think()) {
+            optionsBuilder.enableThinking();
+        }
         return OllamaChatModel.builder()
             .ollamaApi(OllamaApi.builder().baseUrl(modelConfig.remoteEndpoint()).build())
-            .defaultOptions(OllamaChatOptions.builder().model(modelConfig.remoteModelName()).enableThinking().build())
+            .defaultOptions(optionsBuilder.build())
             .toolCallingManager(toolCallingManager)
             .observationRegistry(observationRegistry)
             .modelManagementOptions(ModelManagementOptions.defaults())

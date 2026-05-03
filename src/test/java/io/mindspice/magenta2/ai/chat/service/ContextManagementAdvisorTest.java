@@ -18,6 +18,7 @@ import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.ollama.api.OllamaChatOptions;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.content.MediaContent;
@@ -147,8 +148,8 @@ class ContextManagementAdvisorTest {
             10,
             null,
             Map.of(
-                "main", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 1200),
-                "summary", new ModelConfig("summary-model", "http://localhost:11434", EndpointType.OLLAMA, 512)
+                "main", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 1200, false),
+                "summary", new ModelConfig("summary-model", "http://localhost:11434", EndpointType.OLLAMA, 512, false)
             ),
             Map.of("magenta", new AgentConfig("main", "You are Magenta.", List.of()))
         );
@@ -188,6 +189,16 @@ class ContextManagementAdvisorTest {
         @Override
         public ChatClient chatClient(String model) {
             return chatClient;
+        }
+
+        @Override
+        public OllamaChatOptions ollamaOptions(String model) {
+            return OllamaChatOptions.builder().model(model).build();
+        }
+
+        @Override
+        public OllamaChatOptions.Builder ollamaOptionsBuilder(String model) {
+            return OllamaChatOptions.builder().model(model);
         }
     }
 

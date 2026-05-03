@@ -1,7 +1,8 @@
 {
   "defaultAgent": "magenta",
-  "summeryModel": "local-qwen",
-  "planningModel": "local-gemma-26b",
+  "summeryModel": "granite4.1:8b",
+  "planningModel": "local-qwen",
+  "compactionModel": "local-gemma-4eb",
   "contextBufferPercent": 10,
   "dataRoot": "/home/hickelpickle/.magenta/root",
   "webSearch": {
@@ -14,19 +15,29 @@
       "remoteModelName": "qwen3.6:35b",
       "remoteEndpoint": "http://192.168.1.112:11434",
       "endpointType": "OLLAMA",
-      "contextLength": 32768
+      "contextLength": 32768,
+      "think": true
+    },
+    "granite4.1:8b": {
+      "remoteModelName": "granite4.1:8b",
+      "remoteEndpoint": "http://192.168.1.112:11434",
+      "endpointType": "OLLAMA",
+      "contextLength": 32000,
+      "think": false
     },
     "local-gemma-e4b": {
       "remoteModelName": "gemma4-fullctx:e4b",
       "remoteEndpoint": "http://192.168.1.112:11434",
       "endpointType": "OLLAMA",
-      "contextLength": 128000
+      "contextLength": 128000,
+      "think": true
     },
     "local-gemma-26b": {
       "remoteModelName": "gemma4-26b:32k",
       "remoteEndpoint": "http://192.168.1.112:11434",
       "endpointType": "OLLAMA",
-      "contextLength": 32768
+      "contextLength": 32768,
+      "think": true
     }
   },
   "agents": {

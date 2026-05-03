@@ -13,7 +13,6 @@ import io.mindspice.magenta2.ai.config.user.ModelConfig;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.ollama.api.OllamaChatOptions;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -97,7 +96,7 @@ public class PlanCompletionService {
                     new SystemMessage(VALIDATOR_SYSTEM_PROMPT),
                     new UserMessage(validationInput(plan))
                 ),
-                OllamaChatOptions.builder().model(model).build()
+                chatModelRouter.ollamaOptions(model)
             ))
             .call()
             .content();
@@ -109,6 +108,9 @@ public class PlanCompletionService {
         ModelConfig planningModel = aiConfig.models().get(planningModelKey);
         if (planningModel != null && StringUtils.hasText(planningModel.remoteModelName())) {
             return planningModel.remoteModelName();
+        }
+        if (StringUtils.hasText(plan.executionModel())) {
+            return plan.executionModel();
         }
         if (StringUtils.hasText(plan.prePlanningModel())) {
             return plan.prePlanningModel();

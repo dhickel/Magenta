@@ -6,6 +6,7 @@ public record ModelConfig(
     @JsonProperty("remoteModelName") String remoteModelName,
     @JsonProperty("remoteEndpoint") String remoteEndpoint,
     @JsonProperty("endpointType") EndpointType endpointType,
-    @JsonProperty("contextLength") Integer contextLength
+    @JsonProperty("contextLength") Integer contextLength,
+    @JsonProperty("think") boolean think
 ) {
 }

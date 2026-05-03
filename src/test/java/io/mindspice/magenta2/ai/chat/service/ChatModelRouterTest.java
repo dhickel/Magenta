@@ -39,7 +39,7 @@ class ChatModelRouterTest {
             "magenta",
             10,
             null,
-            Map.of("openai", new ModelConfig("gpt-4o-mini", "https://api.example.test/v1", EndpointType.OPENAI_COMPATIBLE, 128000)),
+            Map.of("openai", new ModelConfig("gpt-4o-mini", "https://api.example.test/v1", EndpointType.OPENAI_COMPATIBLE, 128000, false)),
             Map.of("magenta", new AgentConfig("openai", "Prompt.", List.of()))
         );
         ChatModelRouter router = new ChatModelRouter(config, null, ObservationRegistry.NOOP);
@@ -56,8 +56,8 @@ class ChatModelRouterTest {
             10,
             null,
             Map.of(
-                "local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 8192),
-                "local-gemma", new ModelConfig("gemma4", "http://other-host:11434", EndpointType.OLLAMA, 32768)
+                "local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 8192, false),
+                "local-gemma", new ModelConfig("gemma4", "http://other-host:11434", EndpointType.OLLAMA, 32768, false)
             ),
             Map.of("magenta", new AgentConfig("local-qwen", "Prompt.", List.of()))
         );

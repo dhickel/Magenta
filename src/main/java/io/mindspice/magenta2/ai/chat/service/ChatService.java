@@ -409,7 +409,7 @@ public class ChatService {
         if (!StringUtils.hasText(prePlanningModel)) {
             prePlanningModel = defaultModel();
         }
-        planService.beginPlan(conversationId, prePlanningModel);
+        planService.beginPlan(conversationId, prePlanningModel, planningModel());
         return chat(resolve(conversationId, BEGIN_PLAN_MESSAGE, planningModel()).withoutTitleJob());
     }
 
@@ -498,7 +498,10 @@ public class ChatService {
 
     public ResolvedChatRequest resolveSavedPlanExecution(String conversationId) {
         requirePlanService();
-        String model = planService.prePlanningModel(conversationId);
+        String model = planService.executionModel(conversationId);
+        if (!StringUtils.hasText(model)) {
+            model = planService.prePlanningModel(conversationId);
+        }
         if (!StringUtils.hasText(model)) {
             model = storedConversationModel(conversationId);
         }
@@ -1043,8 +1046,8 @@ public class ChatService {
 
     private OllamaChatOptions toolOptions(String model, List<ToolCallback> approvedTools) {
         OllamaChatOptions options = StringUtils.hasText(model)
-            ? OllamaChatOptions.builder().model(model).enableThinking().build()
-            : OllamaChatOptions.builder().enableThinking().build();
+            ? chatModelRouter.ollamaOptions(model)
+            : OllamaChatOptions.builder().build();
         options.setInternalToolExecutionEnabled(false);
         options.setToolCallbacks(approvedTools);
         return options;
@@ -1052,8 +1055,8 @@ public class ChatService {
 
     private OllamaChatOptions toolFinalOptions(String model) {
         OllamaChatOptions options = StringUtils.hasText(model)
-            ? OllamaChatOptions.builder().model(model).enableThinking().build()
-            : OllamaChatOptions.builder().enableThinking().build();
+            ? chatModelRouter.ollamaOptions(model)
+            : OllamaChatOptions.builder().build();
         options.setInternalToolExecutionEnabled(false);
         options.setToolCallbacks(List.of());
         return options;
@@ -1371,7 +1374,7 @@ public class ChatService {
         prompt = prompt.user(request.message());
 
         if (StringUtils.hasText(request.model())) {
-            prompt = prompt.options(OllamaChatOptions.builder().model(request.model()).enableThinking().build());
+            prompt = prompt.options(chatModelRouter.ollamaOptions(request.model()));
         }
         return prompt;
     }

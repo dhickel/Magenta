@@ -25,7 +25,6 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.ollama.api.OllamaChatOptions;
 import org.springframework.ai.tokenizer.TokenCountEstimator;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
@@ -352,17 +351,18 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
     }
 
     private String summarize(List<Message> olderMessages) {
-        ModelConfig summeryModel = aiConfig.models().get(aiConfig.resolvedSummeryModelKey());
+        String compactionModelKey = aiConfig.resolvedCompactionModelKey();
+        ModelConfig compactionModel = aiConfig.models().get(compactionModelKey);
         String renderedConversation = renderConversation(olderMessages);
-        String summary = chatModelRouter.chatClient(summeryModel.remoteModelName())
+        String summary = chatModelRouter.chatClient(compactionModel.remoteModelName())
             .prompt()
             .system(SUMMARY_SYSTEM_PROMPT)
             .user(renderedConversation)
-            .options(OllamaChatOptions.builder().model(summeryModel.remoteModelName()).build())
+            .options(chatModelRouter.ollamaOptions(compactionModel.remoteModelName()))
             .call()
             .content();
         if (!StringUtils.hasText(summary)) {
-            throw new IllegalStateException("Context compaction failed: summery model returned an empty summary");
+            throw new IllegalStateException("Context compaction failed: compaction model returned an empty summary");
         }
         return summary.trim();
     }
