@@ -21,6 +21,9 @@ Added `finalMessage` parameter to `plan_complete` so the executing model submits
 - Execution instructions and the `plan_complete` tool description now describe `finalMessage` as the user-facing deliverable.
 - The `invalidExecutionCompletionControlMessage` repair message includes `finalMessage` in its instructions.
 
+# Bug Fix (2026-05-04)
+- Fixed a deserialization error where `plan_complete` calls failed with `Cannot construct instance of java.util.ArrayList... from String value`. The execution instructions listed `finalMessage` first, but it is the last parameter in the tool definition. Models following the instruction order produced JSON where the `finalMessage` string landed on a `List<String>` slot (the first non-String parameter). Reordered `executionInstructions()` to put `finalMessage` last, matching its position in the tool parameter list.
+
 # Risks
 - If the model omits `finalMessage` from `plan_complete`, the response will be empty after validation passes. The guard falls back to `new AssistantMessage("")`. A future enhancement could require `finalMessage` or provide a better fallback.
 - Breaking the tool loop is safe because it occurs between synchronous HTTP calls to Ollama — no mid-generation state is interrupted, and `PlanToolExecutionContext` cleanup runs in a finally block regardless.
