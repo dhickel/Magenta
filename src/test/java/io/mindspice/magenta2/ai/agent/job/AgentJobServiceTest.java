@@ -3,16 +3,9 @@ package io.mindspice.magenta2.ai.agent.job;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.List;
-import java.util.Map;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.chat.repository.AgentJobRepository;
 import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
-import io.mindspice.magenta2.ai.config.user.AgentConfig;
-import io.mindspice.magenta2.ai.config.user.AiConfig;
-import io.mindspice.magenta2.ai.config.user.EndpointType;
-import io.mindspice.magenta2.ai.config.user.ModelConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.task.SyncTaskExecutor;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -72,22 +65,21 @@ class AgentJobServiceTest {
     }
 
     @Test
-    void titleJobUsesConfiguredSummeryModel() {
+    void titleJobUsesChatModelDirectly() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         AgentJobRepository jobRepository = new AgentJobRepository(jdbcTemplate);
         ChatSessionMetadataRepository metadataRepository = new ChatSessionMetadataRepository(jdbcTemplate);
         FixedTitleAgentJobService service = new FixedTitleAgentJobService(
             jobRepository,
             metadataRepository,
-            aiConfig(),
             new SyncTaskExecutor(),
             "Useful Title"
         );
 
         service.submitConversationTitle("conversation-1", "chat-remote", "Please help me plan reminders");
 
-        assertThat(service.lastSelectedModel).isEqualTo("summary-remote");
-        assertThat(jobRepository.findAll().getFirst().selectedModel()).isEqualTo("summary-remote");
+        assertThat(service.lastSelectedModel).isEqualTo("chat-remote");
+        assertThat(jobRepository.findAll().getFirst().selectedModel()).isEqualTo("chat-remote");
     }
 
     @Test
@@ -137,20 +129,6 @@ class AgentJobServiceTest {
         return new JdbcTemplate(dataSource);
     }
 
-    private AiConfig aiConfig() {
-        return new AiConfig(
-            "magenta",
-            "summary-model",
-            10,
-            null,
-            Map.of(
-                "chat-model", new ModelConfig("chat-remote", "http://localhost:11434", EndpointType.OLLAMA, 8192, false, null),
-                "summary-model", new ModelConfig("summary-remote", "http://localhost:11434", EndpointType.OLLAMA, 8192, false, null)
-            ),
-            Map.of("magenta", new AgentConfig("chat-model", "prompt", List.of()))
-        );
-    }
-
     private static class FixedTitleAgentJobService extends AgentJobService {
         private final String title;
         private String lastSelectedModel;
@@ -158,21 +136,11 @@ class AgentJobServiceTest {
         FixedTitleAgentJobService(
             AgentJobRepository jobRepository,
             ChatSessionMetadataRepository metadataRepository,
-            AiConfig aiConfig,
             org.springframework.core.task.TaskExecutor executor,
             String title
         ) {
-            super(jobRepository, metadataRepository, null, aiConfig, new ObjectMapper(), executor);
+            super(jobRepository, metadataRepository, null, new ObjectMapper(), executor);
             this.title = title;
-        }
-
-        FixedTitleAgentJobService(
-            AgentJobRepository jobRepository,
-            ChatSessionMetadataRepository metadataRepository,
-            org.springframework.core.task.TaskExecutor executor,
-            String title
-        ) {
-            this(jobRepository, metadataRepository, null, executor, title);
         }
 
         @Override

@@ -1,7 +1,7 @@
 {
   "defaultAgent": "magenta",
   "summeryModel": "granite4.1:8b",
-  "planningModel": "local-qwen",
+  "planningModel": "deepseek-v4",
   "compactionModel": "local-gemma-e4b",
   "contextBufferPercent": 33,
   "dataRoot": "/home/hickelpickle/.magenta/root",

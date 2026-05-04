@@ -11,7 +11,6 @@ import io.mindspice.magenta2.ai.chat.repository.AgentJobRepository;
 import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
 import io.mindspice.magenta2.ai.chat.service.ChatModelRouter;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
-import io.mindspice.magenta2.ai.config.user.ModelConfig;
 import io.mindspice.magenta2.ai.execution.MagentaWorkExecutor;
 import io.mindspice.magenta2.ai.execution.MagentaWorkRequest;
 import org.springframework.ai.chat.client.ChatClientResponse;
@@ -25,11 +24,13 @@ import org.springframework.util.StringUtils;
 @Service
 public class AgentJobService {
 
+    static final int MAX_TITLE_LENGTH = 60;
+
     static final String TITLE_SYSTEM_PROMPT = """
         You write concise conversation titles for Magenta chat sessions.
-        Return only a short title. Do not use quotes, markdown, commentary, or punctuation-heavy labels.
-        """;
-    static final int MAX_TITLE_LENGTH = 80;
+        Return only a short title that identifies the topic or focus of the conversation.
+        Maximum length: %d characters. Do not use quotes, markdown, commentary, or punctuation-heavy labels.
+        """.formatted(MAX_TITLE_LENGTH);
 
     private final AgentJobRepository agentJobRepository;
     private final ChatSessionMetadataRepository chatSessionMetadataRepository;
@@ -86,12 +87,11 @@ public class AgentJobService {
         if (StringUtils.hasText(chatSessionMetadataRepository.findTitle(conversationId).orElse(null))) {
             return Optional.empty();
         }
-        String titleModel = titleModel(selectedModel);
         Optional<AgentJob> enqueued = agentJobRepository.enqueue(
             UUID.randomUUID().toString(),
             AgentJobType.CONVERSATION_TITLE,
             conversationId,
-            titleModel,
+            selectedModel,
             json(Map.of("firstUserMessage", firstUserMessage))
         );
         enqueued.ifPresent(job -> {
@@ -139,27 +139,12 @@ public class AgentJobService {
                     new org.springframework.ai.chat.messages.SystemMessage(TITLE_SYSTEM_PROMPT),
                     new org.springframework.ai.chat.messages.UserMessage("Title this conversation:\n\n" + firstUserMessage)
                 ),
-                chatModelRouter.ollamaOptions(selectedModel)
+                chatModelRouter.toolCallingOptions(selectedModel)
             ))
             .call()
             .chatClientResponse();
         String rawTitle = response.chatResponse().getResult().getOutput().getText();
         return cleanTitle(rawTitle);
-    }
-
-    String titleModel(String fallbackModel) {
-        if (aiConfig == null || aiConfig.models() == null) {
-            return fallbackModel;
-        }
-        String summeryModelKey = aiConfig.resolvedSummeryModelKey();
-        if (!StringUtils.hasText(summeryModelKey)) {
-            return fallbackModel;
-        }
-        ModelConfig summeryModel = aiConfig.models().get(summeryModelKey);
-        if (summeryModel == null || !StringUtils.hasText(summeryModel.remoteModelName())) {
-            return fallbackModel;
-        }
-        return summeryModel.remoteModelName();
     }
 
     String cleanTitle(String rawTitle) {
