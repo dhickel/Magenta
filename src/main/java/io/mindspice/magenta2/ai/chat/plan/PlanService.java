@@ -63,6 +63,7 @@ public class PlanService {
             List.of(),
             0,
             startOrder,
+            null,
             existing == null ? now : existing.createdAt(),
             now
         ));
@@ -97,6 +98,12 @@ public class PlanService {
         return planRepository.find(conversationId)
             .map(ExecutionPlan::executionModel)
             .filter(StringUtils::hasText)
+            .orElse(null);
+    }
+
+    public String finalMessage(String conversationId) {
+        return planRepository.find(conversationId)
+            .map(ExecutionPlan::finalMessage)
             .orElse(null);
     }
 
@@ -161,6 +168,7 @@ public class PlanService {
             existing.pendingQuestions(),
             existing.pendingQuestionIndex(),
             existing.planStartMessageOrder(),
+            existing.finalMessage(),
             existing.createdAt(),
             Instant.now()
         ));
@@ -219,6 +227,7 @@ public class PlanService {
             existing.pendingQuestions(),
             existing.pendingQuestionIndex(),
             existing.planStartMessageOrder(),
+            existing.finalMessage(),
             existing.createdAt(),
             Instant.now()
         ));
@@ -288,6 +297,7 @@ public class PlanService {
             cleanQuestions,
             0,
             existing.planStartMessageOrder(),
+            existing.finalMessage(),
             existing.createdAt(),
             Instant.now()
         ));
@@ -339,6 +349,7 @@ public class PlanService {
             pendingQuestions,
             pendingQuestions.isEmpty() ? 0 : nextIndex,
             plan.planStartMessageOrder(),
+            plan.finalMessage(),
             plan.createdAt(),
             Instant.now()
         ));
@@ -389,14 +400,44 @@ public class PlanService {
             List.of(),
             0,
             plan.planStartMessageOrder(),
+            null,
             plan.createdAt(),
             Instant.now()
         ));
     }
 
     public ExecutionPlan markCompleted(String conversationId) {
+        return markCompleted(conversationId, null);
+    }
+
+    public ExecutionPlan markCompleted(String conversationId, String finalMessage) {
         ExecutionPlan plan = requirePlanConversation(conversationId);
-        return planRepository.save(copyWith(plan, PlanMode.NORMAL, PlanStatus.COMPLETED, List.of(), 0));
+        return planRepository.save(new ExecutionPlan(
+            plan.conversationId(),
+            PlanMode.NORMAL,
+            PlanStatus.COMPLETED,
+            plan.planningTask(),
+            plan.goal(),
+            plan.title(),
+            plan.summary(),
+            plan.notes(),
+            plan.deliverables(),
+            plan.inputs(),
+            plan.outputs(),
+            plan.assumptions(),
+            plan.steps(),
+            plan.acceptanceCriteria(),
+            plan.executionEvidence(),
+            plan.validationFeedback(),
+            plan.prePlanningModel(),
+            plan.executionModel(),
+            List.of(),
+            0,
+            plan.planStartMessageOrder(),
+            finalMessage,
+            plan.createdAt(),
+            Instant.now()
+        ));
     }
 
     public ExecutionPlan markNeedsReview(String conversationId) {
@@ -465,6 +506,7 @@ public class PlanService {
             plan.pendingQuestions(),
             plan.pendingQuestionIndex(),
             plan.planStartMessageOrder(),
+            plan.finalMessage(),
             plan.createdAt(),
             Instant.now()
         ));
@@ -592,7 +634,8 @@ Work through the plan directly. Track each validation criterion explicitly as yo
 
 During execution, call plan_report periodically to save evidence incrementally. This protects evidence from context compaction.
 
-Before your final answer, call plan_complete with:
+When ready to complete, call plan_complete with:
+- finalMessage: your intended user-facing completion message. This exact text is delivered verbatim to the user after validation passes. Include a concise work summary, the outcome for each deliverable, and any notable results. If the deliverable IS a chat message (a written report, drafted content, etc.), this IS the deliverable — write the complete user-facing text here.
 - One evidence entry per validation criterion from the approved plan above, formatted as 'Criterion: <exact criterion text> | Evidence: <specific proof>'
 - Artifact paths for any files created — the validator will auto-read these files, so you don't need to duplicate their contents in the evidence entries
 - Deviations from the plan, if any
@@ -699,6 +742,7 @@ Approved plan:
             pendingQuestions,
             pendingQuestionIndex,
             plan.planStartMessageOrder(),
+            plan.finalMessage(),
             plan.createdAt(),
             Instant.now()
         );
@@ -727,6 +771,7 @@ Approved plan:
             plan.pendingQuestions(),
             plan.pendingQuestionIndex(),
             plan.planStartMessageOrder(),
+            plan.finalMessage(),
             plan.createdAt(),
             Instant.now()
         );
@@ -755,6 +800,7 @@ Approved plan:
             plan.pendingQuestions(),
             plan.pendingQuestionIndex(),
             plan.planStartMessageOrder(),
+            plan.finalMessage(),
             plan.createdAt(),
             Instant.now()
         ));
@@ -791,6 +837,7 @@ Approved plan:
             plan.pendingQuestions(),
             plan.pendingQuestionIndex(),
             plan.planStartMessageOrder(),
+            plan.finalMessage(),
             plan.createdAt(),
             Instant.now()
         ));

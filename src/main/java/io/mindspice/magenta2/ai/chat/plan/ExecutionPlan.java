@@ -25,6 +25,7 @@ public record ExecutionPlan(
     List<String> pendingQuestions,
     int pendingQuestionIndex,
     int planStartMessageOrder,
+    String finalMessage,
     Instant createdAt,
     Instant updatedAt
 ) {
@@ -79,6 +80,7 @@ public record ExecutionPlan(
             List.of(),
             0,
             planStartMessageOrder,
+            null,
             createdAt,
             updatedAt
         );
@@ -126,6 +128,7 @@ public record ExecutionPlan(
             pendingPrompt != null && pendingPrompt.active() ? List.of(pendingPrompt.question()) : List.of(),
             0,
             planStartMessageOrder,
+            null,
             createdAt,
             updatedAt
         );

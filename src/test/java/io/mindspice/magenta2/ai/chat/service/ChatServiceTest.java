@@ -564,7 +564,8 @@ class ChatServiceTest {
 
         assertThat(response.response()).isEqualTo("Validated completion is done.");
         assertThat(planService.activePlan("conversation-1").orElseThrow().status().name()).isEqualTo("COMPLETED");
-        assertThat(chatModel.prompts).hasSize(3);
+        assertThat(planService.finalMessage("conversation-1")).isEqualTo("Validated completion is done.");
+        assertThat(chatModel.prompts).hasSize(2);
         assertThat(chatModel.prompts.get(1).getInstructions().stream()
             .map(message -> message.getText() == null ? "" : message.getText())
             .collect(java.util.stream.Collectors.joining("\n")))
@@ -1011,7 +1012,7 @@ class ChatServiceTest {
 
         @Override
         public ToolExecutionResult executeToolCalls(Prompt prompt, ChatResponse chatResponse) {
-            planService.markCompleted("conversation-1");
+            planService.markCompleted("conversation-1", "Validated completion is done.");
             Message responseMessage = ToolResponseMessage.builder()
                 .responses(List.of(new ToolResponseMessage.ToolResponse(
                     "plan-complete-call",

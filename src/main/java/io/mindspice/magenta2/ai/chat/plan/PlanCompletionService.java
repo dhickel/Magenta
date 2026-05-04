@@ -23,10 +23,11 @@ import org.springframework.util.StringUtils;
 public class PlanCompletionService {
     private static final String VALIDATOR_SYSTEM_PROMPT = """
         You are Magenta's plan validator.
-        Review whether the execution evidence and artifact contents satisfy every deliverable and validation criterion in the approved plan.
+        Review whether the execution evidence, artifact contents, AND proposed final message satisfy every deliverable and validation criterion in the approved plan.
+        The proposed final message will be delivered verbatim to the user after validation passes. Verify it accurately represents the completed work, is consistent with the evidence, and contains no unverified claims.
         Cross-reference each criterion against the provided evidence and artifact file contents.
         Return strict JSON only, with keys: complete, summary, findings, remediationSteps.
-        complete must be true only when every deliverable and validation criterion is satisfied by specific, verifiable evidence (not just a claim of completion).
+        complete must be true only when every deliverable and validation criterion is satisfied by specific, verifiable evidence (not just a claim of completion), and the final message accurately reflects the verified results.
         If incomplete, remediationSteps must name the exact unmet criterion and what specific evidence is missing or insufficient.
         """;
 
@@ -54,7 +55,8 @@ public class PlanCompletionService {
         List<String> evidence,
         List<String> deviations,
         List<String> unmetCriteria,
-        List<String> artifactPaths
+        List<String> artifactPaths,
+        String finalMessage
     ) {
         List<String> reportedArtifactPaths = cleanList(artifactPaths);
         ExecutionPlan reported = planService.recordExecutionReport(
@@ -66,11 +68,11 @@ public class PlanCompletionService {
             reportedArtifactPaths
         );
         ValidationResult result = coverageValidation(reported, evidence)
-            .orElseGet(() -> validate(reported, reportedArtifactPaths));
+            .orElseGet(() -> validate(reported, reportedArtifactPaths, finalMessage));
         List<String> feedback = feedback(result);
         planService.recordValidationFeedback(conversationId, feedback);
         if (result.complete()) {
-            planService.markCompleted(conversationId);
+            planService.markCompleted(conversationId, finalMessage);
             return "Plan validation passed. The plan is marked COMPLETED.\n\n" + renderFeedback(feedback);
         }
         return "Plan validation failed. Continue execution and address these remediation steps before calling plan_complete again.\n\n"
@@ -117,7 +119,7 @@ public class PlanCompletionService {
         return normalize(label);
     }
 
-    private ValidationResult validate(ExecutionPlan plan, List<String> artifactPaths) {
+    private ValidationResult validate(ExecutionPlan plan, List<String> artifactPaths, String finalMessage) {
         if (chatModelRouter == null || aiConfig == null || aiConfig.models() == null) {
             return new ValidationResult(
                 false,
@@ -139,7 +141,7 @@ public class PlanCompletionService {
             .prompt(new Prompt(
                 List.of(
                     new SystemMessage(VALIDATOR_SYSTEM_PROMPT),
-                    new UserMessage(validationInput(plan, artifactPaths))
+                    new UserMessage(validationInput(plan, artifactPaths, finalMessage))
                 ),
                 chatModelRouter.ollamaOptions(model)
             ))
@@ -163,7 +165,7 @@ public class PlanCompletionService {
         return null;
     }
 
-    private String validationInput(ExecutionPlan plan, List<String> artifactPaths) {
+    private String validationInput(ExecutionPlan plan, List<String> artifactPaths, String finalMessage) {
         StringBuilder builder = new StringBuilder();
         builder.append("Approved plan:\n\n")
             .append(planService.approvalMarkdown(plan))
@@ -175,6 +177,10 @@ public class PlanCompletionService {
                 builder.append("--- ").append(path).append(" ---\n");
                 builder.append(readArtifact(path)).append("\n");
             }
+        }
+        if (StringUtils.hasText(finalMessage)) {
+            builder.append("\nProposed final message (will be delivered verbatim to the user):\n\n")
+                .append(finalMessage).append("\n");
         }
         if (!plan.validationFeedback().isEmpty()) {
             builder.append("\nPrior validation feedback:\n");

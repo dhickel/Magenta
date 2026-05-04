@@ -198,7 +198,7 @@ public class PlanSaveTools {
 
     @Tool(
         name = "plan_complete",
-        description = "Request final validation for an executed saved plan. Provide evidence for each validation criterion from the approved plan. A validator reviews the plan, evidence, and artifact contents; if validation fails, continue with the returned remediation."
+        description = "Request final validation for an executed saved plan. Provide evidence for each validation criterion from the approved plan. A validator reviews the plan, evidence, artifact contents, and the proposed final message; if validation passes, finalMessage is delivered verbatim as the completion message to the user. If validation fails, continue with the returned remediation."
     )
     public String complete(
         @ToolParam(required = false, description = "Brief execution result summary.")
@@ -210,7 +210,9 @@ public class PlanSaveTools {
         @ToolParam(required = false, description = "Validation criteria that remain unmet.")
         List<String> unmetCriteria,
         @ToolParam(required = false, description = "Artifacts created or used during execution. These files will be auto-read and their contents included in validation.")
-        List<String> artifactPaths
+        List<String> artifactPaths,
+        @ToolParam(required = false, description = "Intended final user-facing message summarizing the completed work. This exact text is delivered verbatim to the user after validation passes. Include a concise summary of what was accomplished and the outcome for each deliverable. If the deliverable itself IS a chat message (e.g., a drafted report, summary, or response), this IS the deliverable — write the complete user-facing text here.")
+        String finalMessage
     ) {
         PlanToolContext context = requireMode(PlanMode.EXECUTE_PLAN, "plan_complete");
         PlanCompletionService planCompletionService = planCompletionServiceProvider == null
@@ -225,7 +227,8 @@ public class PlanSaveTools {
             evidence,
             deviations,
             unmetCriteria,
-            artifactPaths
+            artifactPaths,
+            finalMessage
         );
     }
 

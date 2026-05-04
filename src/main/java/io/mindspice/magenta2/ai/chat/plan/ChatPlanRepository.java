@@ -33,7 +33,7 @@ public class ChatPlanRepository {
                        planning_task, deliverables_json, inputs_json, outputs_json, assumptions_json,
                        acceptance_criteria_json, execution_evidence_json, validation_feedback_json,
                        pre_planning_model, execution_model, pending_questions_json, pending_question_index,
-                       plan_start_message_order, created_at, updated_at
+                       plan_start_message_order, final_message, created_at, updated_at
                 from ai_chat_plans
                 where conversation_id = ?
                 """,
@@ -63,6 +63,7 @@ public class ChatPlanRepository {
                     stringList(rs.getString("pending_questions_json")),
                     rs.getInt("pending_question_index"),
                     rs.getInt("plan_start_message_order"),
+                    rs.getString("final_message"),
                     Instant.parse(rs.getString("created_at")),
                     Instant.parse(rs.getString("updated_at"))
                 ));
@@ -89,9 +90,9 @@ public class ChatPlanRepository {
                     deliverables_json, inputs_json, outputs_json, assumptions_json,
                     acceptance_criteria_json, execution_evidence_json, validation_feedback_json,
                     pre_planning_model, execution_model, pending_questions_json, pending_question_index,
-                    plan_start_message_order, created_at, updated_at
+                    plan_start_message_order, final_message, created_at, updated_at
                 )
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict(conversation_id) do update set
                     mode = excluded.mode,
                     status = excluded.status,
@@ -112,6 +113,7 @@ public class ChatPlanRepository {
                     pending_questions_json = excluded.pending_questions_json,
                     pending_question_index = excluded.pending_question_index,
                     plan_start_message_order = excluded.plan_start_message_order,
+                    final_message = excluded.final_message,
                     updated_at = excluded.updated_at
                 """,
             plan.conversationId(),
@@ -134,6 +136,7 @@ public class ChatPlanRepository {
             stringListJson(plan.pendingQuestions()),
             plan.pendingQuestionIndex(),
             plan.planStartMessageOrder(),
+            plan.finalMessage(),
             createdAt.toString(),
             updatedAt.toString()
         );
@@ -172,6 +175,7 @@ public class ChatPlanRepository {
             plan.pendingQuestions(),
             plan.pendingQuestionIndex(),
             plan.planStartMessageOrder(),
+            plan.finalMessage(),
             createdAt,
             updatedAt
         );
@@ -265,6 +269,7 @@ public class ChatPlanRepository {
         addColumn(columns, "execution_model", "alter table ai_chat_plans add column execution_model text");
         addColumn(columns, "pending_questions_json", "alter table ai_chat_plans add column pending_questions_json text");
         addColumn(columns, "pending_question_index", "alter table ai_chat_plans add column pending_question_index integer not null default 0");
+        addColumn(columns, "final_message", "alter table ai_chat_plans add column final_message text");
         jdbcTemplate.execute("""
             create table if not exists ai_chat_plan_steps (
                 conversation_id text not null,

@@ -45,7 +45,8 @@ class PlanCompletionServiceTest {
             List.of("Criterion: Validate alpha | Evidence: checked alpha"),
             List.of(),
             List.of(),
-            List.of()
+            List.of(),
+            null
         );
 
         ExecutionPlan plan = planService.activePlan("conversation-1").orElseThrow();

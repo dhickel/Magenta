@@ -808,6 +808,8 @@ public class ChatService {
             int emptyFinalResponseRetries = 0;
             int planTurnRepairRetries = 0;
             int executionCompletionRepairRetries = 0;
+            boolean planCompletionDetected = false;
+            String validatedFinalMessage = null;
             boolean continueModelLoop = true;
             while (continueModelLoop) {
                 continueModelLoop = false;
@@ -887,6 +889,12 @@ public class ChatService {
                     if (toolMessageConsumer != null) {
                         pendingToolMessages.forEach(toolMessageConsumer);
                     }
+                    if (mode == PlanMode.EXECUTE_PLAN && planService != null
+                        && planService.mode(request.conversationId()) != PlanMode.EXECUTE_PLAN) {
+                        validatedFinalMessage = planService.finalMessage(request.conversationId());
+                        planCompletionDetected = true;
+                        break;
+                    }
                     phase(activeTurn, ActiveTurnPhase.MODEL_CALL);
                     response = chatModelRouter.chatModel(request.model()).call(prompt);
                 }
@@ -917,7 +925,7 @@ public class ChatService {
                     continue;
                 }
 
-                if (isEmptyFinalResponse(response) && emptyFinalResponseRetries < EMPTY_FINAL_RESPONSE_RETRY_LIMIT) {
+                if (!planCompletionDetected && isEmptyFinalResponse(response) && emptyFinalResponseRetries < EMPTY_FINAL_RESPONSE_RETRY_LIMIT) {
                     collectThinking(response, thinkingParts);
                     emptyFinalResponseRetries++;
                     Message controlMessage = emptyFinalResponseControlMessage(mode);
@@ -965,11 +973,18 @@ public class ChatService {
             phase(activeTurn, ActiveTurnPhase.COMPLETING);
             collectThinking(response, thinkingParts);
 
-            AssistantMessage finalAssistantMessage = StringUtils.hasText(forcedPlanningQuestion)
-                ? new AssistantMessage(forcedPlanningQuestion)
-                : response == null || response.getResult() == null
-                ? new AssistantMessage("")
-                : assistantMessageWithThinking(response.getResult(), combinedThinking(thinkingParts));
+            AssistantMessage finalAssistantMessage;
+            if (planCompletionDetected) {
+                finalAssistantMessage = StringUtils.hasText(validatedFinalMessage)
+                    ? new AssistantMessage(validatedFinalMessage)
+                    : new AssistantMessage("");
+            } else if (StringUtils.hasText(forcedPlanningQuestion)) {
+                finalAssistantMessage = new AssistantMessage(forcedPlanningQuestion);
+            } else if (response == null || response.getResult() == null) {
+                finalAssistantMessage = new AssistantMessage("");
+            } else {
+                finalAssistantMessage = assistantMessageWithThinking(response.getResult(), combinedThinking(thinkingParts));
+            }
             if (finalAssistantMessage != null) {
                 messagesToPersist.add(finalAssistantMessage);
             }
@@ -1156,6 +1171,7 @@ public class ChatService {
             Continue the same execution turn now. You may keep working or report incomplete work, but before any final user-visible completion answer you must call plan_complete.
             plan_complete must include one evidence entry per approved validation criterion, formatted as:
             Criterion: <exact criterion text> | Evidence: <specific proof>
+            Also include your finalMessage: the exact text that will be shown to the user after validation passes.
             If a criterion is not met, include it in unmetCriteria with the specific missing work or evidence.
             If validation fails, address the returned remediation and call plan_complete again.
             Do not finish with ordinary assistant text until plan_complete has passed validation.
