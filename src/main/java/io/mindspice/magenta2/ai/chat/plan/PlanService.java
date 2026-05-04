@@ -635,11 +635,11 @@ Work through the plan directly. Track each validation criterion explicitly as yo
 During execution, call plan_report periodically to save evidence incrementally. This protects evidence from context compaction.
 
 When ready to complete, call plan_complete with:
-- finalMessage: your intended user-facing completion message. This exact text is delivered verbatim to the user after validation passes. Include a concise work summary, the outcome for each deliverable, and any notable results. If the deliverable IS a chat message (a written report, drafted content, etc.), this IS the deliverable — write the complete user-facing text here.
 - One evidence entry per validation criterion from the approved plan above, formatted as 'Criterion: <exact criterion text> | Evidence: <specific proof>'
 - Artifact paths for any files created — the validator will auto-read these files, so you don't need to duplicate their contents in the evidence entries
 - Deviations from the plan, if any
 - Unmet criteria, if any
+- finalMessage: your intended user-facing completion message, delivered verbatim to the user after validation passes. Include a concise work summary, the outcome for each deliverable, and any notable results. If the deliverable IS a chat message (a written report, drafted content, etc.), this IS the deliverable — write the complete user-facing text here.
 
 Magenta will run a validator pass; if validation fails, use the returned remediation details and continue work before trying plan_complete again.
 
