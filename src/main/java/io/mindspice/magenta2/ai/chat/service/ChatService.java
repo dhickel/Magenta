@@ -15,6 +15,10 @@ import java.util.regex.Matcher;
 import java.util.LinkedHashMap;
 import java.util.regex.Pattern;
 
+import java.io.IOException;
+
+import org.springframework.web.client.ResourceAccessException;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.agent.job.AgentJobService;
@@ -59,6 +63,8 @@ import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.model.tool.DefaultToolCallingChatOptions;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.retry.NonTransientAiException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -67,6 +73,8 @@ import reactor.core.publisher.Flux;
 
 @Service
 public class ChatService {
+    private static final Logger logger = LoggerFactory.getLogger(ChatService.class);
+
     static final String THINKING_METADATA_KEY = "thinking";
     static final String MESSAGE_THINKING_METADATA_KEY = "magenta.thinking";
 
@@ -248,7 +256,7 @@ public class ChatService {
         List<ToolCallback> approvedTools = approvedTools(resolvedRequest);
         if (!approvedTools.isEmpty() && supportsTools(resolvedRequest.model())) {
             try {
-                return toolChat(resolvedRequest, approvedTools, null, activeTurn).response();
+                return toolChatWithRetry(resolvedRequest, approvedTools, activeTurn);
             } catch (NonTransientAiException exception) {
                 if (!isToolUnsupported(exception)) {
                     throw exception;
@@ -342,7 +350,7 @@ public class ChatService {
             // Try the tool-capable path first. Models that reject tools are remembered and use plain chat later.
             return Flux.<ChatMessage>create(sink -> {
                 try {
-                    ChatMessage finalMessage = toolChatMessage(request, approvedTools, sink::next, activeTurn);
+                    ChatMessage finalMessage = toolChatMessageWithRetry(request, approvedTools, sink::next, activeTurn);
                     sink.next(finalMessage);
                     sink.complete();
                 } catch (RuntimeException exception) {
@@ -832,6 +840,7 @@ public class ChatService {
         ToolCallingChatOptions options = toolOptions(request.model(), approvedTools);
         Prompt prompt = new Prompt(preparedPrompt.messages(), options);
         PlanMode mode = planService == null ? PlanMode.NORMAL : planService.mode(request.conversationId());
+        logger.debug("Starting tool chat turn conv={} mode={} model={}", request.conversationId(), mode, request.model());
         PlanToolExecutionContext.set(new PlanToolContext(request.conversationId(), mode));
         auditUserMessage(request);
         try {
@@ -858,6 +867,7 @@ public class ChatService {
                     try {
                         toolLoopGuard.recordToolCalls(response.getResult().getOutput().getToolCalls());
                     } catch (ToolUseAbort abort) {
+                        logger.warn("Tool use aborted conv={} (identical calls): {}", request.conversationId(), abort.getMessage());
                         toolUseAbort = abort;
                         conversationHistory = new ArrayList<>(prompt.getInstructions());
                         break;
@@ -902,6 +912,7 @@ public class ChatService {
                     try {
                         toolLoopGuard.recordToolResponses(toolExecutionResult);
                     } catch (ToolUseAbort abort) {
+                        logger.warn("Tool use aborted conv={} (error rate): {}", request.conversationId(), abort.getMessage());
                         toolUseAbort = abort;
                         break;
                     }
@@ -1052,7 +1063,12 @@ public class ChatService {
                 finalAssistantMessage == null ? "" : finalAssistantMessage.getText()
             ));
             enqueueTitleJobIfFirstTurn(request);
+            logger.debug("Tool chat turn completed conv={} mode={} tokens={}",
+                request.conversationId(), mode, maintenance.usage() != null ? maintenance.usage().usedTokens() : "?");
             return new ToolChatResult(chatResponse, finalMessage);
+        } catch (RuntimeException e) {
+            logger.error("Tool chat turn failed conv={} mode={}: {}", request.conversationId(), mode, e.getMessage(), e);
+            throw e;
         } finally {
             PlanToolExecutionContext.clear();
         }
@@ -1670,6 +1686,83 @@ public class ChatService {
             current = current.getCause();
         }
         return current;
+    }
+
+    // ── Conversation snapshot / restore for transient-failure recovery ──
+
+    private List<Message> snapshotConversation(String conversationId) {
+        if (!StringUtils.hasText(conversationId) || chatMemoryRepository == null) {
+            return List.of();
+        }
+        return new ArrayList<>(chatMemoryRepository.findByConversationId(conversationId));
+    }
+
+    private void restoreConversation(String conversationId, List<Message> snapshot) {
+        if (!StringUtils.hasText(conversationId) || chatMemoryRepository == null) {
+            return;
+        }
+        chatMemoryRepository.saveAll(conversationId, snapshot);
+    }
+
+    private boolean isRetryable(Throwable error) {
+        Throwable unwrapped = unwrap(error);
+        if (unwrapped instanceof ResourceAccessException) {
+            return true;
+        }
+        if (unwrapped instanceof IOException) {
+            return true;
+        }
+        if (unwrapped instanceof InterruptedException) {
+            return true;
+        }
+        return false;
+    }
+
+    private ChatMessage toolChatMessageWithRetry(
+        ResolvedChatRequest request,
+        List<ToolCallback> approvedTools,
+        Consumer<ChatMessage> toolMessageConsumer,
+        ActiveTurn activeTurn
+    ) {
+        List<Message> snapshot = snapshotConversation(request.conversationId());
+        try {
+            return toolChatMessage(request, approvedTools, toolMessageConsumer, activeTurn);
+        } catch (RuntimeException e) {
+            if (!isRetryable(e)) {
+                throw e;
+            }
+            logger.warn("Retrying turn after transient failure conv={}: {}", request.conversationId(), e.getMessage());
+            restoreConversation(request.conversationId(), snapshot);
+            try {
+                return toolChatMessage(request, approvedTools, toolMessageConsumer, activeTurn);
+            } catch (RuntimeException retryException) {
+                restoreConversation(request.conversationId(), snapshot);
+                throw retryException;
+            }
+        }
+    }
+
+    private ChatResponse.MsgResponse toolChatWithRetry(
+        ResolvedChatRequest request,
+        List<ToolCallback> approvedTools,
+        ActiveTurn activeTurn
+    ) {
+        List<Message> snapshot = snapshotConversation(request.conversationId());
+        try {
+            return toolChat(request, approvedTools, null, activeTurn).response();
+        } catch (RuntimeException e) {
+            if (!isRetryable(e)) {
+                throw e;
+            }
+            logger.warn("Retrying turn after transient failure conv={}: {}", request.conversationId(), e.getMessage());
+            restoreConversation(request.conversationId(), snapshot);
+            try {
+                return toolChat(request, approvedTools, null, activeTurn).response();
+            } catch (RuntimeException retryException) {
+                restoreConversation(request.conversationId(), snapshot);
+                throw retryException;
+            }
+        }
     }
 
     public record ResolvedChatRequest(

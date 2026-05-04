@@ -82,7 +82,9 @@ public class ActiveTurnRegistry {
 
         public synchronized void phase(ActiveTurnPhase phase) {
             this.phase = phase;
-            this.acceptsInterrupts = phase == ActiveTurnPhase.TOOL_CALL || phase == ActiveTurnPhase.TOOL_CHECKPOINT;
+            this.acceptsInterrupts = phase == ActiveTurnPhase.TOOL_CALL
+                || phase == ActiveTurnPhase.TOOL_CHECKPOINT
+                || phase == ActiveTurnPhase.MODEL_CALL;
         }
 
         public synchronized InterruptResult interrupt(String message) {
