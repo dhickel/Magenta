@@ -1,5 +1,7 @@
 package io.mindspice.magenta2.ai.chat.service;
 
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -18,8 +20,10 @@ import org.springframework.ai.ollama.management.ModelManagementOptions;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import org.springframework.web.client.RestClient;
 
 @Component
 public class ChatModelRouter {
@@ -117,11 +121,18 @@ public class ChatModelRouter {
             throw new IllegalStateException(
                 "OpenAI-compatible model must define apiKey: " + modelConfig.remoteModelName());
         }
+        HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(30))
+            .build();
+        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
+        requestFactory.setReadTimeout(Duration.ofSeconds(120));
+        RestClient.Builder restClientBuilder = RestClient.builder().requestFactory(requestFactory);
         OpenAiApi api = OpenAiApi.builder()
             .baseUrl(modelConfig.remoteEndpoint())
             .apiKey(modelConfig.apiKey())
             .completionsPath("/v1/chat/completions")
             .embeddingsPath("/v1/embeddings")
+            .restClientBuilder(restClientBuilder)
             .build();
         OpenAiChatOptions options = OpenAiChatOptions.builder()
             .model(modelConfig.remoteModelName())

@@ -152,6 +152,7 @@ public class MagentaWorkExecutor {
                 result.completeExceptionally(error);
             } finally {
                 runner = null;
+                Thread.interrupted(); // clear flag so pool thread is clean for next task
                 capacity.release();
             }
         }
