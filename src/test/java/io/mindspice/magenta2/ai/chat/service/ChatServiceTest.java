@@ -202,16 +202,16 @@ class ChatServiceTest {
         for (String response : List.of(
             "{\"timedOut\":true}",
             "{\"ok\":true}",
-            "startAnchor hash does not match current file content",
+            "{\"timedOut\":true}",
             "{\"ok\":true}",
-            "file not found",
-            "permission denied",
+            "{\"timedOut\":true}",
+            "{\"timedOut\":true}",
             "{\"ok\":true}"
         )) {
             guard.recordToolResponses(toolResult(response));
         }
 
-        assertThatThrownBy(() -> guard.recordToolResponses(toolResult("tool failed")))
+        assertThatThrownBy(() -> guard.recordToolResponses(toolResult("{\"timedOut\":true}")))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("5 errors in the last 8 tool responses");
     }
@@ -960,7 +960,7 @@ class ChatServiceTest {
                 .responses(List.of(new ToolResponseMessage.ToolResponse(
                     "call-" + count,
                     "test_tool",
-                    "tool failed " + count
+                    "{\"timedOut\":true,\"error\":\"tool failed " + count + "\"}"
                 )))
                 .build();
             List<Message> history = new java.util.ArrayList<>(prompt.getInstructions());

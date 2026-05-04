@@ -1367,13 +1367,7 @@ public class ChatService {
                 return false;
             }
             String normalized = responseData.toLowerCase(java.util.Locale.ROOT);
-            return normalized.contains("\"timedout\":true")
-                || normalized.contains("exception")
-                || normalized.contains("error")
-                || normalized.contains("failed")
-                || normalized.contains("does not match current file content")
-                || normalized.contains("not found")
-                || normalized.contains("permission denied");
+            return normalized.contains("\"timedout\":true");
         }
 
         private String normalizeArguments(String arguments) {
