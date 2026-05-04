@@ -925,8 +925,10 @@ public class FrontendController {
                     </aside>
                     <div class="chat-main">
                         <div class="chat-toolbar">
-                            <label for="chat-model-select">Model</label>
+                            <label for="chat-model-select">Agent Model</label>
                             <select id="chat-model-select">%s</select>
+                            <label for="chat-planning-model-select">Planning Model</label>
+                            <select id="chat-planning-model-select">%s</select>
                             <span>Session</span>
                             <code id="chat-active-session">%s</code>
                         </div>
@@ -973,12 +975,11 @@ public class FrontendController {
             @RequestHeader(value = "HX-Request", required = false) String hxRequest,
             HttpServletResponse response
     ) {
-        String view = chatInterface.formatted("", buildModelOptionsHtml(), "New chat");
+        String view = chatInterface.formatted("", buildModelOptionsHtml(chatService.defaultModel()), buildModelOptionsHtml(chatService.planningModel()), "New chat");
         return chatShell.renderWithContent(RawHtml.create(view));
     }
 
-    private String buildModelOptionsHtml() {
-        String defaultModel = chatService.defaultModel();
+    private String buildModelOptionsHtml(String defaultModel) {
         List<String> models = new ArrayList<>(chatService.availableModels());
         if (defaultModel != null && !defaultModel.isBlank() && !models.contains(defaultModel)) {
             models.add(0, defaultModel);

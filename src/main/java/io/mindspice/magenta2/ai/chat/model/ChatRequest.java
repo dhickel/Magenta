@@ -3,11 +3,11 @@ package io.mindspice.magenta2.ai.chat.model;
 import com.fasterxml.jackson.annotation.JsonAlias;
 
 public sealed interface ChatRequest {
-    record MsgRequest(String conversationId, String message, String model) implements ChatRequest { }
+    record MsgRequest(String conversationId, String message, String model, String planningModel) implements ChatRequest { }
 
-    record CmdRequest(String conversationId, String command, String model) implements ChatRequest {
+    record CmdRequest(String conversationId, String command, String model, String planningModel) implements ChatRequest {
         public CmdRequest(String conversationId, String command) {
-            this(conversationId, command, null);
+            this(conversationId, command, null, null);
         }
     }
 

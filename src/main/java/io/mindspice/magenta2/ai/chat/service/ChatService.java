@@ -228,7 +228,7 @@ public class ChatService {
     }
 
     public ChatResponse.MsgResponse chat(String conversationId, String message, String model) {
-        ResolvedChatRequest resolvedRequest = resolve(conversationId, message, model);
+        ResolvedChatRequest resolvedRequest = resolve(conversationId, message, model, null);
         return chat(resolvedRequest);
     }
 
@@ -285,21 +285,24 @@ public class ChatService {
     }
 
     public ResolvedChatRequest resolve(ChatRequest request) {
-        if (request instanceof ChatRequest.MsgRequest(String conversationId, String message, String model)) {
-            return resolve(conversationId, message, model);
+        if (request instanceof ChatRequest.MsgRequest(String conversationId, String message, String model, String planningModel)) {
+            return resolve(conversationId, message, model, planningModel);
         }
         throw new IllegalArgumentException("message request is required");
     }
 
-    private ResolvedChatRequest resolve(String conversationId, String message, String model) {
+    private ResolvedChatRequest resolve(String conversationId, String message, String model, String planningModel) {
         String resolvedConversationId = StringUtils.hasText(conversationId) ? conversationId : UUID.randomUUID().toString();
         boolean newConversation = !conversationExists(resolvedConversationId);
+        if (StringUtils.hasText(planningModel)) {
+            chatSessionMetadataRepository.savePlanningModel(resolvedConversationId, planningModel);
+        }
         String storedModel = storedConversationModel(resolvedConversationId);
         String selectedModel = StringUtils.hasText(model)
                 ? model
                 : (StringUtils.hasText(storedModel) ? storedModel : defaultModel());
         if (planService != null && planService.mode(resolvedConversationId) == PlanMode.PLAN) {
-            selectedModel = planningModel();
+            selectedModel = resolvedPlanningModel(resolvedConversationId);
         }
         return new ResolvedChatRequest(resolvedConversationId, message, selectedModel, newConversation, true);
     }
@@ -423,10 +426,10 @@ public class ChatService {
     }
 
     public ChatResponse.MsgResponse beginPlan(String conversationId) {
-        return beginPlan(conversationId, null);
+        return beginPlan(conversationId, null, null);
     }
 
-    public ChatResponse.MsgResponse beginPlan(String conversationId, String selectedModel) {
+    public ChatResponse.MsgResponse beginPlan(String conversationId, String selectedModel, String planningModel) {
         requirePlanService();
         String prePlanningModel = StringUtils.hasText(selectedModel)
             ? selectedModel
@@ -434,8 +437,11 @@ public class ChatService {
         if (!StringUtils.hasText(prePlanningModel)) {
             prePlanningModel = defaultModel();
         }
-        planService.beginPlan(conversationId, prePlanningModel, planningModel());
-        return chat(resolve(conversationId, BEGIN_PLAN_MESSAGE, planningModel()).withoutTitleJob());
+        String executionModel = StringUtils.hasText(planningModel)
+            ? planningModel
+            : resolvedPlanningModel(conversationId);
+        planService.beginPlan(conversationId, prePlanningModel, executionModel);
+        return chat(resolve(conversationId, BEGIN_PLAN_MESSAGE, executionModel, null).withoutTitleJob());
     }
 
     public void exitPlan(String conversationId) {
@@ -458,7 +464,7 @@ public class ChatService {
         requirePlanService();
         ExecutionPlan plan = planService.recordPromptAnswer(conversationId, answer, notes, questionIndex);
         if (plan.hasPendingQuestion()) {
-            String model = planningModel();
+            String model = resolvedPlanningModel(conversationId);
             return new ChatResponse.MsgResponse(
                 conversationId,
                 model,
@@ -467,7 +473,8 @@ public class ChatService {
                 planState(conversationId)
             );
         }
-        return chat(resolve(conversationId, "Continue planning using the updated structured planning state.", planningModel()).withoutTitleJob());
+        String continueModel = resolvedPlanningModel(conversationId);
+        return chat(resolve(conversationId, "Continue planning using the updated structured planning state.", continueModel, null).withoutTitleJob());
     }
 
     public ChatPlanState approvePlan(String conversationId) {
@@ -538,7 +545,7 @@ public class ChatService {
             contextUsageTracker.clear(conversationId);
         }
         planService.markExecuting(conversationId);
-        return resolve(conversationId, EXECUTE_PLAN_MESSAGE, model).withoutTitleJob();
+        return resolve(conversationId, EXECUTE_PLAN_MESSAGE, model, null).withoutTitleJob();
     }
 
     public void handlePlanExecutionStreamFinished(String conversationId) {
@@ -682,6 +689,10 @@ public class ChatService {
         return chatSessionMetadataRepository.findModel(conversationId).orElse(null);
     }
 
+    private String storedConversationPlanningModel(String conversationId) {
+        return chatSessionMetadataRepository.findPlanningModel(conversationId).orElse(null);
+    }
+
     public String conversationTitle(String conversationId) {
         String storedTitle = chatSessionMetadataRepository.findTitle(conversationId).orElse(null);
         if (StringUtils.hasText(storedTitle)) {
@@ -779,6 +790,11 @@ public class ChatService {
         String modelKey = aiConfig.resolvedPlanningModelKey();
         ModelConfig model = aiConfig.models().get(modelKey);
         return model == null ? defaultModel() : model.remoteModelName();
+    }
+
+    private String resolvedPlanningModel(String conversationId) {
+        String stored = storedConversationPlanningModel(conversationId);
+        return StringUtils.hasText(stored) ? stored : planningModel();
     }
 
     public List<String> availableModels() {

@@ -216,11 +216,39 @@
         return modelSelect.value;
     }
 
+    function selectedPlanningModel() {
+        const modelSelect = byId('chat-planning-model-select');
+        if (!modelSelect || !modelSelect.value) {
+            return null;
+        }
+        return modelSelect.value;
+    }
+
     function syncModelSelection(model) {
         if (!model) {
             return;
         }
         const modelSelect = byId('chat-model-select');
+        if (!modelSelect) {
+            return;
+        }
+        const exists = Array.from(modelSelect.options).some(function(option) {
+            return option.value === model;
+        });
+        if (!exists) {
+            const option = document.createElement('option');
+            option.value = model;
+            option.textContent = model;
+            modelSelect.appendChild(option);
+        }
+        modelSelect.value = model;
+    }
+
+    function syncPlanningModelSelection(model) {
+        if (!model) {
+            return;
+        }
+        const modelSelect = byId('chat-planning-model-select');
         if (!modelSelect) {
             return;
         }
@@ -751,7 +779,8 @@
         const payload = {
             conversationId: activeConversationId(),
             message: message,
-            model: selectedModel()
+            model: selectedModel(),
+            planningModel: selectedPlanningModel()
         };
 
         appendPendingUserMessage(message);
@@ -917,7 +946,8 @@
         const payload = {
             conversationId: activeConversationId(),
             command: command,
-            model: selectedModel()
+            model: selectedModel(),
+            planningModel: selectedPlanningModel()
         };
 
         try {

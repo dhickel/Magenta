@@ -318,7 +318,7 @@ public class ChatController {
             case "clear" -> handleClear(request.conversationId(), optionalSingleArgument(rootCommand, parts, "a conversation UUID"));
             case "plan" -> {
                 requireNoArguments(rootCommand, parts);
-                yield handlePlan(request.conversationId(), request.model());
+                yield handlePlan(request.conversationId(), request.model(), request.planningModel());
             }
             case "exit-plan" -> {
                 requireNoArguments(rootCommand, parts);
@@ -450,12 +450,12 @@ public class ChatController {
         );
     }
 
-    private ChatResponse.CmdResponse handlePlan(String requestConversationId, String selectedModel) {
+    private ChatResponse.CmdResponse handlePlan(String requestConversationId, String selectedModel, String planningModel) {
         String conversationId = normalize(requestConversationId);
         if (conversationId == null) {
             conversationId = chatService.newConversationId();
         }
-        ChatResponse.MsgResponse response = chatService.beginPlan(conversationId, selectedModel);
+        ChatResponse.MsgResponse response = chatService.beginPlan(conversationId, selectedModel, planningModel);
         List<String> conversationIds = new ArrayList<>(chatService.listConversationIds());
         if (!conversationIds.contains(conversationId)) {
             conversationIds.add(0, conversationId);

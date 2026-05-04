@@ -91,6 +91,45 @@ public class ChatSessionMetadataRepository {
         );
     }
 
+    public void savePlanningModel(String conversationId, String model) {
+        if (!StringUtils.hasText(conversationId) || !StringUtils.hasText(model)) {
+            return;
+        }
+        jdbcTemplate.update(
+            """
+                insert into ai_chat_session_metadata (conversation_id, planning_model, updated_at)
+                values (?, ?, ?)
+                on conflict(conversation_id) do update set
+                    planning_model = excluded.planning_model,
+                    updated_at = excluded.updated_at
+                """,
+            conversationId,
+            model,
+            now()
+        );
+    }
+
+    public Optional<String> findPlanningModel(String conversationId) {
+        if (!StringUtils.hasText(conversationId)) {
+            return Optional.empty();
+        }
+        return jdbcTemplate.query(
+            """
+                select planning_model
+                from ai_chat_session_metadata
+                where conversation_id = ?
+                """,
+            rs -> {
+                if (!rs.next()) {
+                    return Optional.<String>empty();
+                }
+                String model = rs.getString("planning_model");
+                return StringUtils.hasText(model) ? Optional.of(model) : Optional.empty();
+            },
+            conversationId
+        );
+    }
+
     public Optional<String> findTitle(String conversationId) {
         if (!StringUtils.hasText(conversationId)) {
             return Optional.empty();
@@ -185,6 +224,9 @@ public class ChatSessionMetadataRepository {
         }
         if (!columns.contains("updated_at")) {
             jdbcTemplate.execute("alter table ai_chat_session_metadata add column updated_at text");
+        }
+        if (!columns.contains("planning_model")) {
+            jdbcTemplate.execute("alter table ai_chat_session_metadata add column planning_model text");
         }
     }
 

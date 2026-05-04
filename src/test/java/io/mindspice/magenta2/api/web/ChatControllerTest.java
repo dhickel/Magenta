@@ -203,7 +203,7 @@ class ChatControllerTest {
         ChatController controller = new ChatController(blockingChatService);
 
         CompletableFuture<SseEmitter> response = CompletableFuture.supplyAsync(() ->
-            controller.stream(new ChatRequest.MsgRequest(CONVERSATION_ID, "use tools", "qwen3"))
+            controller.stream(new ChatRequest.MsgRequest(CONVERSATION_ID, "use tools", "qwen3", null))
         );
 
         assertThat(blockingChatService.subscribed.await(1, TimeUnit.SECONDS)).isTrue();
@@ -300,7 +300,7 @@ class ChatControllerTest {
         }
 
         @Override
-        public ChatResponse.MsgResponse beginPlan(String conversationId, String selectedModel) {
+        public ChatResponse.MsgResponse beginPlan(String conversationId, String selectedModel, String planningModel) {
             return beginPlan(conversationId);
         }
 
