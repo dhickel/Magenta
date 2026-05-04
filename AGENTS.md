@@ -1,3 +1,25 @@
+## `.internal-dev` Development Document Store
+
+`.internal-dev/` is the persistent engineering document store for plans, bugs, changelogs, reviews, notes, and reusable knowledge.
+
+### Required workflow
+- Plans and reviews are written to `.internal-dev/plans/` and `.internal-dev/reviews/`.
+- Out-of-scope bugs found during work are logged immediately in `.internal-dev/bugs/`.
+- Finalized work gets a changelog entry in `.internal-dev/changelogs/`.
+- Reusable insights go to `.internal-dev/knowledge/`.
+- Deferred future ideas go to `.internal-dev/notes/` after confirming they are out of scope.
+- Move finalized bug/plan artifacts to sibling `.archive/` directories.
+
+### Controlled access
+- Do not read `.internal-dev` broadly by default.
+- Read only the files required for the active task.
+
+### Reference guide
+- Process and templates: `.internal-dev/AGENTS.md`
+
+
+
+
 ## Magenta Project Guide
 
 Magenta is an assistant agent and manager life-helper. It is intended to run on a remote host, expose APIs and a web portal, and help users through chat, notes, reminders, task handoff, tool-assisted work, and eventually coordinated subagents.
@@ -38,21 +60,3 @@ This project is currently a Spring Boot and Spring AI application with SQLite-ba
 - Before considering backend or application-wiring work complete, smoke test that the Spring Boot application context starts successfully. Prefer a bounded startup command such as `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` unless the task has a more specific startup path.
 - If startup cannot be run because required local services or secrets are unavailable, report that explicitly with the blocking dependency.
 
-## `.internal-dev` Development Document Store
-
-`.internal-dev/` is the persistent engineering document store for plans, bugs, changelogs, reviews, notes, and reusable knowledge.
-
-### Required workflow
-- Plans and reviews are written to `.internal-dev/plans/` and `.internal-dev/reviews/`.
-- Out-of-scope bugs found during work are logged immediately in `.internal-dev/bugs/`.
-- Finalized work gets a changelog entry in `.internal-dev/changelogs/`.
-- Reusable insights go to `.internal-dev/knowledge/`.
-- Deferred future ideas go to `.internal-dev/notes/` after confirming they are out of scope.
-- Move finalized bug/plan artifacts to sibling `.archive/` directories.
-
-### Controlled access
-- Do not read `.internal-dev` broadly by default.
-- Read only the files required for the active task.
-
-### Reference guide
-- Process and templates: `.internal-dev/AGENTS.md`

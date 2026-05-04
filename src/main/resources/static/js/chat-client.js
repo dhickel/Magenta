@@ -168,6 +168,7 @@
                 + '<div class="planning-panel-progress">' + escapeHtml(progress) + '</div>'
                 + '<div class="planning-panel-title">' + escapeHtml(question) + '</div>'
                 + '<input type="hidden" name="questionIndex" value="' + escapeHtml(questionIndex) + '">'
+                + '<input type="hidden" name="question" value="' + escapeHtml(question) + '">'
                 + '<textarea name="answer" rows="3" placeholder="Answer"></textarea>'
                 + planningActions('<button type="submit">Submit answer</button>')
                 + '</form>';
@@ -354,6 +355,18 @@
                 + '</div>'
         );
         historyEl.scrollTop = historyEl.scrollHeight;
+    }
+
+    function planningAnswerMessage(question, answer, notes) {
+        let message = 'Planning answer\n\n';
+        message += 'Question: ' + String(question || '').trim() + '\n\n';
+        if (answer) {
+            message += 'Answer: ' + String(answer).trim() + '\n';
+        }
+        if (notes) {
+            message += 'Notes: ' + String(notes).trim() + '\n';
+        }
+        return message.trim();
     }
 
     function clearPendingUserMessage() {
@@ -1018,7 +1031,8 @@
         const answer = String(formData.get('answer') || '').trim();
         const notes = String(formData.get('notes') || '').trim();
         const questionIndex = Number(formData.get('questionIndex') || 0);
-        appendPendingUserMessage(answer);
+        const question = String(formData.get('question') || '').trim();
+        appendPendingUserMessage(planningAnswerMessage(question, answer, notes));
         clearPlanningPanel();
         requestInFlight = true;
         setFormDisabled(true);

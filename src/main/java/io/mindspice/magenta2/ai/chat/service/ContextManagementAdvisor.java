@@ -9,6 +9,8 @@ import io.mindspice.magenta2.ai.chat.tool.ToolTranscriptService;
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.ai.config.user.ModelConfig;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClientRequest;
 import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
@@ -30,6 +32,8 @@ import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 
 public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
+    private static final Logger log = LoggerFactory.getLogger(ContextManagementAdvisor.class);
+
     public static final String CONTEXT_USAGE_KEY = "magenta.contextUsage";
     public static final String SUMMARY_PREFIX = "[[MAGENTA_CONTEXT_SUMMARY]]\n";
     public static final String NOTICE_PREFIX = "[[MAGENTA_CONTEXT_COMPACTED_NOTICE]] ";
@@ -117,16 +121,28 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
         }
 
         ContextUsage usage = estimateStoredUsage(conversationId, remoteModelName);
+        log.debug("maintainStoredContext conv={} tokens={}/{} ({:.0f}%) trigger={}", conversationId,
+            usage.usedTokens(), usage.maxTokens(), usage.percentUsed(), usage.triggerTokens());
         if (usage.usedTokens() > usage.triggerTokens()) {
+            log.info("Compacting stored context: conv={} tokens={} exceeds trigger={}", conversationId,
+                usage.usedTokens(), usage.triggerTokens());
             storedMessages = compact(conversationId, storedMessages, storedMaintenanceInstructions(), remoteModelName);
             usage = estimateStoredUsage(conversationId, remoteModelName);
+            log.info("After compact: conv={} tokens={}/{} ({:.0f}%)", conversationId,
+                usage.usedTokens(), usage.maxTokens(), usage.percentUsed());
             compacted = true;
         }
         if (usage.usedTokens() > usage.triggerTokens()) {
+            log.info("Trimming stored context: conv={} tokens={} exceeds trigger={}", conversationId,
+                usage.usedTokens(), usage.triggerTokens());
             storedMessages = trimToBudget(conversationId, storedMessages, storedMaintenanceInstructions(), remoteModelName);
             usage = estimateStoredUsage(conversationId, remoteModelName);
+            log.info("After trim: conv={} tokens={}/{} ({:.0f}%)", conversationId,
+                usage.usedTokens(), usage.maxTokens(), usage.percentUsed());
         }
         if (usage.usedTokens() > usage.triggerTokens()) {
+            log.error("Stored context too large after all strategies: conv={} tokens={} trigger={}",
+                conversationId, usage.usedTokens(), usage.triggerTokens());
             throw new IllegalStateException(
                 "Context is too large to store safely after compaction: "
                     + usage.usedTokens() + " estimated tokens exceeds trigger budget " + usage.triggerTokens()
@@ -169,18 +185,30 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
         }
         List<Message> promptMessages = buildPromptMessages(storedMessages, currentInstructions);
         ContextUsage usage = estimateUsage(promptMessages, model);
+        log.debug("preparePrompt conv={} tokens={}/{} ({:.0f}%) trigger={}", conversationId,
+            usage.usedTokens(), usage.maxTokens(), usage.percentUsed(), usage.triggerTokens());
 
         if (usage.usedTokens() > usage.triggerTokens()) {
+            log.info("Compacting context: conv={} tokens={} exceeds trigger={}", conversationId,
+                usage.usedTokens(), usage.triggerTokens());
             storedMessages = compact(conversationId, storedMessages, currentInstructions, model);
             promptMessages = buildPromptMessages(storedMessages, currentInstructions);
             usage = estimateUsage(promptMessages, model);
+            log.info("After compact: conv={} tokens={}/{} ({:.0f}%)", conversationId,
+                usage.usedTokens(), usage.maxTokens(), usage.percentUsed());
         }
         if (usage.usedTokens() > usage.triggerTokens()) {
+            log.info("Trimming context: conv={} tokens={} exceeds trigger={}", conversationId,
+                usage.usedTokens(), usage.triggerTokens());
             storedMessages = trimToBudget(conversationId, storedMessages, currentInstructions, model);
             promptMessages = buildPromptMessages(storedMessages, currentInstructions);
             usage = estimateUsage(promptMessages, model);
+            log.info("After trim: conv={} tokens={}/{} ({:.0f}%)", conversationId,
+                usage.usedTokens(), usage.maxTokens(), usage.percentUsed());
         }
         if (usage.usedTokens() > usage.triggerTokens()) {
+            log.error("Context too large after all strategies: conv={} tokens={} trigger={}",
+                conversationId, usage.usedTokens(), usage.triggerTokens());
             throw new IllegalStateException(
                 "Context is too large to send safely after compaction: "
                     + usage.usedTokens() + " estimated tokens exceeds trigger budget " + usage.triggerTokens()
@@ -214,30 +242,46 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
         List<Message> active = new ArrayList<>(activeMessages == null ? List.of() : activeMessages);
         List<Message> promptMessages = buildToolLoopPromptMessages(storedMessages, currentSystemInstructions, active);
         ContextUsage usage = estimateUsage(promptMessages, model);
+        log.debug("prepareToolLoopPrompt conv={} tokens={}/{} ({:.0f}%) trigger={}", conversationId,
+            usage.usedTokens(), usage.maxTokens(), usage.percentUsed(), usage.triggerTokens());
         boolean compacted = false;
 
         if (usage.usedTokens() > usage.triggerTokens()) {
+            log.info("Compacting context (tool loop): conv={} tokens={} exceeds trigger={}", conversationId,
+                usage.usedTokens(), usage.triggerTokens());
             storedMessages = compact(conversationId, storedMessages, activeSystemInstructions(currentSystemInstructions, active), model);
             promptMessages = buildToolLoopPromptMessages(storedMessages, currentSystemInstructions, active);
             usage = estimateUsage(promptMessages, model);
+            log.info("After compact: conv={} tokens={}/{} ({:.0f}%)", conversationId,
+                usage.usedTokens(), usage.maxTokens(), usage.percentUsed());
             compacted = true;
         }
         if (usage.usedTokens() > usage.triggerTokens()) {
+            log.info("Trimming context (tool loop): conv={} tokens={} exceeds trigger={}", conversationId,
+                usage.usedTokens(), usage.triggerTokens());
             storedMessages = trimToBudget(conversationId, storedMessages, activeSystemInstructions(currentSystemInstructions, active), model);
             promptMessages = buildToolLoopPromptMessages(storedMessages, currentSystemInstructions, active);
             usage = estimateUsage(promptMessages, model);
+            log.info("After trim: conv={} tokens={}/{} ({:.0f}%)", conversationId,
+                usage.usedTokens(), usage.maxTokens(), usage.percentUsed());
             compacted = true;
         }
         if (usage.usedTokens() > usage.triggerTokens()) {
+            log.info("Compacting active tool messages: conv={} tokens={}", conversationId, usage.usedTokens());
             active = compactActiveToolMessages(active);
             promptMessages = buildToolLoopPromptMessages(storedMessages, currentSystemInstructions, active);
             usage = estimateUsage(promptMessages, model);
+            log.info("After active compact: conv={} tokens={}/{} ({:.0f}%)", conversationId,
+                usage.usedTokens(), usage.maxTokens(), usage.percentUsed());
             compacted = true;
         }
         if (usage.usedTokens() > usage.triggerTokens()) {
+            log.info("Trimming active tool messages: conv={} tokens={}", conversationId, usage.usedTokens());
             active = trimActiveToolMessages(active, storedMessages, currentSystemInstructions, model);
             promptMessages = buildToolLoopPromptMessages(storedMessages, currentSystemInstructions, active);
             usage = estimateUsage(promptMessages, model);
+            log.info("After active trim: conv={} tokens={}/{} ({:.0f}%)", conversationId,
+                usage.usedTokens(), usage.maxTokens(), usage.percentUsed());
             compacted = true;
         }
 

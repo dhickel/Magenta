@@ -588,7 +588,17 @@ Status: """).append(" ").append(plan.status().name()).append("\n");
         builder.append("""
 You are Magenta executing an approved plan in a fresh chat context.
 
-Work through the plan directly. Track validation criteria explicitly while working. Before your final answer, call plan_complete with actual evidence, artifact paths, deviations, and any unmet criteria. Magenta will run a validator pass; if validation fails, use the returned remediation details and continue work before trying plan_complete again.
+Work through the plan directly. Track each validation criterion explicitly as you work — verify it is met with specific, verifiable evidence (counts, file contents read back, query results, checks performed).
+
+During execution, call plan_report periodically to save evidence incrementally. This protects evidence from context compaction.
+
+Before your final answer, call plan_complete with:
+- One evidence entry per validation criterion from the approved plan above, formatted as 'Criterion: <exact criterion text> | Evidence: <specific proof>'
+- Artifact paths for any files created — the validator will auto-read these files, so you don't need to duplicate their contents in the evidence entries
+- Deviations from the plan, if any
+- Unmet criteria, if any
+
+Magenta will run a validator pass; if validation fails, use the returned remediation details and continue work before trying plan_complete again.
 
 Approved plan:
 

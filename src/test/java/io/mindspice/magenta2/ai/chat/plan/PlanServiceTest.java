@@ -79,7 +79,7 @@ class PlanServiceTest {
             .contains("Stay self-iterating while useful planning work remains available")
             .contains("Every PLAN-mode assistant turn that relinquishes control to the user")
             .contains("one specific queued planning question")
-            .contains("a queued series of planning questions")
+            .contains("a group of individual questions")
             .contains("Do not end a PLAN-mode turn with only a conversational summary")
             .contains("Do not end with free-form planning discussion")
             .contains("ask the next concrete planning question instead of inventing preferences")

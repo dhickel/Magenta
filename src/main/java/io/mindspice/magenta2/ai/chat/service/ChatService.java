@@ -71,6 +71,7 @@ public class ChatService {
     private static final int IDENTICAL_TOOL_CALL_LIMIT = 5;
     private static final int EMPTY_FINAL_RESPONSE_RETRY_LIMIT = 2;
     private static final int PLAN_TURN_REPAIR_RETRY_LIMIT = 2;
+    private static final int EXECUTION_COMPLETION_REPAIR_RETRY_LIMIT = 2;
     private static final String OLLAMA_TOOLS_UNSUPPORTED_MESSAGE = "does not support tools";
     static final List<String> PLAN_MODE_TOOLS = List.of(
         "file_list",
@@ -806,6 +807,7 @@ public class ChatService {
             List<Message> conversationHistory = null;
             int emptyFinalResponseRetries = 0;
             int planTurnRepairRetries = 0;
+            int executionCompletionRepairRetries = 0;
             boolean continueModelLoop = true;
             while (continueModelLoop) {
                 continueModelLoop = false;
@@ -933,6 +935,20 @@ public class ChatService {
                     collectThinking(response, thinkingParts);
                     planTurnRepairRetries++;
                     Message controlMessage = invalidPlanTurnControlMessage();
+                    List<Message> retryMessages = new ArrayList<>(prompt.getInstructions());
+                    retryMessages.add(controlMessage);
+                    prompt = new Prompt(retryMessages, prompt.getOptions());
+                    phase(activeTurn, ActiveTurnPhase.MODEL_CALL);
+                    response = chatModelRouter.chatModel(request.model()).call(prompt);
+                    continueModelLoop = true;
+                    continue;
+                }
+
+                if (requiresExecutionCompletionRepair(request.conversationId(), mode)
+                    && executionCompletionRepairRetries < EXECUTION_COMPLETION_REPAIR_RETRY_LIMIT) {
+                    collectThinking(response, thinkingParts);
+                    executionCompletionRepairRetries++;
+                    Message controlMessage = invalidExecutionCompletionControlMessage();
                     List<Message> retryMessages = new ArrayList<>(prompt.getInstructions());
                     retryMessages.add(controlMessage);
                     prompt = new Prompt(retryMessages, prompt.getOptions());
@@ -1118,6 +1134,12 @@ public class ChatService {
             && !StringUtils.hasText(state.promptQuestion());
     }
 
+    private boolean requiresExecutionCompletionRepair(String conversationId, PlanMode mode) {
+        return mode == PlanMode.EXECUTE_PLAN
+            && planService != null
+            && planService.mode(conversationId) == PlanMode.EXECUTE_PLAN;
+    }
+
     private SystemMessage invalidPlanTurnControlMessage() {
         return new SystemMessage("""
             Your PLAN-mode turn attempted to finish without a queued clarification question or a plan ready for approval.
@@ -1125,6 +1147,18 @@ public class ChatService {
             - plan_ask_questions if the user needs to clarify, choose an approach, confirm constraints, or provide more context.
             - plan_ready_for_approval only when the plan is complete enough to execute without guessing.
             Do not finish with ordinary assistant text.
+            """.trim());
+    }
+
+    private SystemMessage invalidExecutionCompletionControlMessage() {
+        return new SystemMessage("""
+            Your saved-plan execution attempted to finish without validator-gated completion.
+            Continue the same execution turn now. You may keep working or report incomplete work, but before any final user-visible completion answer you must call plan_complete.
+            plan_complete must include one evidence entry per approved validation criterion, formatted as:
+            Criterion: <exact criterion text> | Evidence: <specific proof>
+            If a criterion is not met, include it in unmetCriteria with the specific missing work or evidence.
+            If validation fails, address the returned remediation and call plan_complete again.
+            Do not finish with ordinary assistant text until plan_complete has passed validation.
             """.trim());
     }
 

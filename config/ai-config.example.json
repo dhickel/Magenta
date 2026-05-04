@@ -2,8 +2,8 @@
   "defaultAgent": "magenta",
   "summeryModel": "granite4.1:8b",
   "planningModel": "local-qwen",
-  "compactionModel": "local-gemma-4eb",
-  "contextBufferPercent": 10,
+  "compactionModel": "local-gemma-e4b",
+  "contextBufferPercent": 33,
   "dataRoot": "/home/hickelpickle/.magenta/root",
   "webSearch": {
     "enabled": true,
@@ -15,8 +15,8 @@
       "remoteModelName": "qwen3.6:35b",
       "remoteEndpoint": "http://192.168.1.112:11434",
       "endpointType": "OLLAMA",
-      "contextLength": 32768,
-      "think": true
+      "contextLength": 32000,
+      "think": false
     },
     "granite4.1:8b": {
       "remoteModelName": "granite4.1:8b",
@@ -36,7 +36,7 @@
       "remoteModelName": "gemma4-26b:32k",
       "remoteEndpoint": "http://192.168.1.112:11434",
       "endpointType": "OLLAMA",
-      "contextLength": 32768,
+      "contextLength": 32000,
       "think": true
     }
   },

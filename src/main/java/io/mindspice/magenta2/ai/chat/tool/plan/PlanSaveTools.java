@@ -170,12 +170,12 @@ public class PlanSaveTools {
 
     @Tool(
         name = "plan_report",
-        description = "Record compact execution evidence for the active saved plan. Use plan_complete, not plan_report, when requesting final completion validation."
+        description = "Record execution evidence for the active saved plan. Each entry should address one validation criterion from the approved plan. Use plan_complete, not plan_report, when requesting final completion validation."
     )
     public String report(
         @ToolParam(required = false, description = "Brief execution result summary.")
         String summary,
-        @ToolParam(required = false, description = "Evidence that supports the result, including actual counts, source queries, source ids, or files read back.")
+        @ToolParam(required = false, description = "Per-criterion evidence. One entry per validation criterion: 'Criterion: <exact criterion text> | Evidence: <specific proof>'")
         List<String> evidence,
         @ToolParam(required = false, description = "Any deviations from the saved plan or validation criteria.")
         List<String> deviations,
@@ -198,18 +198,18 @@ public class PlanSaveTools {
 
     @Tool(
         name = "plan_complete",
-        description = "Request final validation for an executed saved plan. A validator reviews the approved plan and evidence; if validation fails, continue with the returned remediation."
+        description = "Request final validation for an executed saved plan. Provide evidence for each validation criterion from the approved plan. A validator reviews the plan, evidence, and artifact contents; if validation fails, continue with the returned remediation."
     )
     public String complete(
         @ToolParam(required = false, description = "Brief execution result summary.")
         String summary,
-        @ToolParam(required = false, description = "Evidence that supports completion, including files, checks, counts, and read-back results.")
+        @ToolParam(required = false, description = "Per-criterion evidence. One entry per validation criterion: 'Criterion: <exact text> | Evidence: <specific proof>'")
         List<String> evidence,
         @ToolParam(required = false, description = "Any deviations from the saved plan or validation criteria.")
         List<String> deviations,
         @ToolParam(required = false, description = "Validation criteria that remain unmet.")
         List<String> unmetCriteria,
-        @ToolParam(required = false, description = "Artifacts created or used during execution.")
+        @ToolParam(required = false, description = "Artifacts created or used during execution. These files will be auto-read and their contents included in validation.")
         List<String> artifactPaths
     ) {
         PlanToolContext context = requireMode(PlanMode.EXECUTE_PLAN, "plan_complete");

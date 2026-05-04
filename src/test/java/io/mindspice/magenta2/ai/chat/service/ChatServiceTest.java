@@ -532,6 +532,77 @@ class ChatServiceTest {
         assertThat(chatModel.prompts).isEmpty();
     }
 
+    @Test
+    void executePlanRetriesFinalAnswerUntilPlanCompleteRuns() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        PlanService planService = savedPlanService(jdbcTemplate, objectMapper, memoryRepository);
+        planService.markExecuting("conversation-1");
+        ToolTranscriptService transcriptService = new ToolTranscriptService(objectMapper);
+        FinalThenPlanCompleteChatModel chatModel = new FinalThenPlanCompleteChatModel();
+        ChatService service = new ChatService(
+            null,
+            memoryRepository,
+            new ChatSessionMetadataRepository(jdbcTemplate),
+            new ChatMarkdownRenderer(),
+            executionToolAiConfig(),
+            new FakeContextManagementAdvisor(memoryRepository),
+            null,
+            new FakeChatModelRouter(chatModel),
+            new CompletingPlanToolCallingManager(planService),
+            new ChatToolRegistry(List.of(new FakeToolCallback("plan_complete")), List.of()),
+            transcriptService,
+            planService
+        );
+
+        io.mindspice.magenta2.ai.chat.model.ChatResponse.MsgResponse response = service.chat(
+            "conversation-1",
+            "Execute the saved plan now.",
+            "qwen3"
+        );
+
+        assertThat(response.response()).isEqualTo("Validated completion is done.");
+        assertThat(planService.activePlan("conversation-1").orElseThrow().status().name()).isEqualTo("COMPLETED");
+        assertThat(chatModel.prompts).hasSize(3);
+        assertThat(chatModel.prompts.get(1).getInstructions().stream()
+            .map(message -> message.getText() == null ? "" : message.getText())
+            .collect(java.util.stream.Collectors.joining("\n")))
+            .contains("attempted to finish without validator-gated completion")
+            .contains("must call plan_complete");
+    }
+
+    @Test
+    void executeSavedPlanFallsBackToNeedsReviewAfterSkippedPlanCompleteRetries() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        PlanService planService = savedPlanService(jdbcTemplate, objectMapper, memoryRepository);
+        AlwaysFinalChatModel chatModel = new AlwaysFinalChatModel("I finished without validation.");
+        ChatService service = new ChatService(
+            null,
+            memoryRepository,
+            new ChatSessionMetadataRepository(jdbcTemplate),
+            new ChatMarkdownRenderer(),
+            executionToolAiConfig(),
+            new FakeContextManagementAdvisor(memoryRepository),
+            null,
+            new FakeChatModelRouter(chatModel),
+            new SuccessfulToolCallingManager(),
+            new ChatToolRegistry(List.of(new FakeToolCallback("plan_complete")), List.of()),
+            new ToolTranscriptService(objectMapper),
+            planService
+        );
+
+        io.mindspice.magenta2.ai.chat.model.ChatResponse.MsgResponse response = service.executeSavedPlan("conversation-1");
+
+        assertThat(response.response()).isEqualTo("I finished without validation.");
+        assertThat(response.planState().status()).isEqualTo("NEEDS_REVIEW");
+        assertThat(response.planState().executionEvidence())
+            .contains("Deviation: execution returned without a structured completion ledger.");
+        assertThat(chatModel.prompts).hasSize(3);
+    }
+
     private JdbcTemplate jdbcTemplate() {
         SingleConnectionDataSource dataSource = new SingleConnectionDataSource("jdbc:sqlite::memory:", true);
         return new JdbcTemplate(dataSource);
@@ -581,6 +652,41 @@ class ChatServiceTest {
             Map.of("local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 8192, false)),
             Map.of("magenta", new AgentConfig("local-qwen", "You are Magenta.", List.of("plan_set_goal")))
         );
+    }
+
+    private AiConfig executionToolAiConfig() {
+        return new AiConfig(
+            "magenta",
+            "local-qwen",
+            "local-qwen",
+            10,
+            null,
+            Map.of("local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 8192, false)),
+            Map.of("magenta", new AgentConfig("local-qwen", "You are Magenta.", List.of("plan_complete")))
+        );
+    }
+
+    private PlanService savedPlanService(
+        JdbcTemplate jdbcTemplate,
+        ObjectMapper objectMapper,
+        ChatMemoryRepository memoryRepository
+    ) {
+        PlanService planService = new PlanService(
+            new ChatPlanRepository(jdbcTemplate, objectMapper),
+            memoryRepository
+        );
+        planService.beginPlan("conversation-1", "qwen3", "qwen3");
+        planService.saveDraftPlan(
+            "conversation-1",
+            "Goal",
+            "Plan",
+            "Summary",
+            null,
+            List.of("Do the work."),
+            List.of("Assumption"),
+            List.of("Validate result")
+        );
+        return planService;
     }
 
     private static final class CharacterTokenEstimator implements TokenCountEstimator {
@@ -798,6 +904,45 @@ class ChatServiceTest {
         }
     }
 
+    private static final class FinalThenPlanCompleteChatModel implements ChatModel {
+        private final List<Prompt> prompts = new java.util.ArrayList<>();
+
+        @Override
+        public ChatResponse call(Prompt prompt) {
+            prompts.add(prompt);
+            if (prompts.size() == 1) {
+                return new ChatResponse(List.of(new Generation(new AssistantMessage("I finished without validation."))));
+            }
+            if (prompts.size() == 2) {
+                return new ChatResponse(List.of(new Generation(AssistantMessage.builder()
+                    .content("")
+                    .toolCalls(List.of(new AssistantMessage.ToolCall(
+                        "plan-complete-call",
+                        "function",
+                        "plan_complete",
+                        "{\"summary\":\"Done\",\"evidence\":[\"Criterion: Validate result | Evidence: checked\"],\"deviations\":[],\"unmetCriteria\":[],\"artifactPaths\":[]}"
+                    )))
+                    .build())));
+            }
+            return new ChatResponse(List.of(new Generation(new AssistantMessage("Validated completion is done."))));
+        }
+    }
+
+    private static final class AlwaysFinalChatModel implements ChatModel {
+        private final List<Prompt> prompts = new java.util.ArrayList<>();
+        private final String response;
+
+        private AlwaysFinalChatModel(String response) {
+            this.response = response;
+        }
+
+        @Override
+        public ChatResponse call(Prompt prompt) {
+            prompts.add(prompt);
+            return new ChatResponse(List.of(new Generation(new AssistantMessage(response))));
+        }
+    }
+
     private static final class FakeToolCallingManager implements ToolCallingManager {
         private int count = 0;
 
@@ -841,6 +986,37 @@ class ChatServiceTest {
                     "call-" + count,
                     "test_tool",
                     "{\"ok\":true,\"result\":\"" + "x".repeat(80) + "\"}"
+                )))
+                .build();
+            List<Message> history = new java.util.ArrayList<>(prompt.getInstructions());
+            history.add(chatResponse.getResult().getOutput());
+            history.add(responseMessage);
+            return ToolExecutionResult.builder()
+                .conversationHistory(history)
+                .build();
+        }
+    }
+
+    private static final class CompletingPlanToolCallingManager implements ToolCallingManager {
+        private final PlanService planService;
+
+        private CompletingPlanToolCallingManager(PlanService planService) {
+            this.planService = planService;
+        }
+
+        @Override
+        public List<ToolDefinition> resolveToolDefinitions(ToolCallingChatOptions chatOptions) {
+            return List.of();
+        }
+
+        @Override
+        public ToolExecutionResult executeToolCalls(Prompt prompt, ChatResponse chatResponse) {
+            planService.markCompleted("conversation-1");
+            Message responseMessage = ToolResponseMessage.builder()
+                .responses(List.of(new ToolResponseMessage.ToolResponse(
+                    "plan-complete-call",
+                    "plan_complete",
+                    "Plan validation passed. The plan is marked COMPLETED."
                 )))
                 .build();
             List<Message> history = new java.util.ArrayList<>(prompt.getInstructions());

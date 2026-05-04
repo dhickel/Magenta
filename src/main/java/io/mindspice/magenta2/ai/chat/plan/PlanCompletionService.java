@@ -1,5 +1,7 @@
 package io.mindspice.magenta2.ai.chat.plan;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -21,10 +23,11 @@ import org.springframework.util.StringUtils;
 public class PlanCompletionService {
     private static final String VALIDATOR_SYSTEM_PROMPT = """
         You are Magenta's plan validator.
-        Review only whether the execution evidence satisfies the approved plan.
+        Review whether the execution evidence and artifact contents satisfy every deliverable and validation criterion in the approved plan.
+        Cross-reference each criterion against the provided evidence and artifact file contents.
         Return strict JSON only, with keys: complete, summary, findings, remediationSteps.
-        complete must be true only when every deliverable and validation criterion is satisfied by evidence.
-        If incomplete, remediationSteps must be detailed and specific enough for the implementing agent to continue.
+        complete must be true only when every deliverable and validation criterion is satisfied by specific, verifiable evidence (not just a claim of completion).
+        If incomplete, remediationSteps must name the exact unmet criterion and what specific evidence is missing or insufficient.
         """;
 
     private final PlanService planService;
@@ -53,15 +56,17 @@ public class PlanCompletionService {
         List<String> unmetCriteria,
         List<String> artifactPaths
     ) {
+        List<String> reportedArtifactPaths = cleanList(artifactPaths);
         ExecutionPlan reported = planService.recordExecutionReport(
             conversationId,
             summary,
             evidence,
             deviations,
             unmetCriteria,
-            artifactPaths
+            reportedArtifactPaths
         );
-        ValidationResult result = validate(reported);
+        ValidationResult result = coverageValidation(reported, evidence)
+            .orElseGet(() -> validate(reported, reportedArtifactPaths));
         List<String> feedback = feedback(result);
         planService.recordValidationFeedback(conversationId, feedback);
         if (result.complete()) {
@@ -72,7 +77,47 @@ public class PlanCompletionService {
             + renderFeedback(feedback);
     }
 
-    private ValidationResult validate(ExecutionPlan plan) {
+    private java.util.Optional<ValidationResult> coverageValidation(ExecutionPlan plan, List<String> evidence) {
+        List<String> criteria = cleanList(plan.acceptanceCriteria());
+        if (criteria.isEmpty()) {
+            return java.util.Optional.empty();
+        }
+        List<String> evidenceList = cleanList(evidence);
+        List<String> missing = criteria.stream()
+            .filter(criterion -> evidenceList.stream().noneMatch(entry -> criterion.equals(extractCriterionLabel(entry))))
+            .toList();
+        if (missing.isEmpty()) {
+            return java.util.Optional.empty();
+        }
+        return java.util.Optional.of(new ValidationResult(
+            false,
+            "Completion evidence did not address every validation criterion.",
+            missing.stream()
+                .map(criterion -> "Missing evidence for: " + criterion)
+                .toList(),
+            missing.stream()
+                .map(criterion -> "Call plan_complete again with an evidence entry formatted as 'Criterion: "
+                    + criterion + " | Evidence: <specific proof>'.")
+                .toList()
+        ));
+    }
+
+    private String extractCriterionLabel(String evidenceEntry) {
+        if (!StringUtils.hasText(evidenceEntry)) {
+            return null;
+        }
+        String text = evidenceEntry.trim();
+        int prefix = text.indexOf("Criterion:");
+        if (prefix < 0) {
+            return null;
+        }
+        int start = prefix + "Criterion:".length();
+        int end = text.indexOf("|", start);
+        String label = end < 0 ? text.substring(start) : text.substring(start, end);
+        return normalize(label);
+    }
+
+    private ValidationResult validate(ExecutionPlan plan, List<String> artifactPaths) {
         if (chatModelRouter == null || aiConfig == null || aiConfig.models() == null) {
             return new ValidationResult(
                 false,
@@ -94,7 +139,7 @@ public class PlanCompletionService {
             .prompt(new Prompt(
                 List.of(
                     new SystemMessage(VALIDATOR_SYSTEM_PROMPT),
-                    new UserMessage(validationInput(plan))
+                    new UserMessage(validationInput(plan, artifactPaths))
                 ),
                 chatModelRouter.ollamaOptions(model)
             ))
@@ -118,17 +163,51 @@ public class PlanCompletionService {
         return null;
     }
 
-    private String validationInput(ExecutionPlan plan) {
+    private String validationInput(ExecutionPlan plan, List<String> artifactPaths) {
         StringBuilder builder = new StringBuilder();
         builder.append("Approved plan:\n\n")
             .append(planService.approvalMarkdown(plan))
             .append("\n\nExecution evidence:\n");
         appendList(builder, plan.executionEvidence());
+        if (!artifactPaths.isEmpty()) {
+            builder.append("\nArtifact file contents:\n");
+            for (String path : artifactPaths) {
+                builder.append("--- ").append(path).append(" ---\n");
+                builder.append(readArtifact(path)).append("\n");
+            }
+        }
         if (!plan.validationFeedback().isEmpty()) {
             builder.append("\nPrior validation feedback:\n");
             appendList(builder, plan.validationFeedback());
         }
         return builder.toString().trim();
+    }
+
+    private String readArtifact(String path) {
+        if (!StringUtils.hasText(path)) {
+            return "[empty artifact path]";
+        }
+        try {
+            if (aiConfig == null || aiConfig.dataRoot() == null) {
+                return "[data root not configured, cannot read " + path + "]";
+            }
+            Path root = aiConfig.dataRoot().toRealPath();
+            Path filePath = Path.of(path);
+            Path resolved = filePath.isAbsolute() ? filePath.normalize() : root.resolve(filePath).normalize();
+            if (!resolved.startsWith(root)) {
+                return "[artifact path escapes data root: " + path + "]";
+            }
+            if (!Files.isRegularFile(resolved)) {
+                return "[artifact not found or not a regular file: " + path + "]";
+            }
+            String content = Files.readString(resolved);
+            if (content.length() > 8000) {
+                content = content.substring(0, 8000) + "\n... [truncated at 8000 chars]";
+            }
+            return content;
+        } catch (Exception e) {
+            return "[error reading artifact " + path + ": " + e.getMessage() + "]";
+        }
     }
 
     private ValidationResult parseValidation(String response) {
@@ -213,6 +292,20 @@ public class PlanCompletionService {
             return List.of(text.trim());
         }
         return List.of();
+    }
+
+    private List<String> cleanList(List<String> values) {
+        if (values == null) {
+            return List.of();
+        }
+        return values.stream()
+            .map(this::normalize)
+            .filter(StringUtils::hasText)
+            .toList();
+    }
+
+    private String normalize(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
     }
 
     record ValidationResult(
