@@ -200,7 +200,7 @@ class ChatServiceTest {
         ChatService.ToolLoopGuard guard = new ChatService.ToolLoopGuard();
 
         for (String response : List.of(
-            "{\"exitCode\":1}",
+            "{\"timedOut\":true}",
             "{\"ok\":true}",
             "startAnchor hash does not match current file content",
             "{\"ok\":true}",
@@ -416,7 +416,8 @@ class ChatServiceTest {
             new SummaryRouter(chatModel),
             new CharacterTokenEstimator(),
             usageTracker,
-            transcriptService
+            transcriptService,
+            null
         );
         ChatService service = new ChatService(
             null,
@@ -743,7 +744,7 @@ class ChatServiceTest {
         private int toolLoopPromptCalls = 0;
 
         FakeContextManagementAdvisor(ChatMemoryRepository memoryRepository) {
-            super(null, null, null, null, null, null);
+            super(null, null, null, null, null, null, null);
             this.memoryRepository = memoryRepository;
         }
 

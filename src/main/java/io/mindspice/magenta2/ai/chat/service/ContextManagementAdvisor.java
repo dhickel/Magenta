@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 
 import io.mindspice.magenta2.ai.chat.model.ContextUsage;
+import io.mindspice.magenta2.ai.chat.repository.AuditRepository;
 import io.mindspice.magenta2.ai.chat.tool.ToolTranscriptService;
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
@@ -52,6 +53,7 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
     private final TokenCountEstimator tokenCountEstimator;
     private final ContextUsageTracker usageTracker;
     private final ToolTranscriptService toolTranscriptService;
+    private final AuditRepository auditRepository;
 
     public ContextManagementAdvisor(
         ChatMemoryRepository chatMemoryRepository,
@@ -59,7 +61,8 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
         ChatModelRouter chatModelRouter,
         TokenCountEstimator tokenCountEstimator,
         ContextUsageTracker usageTracker,
-        ToolTranscriptService toolTranscriptService
+        ToolTranscriptService toolTranscriptService,
+        AuditRepository auditRepository
     ) {
         this.chatMemoryRepository = chatMemoryRepository;
         this.aiConfig = aiConfig;
@@ -67,6 +70,7 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
         this.tokenCountEstimator = tokenCountEstimator;
         this.usageTracker = usageTracker;
         this.toolTranscriptService = toolTranscriptService;
+        this.auditRepository = auditRepository;
     }
 
     @Override
@@ -349,6 +353,12 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
         compacted.add(new SystemMessage(NOTICE_PREFIX + COMPACTION_NOTICE));
         compacted.addAll(tail);
         chatMemoryRepository.saveAll(conversationId, compacted);
+
+        if (auditRepository != null) {
+            ContextUsage postUsage = estimateStoredUsage(conversationId, model);
+            int msgCount = chatMemoryRepository.findByConversationId(conversationId).size();
+            auditRepository.recordCompaction(conversationId, postUsage, msgCount, "summarize", summary, model);
+        }
         return compacted;
     }
 
@@ -368,6 +378,12 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
             trimmed.remove(removeIndex);
         }
         chatMemoryRepository.saveAll(conversationId, trimmed);
+
+        if (auditRepository != null) {
+            ContextUsage postUsage = estimateStoredUsage(conversationId, model);
+            int msgCount = chatMemoryRepository.findByConversationId(conversationId).size();
+            auditRepository.recordCompaction(conversationId, postUsage, msgCount, "trim", null, model);
+        }
         return trimmed;
     }
 

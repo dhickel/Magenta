@@ -12,8 +12,11 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
+import java.util.LinkedHashMap;
 import java.util.regex.Pattern;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.agent.job.AgentJobService;
 import io.mindspice.magenta2.ai.agent.job.AgentJobStatus;
 import io.mindspice.magenta2.ai.chat.model.ChatMessage;
@@ -29,6 +32,7 @@ import io.mindspice.magenta2.ai.chat.plan.PlanService;
 import io.mindspice.magenta2.ai.chat.plan.PlanToolContext;
 import io.mindspice.magenta2.ai.chat.plan.PlanToolExecutionContext;
 import io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer;
+import io.mindspice.magenta2.ai.chat.repository.AuditRepository;
 import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
 import io.mindspice.magenta2.ai.chat.tool.ChatToolRegistry;
 import io.mindspice.magenta2.ai.chat.tool.ToolTranscriptService;
@@ -112,6 +116,8 @@ public class ChatService {
     private final PlanService planService;
     private final AgentJobService agentJobService;
     private final ConversationTurnCoordinator turnCoordinator;
+    private final AuditRepository auditRepository;
+    private final ObjectMapper objectMapper;
     private final Set<String> toolUnsupportedModels = ConcurrentHashMap.newKeySet();
 
     public ChatService(
@@ -127,6 +133,8 @@ public class ChatService {
             chatSessionMetadataRepository,
             chatMarkdownRenderer,
             aiConfig,
+            null,
+            null,
             null,
             null,
             null,
@@ -167,6 +175,8 @@ public class ChatService {
             toolTranscriptService,
             planService,
             null,
+            null,
+            null,
             null
         );
     }
@@ -186,7 +196,9 @@ public class ChatService {
         ToolTranscriptService toolTranscriptService,
         @Autowired(required = false) PlanService planService,
         @Autowired(required = false) AgentJobService agentJobService,
-        @Autowired(required = false) ConversationTurnCoordinator turnCoordinator
+        @Autowired(required = false) ConversationTurnCoordinator turnCoordinator,
+        @Autowired(required = false) AuditRepository auditRepository,
+        @Autowired(required = false) ObjectMapper objectMapper
     ) {
         this.chatMemory = chatMemory;
         this.chatMemoryRepository = chatMemoryRepository;
@@ -202,6 +214,8 @@ public class ChatService {
         this.planService = planService;
         this.agentJobService = agentJobService;
         this.turnCoordinator = turnCoordinator;
+        this.auditRepository = auditRepository;
+        this.objectMapper = objectMapper;
     }
 
     public ChatResponse chat(ChatRequest request) {
@@ -245,17 +259,26 @@ public class ChatService {
     }
 
     private ChatResponse.MsgResponse plainChat(ResolvedChatRequest resolvedRequest) {
+        auditUserMessage(resolvedRequest);
         ChatClient.ChatClientRequestSpec prompt = prompt(resolvedRequest);
 
         ChatClientResponse chatClientResponse = prompt.call().chatClientResponse();
         String response = chatClientResponse.chatResponse().getResult().getOutput().getText();
         chatSessionMetadataRepository.saveModel(resolvedRequest.conversationId(), resolvedRequest.model());
         enqueueTitleJobIfFirstTurn(resolvedRequest);
+
+        AssistantMessage assistantMsg = chatClientResponse.chatResponse().getResult().getOutput();
+        if (assistantMsg != null) {
+            auditAssistantMessage(assistantMsg, resolvedRequest);
+        }
+
+        StoredContextUsage maintenance = maintainContextUsage(resolvedRequest.conversationId(), resolvedRequest.model());
+        auditEndOfTurnContext(resolvedRequest, maintenance);
         return new ChatResponse.MsgResponse(
             resolvedRequest.conversationId(),
             resolvedRequest.model(),
             response,
-            maintainContextUsage(resolvedRequest.conversationId(), resolvedRequest.model()).usage(),
+            maintenance.usage(),
             planState(resolvedRequest.conversationId())
         );
     }
@@ -793,6 +816,7 @@ public class ChatService {
         Prompt prompt = new Prompt(preparedPrompt.messages(), options);
         PlanMode mode = planService == null ? PlanMode.NORMAL : planService.mode(request.conversationId());
         PlanToolExecutionContext.set(new PlanToolContext(request.conversationId(), mode));
+        auditUserMessage(request);
         try {
             phase(activeTurn, ActiveTurnPhase.MODEL_CALL);
             org.springframework.ai.chat.model.ChatResponse response = chatModelRouter.chatModel(request.model()).call(prompt);
@@ -835,6 +859,9 @@ public class ChatService {
                             toolActivities.add(toolMessage.toolActivity());
                         }
                         pendingToolMessages.add(toolMessage);
+                        if (auditRepository != null) {
+                            auditRepository.recordToolExec(entry, request.conversationId(), request.model());
+                        }
                     }
                     conversationHistory = new ArrayList<>(toolExecutionResult.conversationHistory());
                     if (conversationHistory.size() > promptMessageCount) {
@@ -885,7 +912,7 @@ public class ChatService {
                         );
                         break;
                     }
-                    recordContextUsage(request.conversationId(), checkpoint.usage());
+                    recordContextUsage(request.conversationId(), checkpoint.usage(), request.model());
                     if (toolMessageConsumer != null) {
                         pendingToolMessages.forEach(toolMessageConsumer);
                     }
@@ -909,7 +936,7 @@ public class ChatService {
                         currentSystemInstructions,
                         request.model()
                     );
-                    recordContextUsage(request.conversationId(), checkpoint.usage());
+                    recordContextUsage(request.conversationId(), checkpoint.usage(), request.model());
                     if (!checkpoint.toolUseAllowed()) {
                         throw new IllegalStateException(
                             "Context is too large to send safely after tool compaction: "
@@ -987,9 +1014,11 @@ public class ChatService {
             }
             if (finalAssistantMessage != null) {
                 messagesToPersist.add(finalAssistantMessage);
+                auditAssistantMessage(finalAssistantMessage, request);
             }
             contextManagementAdvisor.saveAssistantMessages(request.conversationId(), messagesToPersist);
             StoredContextUsage maintenance = maintainContextUsage(request.conversationId(), request.model());
+            auditEndOfTurnContext(request, maintenance);
             if (maintenance.compacted() && toolMessageConsumer != null) {
                 toolMessageConsumer.accept(systemMessage(ContextManagementAdvisor.COMPACTION_NOTICE));
             }
@@ -1051,9 +1080,39 @@ public class ChatService {
         return systemMessage(text);
     }
 
-    private void recordContextUsage(String conversationId, io.mindspice.magenta2.ai.chat.model.ContextUsage usage) {
+    private void auditUserMessage(ResolvedChatRequest request) {
+        if (auditRepository != null) {
+            auditRepository.recordUserMessage(request.conversationId(), request.message(), request.model());
+        }
+    }
+
+    private void auditAssistantMessage(AssistantMessage message, ResolvedChatRequest request) {
+        if (auditRepository == null || message == null) return;
+        String metaJson = null;
+        if (message.getMetadata() != null && !message.getMetadata().isEmpty() && objectMapper != null) {
+            try {
+                metaJson = objectMapper.writeValueAsString(message.getMetadata());
+            } catch (JsonProcessingException ignored) {
+            }
+        }
+        auditRepository.recordAssistantMessage(
+            request.conversationId(), message.getText(), metaJson, request.model());
+    }
+
+    private void auditEndOfTurnContext(ResolvedChatRequest request, StoredContextUsage maintenance) {
+        if (auditRepository != null && maintenance != null && maintenance.usage() != null) {
+            int count = chatMemoryRepository.findByConversationId(request.conversationId()).size();
+            auditRepository.recordContext(request.conversationId(), maintenance.usage(), count, request.model());
+        }
+    }
+
+    private void recordContextUsage(String conversationId, ContextUsage usage, String model) {
         if (contextUsageTracker != null) {
             contextUsageTracker.record(conversationId, usage);
+        }
+        if (auditRepository != null && usage != null) {
+            int count = chatMemoryRepository.findByConversationId(conversationId).size();
+            auditRepository.recordContext(conversationId, usage, count, model);
         }
     }
 
@@ -1308,16 +1367,7 @@ public class ChatService {
                 return false;
             }
             String normalized = responseData.toLowerCase(java.util.Locale.ROOT);
-            return normalized.contains("\"exitcode\":1")
-                || normalized.contains("\"exitcode\":2")
-                || normalized.contains("\"exitcode\":3")
-                || normalized.contains("\"exitcode\":4")
-                || normalized.contains("\"exitcode\":5")
-                || normalized.contains("\"exitcode\":6")
-                || normalized.contains("\"exitcode\":7")
-                || normalized.contains("\"exitcode\":8")
-                || normalized.contains("\"exitcode\":9")
-                || normalized.contains("\"timedout\":true")
+            return normalized.contains("\"timedout\":true")
                 || normalized.contains("exception")
                 || normalized.contains("error")
                 || normalized.contains("failed")

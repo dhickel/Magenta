@@ -73,3 +73,42 @@ create table if not exists ai_chat_plan_steps (
     primary key (conversation_id, step_order),
     foreign key (conversation_id) references ai_chat_plans(conversation_id) on delete cascade
 );
+
+-- Immutable append-only event log. Each row is a discrete, known event in the
+-- chat lifecycle, recorded explicitly at the point it occurs. Never deduped, never
+-- derived from ai_chat_memory state — we control the flow and know when each event happens.
+create table if not exists audit_event (
+    id integer primary key autoincrement,
+    conversation_id text not null,
+    sequence integer not null,
+    event_type text not null,
+    -- message content (user_msg, assistant_msg)
+    message_text text,
+    message_metadata_json text,
+    model text,
+    -- tool execution (tool_exec)
+    tool_call_id text,
+    tool_name text,
+    arguments_json text,
+    arguments_summary text,
+    call_preview text,
+    result_text text,
+    result_summary text,
+    result_preview text,
+    tool_status text,
+    result_truncated integer default 0,
+    result_large integer default 0,
+    -- compaction (compaction)
+    compaction_method text,
+    compaction_summary text,
+    -- context snapshot (context, compaction)
+    used_tokens integer,
+    max_tokens integer,
+    trigger_tokens integer,
+    percent_used real,
+    stored_message_count integer,
+    recorded_at text not null
+);
+
+create index if not exists idx_audit_event_conversation
+    on audit_event (conversation_id, sequence);

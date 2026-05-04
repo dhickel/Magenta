@@ -41,7 +41,8 @@ class ContextManagementAdvisorTest {
             new SummaryRouter(summaryModel),
             new CharacterTokenEstimator(),
             new ContextUsageTracker(),
-            new ToolTranscriptService(new ObjectMapper())
+            new ToolTranscriptService(new ObjectMapper()),
+            null
         );
         memoryRepository.saveAll("conversation-1", List.of(
             new SystemMessage(ContextManagementAdvisor.SUMMARY_PREFIX + "prior summary to keep"),
@@ -76,7 +77,8 @@ class ContextManagementAdvisorTest {
             new SummaryRouter(summaryModel),
             new CharacterTokenEstimator(),
             new ContextUsageTracker(),
-            new ToolTranscriptService(new ObjectMapper())
+            new ToolTranscriptService(new ObjectMapper()),
+            null
         );
         memoryRepository.saveAll("conversation-1", List.of(new UserMessage("current")));
 
@@ -114,7 +116,8 @@ class ContextManagementAdvisorTest {
             new SummaryRouter(summaryModel),
             new CharacterTokenEstimator(),
             new ContextUsageTracker(),
-            new ToolTranscriptService(new ObjectMapper())
+            new ToolTranscriptService(new ObjectMapper()),
+            null
         );
         memoryRepository.saveAll("conversation-1", List.of(
             new UserMessage("older message " + "x".repeat(250)),

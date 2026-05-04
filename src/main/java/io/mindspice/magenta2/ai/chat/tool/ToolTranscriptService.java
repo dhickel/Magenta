@@ -306,16 +306,8 @@ public class ToolTranscriptService {
             if (root.path("timedOut").asBoolean(false)) {
                 return true;
             }
-            JsonNode exitCode = root.path("exitCode");
-            if (!exitCode.isMissingNode() && !exitCode.isNull() && exitCode.asInt(0) != 0) {
-                return true;
-            }
         }
-        String normalized = resultText.toLowerCase(java.util.Locale.ROOT);
-        return normalized.contains("exception")
-            || normalized.contains("error")
-            || normalized.contains("failed")
-            || normalized.contains("permission denied");
+        return false;
     }
 
     private JsonNode jsonNode(String text) {
