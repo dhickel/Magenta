@@ -56,7 +56,8 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionResult;
-import org.springframework.ai.ollama.api.OllamaChatOptions;
+import org.springframework.ai.model.tool.DefaultToolCallingChatOptions;
+import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.retry.NonTransientAiException;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -812,7 +813,7 @@ public class ChatService {
             currentInstructions,
             request.model()
         );
-        OllamaChatOptions options = toolOptions(request.model(), approvedTools);
+        ToolCallingChatOptions options = toolOptions(request.model(), approvedTools);
         Prompt prompt = new Prompt(preparedPrompt.messages(), options);
         PlanMode mode = planService == null ? PlanMode.NORMAL : planService.mode(request.conversationId());
         PlanToolExecutionContext.set(new PlanToolContext(request.conversationId(), mode));
@@ -1134,19 +1135,19 @@ public class ChatService {
         }
     }
 
-    private OllamaChatOptions toolOptions(String model, List<ToolCallback> approvedTools) {
-        OllamaChatOptions options = StringUtils.hasText(model)
-            ? chatModelRouter.ollamaOptions(model)
-            : OllamaChatOptions.builder().build();
+    private ToolCallingChatOptions toolOptions(String model, List<ToolCallback> approvedTools) {
+        ToolCallingChatOptions options = StringUtils.hasText(model)
+            ? chatModelRouter.toolCallingOptions(model)
+            : new DefaultToolCallingChatOptions();
         options.setInternalToolExecutionEnabled(false);
         options.setToolCallbacks(approvedTools);
         return options;
     }
 
-    private OllamaChatOptions toolFinalOptions(String model) {
-        OllamaChatOptions options = StringUtils.hasText(model)
-            ? chatModelRouter.ollamaOptions(model)
-            : OllamaChatOptions.builder().build();
+    private ToolCallingChatOptions toolFinalOptions(String model) {
+        ToolCallingChatOptions options = StringUtils.hasText(model)
+            ? chatModelRouter.toolCallingOptions(model)
+            : new DefaultToolCallingChatOptions();
         options.setInternalToolExecutionEnabled(false);
         options.setToolCallbacks(List.of());
         return options;

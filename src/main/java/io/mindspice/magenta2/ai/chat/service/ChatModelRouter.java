@@ -9,11 +9,15 @@ import io.mindspice.magenta2.ai.config.user.EndpointType;
 import io.mindspice.magenta2.ai.config.user.ModelConfig;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
 import org.springframework.ai.ollama.management.ModelManagementOptions;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -52,6 +56,10 @@ public class ChatModelRouter {
     }
 
     public OllamaChatOptions ollamaOptions(String model) {
+        ModelConfig config = modelConfig(model);
+        if (config.endpointType() != EndpointType.OLLAMA) {
+            throw new IllegalStateException("ollamaOptions called for non-Ollama model: " + model);
+        }
         return ollamaOptionsBuilder(model).build();
     }
 
@@ -65,17 +73,31 @@ public class ChatModelRouter {
         return builder;
     }
 
+    public ToolCallingChatOptions toolCallingOptions(String model) {
+        ModelConfig config = modelConfig(model);
+        return switch (config.endpointType()) {
+            case OLLAMA -> ollamaOptionsBuilder(model).build();
+            case OPENAI_COMPATIBLE -> OpenAiChatOptions.builder()
+                .model(config.remoteModelName())
+                .build();
+        };
+    }
+
     private ChatModel buildModel(ModelConfig modelConfig) {
-        if (modelConfig.endpointType() != EndpointType.OLLAMA) {
-            throw new IllegalStateException("Unsupported chat endpoint type: " + modelConfig.endpointType());
-        }
         if (!StringUtils.hasText(modelConfig.remoteEndpoint())) {
-            throw new IllegalStateException("Ollama model must define remoteEndpoint: " + modelConfig.remoteModelName());
+            throw new IllegalStateException("Model must define remoteEndpoint: " + modelConfig.remoteModelName());
         }
         if (!StringUtils.hasText(modelConfig.remoteModelName())) {
-            throw new IllegalStateException("Ollama model must define remoteModelName");
+            throw new IllegalStateException("Model must define remoteModelName");
         }
 
+        return switch (modelConfig.endpointType()) {
+            case OLLAMA -> buildOllamaModel(modelConfig);
+            case OPENAI_COMPATIBLE -> buildOpenAiModel(modelConfig);
+        };
+    }
+
+    private OllamaChatModel buildOllamaModel(ModelConfig modelConfig) {
         OllamaChatOptions.Builder optionsBuilder = OllamaChatOptions.builder()
             .model(modelConfig.remoteModelName());
         if (modelConfig.think()) {
@@ -87,6 +109,28 @@ public class ChatModelRouter {
             .toolCallingManager(toolCallingManager)
             .observationRegistry(observationRegistry)
             .modelManagementOptions(ModelManagementOptions.defaults())
+            .build();
+    }
+
+    private OpenAiChatModel buildOpenAiModel(ModelConfig modelConfig) {
+        if (!StringUtils.hasText(modelConfig.apiKey())) {
+            throw new IllegalStateException(
+                "OpenAI-compatible model must define apiKey: " + modelConfig.remoteModelName());
+        }
+        OpenAiApi api = OpenAiApi.builder()
+            .baseUrl(modelConfig.remoteEndpoint())
+            .apiKey(modelConfig.apiKey())
+            .completionsPath("/v1/chat/completions")
+            .embeddingsPath("/v1/embeddings")
+            .build();
+        OpenAiChatOptions options = OpenAiChatOptions.builder()
+            .model(modelConfig.remoteModelName())
+            .build();
+        return OpenAiChatModel.builder()
+            .openAiApi(api)
+            .defaultOptions(options)
+            .toolCallingManager(toolCallingManager)
+            .observationRegistry(observationRegistry)
             .build();
     }
 

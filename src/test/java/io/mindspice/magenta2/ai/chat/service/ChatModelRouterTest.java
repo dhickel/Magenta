@@ -33,20 +33,19 @@ class ChatModelRouterTest {
     }
 
     @Test
-    void rejectsUnsupportedEndpointTypeWhenBuildingModel() {
+    void buildsOpenAiCompatibleModel() {
         AiConfig config = new AiConfig(
             "magenta",
             "magenta",
             10,
             null,
-            Map.of("openai", new ModelConfig("gpt-4o-mini", "https://api.example.test/v1", EndpointType.OPENAI_COMPATIBLE, 128000, false)),
+            Map.of("openai", new ModelConfig("gpt-4o-mini", "https://api.example.test/v1", EndpointType.OPENAI_COMPATIBLE, 128000, false, "test-key")),
             Map.of("magenta", new AgentConfig("openai", "Prompt.", List.of()))
         );
         ChatModelRouter router = new ChatModelRouter(config, null, ObservationRegistry.NOOP);
 
-        assertThatThrownBy(() -> router.chatModel("openai"))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("Unsupported chat endpoint type");
+        assertThat(router.remoteModelName("openai")).isEqualTo("gpt-4o-mini");
+        assertThat(router.chatModel("openai")).isNotNull();
     }
 
     private AiConfig aiConfig() {
@@ -56,8 +55,8 @@ class ChatModelRouterTest {
             10,
             null,
             Map.of(
-                "local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 8192, false),
-                "local-gemma", new ModelConfig("gemma4", "http://other-host:11434", EndpointType.OLLAMA, 32768, false)
+                "local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 8192, false, null),
+                "local-gemma", new ModelConfig("gemma4", "http://other-host:11434", EndpointType.OLLAMA, 32768, false, null)
             ),
             Map.of("magenta", new AgentConfig("local-qwen", "Prompt.", List.of()))
         );

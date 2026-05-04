@@ -625,7 +625,7 @@ class ChatServiceTest {
             "magenta",
             10,
             null,
-            Map.of("local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 8192, false)),
+            Map.of("local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 8192, false, null)),
             Map.of("magenta", new AgentConfig("local-qwen", "You are Magenta.", List.of("test_tool")))
         );
     }
@@ -637,8 +637,8 @@ class ChatServiceTest {
             10,
             null,
             Map.of(
-                "local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 1400, false),
-                "summary", new ModelConfig("summary-model", "http://localhost:11434", EndpointType.OLLAMA, 512, false)
+                "local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 1400, false, null),
+                "summary", new ModelConfig("summary-model", "http://localhost:11434", EndpointType.OLLAMA, 512, false, null)
             ),
             Map.of("magenta", new AgentConfig("local-qwen", "You are Magenta.", List.of("test_tool")))
         );
@@ -651,7 +651,7 @@ class ChatServiceTest {
             "local-qwen",
             10,
             null,
-            Map.of("local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 8192, false)),
+            Map.of("local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 8192, false, null)),
             Map.of("magenta", new AgentConfig("local-qwen", "You are Magenta.", List.of("plan_set_goal")))
         );
     }
@@ -663,7 +663,7 @@ class ChatServiceTest {
             "local-qwen",
             10,
             null,
-            Map.of("local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 8192, false)),
+            Map.of("local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 8192, false, null)),
             Map.of("magenta", new AgentConfig("local-qwen", "You are Magenta.", List.of("plan_complete")))
         );
     }
@@ -735,6 +735,11 @@ class ChatServiceTest {
         @Override
         public OllamaChatOptions.Builder ollamaOptionsBuilder(String model) {
             return OllamaChatOptions.builder().model(model);
+        }
+
+        @Override
+        public ToolCallingChatOptions toolCallingOptions(String model) {
+            return OllamaChatOptions.builder().model(model).build();
         }
     }
 
@@ -816,6 +821,11 @@ class ChatServiceTest {
         @Override
         public OllamaChatOptions.Builder ollamaOptionsBuilder(String model) {
             return OllamaChatOptions.builder().model(model);
+        }
+
+        @Override
+        public ToolCallingChatOptions toolCallingOptions(String model) {
+            return OllamaChatOptions.builder().model(model).build();
         }
     }
 

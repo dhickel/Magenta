@@ -151,8 +151,8 @@ class ContextManagementAdvisorTest {
             10,
             null,
             Map.of(
-                "main", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 1200, false),
-                "summary", new ModelConfig("summary-model", "http://localhost:11434", EndpointType.OLLAMA, 512, false)
+                "main", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 1200, false, null),
+                "summary", new ModelConfig("summary-model", "http://localhost:11434", EndpointType.OLLAMA, 512, false, null)
             ),
             Map.of("magenta", new AgentConfig("main", "You are Magenta.", List.of()))
         );

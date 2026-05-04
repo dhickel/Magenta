@@ -144,8 +144,8 @@ class AgentJobServiceTest {
             10,
             null,
             Map.of(
-                "chat-model", new ModelConfig("chat-remote", "http://localhost:11434", EndpointType.OLLAMA, 8192, false),
-                "summary-model", new ModelConfig("summary-remote", "http://localhost:11434", EndpointType.OLLAMA, 8192, false)
+                "chat-model", new ModelConfig("chat-remote", "http://localhost:11434", EndpointType.OLLAMA, 8192, false, null),
+                "summary-model", new ModelConfig("summary-remote", "http://localhost:11434", EndpointType.OLLAMA, 8192, false, null)
             ),
             Map.of("magenta", new AgentConfig("chat-model", "prompt", List.of()))
         );
