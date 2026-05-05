@@ -81,6 +81,58 @@ class ChatServiceTest {
     }
 
     @Test
+    void renderAssistantMessageExtractsReasoningContentFromAssistantMessageProperties() {
+        AssistantMessage assistantMsg = AssistantMessage.builder()
+            .content("Visible answer")
+            .properties(Map.of("reasoningContent", "deep **reasoning** notes"))
+            .build();
+        Generation generation = new Generation(
+            assistantMsg,
+            ChatGenerationMetadata.builder().build()
+        );
+        ChatResponse response = new ChatResponse(List.of(generation));
+
+        ChatMessage message = chatService.renderAssistantMessage(response);
+
+        assertThat(message.text()).isEqualTo("Visible answer");
+        assertThat(message.thinkingHtml()).contains("<strong>reasoning</strong>");
+    }
+
+    @Test
+    void thinkingTextPrefersOllamaThinkingOverReasoningContent() {
+        AssistantMessage assistantMsg = AssistantMessage.builder()
+            .content("Visible answer")
+            .properties(Map.of("reasoningContent", "deepseek reasoning"))
+            .build();
+        Generation generation = new Generation(
+            assistantMsg,
+            ChatGenerationMetadata.builder()
+                .metadata(ChatService.THINKING_METADATA_KEY, "ollama thinking")
+                .build()
+        );
+
+        String thinking = ChatService.thinkingText(generation);
+
+        assertThat(thinking).isEqualTo("ollama thinking");
+    }
+
+    @Test
+    void thinkingTextFallsBackToReasoningContentWhenNoOllamaThinking() {
+        AssistantMessage assistantMsg = AssistantMessage.builder()
+            .content("Visible answer")
+            .properties(Map.of("reasoningContent", "deepseek reasoning"))
+            .build();
+        Generation generation = new Generation(
+            assistantMsg,
+            ChatGenerationMetadata.builder().build()
+        );
+
+        String thinking = ChatService.thinkingText(generation);
+
+        assertThat(thinking).isEqualTo("deepseek reasoning");
+    }
+
+    @Test
     void assistantMessageCanCarryCombinedToolAndFinalThinking() {
         Generation finalGeneration = new Generation(
             new AssistantMessage("Visible answer"),

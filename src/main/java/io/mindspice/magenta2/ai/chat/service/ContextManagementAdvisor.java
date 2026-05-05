@@ -550,9 +550,7 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
         if (output == null) {
             return null;
         }
-        String thinking = generation.getMetadata() == null
-            ? null
-            : generation.getMetadata().get(ChatService.THINKING_METADATA_KEY);
+        String thinking = ChatService.thinkingText(generation);
         if (!StringUtils.hasText(thinking)) {
             return output;
         }

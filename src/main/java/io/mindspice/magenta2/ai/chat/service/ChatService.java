@@ -1614,14 +1614,22 @@ public class ChatService {
             .collect(java.util.stream.Collectors.joining("\n\n"));
     }
 
-    private String thinkingText(org.springframework.ai.chat.model.Generation generation) {
-        if (generation == null || generation.getMetadata() == null) {
-            return null;
+    static String thinkingText(org.springframework.ai.chat.model.Generation generation) {
+        // Ollama: ChatGenerationMetadata under "thinking"
+        if (generation.getMetadata() != null) {
+            String thinking = stringValue(generation.getMetadata().get(THINKING_METADATA_KEY));
+            if (thinking != null) return thinking;
         }
-        return stringValue(generation.getMetadata().get(THINKING_METADATA_KEY));
+        // OpenAI/DeepSeek: AssistantMessage properties under "reasoningContent"
+        org.springframework.ai.chat.messages.AssistantMessage output = generation.getOutput();
+        if (output != null && output.getMetadata() != null) {
+            String reasoning = stringValue(output.getMetadata().get("reasoningContent"));
+            if (reasoning != null) return reasoning;
+        }
+        return null;
     }
 
-    private String stringValue(Object value) {
+    private static String stringValue(Object value) {
         return value instanceof String text && StringUtils.hasText(text) ? text : null;
     }
 
