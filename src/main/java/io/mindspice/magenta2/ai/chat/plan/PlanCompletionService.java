@@ -143,7 +143,7 @@ public class PlanCompletionService {
                     new SystemMessage(VALIDATOR_SYSTEM_PROMPT),
                     new UserMessage(validationInput(plan, artifactPaths, finalMessage))
                 ),
-                chatModelRouter.ollamaOptions(model)
+                chatModelRouter.chatOptions(model)
             ))
             .call()
             .content();

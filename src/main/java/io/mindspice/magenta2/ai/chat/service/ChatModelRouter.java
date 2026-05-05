@@ -59,6 +59,8 @@ public class ChatModelRouter {
         return resolve(model).config();
     }
 
+    /** Returns Ollama-specific options. Throws if the model is not an Ollama endpoint.
+     * Prefer {@link #chatOptions(String)} for endpoint-agnostic callers. */
     public OllamaChatOptions ollamaOptions(String model) {
         ModelConfig config = modelConfig(model);
         if (config.endpointType() != EndpointType.OLLAMA) {
@@ -85,6 +87,13 @@ public class ChatModelRouter {
                 .model(config.remoteModelName())
                 .build();
         };
+    }
+
+    /** Endpoint-polymorphic options for any chat call. Use this instead of
+     * {@link #ollamaOptions(String)} unless you specifically need the
+     * concrete {@code OllamaChatOptions} type. */
+    public ToolCallingChatOptions chatOptions(String model) {
+        return toolCallingOptions(model);
     }
 
     private ChatModel buildModel(ModelConfig modelConfig) {

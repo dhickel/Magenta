@@ -3,6 +3,7 @@
 `.internal-dev/` is the persistent engineering document store for plans, bugs, changelogs, reviews, notes, and reusable knowledge.
 
 ### Required workflow
+- After each feature implementation or non-trivial fix, complete the full `.internal-dev` workflow: write a changelog entry, record any out-of-scope bugs discovered, capture reusable knowledge, and note deferred ideas.
 - Plans and reviews are written to `.internal-dev/plans/` and `.internal-dev/reviews/`.
 - Out-of-scope bugs found during work are logged immediately in `.internal-dev/bugs/`.
 - Finalized work gets a changelog entry in `.internal-dev/changelogs/`.

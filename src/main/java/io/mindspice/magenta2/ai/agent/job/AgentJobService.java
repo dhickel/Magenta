@@ -16,8 +16,6 @@ import io.mindspice.magenta2.ai.execution.MagentaWorkRequest;
 import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.core.task.TaskExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -37,7 +35,6 @@ public class AgentJobService {
     private final ChatModelRouter chatModelRouter;
     private final AiConfig aiConfig;
     private final ObjectMapper objectMapper;
-    private final TaskExecutor agentJobTaskExecutor;
     private final MagentaWorkExecutor magentaWorkExecutor;
 
     @Autowired
@@ -47,37 +44,14 @@ public class AgentJobService {
         ChatModelRouter chatModelRouter,
         AiConfig aiConfig,
         ObjectMapper objectMapper,
-        @Qualifier("agentJobTaskExecutor") TaskExecutor agentJobTaskExecutor,
-        @Autowired(required = false) MagentaWorkExecutor magentaWorkExecutor
+        MagentaWorkExecutor magentaWorkExecutor
     ) {
         this.agentJobRepository = agentJobRepository;
         this.chatSessionMetadataRepository = chatSessionMetadataRepository;
         this.chatModelRouter = chatModelRouter;
         this.aiConfig = aiConfig;
         this.objectMapper = objectMapper;
-        this.agentJobTaskExecutor = agentJobTaskExecutor;
         this.magentaWorkExecutor = magentaWorkExecutor;
-    }
-
-    AgentJobService(
-        AgentJobRepository agentJobRepository,
-        ChatSessionMetadataRepository chatSessionMetadataRepository,
-        ChatModelRouter chatModelRouter,
-        AiConfig aiConfig,
-        ObjectMapper objectMapper,
-        TaskExecutor agentJobTaskExecutor
-    ) {
-        this(agentJobRepository, chatSessionMetadataRepository, chatModelRouter, aiConfig, objectMapper, agentJobTaskExecutor, null);
-    }
-
-    AgentJobService(
-        AgentJobRepository agentJobRepository,
-        ChatSessionMetadataRepository chatSessionMetadataRepository,
-        ChatModelRouter chatModelRouter,
-        ObjectMapper objectMapper,
-        TaskExecutor agentJobTaskExecutor
-    ) {
-        this(agentJobRepository, chatSessionMetadataRepository, chatModelRouter, null, objectMapper, agentJobTaskExecutor, null);
     }
 
     public Optional<AgentJob> submitConversationTitle(String conversationId, String selectedModel, String firstUserMessage) {
@@ -95,19 +69,15 @@ public class AgentJobService {
             json(Map.of("firstUserMessage", firstUserMessage))
         );
         enqueued.ifPresent(job -> {
-            if (magentaWorkExecutor != null) {
-                magentaWorkExecutor.submitBackground(
-                    job.conversationId(),
-                    MagentaWorkRequest.BACKGROUND_PRIORITY,
-                    "conversation title " + job.conversationId(),
-                    () -> {
-                        runConversationTitleJob(job.id());
-                        return null;
-                    }
-                );
-                return;
-            }
-            agentJobTaskExecutor.execute(() -> runConversationTitleJob(job.id()));
+            magentaWorkExecutor.submitBackground(
+                job.conversationId(),
+                MagentaWorkRequest.BACKGROUND_PRIORITY,
+                "conversation title " + job.conversationId(),
+                () -> {
+                    runConversationTitleJob(job.id());
+                    return null;
+                }
+            );
         });
         return enqueued;
     }

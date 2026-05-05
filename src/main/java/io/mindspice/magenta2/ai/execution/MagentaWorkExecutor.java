@@ -15,21 +15,31 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 import jakarta.annotation.PreDestroy;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
 public class MagentaWorkExecutor {
     private final Map<MagentaWorkKind, Lane> lanes;
 
-    public MagentaWorkExecutor() {
+    @Autowired
+    public MagentaWorkExecutor(
+        @Value("${magenta.executor.chat-threads:8}") int chatThreads,
+        @Value("${magenta.executor.chat-queue:200}") int chatQueue,
+        @Value("${magenta.executor.delegation-threads:2}") int delegationThreads,
+        @Value("${magenta.executor.delegation-queue:100}") int delegationQueue,
+        @Value("${magenta.executor.background-threads:1}") int backgroundThreads,
+        @Value("${magenta.executor.background-queue:100}") int backgroundQueue
+    ) {
         this(Map.of(
-            MagentaWorkKind.CHAT_TURN, new LaneSettings("magenta-chat-", 2, 100),
-            MagentaWorkKind.DELEGATION, new LaneSettings("magenta-delegation-", 2, 100),
-            MagentaWorkKind.BACKGROUND_JOB, new LaneSettings("magenta-background-", 1, 100)
+            MagentaWorkKind.CHAT_TURN, new LaneSettings("magenta-chat-", chatThreads, chatQueue),
+            MagentaWorkKind.DELEGATION, new LaneSettings("magenta-delegation-", delegationThreads, delegationQueue),
+            MagentaWorkKind.BACKGROUND_JOB, new LaneSettings("magenta-background-", backgroundThreads, backgroundQueue)
         ));
     }
 
-    MagentaWorkExecutor(Map<MagentaWorkKind, LaneSettings> settings) {
+    public MagentaWorkExecutor(Map<MagentaWorkKind, LaneSettings> settings) {
         EnumMap<MagentaWorkKind, Lane> configured = new EnumMap<>(MagentaWorkKind.class);
         for (Map.Entry<MagentaWorkKind, LaneSettings> entry : settings.entrySet()) {
             configured.put(entry.getKey(), new Lane(entry.getValue()));
@@ -57,11 +67,11 @@ public class MagentaWorkExecutor {
     }
 
     @PreDestroy
-    void shutdown() {
+    public void shutdown() {
         lanes.values().forEach(Lane::shutdown);
     }
 
-    record LaneSettings(String threadNamePrefix, int maxThreads, int queueCapacity) { }
+    public record LaneSettings(String threadNamePrefix, int maxThreads, int queueCapacity) { }
 
     private static final class Lane {
         private final AtomicLong sequence = new AtomicLong();

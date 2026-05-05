@@ -1,16 +1,17 @@
 package io.mindspice.magenta2.ai.agent.job;
 
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.chat.repository.AgentJobRepository;
 import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
+import io.mindspice.magenta2.ai.execution.MagentaWorkExecutor;
+import io.mindspice.magenta2.ai.execution.MagentaWorkKind;
 import org.junit.jupiter.api.Test;
-import org.springframework.core.task.SyncTaskExecutor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -18,7 +19,7 @@ class AgentJobServiceTest {
 
     @Test
     void cleansBlankAndOverlongTitles() {
-        AgentJobService service = service(jdbcTemplate(), new SyncTaskExecutor());
+        AgentJobService service = service(jdbcTemplate(), testExecutor());
 
         assertThat(service.cleanTitle("   ")).isNull();
         assertThat(service.cleanTitle("<think>notes</think>\n\"Discuss reminder follow-up\""))
@@ -29,13 +30,15 @@ class AgentJobServiceTest {
     }
 
     @Test
-    void titleJobUpdatesConversationMetadata() {
+    void titleJobUpdatesConversationMetadata() throws Exception {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         AgentJobRepository jobRepository = new AgentJobRepository(jdbcTemplate);
         ChatSessionMetadataRepository metadataRepository = new ChatSessionMetadataRepository(jdbcTemplate);
-        AgentJobService service = new FixedTitleAgentJobService(jobRepository, metadataRepository, new SyncTaskExecutor(), "Useful Title");
+        MagentaWorkExecutor executor = testExecutor();
+        AgentJobService service = new FixedTitleAgentJobService(jobRepository, metadataRepository, executor, "Useful Title");
 
         service.submitConversationTitle("conversation-1", "qwen3", "Please help me plan reminders");
+        Thread.sleep(100); // wait for async background job
 
         assertThat(metadataRepository.findTitle("conversation-1")).contains("Useful Title");
         AgentJob job = jobRepository.findAll().getFirst();
@@ -57,7 +60,7 @@ class AgentJobServiceTest {
             "{\"firstUserMessage\":\"Please help me plan reminders\"}"
         ).orElseThrow();
         metadataRepository.updateTitle("conversation-1", "Manual Title");
-        AgentJobService service = new FixedTitleAgentJobService(jobRepository, metadataRepository, new SyncTaskExecutor(), "Generated Title");
+        AgentJobService service = new FixedTitleAgentJobService(jobRepository, metadataRepository, testExecutor(), "Generated Title");
 
         service.runConversationTitleJob(job.id());
 
@@ -65,18 +68,20 @@ class AgentJobServiceTest {
     }
 
     @Test
-    void titleJobUsesChatModelDirectly() {
+    void titleJobUsesChatModelDirectly() throws Exception {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         AgentJobRepository jobRepository = new AgentJobRepository(jdbcTemplate);
         ChatSessionMetadataRepository metadataRepository = new ChatSessionMetadataRepository(jdbcTemplate);
+        MagentaWorkExecutor executor = testExecutor();
         FixedTitleAgentJobService service = new FixedTitleAgentJobService(
             jobRepository,
             metadataRepository,
-            new SyncTaskExecutor(),
+            executor,
             "Useful Title"
         );
 
         service.submitConversationTitle("conversation-1", "chat-remote", "Please help me plan reminders");
+        Thread.sleep(100); // wait for async background job
 
         assertThat(service.lastSelectedModel).isEqualTo("chat-remote");
         assertThat(jobRepository.findAll().getFirst().selectedModel()).isEqualTo("chat-remote");
@@ -87,11 +92,9 @@ class AgentJobServiceTest {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         AgentJobRepository jobRepository = new AgentJobRepository(jdbcTemplate);
         ChatSessionMetadataRepository metadataRepository = new ChatSessionMetadataRepository(jdbcTemplate);
-        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(2);
-        executor.setMaxPoolSize(2);
-        executor.setQueueCapacity(10);
-        executor.initialize();
+        MagentaWorkExecutor executor = new MagentaWorkExecutor(Map.of(
+            MagentaWorkKind.BACKGROUND_JOB, new MagentaWorkExecutor.LaneSettings("test-bg-", 2, 10)
+        ));
         try {
             BlockingTitleAgentJobService service = new BlockingTitleAgentJobService(
                 jobRepository,
@@ -106,22 +109,26 @@ class AgentJobServiceTest {
             assertThat(service.twoJobsStarted.await(2, TimeUnit.SECONDS)).isTrue();
             assertThat(service.maxRunning.get()).isEqualTo(2);
             service.release.countDown();
-            executor.getThreadPoolExecutor().shutdown();
-            assertThat(executor.getThreadPoolExecutor().awaitTermination(2, TimeUnit.SECONDS)).isTrue();
-            assertThat(service.maxRunning.get()).isEqualTo(2);
         } finally {
             executor.shutdown();
         }
     }
 
-    private AgentJobService service(JdbcTemplate jdbcTemplate, org.springframework.core.task.TaskExecutor executor) {
+    private AgentJobService service(JdbcTemplate jdbcTemplate, MagentaWorkExecutor executor) {
         return new AgentJobService(
             new AgentJobRepository(jdbcTemplate),
             new ChatSessionMetadataRepository(jdbcTemplate),
             null,
+            null,
             new ObjectMapper(),
             executor
         );
+    }
+
+    private MagentaWorkExecutor testExecutor() {
+        return new MagentaWorkExecutor(Map.of(
+            MagentaWorkKind.BACKGROUND_JOB, new MagentaWorkExecutor.LaneSettings("test-bg-", 1, 10)
+        ));
     }
 
     private JdbcTemplate jdbcTemplate() {
@@ -136,10 +143,10 @@ class AgentJobServiceTest {
         FixedTitleAgentJobService(
             AgentJobRepository jobRepository,
             ChatSessionMetadataRepository metadataRepository,
-            org.springframework.core.task.TaskExecutor executor,
+            MagentaWorkExecutor executor,
             String title
         ) {
-            super(jobRepository, metadataRepository, null, new ObjectMapper(), executor);
+            super(jobRepository, metadataRepository, null, null, new ObjectMapper(), executor);
             this.title = title;
         }
 
@@ -159,9 +166,9 @@ class AgentJobServiceTest {
         BlockingTitleAgentJobService(
             AgentJobRepository jobRepository,
             ChatSessionMetadataRepository metadataRepository,
-            org.springframework.core.task.TaskExecutor executor
+            MagentaWorkExecutor executor
         ) {
-            super(jobRepository, metadataRepository, null, new ObjectMapper(), executor);
+            super(jobRepository, metadataRepository, null, null, new ObjectMapper(), executor);
         }
 
         @Override

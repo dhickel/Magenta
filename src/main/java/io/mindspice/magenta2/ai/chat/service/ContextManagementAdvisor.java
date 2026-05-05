@@ -418,7 +418,7 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
             .prompt()
             .system(SUMMARY_SYSTEM_PROMPT)
             .user(renderedConversation)
-            .options(chatModelRouter.ollamaOptions(compactionModel.remoteModelName()))
+            .options(chatModelRouter.chatOptions(compactionModel.remoteModelName()))
             .call()
             .content();
         if (!StringUtils.hasText(summary)) {

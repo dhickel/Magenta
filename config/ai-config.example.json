@@ -44,7 +44,7 @@
       "remoteEndpoint": "https://api.deepseek.com",
       "endpointType": "OPENAI_COMPATIBLE",
       "contextLength": 128000,
-      "think": false,
+      "think": true,
       "apiKey": "sk-f3e6c4a55e364a8da8d4e9cb7d7370d3"
     }
   },

@@ -10,6 +10,7 @@ import java.util.Set;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Semaphore;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.LinkedHashMap;
@@ -128,6 +129,7 @@ public class ChatService {
     private final AuditRepository auditRepository;
     private final ObjectMapper objectMapper;
     private final Set<String> toolUnsupportedModels = ConcurrentHashMap.newKeySet();
+    private final Map<String, Semaphore> streamLocks = new ConcurrentHashMap<>();
 
     public ChatService(
         ChatMemory chatMemory,
@@ -321,24 +323,19 @@ public class ChatService {
 
     public Flux<ChatMessage> stream(ResolvedChatRequest request, ActiveTurn activeTurn) {
         if (turnCoordinator != null) {
-            return Flux.create(sink -> {
-                var future = turnCoordinator.submit(
-                    request.conversationId(),
-                    MagentaWorkRequest.CHAT_PRIORITY,
-                    "streaming chat turn " + request.conversationId(),
-                    () -> {
-                        streamNow(request, activeTurn).doOnNext(sink::next).blockLast();
-                        return null;
-                    }
-                );
-                sink.onCancel(() -> future.cancel(true));
-                future.whenComplete((ignored, error) -> {
-                    if (error != null) {
-                        sink.error(unwrap(error));
-                    } else {
-                        sink.complete();
-                    }
-                });
+            return Flux.defer(() -> {
+                Semaphore lock = streamLocks.computeIfAbsent(
+                    request.conversationId(), k -> new Semaphore(1));
+                if (!lock.tryAcquire()) {
+                    return Flux.error(new IllegalStateException(
+                        "Another stream is already active for conversation " + request.conversationId()));
+                }
+                return streamNow(request, activeTurn)
+                    .doFinally(signal -> {
+                        lock.release();
+                        streamLocks.compute(request.conversationId(), (k, v) ->
+                            v != null && v.availablePermits() > 0 ? null : v);
+                    });
             });
         }
         return streamNow(request, activeTurn);
@@ -1501,7 +1498,7 @@ public class ChatService {
         prompt = prompt.user(request.message());
 
         if (StringUtils.hasText(request.model())) {
-            prompt = prompt.options(chatModelRouter.ollamaOptions(request.model()));
+            prompt = prompt.options(chatModelRouter.chatOptions(request.model()));
         }
         return prompt;
     }

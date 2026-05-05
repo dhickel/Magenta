@@ -18,6 +18,7 @@ import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
@@ -202,6 +203,16 @@ class ContextManagementAdvisorTest {
         @Override
         public OllamaChatOptions.Builder ollamaOptionsBuilder(String model) {
             return OllamaChatOptions.builder().model(model);
+        }
+
+        @Override
+        public ToolCallingChatOptions chatOptions(String model) {
+            return ollamaOptions(model);
+        }
+
+        @Override
+        public ToolCallingChatOptions toolCallingOptions(String model) {
+            return ollamaOptions(model);
         }
     }
 
