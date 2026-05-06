@@ -43,8 +43,10 @@ Models that produce human strings such as `None.` for optional list arguments ca
 
 # Status
 
-Open.
+Validated fixed in local live MCP workflow after adding scalar-to-list tool argument coercion.
+
+Follow-up validation conversation: `45530c72-b991-4574-8053-b885802122ae` in `/tmp/magenta2-mcp-fix-validation.sqlite`. The same class of phrase-only saved-plan execution completed with `mode=NORMAL`, `status=COMPLETED`, and evidence entries containing scalar-style deviation text such as `Deviation: None. Execution followed the plan exactly.` rather than failing deserialization.
 
 # Next Action
 
-Consider hardening plan execution tool schemas or argument coercion for optional list fields, and add a regression test where `plan_report` or `plan_complete` receives scalar text for a list parameter.
+Keep `ToolArgumentCoercionConfigTest` coverage for scalar-to-list parsing and rerun the MCP saved-plan execution workflow when changing Spring AI tool calling behavior.

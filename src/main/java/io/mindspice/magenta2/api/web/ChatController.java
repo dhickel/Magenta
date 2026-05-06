@@ -3,6 +3,7 @@ package io.mindspice.magenta2.api.web;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import io.mindspice.magenta2.ai.chat.model.ChatHistory;
@@ -19,6 +20,7 @@ import io.mindspice.magenta2.ai.chat.model.ChatStreamEvent;
 import io.mindspice.magenta2.ai.execution.ActiveTurnRegistry;
 import io.mindspice.magenta2.ai.execution.ActiveTurnRegistry.ActiveTurn;
 import io.mindspice.magenta2.ai.execution.InterruptResult;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,18 +41,29 @@ import reactor.core.scheduler.Schedulers;
 @RestController
 @RequestMapping("/api/chat")
 public class ChatController {
+    private static final long NO_TIMEOUT = 0L;
 
     private final ChatService chatService;
     private final ActiveTurnRegistry activeTurnRegistry;
+    private final long planExecutionStreamTimeoutMillis;
 
     public ChatController(ChatService chatService) {
         this(chatService, new ActiveTurnRegistry());
     }
 
-    @Autowired
     public ChatController(ChatService chatService, ActiveTurnRegistry activeTurnRegistry) {
+        this(chatService, activeTurnRegistry, 360);
+    }
+
+    @Autowired
+    public ChatController(
+        ChatService chatService,
+        ActiveTurnRegistry activeTurnRegistry,
+        @Value("${magenta.plan.execution-stream-timeout-seconds:360}") long planExecutionStreamTimeoutSeconds
+    ) {
         this.chatService = chatService;
         this.activeTurnRegistry = activeTurnRegistry;
+        this.planExecutionStreamTimeoutMillis = Math.max(1, planExecutionStreamTimeoutSeconds) * 1000;
     }
 
     @PostMapping
@@ -76,8 +89,9 @@ public class ChatController {
 
     private SseEmitter streamResolved(ResolvedChatRequest resolvedRequest, boolean planExecution) {
         ActiveTurn activeTurn = activeTurnRegistry.register(resolvedRequest.conversationId());
-        SseEmitter emitter = new SseEmitter(0L);
+        SseEmitter emitter = new SseEmitter(planExecution ? planExecutionStreamTimeoutMillis : NO_TIMEOUT);
         AtomicReference<Disposable> subscriptionRef = new AtomicReference<>();
+        AtomicBoolean planExecutionFinalized = new AtomicBoolean(false);
         Runnable cancelSubscription = () -> {
             Disposable subscription = subscriptionRef.get();
             if (subscription != null && !subscription.isDisposed()) {
@@ -85,10 +99,20 @@ public class ChatController {
             }
             activeTurnRegistry.complete(activeTurn.turnId());
         };
+        java.util.function.Consumer<RuntimeException> failPlanExecution = exception -> {
+            cancelSubscription.run();
+            if (planExecution && planExecutionFinalized.compareAndSet(false, true)) {
+                chatService.recordExecutionFailure(resolvedRequest.conversationId(), exception);
+            }
+        };
 
         emitter.onCompletion(cancelSubscription);
-        emitter.onTimeout(cancelSubscription);
-        emitter.onError(error -> cancelSubscription.run());
+        emitter.onTimeout(() -> failPlanExecution.accept(new IllegalStateException(
+            "Plan execution stream timed out after " + (planExecutionStreamTimeoutMillis / 1000) + " seconds"
+        )));
+        emitter.onError(error -> failPlanExecution.accept(new IllegalStateException(
+            "Plan execution stream ended before completion: " + safeMessage(error), error
+        )));
 
         try {
             sendEvent(
@@ -171,15 +195,22 @@ public class ChatController {
                         ).withPlanState(chatService.planState(resolvedRequest.conversationId()))
                     );
                 } catch (Exception e) {
-                    cancelSubscription.run();
+                    failPlanExecution.accept(new IllegalStateException(
+                        "Plan execution stream ended before the client received completion.", e
+                    ));
                     emitter.completeWithError(e);
                 }
             },
             error -> {
                 try {
                     activeTurnRegistry.complete(activeTurn.turnId());
-                    if (planExecution && error instanceof RuntimeException runtimeException) {
-                        chatService.recordExecutionFailure(resolvedRequest.conversationId(), runtimeException);
+                    if (planExecution) {
+                        RuntimeException runtimeException = error instanceof RuntimeException existing
+                            ? existing
+                            : new IllegalStateException(safeMessage(error), error);
+                        if (planExecutionFinalized.compareAndSet(false, true)) {
+                            chatService.recordExecutionFailure(resolvedRequest.conversationId(), runtimeException);
+                        }
                     } else {
                         chatService.discardLastUserMessage(resolvedRequest.conversationId(), resolvedRequest.message());
                     }
@@ -194,6 +225,7 @@ public class ChatController {
                     activeTurnRegistry.complete(activeTurn.turnId());
                     if (planExecution) {
                         chatService.handlePlanExecutionStreamFinished(resolvedRequest.conversationId());
+                        planExecutionFinalized.set(true);
                     }
                     ChatService.StoredContextUsage contextUsage = chatService.maintainContextUsage(
                         resolvedRequest.conversationId(),
@@ -223,6 +255,9 @@ public class ChatController {
                     );
                     emitter.complete();
                 } catch (Exception e) {
+                    failPlanExecution.accept(new IllegalStateException(
+                        "Plan execution stream failed while finalizing completion.", e
+                    ));
                     emitter.completeWithError(e);
                 }
             }
@@ -314,19 +349,9 @@ public class ChatController {
                 requireNoArguments(rootCommand, parts);
                 yield handleNew();
             }
-            case "switch" -> handleSwitch(requiredSingleArgument(rootCommand, parts, "a conversation UUID"));
-            case "clear" -> handleClear(request.conversationId(), optionalSingleArgument(rootCommand, parts, "a conversation UUID"));
             case "plan" -> {
                 requireNoArguments(rootCommand, parts);
                 yield handlePlan(request.conversationId(), request.model(), request.planningModel());
-            }
-            case "exit-plan" -> {
-                requireNoArguments(rootCommand, parts);
-                yield handleExitPlan(request.conversationId());
-            }
-            case "exec-plan" -> {
-                requireNoArguments(rootCommand, parts);
-                yield handleExecPlan(request.conversationId());
             }
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "unknown command: " + rootCommand);
         };
@@ -374,6 +399,13 @@ public class ChatController {
         } catch (IllegalArgumentException | IllegalStateException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
+    }
+
+    @PatchMapping("/{conversationId}/plan/cancel")
+    public ChatPlanState cancelPlanAction(@PathVariable String conversationId) {
+        requireValidUuid(conversationId);
+        chatService.exitPlan(conversationId);
+        return chatService.planState(conversationId);
     }
 
     @PatchMapping("/{conversationId}/plan/save-task")
@@ -472,7 +504,7 @@ public class ChatController {
     }
 
     private ChatResponse.CmdResponse handleExitPlan(String requestConversationId) {
-        String conversationId = requiredConversationId(requestConversationId, "exit-plan requires an active conversation");
+        String conversationId = requiredConversationId(requestConversationId, "plan cancellation requires an active conversation");
         chatService.exitPlan(conversationId);
         String model = chatService.storedConversationModel(conversationId);
         ChatService.StoredContextUsage contextUsage = chatService.maintainContextUsage(conversationId, model);
@@ -490,7 +522,7 @@ public class ChatController {
     private ChatResponse.CmdResponse handleExecPlan(String requestConversationId) {
         String conversationId = requiredConversationId(
             requestConversationId,
-            "exec-plan requires an active conversation"
+            "plan execution requires an active conversation"
         );
         ChatResponse.MsgResponse response;
         try {
@@ -512,6 +544,10 @@ public class ChatController {
 
     private String commandName(String value) {
         return value.startsWith("/") ? value.substring(1) : value;
+    }
+
+    private static String safeMessage(Throwable error) {
+        return error == null || error.getMessage() == null ? "unknown error" : error.getMessage();
     }
 
     private void requireNoArguments(String command, String[] parts) {

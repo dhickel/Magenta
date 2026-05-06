@@ -34,24 +34,11 @@ class ChatControllerTest {
     private final ChatController chatController = new ChatController(chatService);
 
     @Test
-    void switchCommandAcceptsConversationUuidArgument() {
-        ChatResponse.CmdResponse response = chatController.command(
-            new ChatRequest.CmdRequest(null, "/switch " + CONVERSATION_ID)
-        );
-
-        assertThat(response.conversationId()).isEqualTo(CONVERSATION_ID);
-        assertThat(response.model()).isEqualTo("qwen3");
-        assertThat(response.message()).isEqualTo("Switched to " + CONVERSATION_ID);
-    }
-
-    @Test
-    void switchCommandRejectsExtraArguments() {
-        assertThatThrownBy(() -> chatController.command(
-            new ChatRequest.CmdRequest(null, "/switch " + CONVERSATION_ID + " extra")
-        ))
+    void nonPlanningSlashCommandsAreNotSupported() {
+        assertThatThrownBy(() -> chatController.command(new ChatRequest.CmdRequest(null, "/switch " + CONVERSATION_ID)))
             .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
                 assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-                assertThat(exception.getReason()).isEqualTo("switch accepts only a conversation UUID");
+                assertThat(exception.getReason()).isEqualTo("unknown command: switch");
             });
     }
 
@@ -162,35 +149,20 @@ class ChatControllerTest {
     }
 
     @Test
-    void exitPlanCommandDropsPlanState() {
+    void cancelPlanEndpointDropsPlanState() {
         chatController.command(new ChatRequest.CmdRequest(CONVERSATION_ID, "/plan"));
 
-        ChatResponse.CmdResponse response = chatController.command(
-            new ChatRequest.CmdRequest(CONVERSATION_ID, "/exit-plan")
-        );
+        ChatPlanState response = chatController.cancelPlanAction(CONVERSATION_ID);
 
-        assertThat(response.planState().mode()).isEqualTo("NORMAL");
-        assertThat(response.message()).contains("Exited plan mode");
+        assertThat(response.mode()).isEqualTo("NORMAL");
     }
 
     @Test
-    void execPlanCommandRunsSavedPlan() {
-        chatService.savedPlan = true;
-
-        ChatResponse.CmdResponse response = chatController.command(
-            new ChatRequest.CmdRequest(CONVERSATION_ID, "/exec-plan")
-        );
-
-        assertThat(response.message()).isEqualTo("executed plan");
-        assertThat(chatService.executed).isTrue();
-    }
-
-    @Test
-    void clearExecPlanCommandIsRemoved() {
-        assertThatThrownBy(() -> chatController.command(new ChatRequest.CmdRequest(CONVERSATION_ID, "/clr-exec-plan")))
+    void execPlanCommandIsNotSupported() {
+        assertThatThrownBy(() -> chatController.command(new ChatRequest.CmdRequest(CONVERSATION_ID, "/exec-plan")))
             .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
                 assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-                assertThat(exception.getReason()).isEqualTo("unknown command: clr-exec-plan");
+                assertThat(exception.getReason()).isEqualTo("unknown command: exec-plan");
             });
     }
 
@@ -214,12 +186,41 @@ class ChatControllerTest {
         response.get(1, TimeUnit.SECONDS);
     }
 
+    @Test
+    void planExecutionStreamUsesConfiguredTimeout() throws Exception {
+        BlockingStreamChatService blockingChatService = new BlockingStreamChatService(
+            List.of(CONVERSATION_ID),
+            Map.of(CONVERSATION_ID, "qwen3")
+        );
+        ChatController controller = new ChatController(blockingChatService, new io.mindspice.magenta2.ai.execution.ActiveTurnRegistry(), 7);
+
+        SseEmitter emitter = controller.streamPlanExecution(CONVERSATION_ID);
+
+        assertThat(emitter.getTimeout()).isEqualTo(7000L);
+        blockingChatService.release.countDown();
+    }
+
+    @Test
+    void planExecutionStreamErrorRecordsExecutionFailure() throws Exception {
+        ErrorPlanExecutionChatService errorChatService = new ErrorPlanExecutionChatService(
+            List.of(CONVERSATION_ID),
+            Map.of(CONVERSATION_ID, "qwen3")
+        );
+        ChatController controller = new ChatController(errorChatService, new io.mindspice.magenta2.ai.execution.ActiveTurnRegistry(), 7);
+
+        controller.streamPlanExecution(CONVERSATION_ID);
+
+        assertThat(errorChatService.failureRecorded.await(1, TimeUnit.SECONDS)).isTrue();
+        assertThat(errorChatService.executionFailureMessage).contains("model timed out");
+    }
+
     private static class StubChatService extends ChatService {
         private final List<String> conversationIds;
         private final Map<String, String> modelsByConversationId;
         private ChatPlanState planState = ChatPlanState.normal();
         private boolean savedPlan;
         private boolean executed;
+        private boolean exited;
         private int newConversationIdCalls;
         private String title;
         private String titleJobStatus;
@@ -307,6 +308,7 @@ class ChatControllerTest {
         @Override
         public void exitPlan(String conversationId) {
             planState = ChatPlanState.normal();
+            exited = true;
         }
 
         @Override
@@ -332,6 +334,26 @@ class ChatControllerTest {
         @Override
         public ChatPlanState planState(String conversationId) {
             return planState;
+        }
+
+        @Override
+        public ResolvedChatRequest resolveSavedPlanExecution(String conversationId) {
+            return new ResolvedChatRequest(conversationId, "Execute the saved plan.", "qwen3");
+        }
+
+        @Override
+        public void handlePlanExecutionStreamFinished(String conversationId) {
+            planState = new ChatPlanState(
+                "NORMAL",
+                "NEEDS_REVIEW",
+                "Saved Plan",
+                null,
+                null,
+                null,
+                List.of("Step"),
+                List.of("Do the work"),
+                List.of("Evidence: stream finished")
+            );
         }
     }
 
@@ -371,6 +393,26 @@ class ChatControllerTest {
         @Override
         public List<ChatMessage> history(String conversationId) {
             return List.of(new ChatMessage("assistant", "done", "<p>done</p>", null));
+        }
+    }
+
+    private static class ErrorPlanExecutionChatService extends StubChatService {
+        private final CountDownLatch failureRecorded = new CountDownLatch(1);
+        private String executionFailureMessage;
+
+        ErrorPlanExecutionChatService(List<String> conversationIds, Map<String, String> modelsByConversationId) {
+            super(conversationIds, modelsByConversationId);
+        }
+
+        @Override
+        public Flux<ChatMessage> stream(ResolvedChatRequest request, ActiveTurn activeTurn) {
+            return Flux.error(new IllegalStateException("model timed out"));
+        }
+
+        @Override
+        public void recordExecutionFailure(String conversationId, RuntimeException exception) {
+            executionFailureMessage = exception.getMessage();
+            failureRecorded.countDown();
         }
     }
 }

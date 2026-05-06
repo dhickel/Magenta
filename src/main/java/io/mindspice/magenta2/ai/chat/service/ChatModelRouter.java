@@ -20,6 +20,8 @@ import org.springframework.ai.ollama.management.ModelManagementOptions;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -31,15 +33,27 @@ public class ChatModelRouter {
     private final ToolCallingManager toolCallingManager;
     private final ObservationRegistry observationRegistry;
     private final Map<String, ChatModel> modelsByKey = new ConcurrentHashMap<>();
+    private final Duration openAiCompatibleReadTimeout;
 
     public ChatModelRouter(
         AiConfig aiConfig,
         ToolCallingManager toolCallingManager,
         ObservationRegistry observationRegistry
     ) {
+        this(aiConfig, toolCallingManager, observationRegistry, 360);
+    }
+
+    @Autowired
+    public ChatModelRouter(
+        AiConfig aiConfig,
+        ToolCallingManager toolCallingManager,
+        ObservationRegistry observationRegistry,
+        @Value("${magenta.ai.openai-compatible-read-timeout-seconds:360}") long openAiCompatibleReadTimeoutSeconds
+    ) {
         this.aiConfig = aiConfig;
         this.toolCallingManager = toolCallingManager;
         this.observationRegistry = observationRegistry == null ? ObservationRegistry.NOOP : observationRegistry;
+        this.openAiCompatibleReadTimeout = Duration.ofSeconds(Math.max(1, openAiCompatibleReadTimeoutSeconds));
     }
 
     public ChatModel chatModel(String model) {
@@ -193,7 +207,7 @@ public class ChatModelRouter {
             .connectTimeout(Duration.ofSeconds(30))
             .build();
         JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
-        requestFactory.setReadTimeout(Duration.ofSeconds(120));
+        requestFactory.setReadTimeout(openAiCompatibleReadTimeout);
         RestClient.Builder restClientBuilder = RestClient.builder().requestFactory(requestFactory);
         OpenAiApi api = OpenAiApi.builder()
             .baseUrl(modelConfig.remoteEndpoint())

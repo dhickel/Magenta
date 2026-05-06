@@ -5,6 +5,12 @@ app:
   ai:
     config-path: ./config/ai-config.example.json
 
+magenta:
+  plan:
+    execution-stream-timeout-seconds: 360
+  ai:
+    openai-compatible-read-timeout-seconds: 360
+
 spring:
   datasource:
     url: jdbc:sqlite:./chat-memory.db

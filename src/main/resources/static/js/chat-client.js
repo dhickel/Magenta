@@ -103,7 +103,7 @@
         const status = planState && planState.status ? String(planState.status).toLowerCase() : 'active';
         titleEl.textContent = mode === 'PLAN' ? 'Plan mode: ' + title : 'Plan: ' + title + ' (' + status + ')';
         hintEl.textContent = mode === 'PLAN'
-            ? 'Use the planning panel, /exec-plan, or /exit-plan'
+            ? 'Use the planning panel'
             : (status === 'needs_review' ? 'Review execution evidence before trusting completion' : 'Saved execution plan');
         const evidence = Array.isArray(planState && planState.executionEvidence) ? planState.executionEvidence : [];
         const validationFeedback = Array.isArray(planState && planState.validationFeedback) ? planState.validationFeedback : [];
@@ -934,10 +934,6 @@
         if (requestInFlight) {
             return;
         }
-        if (command === '/exec-plan') {
-            await executePlanStream();
-            return;
-        }
         requestInFlight = true;
         setFormDisabled(true);
         const transientEl = command === '/plan'
@@ -1090,17 +1086,25 @@
             return;
         }
         if (action === 'cancel') {
-            await sendCommand('/exit-plan');
+            await runPlanningPatch('/plan/cancel');
             return;
         }
         if (action === 'execute') {
-            await sendCommand('/exec-plan');
+            await executePlanStream();
             return;
         }
         const endpoint = action === 'approve'
             ? '/plan/approve'
             : (action === 'save-task' ? '/plan/save-task' : (action === 'continue' ? '/plan/continue' : null));
         if (!endpoint) {
+            return;
+        }
+        await runPlanningPatch(endpoint);
+    }
+
+    async function runPlanningPatch(endpoint) {
+        const conversationId = activeConversationId();
+        if (!conversationId || requestInFlight) {
             return;
         }
         requestInFlight = true;

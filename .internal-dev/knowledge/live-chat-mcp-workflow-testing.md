@@ -10,6 +10,7 @@ Using the Playwright MCP server to test Magenta live chat workflows.
 - `src/main/java/io/mindspice/magenta2/ai/chat/service/ChatService.java`
 - `src/main/java/io/mindspice/magenta2/ai/execution/ConversationTurnCoordinator.java`
 - Live MCP validation run on 2026-05-05 against `http://localhost:18080` with `jdbc:sqlite:/tmp/magenta2-mcp-browser-test.sqlite`
+- Live MCP validation refresh on 2026-05-06 against `http://localhost:18080` with `jdbc:sqlite:/tmp/magenta2-mcp-fix-validation.sqlite`
 
 # Key Takeaways
 
@@ -29,6 +30,8 @@ Run live workflow tests against an isolated SQLite database so chat history, ses
 mvn spring-boot:run -Dspring-boot.run.arguments='--server.port=18080 --spring.datasource.url=jdbc:sqlite:/tmp/magenta2-mcp-browser-test.sqlite --magenta.executor.chat-threads=4'
 ```
 
+Prefer a fresh database per validation pass. Delete or rotate the `/tmp` database name when the test needs clean session counts or when a previous MCP timeout may have left execution state behind.
+
 Open the live chat page with MCP first:
 
 ```js
@@ -37,7 +40,9 @@ await page.goto('http://localhost:18080/chat');
 
 Assert the browser surface exists before endpoint work: page title `Magenta Chat`, `[data-chat-root="true"]`, `#chat-form`, `#chat-input`, `#chat-model-select`, `#chat-planning-model-select`, `#chat-history`, `#chat-planning-panel`, and active session text `New chat`.
 
-Use `mcp__playwright__.browser_run_code_unsafe` to run browser-side workflow probes from the page. The browser-facing workflow is centered on `/chat`, but the live contract is the same `/api/chat` controller used by `chat-client.js`:
+Use `mcp__playwright__.browser_run_code_unsafe` to run browser-side workflow probes from the page. Keep each probe bounded. The MCP tool can time out at about 120 seconds, and a large all-in-one suite can leave a browser-side stream request in an ambiguous state. Split long validation into focused probes: smoke, concurrency, session mutations, interrupt, planning, model-specific checks, and console/network capture.
+
+The browser-facing workflow is centered on `/chat`, but the live contract is the same `/api/chat` controller used by `chat-client.js`:
 
 - `POST /api/chat/stream` for normal SSE chat turns.
 - `POST /api/chat/commands` for `/new`, `/switch <uuid>`, `/clear`, `/plan`, `/exit-plan`, and `/exec-plan`.
@@ -55,13 +60,24 @@ Switching chats is validated with `/switch <uuid>` plus `/history`. In the MCP r
 
 Plan mode is a multi-turn state machine. `/plan` entered `PLAN` / `DRAFT` and queued a planning question. Answering through `/plan/answers` advanced the draft to `READY_FOR_APPROVAL`; `PATCH /plan/approve` moved it to `APPROVED`. Execution should be tested through `/plan/execute/stream`, because that is the browser execution path.
 
+After any plan execution stream, always reload `/api/chat/{conversationId}/history` and assert persisted plan state. Do not trust only the last SSE event or the browser tool's return value. In the 2026-05-06 validation refresh, one execution completed after the MCP tool timed out, and the persisted history was the source of truth showing `mode=NORMAL`, `status=COMPLETED`. Another execution remained stuck in `mode=EXECUTE_PLAN`, `status=EXECUTING` while containing failure evidence, which was only obvious after a history reload.
+
+Add mutation and negative-path checks after the core stream checks:
+
+- Rename, favorite, archive, and unarchive a known conversation, then inspect the returned `ChatSession`.
+- Use `/new` and verify it returns `conversationId: null` and empty history.
+- Send invalid commands such as `/switch not-a-uuid` and `/does-not-exist`; expect HTTP 400 and watch how the browser surfaces the error.
+- Capture console messages and network requests with MCP so expected 400s are separated from unexpected frontend errors.
+
 Observed MCP-run gotchas:
 
 - The page currently logs a browser console error for missing `http://localhost:18080/webjars/htmx.org/dist/htmx.min.js`. The chat controls and API workflow still loaded during this run.
-- `granite4.1:8b` rejected configured thinking options with `400 - "\"granite4.1:8b\" does not support thinking"`. Verify model-specific options through MCP before treating a configured model as usable.
+- `granite4.1:8b` previously rejected configured thinking options with `400 - "\"granite4.1:8b\" does not support thinking"`. After setting its thinking level to off, it no longer returned the thinking-option error in the 2026-05-06 refresh, but it still behaved unreliably on exact-output prompts and invoked a tool before answering. Verify both transport success and task-following quality for model-specific checks.
 - Starting `/plan` with `planningModel: local-qwen` returned model `deepseek-v4-pro` during this run. Treat planning model selection as state to verify from payloads and history.
 - Interrupt calls can return `ACCEPTED` without visibly changing the final assistant text if the model completes the original turn before observing the interrupt. Validate the interrupt response and the final persisted history.
-- Saved plan execution failed because the execution model supplied scalar text such as `None. Execution followed the plan exactly.` for a list-valued tool argument. The app correctly recorded `NEEDS_REVIEW` evidence, but the execution stream ended with `error`, not `done`.
+- Saved plan execution previously failed because the execution model supplied scalar text such as `None. Execution followed the plan exactly.` for a list-valued tool argument. The 2026-05-06 refresh validated that scalar-to-list coercion fixed this original failure: the saved plan completed and recorded evidence instead of failing deserialization.
+- A new plan execution issue was observed after an MCP timeout: a plan remained `EXECUTE_PLAN` / `EXECUTING` while already containing failure evidence from a mode-gated tool call. Log and inspect persisted state after MCP timeouts before deciding whether execution succeeded, failed, or is stuck.
+- Invalid command tests intentionally create browser console 400 errors. Record them as expected test noise, not frontend failures, unless the UI fails to display a useful error to the user.
 
 # Engine Relevance
 
@@ -79,13 +95,20 @@ Recommended MCP test shape:
 6. Run two simultaneous stream requests for two separate conversations and verify both finish.
 7. Run two overlapping stream requests for one conversation and verify the second gets the active-stream error.
 8. Validate `/switch <uuid>`, `/history`, and `/new`.
-9. Run `/plan`, answer the queued planning question, approve, and execute through `/plan/execute/stream`.
-10. Capture console messages and network requests with MCP when the browser surface itself is under test.
+9. Validate session mutation endpoints: rename, favorite, archive, unarchive.
+10. Validate negative commands and capture their expected 400 responses.
+11. Run `/plan`, answer the queued planning question, approve, and execute through `/plan/execute/stream`.
+12. After plan execution, reload `/history` and assert the persisted terminal state (`COMPLETED`, `NEEDS_REVIEW`, or a logged stuck-state bug).
+13. Run at least one model-specific probe for a non-default configured model.
+14. Capture console messages and network requests with MCP when the browser surface itself is under test.
+
+Keep long-running plan execution tests separate from fast smoke and mutation tests. If a Playwright MCP call times out, immediately run a small follow-up probe that lists sessions and histories. A timeout does not prove the server stopped; it may still complete and persist state after the MCP call returns an error.
 
 # Open Questions
 
 - Should the project include a reusable Playwright MCP smoke-test snippet for SSE parsing and workflow assertions?
 - Should the missing htmx webjar be fixed or removed from the page if it is no longer required?
 - Should model configuration validate thinking-option compatibility before a live chat turn reaches Ollama?
-- Should plan execution tools coerce scalar strings into one-item lists or reject them in a model-retryable way?
+- Are there other Spring AI tool argument shapes, beyond scalar-to-list, that should be coercion-tested with live models?
+- Should plan execution stream timeouts and client disconnects always move saved plans to `NEEDS_REVIEW`?
 - Should interrupt acceptance imply stronger cancellation semantics, or is best-effort interruption sufficient for the current chat workflow?
