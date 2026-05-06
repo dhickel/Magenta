@@ -71,11 +71,12 @@ public class ChatModelRouter {
 
     public OllamaChatOptions.Builder ollamaOptionsBuilder(String model) {
         ModelConfig config = modelConfig(model);
+        if (config.endpointType() != EndpointType.OLLAMA) {
+            throw new IllegalStateException("ollamaOptionsBuilder called for non-Ollama model: " + model);
+        }
         OllamaChatOptions.Builder builder = OllamaChatOptions.builder()
             .model(config.remoteModelName());
-        if (config.think()) {
-            builder.enableThinking();
-        }
+        applyOllamaThink(builder, effectiveThinkLevel(config));
         return builder;
     }
 
@@ -83,9 +84,18 @@ public class ChatModelRouter {
         ModelConfig config = modelConfig(model);
         return switch (config.endpointType()) {
             case OLLAMA -> ollamaOptionsBuilder(model).build();
-            case OPENAI_COMPATIBLE -> OpenAiChatOptions.builder()
-                .model(config.remoteModelName())
-                .build();
+            case OPENAI_COMPATIBLE -> {
+                OpenAiChatOptions.Builder builder = OpenAiChatOptions.builder()
+                    .model(config.remoteModelName());
+                applyOpenAiReasoningEffort(builder, effectiveThinkLevel(config), false);
+                yield builder.build();
+            }
+            case DEEPSEEK -> {
+                OpenAiChatOptions.Builder builder = OpenAiChatOptions.builder()
+                    .model(config.remoteModelName());
+                applyOpenAiReasoningEffort(builder, effectiveThinkLevel(config), true);
+                yield builder.build();
+            }
         };
     }
 
@@ -94,6 +104,35 @@ public class ChatModelRouter {
      * concrete {@code OllamaChatOptions} type. */
     public ToolCallingChatOptions chatOptions(String model) {
         return toolCallingOptions(model);
+    }
+
+    private static int effectiveThinkLevel(ModelConfig config) {
+        Integer level = config.thinkLevel();
+        if (level == null) return 0;
+        if (level < 0) return 0;
+        if (level > 4) return 4;
+        return level;
+    }
+
+    private static void applyOllamaThink(OllamaChatOptions.Builder builder, int level) {
+        switch (level) {
+            case 0 -> builder.disableThinking();
+            case 1 -> builder.thinkLow();
+            case 2 -> builder.thinkMedium();
+            case 3 -> builder.thinkHigh();
+            default -> builder.thinkHigh(); // level >= 4 clamped
+        }
+    }
+
+    private static void applyOpenAiReasoningEffort(OpenAiChatOptions.Builder builder, int level, boolean isDeepSeek) {
+        if (level <= 0) return;
+        String effort = switch (level) {
+            case 1 -> isDeepSeek ? "high" : "low";
+            case 2 -> isDeepSeek ? "high" : "medium";
+            case 3 -> "high";
+            default -> isDeepSeek ? "max" : "high";
+        };
+        builder.reasoningEffort(effort);
     }
 
     private ChatModel buildModel(ModelConfig modelConfig) {
@@ -107,15 +146,14 @@ public class ChatModelRouter {
         return switch (modelConfig.endpointType()) {
             case OLLAMA -> buildOllamaModel(modelConfig);
             case OPENAI_COMPATIBLE -> buildOpenAiModel(modelConfig);
+            case DEEPSEEK -> buildDeepSeekModel(modelConfig);
         };
     }
 
     private OllamaChatModel buildOllamaModel(ModelConfig modelConfig) {
         OllamaChatOptions.Builder optionsBuilder = OllamaChatOptions.builder()
             .model(modelConfig.remoteModelName());
-        if (modelConfig.think()) {
-            optionsBuilder.enableThinking();
-        }
+        applyOllamaThink(optionsBuilder, effectiveThinkLevel(modelConfig));
         return OllamaChatModel.builder()
             .ollamaApi(OllamaApi.builder().baseUrl(modelConfig.remoteEndpoint()).build())
             .defaultOptions(optionsBuilder.build())
@@ -130,6 +168,27 @@ public class ChatModelRouter {
             throw new IllegalStateException(
                 "OpenAI-compatible model must define apiKey: " + modelConfig.remoteModelName());
         }
+        OpenAiChatOptions options = buildOpenAiOptions(modelConfig, false);
+        return buildOpenAiChatModel(modelConfig, options);
+    }
+
+    private OpenAiChatModel buildDeepSeekModel(ModelConfig modelConfig) {
+        if (!StringUtils.hasText(modelConfig.apiKey())) {
+            throw new IllegalStateException(
+                "DeepSeek model must define apiKey: " + modelConfig.remoteModelName());
+        }
+        OpenAiChatOptions options = buildOpenAiOptions(modelConfig, true);
+        return buildOpenAiChatModel(modelConfig, options);
+    }
+
+    private OpenAiChatOptions buildOpenAiOptions(ModelConfig modelConfig, boolean isDeepSeek) {
+        OpenAiChatOptions.Builder optionsBuilder = OpenAiChatOptions.builder()
+            .model(modelConfig.remoteModelName());
+        applyOpenAiReasoningEffort(optionsBuilder, effectiveThinkLevel(modelConfig), isDeepSeek);
+        return optionsBuilder.build();
+    }
+
+    private OpenAiChatModel buildOpenAiChatModel(ModelConfig modelConfig, OpenAiChatOptions options) {
         HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(30))
             .build();
@@ -142,9 +201,6 @@ public class ChatModelRouter {
             .completionsPath("/v1/chat/completions")
             .embeddingsPath("/v1/embeddings")
             .restClientBuilder(restClientBuilder)
-            .build();
-        OpenAiChatOptions options = OpenAiChatOptions.builder()
-            .model(modelConfig.remoteModelName())
             .build();
         return OpenAiChatModel.builder()
             .openAiApi(api)

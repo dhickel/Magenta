@@ -312,4 +312,39 @@ class ExternalAiConfigLoaderTest {
         );
         assertTrue(exception.getMessage().contains("summeryModel references missing model"));
     }
+
+    @Test
+    void loadsThinkLevelConfig(@TempDir Path tempDir) throws IOException {
+        Files.createDirectories(tempDir.resolve("prompts"));
+        Files.writeString(tempDir.resolve("prompts/system.md"), "Prompt.");
+
+        Path json = tempDir.resolve("ai-config.json");
+        Files.writeString(json, """
+            {
+              "defaultAgent": "magenta",
+              "summeryModel": "local-qwen",
+              "planningModel": "local-qwen",
+              "models": {
+                "local-qwen": {
+                  "remoteModelName": "qwen3",
+                  "remoteEndpoint": "http://localhost:11434",
+                  "endpointType": "OLLAMA",
+                  "contextLength": 8192,
+                  "thinkLevel": 4
+                }
+              },
+              "agents": {
+                "magenta": {
+                  "model": "local-qwen",
+                  "systemPrompt": "prompts/system.md",
+                  "approvedTools": []
+                }
+              }
+            }
+            """);
+
+        AiConfig config = ExternalAiConfigLoader.load(json);
+        ModelConfig model = config.models().get("local-qwen");
+        assertEquals(4, model.thinkLevel());
+    }
 }

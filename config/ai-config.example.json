@@ -16,35 +16,35 @@
       "remoteEndpoint": "http://192.168.1.112:11434",
       "endpointType": "OLLAMA",
       "contextLength": 32000,
-      "think": false
+      "thinkLevel": 3
     },
     "granite4.1:8b": {
       "remoteModelName": "granite4.1:8b",
       "remoteEndpoint": "http://192.168.1.112:11434",
       "endpointType": "OLLAMA",
       "contextLength": 32000,
-      "think": false
+      "thinkLevel": 0
     },
     "local-gemma-e4b": {
       "remoteModelName": "gemma4-fullctx:e4b",
       "remoteEndpoint": "http://192.168.1.112:11434",
       "endpointType": "OLLAMA",
       "contextLength": 128000,
-      "think": true
+      "thinkLevel": 3
     },
     "local-gemma-26b": {
       "remoteModelName": "gemma4-26b:32k",
       "remoteEndpoint": "http://192.168.1.112:11434",
       "endpointType": "OLLAMA",
       "contextLength": 32000,
-      "think": true
+      "thinkLevel": 3
     },
     "deepseek-v4": {
       "remoteModelName": "deepseek-v4-pro",
       "remoteEndpoint": "https://api.deepseek.com",
-      "endpointType": "OPENAI_COMPATIBLE",
+      "endpointType": "DEEPSEEK",
       "contextLength": 128000,
-      "think": true,
+      "thinkLevel": 4,
       "apiKey": "sk-f3e6c4a55e364a8da8d4e9cb7d7370d3"
     }
   },

@@ -8,7 +8,7 @@ public record ModelConfig(
     @JsonProperty("remoteEndpoint") String remoteEndpoint,
     @JsonProperty("endpointType") EndpointType endpointType,
     @JsonProperty("contextLength") Integer contextLength,
-    @JsonProperty("think") boolean think,
+    @JsonProperty("thinkLevel") @Nullable Integer thinkLevel,
     @JsonProperty("apiKey") @Nullable String apiKey
 ) {
 }

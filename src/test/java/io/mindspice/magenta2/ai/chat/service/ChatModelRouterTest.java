@@ -39,13 +39,185 @@ class ChatModelRouterTest {
             "magenta",
             10,
             null,
-            Map.of("openai", new ModelConfig("gpt-4o-mini", "https://api.example.test/v1", EndpointType.OPENAI_COMPATIBLE, 128000, false, "test-key")),
+            Map.of("openai", new ModelConfig("gpt-4o-mini", "https://api.example.test/v1", EndpointType.OPENAI_COMPATIBLE, 128000, null, "test-key")),
             Map.of("magenta", new AgentConfig("openai", "Prompt.", List.of()))
         );
         ChatModelRouter router = new ChatModelRouter(config, null, ObservationRegistry.NOOP);
 
         assertThat(router.remoteModelName("openai")).isEqualTo("gpt-4o-mini");
         assertThat(router.chatModel("openai")).isNotNull();
+    }
+
+    @Test
+    void buildsDeepSeekModel() {
+        AiConfig config = new AiConfig(
+            "magenta",
+            "magenta",
+            10,
+            null,
+            Map.of("ds", new ModelConfig("deepseek-v4-pro", "https://api.deepseek.com", EndpointType.DEEPSEEK, 128000, 4, "sk-test")),
+            Map.of("magenta", new AgentConfig("ds", "Prompt.", List.of()))
+        );
+        ChatModelRouter router = new ChatModelRouter(config, null, ObservationRegistry.NOOP);
+
+        assertThat(router.remoteModelName("ds")).isEqualTo("deepseek-v4-pro");
+        assertThat(router.chatModel("ds")).isNotNull();
+    }
+
+    @Test
+    void rejectsDeepSeekModelWithoutApiKey() {
+        AiConfig config = new AiConfig(
+            "magenta",
+            "magenta",
+            10,
+            null,
+            Map.of("ds", new ModelConfig("deepseek-v4-pro", "https://api.deepseek.com", EndpointType.DEEPSEEK, 128000, 4, null)),
+            Map.of("magenta", new AgentConfig("ds", "Prompt.", List.of()))
+        );
+        ChatModelRouter router = new ChatModelRouter(config, null, ObservationRegistry.NOOP);
+
+        assertThatThrownBy(() -> router.chatModel("ds"))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("apiKey");
+    }
+
+    @Test
+    void defaultsThinkLevelToZero() {
+        ChatModelRouter router = new ChatModelRouter(aiConfig(), null, ObservationRegistry.NOOP);
+        var options = router.ollamaOptions("local-qwen");
+
+        assertThat(options.getThinkOption()).isNotNull();
+        assertThat(options.getThinkOption()).isInstanceOf(org.springframework.ai.ollama.api.ThinkOption.ThinkBoolean.class);
+    }
+
+    @Test
+    void appliesThinkLevelToOllama() {
+        ModelConfig gemmaModel = new ModelConfig("gemma4", "http://localhost:11434", EndpointType.OLLAMA, 32768, 3, null);
+        AiConfig config = new AiConfig(
+            "magenta",
+            "magenta",
+            10,
+            null,
+            Map.of("local-gemma", gemmaModel),
+            Map.of("magenta", new AgentConfig("local-gemma", "Prompt.", List.of()))
+        );
+        ChatModelRouter router = new ChatModelRouter(config, null, ObservationRegistry.NOOP);
+        var options = router.ollamaOptions("local-gemma");
+
+        assertThat(options.getThinkOption()).isInstanceOf(org.springframework.ai.ollama.api.ThinkOption.ThinkLevel.class);
+        assertThat(options.getThinkOption().toString()).contains("high");
+    }
+
+    @Test
+    void mapsDeepSeekLevelsToReasoningEffort() {
+        AiConfig config = new AiConfig(
+            "magenta",
+            "magenta",
+            10,
+            null,
+            Map.of("ds", new ModelConfig("deepseek-v4-pro", "https://api.deepseek.com", EndpointType.DEEPSEEK, 128000, 4, "sk-test")),
+            Map.of("magenta", new AgentConfig("ds", "Prompt.", List.of()))
+        );
+        ChatModelRouter router = new ChatModelRouter(config, null, ObservationRegistry.NOOP);
+        var options = (org.springframework.ai.openai.OpenAiChatOptions) router.toolCallingOptions("ds");
+
+        assertThat(options.getReasoningEffort()).isEqualTo("max");
+    }
+
+    @Test
+    void mapsOpenAiLevelsToReasoningEffort() {
+        AiConfig config = new AiConfig(
+            "magenta",
+            "magenta",
+            10,
+            null,
+            Map.of("openai", new ModelConfig("gpt-4o", "https://api.example.test/v1", EndpointType.OPENAI_COMPATIBLE, 128000, 2, "sk-test")),
+            Map.of("magenta", new AgentConfig("openai", "Prompt.", List.of()))
+        );
+        ChatModelRouter router = new ChatModelRouter(config, null, ObservationRegistry.NOOP);
+        var options = (org.springframework.ai.openai.OpenAiChatOptions) router.toolCallingOptions("openai");
+
+        assertThat(options.getReasoningEffort()).isEqualTo("medium");
+    }
+
+    @Test
+    void openAiLevel4ClampsToHigh() {
+        AiConfig config = new AiConfig(
+            "magenta",
+            "magenta",
+            10,
+            null,
+            Map.of("openai", new ModelConfig("gpt-4o", "https://api.example.test/v1", EndpointType.OPENAI_COMPATIBLE, 128000, 4, "sk-test")),
+            Map.of("magenta", new AgentConfig("openai", "Prompt.", List.of()))
+        );
+        ChatModelRouter router = new ChatModelRouter(config, null, ObservationRegistry.NOOP);
+        var options = (org.springframework.ai.openai.OpenAiChatOptions) router.toolCallingOptions("openai");
+
+        assertThat(options.getReasoningEffort()).isEqualTo("high");
+    }
+
+    @Test
+    void deepSeekLevel0OmitsReasoningEffort() {
+        AiConfig config = new AiConfig(
+            "magenta",
+            "magenta",
+            10,
+            null,
+            Map.of("ds", new ModelConfig("deepseek-v4-pro", "https://api.deepseek.com", EndpointType.DEEPSEEK, 128000, 0, "sk-test")),
+            Map.of("magenta", new AgentConfig("ds", "Prompt.", List.of()))
+        );
+        ChatModelRouter router = new ChatModelRouter(config, null, ObservationRegistry.NOOP);
+        var options = (org.springframework.ai.openai.OpenAiChatOptions) router.toolCallingOptions("ds");
+
+        assertThat(options.getReasoningEffort()).isNull();
+    }
+
+    @Test
+    void overflowThinkLevelClampsToMax() {
+        // DeepSeek overflow (100 → max)
+        AiConfig dsConfig = new AiConfig(
+            "magenta", "magenta", 10, null,
+            Map.of("ds", new ModelConfig("deepseek-v4-pro", "https://api.deepseek.com", EndpointType.DEEPSEEK, 128000, 100, "sk-test")),
+            Map.of("magenta", new AgentConfig("ds", "Prompt.", List.of()))
+        );
+        ChatModelRouter dsRouter = new ChatModelRouter(dsConfig, null, ObservationRegistry.NOOP);
+        var dsOptions = (org.springframework.ai.openai.OpenAiChatOptions) dsRouter.toolCallingOptions("ds");
+        assertThat(dsOptions.getReasoningEffort()).isEqualTo("max");
+
+        // OpenAI overflow (100 → high)
+        AiConfig oaiConfig = new AiConfig(
+            "magenta", "magenta", 10, null,
+            Map.of("openai", new ModelConfig("gpt-4o", "https://api.example.test/v1", EndpointType.OPENAI_COMPATIBLE, 128000, 100, "sk-test")),
+            Map.of("magenta", new AgentConfig("openai", "Prompt.", List.of()))
+        );
+        ChatModelRouter oaiRouter = new ChatModelRouter(oaiConfig, null, ObservationRegistry.NOOP);
+        var oaiOptions = (org.springframework.ai.openai.OpenAiChatOptions) oaiRouter.toolCallingOptions("openai");
+        assertThat(oaiOptions.getReasoningEffort()).isEqualTo("high");
+
+        // Ollama overflow (100 → thinkHigh)
+        ModelConfig ollamaModel = new ModelConfig("gemma4", "http://localhost:11434", EndpointType.OLLAMA, 32768, 100, null);
+        AiConfig ollamaConfig = new AiConfig(
+            "magenta", "magenta", 10, null,
+            Map.of("local-gemma", ollamaModel),
+            Map.of("magenta", new AgentConfig("local-gemma", "Prompt.", List.of()))
+        );
+        ChatModelRouter ollamaRouter = new ChatModelRouter(ollamaConfig, null, ObservationRegistry.NOOP);
+        var ollamaOptions = ollamaRouter.ollamaOptions("local-gemma");
+        assertThat(ollamaOptions.getThinkOption()).isInstanceOf(org.springframework.ai.ollama.api.ThinkOption.ThinkLevel.class);
+        assertThat(ollamaOptions.getThinkOption().toString()).contains("high");
+    }
+
+    @Test
+    void negativeThinkLevelClampsToZero() {
+        ModelConfig ollamaModel = new ModelConfig("gemma4", "http://localhost:11434", EndpointType.OLLAMA, 32768, -5, null);
+        AiConfig config = new AiConfig(
+            "magenta", "magenta", 10, null,
+            Map.of("local-gemma", ollamaModel),
+            Map.of("magenta", new AgentConfig("local-gemma", "Prompt.", List.of()))
+        );
+        ChatModelRouter router = new ChatModelRouter(config, null, ObservationRegistry.NOOP);
+        var options = router.ollamaOptions("local-gemma");
+        assertThat(options.getThinkOption()).isInstanceOf(org.springframework.ai.ollama.api.ThinkOption.ThinkBoolean.class);
     }
 
     private AiConfig aiConfig() {
@@ -55,8 +227,8 @@ class ChatModelRouterTest {
             10,
             null,
             Map.of(
-                "local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 8192, false, null),
-                "local-gemma", new ModelConfig("gemma4", "http://other-host:11434", EndpointType.OLLAMA, 32768, false, null)
+                "local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 8192, null, null),
+                "local-gemma", new ModelConfig("gemma4", "http://other-host:11434", EndpointType.OLLAMA, 32768, null, null)
             ),
             Map.of("magenta", new AgentConfig("local-qwen", "Prompt.", List.of()))
         );
