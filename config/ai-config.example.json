@@ -32,6 +32,13 @@
       "contextLength": 128000,
       "thinkLevel": 3
     },
+    "local-gemma-e4b-uc": {
+      "remoteModelName": "gemma4-e4b-UC:latest",
+      "remoteEndpoint": "http://192.168.1.112:11434",
+      "endpointType": "OLLAMA",
+      "contextLength": 128000,
+      "thinkLevel": 3
+    },
     "local-gemma-26b": {
       "remoteModelName": "gemma4-26b:32k",
       "remoteEndpoint": "http://192.168.1.112:11434",

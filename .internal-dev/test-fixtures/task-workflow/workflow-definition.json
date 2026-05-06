@@ -1,0 +1,51 @@
+{
+  "title": "Fixture Three Step Research Workflow",
+  "summary": "Runs research notes, structured summary, and final report tasks in sequence.",
+  "steps": [
+    {
+      "stepKey": "research",
+      "taskId": "<task1-id>",
+      "inputBindings": [
+        {
+          "inputName": "topic",
+          "kind": "LITERAL",
+          "literalValue": "SQLite-backed assistant task workflows"
+        }
+      ]
+    },
+    {
+      "stepKey": "summary",
+      "taskId": "<task2-id>",
+      "inputBindings": [
+        {
+          "inputName": "research_notes",
+          "kind": "STEP_OUTPUT",
+          "sourceStepKey": "research",
+          "sourceOutputName": "research_notes"
+        },
+        {
+          "inputName": "format_instruction",
+          "kind": "LITERAL",
+          "literalValue": "Use three bullet points and one risk note."
+        }
+      ]
+    },
+    {
+      "stepKey": "report",
+      "taskId": "<task3-id>",
+      "inputBindings": [
+        {
+          "inputName": "structured_summary",
+          "kind": "STEP_OUTPUT",
+          "sourceStepKey": "summary",
+          "sourceOutputName": "structured_summary"
+        },
+        {
+          "inputName": "audience",
+          "kind": "LITERAL",
+          "literalValue": "Magenta maintainers"
+        }
+      ]
+    }
+  ]
+}

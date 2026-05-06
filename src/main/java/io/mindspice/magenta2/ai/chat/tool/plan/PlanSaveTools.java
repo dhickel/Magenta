@@ -146,19 +146,6 @@ public class PlanSaveTools {
     }
 
     @Tool(
-        name = "plan_ask_questions",
-        description = "Ask the user one to five free-response planning questions. Use this whenever the plan is not ready for approval or would otherwise depend on guessed user preferences, constraints, or tradeoffs. The UI displays them one at a time with progress."
-    )
-    public String askQuestions(
-        @ToolParam(description = "One to five concrete planning questions for the user.")
-        List<String> questions
-    ) {
-        PlanToolContext context = requireMode(PlanMode.PLAN, "plan_ask_questions");
-        ExecutionPlan plan = planService.askQuestions(context.conversationId(), questions);
-        return "Queued " + plan.pendingQuestions().size() + " planning question(s) for the user.";
-    }
-
-    @Tool(
         name = "plan_ready_for_approval",
         description = "Mark the current draft plan ready for user approval only after goal, deliverables/outputs, assumptions, detailed steps, and validation criteria are clear enough to execute without guessing."
     )

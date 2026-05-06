@@ -13,6 +13,7 @@ import io.mindspice.magenta2.ai.chat.plan.PlanMode;
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
 import io.mindspice.magenta2.ai.chat.plan.PlanToolContext;
 import io.mindspice.magenta2.ai.chat.plan.PlanToolExecutionContext;
+import io.mindspice.magenta2.ai.chat.tool.InteractionQuestionTools;
 import org.springframework.ai.tool.annotation.Tool;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -22,7 +23,7 @@ class PlanSaveToolsTest {
 
     @Test
     void planningToolDescriptionsPreferQuestionsBeforeApproval() throws Exception {
-        Tool askQuestions = PlanSaveTools.class
+        Tool askQuestions = InteractionQuestionTools.class
             .getMethod("askQuestions", List.class)
             .getAnnotation(Tool.class);
         Tool readyForApproval = PlanSaveTools.class
@@ -30,8 +31,8 @@ class PlanSaveToolsTest {
             .getAnnotation(Tool.class);
 
         assertThat(askQuestions.description())
-            .contains("whenever the plan is not ready for approval")
-            .contains("guessed user preferences, constraints, or tradeoffs");
+            .contains("active plan or task interaction")
+            .contains("one at a time with progress");
         assertThat(readyForApproval.description())
             .contains("only after goal, deliverables/outputs, assumptions, detailed steps, and validation criteria")
             .contains("without guessing");

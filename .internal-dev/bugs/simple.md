@@ -1,0 +1,3 @@
+- Session reset to just "Chat" when a new chat or plan mode is entered
+- Named chats switch between named and the uuid at the top of chat every other message
+- 

@@ -80,6 +80,27 @@ class FrontendControllerTest {
         assertThat(js).contains("clearPlanningPanel();");
     }
 
+    @Test
+    void taskAndWorkflowPagesExposeEditorAndRunControls() {
+        FrontendController controller = new FrontendController(new StubChatService());
+
+        assertThat(controller.tasks())
+            .contains("id=\"tasks-page\"")
+            .contains("Task Editor")
+            .contains("id=\"task-inputs\"")
+            .contains("id=\"task-outputs\"")
+            .contains("id=\"task-run-form\"")
+            .contains("/api/tasks")
+            .doesNotContain("task-deliverables")
+            .doesNotContain("deliverables: lines");
+        assertThat(controller.workflows())
+            .contains("id=\"workflows-page\"")
+            .contains("Workflow Editor")
+            .contains("Bindings JSON")
+            .contains("id=\"workflow-warnings\"")
+            .contains("/api/workflows");
+    }
+
     private static class StubChatService extends ChatService {
 
         StubChatService() {

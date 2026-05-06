@@ -1,0 +1,12 @@
+{
+  "task1": {
+    "topic": "SQLite-backed assistant task workflows"
+  },
+  "task2": {
+    "format_instruction": "Use three bullet points and one risk note."
+  },
+  "task3": {
+    "audience": "Magenta maintainers"
+  },
+  "stableSeedText": "SQLite-backed assistant task workflows need named runtime inputs, persisted outputs, and clear run status records so downstream workflow steps can consume data deterministically."
+}

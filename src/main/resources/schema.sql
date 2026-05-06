@@ -112,3 +112,93 @@ create table if not exists audit_event (
 
 create index if not exists idx_audit_event_conversation
     on audit_event (conversation_id, sequence);
+
+create table if not exists ai_task_definitions (
+    id text primary key,
+    title text not null,
+    summary text,
+    goal text,
+    notes text,
+    input_description text,
+    inputs_json text,
+    output_description text,
+    outputs_json text,
+    assumptions_json text,
+    steps_json text,
+    validation_criteria_json text,
+    created_at text not null,
+    updated_at text not null
+);
+
+create table if not exists ai_task_drafts (
+    conversation_id text primary key,
+    status text not null,
+    planning_task text,
+    title text,
+    summary text,
+    goal text,
+    notes text,
+    input_description text,
+    inputs_json text,
+    output_description text,
+    outputs_json text,
+    assumptions_json text,
+    steps_json text,
+    validation_criteria_json text,
+    pending_questions_json text,
+    pending_question_index integer not null default 0,
+    pre_planning_model text,
+    execution_model text,
+    created_task_id text,
+    created_at text not null,
+    updated_at text not null
+);
+
+create table if not exists ai_task_runs (
+    id text primary key,
+    task_id text not null,
+    status text not null,
+    input_values_json text,
+    output_values_json text,
+    task_snapshot_json text not null,
+    execution_evidence_json text,
+    validation_feedback_json text,
+    final_message text,
+    error_text text,
+    created_at text not null,
+    updated_at text not null,
+    started_at text,
+    completed_at text,
+    foreign key (task_id) references ai_task_definitions(id) on delete cascade
+);
+
+create index if not exists idx_ai_task_runs_task
+    on ai_task_runs (task_id, created_at desc);
+
+create table if not exists ai_workflow_definitions (
+    id text primary key,
+    title text not null,
+    summary text,
+    steps_json text not null,
+    created_at text not null,
+    updated_at text not null
+);
+
+create table if not exists ai_workflow_runs (
+    id text primary key,
+    workflow_id text not null,
+    status text not null,
+    workflow_snapshot_json text not null,
+    step_runs_json text,
+    final_outputs_json text,
+    final_message text,
+    error_text text,
+    created_at text not null,
+    updated_at text not null,
+    started_at text,
+    completed_at text,
+    foreign key (workflow_id) references ai_workflow_definitions(id) on delete cascade
+);
+
+create index if not exists idx_ai_workflow_runs_workflow
+    on ai_workflow_runs (workflow_id, created_at desc);

@@ -24,6 +24,8 @@ public class FrontendController {
     Component topNavBar = TopNavBuilder.create()
             .addPrimaryLink("Home", "/")
             .addPrimaryLink("Chat", "/chat")
+            .addPrimaryLink("Tasks", "/tasks")
+            .addPrimaryLink("Workflows", "/workflows")
             .build();
 
     ShellTemplate pageShell = ShellBuilder.create()
@@ -977,6 +979,120 @@ public class FrontendController {
     ) {
         String view = chatInterface.formatted("", buildModelOptionsHtml(chatService.defaultModel()), buildModelOptionsHtml(chatService.planningModel()), "New chat");
         return chatShell.renderWithContent(RawHtml.create(view));
+    }
+
+    @GetMapping("/tasks")
+    @ResponseBody
+    public String tasks() {
+        return pageShell.renderWithContent(RawHtml.create("""
+            <style>
+                .tool-page { max-width: 1180px; margin: 0 auto; padding: 1rem; }
+                .tool-grid { display: grid; grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr); gap: 1rem; align-items: start; }
+                .tool-panel { border: 1px solid #d8dee8; border-radius: 8px; background: #fff; padding: 0.9rem; }
+                .tool-panel h2 { margin: 0 0 0.75rem; font-size: 1rem; }
+                .tool-panel label { display: block; font-weight: 700; margin-top: 0.65rem; font-size: 0.86rem; }
+                .tool-panel input, .tool-panel textarea, .tool-panel select { width: 100%; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 4px; padding: 0.45rem; }
+                .tool-panel textarea { min-height: 4.5rem; }
+                .tool-actions { display: flex; gap: 0.45rem; flex-wrap: wrap; margin-top: 0.8rem; }
+                .tool-actions button { border: 1px solid #94a3b8; background: #f8fafc; border-radius: 4px; padding: 0.45rem 0.65rem; cursor: pointer; }
+                .tool-list { display: flex; flex-direction: column; gap: 0.45rem; }
+                .tool-item { border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.55rem; background: #f8fafc; }
+                .field-row { display: grid; grid-template-columns: 1fr 8rem 5rem; gap: 0.45rem; align-items: end; margin-top: 0.45rem; }
+                .run-log { min-height: 5rem; white-space: pre-wrap; background: #0f172a; color: #e2e8f0; padding: 0.65rem; border-radius: 6px; overflow: auto; }
+                @media (max-width: 850px) { .tool-grid { grid-template-columns: 1fr; } .field-row { grid-template-columns: 1fr; } }
+            </style>
+            <section class="tool-page" id="tasks-page">
+                <div class="tool-grid">
+                    <aside class="tool-panel">
+                        <h2>Tasks</h2>
+                        <div id="task-list" class="tool-list"></div>
+                    </aside>
+                    <main class="tool-panel">
+                        <h2>Task Editor</h2>
+                        <label>Title<input id="task-title"></label>
+                        <label>Summary<textarea id="task-summary"></textarea></label>
+                        <label>Goal<textarea id="task-goal"></textarea></label>
+                        <label>Inputs</label><div id="task-inputs"></div>
+                        <div class="tool-actions"><button id="add-task-input" type="button">Add input</button></div>
+                        <label>Outputs</label><div id="task-outputs"></div>
+                        <div class="tool-actions"><button id="add-task-output" type="button">Add output</button></div>
+                        <label>Steps<textarea id="task-steps" placeholder="One per line"></textarea></label>
+                        <label>Validation Criteria<textarea id="task-validation" placeholder="One per line"></textarea></label>
+                        <div class="tool-actions">
+                            <button id="save-task" type="button">Save</button>
+                            <button id="run-task" type="button">Run</button>
+                        </div>
+                        <h2>Run</h2>
+                        <div id="task-run-form"></div>
+                        <div id="task-run-log" class="run-log"></div>
+                    </main>
+                </div>
+            </section>
+            <script>
+                let currentTask = null;
+                const typeOptions = ['string','long_text','file_path','json','number','boolean'];
+                const lines = id => document.getElementById(id).value.split('\\n').map(v => v.trim()).filter(Boolean);
+                const fieldRow = (kind, field = {}) => `<div class="field-row ${kind}-field"><input placeholder="name" value="${field.name || ''}"><select>${typeOptions.map(t => `<option value="${t}" ${field.type === t || field.type === t.toUpperCase() ? 'selected' : ''}>${t}</option>`).join('')}</select><label><input type="checkbox" ${field.required ? 'checked' : ''}> required</label><input placeholder="description" value="${field.description || ''}"><input placeholder="example" value="${field.example || ''}"></div>`;
+                function readFields(kind) { return [...document.querySelectorAll(`.${kind}-field`)].map(row => ({ name: row.children[0].value, type: row.children[1].value, required: row.children[2].querySelector('input').checked, description: row.children[3].value, example: row.children[4].value })).filter(f => f.name); }
+                function renderFields(kind, fields) { document.getElementById(`task-${kind}s`).innerHTML = (fields || []).map(f => fieldRow(kind, f)).join(''); }
+                async function loadTasks() { const tasks = await fetch('/api/tasks').then(r => r.json()); document.getElementById('task-list').innerHTML = tasks.map(t => `<button class="tool-item" data-id="${t.id}">${t.title}</button>`).join(''); document.querySelectorAll('#task-list button').forEach(b => b.onclick = () => editTask(b.dataset.id)); }
+                async function editTask(id) { currentTask = await fetch(`/api/tasks/${id}`).then(r => r.json()); document.getElementById('task-title').value = currentTask.title || ''; document.getElementById('task-summary').value = currentTask.summary || ''; document.getElementById('task-goal').value = currentTask.goal || ''; document.getElementById('task-steps').value = (currentTask.steps || []).map(s => s.text).join('\\n'); document.getElementById('task-validation').value = (currentTask.validationCriteria || []).join('\\n'); renderFields('input', currentTask.inputs); renderFields('output', currentTask.outputs); renderRunForm(); }
+                function payload() { return { id: currentTask && currentTask.id, title: document.getElementById('task-title').value, summary: document.getElementById('task-summary').value, goal: document.getElementById('task-goal').value, inputs: readFields('input'), outputs: readFields('output'), steps: lines('task-steps').map((text, i) => ({ order: i + 1, text })), validationCriteria: lines('task-validation') }; }
+                function renderRunForm() { const inputs = readFields('input'); document.getElementById('task-run-form').innerHTML = inputs.map(f => `<label>${f.name}<input data-input="${f.name}" placeholder="${f.type}"></label>`).join(''); }
+                document.getElementById('add-task-input').onclick = () => { document.getElementById('task-inputs').insertAdjacentHTML('beforeend', fieldRow('input')); renderRunForm(); };
+                document.getElementById('add-task-output').onclick = () => document.getElementById('task-outputs').insertAdjacentHTML('beforeend', fieldRow('output'));
+                document.getElementById('save-task').onclick = async () => { const body = payload(); const url = body.id ? `/api/tasks/${body.id}` : '/api/tasks'; const method = body.id ? 'PUT' : 'POST'; currentTask = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) }).then(r => r.json()); await loadTasks(); renderRunForm(); };
+                document.getElementById('run-task').onclick = async () => { if (!currentTask) return; const inputValues = {}; document.querySelectorAll('[data-input]').forEach(i => inputValues[i.dataset.input] = i.value); const log = document.getElementById('task-run-log'); log.textContent = ''; const res = await fetch(`/api/tasks/${currentTask.id}/runs/stream`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ inputValues }) }); const text = await res.text(); log.textContent = text; };
+                loadTasks(); renderFields('input', []); renderFields('output', []);
+            </script>
+            """));
+    }
+
+    @GetMapping("/workflows")
+    @ResponseBody
+    public String workflows() {
+        return pageShell.renderWithContent(RawHtml.create("""
+            <style>
+                .workflow-page { max-width: 1180px; margin: 0 auto; padding: 1rem; }
+                .workflow-panel { border: 1px solid #d8dee8; border-radius: 8px; background: #fff; padding: 0.9rem; margin-bottom: 1rem; }
+                .workflow-panel input, .workflow-panel textarea, .workflow-panel select { width: 100%; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 4px; padding: 0.45rem; }
+                .workflow-step { display: grid; grid-template-columns: 8rem 1fr 1fr; gap: 0.5rem; margin-top: 0.55rem; align-items: end; }
+                .tool-actions { display: flex; gap: 0.45rem; flex-wrap: wrap; margin-top: 0.8rem; }
+                .tool-actions button { border: 1px solid #94a3b8; background: #f8fafc; border-radius: 4px; padding: 0.45rem 0.65rem; cursor: pointer; }
+                .warnings { color: #9a3412; }
+                .run-log { min-height: 5rem; white-space: pre-wrap; background: #0f172a; color: #e2e8f0; padding: 0.65rem; border-radius: 6px; overflow: auto; }
+                @media (max-width: 850px) { .workflow-step { grid-template-columns: 1fr; } }
+            </style>
+            <section class="workflow-page" id="workflows-page">
+                <div class="workflow-panel">
+                    <h2>Workflow Editor</h2>
+                    <label>Title<input id="workflow-title"></label>
+                    <label>Summary<textarea id="workflow-summary"></textarea></label>
+                    <div id="workflow-steps"></div>
+                    <div class="tool-actions">
+                        <button id="add-workflow-step" type="button">Add step</button>
+                        <button id="save-workflow" type="button">Save</button>
+                        <button id="run-workflow" type="button">Run</button>
+                    </div>
+                    <div id="workflow-warnings" class="warnings"></div>
+                </div>
+                <div class="workflow-panel"><h2>Workflows</h2><div id="workflow-list"></div></div>
+                <div class="workflow-panel"><h2>Run</h2><div id="workflow-run-log" class="run-log"></div></div>
+            </section>
+            <script>
+                let workflowId = null, tasks = [];
+                async function loadTasks() { tasks = await fetch('/api/tasks').then(r => r.json()); }
+                const taskOptions = id => tasks.map(t => `<option value="${t.id}" ${t.id === id ? 'selected' : ''}>${t.title}</option>`).join('');
+                function addStep(step = {}) { const count = document.querySelectorAll('.workflow-step').length + 1; document.getElementById('workflow-steps').insertAdjacentHTML('beforeend', `<div class="workflow-step"><input placeholder="step key" value="${step.stepKey || `step_${count}`}"><select>${taskOptions(step.taskId)}</select><textarea placeholder="Bindings JSON">${JSON.stringify(step.inputBindings || [])}</textarea></div>`); }
+                function payload() { return { id: workflowId, title: document.getElementById('workflow-title').value, summary: document.getElementById('workflow-summary').value, steps: [...document.querySelectorAll('.workflow-step')].map(row => ({ stepKey: row.children[0].value, taskId: row.children[1].value, inputBindings: JSON.parse(row.children[2].value || '[]') })) }; }
+                async function loadWorkflows() { const workflows = await fetch('/api/workflows').then(r => r.json()); document.getElementById('workflow-list').innerHTML = workflows.map(w => `<button data-id="${w.id}">${w.title}</button>`).join(' '); document.querySelectorAll('#workflow-list button').forEach(b => b.onclick = () => editWorkflow(b.dataset.id)); }
+                async function editWorkflow(id) { const w = await fetch(`/api/workflows/${id}`).then(r => r.json()); workflowId = w.id; document.getElementById('workflow-title').value = w.title || ''; document.getElementById('workflow-summary').value = w.summary || ''; document.getElementById('workflow-steps').innerHTML = ''; (w.steps || []).forEach(addStep); const warnings = await fetch(`/api/workflows/${id}/warnings`).then(r => r.json()); document.getElementById('workflow-warnings').textContent = warnings.join('\\n'); }
+                document.getElementById('add-workflow-step').onclick = () => addStep();
+                document.getElementById('save-workflow').onclick = async () => { const body = payload(); const url = body.id ? `/api/workflows/${body.id}` : '/api/workflows'; const method = body.id ? 'PUT' : 'POST'; const w = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) }).then(r => r.json()); workflowId = w.id; await loadWorkflows(); editWorkflow(workflowId); };
+                document.getElementById('run-workflow').onclick = async () => { if (!workflowId) return; const res = await fetch(`/api/workflows/${workflowId}/runs/stream`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' }); document.getElementById('workflow-run-log').textContent = await res.text(); };
+                (async () => { await loadTasks(); addStep(); addStep(); await loadWorkflows(); })();
+            </script>
+            """));
     }
 
     private String buildModelOptionsHtml(String defaultModel) {

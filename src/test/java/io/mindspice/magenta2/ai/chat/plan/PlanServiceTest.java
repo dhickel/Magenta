@@ -89,7 +89,7 @@ class PlanServiceTest {
             .contains("Shell and file tools are allowed for planning research")
             .contains("plan_set_goal")
             .contains("plan_put_item")
-            .contains("plan_ask_questions")
+            .contains("ask_user_questions")
             .contains("plan_ready_for_approval")
             .contains("validation criteria")
             .contains("notes");
