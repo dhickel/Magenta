@@ -4,7 +4,7 @@ This package owns user-editable AI, model, endpoint, and agent configuration.
 
 ### Responsibilities
 - Load external JSON/YAML AI configuration.
-- Represent configured models, agents, internal summary model selection, planning model selection, context buffer policy, endpoint types, prompts, approved tool names, web search settings, and per-agent shell command allowlists.
+- Represent configured model endpoint definitions, legacy seed/import agents, top-level default model selection, internal summary model selection, planning model selection, context buffer policy, endpoint types, prompts, approved tool names, web search settings, and per-agent shell command allowlists.
 - Keep config records simple and close to the external file shape.
 - Treat external agent `systemPrompt` values as required prompt file paths, resolved relative to the config file directory.
 
@@ -13,6 +13,7 @@ This package owns user-editable AI, model, endpoint, and agent configuration.
 - Keep defaults and validation easy to explain.
 - Avoid coupling config loading to chat-specific behavior.
 - Return loaded `AgentConfig.systemPrompt()` values as prompt text after resolving the external path.
+- Treat external agents as backward-compatible seed/import data; runtime agent profiles in SQLite are the source of truth after startup seeding.
 - Keep this guide updated when the config file shape, validation rules, supported endpoint types, summary/planning model semantics, web search settings, or wildcard semantics change.
 
 ### Validation

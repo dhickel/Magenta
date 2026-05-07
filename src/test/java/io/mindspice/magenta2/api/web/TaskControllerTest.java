@@ -22,7 +22,7 @@ class TaskControllerTest {
     @Test
     void taskApiIgnoresLegacyDeliverablesAndDoesNotExposeThem() throws Exception {
         ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
-        TaskController controller = new TaskController(taskService());
+        TaskController controller = new TaskController(taskService(), null);
         TaskDefinition request = objectMapper.readValue(
             """
                 {
@@ -47,7 +47,7 @@ class TaskControllerTest {
 
     @Test
     void updateUsesPathIdWithoutDeliverables() throws Exception {
-        TaskController controller = new TaskController(taskService());
+        TaskController controller = new TaskController(taskService(), null);
 
         TaskDefinition response = controller.update("task-1", new TaskDefinition(
             null,

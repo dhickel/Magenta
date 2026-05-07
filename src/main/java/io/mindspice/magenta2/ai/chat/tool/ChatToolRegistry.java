@@ -56,7 +56,7 @@ public class ChatToolRegistry {
             }
         }
         if (!unknown.isEmpty()) {
-            throw new IllegalStateException("Approved tool names are not registered: " + String.join(", ", unknown));
+            throw new IllegalArgumentException("Approved tool names are not registered: " + String.join(", ", unknown));
         }
         return List.copyOf(resolved);
     }
@@ -69,5 +69,9 @@ public class ChatToolRegistry {
         return approved.stream()
             .filter(callback -> allowedToolNames.contains(callback.getToolDefinition().name()))
             .toList();
+    }
+
+    public void validateToolNames(List<String> approvedToolNames) {
+        resolveApprovedTools(approvedToolNames);
     }
 }

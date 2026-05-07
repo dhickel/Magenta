@@ -15,6 +15,7 @@ import java.util.concurrent.TimeUnit;
 
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
+import io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettingsService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -31,7 +32,7 @@ public class AgentShellToolService {
     private final boolean allowAllCommands;
 
     @Autowired
-    public AgentShellToolService(AiConfig aiConfig) throws IOException {
+    public AgentShellToolService(AiConfig aiConfig, @Autowired(required = false) RuntimeSettingsService runtimeSettingsService) throws IOException {
         if (aiConfig == null || aiConfig.dataRoot() == null) {
             throw new IllegalArgumentException("AI config dataRoot is required for shell tools");
         }
@@ -39,12 +40,18 @@ public class AgentShellToolService {
             throw new IllegalArgumentException("AI config dataRoot must be an existing directory: " + aiConfig.dataRoot());
         }
         AgentConfig defaultAgent = aiConfig.agents() == null ? null : aiConfig.agents().get(aiConfig.defaultAgent());
-        List<String> commands = defaultAgent == null ? List.of() : defaultAgent.allowedShellCommands();
+        List<String> commands = runtimeSettingsService == null
+            ? (defaultAgent == null ? List.of() : defaultAgent.allowedShellCommands())
+            : runtimeSettingsService.allowedShellCommands();
         this.root = aiConfig.dataRoot().toRealPath();
         this.allowAllCommands = commands != null && commands.contains(WILDCARD);
         this.allowedCommands = commands == null
             ? Set.of()
             : commands.stream().filter(StringUtils::hasText).collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
+    public AgentShellToolService(AiConfig aiConfig) throws IOException {
+        this(aiConfig, null);
     }
 
     AgentShellToolService(Path root, List<String> allowedCommands) throws IOException {

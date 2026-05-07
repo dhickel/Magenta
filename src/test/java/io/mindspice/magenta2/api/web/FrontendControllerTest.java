@@ -86,19 +86,75 @@ class FrontendControllerTest {
 
         assertThat(controller.tasks())
             .contains("id=\"tasks-page\"")
+            .contains("data-orchestration-page=\"tasks\"")
             .contains("Task Editor")
             .contains("id=\"task-inputs\"")
             .contains("id=\"task-outputs\"")
             .contains("id=\"task-run-form\"")
+            .contains("id=\"task-run-agent-id\"")
+            .contains("modelOverride")
             .contains("/api/tasks")
             .doesNotContain("task-deliverables")
             .doesNotContain("deliverables: lines");
         assertThat(controller.workflows())
             .contains("id=\"workflows-page\"")
+            .contains("data-orchestration-page=\"workflows\"")
             .contains("Workflow Editor")
             .contains("Bindings JSON")
             .contains("id=\"workflow-warnings\"")
+            .contains("id=\"workflow-run-agent-id\"")
+            .contains("modelOverride")
             .contains("/api/workflows");
+    }
+
+    @Test
+    void orchestrationPagesLoadStaticAssetsWithoutChatClient() {
+        FrontendController controller = new FrontendController(new StubChatService());
+
+        for (String html : List.of(
+            controller.settings(),
+            controller.agents(),
+            controller.agentDetail("agent-1"),
+            controller.jobs(),
+            controller.jobDetail("job-1"),
+            controller.tasks(),
+            controller.workflows()
+        )) {
+            assertThat(html).contains("/css/orchestration.css?v=1");
+            assertThat(html).contains("/js/orchestration/app.js?v=1");
+            assertThat(html).doesNotContain("/js/chat-client.js");
+        }
+    }
+
+    @Test
+    void orchestrationStaticFilesExposeEndpointsAndSseParsing() throws Exception {
+        String app = Files.readString(Path.of("src/main/resources/static/js/orchestration/app.js"));
+        String api = Files.readString(Path.of("src/main/resources/static/js/orchestration/api.js"));
+        String chat = Files.readString(Path.of("src/main/resources/static/js/orchestration/agent-chat.js"));
+
+        assertThat(app)
+            .contains("data-orchestration-page")
+            .contains("/api/settings/runtime")
+            .contains("/api/agents")
+            .contains("/api/jobs")
+            .contains("/api/tasks")
+            .contains("/api/workflows");
+        assertThat(api)
+            .contains("function parseSse")
+            .contains("event:")
+            .contains("data:")
+            .contains("renderError");
+        assertThat(chat)
+            .contains("data-agent-chat-panel")
+            .contains("/api/agents/${encodeURIComponent(agentId)}/chat/stream")
+            .contains("pageContext");
+    }
+
+    @Test
+    void htmxCompatibilityResourceStopsShell404() {
+        FrontendController controller = new FrontendController(new StubChatService());
+
+        assertThat(controller.htmxCompatResource()).contains("window.htmx");
     }
 
     private static class StubChatService extends ChatService {

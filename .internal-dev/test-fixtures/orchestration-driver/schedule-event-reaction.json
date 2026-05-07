@@ -1,0 +1,26 @@
+{
+  "schedule": {
+    "name": "Daily validation check",
+    "cronExpression": "0 0 9 * * *",
+    "timezone": "America/New_York",
+    "enabled": true,
+    "assignmentType": "REPORT",
+    "priority": 1,
+    "input": {
+      "prompt": "Summarize pending orchestration work."
+    }
+  },
+  "eventReaction": {
+    "eventType": "JOB_COMPLETED",
+    "actionType": "SEND_MESSAGE",
+    "enabled": true,
+    "config": {
+      "message": "Job completed; review evidence and checkpoints."
+    }
+  },
+  "expectedAssertions": {
+    "scheduleViewLoads": true,
+    "eventReactionViewLoads": true,
+    "recordsRenderAsStructuredJson": true
+  }
+}

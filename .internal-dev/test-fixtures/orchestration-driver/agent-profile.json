@@ -1,0 +1,14 @@
+{
+  "name": "UI Validation Agent",
+  "defaultModel": "",
+  "systemPrompt": "Validate orchestration UI behavior and report concrete findings.",
+  "approvedTools": [],
+  "allowedShellCommands": [],
+  "directLineEnabled": true,
+  "expectedAssertions": {
+    "canCreate": true,
+    "canClone": true,
+    "cloneCanBeDisabled": true,
+    "detailTabs": ["dashboard", "inbox", "queue", "schedules", "reactions", "jobs", "workspace", "history"]
+  }
+}

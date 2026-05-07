@@ -1,0 +1,185 @@
+package io.mindspice.magenta2.ai.orchestration.settings;
+
+import io.mindspice.magenta2.ai.config.user.AiConfig;
+import io.mindspice.magenta2.ai.config.user.ModelConfig;
+import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
+import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+
+@Service
+public class RuntimeSettingsService {
+    private final RuntimeSettingsRepository repository;
+    private final AiConfig aiConfig;
+    private final AgentProfileService agentProfileService;
+
+    public RuntimeSettingsService(
+        RuntimeSettingsRepository repository,
+        AiConfig aiConfig,
+        AgentProfileService agentProfileService
+    ) {
+        this.repository = repository;
+        this.aiConfig = aiConfig;
+        this.agentProfileService = agentProfileService;
+    }
+
+    public RuntimeSettings get() {
+        return repository.find().orElseGet(() -> new RuntimeSettings(
+            null,
+            legacyDefaultAgentName(),
+            aiConfig.resolvedDefaultModelKey(),
+            aiConfig.resolvedPlanningModelKey(),
+            aiConfig.resolvedSummeryModelKey(),
+            aiConfig.resolvedCompactionModelKey(),
+            aiConfig.resolvedContextBufferPercent()
+        ));
+    }
+
+    public RuntimeSettings save(RuntimeSettings settings) {
+        validateModel(settings.defaultModel(), "defaultModel");
+        validateModel(settings.planningModel(), "planningModel");
+        validateModel(settings.summaryModel(), "summaryModel");
+        validateModel(settings.compactionModel(), "compactionModel");
+        Integer buffer = settings.contextBufferPercent();
+        if (buffer != null && (buffer < 1 || buffer > 50)) {
+            throw new IllegalArgumentException("contextBufferPercent must be between 1 and 50");
+        }
+        if (StringUtils.hasText(settings.defaultAgentId())) {
+            agentProfileService.get(settings.defaultAgentId());
+        }
+        return repository.save(settings);
+    }
+
+    public String resolveModel(String explicitRequestModel) {
+        return remoteModelName(resolveModelKey(explicitRequestModel, null));
+    }
+
+    public String resolveModel(String explicitRequestModel, String agentDefaultModel) {
+        return remoteModelName(resolveModelKey(explicitRequestModel, agentDefaultModel));
+    }
+
+    public String defaultModel() {
+        String agentDefaultModel = null;
+        try {
+            agentDefaultModel = defaultAgentProfile().defaultModel();
+        } catch (IllegalStateException ignored) {
+        }
+        return resolveModel(null, agentDefaultModel);
+    }
+
+    public String planningModel() {
+        RuntimeSettings settings = get();
+        String key = StringUtils.hasText(settings.planningModel())
+            ? settings.planningModel()
+            : aiConfig.resolvedPlanningModelKey();
+        return remoteModelName(key);
+    }
+
+    public String compactionModel() {
+        RuntimeSettings settings = get();
+        String key = StringUtils.hasText(settings.compactionModel())
+            ? settings.compactionModel()
+            : aiConfig.resolvedCompactionModelKey();
+        return remoteModelName(key);
+    }
+
+    public int contextBufferPercent() {
+        Integer configured = get().contextBufferPercent();
+        return configured == null ? aiConfig.resolvedContextBufferPercent() : configured;
+    }
+
+    public String defaultSystemPrompt() {
+        RuntimeSettings settings = get();
+        try {
+            return agentProfileService.systemPrompt(settings.defaultAgentId(), settings.defaultAgentName());
+        } catch (IllegalStateException exception) {
+            String agentName = legacyDefaultAgentName();
+            return aiConfig.agents() == null || aiConfig.agents().get(agentName) == null
+                ? null
+                : aiConfig.agents().get(agentName).systemPrompt();
+        }
+    }
+
+    public java.util.List<String> approvedTools() {
+        RuntimeSettings settings = get();
+        try {
+            return agentProfileService.approvedTools(settings.defaultAgentId(), settings.defaultAgentName());
+        } catch (IllegalStateException exception) {
+            String agentName = legacyDefaultAgentName();
+            return aiConfig.agents() == null || aiConfig.agents().get(agentName) == null
+                ? java.util.List.of()
+                : aiConfig.agents().get(agentName).approvedTools();
+        }
+    }
+
+    public java.util.List<String> allowedShellCommands() {
+        RuntimeSettings settings = get();
+        try {
+            return agentProfileService.allowedShellCommands(settings.defaultAgentId(), settings.defaultAgentName());
+        } catch (IllegalStateException exception) {
+            String agentName = legacyDefaultAgentName();
+            return aiConfig.agents() == null || aiConfig.agents().get(agentName) == null
+                ? java.util.List.of()
+                : aiConfig.agents().get(agentName).allowedShellCommands();
+        }
+    }
+
+    public AgentProfile defaultAgentProfile() {
+        RuntimeSettings settings = get();
+        return agentProfileService.defaultAgent(settings.defaultAgentId(), settings.defaultAgentName());
+    }
+
+    private String resolveModelKey(String explicitRequestModel, String agentDefaultModel) {
+        if (StringUtils.hasText(explicitRequestModel)) {
+            return keyForModelOrRemoteName(explicitRequestModel);
+        }
+        if (StringUtils.hasText(agentDefaultModel)) {
+            return agentDefaultModel;
+        }
+        RuntimeSettings settings = get();
+        if (StringUtils.hasText(settings.defaultModel())) {
+            return settings.defaultModel();
+        }
+        if (StringUtils.hasText(aiConfig.resolvedDefaultModelKey())) {
+            return aiConfig.resolvedDefaultModelKey();
+        }
+        return legacyDefaultModelKey();
+    }
+
+    private String remoteModelName(String modelKey) {
+        ModelConfig model = aiConfig.models().get(modelKey);
+        if (model == null) {
+            throw new IllegalArgumentException("Unknown configured model: " + modelKey);
+        }
+        return model.remoteModelName();
+    }
+
+    private String keyForModelOrRemoteName(String value) {
+        if (aiConfig.models().containsKey(value)) {
+            return value;
+        }
+        return aiConfig.models().entrySet().stream()
+            .filter(entry -> value.equals(entry.getValue().remoteModelName()))
+            .map(java.util.Map.Entry::getKey)
+            .findFirst()
+            .orElse(value);
+    }
+
+    private String legacyDefaultModelKey() {
+        String agentName = legacyDefaultAgentName();
+        if (StringUtils.hasText(agentName) && aiConfig.agents() != null && aiConfig.agents().get(agentName) != null) {
+            return aiConfig.agents().get(agentName).model();
+        }
+        return aiConfig.resolvedSummeryModelKey();
+    }
+
+    private String legacyDefaultAgentName() {
+        return StringUtils.hasText(aiConfig.defaultAgent()) ? aiConfig.defaultAgent() : "magenta";
+    }
+
+    private void validateModel(String modelKey, String field) {
+        if (StringUtils.hasText(modelKey) && !aiConfig.models().containsKey(modelKey)) {
+            throw new IllegalArgumentException(field + " references missing model: " + modelKey);
+        }
+    }
+}

@@ -1,0 +1,30 @@
+{
+  "job": {
+    "title": "UI Validation Job",
+    "summary": "Playwright fixture job",
+    "status": "QUEUED"
+  },
+  "items": [
+    {
+      "itemOrder": 1,
+      "itemType": "REPORT",
+      "priority": 2,
+      "config": {
+        "checkpoint": "ui validation"
+      }
+    }
+  ],
+  "runRequest": {
+    "priority": 2,
+    "modelOverride": null,
+    "input": {
+      "source": "playwright"
+    }
+  },
+  "expectedAssertions": {
+    "runStatus": "QUEUED",
+    "runCountAtLeast": 1,
+    "detailShowsItem": true,
+    "detailShowsRunHistory": true
+  }
+}

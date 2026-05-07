@@ -1,0 +1,273 @@
+.orch-page {
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 1rem;
+    color: #202936;
+}
+
+.orch-page-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.orch-page-header h1,
+.orch-panel h2 {
+    margin: 0;
+}
+
+.orch-page-header h1 {
+    font-size: 1.65rem;
+}
+
+.orch-page-header p {
+    margin: 0.25rem 0 0;
+    color: #5c6675;
+}
+
+.orch-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 22rem;
+    gap: 1rem;
+    align-items: start;
+}
+
+.orch-layout.wide {
+    grid-template-columns: minmax(0, 1.15fr) minmax(22rem, 0.85fr);
+}
+
+.orch-panel {
+    border: 1px solid #d9e0ea;
+    border-radius: 8px;
+    background: #ffffff;
+    padding: 0.9rem;
+}
+
+.orch-toolbar,
+.orch-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.orch-toolbar {
+    margin-bottom: 0.8rem;
+}
+
+.orch-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+    gap: 0.75rem;
+}
+
+.orch-card,
+.orch-row {
+    border: 1px solid #dde5ef;
+    border-radius: 8px;
+    background: #fbfcfe;
+    padding: 0.75rem;
+}
+
+.orch-card h3,
+.orch-row h3 {
+    margin: 0 0 0.35rem;
+    font-size: 1rem;
+}
+
+.orch-meta {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.4rem;
+    margin-top: 0.55rem;
+    color: #4e5968;
+    font-size: 0.84rem;
+}
+
+.orch-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: 0.75rem;
+}
+
+.orch-form-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+}
+
+.orch-form-grid label,
+.orch-form-stack label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    color: #344255;
+    font-size: 0.86rem;
+    font-weight: 700;
+}
+
+.orch-page input,
+.orch-page select,
+.orch-page textarea {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 2.2rem;
+    border: 1px solid #c9d3df;
+    border-radius: 5px;
+    background: #ffffff;
+    color: #1f2937;
+    padding: 0.42rem 0.5rem;
+}
+
+.orch-page textarea {
+    min-height: 5rem;
+    resize: vertical;
+}
+
+.orch-page button {
+    min-height: 2.15rem;
+    border: 1px solid #aab7c7;
+    border-radius: 5px;
+    background: #f8fafc;
+    color: #263246;
+    padding: 0.35rem 0.65rem;
+    cursor: pointer;
+}
+
+.orch-page button:hover {
+    background: #eef3f8;
+}
+
+.orch-page button.orch-primary {
+    border-color: #315d91;
+    background: #315d91;
+    color: #ffffff;
+}
+
+.orch-tabs {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.8rem;
+}
+
+.orch-tabs button.active {
+    border-color: #315d91;
+    color: #1f4979;
+    background: #e8f0f9;
+}
+
+.orch-chip-list {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+
+.orch-chip,
+.orch-status-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.55rem;
+    border: 1px solid #ccd7e4;
+    border-radius: 999px;
+    background: #f5f8fb;
+    padding: 0.1rem 0.5rem;
+    font-size: 0.78rem;
+    color: #405066;
+}
+
+.orch-status-chip.active,
+.orch-status-chip.running {
+    border-color: #6fa178;
+    background: #eef8f0;
+    color: #286238;
+}
+
+.orch-status-chip.disabled,
+.orch-status-chip.failed,
+.orch-status-chip.cancelled {
+    border-color: #ca9b9b;
+    background: #fff1f1;
+    color: #8c2f2f;
+}
+
+.orch-table {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.orch-status {
+    min-height: 1.3rem;
+    margin-top: 0.65rem;
+    color: #4c5a6b;
+}
+
+.agent-chat-panel {
+    position: fixed;
+    right: 1rem;
+    bottom: 1rem;
+    z-index: 30;
+    width: min(26rem, calc(100vw - 2rem));
+    border: 1px solid #cbd6e2;
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: 0 0.4rem 1.4rem rgba(22, 32, 44, 0.18);
+}
+
+.agent-chat-panel.collapsed {
+    width: auto;
+}
+
+.agent-chat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 0.65rem;
+    border-bottom: 1px solid #e3e9f1;
+}
+
+.agent-chat-panel.collapsed .agent-chat-body,
+.agent-chat-panel.collapsed .agent-chat-form {
+    display: none;
+}
+
+.agent-chat-body {
+    height: 16rem;
+    overflow: auto;
+    padding: 0.65rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.agent-chat-message {
+    border: 1px solid #dce4ee;
+    border-radius: 7px;
+    padding: 0.45rem 0.55rem;
+    background: #f8fafc;
+    overflow-wrap: anywhere;
+}
+
+.agent-chat-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.45rem;
+    padding: 0.65rem;
+    border-top: 1px solid #e3e9f1;
+}
+
+@media (max-width: 900px) {
+    .orch-page-header,
+    .orch-layout,
+    .orch-layout.wide {
+        display: block;
+    }
+
+    .orch-panel {
+        margin-bottom: 0.85rem;
+    }
+}

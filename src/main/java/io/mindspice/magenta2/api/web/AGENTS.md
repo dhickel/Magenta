@@ -5,6 +5,8 @@ This package owns HTTP and web-facing entry points.
 ### Responsibilities
 - Expose chat REST endpoints, SSE streaming endpoints, command endpoints, context usage payloads, structured tool activity updates, and simple web routes.
 - Expose chat plan state, queued planning questions/actions, approval/continue actions, validation criteria, deliverables, validation feedback, and execution evidence.
+- Expose runtime settings, agent profile, workspace-link, job, assignment, inbox, schedule, event-reaction, and agent side-panel chat APIs as thin orchestration entry points.
+- Keep inherited shell compatibility resources local to the web layer when a shell asset reference cannot be removed directly.
 - Keep controllers thin and delegate behavior to services.
 - Keep HTTP status handling clear and local to the web layer.
 

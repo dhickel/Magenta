@@ -9,6 +9,9 @@ import io.mindspice.magenta2.ai.chat.task.TaskDraft;
 import io.mindspice.magenta2.ai.chat.task.TaskRun;
 import io.mindspice.magenta2.ai.chat.task.TaskRunStatus;
 import io.mindspice.magenta2.ai.chat.task.TaskService;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationRunContext;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationRunResult;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationRunService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -26,9 +29,11 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @RequestMapping("/api/tasks")
 public class TaskController {
     private final TaskService taskService;
+    private final OrchestrationRunService orchestrationRunService;
 
-    public TaskController(TaskService taskService) {
+    public TaskController(TaskService taskService, OrchestrationRunService orchestrationRunService) {
         this.taskService = taskService;
+        this.orchestrationRunService = orchestrationRunService;
     }
 
     @GetMapping
@@ -121,6 +126,26 @@ public class TaskController {
         SseEmitter emitter = new SseEmitter(0L);
         Map<String, Object> inputs = request == null || request.inputValues() == null ? Map.of() : request.inputValues();
         try {
+            OrchestrationRunContext context = context(request);
+            if (context.hasContext()) {
+                OrchestrationRunResult result = orchestrationRunService.runTask(taskId, inputs, context);
+                send(emitter, "started", Map.of(
+                    "event", "started",
+                    "assignmentId", result.assignment().id(),
+                    "runId", result.runId() == null ? "" : result.runId(),
+                    "taskId", taskId
+                ));
+                send(emitter, result.assignment().status().name().equals("COMPLETED") ? "completed" : "failed", Map.of(
+                    "event", result.assignment().status().name().equals("COMPLETED") ? "completed" : "failed",
+                    "assignmentId", result.assignment().id(),
+                    "runId", result.runId() == null ? "" : result.runId(),
+                    "status", result.assignment().status().name(),
+                    "outputValues", result.outputValues(),
+                    "error", result.assignment().errorText() == null ? "" : result.assignment().errorText()
+                ));
+                emitter.complete();
+                return emitter;
+            }
             TaskRun run = taskService.startRun(taskId, inputs);
             send(emitter, "started", Map.of("event", "started", "runId", run.id(), "taskId", taskId));
             send(emitter, "progress", Map.of("event", "progress", "message", "Task run started."));
@@ -173,12 +198,28 @@ public class TaskController {
         emitter.send(SseEmitter.event().name(name).data(data));
     }
 
+    private OrchestrationRunContext context(TaskRunRequest request) {
+        if (request == null) {
+            return new OrchestrationRunContext(null, null, null, null, null);
+        }
+        return new OrchestrationRunContext(
+            request.agentId(), request.jobId(), request.workspaceId(), request.modelOverride(), request.priority()
+        );
+    }
+
     public record DraftRequest(String prePlanningModel, String executionModel) {
     }
 
     public record TaskAnswerRequest(String answer, String notes, Integer questionIndex) {
     }
 
-    public record TaskRunRequest(Map<String, Object> inputValues) {
+    public record TaskRunRequest(
+        Map<String, Object> inputValues,
+        String agentId,
+        String jobId,
+        String workspaceId,
+        String modelOverride,
+        Integer priority
+    ) {
     }
 }

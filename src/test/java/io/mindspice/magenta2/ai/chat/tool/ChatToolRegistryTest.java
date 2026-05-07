@@ -101,7 +101,7 @@ class ChatToolRegistryTest {
         ChatToolRegistry registry = new ChatToolRegistry(List.of(), List.of());
 
         assertThatThrownBy(() -> registry.resolveApprovedTools(List.of("missing_tool")))
-            .isInstanceOf(IllegalStateException.class)
+            .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("missing_tool");
     }
 

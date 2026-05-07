@@ -78,6 +78,10 @@ Observed MCP-run gotchas:
 - Saved plan execution previously failed because the execution model supplied scalar text such as `None. Execution followed the plan exactly.` for a list-valued tool argument. The 2026-05-06 refresh validated that scalar-to-list coercion fixed this original failure: the saved plan completed and recorded evidence instead of failing deserialization.
 - A new plan execution issue was observed after an MCP timeout: a plan remained `EXECUTE_PLAN` / `EXECUTING` while already containing failure evidence from a mode-gated tool call. Log and inspect persisted state after MCP timeouts before deciding whether execution succeeded, failed, or is stuck.
 - Invalid command tests intentionally create browser console 400 errors. Record them as expected test noise, not frontend failures, unless the UI fails to display a useful error to the user.
+- A 2026-05-07 orchestration UI validation found that Spring's webjar resource handler can intercept `/webjars/htmx.org/dist/htmx.min.js` before `static/webjars/...` resources. If SimplyPages still emits that versionless HTMX URL, validate in the browser that it returns HTTP 200; a controller compatibility route fixed the 404 for this phase.
+- A 2026-05-07 final orchestration validation attempt found the MCP browser could be blocked by an existing profile lock at `~/.cache/ms-playwright/mcp-chrome-*`. Treat that as an MCP infrastructure blocker, then either restart the MCP session with an isolated profile or run an explicitly documented fallback browser probe against the same live app.
+- A 2026-05-07 wide orchestration validation pass found that collapsed agent side-panel chat hosts are attached but not visible on orchestration pages. Assert `[data-agent-chat-panel]` attachment for page coverage, then separately test visibility/toggle behavior when the panel interaction itself is in scope.
+- Agent detail orchestration tabs render through one dynamic `#agent-tab-panel`; do not expect separate persistent DOM nodes for inbox, queue, schedules, reactions, workspace, or history panels.
 
 # Engine Relevance
 

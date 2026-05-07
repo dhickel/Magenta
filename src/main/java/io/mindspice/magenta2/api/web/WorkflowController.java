@@ -7,6 +7,9 @@ import java.util.Map;
 import io.mindspice.magenta2.ai.chat.workflow.WorkflowDefinition;
 import io.mindspice.magenta2.ai.chat.workflow.WorkflowRun;
 import io.mindspice.magenta2.ai.chat.workflow.WorkflowService;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationRunContext;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationRunResult;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationRunService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -24,9 +27,11 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @RequestMapping("/api/workflows")
 public class WorkflowController {
     private final WorkflowService workflowService;
+    private final OrchestrationRunService orchestrationRunService;
 
-    public WorkflowController(WorkflowService workflowService) {
+    public WorkflowController(WorkflowService workflowService, OrchestrationRunService orchestrationRunService) {
         this.workflowService = workflowService;
+        this.orchestrationRunService = orchestrationRunService;
     }
 
     @GetMapping
@@ -88,9 +93,29 @@ public class WorkflowController {
     }
 
     @PostMapping(value = "/{workflowId}/runs/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter streamRun(@PathVariable String workflowId, @RequestBody(required = false) Map<String, Object> ignored) {
+    public SseEmitter streamRun(@PathVariable String workflowId, @RequestBody(required = false) WorkflowRunRequest request) {
         SseEmitter emitter = new SseEmitter(0L);
         try {
+            OrchestrationRunContext context = context(request);
+            if (context.hasContext()) {
+                OrchestrationRunResult result = orchestrationRunService.runWorkflow(workflowId, context);
+                send(emitter, "started", Map.of(
+                    "event", "started",
+                    "assignmentId", result.assignment().id(),
+                    "runId", result.runId() == null ? "" : result.runId(),
+                    "workflowId", workflowId
+                ));
+                send(emitter, result.assignment().status().name().equals("COMPLETED") ? "completed" : "failed", Map.of(
+                    "event", result.assignment().status().name().equals("COMPLETED") ? "completed" : "failed",
+                    "assignmentId", result.assignment().id(),
+                    "runId", result.runId() == null ? "" : result.runId(),
+                    "status", result.assignment().status().name(),
+                    "finalOutputs", result.outputValues(),
+                    "error", result.assignment().errorText() == null ? "" : result.assignment().errorText()
+                ));
+                emitter.complete();
+                return emitter;
+            }
             WorkflowDefinition workflow = workflowService.getWorkflow(workflowId);
             send(emitter, "started", Map.of("event", "started", "workflowId", workflowId));
             for (var step : workflow.steps()) {
@@ -130,5 +155,23 @@ public class WorkflowController {
 
     private void send(SseEmitter emitter, String name, Object data) throws IOException {
         emitter.send(SseEmitter.event().name(name).data(data));
+    }
+
+    private OrchestrationRunContext context(WorkflowRunRequest request) {
+        if (request == null) {
+            return new OrchestrationRunContext(null, null, null, null, null);
+        }
+        return new OrchestrationRunContext(
+            request.agentId(), request.jobId(), request.workspaceId(), request.modelOverride(), request.priority()
+        );
+    }
+
+    public record WorkflowRunRequest(
+        String agentId,
+        String jobId,
+        String workspaceId,
+        String modelOverride,
+        Integer priority
+    ) {
     }
 }

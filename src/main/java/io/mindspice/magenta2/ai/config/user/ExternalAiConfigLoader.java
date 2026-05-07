@@ -43,6 +43,7 @@ public final class ExternalAiConfigLoader {
             ));
         return new AiConfig(
             config.defaultAgent(),
+            config.defaultModel(),
             config.summeryModel(),
             config.planningModel(),
             config.compactionModel(),
@@ -74,6 +75,9 @@ public final class ExternalAiConfigLoader {
         }
         if (summeryModel.contextLength() == null || summeryModel.contextLength() <= 0) {
             throw new IllegalArgumentException("summeryModel must define a positive contextLength: " + summeryModelKey);
+        }
+        if (StringUtils.hasText(config.defaultModel()) && !config.models().containsKey(config.defaultModel())) {
+            throw new IllegalArgumentException("defaultModel references missing model: " + config.defaultModel());
         }
         String planningModelKey = config.resolvedPlanningModelKey();
         ModelConfig planningModel = config.models().get(planningModelKey);

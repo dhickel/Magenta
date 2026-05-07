@@ -8,6 +8,7 @@ import org.springframework.util.StringUtils;
 
 public record AiConfig(
     String defaultAgent,
+    String defaultModel,
     @JsonProperty("summeryModel") String summeryModel,
     String planningModel,
     @JsonProperty("compactionModel") String compactionModel,
@@ -20,6 +21,10 @@ public record AiConfig(
 
     public int resolvedContextBufferPercent() {
         return contextBufferPercent == null ? 10 : contextBufferPercent;
+    }
+
+    public String resolvedDefaultModelKey() {
+        return StringUtils.hasText(defaultModel) ? defaultModel : null;
     }
 
     public String resolvedSummeryModelKey() {
@@ -43,7 +48,7 @@ public record AiConfig(
         Map<String, ModelConfig> models,
         Map<String, AgentConfig> agents
     ) {
-        this(defaultAgent, summeryModel, planningModel, null, contextBufferPercent, dataRoot, null, models, agents);
+        this(defaultAgent, null, summeryModel, planningModel, null, contextBufferPercent, dataRoot, null, models, agents);
     }
 
     public AiConfig(
@@ -55,7 +60,7 @@ public record AiConfig(
         Map<String, ModelConfig> models,
         Map<String, AgentConfig> agents
     ) {
-        this(defaultAgent, summeryModel, null, null, contextBufferPercent, dataRoot, webSearch, models, agents);
+        this(defaultAgent, null, summeryModel, null, null, contextBufferPercent, dataRoot, webSearch, models, agents);
     }
 
     public AiConfig(
@@ -66,7 +71,7 @@ public record AiConfig(
         Map<String, ModelConfig> models,
         Map<String, AgentConfig> agents
     ) {
-        this(defaultAgent, summeryModel, null, null, contextBufferPercent, dataRoot, null, models, agents);
+        this(defaultAgent, null, summeryModel, null, null, contextBufferPercent, dataRoot, null, models, agents);
     }
 
 }

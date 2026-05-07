@@ -1,5 +1,6 @@
 {
   "defaultAgent": "magenta",
+  "defaultModel": "local-qwen",
   "summeryModel": "granite4.1:8b",
   "planningModel": "deepseek-v4",
   "compactionModel": "local-gemma-e4b",

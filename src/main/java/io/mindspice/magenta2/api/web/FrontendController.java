@@ -10,6 +10,7 @@ import io.mindspice.simplypages.core.Component;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.ResponseBody;
 
@@ -24,6 +25,9 @@ public class FrontendController {
     Component topNavBar = TopNavBuilder.create()
             .addPrimaryLink("Home", "/")
             .addPrimaryLink("Chat", "/chat")
+            .addPrimaryLink("Settings", "/settings")
+            .addPrimaryLink("Agents", "/agents")
+            .addPrimaryLink("Jobs", "/jobs")
             .addPrimaryLink("Tasks", "/tasks")
             .addPrimaryLink("Workflows", "/workflows")
             .build();
@@ -50,6 +54,12 @@ public class FrontendController {
             HttpServletResponse response
     ) {
         return pageShell.render();
+    }
+
+    @GetMapping(value = "/webjars/htmx.org/dist/htmx.min.js", produces = "application/javascript")
+    @ResponseBody
+    public String htmxCompatResource() {
+        return "window.htmx=window.htmx||{version:\"compat-noop\",process:function(){},onLoad:function(){}};";
     }
 
     private static String chatInterface = """
@@ -981,10 +991,168 @@ public class FrontendController {
         return chatShell.renderWithContent(RawHtml.create(view));
     }
 
+    @GetMapping("/settings")
+    @ResponseBody
+    public String settings() {
+        return orchestrationPage("Runtime Settings", """
+            <section class="orch-page" id="settings-page" data-orchestration-page="settings">
+                <header class="orch-page-header">
+                    <div>
+                        <h1>Runtime Settings</h1>
+                        <p>Default agent, model routing, and context compaction controls.</p>
+                    </div>
+                    <button type="button" class="orch-primary" data-action="save-settings">Save</button>
+                </header>
+                <div class="orch-layout">
+                    <main class="orch-panel">
+                        <h2>Model Routing</h2>
+                        <div class="orch-form-grid">
+                            <label>Default Agent<input id="settings-default-agent-id" name="defaultAgentId"></label>
+                            <label>Default Agent Name<input id="settings-default-agent-name" name="defaultAgentName"></label>
+                            <label>Default Model<select id="settings-default-model" name="defaultModel"></select></label>
+                            <label>Planning Model<select id="settings-planning-model" name="planningModel"></select></label>
+                            <label>Summary Model<select id="settings-summary-model" name="summaryModel"></select></label>
+                            <label>Compaction Model<select id="settings-compaction-model" name="compactionModel"></select></label>
+                            <label>Context Buffer %<input id="settings-context-buffer" name="contextBufferPercent" type="number" min="0" max="90"></label>
+                        </div>
+                        <div class="orch-status" id="settings-status" role="status"></div>
+                    </main>
+                    <aside class="orch-panel">
+                        <h2>Available Models</h2>
+                        <div id="settings-model-list" class="orch-chip-list"></div>
+                    </aside>
+                </div>
+                <div data-agent-chat-panel data-page-context="runtime settings"></div>
+            </section>
+            """);
+    }
+
+    @GetMapping("/agents")
+    @ResponseBody
+    public String agents() {
+        return orchestrationPage("Agents", """
+            <section class="orch-page" id="agents-page" data-orchestration-page="agents">
+                <header class="orch-page-header">
+                    <div>
+                        <h1>Agents</h1>
+                        <p>Operational status, queues, inboxes, and current assignments.</p>
+                    </div>
+                    <button type="button" class="orch-primary" data-action="create-agent">Create Agent</button>
+                </header>
+                <div class="orch-toolbar">
+                    <input id="agent-filter" placeholder="Filter agents">
+                    <button type="button" data-action="reload-agents">Reload</button>
+                </div>
+                <div id="agent-cards" class="orch-card-grid"></div>
+                <div data-agent-chat-panel data-page-context="agent overview"></div>
+            </section>
+            """);
+    }
+
+    @GetMapping("/agents/{agentId}")
+    @ResponseBody
+    public String agentDetail(@PathVariable String agentId) {
+        return orchestrationPage("Agent Detail", """
+            <section class="orch-page" id="agent-detail-page" data-orchestration-page="agent-detail" data-agent-id="%s">
+                <header class="orch-page-header">
+                    <div>
+                        <h1 id="agent-detail-title">Agent</h1>
+                        <p id="agent-detail-subtitle">Profile, queue, inbox, schedules, reactions, workspace, and history.</p>
+                    </div>
+                    <div class="orch-actions">
+                        <button type="button" data-action="open-agent-chat">Chat</button>
+                        <button type="button" class="orch-primary" data-action="save-agent">Save Profile</button>
+                    </div>
+                </header>
+                <nav class="orch-tabs" aria-label="Agent detail views">
+                    <button type="button" class="active" data-tab="dashboard">Dashboard</button>
+                    <button type="button" data-tab="inbox">Inbox</button>
+                    <button type="button" data-tab="queue">Queue</button>
+                    <button type="button" data-tab="schedules">Schedules</button>
+                    <button type="button" data-tab="reactions">Event Reactions</button>
+                    <button type="button" data-tab="jobs">Jobs</button>
+                    <button type="button" data-tab="workspace">Workspace</button>
+                    <button type="button" data-tab="history">History</button>
+                </nav>
+                <div class="orch-layout">
+                    <main class="orch-panel" id="agent-tab-panel"></main>
+                    <aside class="orch-panel">
+                        <h2>Profile</h2>
+                        <div class="orch-form-stack" id="agent-profile-form"></div>
+                        <h2>Submit Work</h2>
+                        <div class="orch-form-stack" id="agent-assignment-form"></div>
+                    </aside>
+                </div>
+                <div data-agent-chat-panel data-page-context="agent detail"></div>
+            </section>
+            """.formatted(escapeHtml(agentId)));
+    }
+
+    @GetMapping("/jobs")
+    @ResponseBody
+    public String jobs() {
+        return orchestrationPage("Jobs", """
+            <section class="orch-page" id="jobs-page" data-orchestration-page="jobs">
+                <header class="orch-page-header">
+                    <div>
+                        <h1>Jobs</h1>
+                        <p>Ordered orchestration plans with checkpoints, evidence, and run history.</p>
+                    </div>
+                    <button type="button" class="orch-primary" data-action="create-job">Create Job</button>
+                </header>
+                <div class="orch-toolbar">
+                    <select id="jobs-agent-select"></select>
+                    <button type="button" data-action="reload-jobs">Reload</button>
+                </div>
+                <div id="job-list" class="orch-table"></div>
+                <div data-agent-chat-panel data-page-context="job overview"></div>
+            </section>
+            """);
+    }
+
+    @GetMapping("/jobs/{jobId}")
+    @ResponseBody
+    public String jobDetail(@PathVariable String jobId) {
+        return orchestrationPage("Job Detail", """
+            <section class="orch-page" id="job-detail-page" data-orchestration-page="job-detail" data-job-id="%s">
+                <header class="orch-page-header">
+                    <div>
+                        <h1 id="job-detail-title">Job</h1>
+                        <p id="job-detail-subtitle">Editor, ordered items, controls, checkpoints, and events.</p>
+                    </div>
+                    <div class="orch-actions">
+                        <button type="button" data-action="run-job">Run</button>
+                        <button type="button" data-action="pause-job">Pause</button>
+                        <button type="button" data-action="resume-job">Resume</button>
+                        <button type="button" data-action="cancel-job">Cancel</button>
+                        <button type="button" class="orch-primary" data-action="save-job">Save</button>
+                    </div>
+                </header>
+                <div class="orch-layout wide">
+                    <main class="orch-panel">
+                        <h2>Job Editor</h2>
+                        <div class="orch-form-stack" id="job-editor-form"></div>
+                        <h2>Ordered Items</h2>
+                        <div id="job-item-editor"></div>
+                        <button type="button" data-action="add-job-item">Add Item</button>
+                    </main>
+                    <aside class="orch-panel">
+                        <h2>Run History</h2>
+                        <div id="job-runs"></div>
+                        <h2>Checkpoints & Evidence</h2>
+                        <div id="job-events"></div>
+                    </aside>
+                </div>
+                <div data-agent-chat-panel data-page-context="job detail"></div>
+            </section>
+            """.formatted(escapeHtml(jobId)));
+    }
+
     @GetMapping("/tasks")
     @ResponseBody
     public String tasks() {
         return pageShell.renderWithContent(RawHtml.create("""
+            <link rel="stylesheet" href="/css/orchestration.css?v=1">
             <style>
                 .tool-page { max-width: 1180px; margin: 0 auto; padding: 1rem; }
                 .tool-grid { display: grid; grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr); gap: 1rem; align-items: start; }
@@ -1001,7 +1169,7 @@ public class FrontendController {
                 .run-log { min-height: 5rem; white-space: pre-wrap; background: #0f172a; color: #e2e8f0; padding: 0.65rem; border-radius: 6px; overflow: auto; }
                 @media (max-width: 850px) { .tool-grid { grid-template-columns: 1fr; } .field-row { grid-template-columns: 1fr; } }
             </style>
-            <section class="tool-page" id="tasks-page">
+            <section class="tool-page" id="tasks-page" data-orchestration-page="tasks">
                 <div class="tool-grid">
                     <aside class="tool-panel">
                         <h2>Tasks</h2>
@@ -1023,11 +1191,19 @@ public class FrontendController {
                             <button id="run-task" type="button">Run</button>
                         </div>
                         <h2>Run</h2>
+                        <div class="field-row">
+                            <input id="task-run-agent-id" placeholder="agent id">
+                            <input id="task-run-job-id" placeholder="job id">
+                            <input id="task-run-model" placeholder="model override">
+                            <input id="task-run-priority" type="number" value="0" placeholder="priority">
+                        </div>
                         <div id="task-run-form"></div>
                         <div id="task-run-log" class="run-log"></div>
                     </main>
                 </div>
+                <div data-agent-chat-panel data-page-context="task editor"></div>
             </section>
+            <script type="module" src="/js/orchestration/app.js?v=1"></script>
             <script>
                 let currentTask = null;
                 const typeOptions = ['string','long_text','file_path','json','number','boolean'];
@@ -1042,7 +1218,7 @@ public class FrontendController {
                 document.getElementById('add-task-input').onclick = () => { document.getElementById('task-inputs').insertAdjacentHTML('beforeend', fieldRow('input')); renderRunForm(); };
                 document.getElementById('add-task-output').onclick = () => document.getElementById('task-outputs').insertAdjacentHTML('beforeend', fieldRow('output'));
                 document.getElementById('save-task').onclick = async () => { const body = payload(); const url = body.id ? `/api/tasks/${body.id}` : '/api/tasks'; const method = body.id ? 'PUT' : 'POST'; currentTask = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) }).then(r => r.json()); await loadTasks(); renderRunForm(); };
-                document.getElementById('run-task').onclick = async () => { if (!currentTask) return; const inputValues = {}; document.querySelectorAll('[data-input]').forEach(i => inputValues[i.dataset.input] = i.value); const log = document.getElementById('task-run-log'); log.textContent = ''; const res = await fetch(`/api/tasks/${currentTask.id}/runs/stream`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ inputValues }) }); const text = await res.text(); log.textContent = text; };
+                document.getElementById('run-task').onclick = async () => { if (!currentTask) return; const inputValues = {}; document.querySelectorAll('[data-input]').forEach(i => inputValues[i.dataset.input] = i.value); const log = document.getElementById('task-run-log'); log.textContent = ''; const res = await fetch(`/api/tasks/${currentTask.id}/runs/stream`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ inputValues, agentId: document.getElementById('task-run-agent-id').value || null, jobId: document.getElementById('task-run-job-id').value || null, modelOverride: document.getElementById('task-run-model').value || null, priority: Number(document.getElementById('task-run-priority').value || 0) }) }); const text = await res.text(); log.textContent = text; };
                 loadTasks(); renderFields('input', []); renderFields('output', []);
             </script>
             """));
@@ -1052,6 +1228,7 @@ public class FrontendController {
     @ResponseBody
     public String workflows() {
         return pageShell.renderWithContent(RawHtml.create("""
+            <link rel="stylesheet" href="/css/orchestration.css?v=1">
             <style>
                 .workflow-page { max-width: 1180px; margin: 0 auto; padding: 1rem; }
                 .workflow-panel { border: 1px solid #d8dee8; border-radius: 8px; background: #fff; padding: 0.9rem; margin-bottom: 1rem; }
@@ -1063,7 +1240,7 @@ public class FrontendController {
                 .run-log { min-height: 5rem; white-space: pre-wrap; background: #0f172a; color: #e2e8f0; padding: 0.65rem; border-radius: 6px; overflow: auto; }
                 @media (max-width: 850px) { .workflow-step { grid-template-columns: 1fr; } }
             </style>
-            <section class="workflow-page" id="workflows-page">
+            <section class="workflow-page" id="workflows-page" data-orchestration-page="workflows">
                 <div class="workflow-panel">
                     <h2>Workflow Editor</h2>
                     <label>Title<input id="workflow-title"></label>
@@ -1077,8 +1254,19 @@ public class FrontendController {
                     <div id="workflow-warnings" class="warnings"></div>
                 </div>
                 <div class="workflow-panel"><h2>Workflows</h2><div id="workflow-list"></div></div>
-                <div class="workflow-panel"><h2>Run</h2><div id="workflow-run-log" class="run-log"></div></div>
+                <div class="workflow-panel">
+                    <h2>Run</h2>
+                    <div class="workflow-step">
+                        <input id="workflow-run-agent-id" placeholder="agent id">
+                        <input id="workflow-run-job-id" placeholder="job id">
+                        <input id="workflow-run-model" placeholder="model override">
+                    </div>
+                    <label>Priority<input id="workflow-run-priority" type="number" value="0"></label>
+                    <div id="workflow-run-log" class="run-log"></div>
+                </div>
+                <div data-agent-chat-panel data-page-context="workflow editor"></div>
             </section>
+            <script type="module" src="/js/orchestration/app.js?v=1"></script>
             <script>
                 let workflowId = null, tasks = [];
                 async function loadTasks() { tasks = await fetch('/api/tasks').then(r => r.json()); }
@@ -1089,7 +1277,7 @@ public class FrontendController {
                 async function editWorkflow(id) { const w = await fetch(`/api/workflows/${id}`).then(r => r.json()); workflowId = w.id; document.getElementById('workflow-title').value = w.title || ''; document.getElementById('workflow-summary').value = w.summary || ''; document.getElementById('workflow-steps').innerHTML = ''; (w.steps || []).forEach(addStep); const warnings = await fetch(`/api/workflows/${id}/warnings`).then(r => r.json()); document.getElementById('workflow-warnings').textContent = warnings.join('\\n'); }
                 document.getElementById('add-workflow-step').onclick = () => addStep();
                 document.getElementById('save-workflow').onclick = async () => { const body = payload(); const url = body.id ? `/api/workflows/${body.id}` : '/api/workflows'; const method = body.id ? 'PUT' : 'POST'; const w = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) }).then(r => r.json()); workflowId = w.id; await loadWorkflows(); editWorkflow(workflowId); };
-                document.getElementById('run-workflow').onclick = async () => { if (!workflowId) return; const res = await fetch(`/api/workflows/${workflowId}/runs/stream`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' }); document.getElementById('workflow-run-log').textContent = await res.text(); };
+                document.getElementById('run-workflow').onclick = async () => { if (!workflowId) return; const res = await fetch(`/api/workflows/${workflowId}/runs/stream`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ agentId: document.getElementById('workflow-run-agent-id').value || null, jobId: document.getElementById('workflow-run-job-id').value || null, modelOverride: document.getElementById('workflow-run-model').value || null, priority: Number(document.getElementById('workflow-run-priority').value || 0) }) }); document.getElementById('workflow-run-log').textContent = await res.text(); };
                 (async () => { await loadTasks(); addStep(); addStep(); await loadWorkflows(); })();
             </script>
             """));
@@ -1107,6 +1295,24 @@ public class FrontendController {
                 return "<option value=\"" + escaped + "\"" + selected + ">" + escaped + "</option>";
             })
             .reduce("", String::concat);
+    }
+
+    private String orchestrationPage(String title, String body) {
+        String html = """
+            <link rel="stylesheet" href="/css/orchestration.css?v=1">
+            %s
+            <script type="module" src="/js/orchestration/app.js?v=1"></script>
+            """.formatted(body);
+        ShellTemplate shell = ShellBuilder.create()
+            .withPageTitle("Magenta " + title)
+            .withTopBanner(BannerBuilder.create()
+                .withLayout(BannerBuilder.BannerLayout.CENTERED)
+                .withTitle("Magenta " + title)
+                .withSubtitle("Orchestration operations")
+                .build())
+            .withTopNav(topNavBar)
+            .buildTemplate();
+        return shell.renderWithContent(RawHtml.create(html));
     }
 
     private String escapeHtml(String value) {

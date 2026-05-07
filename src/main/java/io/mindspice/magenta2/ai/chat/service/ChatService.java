@@ -50,6 +50,7 @@ import io.mindspice.magenta2.ai.execution.ActiveTurnPhase;
 import io.mindspice.magenta2.ai.execution.ActiveTurnRegistry.ActiveTurn;
 import io.mindspice.magenta2.ai.execution.ConversationTurnCoordinator;
 import io.mindspice.magenta2.ai.execution.MagentaWorkRequest;
+import io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettingsService;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.memory.ChatMemory;
@@ -147,6 +148,7 @@ public class ChatService {
     private final ConversationTurnCoordinator turnCoordinator;
     private final AuditRepository auditRepository;
     private final ObjectMapper objectMapper;
+    private final RuntimeSettingsService runtimeSettingsService;
     private final Set<String> toolUnsupportedModels = ConcurrentHashMap.newKeySet();
     private final Map<String, Semaphore> streamLocks = new ConcurrentHashMap<>();
 
@@ -163,6 +165,7 @@ public class ChatService {
             chatSessionMetadataRepository,
             chatMarkdownRenderer,
             aiConfig,
+            null,
             null,
             null,
             null,
@@ -209,6 +212,7 @@ public class ChatService {
             null,
             null,
             null,
+            null,
             null
         );
     }
@@ -231,7 +235,8 @@ public class ChatService {
         @Autowired(required = false) AgentJobService agentJobService,
         @Autowired(required = false) ConversationTurnCoordinator turnCoordinator,
         @Autowired(required = false) AuditRepository auditRepository,
-        @Autowired(required = false) ObjectMapper objectMapper
+        @Autowired(required = false) ObjectMapper objectMapper,
+        @Autowired(required = false) RuntimeSettingsService runtimeSettingsService
     ) {
         this.chatMemory = chatMemory;
         this.chatMemoryRepository = chatMemoryRepository;
@@ -250,6 +255,7 @@ public class ChatService {
         this.turnCoordinator = turnCoordinator;
         this.auditRepository = auditRepository;
         this.objectMapper = objectMapper;
+        this.runtimeSettingsService = runtimeSettingsService;
     }
 
     public ChatResponse chat(ChatRequest request) {
@@ -807,12 +813,18 @@ public class ChatService {
     }
 
     public String defaultModel() {
+        if (runtimeSettingsService != null) {
+            return runtimeSettingsService.defaultModel();
+        }
         String defaultAgentName = aiConfig.defaultAgent();
         String modelKey = aiConfig.agents().get(defaultAgentName).model();
         return aiConfig.models().get(modelKey).remoteModelName();
     }
 
     public String planningModel() {
+        if (runtimeSettingsService != null) {
+            return runtimeSettingsService.planningModel();
+        }
         if (aiConfig == null || aiConfig.models() == null) {
             return defaultModel();
         }
@@ -1486,31 +1498,41 @@ public class ChatService {
     }
 
     private List<ToolCallback> approvedTools(ResolvedChatRequest request) {
-        if (chatToolRegistry == null || aiConfig == null || !StringUtils.hasText(aiConfig.defaultAgent())) {
+        if (chatToolRegistry == null) {
+            return List.of();
+        }
+        if (runtimeSettingsService != null) {
+            return filterApprovedTools(runtimeSettingsService.approvedTools(), request);
+        }
+        if (aiConfig == null || !StringUtils.hasText(aiConfig.defaultAgent())) {
             return List.of();
         }
         AgentConfig defaultAgent = aiConfig.agents().get(aiConfig.defaultAgent());
         if (defaultAgent == null) {
             return List.of();
         }
+        return filterApprovedTools(defaultAgent.approvedTools(), request);
+    }
+
+    private List<ToolCallback> filterApprovedTools(List<String> approvedToolNames, ResolvedChatRequest request) {
         PlanMode mode = interactionMode(request.conversationId());
         if (mode == PlanMode.PLAN) {
-            return chatToolRegistry.resolveApprovedTools(defaultAgent.approvedTools(), PLAN_MODE_TOOLS);
+            return chatToolRegistry.resolveApprovedTools(approvedToolNames, PLAN_MODE_TOOLS);
         }
         if (mode == PlanMode.TASK) {
-            return chatToolRegistry.resolveApprovedTools(defaultAgent.approvedTools(), TASK_MODE_TOOLS);
+            return chatToolRegistry.resolveApprovedTools(approvedToolNames, TASK_MODE_TOOLS);
         }
         if (mode == PlanMode.EXECUTE_PLAN) {
-            return chatToolRegistry.resolveApprovedTools(defaultAgent.approvedTools()).stream()
+            return chatToolRegistry.resolveApprovedTools(approvedToolNames).stream()
                 .filter(callback -> !EXECUTION_BLOCKED_TOOLS.contains(callback.getToolDefinition().name()))
                 .toList();
         }
         if (mode == PlanMode.EXECUTE_TASK) {
-            return chatToolRegistry.resolveApprovedTools(defaultAgent.approvedTools()).stream()
+            return chatToolRegistry.resolveApprovedTools(approvedToolNames).stream()
                 .filter(callback -> !EXECUTION_BLOCKED_TOOLS.contains(callback.getToolDefinition().name()))
                 .toList();
         }
-        return chatToolRegistry.resolveApprovedTools(defaultAgent.approvedTools()).stream()
+        return chatToolRegistry.resolveApprovedTools(approvedToolNames).stream()
             .filter(callback -> !NORMAL_BLOCKED_TOOLS.contains(callback.getToolDefinition().name()))
             .toList();
     }
@@ -1572,6 +1594,9 @@ public class ChatService {
     }
 
     String defaultSystemPrompt() {
+        if (runtimeSettingsService != null) {
+            return runtimeSettingsService.defaultSystemPrompt();
+        }
         if (aiConfig == null || !StringUtils.hasText(aiConfig.defaultAgent()) || aiConfig.agents() == null) {
             return null;
         }
