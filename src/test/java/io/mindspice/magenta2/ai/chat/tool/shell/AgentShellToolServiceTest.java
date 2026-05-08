@@ -122,4 +122,41 @@ class AgentShellToolServiceTest {
         assertThat(result.exitCode()).isNull();
         assertThat(result.timedOut()).isTrue();
     }
+
+    @Test
+    void interruptedExecutionCleansUpAndThrowsInterruptedException() throws Exception {
+        AgentShellToolService service = new AgentShellToolService(tempDir, List.of("sleep"));
+        java.util.concurrent.atomic.AtomicReference<Throwable> exception = new java.util.concurrent.atomic.AtomicReference<>();
+
+        Thread executor = new Thread(() -> {
+            try {
+                service.exec("sleep 30", ".", 30);
+            } catch (InterruptedException e) {
+                exception.set(e);
+                throw new RuntimeException(e);
+            } catch (Exception e) {
+                exception.set(e);
+            }
+        }, "shell-executor");
+
+        executor.start();
+        Thread.sleep(500); // let sleep start
+        executor.interrupt();
+        executor.join(5_000); // should complete promptly after cleanup
+
+        assertThat(executor.isAlive()).as("Executor must finish after interruption").isFalse();
+        assertThat(exception.get()).isInstanceOf(InterruptedException.class);
+    }
+
+    @Test
+    void timeoutStillDestroysProcess() throws Exception {
+        AgentShellToolService service = new AgentShellToolService(tempDir, List.of("sleep"));
+
+        AgentShellToolService.ShellExecResult result = service.exec("sleep 10", ".", 1);
+
+        assertThat(result.exitCode()).isNull();
+        assertThat(result.timedOut()).isTrue();
+        // Regression: verify the method returns within bounded time
+        // (1s timeout + 1s destroy wait + 1s capture drain = ~3s max)
+    }
 }

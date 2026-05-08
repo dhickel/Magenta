@@ -10,8 +10,11 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
@@ -76,17 +79,42 @@ public class AgentShellToolService {
         Process process = new ProcessBuilder(commandLine)
             .directory(workingDir.toFile())
             .start();
-        CompletableFuture<CapturedOutput> stdout = CompletableFuture.supplyAsync(() -> capture(process.getInputStream()));
-        CompletableFuture<CapturedOutput> stderr = CompletableFuture.supplyAsync(() -> capture(process.getErrorStream()));
+        CompletableFuture<CapturedOutput> stdoutCapture = CompletableFuture.supplyAsync(() -> capture(process.getInputStream()));
+        CompletableFuture<CapturedOutput> stderrCapture = CompletableFuture.supplyAsync(() -> capture(process.getErrorStream()));
 
-        boolean completed = process.waitFor(timeout, TimeUnit.SECONDS);
-        if (!completed) {
-            process.destroyForcibly();
-            process.waitFor(1, TimeUnit.SECONDS);
+        boolean interrupted = false;
+        boolean completed = false;
+        CapturedOutput out;
+        CapturedOutput err;
+        try {
+            try {
+                completed = process.waitFor(timeout, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                interrupted = true;
+            }
+            if (!completed) {
+                process.destroyForcibly();
+                try {
+                    process.waitFor(1, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    interrupted = true;
+                }
+            }
+        } finally {
+            // Bound and cancel capture futures on ALL terminal paths
+            out = drainCaptureFuture(stdoutCapture);
+            err = drainCaptureFuture(stderrCapture);
+            // Safety net: ensure process is dead on all paths
+            if (process.isAlive()) {
+                process.destroyForcibly();
+            }
         }
 
-        CapturedOutput out = stdout.join();
-        CapturedOutput err = stderr.join();
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+            throw new InterruptedException("Shell execution interrupted");
+        }
+
         return new ShellExecResult(
             executable,
             command,
@@ -98,6 +126,26 @@ public class AgentShellToolService {
             !completed,
             out.truncated() || err.truncated()
         );
+    }
+
+    /**
+     * Drains a capture future with a bounded timeout, cancelling the future if it
+     * does not complete within the deadline. Returns a fallback {@link CapturedOutput}
+     * on all failure paths so callers never block indefinitely.
+     */
+    private static CapturedOutput drainCaptureFuture(CompletableFuture<CapturedOutput> future) {
+        try {
+            return future.get(1, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            future.cancel(true);
+            return new CapturedOutput("[capture timed out]", true);
+        } catch (ExecutionException | CancellationException e) {
+            return new CapturedOutput("[capture failed: " + e.getMessage() + "]", true);
+        } catch (InterruptedException e) {
+            future.cancel(true);
+            Thread.currentThread().interrupt();
+            return new CapturedOutput("[capture interrupted]", true);
+        }
     }
 
     private CapturedOutput capture(InputStream inputStream) {

@@ -1923,9 +1923,6 @@ public class ChatService {
         if (unwrapped instanceof IOException) {
             return true;
         }
-        if (unwrapped instanceof InterruptedException) {
-            return true;
-        }
         return false;
     }
 
