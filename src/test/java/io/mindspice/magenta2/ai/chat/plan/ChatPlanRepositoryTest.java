@@ -3,6 +3,7 @@ package io.mindspice.magenta2.ai.chat.plan;
 import java.time.Instant;
 import java.util.List;
 
+import io.mindspice.magenta2.ai.chat.model.PlanMode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;

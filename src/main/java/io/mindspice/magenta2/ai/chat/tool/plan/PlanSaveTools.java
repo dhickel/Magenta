@@ -4,7 +4,7 @@ import java.util.List;
 
 import io.mindspice.magenta2.ai.chat.plan.ExecutionPlan;
 import io.mindspice.magenta2.ai.chat.plan.PlanCompletionService;
-import io.mindspice.magenta2.ai.chat.plan.PlanMode;
+import io.mindspice.magenta2.ai.chat.model.PlanMode;
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
 import io.mindspice.magenta2.ai.chat.plan.PlanToolContext;
 import io.mindspice.magenta2.ai.chat.plan.PlanToolExecutionContext;

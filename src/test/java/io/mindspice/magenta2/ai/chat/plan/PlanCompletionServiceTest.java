@@ -2,6 +2,7 @@ package io.mindspice.magenta2.ai.chat.plan;
 
 import java.util.List;
 
+import io.mindspice.magenta2.ai.chat.model.PlanMode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.chat.repository.ChatMemoryRepository;
 import org.junit.jupiter.api.Test;

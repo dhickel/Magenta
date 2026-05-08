@@ -1,9 +1,9 @@
 ## Chat Plan Package
 
-This package owns chat-scoped plan mode and saved execution plan state.
+This package owns saved execution plan state and plan lifecycle operations. The shared `PlanMode` enum that represents plan, task, and normal interaction modes is now owned by the `ai.chat.model` package.
 
 ### Responsibilities
-- Persist the current conversation planning mode and saved execution plan.
+- Persist the current conversation execution plan, including its mode, status, planning task, deliverables, optional inputs/outputs, assumptions, validation criteria, queued planning questions, validation feedback, and execution evidence.
 - Persist current planning task, deliverables, optional inputs/outputs, assumptions, validation criteria, queued planning questions, validation feedback, and execution evidence for saved plans.
 - Provide the standalone plan-mode system prompt and compact execution-mode runtime instructions.
 - Keep plan lifecycle operations explicit and driven by commands or planning-specific API actions.

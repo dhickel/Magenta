@@ -1,4 +1,4 @@
-package io.mindspice.magenta2.ai.chat.plan;
+package io.mindspice.magenta2.ai.chat.model;
 
 public enum PlanMode {
     NORMAL,

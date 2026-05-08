@@ -1,9 +1,9 @@
 ## Chat Model Package
 
-This package owns chat request, response, history, session, message, context usage, and stream event payloads.
+This package owns chat request, response, history, session, message, context usage, stream event payloads, and shared interaction modes.
 
 ### Responsibilities
-- Keep DTOs small, stable, and easy to serialize, including minimal plan state and structured tool activity returned to chat clients.
+- Keep DTOs small, stable, and easy to serialize, including the shared `PlanMode` enum for plan, task, and normal interaction modes, plus minimal plan state and structured tool activity returned to chat clients.
 - Use Java records for request/response and data-carrier types where practical.
 - Keep transport shape explicit; avoid adding fields for speculative future clients.
 

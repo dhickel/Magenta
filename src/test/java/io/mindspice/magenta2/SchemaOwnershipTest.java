@@ -180,7 +180,7 @@ class SchemaOwnershipTest {
         Instant now = Instant.now();
         repo.save(new io.mindspice.magenta2.ai.chat.plan.ExecutionPlan(
             "conv-1",
-            io.mindspice.magenta2.ai.chat.plan.PlanMode.PLAN,
+            io.mindspice.magenta2.ai.chat.model.PlanMode.PLAN,
             io.mindspice.magenta2.ai.chat.plan.PlanStatus.DRAFT,
             "planning task",
             "goal",

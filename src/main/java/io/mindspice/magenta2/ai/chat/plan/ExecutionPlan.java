@@ -1,5 +1,6 @@
 package io.mindspice.magenta2.ai.chat.plan;
 
+import io.mindspice.magenta2.ai.chat.model.PlanMode;
 import java.time.Instant;
 import java.util.List;
 

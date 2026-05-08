@@ -17,7 +17,7 @@ Started: 2026-05-08
 | 3.2 | Audit Sequence Robustness | completed | — |
 | 4.1 | Extract Controller Workflow & Stream Logic | completed | Extracted SsePayload to top-level record. Extracted TaskStreamSupport, WorkflowStreamSupport, and ChatStreamSupport classes. Added sendSseEvent helpers to SseStreamLifecycle. Controllers now delegate event mapping to support classes. 276 tests pass. |
 | 4.2 | Public API DTOs For Lifecycle Fields | completed | Introduced TaskCreateRequest/TaskUpdateRequest for TaskController, JobCreateRequest/JobItemCreateRequest for OrchestrationJobController. Domain records now stay inside service boundaries. Client lifecycle fields are silently ignored. 278 tests pass. |
-| 4.3 | Move PlanMode To Chat Interaction Package | pending | — |
+| 4.3 | Move PlanMode To Chat Interaction Package | completed | Moved PlanMode enum from `ai.chat.plan` to `ai.chat.model`. Updated 12 import paths across main and test sources. Updated plan and model package AGENTS.md guides. 278 tests pass. |
 | 4.4 | Move AgentJobRepository To Agent Job Ownership | pending | — |
 | 4.5 | Incremental ChatService Seam Extraction | pending | — |
 | 5.1 | Long-Record Mutation Helpers | pending | — |
@@ -454,3 +454,40 @@ Chose a **narrow hybrid** policy:
 - No changes were made to response DTOs (TaskDefinition, OrchestrationJob, OrchestrationJobItem are still returned from controller methods). These domain records include lifecycle fields as read-only output, which is appropriate — the fix addresses the input side where clients could previously mutate these fields.
 - The `AssignmentRequest` used by `OrchestrationJobController.run()` and `AgentOrchestrationController.assign()` was already clean (no lifecycle fields) and was not changed.
 - `WorkflowController` has the same pattern (accepts `WorkflowDefinition` in create/update) but was not in scope for this issue. It should be addressed in a follow-up.
+
+### Issue 4.3: Move PlanMode To A Shared Chat Interaction Package
+
+**Files changed:**
+- `src/main/java/io/mindspice/magenta2/ai/chat/plan/PlanMode.java` — REMOVED from plan package.
+- `src/main/java/io/mindspice/magenta2/ai/chat/model/PlanMode.java` — NEW. Same enum body, package `io.mindspice.magenta2.ai.chat.model`.
+- `src/main/java/io/mindspice/magenta2/ai/chat/service/ChatService.java` — Updated PlanMode import to `ai.chat.model`.
+- `src/main/java/io/mindspice/magenta2/ai/chat/task/TaskService.java` — Updated PlanMode import to `ai.chat.model`.
+- `src/main/java/io/mindspice/magenta2/ai/chat/tool/InteractionQuestionTools.java` — Updated PlanMode import to `ai.chat.model`.
+- `src/main/java/io/mindspice/magenta2/ai/chat/tool/task/TaskTools.java` — Updated PlanMode import to `ai.chat.model`.
+- `src/main/java/io/mindspice/magenta2/ai/chat/tool/plan/PlanSaveTools.java` — Updated PlanMode import to `ai.chat.model`.
+- `src/main/java/io/mindspice/magenta2/ai/chat/plan/PlanToolContext.java` — Added PlanMode import from `ai.chat.model`.
+- `src/main/java/io/mindspice/magenta2/ai/chat/plan/ExecutionPlan.java` — Added PlanMode import from `ai.chat.model`.
+- `src/main/java/io/mindspice/magenta2/ai/chat/plan/PlanService.java` — Added PlanMode import from `ai.chat.model`.
+- `src/main/java/io/mindspice/magenta2/ai/chat/plan/ChatPlanRepository.java` — Added PlanMode import from `ai.chat.model`.
+- `src/main/java/io/mindspice/magenta2/ai/chat/plan/AGENTS.md` — Updated responsibilities to reflect PlanMode is owned by `ai.chat.model`.
+- `src/main/java/io/mindspice/magenta2/ai/chat/model/AGENTS.md` — Updated to include PlanMode in responsibilities.
+- `src/test/java/io/mindspice/magenta2/ai/chat/task/TaskServiceTest.java` — Updated PlanMode import to `ai.chat.model`.
+- `src/test/java/io/mindspice/magenta2/ai/chat/tool/plan/PlanSaveToolsTest.java` — Updated PlanMode import to `ai.chat.model`.
+- `src/test/java/io/mindspice/magenta2/ai/chat/plan/PlanCompletionServiceTest.java` — Added PlanMode import from `ai.chat.model`.
+- `src/test/java/io/mindspice/magenta2/ai/chat/plan/ChatPlanRepositoryTest.java` — Added PlanMode import from `ai.chat.model`.
+- `src/test/java/io/mindspice/magenta2/SchemaOwnershipTest.java` — Updated fully-qualified PlanMode reference to `ai.chat.model`.
+
+**What changed and why:**
+
+1. **PlanMode relocation** — The `PlanMode` enum represents shared interaction modes (NORMAL, PLAN, EXECUTE_PLAN, TASK, EXECUTE_TASK) used across chat, plan, and task services. It was owned by `ai.chat.plan` but had no plan-specific semantics. Moved to `ai.chat.model` where the other shared chat payloads live.
+
+2. **Import updates** — 7 files with explicit `import io.mindspice.magenta2.ai.chat.plan.PlanMode` were updated to `ai.chat.model.PlanMode`. 5 files in the `ai.chat.plan` package (which previously accessed PlanMode without an import due to same-package access) gained a new import. 1 test file (SchemaOwnershipTest) had its fully-qualified reference updated.
+
+3. **Package guide updates** — The `ai.chat.plan` AGENTS.md was updated to clarify that PlanMode is now owned by `ai.chat.model`. The `ai.chat.model` AGENTS.md was updated to include PlanMode in its responsibilities.
+
+**Decisions made:**
+- Moved to `ai.chat.model` rather than creating a new `ai.chat.mode` or similar package. The model package already holds shared payload types, and PlanMode is a natural fit alongside ChatPlanState, ChatRequest, ChatResponse, etc.
+- Did not change the enum body, semantics, or any usages — pure mechanical move per the "do not change mode semantics in the same commit" guidance.
+
+**Test results:**
+- All 278 tests pass (278 existing, 0 new). Full suite: 278 run, 0 failures, 0 errors, 0 skipped.
