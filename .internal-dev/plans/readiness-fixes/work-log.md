@@ -57,7 +57,7 @@ Started: 2026-05-08
 - `rg` confirmed zero references to `handleSwitch`, `handleClear`, `requiredSingleArgument`, `optionalSingleArgument`, or `singleArgument` in the codebase.
 - All 288 tests pass.
 | 5.3 | Replace Nullable-Union Stream Event DTO Shape | completed | Replaced flat nullable-field ChatStreamEvent record with sealed interface + typed records (Start, Chunk, Tool, SystemNotice, Interrupt, Context, Done, Error). Updated ChatController producers. No browser changes needed. 288 tests pass. |
-| 5.4 | Workflow/Schedule/Reaction Alpha Decision | pending | — |
+| 5.4 | Workflow/Schedule/Reaction Alpha Decision | completed | Workflow productized; schedules and event reactions hidden behind feature flags. 292 tests pass. |
 
 ---
 
@@ -655,6 +655,42 @@ Extracted focused collaborators from ChatService.java (2030-line orchestrator) t
 
 **Test results:**
 - All 288 tests pass (0 new, 288 existing). Full suite: 288 run, 0 failures, 0 errors, 0 skipped.
+
+### Issue 5.4: Workflow, Schedule, And Reaction Alpha Decision
+
+**Files changed:**
+- `src/main/resources/application.yml` — Added `magenta.features.schedules-enabled=false` and `magenta.features.reactions-enabled=false` feature flags.
+- `src/main/java/io/mindspice/magenta2/api/web/AgentOrchestrationController.java` — Added `@Value`-injected feature flag checks on schedules and event-reactions GET/POST endpoints. When disabled, endpoints return HTTP 404 with "not available" message.
+- `src/main/java/io/mindspice/magenta2/api/web/FrontendController.java` — Removed "Schedules" and "Event Reactions" tab buttons from agent detail page. Updated subtitle to remove mentions. Dashboard counter removed (handled in JS).
+- `src/main/resources/static/js/orchestration/app.js` — Removed `schedules` and `reactions` fetch from dashboard tab. Removed tab dispatch for schedules/reactions. Endpoint mapping simplified.
+- `src/test/java/io/mindspice/magenta2/api/web/AgentOrchestrationControllerTest.java` — Added 4 tests: schedules GET/POST return 404 when disabled, reactions GET/POST return 404 when disabled.
+- `.internal-dev/knowledge/alpha-surface-decisions.md` — NEW. Documents the alpha decision for each surface.
+
+**Alpha decisions made:**
+
+1. **Workflow** — Productize as alpha-facing. Proper domain objects (`WorkflowDefinition`, `WorkflowStep`, `WorkflowInputBinding`, `WorkflowStepRun`), streaming via `WorkflowStreamSupport`, comprehensive controller tests, UI integration. Hardened in remediations 2.1, 2.2, 4.1.
+
+2. **Schedules** — Hidden behind `magenta.features.schedules-enabled=false`. The `AgentSchedule` record uses `Map<String, Object> assignmentTemplate` — a generic map DSL where template fields are read by string key with type coercion. No individual CRUD (no PUT/DELETE for individual schedules). The `requestFromTemplate()` helper in ScheduleService reads values from a raw map — clearly prototype-shaped. Default: disabled.
+
+3. **Event Reactions** — Hidden behind `magenta.features.reactions-enabled=false`. `AgentEventReaction` uses `Map<String, Object> filter` and `Map<String, Object> assignmentTemplate` — both generic map DSLs. Only supports `ENQUEUE_ASSIGNMENT` action type. No individual CRUD. Default: disabled.
+
+**What was NOT changed:**
+- `ScheduleService.pollDueSchedules()` — The `@Scheduled` poller was left running. It queries an empty table (no schedules can be created), which costs one DB query per 10 seconds — negligible overhead. Integrating feature flags into the poller would require conditional bean wiring and adds complexity without benefit.
+- `EventReactionService` — No changes. Reactions cannot be created through the hidden API.
+- All schedule/reaction backend machinery (repository, schema tables) remains in place. Re-enabling is a one-line config change.
+
+**Tests added:** 4 new (292 total, up from 288)
+
+| Test | Coverage |
+|------|----------|
+| `schedulesEndpointReturns404WhenDisabled` | GET `/api/agents/{agentId}/schedules` returns 404 when schedules are disabled |
+| `scheduleCreateEndpointReturns404WhenDisabled` | POST `/api/agents/{agentId}/schedules` returns 404 when schedules are disabled |
+| `reactionsEndpointReturns404WhenDisabled` | GET `/api/agents/{agentId}/event-reactions` returns 404 when reactions are disabled |
+| `reactionCreateEndpointReturns404WhenDisabled` | POST `/api/agents/{agentId}/event-reactions` returns 404 when reactions are disabled |
+
+**Test results:** All 292 tests pass. Full suite: 292 run, 0 failures, 0 errors, 0 skipped.
+
+**Decision documentation written to:** `.internal-dev/knowledge/alpha-surface-decisions.md`
 
 ### Issue 5.3: Replace Nullable-Union Stream Event DTO Shape
 

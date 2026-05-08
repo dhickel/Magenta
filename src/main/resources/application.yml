@@ -6,6 +6,9 @@ app:
     config-path: ./config/ai-config.example.json
 
 magenta:
+  features:
+    schedules-enabled: false
+    reactions-enabled: false
   plan:
     execution-stream-timeout-seconds: 360
   ai:

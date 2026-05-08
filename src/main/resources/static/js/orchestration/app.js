@@ -180,17 +180,15 @@ function renderAssignmentForm(root, agentId, models) {
 async function renderAgentTab(root, agentId, tab) {
     const panel = $("#agent-tab-panel", root);
     if (tab === "dashboard") {
-        const [inbox, queue, schedules, reactions] = await Promise.all([
+        const [inbox, queue] = await Promise.all([
             jsonFetch(`/api/agents/${agentId}/inbox`),
-            jsonFetch(`/api/agents/${agentId}/assignments`),
-            jsonFetch(`/api/agents/${agentId}/schedules`),
-            jsonFetch(`/api/agents/${agentId}/event-reactions`)
+            jsonFetch(`/api/agents/${agentId}/assignments`)
         ]);
-        panel.innerHTML = `<h2>Dashboard</h2><div class="orch-meta"><span>Inbox ${inbox.length}</span><span>Queue ${queue.length}</span><span>Schedules ${schedules.length}</span><span>Event reactions ${reactions.length}</span></div>`;
+        panel.innerHTML = `<h2>Dashboard</h2><div class="orch-meta"><span>Inbox ${inbox.length}</span><span>Queue ${queue.length}</span></div>`;
         return;
     }
-    const endpoint = tab === "queue" ? "assignments" : tab === "reactions" ? "event-reactions" : tab;
-    if (["inbox", "queue", "schedules", "reactions"].includes(tab)) {
+    const endpoint = tab;
+    if (["inbox", "queue"].includes(tab)) {
         const rows = await jsonFetch(`/api/agents/${agentId}/${endpoint}`);
         panel.innerHTML = `<h2>${title(tab)}</h2>${rows.map(row => `<pre class="orch-row">${escapeHtml(JSON.stringify(row, null, 2))}</pre>`).join("") || "No records."}`;
         return;

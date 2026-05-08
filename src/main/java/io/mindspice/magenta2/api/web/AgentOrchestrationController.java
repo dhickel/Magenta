@@ -17,6 +17,7 @@ import io.mindspice.magenta2.ai.orchestration.runtime.InboxMessage;
 import io.mindspice.magenta2.ai.orchestration.runtime.InboxService;
 import io.mindspice.magenta2.ai.orchestration.runtime.ScheduleService;
 import io.mindspice.magenta2.ai.orchestration.runtime.WorkAssignment;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -40,6 +41,12 @@ public class AgentOrchestrationController {
     private final EventReactionService reactionService;
     private final AgentProfileService agentProfileService;
     private final ChatService chatService;
+
+    @Value("${magenta.features.schedules-enabled:false}")
+    private boolean schedulesEnabled;
+
+    @Value("${magenta.features.reactions-enabled:false}")
+    private boolean reactionsEnabled;
 
     public AgentOrchestrationController(
         InboxService inboxService,
@@ -115,11 +122,17 @@ public class AgentOrchestrationController {
 
     @GetMapping("/schedules")
     public List<AgentSchedule> schedules(@PathVariable String agentId) {
+        if (!schedulesEnabled) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Schedules are not available");
+        }
         return scheduleService.schedules(agentId);
     }
 
     @PostMapping("/schedules")
     public AgentSchedule schedule(@PathVariable String agentId, @Valid @RequestBody AgentSchedule schedule) {
+        if (!schedulesEnabled) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Schedules are not available");
+        }
         try {
             return scheduleService.save(agentId, schedule);
         } catch (IllegalArgumentException | java.time.DateTimeException exception) {
@@ -129,11 +142,17 @@ public class AgentOrchestrationController {
 
     @GetMapping("/event-reactions")
     public List<AgentEventReaction> reactions(@PathVariable String agentId) {
+        if (!reactionsEnabled) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Event reactions are not available");
+        }
         return reactionService.reactions(agentId);
     }
 
     @PostMapping("/event-reactions")
     public AgentEventReaction reaction(@PathVariable String agentId, @Valid @RequestBody AgentEventReaction reaction) {
+        if (!reactionsEnabled) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Event reactions are not available");
+        }
         try {
             return reactionService.save(agentId, reaction);
         } catch (IllegalArgumentException | IllegalStateException exception) {

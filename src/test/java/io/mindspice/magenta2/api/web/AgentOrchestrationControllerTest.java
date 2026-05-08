@@ -2,6 +2,7 @@ package io.mindspice.magenta2.api.web;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 import io.mindspice.magenta2.ai.chat.model.ChatPlanState;
 import io.mindspice.magenta2.ai.chat.model.ChatRequest;
@@ -10,10 +11,14 @@ import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileStatus;
+import io.mindspice.magenta2.ai.orchestration.runtime.AgentEventReaction;
+import io.mindspice.magenta2.ai.orchestration.runtime.AgentSchedule;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentRequest;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentType;
+import io.mindspice.magenta2.ai.orchestration.runtime.EventType;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationStatus;
+import io.mindspice.magenta2.ai.orchestration.runtime.ReactionActionType;
 import io.mindspice.magenta2.ai.orchestration.runtime.WorkAssignment;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -211,5 +216,62 @@ class AgentOrchestrationControllerTest {
             this.request = (ChatRequest.MsgRequest) request;
             return new ChatResponse.MsgResponse("conversation-1", this.request.model(), "ok", null, ChatPlanState.normal());
         }
+    }
+
+    @Test
+    void schedulesEndpointReturns404WhenDisabled() {
+        AgentOrchestrationController controller = new AgentOrchestrationController(
+            null, null, null, null, null, null
+        );
+
+        assertThatThrownBy(() -> controller.schedules("agent-1"))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+                assertThat(exception.getReason()).contains("Schedules are not available");
+            });
+    }
+
+    @Test
+    void scheduleCreateEndpointReturns404WhenDisabled() {
+        AgentOrchestrationController controller = new AgentOrchestrationController(
+            null, null, null, null, null, null
+        );
+
+        assertThatThrownBy(() -> controller.schedule("agent-1",
+            new AgentSchedule("sched-1", "agent-1", "job-1", Map.of(),
+                "0 * * * *", "UTC", true, null, null, null)))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+                assertThat(exception.getReason()).contains("Schedules are not available");
+            });
+    }
+
+    @Test
+    void reactionsEndpointReturns404WhenDisabled() {
+        AgentOrchestrationController controller = new AgentOrchestrationController(
+            null, null, null, null, null, null
+        );
+
+        assertThatThrownBy(() -> controller.reactions("agent-1"))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+                assertThat(exception.getReason()).contains("Event reactions are not available");
+            });
+    }
+
+    @Test
+    void reactionCreateEndpointReturns404WhenDisabled() {
+        AgentOrchestrationController controller = new AgentOrchestrationController(
+            null, null, null, null, null, null
+        );
+
+        assertThatThrownBy(() -> controller.reaction("agent-1",
+            new AgentEventReaction("reac-1", "agent-1", EventType.WORKFLOW_STATUS_CHANGED,
+                Map.of(), ReactionActionType.ENQUEUE_ASSIGNMENT, Map.of(),
+                true, null, null)))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+                assertThat(exception.getReason()).contains("Event reactions are not available");
+            });
     }
 }

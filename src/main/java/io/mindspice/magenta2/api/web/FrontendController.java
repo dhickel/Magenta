@@ -1057,7 +1057,7 @@ public class FrontendController {
                 <header class="orch-page-header">
                     <div>
                         <h1 id="agent-detail-title">Agent</h1>
-                        <p id="agent-detail-subtitle">Profile, queue, inbox, schedules, reactions, workspace, and history.</p>
+                        <p id="agent-detail-subtitle">Profile, queue, inbox, workspace, and history.</p>
                     </div>
                     <div class="orch-actions">
                         <button type="button" data-action="open-agent-chat">Chat</button>
@@ -1068,8 +1068,6 @@ public class FrontendController {
                     <button type="button" class="active" data-tab="dashboard">Dashboard</button>
                     <button type="button" data-tab="inbox">Inbox</button>
                     <button type="button" data-tab="queue">Queue</button>
-                    <button type="button" data-tab="schedules">Schedules</button>
-                    <button type="button" data-tab="reactions">Event Reactions</button>
                     <button type="button" data-tab="jobs">Jobs</button>
                     <button type="button" data-tab="workspace">Workspace</button>
                     <button type="button" data-tab="history">History</button>
