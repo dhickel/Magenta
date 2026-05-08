@@ -431,46 +431,6 @@ public class ChatController {
         );
     }
 
-    private ChatResponse.CmdResponse handleSwitch(String targetConversationId) {
-        targetConversationId = normalize(targetConversationId);
-        if (targetConversationId == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "switch requires a conversation UUID");
-        }
-        requireValidUuid(targetConversationId);
-        if (!chatService.conversationExists(targetConversationId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "conversation not found: " + targetConversationId);
-        }
-        String model = chatService.storedConversationModel(targetConversationId);
-        StoredContextUsage contextUsage = chatService.maintainContextUsage(targetConversationId, model);
-        return new ChatResponse.CmdResponse(
-            targetConversationId,
-            model,
-            "Switched to " + targetConversationId,
-            chatService.listConversationIds(),
-            chatService.history(targetConversationId),
-            contextUsage.usage(),
-            chatService.planState(targetConversationId)
-        );
-    }
-
-    private ChatResponse.CmdResponse handleClear(String requestConversationId, String commandConversationId) {
-        String targetConversationId = commandConversationId != null ? normalize(commandConversationId) : normalize(requestConversationId);
-        if (targetConversationId == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "clear requires conversationId or /clear <conversationId>");
-        }
-        requireValidUuid(targetConversationId);
-        chatService.clearConversation(targetConversationId);
-        return new ChatResponse.CmdResponse(
-            targetConversationId,
-            null,
-            "Cleared " + targetConversationId,
-            chatService.listConversationIds(),
-            chatService.history(targetConversationId),
-            chatService.contextUsage(targetConversationId, null),
-            chatService.planState(targetConversationId)
-        );
-    }
-
     private ChatResponse.CmdResponse handlePlan(String requestConversationId, String selectedModel, String planningModel) {
         String conversationId = normalize(requestConversationId);
         if (conversationId == null) {
@@ -541,20 +501,6 @@ public class ChatController {
         }
     }
 
-    private String requiredSingleArgument(String command, String[] parts, String argumentDescription) {
-        if (parts.length < 2) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, command + " requires " + argumentDescription);
-        }
-        return singleArgument(command, parts, argumentDescription);
-    }
-
-    private String optionalSingleArgument(String command, String[] parts, String argumentDescription) {
-        if (parts.length < 2) {
-            return null;
-        }
-        return singleArgument(command, parts, argumentDescription);
-    }
-
     private String requiredConversationId(String conversationId, String message) {
         String normalized = normalize(conversationId);
         if (normalized == null) {
@@ -569,13 +515,6 @@ public class ChatController {
         if (!chatService.conversationExists(conversationId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "conversation not found: " + conversationId);
         }
-    }
-
-    private String singleArgument(String command, String[] parts, String argumentDescription) {
-        if (parts.length > 2) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, command + " accepts only " + argumentDescription);
-        }
-        return parts[1];
     }
 
     private String normalize(String value) {

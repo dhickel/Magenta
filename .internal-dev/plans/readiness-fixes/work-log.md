@@ -21,7 +21,41 @@ Started: 2026-05-08
 | 4.4 | Move AgentJobRepository To Agent Job Ownership | completed | Moved AgentJobRepository from `ai.chat.repository` to `ai.agent.job`. Updated 4 import paths across main and test sources. 20 targeted tests pass. |
 | 4.5 | Incremental ChatService Seam Extraction | completed | Extracted 4 inner classes/records to top-level files (ToolLoopGuard, ToolUseAbort, TaskExecutionResult, TaskExecutionEvent). Delegated audit/title methods to AuditService. Delegated request resolution to RequestResolver. Removed duplicate inner ResolvedChatRequest and StoredContextUsage records. 288 tests pass. |
 | 5.1 | Long-Record Mutation Helpers | completed | Added private derive() + public with* withers to ExecutionPlan, TaskDraft, TaskRun. Simplified 10+ mutation sites in PlanService and TaskService from full-constructor calls to targeted wither chains. Removed copyDraft/copyRun private helpers. 288 tests pass. |
-| 5.2 | Remove Dead Command Compatibility Code | pending | — |
+| 5.2 | Remove Dead Command Compatibility Code | completed | — |
+
+---
+
+## Agent Reports
+
+### Issue 5.2: Remove Dead Command Compatibility Code And Stale Utilities
+
+**Files changed:**
+- `src/main/java/io/mindspice/magenta2/core/util/Option.java` — REMOVED. Custom Option monad interface duplicating java.util.Optional. Only referenced by DataService.java (also removed).
+- `src/main/java/io/mindspice/magenta2/core/DataService.java` — REMOVED. @Service with getAgentFileStore, pathWithAgent, resolveAgentPath. No source/test/runtime references.
+- `src/main/java/io/mindspice/magenta2/api/web/ChatController.java` — Removed 4 dead handler/helper methods: handleSwitch, handleClear, requiredSingleArgument, optionalSingleArgument, and singleArgument (only called by the two dead helpers).
+
+**What changed and why:**
+
+1. **Option.java removed** — Custom `Option<T>` interface with `Some`/`None` records and `ifPresent`/`mapOr`/`isSome`/`isNone`/`get` methods. It was a Java `Optional` analog used only by `DataService.pathWithAgent()`. Zero other references across the codebase.
+
+2. **DataService.java removed** — `@Service` class that resolved agent-scoped data paths. Its `getAgentFileStore(agentName)` method was never called by any source or test file. Its `pathWithAgent(Option<String>)` helper used the custom Option type. No Spring bean depends on it.
+
+3. **ChatController.java dead method removal:**
+   - `handleSwitch` — Old `/switch` command handler. The `/api/chat/commands` endpoint only handles `new` and `plan` commands. Route no longer exposes it.
+   - `handleClear` — Old `/clear` command handler. Same reasoning.
+   - `requiredSingleArgument` — Helper only called by the removed switch/clear handlers.
+   - `optionalSingleArgument` — Helper only called by the removed switch/clear handlers.
+   - `singleArgument` — Helper only called by the two now-removed helpers.
+
+**What was NOT removed (still reachable):**
+- `ChatRequest.CmdRequest` and `ChatResponse.CmdResponse` records — Still used by the `/api/chat/commands` endpoint and plan execution/cancellation endpoints.
+- `handleNew`, `handlePlan`, `handleExitPlan`, `handleExecPlan` — Still active in the command switch and dedicated plan endpoints.
+- `commandName`, `requireNoArguments`, `requireExistingConversation`, `requiredConversationId` — Still used by active handlers.
+
+**Validation:**
+- `rg` confirmed zero references to `io.mindspice.magenta2.core.util.Option` or `io.mindspice.magenta2.core.DataService` outside the removed files themselves.
+- `rg` confirmed zero references to `handleSwitch`, `handleClear`, `requiredSingleArgument`, `optionalSingleArgument`, or `singleArgument` in the codebase.
+- All 288 tests pass.
 | 5.3 | Replace Nullable-Union Stream Event DTO | pending | — |
 | 5.4 | Workflow/Schedule/Reaction Alpha Decision | pending | — |
 
