@@ -10,6 +10,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mindspice.magenta2.ai.chat.service.TaskExecutionResult;
 import io.mindspice.magenta2.ai.chat.task.TaskDefinition;
 import io.mindspice.magenta2.ai.chat.task.TaskFieldDefinition;
 import io.mindspice.magenta2.ai.chat.task.TaskRepository;

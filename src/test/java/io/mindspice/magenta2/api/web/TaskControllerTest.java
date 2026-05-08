@@ -15,6 +15,7 @@ import java.util.concurrent.TimeUnit;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.chat.model.ChatMessage;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
+import io.mindspice.magenta2.ai.chat.service.TaskExecutionEvent;
 import io.mindspice.magenta2.ai.chat.task.TaskDefinition;
 import io.mindspice.magenta2.ai.chat.task.TaskFieldDefinition;
 import io.mindspice.magenta2.ai.chat.task.TaskRepository;

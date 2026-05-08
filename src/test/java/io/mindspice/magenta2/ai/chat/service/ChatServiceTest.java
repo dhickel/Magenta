@@ -17,6 +17,7 @@ import io.mindspice.magenta2.ai.chat.task.TaskRunStatus;
 import io.mindspice.magenta2.ai.chat.task.TaskService;
 import io.mindspice.magenta2.ai.chat.task.TaskStep;
 import io.mindspice.magenta2.ai.chat.task.TaskValueType;
+import io.mindspice.magenta2.ai.chat.service.RequestResolver;
 import io.mindspice.magenta2.ai.chat.tool.ChatToolRegistry;
 import io.mindspice.magenta2.ai.chat.tool.ToolTranscriptService;
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
@@ -213,7 +214,7 @@ class ChatServiceTest {
             planService
         );
 
-        String prompt = service.effectiveSystemPrompt(new ChatService.ResolvedChatRequest(
+        String prompt = service.effectiveSystemPrompt(new ResolvedChatRequest(
             "conversation-1",
             "message",
             "local-qwen"
@@ -242,7 +243,7 @@ class ChatServiceTest {
 
     @Test
     void toolLoopGuardStopsAfterFiveIdenticalToolCalls() {
-        ChatService.ToolLoopGuard guard = new ChatService.ToolLoopGuard();
+        ToolLoopGuard guard = new ToolLoopGuard();
         AssistantMessage.ToolCall call = new AssistantMessage.ToolCall("call-1", "function", "file_read", "{\"path\":\"a\"}");
 
         for (int i = 0; i < 4; i++) {
@@ -256,7 +257,7 @@ class ChatServiceTest {
 
     @Test
     void toolLoopGuardStopsAfterFiveErrorsInEightResponses() {
-        ChatService.ToolLoopGuard guard = new ChatService.ToolLoopGuard();
+        ToolLoopGuard guard = new ToolLoopGuard();
 
         for (String response : List.of(
             "{\"timedOut\":true}",
@@ -277,7 +278,7 @@ class ChatServiceTest {
 
     @Test
     void toolLoopGuardAllowsLongSuccessfulToolSequences() {
-        ChatService.ToolLoopGuard guard = new ChatService.ToolLoopGuard();
+        ToolLoopGuard guard = new ToolLoopGuard();
 
         for (int i = 0; i < 20; i++) {
             guard.recordToolCalls(List.of(new AssistantMessage.ToolCall("call-" + i, "function", "file_read", "{\"path\":\"" + i + "\"}")));
@@ -706,10 +707,12 @@ class ChatServiceTest {
             null,
             null,
             objectMapper,
-            null
+            null,
+            null,
+            new RequestResolver(taskExecutionToolAiConfig(), metadataRepository, memoryRepository, null, null, null)
         );
 
-        ChatService.TaskExecutionResult result = service.executeTaskBlocking(
+        TaskExecutionResult result = service.executeTaskBlocking(
             task.id(),
             Map.of("topic", "SQLite"),
             "task-conversation",

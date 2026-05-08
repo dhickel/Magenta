@@ -13,6 +13,7 @@ import io.mindspice.magenta2.ai.chat.task.TaskService;
 import io.mindspice.magenta2.ai.chat.task.TaskStep;
 import io.mindspice.magenta2.ai.chat.task.TaskValueType;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
+import io.mindspice.magenta2.ai.chat.service.TaskExecutionResult;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;

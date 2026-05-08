@@ -3,7 +3,7 @@ package io.mindspice.magenta2.api.web;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-import io.mindspice.magenta2.ai.chat.service.ChatService.TaskExecutionEvent;
+import io.mindspice.magenta2.ai.chat.service.TaskExecutionEvent;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationRunContext;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationRunResult;
 import reactor.core.publisher.Flux;

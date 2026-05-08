@@ -2,8 +2,6 @@ package io.mindspice.magenta2.ai.chat.service;
 
 import java.util.UUID;
 import java.util.ArrayList;
-import java.util.ArrayDeque;
-import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -56,7 +54,7 @@ import io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettingsService;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.ai.chat.memory.ChatMemoryRepository;
+import io.mindspice.magenta2.ai.chat.repository.ChatMemoryRepository;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -84,9 +82,6 @@ public class ChatService {
     static final String MESSAGE_THINKING_METADATA_KEY = "magenta.thinking";
 
     private static final Pattern THINK_TAG_PATTERN = Pattern.compile("(?is)<think>(.*?)</think>");
-    private static final int TOOL_ERROR_WINDOW_SIZE = 8;
-    private static final int TOOL_ERROR_WINDOW_LIMIT = 5;
-    private static final int IDENTICAL_TOOL_CALL_LIMIT = 5;
     private static final int EMPTY_FINAL_RESPONSE_RETRY_LIMIT = 2;
     private static final int PLAN_TURN_REPAIR_RETRY_LIMIT = 2;
     private static final int EXECUTION_COMPLETION_REPAIR_RETRY_LIMIT = 2;
@@ -156,6 +151,8 @@ public class ChatService {
     private final AuditRepository auditRepository;
     private final ObjectMapper objectMapper;
     private final RuntimeSettingsService runtimeSettingsService;
+    private final AuditService auditService;
+    private final RequestResolver requestResolver;
     private final Set<String> toolUnsupportedModels = ConcurrentHashMap.newKeySet();
     private final Map<String, Semaphore> streamLocks = new ConcurrentHashMap<>();
 
@@ -172,6 +169,8 @@ public class ChatService {
             chatSessionMetadataRepository,
             chatMarkdownRenderer,
             aiConfig,
+            null,
+            null,
             null,
             null,
             null,
@@ -220,7 +219,11 @@ public class ChatService {
             null,
             null,
             null,
-            null
+            null,
+            null,
+            aiConfig != null && chatSessionMetadataRepository != null
+                ? new RequestResolver(aiConfig, chatSessionMetadataRepository, chatMemoryRepository, planService, null, null)
+                : null
         );
     }
 
@@ -243,7 +246,9 @@ public class ChatService {
         @Autowired(required = false) ConversationTurnCoordinator turnCoordinator,
         @Autowired(required = false) AuditRepository auditRepository,
         @Autowired(required = false) ObjectMapper objectMapper,
-        @Autowired(required = false) RuntimeSettingsService runtimeSettingsService
+        @Autowired(required = false) RuntimeSettingsService runtimeSettingsService,
+        @Autowired(required = false) AuditService auditService,
+        @Autowired(required = false) RequestResolver requestResolver
     ) {
         this.chatMemory = chatMemory;
         this.chatMemoryRepository = chatMemoryRepository;
@@ -263,18 +268,20 @@ public class ChatService {
         this.auditRepository = auditRepository;
         this.objectMapper = objectMapper;
         this.runtimeSettingsService = runtimeSettingsService;
+        this.auditService = auditService;
+        this.requestResolver = requestResolver;
     }
 
     public ChatResponse chat(ChatRequest request) {
         if (!(request instanceof ChatRequest.MsgRequest msgRequest)) {
             throw new IllegalArgumentException("message request is required");
         }
-        ResolvedChatRequest resolvedRequest = resolve(msgRequest);
+        ResolvedChatRequest resolvedRequest = requestResolver.resolve(msgRequest);
         return chat(resolvedRequest);
     }
 
     public ChatResponse.MsgResponse chat(String conversationId, String message, String model) {
-        ResolvedChatRequest resolvedRequest = resolve(conversationId, message, model, null);
+        ResolvedChatRequest resolvedRequest = requestResolver.resolve(conversationId, message, model, null);
         return chat(resolvedRequest);
     }
 
@@ -306,21 +313,21 @@ public class ChatService {
     }
 
     private ChatResponse.MsgResponse plainChat(ResolvedChatRequest resolvedRequest) {
-        auditUserMessage(resolvedRequest);
+        if (auditService != null) auditService.auditUserMessage(resolvedRequest);
         ChatClient.ChatClientRequestSpec prompt = prompt(resolvedRequest);
 
         ChatClientResponse chatClientResponse = prompt.call().chatClientResponse();
         String response = chatClientResponse.chatResponse().getResult().getOutput().getText();
         chatSessionMetadataRepository.saveModel(resolvedRequest.conversationId(), resolvedRequest.model());
-        enqueueTitleJobIfFirstTurn(resolvedRequest);
+        if (auditService != null) auditService.enqueueTitleJobIfFirstTurn(resolvedRequest);
 
         AssistantMessage assistantMsg = chatClientResponse.chatResponse().getResult().getOutput();
         if (assistantMsg != null) {
-            auditAssistantMessage(assistantMsg, resolvedRequest);
+            if (auditService != null) auditService.auditAssistantMessage(assistantMsg, resolvedRequest);
         }
 
         StoredContextUsage maintenance = maintainContextUsage(resolvedRequest.conversationId(), resolvedRequest.model());
-        auditEndOfTurnContext(resolvedRequest, maintenance);
+        if (auditService != null) auditService.auditEndOfTurnContext(resolvedRequest, maintenance);
         return new ChatResponse.MsgResponse(
             resolvedRequest.conversationId(),
             resolvedRequest.model(),
@@ -331,27 +338,7 @@ public class ChatService {
     }
 
     public ResolvedChatRequest resolve(ChatRequest request) {
-        if (request instanceof ChatRequest.MsgRequest(String conversationId, String message, String model, String planningModel)) {
-            return resolve(conversationId, message, model, planningModel);
-        }
-        throw new IllegalArgumentException("message request is required");
-    }
-
-    private ResolvedChatRequest resolve(String conversationId, String message, String model, String planningModel) {
-        String resolvedConversationId = StringUtils.hasText(conversationId) ? conversationId : UUID.randomUUID().toString();
-        boolean newConversation = !conversationExists(resolvedConversationId);
-        if (StringUtils.hasText(planningModel)) {
-            chatSessionMetadataRepository.savePlanningModel(resolvedConversationId, planningModel);
-        }
-        String storedModel = storedConversationModel(resolvedConversationId);
-        String selectedModel = StringUtils.hasText(model)
-                ? model
-                : (StringUtils.hasText(storedModel) ? storedModel : defaultModel());
-        if (interactionMode(resolvedConversationId) == PlanMode.PLAN
-            || interactionMode(resolvedConversationId) == PlanMode.TASK) {
-            selectedModel = resolvedPlanningModel(resolvedConversationId);
-        }
-        return new ResolvedChatRequest(resolvedConversationId, message, selectedModel, newConversation, true);
+        return requestResolver.resolve(request);
     }
 
     public Flux<ChatMessage> stream(ResolvedChatRequest request) {
@@ -414,7 +401,9 @@ public class ChatService {
                 );
             }
             return Flux.just(renderAssistantMessage(chatClientResponse.chatResponse()));
-        }).doOnComplete(() -> enqueueTitleJobIfFirstTurn(request));
+        }).doOnComplete(() -> {
+            if (auditService != null) auditService.enqueueTitleJobIfFirstTurn(request);
+        });
     }
 
     public ChatMessage renderAssistantMessage(String text) {
@@ -483,7 +472,7 @@ public class ChatService {
             ? planningModel
             : resolvedPlanningModel(conversationId);
         planService.beginPlan(conversationId, prePlanningModel, executionModel);
-        return chat(resolve(conversationId, BEGIN_PLAN_MESSAGE, executionModel, null).withoutTitleJob());
+        return chat(requestResolver.resolve(conversationId, BEGIN_PLAN_MESSAGE, executionModel, null).withoutTitleJob());
     }
 
     public void exitPlan(String conversationId) {
@@ -516,7 +505,7 @@ public class ChatService {
             );
         }
         String continueModel = resolvedPlanningModel(conversationId);
-        return chat(resolve(conversationId, "Continue planning using the updated structured planning state.", continueModel, null).withoutTitleJob());
+        return chat(requestResolver.resolve(conversationId, "Continue planning using the updated structured planning state.", continueModel, null).withoutTitleJob());
     }
 
     public ChatPlanState approvePlan(String conversationId) {
@@ -587,7 +576,7 @@ public class ChatService {
             contextUsageTracker.clear(conversationId);
         }
         planService.markExecuting(conversationId);
-        return resolve(conversationId, EXECUTE_PLAN_MESSAGE, model, null).withoutTitleJob();
+        return requestResolver.resolve(conversationId, EXECUTE_PLAN_MESSAGE, model, null).withoutTitleJob();
     }
 
     public void handlePlanExecutionStreamFinished(String conversationId) {
@@ -693,7 +682,7 @@ public class ChatService {
             contextUsageTracker.clear(resolvedConversationId);
         }
         TaskRun run = taskService.startChatExecution(resolvedConversationId, taskId, inputValues == null ? Map.of() : inputValues);
-        ResolvedChatRequest request = resolve(resolvedConversationId, EXECUTE_TASK_MESSAGE, model, null).withoutTitleJob();
+        ResolvedChatRequest request = requestResolver.resolve(resolvedConversationId, EXECUTE_TASK_MESSAGE, model, null).withoutTitleJob();
         return new ResolvedTaskExecution(resolvedConversationId, run.id(), request);
     }
 
@@ -970,7 +959,7 @@ public class ChatService {
                 ? taskService.runIdForConversation(request.conversationId())
                 : null
         ));
-        auditUserMessage(request);
+        if (auditService != null) auditService.auditUserMessage(request);
         try {
             phase(activeTurn, ActiveTurnPhase.MODEL_CALL);
             org.springframework.ai.chat.model.ChatResponse response = chatModelRouter.chatModel(request.model()).call(prompt);
@@ -1068,7 +1057,7 @@ public class ChatService {
                         );
                         break;
                     }
-                    recordContextUsage(request.conversationId(), checkpoint.usage(), request.model());
+                    if (auditService != null) auditService.recordContextUsage(request.conversationId(), checkpoint.usage(), request.model());
                     if (toolMessageConsumer != null) {
                         pendingToolMessages.forEach(toolMessageConsumer);
                     }
@@ -1101,7 +1090,7 @@ public class ChatService {
                         currentSystemInstructions,
                         request.model()
                     );
-                    recordContextUsage(request.conversationId(), checkpoint.usage(), request.model());
+                    if (auditService != null) auditService.recordContextUsage(request.conversationId(), checkpoint.usage(), request.model());
                     if (!checkpoint.toolUseAllowed()) {
                         throw new IllegalStateException(
                             "Context is too large to send safely after tool compaction: "
@@ -1179,11 +1168,11 @@ public class ChatService {
             }
             if (finalAssistantMessage != null) {
                 messagesToPersist.add(finalAssistantMessage);
-                auditAssistantMessage(finalAssistantMessage, request);
+                if (auditService != null) auditService.auditAssistantMessage(finalAssistantMessage, request);
             }
             contextManagementAdvisor.saveAssistantMessages(request.conversationId(), messagesToPersist);
             StoredContextUsage maintenance = maintainContextUsage(request.conversationId(), request.model());
-            auditEndOfTurnContext(request, maintenance);
+            if (auditService != null) auditService.auditEndOfTurnContext(request, maintenance);
             if (maintenance.compacted() && toolMessageConsumer != null) {
                 toolMessageConsumer.accept(systemMessage(ContextManagementAdvisor.COMPACTION_NOTICE));
             }
@@ -1199,7 +1188,7 @@ public class ChatService {
                 finalAssistantMessage,
                 finalAssistantMessage == null ? "" : finalAssistantMessage.getText()
             ));
-            enqueueTitleJobIfFirstTurn(request);
+            if (auditService != null) auditService.enqueueTitleJobIfFirstTurn(request);
             logger.debug("Tool chat turn completed conv={} mode={} tokens={}",
                 request.conversationId(), mode, maintenance.usage() != null ? maintenance.usage().usedTokens() : "?");
             return new ToolChatResult(chatResponse, finalMessage);
@@ -1250,41 +1239,6 @@ public class ChatService {
         return systemMessage(text);
     }
 
-    private void auditUserMessage(ResolvedChatRequest request) {
-        if (auditRepository != null) {
-            auditRepository.recordUserMessage(request.conversationId(), request.message(), request.model());
-        }
-    }
-
-    private void auditAssistantMessage(AssistantMessage message, ResolvedChatRequest request) {
-        if (auditRepository == null || message == null) return;
-        String metaJson = null;
-        if (message.getMetadata() != null && !message.getMetadata().isEmpty() && objectMapper != null) {
-            try {
-                metaJson = objectMapper.writeValueAsString(message.getMetadata());
-            } catch (JsonProcessingException ignored) {
-            }
-        }
-        auditRepository.recordAssistantMessage(
-            request.conversationId(), message.getText(), metaJson, request.model());
-    }
-
-    private void auditEndOfTurnContext(ResolvedChatRequest request, StoredContextUsage maintenance) {
-        if (auditRepository != null && maintenance != null && maintenance.usage() != null) {
-            int count = chatMemoryRepository.findByConversationId(request.conversationId()).size();
-            auditRepository.recordContext(request.conversationId(), maintenance.usage(), count, request.model());
-        }
-    }
-
-    private void recordContextUsage(String conversationId, ContextUsage usage, String model) {
-        if (contextUsageTracker != null) {
-            contextUsageTracker.record(conversationId, usage);
-        }
-        if (auditRepository != null && usage != null) {
-            int count = chatMemoryRepository.findByConversationId(conversationId).size();
-            auditRepository.recordContext(conversationId, usage, count, model);
-        }
-    }
 
     private SystemMessage compactionNoticeMessage() {
         return new SystemMessage(ContextManagementAdvisor.NOTICE_PREFIX + ContextManagementAdvisor.COMPACTION_NOTICE);
@@ -1478,114 +1432,6 @@ public class ChatService {
         );
     }
 
-    static final class ToolLoopGuard {
-        private final Map<String, Integer> identicalToolCallCounts = new java.util.HashMap<>();
-        private final Deque<ToolOutcome> recentToolOutcomes = new ArrayDeque<>();
-        private int recentErrorCount = 0;
-
-        void recordToolCalls(List<AssistantMessage.ToolCall> toolCalls) {
-            for (AssistantMessage.ToolCall toolCall : toolCalls == null ? List.<AssistantMessage.ToolCall>of() : toolCalls) {
-                String key = toolCall.name() + "\n" + normalizeArguments(toolCall.arguments());
-                int count = identicalToolCallCounts.merge(key, 1, Integer::sum);
-                if (count >= IDENTICAL_TOOL_CALL_LIMIT) {
-                    throw new ToolUseAbort("Tool execution stopped after " + count + " identical calls to " + toolCall.name());
-                }
-            }
-        }
-
-        void recordToolResponses(ToolExecutionResult toolExecutionResult) {
-            ToolResponseMessage latestToolResponseMessage = latestToolResponseMessage(toolExecutionResult);
-            if (latestToolResponseMessage == null) {
-                recordToolResult(false, null);
-                return;
-            }
-            for (ToolResponseMessage.ToolResponse response : latestToolResponseMessage.getResponses()) {
-                String responseData = response.responseData();
-                recordToolResult(isToolError(responseData), responseData);
-            }
-        }
-
-        private ToolResponseMessage latestToolResponseMessage(ToolExecutionResult toolExecutionResult) {
-            if (toolExecutionResult == null || toolExecutionResult.conversationHistory() == null) {
-                return null;
-            }
-            ToolResponseMessage latest = null;
-            for (Message message : toolExecutionResult.conversationHistory()) {
-                if (message instanceof ToolResponseMessage toolResponseMessage) {
-                    latest = toolResponseMessage;
-                }
-            }
-            return latest;
-        }
-
-        private void recordToolResult(boolean error, String responseData) {
-            recentToolOutcomes.addLast(new ToolOutcome(error, error ? summarizeToolError(responseData) : null));
-            if (error) {
-                recentErrorCount++;
-            }
-            while (recentToolOutcomes.size() > TOOL_ERROR_WINDOW_SIZE) {
-                if (recentToolOutcomes.removeFirst().error()) {
-                    recentErrorCount--;
-                }
-            }
-            if (recentToolOutcomes.size() == TOOL_ERROR_WINDOW_SIZE && recentErrorCount >= TOOL_ERROR_WINDOW_LIMIT) {
-                throw new ToolUseAbort(
-                    "Tool execution stopped after " + recentErrorCount + " errors in the last "
-                        + TOOL_ERROR_WINDOW_SIZE + " tool responses",
-                    recentErrors()
-                );
-            }
-        }
-
-        private List<String> recentErrors() {
-            return recentToolOutcomes.stream()
-                .filter(ToolOutcome::error)
-                .map(ToolOutcome::detail)
-                .filter(StringUtils::hasText)
-                .toList();
-        }
-
-        private String summarizeToolError(String responseData) {
-            if (!StringUtils.hasText(responseData)) {
-                return "Tool returned an empty error response.";
-            }
-            String summary = responseData.replaceAll("\\s+", " ").trim();
-            return summary.length() > 500 ? summary.substring(0, 500) + " [truncated]" : summary;
-        }
-
-        private boolean isToolError(String responseData) {
-            if (!StringUtils.hasText(responseData)) {
-                return false;
-            }
-            String normalized = responseData.toLowerCase(java.util.Locale.ROOT);
-            return normalized.contains("\"timedout\":true");
-        }
-
-        private String normalizeArguments(String arguments) {
-            return StringUtils.hasText(arguments) ? arguments.replaceAll("\\s+", " ").trim() : "";
-        }
-
-        private record ToolOutcome(boolean error, String detail) {
-        }
-    }
-
-    static final class ToolUseAbort extends IllegalStateException {
-        private final List<String> recentErrors;
-
-        ToolUseAbort(String message) {
-            this(message, List.of());
-        }
-
-        ToolUseAbort(String message, List<String> recentErrors) {
-            super(message);
-            this.recentErrors = recentErrors == null ? List.of() : List.copyOf(recentErrors);
-        }
-
-        List<String> recentErrors() {
-            return recentErrors;
-        }
-    }
-
     private List<ToolCallback> approvedTools(ResolvedChatRequest request) {
         if (chatToolRegistry == null) {
             return List.of();
@@ -1649,13 +1495,6 @@ public class ChatService {
     }
 
 
-
-    private void enqueueTitleJobIfFirstTurn(ResolvedChatRequest request) {
-        if (agentJobService == null || request == null || !request.newConversation() || !request.titleJobEligible()) {
-            return;
-        }
-        agentJobService.submitConversationTitle(request.conversationId(), request.model(), request.message());
-    }
 
     private ChatClient.ChatClientRequestSpec prompt(ResolvedChatRequest request) {
         ChatClient chatClient = chatModelRouter == null
@@ -1873,9 +1712,6 @@ public class ChatService {
     private record ToolChatResult(ChatResponse.MsgResponse response, ChatMessage finalMessage) {
     }
 
-    public record StoredContextUsage(ContextUsage usage, boolean compacted) {
-    }
-
     private <T> T await(java.util.concurrent.CompletableFuture<T> future) {
         try {
             return future.get();
@@ -1973,45 +1809,6 @@ public class ChatService {
         }
     }
 
-    public record ResolvedChatRequest(
-        String conversationId,
-        String message,
-        String model,
-        boolean newConversation,
-        boolean titleJobEligible
-    ) {
-        public ResolvedChatRequest(String conversationId, String message, String model) {
-            this(conversationId, message, model, false, false);
-        }
-
-        public ResolvedChatRequest(String conversationId, String message, String model, boolean newConversation) {
-            this(conversationId, message, model, newConversation, false);
-        }
-
-        ResolvedChatRequest withoutTitleJob() {
-            return new ResolvedChatRequest(conversationId, message, model, newConversation, false);
-        }
-    }
-
     private record ResolvedTaskExecution(String conversationId, String runId, ResolvedChatRequest request) {
-    }
-
-    public record TaskExecutionResult(String conversationId, TaskRun run, ChatResponse.MsgResponse response) {
-    }
-
-    public record TaskExecutionEvent(String event, String conversationId, String runId, ChatMessage message, TaskRun run) {
-        static TaskExecutionEvent started(String conversationId, String runId) {
-            return new TaskExecutionEvent("started", conversationId, runId, null, null);
-        }
-
-        static TaskExecutionEvent message(String conversationId, String runId, ChatMessage message) {
-            String event = message != null && message.toolActivity() != null ? "tool" : "progress";
-            return new TaskExecutionEvent(event, conversationId, runId, message, null);
-        }
-
-        static TaskExecutionEvent finished(String conversationId, TaskRun run) {
-            String event = run.status() == TaskRunStatus.COMPLETED ? "completed" : "failed";
-            return new TaskExecutionEvent(event, conversationId, run.id(), null, run);
-        }
     }
 }

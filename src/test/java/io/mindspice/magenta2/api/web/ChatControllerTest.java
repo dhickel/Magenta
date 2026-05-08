@@ -13,6 +13,7 @@ import io.mindspice.magenta2.ai.chat.model.ChatRequest;
 import io.mindspice.magenta2.ai.chat.model.ChatResponse;
 import io.mindspice.magenta2.ai.chat.model.ChatSession;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
+import io.mindspice.magenta2.ai.chat.service.ResolvedChatRequest;
 import io.mindspice.magenta2.ai.execution.ActiveTurnRegistry.ActiveTurn;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;

@@ -19,7 +19,7 @@ Started: 2026-05-08
 | 4.2 | Public API DTOs For Lifecycle Fields | completed | Introduced TaskCreateRequest/TaskUpdateRequest for TaskController, JobCreateRequest/JobItemCreateRequest for OrchestrationJobController. Domain records now stay inside service boundaries. Client lifecycle fields are silently ignored. 278 tests pass. |
 | 4.3 | Move PlanMode To Chat Interaction Package | completed | Moved PlanMode enum from `ai.chat.plan` to `ai.chat.model`. Updated 12 import paths across main and test sources. Updated plan and model package AGENTS.md guides. 278 tests pass. |
 | 4.4 | Move AgentJobRepository To Agent Job Ownership | completed | Moved AgentJobRepository from `ai.chat.repository` to `ai.agent.job`. Updated 4 import paths across main and test sources. 20 targeted tests pass. |
-| 4.5 | Incremental ChatService Seam Extraction | pending | — |
+| 4.5 | Incremental ChatService Seam Extraction | completed | Extracted 4 inner classes/records to top-level files (ToolLoopGuard, ToolUseAbort, TaskExecutionResult, TaskExecutionEvent). Delegated audit/title methods to AuditService. Delegated request resolution to RequestResolver. Removed duplicate inner ResolvedChatRequest and StoredContextUsage records. 288 tests pass. |
 | 5.1 | Long-Record Mutation Helpers | pending | — |
 | 5.2 | Remove Dead Command Compatibility Code | pending | — |
 | 5.3 | Replace Nullable-Union Stream Event DTO | pending | — |
@@ -516,3 +516,57 @@ Chose a **narrow hybrid** policy:
 
 **Test results:**
 - 20 tests pass (2 AgentJobRepository + 5 AgentJobService + 13 SchemaOwnership). Full suite: 20 run, 0 failures, 0 errors, 0 skipped.
+
+### Issue 4.5: Incremental ChatService Seam Extraction
+
+**Files changed:**
+
+**New files (8):**
+- `src/main/java/io/mindspice/magenta2/ai/chat/service/ToolLoopGuard.java` — Extracted from ChatService inner class. Guards tool execution loop against runaway tool use (identical call detection, sliding error-rate window). Package-private top-level class.
+- `src/main/java/io/mindspice/magenta2/ai/chat/service/ToolUseAbort.java` — Extracted from ChatService inner class. IllegalStateException subclass carrying recent errors for control-message construction.
+- `src/main/java/io/mindspice/magenta2/ai/chat/service/TaskExecutionResult.java` — Extracted from ChatService inner record. `record TaskExecutionResult(String conversationId, TaskRun run, ChatResponse.MsgResponse response)`.
+- `src/main/java/io/mindspice/magenta2/ai/chat/service/TaskExecutionEvent.java` — Extracted from ChatService inner record. `record TaskExecutionEvent(String event, String conversationId, String runId, ChatMessage message, TaskRun run)` with static factory methods.
+- `src/main/java/io/mindspice/magenta2/ai/chat/service/AuditService.java` — Already extracted in earlier session but was not fully delegated to. Now receives all audit/title delegation from ChatService.
+- `src/main/java/io/mindspice/magenta2/ai/chat/service/RequestResolver.java` — Already extracted but was not fully delegated to. Now receives all request resolution delegation.
+- `src/test/java/io/mindspice/magenta2/ai/chat/service/ToolLoopGuardTest.java` — NEW. 10 tests: identical call limit, argument normalization, error window limit, sliding window eviction, mixed errors/success, null/empty guards, recent-error detail capture.
+
+**Modified files (12):**
+- `src/main/java/io/mindspice/magenta2/ai/chat/service/ChatService.java` — Removed 4 inner classes/records (ToolLoopGuard, ToolUseAbort, TaskExecutionResult, TaskExecutionEvent). Removed duplicate inner records (ResolvedChatRequest, StoredContextUsage). Delegated 5 private audit/title methods to AuditService. Delegated private `resolve()` to RequestResolver. Changed ChatMemoryRepository import from Spring AI interface to Magenta concrete class.
+- `src/main/java/io/mindspice/magenta2/api/web/ChatController.java` — Updated imports from `ChatService.ResolvedChatRequest`/`ChatService.StoredContextUsage` to top-level `ResolvedChatRequest`/`StoredContextUsage`.
+- `src/main/java/io/mindspice/magenta2/api/web/ChatStreamSupport.java` — Updated import from `ChatService.ResolvedChatRequest` to `ResolvedChatRequest`.
+- `src/main/java/io/mindspice/magenta2/api/web/TaskStreamSupport.java` — Updated import from `ChatService.TaskExecutionEvent` to `TaskExecutionEvent`.
+- `src/test/java/io/mindspice/magenta2/ai/chat/service/ChatServiceTest.java` — Updated all ChatService inner-class references to top-level. Added null RequestResolver constructor call. Added RequestResolver import.
+- `src/test/java/io/mindspice/magenta2/api/web/TaskControllerTest.java` — Added import for `TaskExecutionEvent`.
+- `src/test/java/io/mindspice/magenta2/api/web/TaskStreamSupportTest.java` — Updated import from `ChatService.TaskExecutionEvent` to `TaskExecutionEvent`.
+- `src/test/java/io/mindspice/magenta2/api/web/ChatControllerTest.java` — Updated inner-class references.
+- `src/test/java/io/mindspice/magenta2/ai/chat/workflow/WorkflowServiceTest.java` — Added import for `TaskExecutionResult`.
+- `src/test/java/io/mindspice/magenta2/ai/orchestration/runtime/OrchestrationDurableRuntimeTest.java` — Added import for `TaskExecutionResult`.
+
+**What changed and why:**
+
+Extracted focused collaborators from ChatService.java (2030-line orchestrator) to reduce its high-coupling regression risk. Each extraction is tied to an already-implemented remediation:
+
+1. **ToolLoopGuard / ToolUseAbort (remediation 1.2 shell cancellation)** — The tool loop guard and its abort exception were extracted so the guard's sliding-window error tracking and identical-call detection can be tested independently of ChatService. The guard was previously only testable through ChatService integration tests.
+
+2. **TaskExecutionResult / TaskExecutionEvent (remediation 2.1 streaming/SSE lifecycle)** — These inner records were consumed by 6 files across 3 packages. Extracting them to top-level removes the ChatService import dependency from controllers and stream support classes. TaskController, ChatStreamSupport, TaskStreamSupport, and 5 test files now depend on the records directly rather than on ChatService.
+
+3. **AuditService delegation (remediation 3.2 audit robustness)** — Five private methods (auditUserMessage, auditAssistantMessage, auditEndOfTurnContext, recordContextUsage, enqueueTitleJobIfFirstTurn) were already extracted into AuditService but ChatService still called the original private methods in the toolChat path. Changed all 5 call sites to delegate to auditService, completing the extraction.
+
+4. **RequestResolver delegation (remediation 2.1, 4.1)** — The private `resolve(String, String, String, String)` method was already extracted into RequestResolver but ChatService's `resolve(ChatRequest)` and 3 other callers still used the old private method. Changed to delegate to requestResolver.
+
+5. **Duplicate inner records removed** — ResolvedChatRequest and StoredContextUsage existed as both ChatService inner records AND top-level records. The inner records shadowed the top-level ones, causing type confusion. Removed the inner records and updated all references to use the top-level types.
+
+**Decisions made:**
+- ToolLoopGuard is package-private (not public) since it is only used by ChatService in the same package. This follows the "extract but don't expand the public API surface" pattern.
+- ToolUseAbort extends IllegalStateException to match the existing catch-block pattern in ChatService (catches IllegalStateException from tool loop).
+- AuditService and RequestResolver are injected via `@Autowired(required = false)` — ChatService continues to work if they are absent (e.g., in test constructor paths that don't wire them).
+- The 12-arg ChatService constructor (used by many tests) auto-creates a RequestResolver internally, preserving backward compatibility for test code that doesn't pass one.
+
+**Tests added:** 10 new (288 total, up from 278)
+
+| Test Class | Tests Added | Coverage |
+|------------|-------------|----------|
+| ToolLoopGuardTest | 10 | Identical tool call limit, whitespace normalization, error window limit, sliding window eviction, mixed errors/success, null/empty input guards, recent-error detail in ToolUseAbort |
+
+**Test results:**
+- All 288 tests pass (278 existing + 10 new). Full suite: 288 run, 0 failures, 0 errors, 0 skipped.

@@ -5,7 +5,7 @@ import java.util.List;
 
 import io.mindspice.magenta2.ai.chat.model.ChatMessage;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
-import io.mindspice.magenta2.ai.chat.service.ChatService.ResolvedChatRequest;
+import io.mindspice.magenta2.ai.chat.service.ResolvedChatRequest;
 import org.springframework.http.MediaType;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 

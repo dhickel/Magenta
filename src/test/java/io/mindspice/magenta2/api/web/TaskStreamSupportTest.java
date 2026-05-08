@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 import io.mindspice.magenta2.ai.chat.model.ChatMessage;
-import io.mindspice.magenta2.ai.chat.service.ChatService;
+import io.mindspice.magenta2.ai.chat.service.TaskExecutionEvent;
 import io.mindspice.magenta2.ai.chat.task.TaskRun;
 import io.mindspice.magenta2.ai.chat.task.TaskRunStatus;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentType;
@@ -59,8 +59,8 @@ class TaskStreamSupportTest {
 
     @Test
     void chatServiceRunEventsMapsStartedEvent() {
-        Flux<ChatService.TaskExecutionEvent> eventStream = Flux.just(
-            new ChatService.TaskExecutionEvent("started", "conv-1", "run-1", null, null)
+        Flux<TaskExecutionEvent> eventStream = Flux.just(
+            new TaskExecutionEvent("started", "conv-1", "run-1", null, null)
         );
 
         List<SsePayload> events = TaskStreamSupport.chatServiceRunEvents("task-1", eventStream)
@@ -76,8 +76,8 @@ class TaskStreamSupportTest {
 
     @Test
     void chatServiceRunEventsMapsToolAndProgressEvents() {
-        Flux<ChatService.TaskExecutionEvent> eventStream = Flux.just(
-            new ChatService.TaskExecutionEvent("tool", "conv-1", "run-1",
+        Flux<TaskExecutionEvent> eventStream = Flux.just(
+            new TaskExecutionEvent("tool", "conv-1", "run-1",
                 new ChatMessage("assistant", "searching", "<p>searching</p>", null,
                     new io.mindspice.magenta2.ai.chat.model.ChatToolActivity(
                         "act-1", "call-1", "search_tool", "completed", null,
@@ -103,8 +103,8 @@ class TaskStreamSupportTest {
             "done", null,
             java.time.Instant.now(), java.time.Instant.now(),
             java.time.Instant.now(), java.time.Instant.now());
-        Flux<ChatService.TaskExecutionEvent> eventStream = Flux.just(
-            new ChatService.TaskExecutionEvent("completed", "conv-1", "run-1", null, run)
+        Flux<TaskExecutionEvent> eventStream = Flux.just(
+            new TaskExecutionEvent("completed", "conv-1", "run-1", null, run)
         );
 
         List<SsePayload> events = TaskStreamSupport.chatServiceRunEvents("task-1", eventStream)
