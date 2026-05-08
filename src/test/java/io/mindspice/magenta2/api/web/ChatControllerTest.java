@@ -214,6 +214,70 @@ class ChatControllerTest {
         assertThat(errorChatService.executionFailureMessage).contains("model timed out");
     }
 
+    @Test
+    void renameRejectsInvalidUuid() {
+        assertThatThrownBy(() -> chatController.rename("not-a-uuid", new ChatRequest.SetTitle("title")))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(exception.getReason()).contains("invalid UUID");
+            });
+    }
+
+    @Test
+    void approvePlanRejectsInvalidUuid() {
+        assertThatThrownBy(() -> chatController.approvePlan("not-a-uuid"))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(exception.getReason()).contains("invalid UUID");
+            });
+    }
+
+    @Test
+    void streamPlanExecutionRejectsInvalidUuid() {
+        assertThatThrownBy(() -> chatController.streamPlanExecution("not-a-uuid"))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(exception.getReason()).contains("invalid UUID");
+            });
+    }
+
+    @Test
+    void continuePlanningRejectsInvalidUuid() {
+        assertThatThrownBy(() -> chatController.continuePlanning("not-a-uuid"))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(exception.getReason()).contains("invalid UUID");
+            });
+    }
+
+    @Test
+    void executePlanRejectsWithoutSavedPlan() {
+        assertThatThrownBy(() -> chatController.executePlan(CONVERSATION_ID))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(exception.getReason()).contains("No saved plan");
+            });
+    }
+
+    @Test
+    void answerPlanPromptRejectsInvalidUuid() {
+        assertThatThrownBy(() -> chatController.answerPlanPrompt(
+            "not-a-uuid", new ChatRequest.PlanAnswer("yes", null, 0)))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(exception.getReason()).contains("invalid UUID");
+            });
+    }
+
+    @Test
+    void savePlanAsTaskRejectsInvalidUuid() {
+        assertThatThrownBy(() -> chatController.savePlanAsTask("not-a-uuid"))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(exception.getReason()).contains("invalid UUID");
+            });
+    }
+
     private static class StubChatService extends ChatService {
         private final List<String> conversationIds;
         private final Map<String, String> modelsByConversationId;

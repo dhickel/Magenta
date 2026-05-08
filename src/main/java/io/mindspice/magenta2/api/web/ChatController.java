@@ -35,6 +35,8 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import jakarta.validation.Valid;
 import reactor.core.Disposable;
 import reactor.core.scheduler.Schedulers;
 
@@ -67,12 +69,12 @@ public class ChatController {
     }
 
     @PostMapping
-    public ChatResponse chat(@RequestBody ChatRequest.MsgRequest request) {
+    public ChatResponse chat(@Valid @RequestBody ChatRequest.MsgRequest request) {
         return chatService.chat(request);
     }
 
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter stream(@RequestBody ChatRequest.MsgRequest request) {
+    public SseEmitter stream(@Valid @RequestBody ChatRequest.MsgRequest request) {
         ResolvedChatRequest resolvedRequest = chatService.resolve(request);
         return streamResolved(resolvedRequest, false);
     }
@@ -267,7 +269,7 @@ public class ChatController {
     }
 
     @PostMapping("/turns/{turnId}/interrupt")
-    public InterruptResult interrupt(@PathVariable String turnId, @RequestBody ChatRequest.TurnInterrupt request) {
+    public InterruptResult interrupt(@PathVariable String turnId, @Valid @RequestBody ChatRequest.TurnInterrupt request) {
         String conversationId = normalize(request == null ? null : request.conversationId());
         String token = request == null ? null : request.interruptToken();
         String message = normalize(request == null ? null : request.message());
@@ -309,7 +311,7 @@ public class ChatController {
     }
 
     @PatchMapping("/{conversationId}/title")
-    public ChatSession rename(@PathVariable String conversationId, @RequestBody ChatRequest.SetTitle request) {
+    public ChatSession rename(@PathVariable String conversationId, @Valid @RequestBody ChatRequest.SetTitle request) {
         requireValidUuid(conversationId);
 
         if (!chatService.conversationExists(conversationId)) {
@@ -324,19 +326,19 @@ public class ChatController {
     }
 
     @PatchMapping("/{conversationId}/favorite")
-    public ChatSession favorite(@PathVariable String conversationId, @RequestBody ChatRequest.Favorite request) {
+    public ChatSession favorite(@PathVariable String conversationId, @Valid @RequestBody ChatRequest.Favorite request) {
         requireExistingConversation(conversationId);
         return chatService.setConversationFavorite(conversationId, request != null && request.favorite());
     }
 
     @PatchMapping("/{conversationId}/archive")
-    public ChatSession archive(@PathVariable String conversationId, @RequestBody ChatRequest.Archive request) {
+    public ChatSession archive(@PathVariable String conversationId, @Valid @RequestBody ChatRequest.Archive request) {
         requireExistingConversation(conversationId);
         return chatService.setConversationArchived(conversationId, request != null && request.archived());
     }
 
     @PostMapping("/commands")
-    public ChatResponse.CmdResponse command(@RequestBody ChatRequest.CmdRequest request) {
+    public ChatResponse.CmdResponse command(@Valid @RequestBody ChatRequest.CmdRequest request) {
         String command = normalize(request.command());
         if (command == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "command is required");
@@ -366,7 +368,7 @@ public class ChatController {
     @PostMapping("/{conversationId}/plan/answers")
     public ChatResponse.MsgResponse answerPlanPrompt(
         @PathVariable String conversationId,
-        @RequestBody ChatRequest.PlanAnswer request
+        @Valid @RequestBody ChatRequest.PlanAnswer request
     ) {
         requireValidUuid(conversationId);
         try {

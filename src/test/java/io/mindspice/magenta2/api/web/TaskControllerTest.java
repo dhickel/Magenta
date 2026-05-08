@@ -27,10 +27,13 @@ import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationRunService;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.publisher.Flux;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class TaskControllerTest {
 
@@ -155,6 +158,57 @@ class TaskControllerTest {
     private static final class CapturedSse {
         private final List<String> events = java.util.Collections.synchronizedList(new ArrayList<>());
         private final CountDownLatch completed = new CountDownLatch(1);
+    }
+
+    @Test
+    void createTaskRejectsBlankTitle() throws Exception {
+        TaskController controller = new TaskController(taskService(), null);
+        TaskDefinition blankTitle = new TaskDefinition(
+            null, "  ", null, "goal", null, null, List.of(), null,
+            List.of(), List.of(), List.of(), List.of(), null, null
+        );
+
+        assertThatThrownBy(() -> controller.create(blankTitle))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            });
+    }
+
+    @Test
+    void getTaskReturns404ForMissingId() throws Exception {
+        TaskController controller = new TaskController(taskService(), null);
+
+        assertThatThrownBy(() -> controller.get("non-existent-id"))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+            });
+    }
+
+    @Test
+    void getRunReturns404ForMissingRunId() throws Exception {
+        TaskController controller = new TaskController(taskService(), null);
+
+        assertThatThrownBy(() -> controller.getRun("non-existent-run"))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+            });
+    }
+
+    @Test
+    void beginDraftAcceptsNullBody() throws Exception {
+        TaskController controller = new TaskController(taskService(), null);
+        assertThat(controller.beginDraft("conversation-id", null)).isNotNull();
+    }
+
+    @Test
+    void streamRunAcceptsNullBody() throws Exception {
+        BlockingTaskChatService chatService = new BlockingTaskChatService();
+        TaskController controller = new TaskController(taskService(), chatService, nullOrchestrationRunService());
+
+        SseEmitter emitter = controller.streamRun("task-1", null);
+
+        assertThat(emitter).isNotNull();
+        chatService.release.countDown();
     }
 
     private static final class BlockingTaskChatService extends ChatService {

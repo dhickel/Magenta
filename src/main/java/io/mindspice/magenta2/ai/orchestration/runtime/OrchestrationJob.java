@@ -2,10 +2,12 @@ package io.mindspice.magenta2.ai.orchestration.runtime;
 
 import java.time.Instant;
 
+import jakarta.validation.constraints.NotBlank;
+
 public record OrchestrationJob(
     String id,
-    String ownerAgentId,
-    String title,
+    @NotBlank String ownerAgentId,
+    @NotBlank String title,
     String summary,
     String defaultModel,
     String workspaceId,

@@ -28,6 +28,9 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+
 @RestController
 @RequestMapping("/api/agents/{agentId}")
 public class AgentOrchestrationController {
@@ -60,7 +63,7 @@ public class AgentOrchestrationController {
     }
 
     @PostMapping("/inbox")
-    public InboxMessage send(@PathVariable String agentId, @RequestBody InboxMessage message) {
+    public InboxMessage send(@PathVariable String agentId, @Valid @RequestBody InboxMessage message) {
         try {
             return inboxService.send(agentId, message);
         } catch (IllegalArgumentException | IllegalStateException exception) {
@@ -84,7 +87,7 @@ public class AgentOrchestrationController {
     }
 
     @PostMapping("/assignments")
-    public WorkAssignment assign(@PathVariable String agentId, @RequestBody AssignmentRequest request) {
+    public WorkAssignment assign(@PathVariable String agentId, @Valid @RequestBody AssignmentRequest request) {
         try {
             return assignmentService.create(new AssignmentRequest(
                 agentId, request.jobId(), request.jobItemId(), request.assignmentType(), request.priority(),
@@ -116,7 +119,7 @@ public class AgentOrchestrationController {
     }
 
     @PostMapping("/schedules")
-    public AgentSchedule schedule(@PathVariable String agentId, @RequestBody AgentSchedule schedule) {
+    public AgentSchedule schedule(@PathVariable String agentId, @Valid @RequestBody AgentSchedule schedule) {
         try {
             return scheduleService.save(agentId, schedule);
         } catch (IllegalArgumentException | java.time.DateTimeException exception) {
@@ -130,7 +133,7 @@ public class AgentOrchestrationController {
     }
 
     @PostMapping("/event-reactions")
-    public AgentEventReaction reaction(@PathVariable String agentId, @RequestBody AgentEventReaction reaction) {
+    public AgentEventReaction reaction(@PathVariable String agentId, @Valid @RequestBody AgentEventReaction reaction) {
         try {
             return reactionService.save(agentId, reaction);
         } catch (IllegalArgumentException | IllegalStateException exception) {
@@ -139,7 +142,7 @@ public class AgentOrchestrationController {
     }
 
     @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter chat(@PathVariable String agentId, @RequestBody AgentChatRequest request) {
+    public SseEmitter chat(@PathVariable String agentId, @Valid @RequestBody AgentChatRequest request) {
         SseEmitter emitter = new SseEmitter(0L);
         try {
             AgentProfile agent = agentProfileService.get(agentId);
@@ -188,6 +191,6 @@ public class AgentOrchestrationController {
         emitter.send(SseEmitter.event().name(name).data(data));
     }
 
-    public record AgentChatRequest(String conversationId, String message, String model, String pageContext) {
+    public record AgentChatRequest(String conversationId, @NotBlank String message, String model, String pageContext) {
     }
 }

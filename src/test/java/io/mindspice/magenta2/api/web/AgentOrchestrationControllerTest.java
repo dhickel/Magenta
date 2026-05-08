@@ -10,10 +10,18 @@ import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileStatus;
+import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentRequest;
+import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService;
+import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentType;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationStatus;
+import io.mindspice.magenta2.ai.orchestration.runtime.WorkAssignment;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AgentOrchestrationControllerTest {
 
@@ -76,6 +84,74 @@ class AgentOrchestrationControllerTest {
                 Instant.EPOCH,
                 Instant.EPOCH
             );
+        }
+    }
+
+    @Test
+    void blankMessageReturnsErrorEmitter() {
+        StubAgentProfileService profileService = new StubAgentProfileService();
+        StubChatService chatService = new StubChatService();
+        AgentOrchestrationController controller = new AgentOrchestrationController(
+            null, null, null, null, profileService, chatService
+        );
+
+        SseEmitter emitter = controller.chat(
+            "agent-1",
+            new AgentOrchestrationController.AgentChatRequest(null, " ", null, "agent detail")
+        );
+
+        assertThat(emitter).isNotNull();
+        assertThat(chatService.request).isNull();
+    }
+
+    @Test
+    void assignRejectsNullAssignmentType() {
+        StubAgentProfileService profileService = new StubAgentProfileService();
+        StubChatService chatService = new StubChatService();
+        AgentOrchestrationController controller = new AgentOrchestrationController(
+            null, new StubAssignmentService(), null, null, profileService, chatService
+        );
+
+        assertThatThrownBy(() -> controller.assign("agent-1", new AssignmentRequest(
+            "agent-1", null, null, null, 0, null, null, java.util.Map.of()
+        ))).isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+            assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        });
+    }
+
+    @Test
+    void assignSucceedsWithValidAssignment() {
+        StubAgentProfileService profileService = new StubAgentProfileService();
+        StubChatService chatService = new StubChatService();
+        AgentOrchestrationController controller = new AgentOrchestrationController(
+            null, new StubAssignmentService(), null, null, profileService, chatService
+        );
+
+        WorkAssignment result = controller.assign("agent-1", new AssignmentRequest(
+            "agent-1", null, null, AssignmentType.TASK_RUN, 0, null, null, java.util.Map.of()
+        ));
+
+        assertThat(result).isNotNull();
+        assertThat(result.agentId()).isEqualTo("agent-1");
+    }
+
+    private static class StubAssignmentService extends AssignmentService {
+        StubAssignmentService() {
+            super(null, null, null, null);
+        }
+
+        @Override
+        public WorkAssignment create(AssignmentRequest request) {
+            if (request.agentId() == null || request.agentId().isBlank()) {
+                throw new IllegalArgumentException("agentId is required");
+            }
+            if (request.assignmentType() == null) {
+                throw new IllegalArgumentException("assignmentType is required");
+            }
+            return new WorkAssignment("assign-1", request.agentId(), null, null, request.assignmentType(),
+                0, OrchestrationStatus.QUEUED, null, null, 0,
+                java.util.Map.of(), java.util.Map.of(), java.util.Map.of(), java.util.Map.of(),
+                null, null, null, null, null, null, null);
         }
     }
 

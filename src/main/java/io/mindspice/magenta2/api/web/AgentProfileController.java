@@ -17,6 +17,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import jakarta.validation.Valid;
+
 @RestController
 @RequestMapping("/api/agents")
 public class AgentProfileController {
@@ -34,7 +36,7 @@ public class AgentProfileController {
     }
 
     @PostMapping
-    public AgentProfile create(@RequestBody AgentProfile profile) {
+    public AgentProfile create(@Valid @RequestBody AgentProfile profile) {
         try {
             return agentProfileService.create(profile);
         } catch (IllegalArgumentException exception) {
@@ -52,7 +54,7 @@ public class AgentProfileController {
     }
 
     @PutMapping("/{agentId}")
-    public AgentProfile update(@PathVariable String agentId, @RequestBody AgentProfile profile) {
+    public AgentProfile update(@PathVariable String agentId, @Valid @RequestBody AgentProfile profile) {
         try {
             return agentProfileService.update(agentId, profile);
         } catch (IllegalArgumentException exception) {

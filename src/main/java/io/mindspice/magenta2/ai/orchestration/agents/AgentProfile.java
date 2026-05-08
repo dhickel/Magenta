@@ -3,9 +3,11 @@ package io.mindspice.magenta2.ai.orchestration.agents;
 import java.time.Instant;
 import java.util.List;
 
+import jakarta.validation.constraints.NotBlank;
+
 public record AgentProfile(
     String id,
-    String name,
+    @NotBlank String name,
     AgentProfileStatus status,
     String defaultModel,
     String systemPrompt,

@@ -19,6 +19,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import jakarta.validation.Valid;
+
 @RestController
 @RequestMapping("/api/jobs")
 public class OrchestrationJobController {
@@ -39,7 +41,7 @@ public class OrchestrationJobController {
     }
 
     @PostMapping
-    public OrchestrationJob create(@RequestBody OrchestrationJob job) {
+    public OrchestrationJob create(@Valid @RequestBody OrchestrationJob job) {
         try {
             return jobService.save(job);
         } catch (IllegalArgumentException | IllegalStateException exception) {
@@ -62,7 +64,7 @@ public class OrchestrationJobController {
     }
 
     @PostMapping("/{jobId}/items")
-    public OrchestrationJobItem addItem(@PathVariable String jobId, @RequestBody OrchestrationJobItem item) {
+    public OrchestrationJobItem addItem(@PathVariable String jobId, @Valid @RequestBody OrchestrationJobItem item) {
         try {
             return jobService.saveItem(jobId, item);
         } catch (IllegalArgumentException | IllegalStateException exception) {

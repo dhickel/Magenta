@@ -23,6 +23,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import jakarta.validation.Valid;
+
 @RestController
 @RequestMapping("/api/workflows")
 public class WorkflowController {
@@ -49,7 +51,7 @@ public class WorkflowController {
     }
 
     @PostMapping
-    public WorkflowDefinition create(@RequestBody WorkflowDefinition workflow) {
+    public WorkflowDefinition create(@Valid @RequestBody WorkflowDefinition workflow) {
         try {
             return workflowService.saveWorkflow(workflow);
         } catch (IllegalArgumentException exception) {
@@ -58,7 +60,7 @@ public class WorkflowController {
     }
 
     @PutMapping("/{workflowId}")
-    public WorkflowDefinition update(@PathVariable String workflowId, @RequestBody WorkflowDefinition workflow) {
+    public WorkflowDefinition update(@PathVariable String workflowId, @Valid @RequestBody WorkflowDefinition workflow) {
         try {
             return workflowService.saveWorkflow(new WorkflowDefinition(
                 workflowId, workflow.title(), workflow.summary(), workflow.steps(), workflow.createdAt(), workflow.updatedAt()

@@ -25,6 +25,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
@@ -62,7 +65,7 @@ public class TaskController {
     }
 
     @PostMapping
-    public TaskDefinition create(@RequestBody TaskDefinition task) {
+    public TaskDefinition create(@Valid @RequestBody TaskDefinition task) {
         try {
             return taskService.saveTask(task);
         } catch (IllegalArgumentException exception) {
@@ -71,7 +74,7 @@ public class TaskController {
     }
 
     @PutMapping("/{taskId}")
-    public TaskDefinition update(@PathVariable String taskId, @RequestBody TaskDefinition task) {
+    public TaskDefinition update(@PathVariable String taskId, @Valid @RequestBody TaskDefinition task) {
         try {
             return taskService.saveTask(new TaskDefinition(
                 taskId, task.title(), task.summary(), task.goal(), task.notes(), task.inputDescription(),
@@ -101,7 +104,7 @@ public class TaskController {
     }
 
     @PostMapping("/drafts/{conversationId}/answers")
-    public TaskDraft answerDraftQuestion(@PathVariable String conversationId, @RequestBody TaskAnswerRequest request) {
+    public TaskDraft answerDraftQuestion(@PathVariable String conversationId, @Valid @RequestBody TaskAnswerRequest request) {
         try {
             return taskService.recordPromptAnswer(conversationId, request.answer(), request.notes(), request.questionIndex());
         } catch (IllegalArgumentException | IllegalStateException exception) {
@@ -264,7 +267,7 @@ public class TaskController {
     public record DraftRequest(String prePlanningModel, String executionModel) {
     }
 
-    public record TaskAnswerRequest(String answer, String notes, Integer questionIndex) {
+    public record TaskAnswerRequest(@NotBlank String answer, String notes, Integer questionIndex) {
     }
 
     public record TaskRunRequest(

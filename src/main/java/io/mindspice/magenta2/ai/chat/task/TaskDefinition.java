@@ -4,11 +4,12 @@ import java.time.Instant;
 import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import jakarta.validation.constraints.NotBlank;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record TaskDefinition(
     String id,
-    String title,
+    @NotBlank String title,
     String summary,
     String goal,
     String notes,

@@ -10,6 +10,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import jakarta.validation.Valid;
+
 @RestController
 @RequestMapping("/api/settings/runtime")
 public class RuntimeSettingsController {
@@ -25,7 +27,7 @@ public class RuntimeSettingsController {
     }
 
     @PutMapping
-    public RuntimeSettings update(@RequestBody RuntimeSettings settings) {
+    public RuntimeSettings update(@Valid @RequestBody RuntimeSettings settings) {
         try {
             return service.save(settings);
         } catch (IllegalArgumentException | IllegalStateException exception) {

@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import jakarta.validation.Valid;
+
 @RestController
 @RequestMapping("/api/workspaces")
 public class WorkspaceController {
@@ -33,7 +35,7 @@ public class WorkspaceController {
     }
 
     @PostMapping("/{workspaceId}/links")
-    public WorkspaceLink addLink(@PathVariable String workspaceId, @RequestBody WorkspaceLink link) {
+    public WorkspaceLink addLink(@PathVariable String workspaceId, @Valid @RequestBody WorkspaceLink link) {
         try {
             return workspaceService.addLink(workspaceId, link);
         } catch (IllegalArgumentException exception) {
