@@ -7,6 +7,7 @@ import io.mindspice.magenta2.ai.chat.service.ContextManagementAdvisor;
 import io.mindspice.magenta2.ai.chat.service.ContextUsageTracker;
 import io.mindspice.magenta2.ai.chat.tool.ToolTranscriptService;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
+import io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettingsService;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.tokenizer.JTokkitTokenCountEstimator;
@@ -36,7 +37,8 @@ public class ChatBeanConfig {
         TokenCountEstimator tokenCountEstimator,
         ContextUsageTracker usageTracker,
         ToolTranscriptService toolTranscriptService,
-        @Autowired(required = false) AuditRepository auditRepository
+        @Autowired(required = false) AuditRepository auditRepository,
+        RuntimeSettingsService runtimeSettingsService
     ) {
         return new ContextManagementAdvisor(
             chatMemoryRepository,
@@ -45,7 +47,8 @@ public class ChatBeanConfig {
             tokenCountEstimator,
             usageTracker,
             toolTranscriptService,
-            auditRepository
+            auditRepository,
+            runtimeSettingsService
         );
     }
 }

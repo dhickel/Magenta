@@ -4,12 +4,14 @@ import java.util.List;
 import java.util.Map;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mindspice.magenta2.ai.chat.model.ContextUsage;
 import io.mindspice.magenta2.ai.chat.repository.ChatMemoryRepository;
 import io.mindspice.magenta2.ai.chat.tool.ToolTranscriptService;
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.ai.config.user.EndpointType;
 import io.mindspice.magenta2.ai.config.user.ModelConfig;
+import io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettingsService;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -145,6 +147,81 @@ class ContextManagementAdvisorTest {
             .hasSize(1);
     }
 
+    @Test
+    void runtimeSettingsControlContextBufferPercent() {
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
+        SummaryChatModel summaryModel = new SummaryChatModel();
+        AiConfig aiConfig = aiConfig(); // contextBufferPercent=10 → trigger=1080 for qwen3
+
+        // Runtime overrides buffer to 50% → trigger=600 for qwen3 (contextLength=1200)
+        RuntimeSettingsService runtimeSettings = new FakeRuntimeSettingsService("summary-model", 50);
+        ContextManagementAdvisor advisor = new ContextManagementAdvisor(
+            memoryRepository,
+            aiConfig,
+            new SummaryRouter(summaryModel),
+            new CharacterTokenEstimator(),
+            new ContextUsageTracker(),
+            new ToolTranscriptService(new ObjectMapper()),
+            null,
+            runtimeSettings
+        );
+
+        memoryRepository.saveAll("conversation-1", List.of(
+            new UserMessage("x".repeat(120)),
+            new AssistantMessage("x".repeat(120)),
+            new UserMessage("x".repeat(120)),
+            new AssistantMessage("x".repeat(120)),
+            new UserMessage("x".repeat(120))
+        ));
+
+        // ~780-820 estimated tokens (between 600 runtime trigger and 1080 default trigger)
+        // With runtime's 50% buffer, trigger=600 < usedTokens → triggers compaction
+        // Without runtime, default 10% buffer gives trigger=1080 > usedTokens → no compaction
+        ContextUsage usage = advisor.estimateStoredUsage("conversation-1", "qwen3");
+
+        assertThat(usage.triggerTokens()).as("trigger uses runtime 50%% buffer: 1200-600=600")
+            .isEqualTo(600);
+        assertThat(usage.usedTokens()).as("used tokens exceed tighter runtime trigger")
+            .isGreaterThan(usage.triggerTokens());
+    }
+
+    @Test
+    void defaultContextBufferAndCompactionModelApplyWhenNoRuntimeSettings() {
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
+        SummaryChatModel summaryModel = new SummaryChatModel();
+        AiConfig aiConfig = aiConfig(); // contextBufferPercent=10, compaction model key="summary"
+
+        // Construct with 7-arg constructor → runtimeSettingsService=null → uses aiConfig defaults
+        ContextManagementAdvisor advisor = new ContextManagementAdvisor(
+            memoryRepository,
+            aiConfig,
+            new SummaryRouter(summaryModel),
+            new CharacterTokenEstimator(),
+            new ContextUsageTracker(),
+            new ToolTranscriptService(new ObjectMapper()),
+            null
+        );
+
+        memoryRepository.saveAll("conversation-1", List.of(
+            new UserMessage("x".repeat(100)),
+            new AssistantMessage("x".repeat(100)),
+            new UserMessage("x".repeat(100)),
+            new AssistantMessage("x".repeat(100)),
+            new UserMessage("x".repeat(100))
+        ));
+
+        // With default 10% buffer: trigger = 1200 - 120 = 1080
+        // ~650-750 tokens < 1080 → no compaction triggered
+        ContextUsage usage = advisor.estimateStoredUsage("conversation-1", "qwen3");
+
+        assertThat(usage.triggerTokens()).as("default 10%% buffer: 1200-120=1080")
+            .isEqualTo(1080);
+        assertThat(usage.usedTokens()).as("used tokens below default trigger")
+            .isLessThanOrEqualTo(usage.triggerTokens());
+    }
+
     private AiConfig aiConfig() {
         return new AiConfig(
             "magenta",
@@ -225,6 +302,37 @@ class ContextManagementAdvisorTest {
                 .map(Message::getText)
                 .collect(java.util.stream.Collectors.joining("\n"));
             return new ChatResponse(List.of(new Generation(new AssistantMessage("short summary"))));
+        }
+    }
+
+    private static final class FakeRuntimeSettingsService extends RuntimeSettingsService {
+        private final String compactionModelRemoteName;
+        private final int contextBufferPercent;
+
+        FakeRuntimeSettingsService(String compactionModelRemoteName, int contextBufferPercent) {
+            super(null, null, null);
+            this.compactionModelRemoteName = compactionModelRemoteName;
+            this.contextBufferPercent = contextBufferPercent;
+        }
+
+        @Override
+        public String compactionModel() {
+            return compactionModelRemoteName;
+        }
+
+        @Override
+        public int contextBufferPercent() {
+            return contextBufferPercent;
+        }
+
+        @Override
+        public String defaultModel() {
+            return "qwen3";
+        }
+
+        @Override
+        public String defaultSystemPrompt() {
+            return null;
         }
     }
 }
