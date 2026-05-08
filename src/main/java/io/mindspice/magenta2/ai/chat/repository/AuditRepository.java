@@ -16,11 +16,17 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class AuditRepository {
     private static final Logger log = LoggerFactory.getLogger(AuditRepository.class);
+    private static final int STRIPE_COUNT = 64;
 
     private final JdbcTemplate jdbcTemplate;
+    private final Object[] lockStripes;
 
     public AuditRepository(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
+        this.lockStripes = new Object[STRIPE_COUNT];
+        for (int i = 0; i < STRIPE_COUNT; i++) {
+            lockStripes[i] = new Object();
+        }
         ensureSchema();
     }
 
@@ -55,10 +61,6 @@ public class AuditRepository {
                 recorded_at text not null
             )
             """);
-        jdbcTemplate.execute("""
-            create index if not exists idx_audit_event_conversation
-                on audit_event (conversation_id, sequence)
-            """);
 
         // Migrate columns added after initial creation
         List<String> columns = jdbcTemplate.queryForList(
@@ -81,6 +83,19 @@ public class AuditRepository {
                 jdbcTemplate.execute("alter table audit_event add column " + col + " " + type);
             }
         }
+
+        // Ensure (conversation_id, sequence) index enforces uniqueness for deterministic ordering
+        var idxUnique = jdbcTemplate.query(
+            "select \"unique\" from pragma_index_list('audit_event') where name = 'idx_audit_event_conversation'",
+            (rs, i) -> rs.getBoolean(1)
+        );
+        if (idxUnique.isEmpty()) {
+            jdbcTemplate.execute("create unique index if not exists idx_audit_event_conversation on audit_event (conversation_id, sequence)");
+        } else if (!idxUnique.getFirst()) {
+            log.info("Audit: upgrading idx_audit_event_conversation to unique constraint");
+            jdbcTemplate.execute("drop index if exists idx_audit_event_conversation");
+            jdbcTemplate.execute("create unique index if not exists idx_audit_event_conversation on audit_event (conversation_id, sequence)");
+        }
     }
 
     private int nextSequence(String conversationId) {
@@ -92,103 +107,97 @@ public class AuditRepository {
         return (max == null ? -1 : max) + 1;
     }
 
-    public void recordUserMessage(String conversationId, String messageText, String model) {
-        try {
-            int seq = nextSequence(conversationId);
-            jdbcTemplate.update(
-                """
-                    insert into audit_event (conversation_id, sequence, event_type, message_text, model, recorded_at)
-                    values (?, ?, 'user_msg', ?, ?, ?)
-                    """,
-                conversationId, seq, messageText, model, Instant.now().toString()
-            );
-        } catch (Exception e) {
-            log.debug("Audit: failed to record user_msg for {}: {}", conversationId, e.getMessage());
+    /**
+     * Allocates the next sequence and inserts the audit event under a striped lock
+     * keyed by conversation_id. This serializes inserts per conversation, making
+     * the read-max + write cycle atomic across threads without relying on SQLite's
+     * multi-connection locking or constraint-based retry.
+     */
+    private void insertSerialized(String conversationId, String sql, Object... params) {
+        int stripe = Math.abs(conversationId.hashCode()) % STRIPE_COUNT;
+        synchronized (lockStripes[stripe]) {
+            try {
+                int seq = nextSequence(conversationId);
+                Object[] allParams = new Object[params.length + 2];
+                allParams[0] = conversationId;
+                allParams[1] = seq;
+                System.arraycopy(params, 0, allParams, 2, params.length);
+                jdbcTemplate.update(sql, allParams);
+            } catch (Exception e) {
+                log.warn("Audit: failed to insert for conv {}: {}", conversationId, e.getMessage());
+            }
         }
+    }
+
+    public void recordUserMessage(String conversationId, String messageText, String model) {
+        insertSerialized(conversationId,
+            """
+                insert into audit_event (conversation_id, sequence, event_type, message_text, model, recorded_at)
+                values (?, ?, 'user_msg', ?, ?, ?)
+                """,
+            messageText, model, Instant.now().toString()
+        );
     }
 
     public void recordAssistantMessage(String conversationId, String messageText,
                                        String metadataJson, String model) {
-        try {
-            int seq = nextSequence(conversationId);
-            jdbcTemplate.update(
-                """
-                    insert into audit_event (conversation_id, sequence, event_type, message_text, message_metadata_json, model, recorded_at)
-                    values (?, ?, 'assistant_msg', ?, ?, ?, ?)
-                    """,
-                conversationId, seq, messageText, metadataJson, model, Instant.now().toString()
-            );
-        } catch (Exception e) {
-            log.debug("Audit: failed to record assistant_msg for {}: {}", conversationId, e.getMessage());
-        }
+        insertSerialized(conversationId,
+            """
+                insert into audit_event (conversation_id, sequence, event_type, message_text, message_metadata_json, model, recorded_at)
+                values (?, ?, 'assistant_msg', ?, ?, ?, ?)
+                """,
+            messageText, metadataJson, model, Instant.now().toString()
+        );
     }
 
     public void recordToolExec(ToolTranscriptEntry entry, String conversationId, String model) {
-        try {
-            int seq = nextSequence(conversationId);
-            jdbcTemplate.update(
-                """
-                    insert into audit_event (conversation_id, sequence, event_type,
-                        tool_call_id, tool_name, arguments_json, arguments_summary, call_preview,
-                        result_text, result_summary, result_preview, tool_status,
-                        result_truncated, result_large, model, recorded_at)
-                    values (?, ?, 'tool_exec', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                conversationId, seq,
-                entry.toolCallId(), entry.toolName(),
-                entry.argumentsText(), entry.argumentsSummary(), entry.callPreview(),
-                entry.resultText(), entry.resultSummary(), entry.resultPreview(),
-                entry.status(),
-                entry.truncated() ? 1 : 0, entry.largeResult() ? 1 : 0,
-                model, Instant.now().toString()
-            );
-        } catch (Exception e) {
-            log.debug("Audit: failed to record tool_exec for {}: {}", conversationId, e.getMessage());
-        }
+        insertSerialized(conversationId,
+            """
+                insert into audit_event (conversation_id, sequence, event_type,
+                    tool_call_id, tool_name, arguments_json, arguments_summary, call_preview,
+                    result_text, result_summary, result_preview, tool_status,
+                    result_truncated, result_large, model, recorded_at)
+                values (?, ?, 'tool_exec', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+            entry.toolCallId(), entry.toolName(),
+            entry.argumentsText(), entry.argumentsSummary(), entry.callPreview(),
+            entry.resultText(), entry.resultSummary(), entry.resultPreview(),
+            entry.status(),
+            entry.truncated() ? 1 : 0, entry.largeResult() ? 1 : 0,
+            model, Instant.now().toString()
+        );
     }
 
     public void recordCompaction(String conversationId, ContextUsage usage, int storedMessageCount,
                                  String method, String summary, String model) {
-        try {
-            int seq = nextSequence(conversationId);
-            jdbcTemplate.update(
-                """
-                    insert into audit_event (conversation_id, sequence, event_type,
-                        compaction_method, compaction_summary,
-                        used_tokens, max_tokens, trigger_tokens, percent_used, stored_message_count,
-                        model, recorded_at)
-                    values (?, ?, 'compaction', ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                conversationId, seq,
-                method, summary,
-                usage.usedTokens(), usage.maxTokens(), usage.triggerTokens(),
-                usage.percentUsed(), storedMessageCount,
-                model, Instant.now().toString()
-            );
-        } catch (Exception e) {
-            log.debug("Audit: failed to record compaction for {}: {}", conversationId, e.getMessage());
-        }
+        insertSerialized(conversationId,
+            """
+                insert into audit_event (conversation_id, sequence, event_type,
+                    compaction_method, compaction_summary,
+                    used_tokens, max_tokens, trigger_tokens, percent_used, stored_message_count,
+                    model, recorded_at)
+                values (?, ?, 'compaction', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+            method, summary,
+            usage.usedTokens(), usage.maxTokens(), usage.triggerTokens(),
+            usage.percentUsed(), storedMessageCount,
+            model, Instant.now().toString()
+        );
     }
 
     public void recordContext(String conversationId, ContextUsage usage,
                               int storedMessageCount, String model) {
-        try {
-            int seq = nextSequence(conversationId);
-            jdbcTemplate.update(
-                """
-                    insert into audit_event (conversation_id, sequence, event_type,
-                        used_tokens, max_tokens, trigger_tokens, percent_used, stored_message_count,
-                        model, recorded_at)
-                    values (?, ?, 'context', ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                conversationId, seq,
-                usage.usedTokens(), usage.maxTokens(), usage.triggerTokens(),
-                usage.percentUsed(), storedMessageCount,
-                model, Instant.now().toString()
-            );
-        } catch (Exception e) {
-            log.debug("Audit: failed to record context for {}: {}", conversationId, e.getMessage());
-        }
+        insertSerialized(conversationId,
+            """
+                insert into audit_event (conversation_id, sequence, event_type,
+                    used_tokens, max_tokens, trigger_tokens, percent_used, stored_message_count,
+                    model, recorded_at)
+                values (?, ?, 'context', ?, ?, ?, ?, ?, ?, ?)
+                """,
+            usage.usedTokens(), usage.maxTokens(), usage.triggerTokens(),
+            usage.percentUsed(), storedMessageCount,
+            model, Instant.now().toString()
+        );
     }
 
     public List<AuditEvent> findByConversationId(String conversationId) {

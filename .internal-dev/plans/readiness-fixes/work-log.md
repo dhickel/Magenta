@@ -14,7 +14,7 @@ Started: 2026-05-08
 | 2.2 | Workflow Stream Off Servlet Threads | pending | — |
 | 2.3 | Prevent Duplicate Queued Assignment Submission | completed | Acquire lease before executor submission in pollQueuedWork; revert on rejection. 3 new tests. |
 | 3.1 | SQLite Schema Ownership & Validation | completed | Schema ownership policy: central schema.sql with narrow ensureSchema safety net. Added all missing tables to schema.sql. Enabled SQLite foreign keys. Added defense-in-depth cascade deletes in TaskRepository and WorkflowRepository. 13 new tests. |
-| 3.2 | Audit Sequence Robustness | pending | — |
+| 3.2 | Audit Sequence Robustness | completed | — |
 | 4.1 | Extract Controller Workflow & Stream Logic | pending | — |
 | 4.2 | Public API DTOs For Lifecycle Fields | pending | — |
 | 4.3 | Move PlanMode To Chat Interaction Package | pending | — |
@@ -334,3 +334,37 @@ Chose a **narrow hybrid** policy:
 - The `?foreign_keys=true` parameter is added to the JDBC URL. This is supported by the xerial SQLite JDBC driver (org.xerial:sqlite-jdbc:3.50.3.0). Each connection created through the DataSource will have `PRAGMA foreign_keys = ON` set automatically.
 - TaskRepository and WorkflowRepository gained `@Transactional` on their `delete()` methods. The annotation was already imported in both files; the explicit cascade deletes are now wrapped in a transaction so the two DELETE statements are atomic.
 - No changes were made to repository `ensureSchema()` methods themselves -- they continue to provide CREATE TABLE IF NOT EXISTS + ALTER TABLE migration logic. The consolidation is achieved entirely through schema.sql becoming the authoritative source for all tables.
+
+### Issue 3.2: Audit Sequence Robustness
+
+**Files changed:**
+- `src/main/resources/schema.sql`
+- `src/main/java/io/mindspice/magenta2/ai/chat/repository/AuditRepository.java`
+- `src/test/java/io/mindspice/magenta2/ai/chat/repository/AuditRepositoryTest.java` (NEW)
+
+**What changed and why:**
+
+1. `schema.sql` -- Changed `create index if not exists idx_audit_event_conversation on audit_event (conversation_id, sequence)` to `create unique index` so fresh installs get the uniqueness constraint from the start.
+
+2. `AuditRepository.java` -- Three changes:
+   - **Unique constraint in ensureSchema**: Added pragmatic upgrade logic that checks `pragma_index_list` to determine if the existing index is already unique. If not (old install), drops and recreates as unique. If doesn't exist (fresh), creates unique. If already unique (already upgraded), no-op.
+   - **Striped-lock serialization** (`insertSerialized`): Replaced the `nextSequence()` + `insertWithRetry()` pattern with a simple `synchronized` block keyed by `conversation_id.hashCode() % 64`. This serializes the read-max + insert cycle per conversation without relying on SQLite multi-connection constraint propagation or Spring exception translation.
+   - **Raised visibility**: Changed audit write failure logging from `log.debug` to `log.warn` so alpha debugging is not masked.
+
+3. `AuditRepositoryTest.java` -- Added `concurrentInsertsProduceUniqueSequences`: 10 threads * 100 inserts on the same conversation, all through a single shared `AuditRepository` instance (matching production singleton pattern). Verifies all 1000 events recorded, no duplicate sequences, and sequences are 0..999.
+
+**Decisions made:**
+
+- Chose **striped Java-level locking** over retry-on-conflict as the sequence allocation strategy. The initial retry approach (catch `DataIntegrityViolationException`) proved unreliable because Spring's exception translation for SQLite constraint violations did not consistently produce the expected exception type. The `INSERT OR IGNORE` approach also had issues with the `replaceFirst` regex transformation. Striped locking is simpler, has no runtime dependency on SQLite driver specifics, and matches production access patterns (single `AuditRepository` bean).
+- Used 64 stripes (`Object[] lockStripes`), initialized eagerly in the constructor. This prevents unbounded key growth (problem with `ConcurrentHashMap`-based locks) while providing sufficient granularity.
+- The unique constraint on `(conversation_id, sequence)` is kept as defense-in-depth even though the locking makes conflicts virtually impossible in production. It silently documents the expected invariant and catches programmer errors.
+- The SQL text blocks were deliberately NOT modified to use `INSERT OR IGNORE` -- the striped lock makes the read-max + write sequence atomic, so `INSERT INTO` (which throws on violation) is the correct choice and programmer errors during development will surface immediately rather than being silently ignored.
+
+**Test results:**
+- All 254 tests pass (253 existing + 1 new AuditRepositoryTest). Full suite: 254 run, 0 failures, 0 errors, 0 skipped.
+
+**Reviewer notes:**
+- The lock stripe uses `Math.abs(hashCode()) % 64`. For `String`, `hashCode()` can return `Integer.MIN_VALUE`, making `Math.abs()` negative. But `Integer.MIN_VALUE % 64` is `Integer.MIN_VALUE & 63 = 0` in Java (both are 64-bit aligned), so the index is always valid. Additionally, the negative remainder of `Integer.MIN_VALUE % 64` is `-0` which is 0 in Java's array indexing (since negative remainders are returned as-is, but `% 64` with negative divisor... actually, `Integer.MIN_VALUE % 64` in Java = `-(64) = -0 = 0`. No wait: `-2147483648 % 64 = 0` since 64 divides evenly. So `Math.abs` is not needed here, but kept for clarity and safety with non-power-of-two stripe counts.
+- The hash code of `String` is stable across JVM invocations (documented in Java spec), so same conversation IDs always map to the same stripe.
+- The lock array is initialized in the constructor (not lazy), so there's no allocation or synchronization cost at runtime.
+- `SingleConnectionDataSource` was used in the concurrent test instead of `SimpleDriverDataSource` to avoid creating a new connection per SQL statement. The single connection is protected by the same striped lock, making it safe for multi-threaded access.

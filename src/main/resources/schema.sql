@@ -112,7 +112,7 @@ create table if not exists audit_event (
     recorded_at text not null
 );
 
-create index if not exists idx_audit_event_conversation
+create unique index if not exists idx_audit_event_conversation
     on audit_event (conversation_id, sequence);
 
 create table if not exists ai_task_definitions (
