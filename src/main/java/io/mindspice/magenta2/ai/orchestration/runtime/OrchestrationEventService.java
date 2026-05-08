@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class OrchestrationEventService {
@@ -16,6 +17,7 @@ public class OrchestrationEventService {
         this.assignmentService = assignmentService;
     }
 
+    @Transactional
     public OrchestrationEvent publish(EventType eventType, String sourceType, String sourceId, Map<String, Object> payload) {
         OrchestrationEvent event = repository.saveEvent(new OrchestrationEvent(
             UUID.randomUUID().toString(), eventType, sourceType, sourceId, payload == null ? Map.of() : payload,
@@ -25,6 +27,7 @@ public class OrchestrationEventService {
         return event;
     }
 
+    @Transactional
     public void handle(OrchestrationEvent event) {
         for (AgentEventReaction reaction : repository.findEnabledReactions(event.eventType())) {
             if (!matches(reaction.filter(), event.payload())) {

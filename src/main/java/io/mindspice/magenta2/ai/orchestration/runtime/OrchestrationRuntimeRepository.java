@@ -80,9 +80,9 @@ public class OrchestrationRuntimeRepository {
             """
                 insert into orchestration_job_items (
                     id, job_id, item_order, item_type, task_id, workflow_id, model_override, priority,
-                    config_json, created_at, updated_at
+                    retry_count, continue_on_failure, config_json, created_at, updated_at
                 )
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict(id) do update set
                     item_order = excluded.item_order,
                     item_type = excluded.item_type,
@@ -90,11 +90,14 @@ public class OrchestrationRuntimeRepository {
                     workflow_id = excluded.workflow_id,
                     model_override = excluded.model_override,
                     priority = excluded.priority,
+                    retry_count = excluded.retry_count,
+                    continue_on_failure = excluded.continue_on_failure,
                     config_json = excluded.config_json,
                     updated_at = excluded.updated_at
                 """,
             item.id(), item.jobId(), item.itemOrder(), item.itemType().name(), item.taskId(), item.workflowId(),
-            item.modelOverride(), item.priority(), jsonOrNull(item.config()), createdAt.toString(), updatedAt.toString()
+            item.modelOverride(), item.priority(), item.retryCount(), item.continueOnFailure() ? 1 : 0,
+            jsonOrNull(item.config()), createdAt.toString(), updatedAt.toString()
         );
         return findJobItem(item.id()).orElseThrow();
     }
@@ -432,7 +435,8 @@ public class OrchestrationRuntimeRepository {
         return new OrchestrationJobItem(
             rs.getString("id"), rs.getString("job_id"), rs.getInt("item_order"),
             AssignmentType.valueOf(rs.getString("item_type")), rs.getString("task_id"), rs.getString("workflow_id"),
-            rs.getString("model_override"), rs.getInt("priority"), map(rs.getString("config_json")),
+            rs.getString("model_override"), rs.getInt("priority"), rs.getInt("retry_count"),
+            rs.getInt("continue_on_failure") == 1, map(rs.getString("config_json")),
             instantValue(rs.getString("created_at")), instantValue(rs.getString("updated_at"))
         );
     }
@@ -542,12 +546,24 @@ public class OrchestrationRuntimeRepository {
                 workflow_id text,
                 model_override text,
                 priority integer not null,
+                retry_count integer not null default 0,
+                continue_on_failure integer not null default 0,
                 config_json text,
                 created_at text not null,
                 updated_at text not null,
                 foreign key(job_id) references orchestration_jobs(id)
             )
             """);
+        java.util.List<String> jobItemColumns = jdbcTemplate.queryForList(
+            "select name from pragma_table_info('orchestration_job_items')",
+            String.class
+        );
+        if (!jobItemColumns.contains("retry_count")) {
+            jdbcTemplate.execute("alter table orchestration_job_items add column retry_count integer not null default 0");
+        }
+        if (!jobItemColumns.contains("continue_on_failure")) {
+            jdbcTemplate.execute("alter table orchestration_job_items add column continue_on_failure integer not null default 0");
+        }
         jdbcTemplate.execute("""
             create table if not exists work_assignments (
                 id text primary key,

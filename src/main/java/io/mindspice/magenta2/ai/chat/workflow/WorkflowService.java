@@ -10,7 +10,10 @@ import java.util.UUID;
 import io.mindspice.magenta2.ai.chat.task.TaskDefinition;
 import io.mindspice.magenta2.ai.chat.task.TaskFieldDefinition;
 import io.mindspice.magenta2.ai.chat.task.TaskRun;
+import io.mindspice.magenta2.ai.chat.task.TaskRunStatus;
 import io.mindspice.magenta2.ai.chat.task.TaskService;
+import io.mindspice.magenta2.ai.chat.service.ChatService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -18,10 +21,17 @@ import org.springframework.util.StringUtils;
 public class WorkflowService {
     private final WorkflowRepository workflowRepository;
     private final TaskService taskService;
+    private final ChatService chatService;
 
     public WorkflowService(WorkflowRepository workflowRepository, TaskService taskService) {
+        this(workflowRepository, taskService, null);
+    }
+
+    @Autowired
+    public WorkflowService(WorkflowRepository workflowRepository, TaskService taskService, ChatService chatService) {
         this.workflowRepository = workflowRepository;
         this.taskService = taskService;
+        this.chatService = chatService;
     }
 
     public List<WorkflowDefinition> listWorkflows() {
@@ -108,13 +118,29 @@ public class WorkflowService {
     }
 
     public WorkflowRun runSynchronously(String workflowId) {
+        return runSynchronously(workflowId, null);
+    }
+
+    public WorkflowRun runSynchronously(String workflowId, String modelOverride) {
+        if (chatService == null) {
+            throw new IllegalStateException("Workflow execution requires model-backed task execution");
+        }
         WorkflowRun run = startRun(workflowId);
         Map<String, Map<String, Object>> outputsByStep = new LinkedHashMap<>();
         List<WorkflowStepRun> stepRuns = new ArrayList<>();
         try {
             for (WorkflowStep step : run.workflowSnapshot().steps()) {
                 Map<String, Object> inputs = resolveInputs(step, run.workflowSnapshot(), outputsByStep);
-                TaskRun taskRun = taskService.runSynchronously(step.taskId(), inputs);
+                TaskRun taskRun = chatService.executeTaskBlocking(
+                    step.taskId(),
+                    inputs,
+                    UUID.randomUUID().toString(),
+                    modelOverride
+                ).run();
+                if (taskRun.status() != TaskRunStatus.COMPLETED) {
+                    throw new IllegalStateException("Task step " + step.stepKey() + " did not complete: "
+                        + (taskRun.errorText() == null ? taskRun.status().name() : taskRun.errorText()));
+                }
                 WorkflowStepRun stepRun = new WorkflowStepRun(
                     step.stepKey(),
                     step.taskId(),

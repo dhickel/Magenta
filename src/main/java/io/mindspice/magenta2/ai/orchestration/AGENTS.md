@@ -9,6 +9,8 @@ This package owns durable runtime agent, setting, workspace, and orchestration s
 - Keep orchestration services small, explicit, and usable by existing chat flows.
 - Keep filesystem workspace roots confined under the configured data root.
 - Keep durable assignment execution resumable at task/workflow/job item boundaries; do not attempt token-level or partial model response resume.
+- Execute task and workflow assignments through the chat task execution service so durable orchestration never fabricates task outputs.
+- Persist job item retry policy with explicit retry count and continue-on-failure behavior.
 
 ### Change guidance
 - Do not add subagent lifecycle behavior without a concrete workflow.

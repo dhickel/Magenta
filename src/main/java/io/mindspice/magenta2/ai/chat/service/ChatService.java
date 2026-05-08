@@ -39,6 +39,8 @@ import io.mindspice.magenta2.ai.chat.plan.PlanToolExecutionContext;
 import io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer;
 import io.mindspice.magenta2.ai.chat.repository.AuditRepository;
 import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
+import io.mindspice.magenta2.ai.chat.task.TaskRun;
+import io.mindspice.magenta2.ai.chat.task.TaskRunStatus;
 import io.mindspice.magenta2.ai.chat.task.TaskService;
 import io.mindspice.magenta2.ai.chat.tool.ChatToolRegistry;
 import io.mindspice.magenta2.ai.chat.tool.ToolTranscriptService;
@@ -129,6 +131,11 @@ public class ChatService {
         "task_set_goal", "task_set_task", "task_put_item", "task_delete_item", "task_ready_for_approval"
     );
     private static final String EXECUTE_PLAN_MESSAGE = "Execute the saved plan now. Work through the plan directly and report the completed result.";
+    private static final String EXECUTE_TASK_MESSAGE = """
+        Execute the reusable task now using the provided runtime inputs.
+        Work through the declared task steps directly. You must call task_complete with outputValues keyed exactly by declared output name before any final completion answer.
+        If you cannot complete the task, call task_report with the evidence gathered and explain the missing output, then continue until task_complete succeeds or Magenta marks the run for review.
+        """.trim();
     private static final String BEGIN_PLAN_MESSAGE = "The user is ready to plan. Begin the structured planning workflow by asking the user about their goal.";
 
     private final ChatMemory chatMemory;
@@ -606,6 +613,88 @@ public class ChatService {
         } catch (RuntimeException reportException) {
             exception.addSuppressed(reportException);
         }
+    }
+
+    public TaskExecutionResult executeTaskBlocking(String taskId, Map<String, Object> inputValues, String conversationId, String modelOverride) {
+        requireTaskService();
+        ResolvedTaskExecution execution = resolveTaskExecution(taskId, inputValues, conversationId, modelOverride);
+        try {
+            ChatResponse.MsgResponse response = chat(execution.request());
+            TaskRun run = taskService.getRun(execution.runId());
+            if (run.status() == TaskRunStatus.RUNNING) {
+                run = taskService.markActiveRunNeedsReview(
+                    execution.conversationId(),
+                    "Task execution returned without calling task_complete."
+                );
+            }
+            return new TaskExecutionResult(execution.conversationId(), run, response);
+        } catch (RuntimeException exception) {
+            try {
+                TaskRun current = taskService.getRun(execution.runId());
+                if (current.status() != TaskRunStatus.RUNNING) {
+                    return new TaskExecutionResult(execution.conversationId(), current, null);
+                }
+                TaskRun failed = taskService.failActiveRun(execution.conversationId(), rootCauseMessage(exception));
+                return new TaskExecutionResult(execution.conversationId(), failed, null);
+            } catch (RuntimeException failException) {
+                exception.addSuppressed(failException);
+                throw exception;
+            }
+        }
+    }
+
+    public Flux<TaskExecutionEvent> streamTaskExecution(String taskId, Map<String, Object> inputValues, String conversationId, String modelOverride) {
+        requireTaskService();
+        ResolvedTaskExecution execution = resolveTaskExecution(taskId, inputValues, conversationId, modelOverride);
+        return Flux.<TaskExecutionEvent>create(sink -> {
+            sink.next(TaskExecutionEvent.started(execution.conversationId(), execution.runId()));
+            try {
+                ChatMessage finalMessage = toolChatMessageWithRetry(
+                    execution.request(),
+                    approvedTools(execution.request()),
+                    message -> sink.next(TaskExecutionEvent.message(execution.conversationId(), execution.runId(), message)),
+                    null
+                );
+                if (finalMessage != null) {
+                    sink.next(TaskExecutionEvent.message(execution.conversationId(), execution.runId(), finalMessage));
+                }
+                TaskRun run = taskService.getRun(execution.runId());
+                if (run.status() == TaskRunStatus.RUNNING) {
+                    run = taskService.markActiveRunNeedsReview(
+                        execution.conversationId(),
+                        "Task execution returned without calling task_complete."
+                    );
+                }
+                sink.next(TaskExecutionEvent.finished(execution.conversationId(), run));
+                sink.complete();
+            } catch (RuntimeException exception) {
+                TaskRun current = taskService.getRun(execution.runId());
+                if (current.status() == TaskRunStatus.RUNNING) {
+                    current = taskService.failActiveRun(execution.conversationId(), rootCauseMessage(exception));
+                }
+                sink.next(TaskExecutionEvent.finished(execution.conversationId(), current));
+                sink.complete();
+            }
+        });
+    }
+
+    private ResolvedTaskExecution resolveTaskExecution(
+        String taskId,
+        Map<String, Object> inputValues,
+        String conversationId,
+        String modelOverride
+    ) {
+        String resolvedConversationId = StringUtils.hasText(conversationId) ? conversationId : UUID.randomUUID().toString();
+        String storedModel = storedConversationModel(resolvedConversationId);
+        String model = StringUtils.hasText(modelOverride)
+            ? modelOverride
+            : (StringUtils.hasText(storedModel) ? storedModel : defaultModel());
+        if (contextUsageTracker != null) {
+            contextUsageTracker.clear(resolvedConversationId);
+        }
+        TaskRun run = taskService.startChatExecution(resolvedConversationId, taskId, inputValues == null ? Map.of() : inputValues);
+        ResolvedChatRequest request = resolve(resolvedConversationId, EXECUTE_TASK_MESSAGE, model, null).withoutTitleJob();
+        return new ResolvedTaskExecution(resolvedConversationId, run.id(), request);
     }
 
     private String rootCauseMessage(Throwable throwable) {
@@ -1644,6 +1733,12 @@ public class ChatService {
         }
     }
 
+    private void requireTaskService() {
+        if (taskService == null) {
+            throw new IllegalStateException("Task service is not available");
+        }
+    }
+
     private List<ChatMessage> toHistory(List<Message> messages) {
         return messages.stream()
             .filter(message -> contextManagementAdvisor == null || !contextManagementAdvisor.isHiddenSummary(message))
@@ -1898,6 +1993,28 @@ public class ChatService {
 
         ResolvedChatRequest withoutTitleJob() {
             return new ResolvedChatRequest(conversationId, message, model, newConversation, false);
+        }
+    }
+
+    private record ResolvedTaskExecution(String conversationId, String runId, ResolvedChatRequest request) {
+    }
+
+    public record TaskExecutionResult(String conversationId, TaskRun run, ChatResponse.MsgResponse response) {
+    }
+
+    public record TaskExecutionEvent(String event, String conversationId, String runId, ChatMessage message, TaskRun run) {
+        static TaskExecutionEvent started(String conversationId, String runId) {
+            return new TaskExecutionEvent("started", conversationId, runId, null, null);
+        }
+
+        static TaskExecutionEvent message(String conversationId, String runId, ChatMessage message) {
+            String event = message != null && message.toolActivity() != null ? "tool" : "progress";
+            return new TaskExecutionEvent(event, conversationId, runId, message, null);
+        }
+
+        static TaskExecutionEvent finished(String conversationId, TaskRun run) {
+            String event = run.status() == TaskRunStatus.COMPLETED ? "completed" : "failed";
+            return new TaskExecutionEvent(event, conversationId, run.id(), null, run);
         }
     }
 }

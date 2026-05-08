@@ -11,6 +11,8 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 import io.mindspice.magenta2.ai.chat.plan.PlanMode;
+import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -19,10 +21,17 @@ public class TaskService {
     private static final int MAX_QUEUED_QUESTIONS = 5;
 
     private final TaskRepository taskRepository;
+    private final ChatSessionMetadataRepository chatSessionMetadataRepository;
     private final Map<String, String> executionRunsByConversationId = new ConcurrentHashMap<>();
 
     public TaskService(TaskRepository taskRepository) {
+        this(taskRepository, null);
+    }
+
+    @Autowired
+    public TaskService(TaskRepository taskRepository, ChatSessionMetadataRepository chatSessionMetadataRepository) {
         this.taskRepository = taskRepository;
+        this.chatSessionMetadataRepository = chatSessionMetadataRepository;
     }
 
     public List<TaskDefinition> listTasks() {
@@ -103,7 +112,7 @@ public class TaskService {
     }
 
     public PlanMode mode(String conversationId) {
-        if (executionRunsByConversationId.containsKey(conversationId)) {
+        if (StringUtils.hasText(activeRunId(conversationId))) {
             return PlanMode.EXECUTE_TASK;
         }
         return taskRepository.findDraft(conversationId)
@@ -239,7 +248,7 @@ public class TaskService {
     }
 
     public String runtimeInstructions(String conversationId) {
-        String runId = executionRunsByConversationId.get(conversationId);
+        String runId = activeRunId(conversationId);
         if (StringUtils.hasText(runId)) {
             return executionInstructions(requireRun(runId));
         }
@@ -275,6 +284,12 @@ public class TaskService {
         ));
     }
 
+    public TaskRun startChatExecution(String conversationId, String taskId, Map<String, Object> inputValues) {
+        TaskRun run = startRun(taskId, inputValues);
+        registerExecutionContext(conversationId, run.id());
+        return run;
+    }
+
     public void registerExecutionContext(String conversationId, String runId) {
         if (!StringUtils.hasText(conversationId) || !StringUtils.hasText(runId)) {
             throw new IllegalArgumentException("conversationId and runId are required");
@@ -284,16 +299,22 @@ public class TaskService {
             throw new IllegalStateException("Task run is not active: " + runId);
         }
         executionRunsByConversationId.put(conversationId, runId);
+        if (chatSessionMetadataRepository != null) {
+            chatSessionMetadataRepository.saveActiveTaskRunId(conversationId, runId);
+        }
     }
 
     public void clearExecutionContext(String conversationId) {
         if (StringUtils.hasText(conversationId)) {
             executionRunsByConversationId.remove(conversationId);
+            if (chatSessionMetadataRepository != null) {
+                chatSessionMetadataRepository.clearActiveTaskRunId(conversationId);
+            }
         }
     }
 
     public String runIdForConversation(String conversationId) {
-        return executionRunsByConversationId.get(conversationId);
+        return activeRunId(conversationId);
     }
 
     public String finalMessage(String runId) {
@@ -342,10 +363,39 @@ public class TaskService {
             run.validationFeedback(), run.finalMessage(), normalize(errorText), run.startedAt(), Instant.now()));
     }
 
-    public TaskRun runSynchronously(String taskId, Map<String, Object> inputValues) {
-        TaskRun run = startRun(taskId, inputValues);
-        Map<String, Object> outputs = defaultOutputs(run.taskSnapshot(), run.inputValues());
-        return completeRun(run.id(), outputs, "Task completed: " + run.taskSnapshot().title(), List.of("Generated declared outputs."));
+    public TaskRun markNeedsReview(String runId, String reason) {
+        TaskRun run = requireRun(runId);
+        List<String> feedback = new ArrayList<>(run.validationFeedback());
+        String normalizedReason = normalize(reason);
+        if (normalizedReason != null) {
+            feedback.add(normalizedReason);
+        }
+        return taskRepository.saveRun(copyRun(run, TaskRunStatus.NEEDS_REVIEW, run.outputValues(), run.executionEvidence(),
+            feedback, run.finalMessage(), null, run.startedAt(), Instant.now()));
+    }
+
+    public TaskRun markActiveRunNeedsReview(String conversationId, String reason) {
+        String runId = activeRunId(conversationId);
+        if (!StringUtils.hasText(runId)) {
+            throw new IllegalStateException("No active task run exists for this conversation");
+        }
+        try {
+            return markNeedsReview(runId, reason);
+        } finally {
+            clearExecutionContext(conversationId);
+        }
+    }
+
+    public TaskRun failActiveRun(String conversationId, String errorText) {
+        String runId = activeRunId(conversationId);
+        if (!StringUtils.hasText(runId)) {
+            throw new IllegalStateException("No active task run exists for this conversation");
+        }
+        try {
+            return failRun(runId, errorText);
+        } finally {
+            clearExecutionContext(conversationId);
+        }
     }
 
     public TaskRun getRun(String runId) {
@@ -514,28 +564,43 @@ public class TaskService {
             .toList();
     }
 
-    private Map<String, Object> defaultOutputs(TaskDefinition task, Map<String, Object> inputs) {
-        Map<String, Object> outputs = new LinkedHashMap<>();
-        String inputSummary = inputs.isEmpty() ? "No runtime inputs were provided." : inputs.toString();
-        for (TaskFieldDefinition output : task.outputs()) {
-            Object value = switch (output.type()) {
-                case NUMBER -> 0;
-                case BOOLEAN -> true;
-                case JSON -> Map.of("result", output.name(), "inputs", inputs);
-                default -> StringUtils.hasText(output.example())
-                    ? output.example()
-                    : "Generated " + output.name() + " for " + task.title() + ". Inputs: " + inputSummary;
-            };
-            outputs.put(output.name(), value);
-        }
-        return outputs;
-    }
-
     private TaskFieldDefinition fieldByName(List<TaskFieldDefinition> fields, String name) {
         if (!StringUtils.hasText(name)) {
             return null;
         }
         return fields.stream().filter(field -> name.equals(field.name())).findFirst().orElse(null);
+    }
+
+    private String activeRunId(String conversationId) {
+        if (!StringUtils.hasText(conversationId)) {
+            return null;
+        }
+        String cached = executionRunsByConversationId.get(conversationId);
+        if (StringUtils.hasText(cached) && isActiveRun(cached)) {
+            return cached;
+        }
+        if (StringUtils.hasText(cached)) {
+            executionRunsByConversationId.remove(conversationId);
+        }
+        if (chatSessionMetadataRepository == null) {
+            return null;
+        }
+        String stored = chatSessionMetadataRepository.findActiveTaskRunId(conversationId).orElse(null);
+        if (!StringUtils.hasText(stored)) {
+            return null;
+        }
+        if (isActiveRun(stored)) {
+            executionRunsByConversationId.put(conversationId, stored);
+            return stored;
+        }
+        chatSessionMetadataRepository.clearActiveTaskRunId(conversationId);
+        return null;
+    }
+
+    private boolean isActiveRun(String runId) {
+        return taskRepository.findRun(runId)
+            .map(run -> run.status() == TaskRunStatus.RUNNING)
+            .orElse(false);
     }
 
     private List<TaskFieldDefinition> keyedFields(List<TaskFieldDefinition> values, int key, TaskFieldDefinition field, boolean delete) {

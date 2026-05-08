@@ -8,10 +8,13 @@ import java.util.Map;
 import java.util.UUID;
 
 import io.mindspice.magenta2.ai.chat.task.TaskRun;
+import io.mindspice.magenta2.ai.chat.task.TaskRunStatus;
 import io.mindspice.magenta2.ai.chat.task.TaskService;
+import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.chat.workflow.WorkflowRun;
 import io.mindspice.magenta2.ai.chat.workflow.WorkflowService;
 import io.mindspice.magenta2.ai.execution.MagentaWorkExecutor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -25,6 +28,7 @@ public class OrchestrationRunnerService {
     private final OrchestrationJobService jobService;
     private final TaskService taskService;
     private final WorkflowService workflowService;
+    private final ChatService chatService;
     private final InboxService inboxService;
     private final OrchestrationEventService eventService;
     private final MagentaWorkExecutor executor;
@@ -40,11 +44,27 @@ public class OrchestrationRunnerService {
         OrchestrationEventService eventService,
         MagentaWorkExecutor executor
     ) {
+        this(repository, assignmentService, jobService, taskService, workflowService, null, inboxService, eventService, executor);
+    }
+
+    @Autowired
+    public OrchestrationRunnerService(
+        OrchestrationRuntimeRepository repository,
+        AssignmentService assignmentService,
+        OrchestrationJobService jobService,
+        TaskService taskService,
+        WorkflowService workflowService,
+        ChatService chatService,
+        InboxService inboxService,
+        OrchestrationEventService eventService,
+        MagentaWorkExecutor executor
+    ) {
         this.repository = repository;
         this.assignmentService = assignmentService;
         this.jobService = jobService;
         this.taskService = taskService;
         this.workflowService = workflowService;
+        this.chatService = chatService;
         this.inboxService = inboxService;
         this.eventService = eventService;
         this.executor = executor;
@@ -96,7 +116,7 @@ public class OrchestrationRunnerService {
 
     private WorkAssignment runTask(WorkAssignment assignment) {
         String taskId = text(assignment.input().get("taskId"), null);
-        TaskRun taskRun = taskService.runSynchronously(taskId, mapValue(assignment.input().get("inputValues")));
+        TaskRun taskRun = runTaskThroughModel(taskId, mapValue(assignment.input().get("inputValues")), assignment, null);
         Map<String, Object> checkpoint = Map.of("taskRunId", taskRun.id(), "status", taskRun.status().name());
         Map<String, Object> output = Map.of("taskRunId", taskRun.id(), "outputValues", taskRun.outputValues());
         return complete(checkpointed(assignment, assignment.currentItemIndex(), checkpoint, output, evidence(taskRun)), output, evidence(taskRun));
@@ -104,7 +124,7 @@ public class OrchestrationRunnerService {
 
     private WorkAssignment runWorkflow(WorkAssignment assignment) {
         String workflowId = text(assignment.input().get("workflowId"), null);
-        WorkflowRun workflowRun = workflowService.runSynchronously(workflowId);
+        WorkflowRun workflowRun = workflowService.runSynchronously(workflowId, assignmentService.resolveModel(assignment, null));
         Map<String, Object> checkpoint = Map.of("workflowRunId", workflowRun.id(), "status", workflowRun.status().name());
         Map<String, Object> output = Map.of("workflowRunId", workflowRun.id(), "finalOutputs", workflowRun.finalOutputs());
         if (workflowRun.status().name().equals("COMPLETED")) {
@@ -141,9 +161,18 @@ public class OrchestrationRunnerService {
                     null, null, null, null
                 ));
             }
-            Object itemOutput = runJobItem(current, item);
-            outputs.put(item.id(), itemOutput);
-            evidence.put(item.id(), Map.of("itemType", item.itemType().name(), "completedAt", Instant.now().toString()));
+            JobItemResult itemResult = runJobItemWithRetry(current, item);
+            outputs.put(item.id(), itemResult.output());
+            evidence.put(item.id(), itemResult.evidence());
+            if (!itemResult.succeeded() && !item.continueOnFailure()) {
+                current = checkpointed(current, i + 1, Map.of(
+                    "jobId", job.id(),
+                    "nextItemIndex", i + 1,
+                    "failedItemId", item.id(),
+                    "model", assignmentService.resolveModel(current, item)
+                ), outputs, evidence);
+                return fail(current, itemResult.errorText());
+            }
             current = checkpointed(current, i + 1, Map.of(
                 "jobId", job.id(),
                 "nextItemIndex", i + 1,
@@ -156,14 +185,50 @@ public class OrchestrationRunnerService {
         return complete(current, outputs, evidence);
     }
 
+    private JobItemResult runJobItemWithRetry(WorkAssignment assignment, OrchestrationJobItem item) {
+        int maxAttempts = Math.max(1, item.retryCount() + 1);
+        RuntimeException lastFailure = null;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                Object output = runJobItem(assignment, item);
+                return new JobItemResult(true, output, Map.of(
+                    "itemType", item.itemType().name(),
+                    "attempts", attempt,
+                    "completedAt", Instant.now().toString()
+                ), null);
+            } catch (RuntimeException exception) {
+                lastFailure = exception;
+                if (attempt < maxAttempts) {
+                    sleepBeforeRetry();
+                }
+            }
+        }
+        String error = lastFailure == null ? "Job item failed" : lastFailure.getMessage();
+        return new JobItemResult(false, Map.of("failed", true, "error", error), Map.of(
+            "itemType", item.itemType().name(),
+            "attempts", maxAttempts,
+            "failedAt", Instant.now().toString(),
+            "error", error
+        ), error);
+    }
+
+    private void sleepBeforeRetry() {
+        try {
+            Thread.sleep(250);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while retrying job item", exception);
+        }
+    }
+
     private Object runJobItem(WorkAssignment assignment, OrchestrationJobItem item) {
         return switch (item.itemType()) {
             case TASK_RUN -> {
-                TaskRun run = taskService.runSynchronously(item.taskId(), mapValue(item.config().get("inputValues")));
+                TaskRun run = runTaskThroughModel(item.taskId(), mapValue(item.config().get("inputValues")), assignment, item);
                 yield Map.of("taskRunId", run.id(), "outputValues", run.outputValues());
             }
             case WORKFLOW_RUN -> {
-                WorkflowRun run = workflowService.runSynchronously(item.workflowId());
+                WorkflowRun run = workflowService.runSynchronously(item.workflowId(), assignmentService.resolveModel(assignment, item));
                 if (!run.status().name().equals("COMPLETED")) {
                     throw new IllegalStateException("Workflow job item failed: " + run.errorText());
                 }
@@ -182,6 +247,28 @@ public class OrchestrationRunnerService {
             case REPORT -> Map.of("message", text(item.config().get("message"), "Report completed."));
             case JOB_RUN -> throw new IllegalArgumentException("Nested JOB_RUN items are not supported");
         };
+    }
+
+    private TaskRun runTaskThroughModel(
+        String taskId,
+        Map<String, Object> inputValues,
+        WorkAssignment assignment,
+        OrchestrationJobItem item
+    ) {
+        if (chatService == null) {
+            throw new IllegalStateException("Task execution requires model-backed chat execution");
+        }
+        TaskRun run = chatService.executeTaskBlocking(
+            taskId,
+            inputValues,
+            UUID.randomUUID().toString(),
+            assignmentService.resolveModel(assignment, item)
+        ).run();
+        if (run.status() != TaskRunStatus.COMPLETED) {
+            throw new IllegalStateException("Task run did not complete: "
+                + (run.errorText() == null ? run.status().name() : run.errorText()));
+        }
+        return run;
     }
 
     private WorkAssignment runAgentMessage(WorkAssignment assignment) {
@@ -243,5 +330,8 @@ public class OrchestrationRunnerService {
         }
         String text = value.toString();
         return StringUtils.hasText(text) ? text : fallback;
+    }
+
+    private record JobItemResult(boolean succeeded, Object output, Map<String, Object> evidence, String errorText) {
     }
 }

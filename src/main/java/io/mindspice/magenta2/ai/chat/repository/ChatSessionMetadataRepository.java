@@ -91,6 +91,60 @@ public class ChatSessionMetadataRepository {
         );
     }
 
+    public void saveActiveTaskRunId(String conversationId, String runId) {
+        if (!StringUtils.hasText(conversationId) || !StringUtils.hasText(runId)) {
+            return;
+        }
+        jdbcTemplate.update(
+            """
+                insert into ai_chat_session_metadata (conversation_id, active_task_run_id, updated_at)
+                values (?, ?, ?)
+                on conflict(conversation_id) do update set
+                    active_task_run_id = excluded.active_task_run_id,
+                    updated_at = excluded.updated_at
+                """,
+            conversationId,
+            runId,
+            now()
+        );
+    }
+
+    public Optional<String> findActiveTaskRunId(String conversationId) {
+        if (!StringUtils.hasText(conversationId)) {
+            return Optional.empty();
+        }
+        return jdbcTemplate.query(
+            """
+                select active_task_run_id
+                from ai_chat_session_metadata
+                where conversation_id = ?
+                """,
+            rs -> {
+                if (!rs.next()) {
+                    return Optional.<String>empty();
+                }
+                String runId = rs.getString("active_task_run_id");
+                return StringUtils.hasText(runId) ? Optional.of(runId) : Optional.empty();
+            },
+            conversationId
+        );
+    }
+
+    public void clearActiveTaskRunId(String conversationId) {
+        if (!StringUtils.hasText(conversationId)) {
+            return;
+        }
+        jdbcTemplate.update(
+            """
+                update ai_chat_session_metadata
+                set active_task_run_id = null, updated_at = ?
+                where conversation_id = ?
+                """,
+            now(),
+            conversationId
+        );
+    }
+
     public void savePlanningModel(String conversationId, String model) {
         if (!StringUtils.hasText(conversationId) || !StringUtils.hasText(model)) {
             return;
@@ -204,6 +258,7 @@ public class ChatSessionMetadataRepository {
                 conversation_id text primary key,
                 model text,
                 title text,
+                active_task_run_id text,
                 favorite integer not null default 0,
                 archived integer not null default 0,
                 updated_at text
@@ -227,6 +282,9 @@ public class ChatSessionMetadataRepository {
         }
         if (!columns.contains("planning_model")) {
             jdbcTemplate.execute("alter table ai_chat_session_metadata add column planning_model text");
+        }
+        if (!columns.contains("active_task_run_id")) {
+            jdbcTemplate.execute("alter table ai_chat_session_metadata add column active_task_run_id text");
         }
     }
 

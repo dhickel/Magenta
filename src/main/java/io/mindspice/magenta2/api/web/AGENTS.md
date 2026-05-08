@@ -12,6 +12,7 @@ This package owns HTTP and web-facing entry points.
 
 ### Change guidance
 - Treat controller request and response changes as public API changes.
+- Task run SSE responses include the task conversation id, task run id, status, output values, errors, and tool/progress events from model-backed execution.
 - Do not put chat, persistence, or orchestration logic in controllers.
 - Keep command parsing small and explicit.
 - Keep this guide updated when web routes, API contracts, or controller conventions change.

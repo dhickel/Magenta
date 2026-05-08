@@ -7,13 +7,14 @@ import java.util.Map;
 import io.mindspice.magenta2.ai.chat.task.TaskDefinition;
 import io.mindspice.magenta2.ai.chat.task.TaskDraft;
 import io.mindspice.magenta2.ai.chat.task.TaskRun;
-import io.mindspice.magenta2.ai.chat.task.TaskRunStatus;
 import io.mindspice.magenta2.ai.chat.task.TaskService;
+import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationRunContext;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationRunResult;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationRunService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -29,10 +30,17 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @RequestMapping("/api/tasks")
 public class TaskController {
     private final TaskService taskService;
+    private final ChatService chatService;
     private final OrchestrationRunService orchestrationRunService;
 
     public TaskController(TaskService taskService, OrchestrationRunService orchestrationRunService) {
+        this(taskService, null, orchestrationRunService);
+    }
+
+    @Autowired
+    public TaskController(TaskService taskService, ChatService chatService, OrchestrationRunService orchestrationRunService) {
         this.taskService = taskService;
+        this.chatService = chatService;
         this.orchestrationRunService = orchestrationRunService;
     }
 
@@ -146,21 +154,46 @@ public class TaskController {
                 emitter.complete();
                 return emitter;
             }
-            TaskRun run = taskService.startRun(taskId, inputs);
-            send(emitter, "started", Map.of("event", "started", "runId", run.id(), "taskId", taskId));
-            send(emitter, "progress", Map.of("event", "progress", "message", "Task run started."));
-            TaskRun completed = taskService.completeRun(
-                run.id(),
-                defaultOutputs(run),
-                "Task completed: " + run.taskSnapshot().title(),
-                List.of("Generated declared outputs.")
-            );
-            send(emitter, "completed", Map.of(
-                "event", "completed",
-                "runId", completed.id(),
-                "status", completed.status().name(),
-                "outputValues", completed.outputValues()
-            ));
+            if (chatService == null) {
+                throw new IllegalStateException("Task streaming requires model-backed chat execution");
+            }
+            chatService.streamTaskExecution(
+                taskId,
+                inputs,
+                request == null ? null : request.conversationId(),
+                request == null ? null : request.modelOverride()
+            ).doOnNext(event -> {
+                try {
+                    if ("started".equals(event.event())) {
+                        send(emitter, "started", Map.of(
+                            "event", "started",
+                            "conversationId", event.conversationId(),
+                            "runId", event.runId(),
+                            "taskId", taskId
+                        ));
+                    } else if ("tool".equals(event.event()) || "progress".equals(event.event())) {
+                        java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+                        payload.put("event", event.event());
+                        payload.put("conversationId", event.conversationId());
+                        payload.put("runId", event.runId());
+                        payload.put("message", event.message() == null ? "" : event.message().text());
+                        payload.put("toolActivity", event.message() == null ? null : event.message().toolActivity());
+                        send(emitter, event.event(), payload);
+                    } else {
+                        TaskRun run = event.run();
+                        send(emitter, event.event(), Map.of(
+                            "event", event.event(),
+                            "conversationId", event.conversationId(),
+                            "runId", event.runId(),
+                            "status", run.status().name(),
+                            "outputValues", run.outputValues(),
+                            "error", run.errorText() == null ? "" : run.errorText()
+                        ));
+                    }
+                } catch (IOException ioException) {
+                    throw new RuntimeException(ioException);
+                }
+            }).blockLast();
             emitter.complete();
         } catch (IllegalArgumentException exception) {
             try {
@@ -176,22 +209,6 @@ public class TaskController {
             emitter.completeWithError(exception);
         }
         return emitter;
-    }
-
-    private Map<String, Object> defaultOutputs(TaskRun run) {
-        java.util.LinkedHashMap<String, Object> values = new java.util.LinkedHashMap<>();
-        for (var output : run.taskSnapshot().outputs()) {
-            Object value = switch (output.type()) {
-                case NUMBER -> 0;
-                case BOOLEAN -> true;
-                case JSON -> Map.of("runId", run.id(), "inputs", run.inputValues());
-                default -> output.example() == null || output.example().isBlank()
-                    ? "Generated " + output.name() + " for " + run.taskSnapshot().title()
-                    : output.example();
-            };
-            values.put(output.name(), value);
-        }
-        return values;
     }
 
     private void send(SseEmitter emitter, String name, Object data) throws IOException {
@@ -215,6 +232,7 @@ public class TaskController {
 
     public record TaskRunRequest(
         Map<String, Object> inputValues,
+        String conversationId,
         String agentId,
         String jobId,
         String workspaceId,

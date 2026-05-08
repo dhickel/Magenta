@@ -14,6 +14,7 @@ create table if not exists ai_chat_session_metadata (
     conversation_id text primary key,
     model text,
     title text,
+    active_task_run_id text,
     favorite integer not null default 0,
     archived integer not null default 0,
     updated_at text

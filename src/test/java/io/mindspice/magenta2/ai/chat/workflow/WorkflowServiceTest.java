@@ -12,6 +12,7 @@ import io.mindspice.magenta2.ai.chat.task.TaskRepository;
 import io.mindspice.magenta2.ai.chat.task.TaskService;
 import io.mindspice.magenta2.ai.chat.task.TaskStep;
 import io.mindspice.magenta2.ai.chat.task.TaskValueType;
+import io.mindspice.magenta2.ai.chat.service.ChatService;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
@@ -126,7 +127,9 @@ class WorkflowServiceTest {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         ObjectMapper objectMapper = new ObjectMapper();
         TaskService taskService = new TaskService(new TaskRepository(jdbcTemplate, objectMapper));
-        WorkflowService workflowService = new WorkflowService(new WorkflowRepository(jdbcTemplate, objectMapper), taskService);
+        WorkflowService workflowService = new WorkflowService(
+            new WorkflowRepository(jdbcTemplate, objectMapper), taskService, new FakeTaskChatService(taskService)
+        );
         return new Services(taskService, workflowService);
     }
 
@@ -142,5 +145,31 @@ class WorkflowServiceTest {
     }
 
     private record Services(TaskService taskService, WorkflowService workflowService) {
+    }
+
+    private static final class FakeTaskChatService extends ChatService {
+        private final TaskService taskService;
+
+        FakeTaskChatService(TaskService taskService) {
+            super(null, null, null, new io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer(), null);
+            this.taskService = taskService;
+        }
+
+        @Override
+        public TaskExecutionResult executeTaskBlocking(
+            String taskId,
+            Map<String, Object> inputValues,
+            String conversationId,
+            String modelOverride
+        ) {
+            var run = taskService.startChatExecution(conversationId, taskId, inputValues);
+            java.util.LinkedHashMap<String, Object> outputs = new java.util.LinkedHashMap<>();
+            for (var output : run.taskSnapshot().outputs()) {
+                outputs.put(output.name(), output.example() == null ? "completed " + output.name() : output.example());
+            }
+            var completed = taskService.completeRun(run.id(), outputs, "done", List.of("fake task_complete"));
+            taskService.clearExecutionContext(conversationId);
+            return new TaskExecutionResult(conversationId, completed, null);
+        }
     }
 }

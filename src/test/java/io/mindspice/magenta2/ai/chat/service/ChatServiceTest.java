@@ -10,6 +10,13 @@ import io.mindspice.magenta2.ai.chat.plan.PlanService;
 import io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer;
 import io.mindspice.magenta2.ai.chat.repository.ChatMemoryRepository;
 import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
+import io.mindspice.magenta2.ai.chat.task.TaskDefinition;
+import io.mindspice.magenta2.ai.chat.task.TaskFieldDefinition;
+import io.mindspice.magenta2.ai.chat.task.TaskRepository;
+import io.mindspice.magenta2.ai.chat.task.TaskRunStatus;
+import io.mindspice.magenta2.ai.chat.task.TaskService;
+import io.mindspice.magenta2.ai.chat.task.TaskStep;
+import io.mindspice.magenta2.ai.chat.task.TaskValueType;
 import io.mindspice.magenta2.ai.chat.tool.ChatToolRegistry;
 import io.mindspice.magenta2.ai.chat.tool.ToolTranscriptService;
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
@@ -657,9 +664,81 @@ class ChatServiceTest {
         assertThat(chatModel.prompts).hasSize(3);
     }
 
+    @Test
+    void executeTaskCompletesOnlyThroughTaskCompleteTool() throws Exception {
+        JdbcTemplate jdbcTemplate = schemaJdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        ChatSessionMetadataRepository metadataRepository = new ChatSessionMetadataRepository(jdbcTemplate);
+        TaskService taskService = new TaskService(new TaskRepository(jdbcTemplate, objectMapper), metadataRepository);
+        TaskDefinition task = taskService.saveTask(new TaskDefinition(
+            null,
+            "Research task",
+            null,
+            "Collect notes.",
+            null,
+            null,
+            List.of(new TaskFieldDefinition("topic", TaskValueType.STRING, "Topic.", true, null, "SQLite")),
+            null,
+            List.of(new TaskFieldDefinition("research_notes", TaskValueType.LONG_TEXT, "Notes.", true, null, null)),
+            List.of(),
+            List.of(new TaskStep(1, "Research the topic.")),
+            List.of("research_notes is present."),
+            null,
+            null
+        ));
+        FinalThenTaskCompleteChatModel chatModel = new FinalThenTaskCompleteChatModel();
+        ChatService service = new ChatService(
+            null,
+            memoryRepository,
+            metadataRepository,
+            new ChatMarkdownRenderer(),
+            taskExecutionToolAiConfig(),
+            new FakeContextManagementAdvisor(memoryRepository),
+            null,
+            new FakeChatModelRouter(chatModel),
+            new CompletingTaskToolCallingManager(taskService),
+            new ChatToolRegistry(List.of(new FakeToolCallback("task_complete")), List.of()),
+            new ToolTranscriptService(objectMapper),
+            null,
+            taskService,
+            null,
+            null,
+            null,
+            objectMapper,
+            null
+        );
+
+        ChatService.TaskExecutionResult result = service.executeTaskBlocking(
+            task.id(),
+            Map.of("topic", "SQLite"),
+            "task-conversation",
+            "qwen3"
+        );
+
+        assertThat(result.run().status()).as(result.run().errorText()).isEqualTo(TaskRunStatus.COMPLETED);
+        assertThat(result.run().outputValues()).containsEntry("research_notes", "model produced notes");
+        assertThat(taskService.mode("task-conversation").name()).isEqualTo("NORMAL");
+        assertThat(chatModel.prompts).hasSize(2);
+        assertThat(chatModel.finalPromptText())
+            .contains("You are Magenta executing a reusable task")
+            .contains("research_notes")
+            .contains("task_complete");
+    }
+
     private JdbcTemplate jdbcTemplate() {
         SingleConnectionDataSource dataSource = new SingleConnectionDataSource("jdbc:sqlite::memory:", true);
         return new JdbcTemplate(dataSource);
+    }
+
+    private JdbcTemplate schemaJdbcTemplate() throws Exception {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        for (String statement : java.nio.file.Files.readString(java.nio.file.Path.of("src/main/resources/schema.sql")).split(";")) {
+            if (!statement.isBlank()) {
+                jdbcTemplate.execute(statement);
+            }
+        }
+        return jdbcTemplate;
     }
 
     private ToolExecutionResult toolResult(String responseData) {
@@ -717,6 +796,18 @@ class ChatServiceTest {
             null,
             Map.of("local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 8192, null, null)),
             Map.of("magenta", new AgentConfig("local-qwen", "You are Magenta.", List.of("plan_complete")))
+        );
+    }
+
+    private AiConfig taskExecutionToolAiConfig() {
+        return new AiConfig(
+            "magenta",
+            "local-qwen",
+            "local-qwen",
+            10,
+            null,
+            Map.of("local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 8192, null, null)),
+            Map.of("magenta", new AgentConfig("local-qwen", "You are Magenta.", List.of("task_complete")))
         );
     }
 
@@ -992,6 +1083,33 @@ class ChatServiceTest {
         }
     }
 
+    private static final class FinalThenTaskCompleteChatModel implements ChatModel {
+        private final List<Prompt> prompts = new java.util.ArrayList<>();
+
+        @Override
+        public ChatResponse call(Prompt prompt) {
+            prompts.add(prompt);
+            if (prompts.size() == 1) {
+                return new ChatResponse(List.of(new Generation(new AssistantMessage("I finished without task_complete."))));
+            }
+            return new ChatResponse(List.of(new Generation(AssistantMessage.builder()
+                .content("")
+                .toolCalls(List.of(new AssistantMessage.ToolCall(
+                    "task-complete-call",
+                    "function",
+                    "task_complete",
+                    "{\"outputValues\":{\"research_notes\":\"model produced notes\"},\"finalMessage\":\"Task done\",\"evidence\":[\"model evidence\"]}"
+                )))
+                .build())));
+        }
+
+        private String finalPromptText() {
+            return prompts.getLast().getInstructions().stream()
+                .map(message -> message.getText() == null ? "" : message.getText())
+                .collect(java.util.stream.Collectors.joining("\n"));
+        }
+    }
+
     private static final class AlwaysFinalChatModel implements ChatModel {
         private final List<Prompt> prompts = new java.util.ArrayList<>();
         private final String response;
@@ -1081,6 +1199,44 @@ class ChatServiceTest {
                     "plan-complete-call",
                     "plan_complete",
                     "Plan validation passed. The plan is marked COMPLETED."
+                )))
+                .build();
+            List<Message> history = new java.util.ArrayList<>(prompt.getInstructions());
+            history.add(chatResponse.getResult().getOutput());
+            history.add(responseMessage);
+            return ToolExecutionResult.builder()
+                .conversationHistory(history)
+                .build();
+        }
+    }
+
+    private static final class CompletingTaskToolCallingManager implements ToolCallingManager {
+        private final TaskService taskService;
+
+        private CompletingTaskToolCallingManager(TaskService taskService) {
+            this.taskService = taskService;
+        }
+
+        @Override
+        public List<ToolDefinition> resolveToolDefinitions(ToolCallingChatOptions chatOptions) {
+            return List.of();
+        }
+
+        @Override
+        public ToolExecutionResult executeToolCalls(Prompt prompt, ChatResponse chatResponse) {
+            var context = io.mindspice.magenta2.ai.chat.plan.PlanToolExecutionContext.current();
+            taskService.completeRun(
+                context.runId(),
+                Map.of("research_notes", "model produced notes"),
+                "Task done",
+                List.of("model evidence")
+            );
+            taskService.clearExecutionContext(context.conversationId());
+            Message responseMessage = ToolResponseMessage.builder()
+                .responses(List.of(new ToolResponseMessage.ToolResponse(
+                    "task-complete-call",
+                    "task_complete",
+                    "Task completed: " + context.runId()
                 )))
                 .build();
             List<Message> history = new java.util.ArrayList<>(prompt.getInstructions());

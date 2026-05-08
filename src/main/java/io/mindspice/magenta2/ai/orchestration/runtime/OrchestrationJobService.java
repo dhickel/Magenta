@@ -89,6 +89,8 @@ public class OrchestrationJobService {
             normalize(item.workflowId()),
             normalize(item.modelOverride()),
             item.priority(),
+            Math.max(0, item.retryCount()),
+            item.continueOnFailure(),
             item.config() == null ? Map.of() : item.config(),
             item.createdAt(),
             item.updatedAt()

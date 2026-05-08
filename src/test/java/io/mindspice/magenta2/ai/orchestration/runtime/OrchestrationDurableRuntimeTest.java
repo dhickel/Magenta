@@ -13,6 +13,7 @@ import io.mindspice.magenta2.ai.chat.task.TaskRepository;
 import io.mindspice.magenta2.ai.chat.task.TaskService;
 import io.mindspice.magenta2.ai.chat.task.TaskStep;
 import io.mindspice.magenta2.ai.chat.task.TaskValueType;
+import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.chat.workflow.WorkflowRepository;
 import io.mindspice.magenta2.ai.chat.workflow.WorkflowBindingKind;
 import io.mindspice.magenta2.ai.chat.workflow.WorkflowDefinition;
@@ -271,12 +272,13 @@ class OrchestrationDurableRuntimeTest {
         ScheduleService scheduleService = new ScheduleService(repository, agentService, assignmentService, eventService);
         EventReactionService reactionService = new EventReactionService(repository, agentService);
         TaskService taskService = new TaskService(new TaskRepository(jdbcTemplate, objectMapper));
-        WorkflowService workflowService = new WorkflowService(new WorkflowRepository(jdbcTemplate, objectMapper), taskService);
+        ChatService chatService = new FakeTaskChatService(taskService);
+        WorkflowService workflowService = new WorkflowService(new WorkflowRepository(jdbcTemplate, objectMapper), taskService, chatService);
         MagentaWorkExecutor executor = new MagentaWorkExecutor(Map.of(
             MagentaWorkKind.BACKGROUND_JOB, new MagentaWorkExecutor.LaneSettings("test-bg-", 1, 10)
         ));
         OrchestrationRunnerService runnerService = new OrchestrationRunnerService(
-            repository, assignmentService, jobService, taskService, workflowService, inboxService, eventService, executor
+            repository, assignmentService, jobService, taskService, workflowService, chatService, inboxService, eventService, executor
         );
         OrchestrationRunService orchestrationRunService = new OrchestrationRunService(
             assignmentService, jobService, runnerService
@@ -345,5 +347,31 @@ class OrchestrationDurableRuntimeTest {
         WorkflowService workflowService,
         OrchestrationRunService orchestrationRunService
     ) {
+    }
+
+    private static final class FakeTaskChatService extends ChatService {
+        private final TaskService taskService;
+
+        FakeTaskChatService(TaskService taskService) {
+            super(null, null, null, new io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer(), null);
+            this.taskService = taskService;
+        }
+
+        @Override
+        public TaskExecutionResult executeTaskBlocking(
+            String taskId,
+            Map<String, Object> inputValues,
+            String conversationId,
+            String modelOverride
+        ) {
+            var run = taskService.startChatExecution(conversationId, taskId, inputValues);
+            java.util.LinkedHashMap<String, Object> outputs = new java.util.LinkedHashMap<>();
+            for (var output : run.taskSnapshot().outputs()) {
+                outputs.put(output.name(), output.example() == null ? "completed " + output.name() : output.example());
+            }
+            var completed = taskService.completeRun(run.id(), outputs, "done", List.of("fake task_complete"));
+            taskService.clearExecutionContext(conversationId);
+            return new TaskExecutionResult(conversationId, completed, null);
+        }
     }
 }
