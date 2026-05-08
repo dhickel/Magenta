@@ -143,7 +143,7 @@ public class AgentOrchestrationController {
 
     @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter chat(@PathVariable String agentId, @Valid @RequestBody AgentChatRequest request) {
-        SseEmitter emitter = new SseEmitter(0L);
+        SseEmitter emitter = SseStreamLifecycle.createEmitter();
         try {
             AgentProfile agent = agentProfileService.get(agentId);
             String message = request == null ? null : request.message();

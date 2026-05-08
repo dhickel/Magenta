@@ -96,7 +96,7 @@ public class WorkflowController {
 
     @PostMapping(value = "/{workflowId}/runs/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter streamRun(@PathVariable String workflowId, @RequestBody(required = false) WorkflowRunRequest request) {
-        SseEmitter emitter = new SseEmitter(0L);
+        SseEmitter emitter = SseStreamLifecycle.createEmitter();
         try {
             OrchestrationRunContext context = context(request);
             if (context.hasContext()) {

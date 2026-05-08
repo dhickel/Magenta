@@ -137,18 +137,10 @@ public class TaskController {
 
     @PostMapping(value = "/{taskId}/runs/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter streamRun(@PathVariable String taskId, @RequestBody(required = false) TaskRunRequest request) {
-        SseEmitter emitter = new SseEmitter(0L);
+        SseEmitter emitter = SseStreamLifecycle.createEmitter();
         Map<String, Object> inputs = request == null || request.inputValues() == null ? Map.of() : request.inputValues();
-        java.util.concurrent.atomic.AtomicReference<Disposable> subscriptionRef = new java.util.concurrent.atomic.AtomicReference<>();
-        Runnable cancelSubscription = () -> {
-            Disposable subscription = subscriptionRef.get();
-            if (subscription != null && !subscription.isDisposed()) {
-                subscription.dispose();
-            }
-        };
-        emitter.onCompletion(cancelSubscription);
-        emitter.onTimeout(cancelSubscription);
-        emitter.onError(error -> cancelSubscription.run());
+        SseStreamLifecycle.SubscriptionGuard guard = SseStreamLifecycle.guardSubscription();
+        SseStreamLifecycle.registerCallbacks(emitter, guard, null, null);
 
         try {
             OrchestrationRunContext context = context(request);
@@ -231,7 +223,7 @@ public class TaskController {
                     },
                     emitter::complete
                 );
-            subscriptionRef.set(subscription);
+            guard.set(subscription);
         } catch (IllegalArgumentException exception) {
             try {
                 send(emitter, "failed", Map.of("event", "failed", "error", exception.getMessage()));

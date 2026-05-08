@@ -278,6 +278,56 @@ class ChatControllerTest {
             });
     }
 
+    @Test
+    void streamEmitterUsesNoTimeoutByDefault() {
+        BlockingStreamChatService blockingChatService = new BlockingStreamChatService(
+            List.of(CONVERSATION_ID),
+            Map.of(CONVERSATION_ID, "qwen3")
+        );
+        ChatController controller = new ChatController(blockingChatService);
+
+        SseEmitter emitter = controller.stream(
+            new ChatRequest.MsgRequest(CONVERSATION_ID, "hello", "qwen3", null)
+        );
+
+        assertThat(emitter.getTimeout()).isZero();
+        blockingChatService.release.countDown();
+    }
+
+    @Test
+    void planExecutionStreamEmitterUsesConfiguredTimeout() throws Exception {
+        BlockingStreamChatService blockingChatService = new BlockingStreamChatService(
+            List.of(CONVERSATION_ID),
+            Map.of(CONVERSATION_ID, "qwen3")
+        );
+        ChatController controller = new ChatController(blockingChatService,
+            new io.mindspice.magenta2.ai.execution.ActiveTurnRegistry(), 30);
+
+        SseEmitter emitter = controller.streamPlanExecution(CONVERSATION_ID);
+
+        assertThat(emitter.getTimeout()).isEqualTo(30000L);
+        blockingChatService.release.countDown();
+    }
+
+    @Test
+    void streamSubscriptionIsRegisteredWithGuard() throws Exception {
+        CompletableStreamChatService completableChatService = new CompletableStreamChatService(
+            List.of(CONVERSATION_ID),
+            Map.of(CONVERSATION_ID, "qwen3")
+        );
+        io.mindspice.magenta2.ai.execution.ActiveTurnRegistry turnRegistry =
+            new io.mindspice.magenta2.ai.execution.ActiveTurnRegistry();
+        ChatController controller = new ChatController(completableChatService, turnRegistry);
+
+        controller.stream(new ChatRequest.MsgRequest(CONVERSATION_ID, "hello", "qwen3", null));
+
+        assertThat(completableChatService.subscribed.await(1, TimeUnit.SECONDS)).isTrue();
+        completableChatService.release.countDown();
+        // Emitter completes, guard disposes subscription, turn is cleaned up.
+        // The stream completes normally so ActiveTurn is removed.
+        assertThat(completableChatService.completed.await(1, TimeUnit.SECONDS)).isTrue();
+    }
+
     private static class StubChatService extends ChatService {
         private final List<String> conversationIds;
         private final Map<String, String> modelsByConversationId;
@@ -457,6 +507,48 @@ class ChatControllerTest {
         @Override
         public List<ChatMessage> history(String conversationId) {
             return List.of(new ChatMessage("assistant", "done", "<p>done</p>", null));
+        }
+    }
+
+    private static class CompletableStreamChatService extends StubChatService {
+        private final CountDownLatch subscribed = new CountDownLatch(1);
+        private final CountDownLatch release = new CountDownLatch(1);
+        private final CountDownLatch completed = new CountDownLatch(1);
+
+        CompletableStreamChatService(List<String> conversationIds, Map<String, String> modelsByConversationId) {
+            super(conversationIds, modelsByConversationId);
+        }
+
+        @Override
+        public ResolvedChatRequest resolve(ChatRequest request) {
+            return new ResolvedChatRequest(CONVERSATION_ID, "hello", "qwen3");
+        }
+
+        @Override
+        public Flux<ChatMessage> stream(ResolvedChatRequest request) {
+            return stream(request, null);
+        }
+
+        @Override
+        public Flux<ChatMessage> stream(ResolvedChatRequest request, ActiveTurn activeTurn) {
+            return Flux.create(sink -> {
+                subscribed.countDown();
+                try {
+                    release.await(2, TimeUnit.SECONDS);
+                    sink.next(new ChatMessage("assistant", "result", "<p>result</p>", null));
+                    sink.complete();
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    sink.error(exception);
+                } finally {
+                    completed.countDown();
+                }
+            });
+        }
+
+        @Override
+        public List<ChatMessage> history(String conversationId) {
+            return List.of(new ChatMessage("assistant", "result", "<p>result</p>", null));
         }
     }
 

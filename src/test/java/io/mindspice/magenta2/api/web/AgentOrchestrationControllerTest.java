@@ -135,6 +135,38 @@ class AgentOrchestrationControllerTest {
         assertThat(result.agentId()).isEqualTo("agent-1");
     }
 
+    @Test
+    void agentChatStreamEmitterHasNoTimeout() {
+        StubAgentProfileService profileService = new StubAgentProfileService();
+        StubChatService chatService = new StubChatService();
+        AgentOrchestrationController controller = new AgentOrchestrationController(
+            null, null, null, null, profileService, chatService
+        );
+
+        SseEmitter emitter = controller.chat(
+            "agent-1",
+            new AgentOrchestrationController.AgentChatRequest(null, "hello", "qwen3", "agent detail")
+        );
+
+        assertThat(emitter.getTimeout()).isZero();
+    }
+
+    @Test
+    void agentChatStreamHandlesModelWithNullResponse() {
+        StubAgentProfileService profileService = new StubAgentProfileService();
+        NullResponseChatService nullChatService = new NullResponseChatService();
+        AgentOrchestrationController controller = new AgentOrchestrationController(
+            null, null, null, null, profileService, nullChatService
+        );
+
+        SseEmitter emitter = controller.chat(
+            "agent-1",
+            new AgentOrchestrationController.AgentChatRequest(null, "hello", "qwen3", "agent detail")
+        );
+
+        assertThat(emitter).isNotNull();
+    }
+
     private static class StubAssignmentService extends AssignmentService {
         StubAssignmentService() {
             super(null, null, null, null);
@@ -152,6 +184,18 @@ class AgentOrchestrationControllerTest {
                 0, OrchestrationStatus.QUEUED, null, null, 0,
                 java.util.Map.of(), java.util.Map.of(), java.util.Map.of(), java.util.Map.of(),
                 null, null, null, null, null, null, null);
+        }
+    }
+
+    private static class NullResponseChatService extends ChatService {
+        NullResponseChatService() {
+            super(null, null, null, null, null);
+        }
+
+        @Override
+        public ChatResponse chat(ChatRequest request) {
+            // Return a response that isn't MsgResponse, triggering error path
+            return null;
         }
     }
 

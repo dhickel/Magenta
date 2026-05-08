@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 
 import io.mindspice.magenta2.ai.chat.model.ChatHistory;
 import io.mindspice.magenta2.ai.chat.model.ChatMessage;
@@ -43,8 +42,6 @@ import reactor.core.scheduler.Schedulers;
 @RestController
 @RequestMapping("/api/chat")
 public class ChatController {
-    private static final long NO_TIMEOUT = 0L;
-
     private final ChatService chatService;
     private final ActiveTurnRegistry activeTurnRegistry;
     private final long planExecutionStreamTimeoutMillis;
@@ -91,24 +88,24 @@ public class ChatController {
 
     private SseEmitter streamResolved(ResolvedChatRequest resolvedRequest, boolean planExecution) {
         ActiveTurn activeTurn = activeTurnRegistry.register(resolvedRequest.conversationId());
-        SseEmitter emitter = new SseEmitter(planExecution ? planExecutionStreamTimeoutMillis : NO_TIMEOUT);
-        AtomicReference<Disposable> subscriptionRef = new AtomicReference<>();
+        SseEmitter emitter = SseStreamLifecycle.createEmitter(
+            planExecution ? planExecutionStreamTimeoutMillis : 0L
+        );
+        SseStreamLifecycle.SubscriptionGuard guard = SseStreamLifecycle.guardSubscription();
         AtomicBoolean planExecutionFinalized = new AtomicBoolean(false);
-        Runnable cancelSubscription = () -> {
-            Disposable subscription = subscriptionRef.get();
-            if (subscription != null && !subscription.isDisposed()) {
-                subscription.dispose();
-            }
+
+        Runnable domainCleanup = () -> {
+            guard.dispose();
             activeTurnRegistry.complete(activeTurn.turnId());
         };
         java.util.function.Consumer<RuntimeException> failPlanExecution = exception -> {
-            cancelSubscription.run();
+            domainCleanup.run();
             if (planExecution && planExecutionFinalized.compareAndSet(false, true)) {
                 chatService.recordExecutionFailure(resolvedRequest.conversationId(), exception);
             }
         };
 
-        emitter.onCompletion(cancelSubscription);
+        emitter.onCompletion(domainCleanup);
         emitter.onTimeout(() -> failPlanExecution.accept(new IllegalStateException(
             "Plan execution stream timed out after " + (planExecutionStreamTimeoutMillis / 1000) + " seconds"
         )));
@@ -264,7 +261,7 @@ public class ChatController {
                 }
             }
         );
-        subscriptionRef.set(subscription);
+        guard.set(subscription);
         return emitter;
     }
 

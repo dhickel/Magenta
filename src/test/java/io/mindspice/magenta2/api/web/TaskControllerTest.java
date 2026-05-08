@@ -201,6 +201,30 @@ class TaskControllerTest {
     }
 
     @Test
+    void streamRunEmitterHasNoTimeout() throws Exception {
+        BlockingTaskChatService chatService = new BlockingTaskChatService();
+        TaskController controller = new TaskController(taskService(), chatService, nullOrchestrationRunService());
+
+        SseEmitter emitter = controller.streamRun("task-1", new TaskController.TaskRunRequest(
+            Map.of("topic", "SQLite"), "conversation-1", null, null, null, null, null
+        ));
+
+        assertThat(emitter.getTimeout()).isZero();
+        chatService.release.countDown();
+    }
+
+    @Test
+    void streamRunHandlesIllegalArgumentError() throws Exception {
+        TaskController controller = new TaskController(taskService(), null, nullOrchestrationRunService());
+
+        SseEmitter emitter = controller.streamRun("task-1", new TaskController.TaskRunRequest(
+            Map.of("topic", "SQLite"), "conversation-1", null, null, null, null, null
+        ));
+
+        assertThat(emitter).isNotNull();
+    }
+
+    @Test
     void streamRunAcceptsNullBody() throws Exception {
         BlockingTaskChatService chatService = new BlockingTaskChatService();
         TaskController controller = new TaskController(taskService(), chatService, nullOrchestrationRunService());

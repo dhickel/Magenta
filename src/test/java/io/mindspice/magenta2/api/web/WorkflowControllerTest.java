@@ -17,6 +17,7 @@ import io.mindspice.magenta2.ai.orchestration.runtime.WorkAssignment;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -89,6 +90,30 @@ class WorkflowControllerTest {
         assertThat(result.get(0).title()).isEqualTo("Test Workflow");
     }
 
+    @Test
+    void streamRunEmitterHasNoTimeout() {
+        WorkflowController controller = new WorkflowController(
+            stubService(),
+            new StubOrchestrationRunService(true)
+        );
+
+        SseEmitter emitter = controller.streamRun("workflow-1", null);
+
+        assertThat(emitter.getTimeout()).isZero();
+    }
+
+    @Test
+    void streamRunHandlesServiceError() {
+        WorkflowController controller = new WorkflowController(
+            failingService(),
+            new StubOrchestrationRunService(true)
+        );
+
+        SseEmitter emitter = controller.streamRun("non-existent", null);
+
+        assertThat(emitter).isNotNull();
+    }
+
     private static WorkflowService stubService() {
         return new WorkflowService(null, null, null) {
             @Override
@@ -142,6 +167,24 @@ class WorkflowControllerTest {
             @Override
             public WorkflowRun getRun(String runId) {
                 throw new IllegalStateException("run not found: " + runId);
+            }
+        };
+    }
+
+    private static WorkflowService failingService() {
+        return new WorkflowService(null, null, null) {
+            @Override
+            public WorkflowDefinition getWorkflow(String workflowId) {
+                return new WorkflowDefinition(
+                    workflowId, "Failing Workflow", "summary",
+                    List.of(new WorkflowStep("step_1", "task-1", List.of())),
+                    null, null
+                );
+            }
+
+            @Override
+            public WorkflowRun runSynchronously(String workflowId) {
+                throw new IllegalStateException("execution failed");
             }
         };
     }
