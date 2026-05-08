@@ -128,20 +128,39 @@ public final class SseStreamLifecycle {
         Runnable onTimeoutHandler,
         Consumer<Throwable> onErrorHandler
     ) {
-        emitter.onCompletion(guard::dispose);
-        emitter.onTimeout(() -> {
-            guard.dispose();
-            if (onTimeoutHandler != null) {
-                onTimeoutHandler.run();
-            }
-        });
-        emitter.onError(error -> {
-            guard.dispose();
-            if (onErrorHandler != null) {
-                onErrorHandler.accept(error);
-            }
-        });
+        LifecycleCallbacks callbacks = callbacks(guard, onTimeoutHandler, onErrorHandler);
+        emitter.onCompletion(callbacks.onCompletion());
+        emitter.onTimeout(callbacks.onTimeout());
+        emitter.onError(callbacks.onError());
     }
+
+    /**
+     * Builds testable lifecycle callbacks from a guard and optional domain handlers.
+     * Package-private so tests can invoke the returned runnables directly.
+     */
+    static LifecycleCallbacks callbacks(
+        SubscriptionGuard guard,
+        Runnable onTimeoutHandler,
+        Consumer<Throwable> onErrorHandler
+    ) {
+        return new LifecycleCallbacks(
+            guard::dispose,
+            () -> {
+                guard.dispose();
+                if (onTimeoutHandler != null) onTimeoutHandler.run();
+            },
+            error -> {
+                guard.dispose();
+                if (onErrorHandler != null) onErrorHandler.accept(error);
+            }
+        );
+    }
+
+    record LifecycleCallbacks(
+        Runnable onCompletion,
+        Runnable onTimeout,
+        Consumer<Throwable> onError
+    ) {}
 
     /**
      * Sends an SSE event with the given name and data. Uses the default media type
@@ -149,6 +168,27 @@ public final class SseStreamLifecycle {
      */
     public static void sendSseEvent(SseEmitter emitter, String name, Object data) throws IOException {
         emitter.send(SseEmitter.event().name(name).data(data));
+    }
+
+    /**
+     * Attempts to send an SSE event and reports whether the transport accepted it.
+     * A failed send means the client-side stream is already unusable, so callers
+     * should treat it as terminal transport cleanup instead of a domain failure.
+     */
+    public static boolean trySendSseEvent(SseEmitter emitter, String name, Object data) {
+        try {
+            sendSseEvent(emitter, name, data);
+            return true;
+        } catch (IllegalStateException | IOException exception) {
+            return false;
+        }
+    }
+
+    public static void completeQuietly(SseEmitter emitter) {
+        try {
+            emitter.complete();
+        } catch (IllegalStateException ignored) {
+        }
     }
 
     /**

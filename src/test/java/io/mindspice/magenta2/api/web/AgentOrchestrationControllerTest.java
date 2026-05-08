@@ -1,8 +1,15 @@
 package io.mindspice.magenta2.api.web;
 
+import java.lang.reflect.Proxy;
+import java.util.ArrayList;
+import java.util.Set;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import io.mindspice.magenta2.ai.chat.model.ChatPlanState;
 import io.mindspice.magenta2.ai.chat.model.ChatRequest;
@@ -20,6 +27,7 @@ import io.mindspice.magenta2.ai.orchestration.runtime.EventType;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationStatus;
 import io.mindspice.magenta2.ai.orchestration.runtime.ReactionActionType;
 import io.mindspice.magenta2.ai.orchestration.runtime.WorkAssignment;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -31,27 +39,167 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class AgentOrchestrationControllerTest {
 
     @Test
-    void agentChatStreamStartsAndCallsChatServiceWithPageContext() {
+    void agentChatStreamReturnsBeforeChatServiceCompletes() throws Exception {
+        BlockingChatService chatService = new BlockingChatService();
         StubAgentProfileService profileService = new StubAgentProfileService();
-        StubChatService chatService = new StubChatService();
         AgentOrchestrationController controller = new AgentOrchestrationController(
             null, null, null, null, profileService, chatService
         );
 
-        SseEmitter emitter = controller.chat(
-            "agent-1",
-            new AgentOrchestrationController.AgentChatRequest(null, "Inspect this task", null, "task editor")
+        CompletableFuture<SseEmitter> response = CompletableFuture.supplyAsync(() ->
+            controller.chat("agent-1",
+                new AgentOrchestrationController.AgentChatRequest(null, "Inspect this task", null, "task editor"))
         );
 
+        assertThat(chatService.started.await(1, TimeUnit.SECONDS)).isTrue();
+        SseEmitter emitter = response.get(200, TimeUnit.MILLISECONDS);
         assertThat(emitter.getTimeout()).isZero();
+        chatService.release.countDown();
+    }
+
+    @Test
+    void agentChatStreamFlushesStartBeforeChatServiceCompletes() throws Exception {
+        BlockingChatService chatService = new BlockingChatService();
+        StubAgentProfileService profileService = new StubAgentProfileService();
+        AgentOrchestrationController controller = new AgentOrchestrationController(
+            null, null, null, null, profileService, chatService
+        );
+
+        SseEmitter emitter = controller.chat("agent-1",
+            new AgentOrchestrationController.AgentChatRequest(null, "Inspect this task", null, "task editor"));
+        CapturedSse captured = initializeEmitter(emitter);
+
+        assertThat(captured.awaitEventContaining("event=start", 1, TimeUnit.SECONDS)).isTrue();
+        assertThat(chatService.started.await(1, TimeUnit.SECONDS)).isTrue();
+        assertThat(chatService.release.getCount()).isEqualTo(1);
+
+        chatService.release.countDown();
+        assertThat(captured.awaitEventContaining("event=done", 2, TimeUnit.SECONDS)).isTrue();
+        assertThat(captured.completed.await(1, TimeUnit.SECONDS)).isTrue();
+    }
+
+    @Test
+    void agentChatStreamEmitsStartAndDone() throws Exception {
+        StubChatService chatService = new StubChatService();
+        StubAgentProfileService profileService = new StubAgentProfileService();
+        AgentOrchestrationController controller = new AgentOrchestrationController(
+            null, null, null, null, profileService, chatService
+        );
+
+        SseEmitter emitter = controller.chat("agent-1",
+            new AgentOrchestrationController.AgentChatRequest(null, "Inspect this task", null, "task editor"));
+
+        assertThat(emitter.getTimeout()).isZero();
+        assertThat(chatService.completed.await(1, TimeUnit.SECONDS)).isTrue();
         assertThat(profileService.requestedId).isEqualTo("agent-1");
         assertThat(chatService.request.message()).contains("Agent page context: task editor");
-        assertThat(chatService.request.message()).contains("Inspect this task");
         assertThat(chatService.request.model()).isEqualTo("qwen3");
     }
 
     @Test
-    void agentChatStreamReturnsErrorEmitterWhenMessageIsBlank() {
+    void agentChatStreamEmitsErrorForBlankMessage() throws Exception {
+        StubAgentProfileService profileService = new StubAgentProfileService();
+        StubChatService chatService = new StubChatService();
+        AgentOrchestrationController controller = new AgentOrchestrationController(
+            null, null, null, null, profileService, chatService
+        );
+
+        SseEmitter emitter = controller.chat("agent-1",
+            new AgentOrchestrationController.AgentChatRequest(null, " ", null, "agent detail"));
+        CapturedSse captured = initializeEmitter(emitter);
+
+        assertThat(emitter.getTimeout()).isZero();
+        assertThat(captured.awaitEventContaining("event=error", 1, TimeUnit.SECONDS)).isTrue();
+        assertThat(captured.events).anySatisfy(event -> assertThat(event).contains("message is required"));
+        assertThat(chatService.request).isNull();
+    }
+
+    @Test
+    void agentChatStreamEmitsErrorForUnsupportedChatResponse() throws Exception {
+        StubAgentProfileService profileService = new StubAgentProfileService();
+        NullResponseChatService nullChatService = new NullResponseChatService();
+        AgentOrchestrationController controller = new AgentOrchestrationController(
+            null, null, null, null, profileService, nullChatService
+        );
+
+        SseEmitter emitter = controller.chat("agent-1",
+            new AgentOrchestrationController.AgentChatRequest(null, "hello", "qwen3", "agent detail"));
+        CapturedSse captured = initializeEmitter(emitter);
+
+        assertThat(captured.awaitEventContaining("event=error", 1, TimeUnit.SECONDS)).isTrue();
+        assertThat(captured.events).anySatisfy(event ->
+            assertThat(event).contains("agent chat returned an unsupported response")
+        );
+    }
+
+    @Test
+    void assignRejectsNullAssignmentType() {
+        StubAgentProfileService profileService = new StubAgentProfileService();
+        StubChatService chatService = new StubChatService();
+        AgentOrchestrationController controller = new AgentOrchestrationController(
+            null, new StubAssignmentService(), null, null, profileService, chatService
+        );
+
+        assertThatThrownBy(() -> controller.assign("agent-1", new AgentOrchestrationController.AgentAssignmentCreateRequest(
+            null, null, null, 0, null, null, java.util.Map.of()
+        ))).isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+            assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        });
+    }
+
+    @Test
+    void assignSucceedsWithValidAssignment() {
+        StubAgentProfileService profileService = new StubAgentProfileService();
+        StubChatService chatService = new StubChatService();
+        AgentOrchestrationController controller = new AgentOrchestrationController(
+            null, new StubAssignmentService(), null, null, profileService, chatService
+        );
+
+        WorkAssignment result = controller.assign("agent-1", new AgentOrchestrationController.AgentAssignmentCreateRequest(
+            null, null, AssignmentType.TASK_RUN, 0, null, null, java.util.Map.of()
+        ));
+
+        assertThat(result).isNotNull();
+        assertThat(result.agentId()).isEqualTo("agent-1");
+    }
+
+    @Test
+    void assignUsesPathAgentIdWithoutBodyAgentId() {
+        StubAgentProfileService profileService = new StubAgentProfileService();
+        StubChatService chatService = new StubChatService();
+        var assignmentService = new AgentIdCapturingAssignmentService();
+        AgentOrchestrationController controller = new AgentOrchestrationController(
+            null, assignmentService, null, null, profileService, chatService
+        );
+
+        controller.assign("agent-from-path", new AgentOrchestrationController.AgentAssignmentCreateRequest(
+            null, null, AssignmentType.REPORT, 0, null, null, java.util.Map.of()
+        ));
+
+        assertThat(assignmentService.receivedAgentId).isEqualTo("agent-from-path");
+    }
+
+    @Test
+    void assignIgnoresUnknownJsonFieldAgentId() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        String json = """
+            {
+              "assignmentType": "REPORT",
+              "priority": 0,
+              "modelOverride": null,
+              "input": {"message": "hello"},
+              "agentId": "should-be-ignored"
+            }
+            """;
+        AgentOrchestrationController.AgentAssignmentCreateRequest request =
+            mapper.readValue(json, AgentOrchestrationController.AgentAssignmentCreateRequest.class);
+
+        assertThat(request.assignmentType()).isEqualTo(AssignmentType.REPORT);
+        assertThat(request.input()).containsEntry("message", "hello");
+    }
+
+    @Test
+    void agentChatStreamEmitterHasNoTimeout() {
         StubAgentProfileService profileService = new StubAgentProfileService();
         StubChatService chatService = new StubChatService();
         AgentOrchestrationController controller = new AgentOrchestrationController(
@@ -60,11 +208,10 @@ class AgentOrchestrationControllerTest {
 
         SseEmitter emitter = controller.chat(
             "agent-1",
-            new AgentOrchestrationController.AgentChatRequest(null, " ", null, "agent detail")
+            new AgentOrchestrationController.AgentChatRequest(null, "hello", "qwen3", "agent detail")
         );
 
         assertThat(emitter.getTimeout()).isZero();
-        assertThat(chatService.request).isNull();
     }
 
     private static class StubAgentProfileService extends AgentProfileService {
@@ -92,84 +239,60 @@ class AgentOrchestrationControllerTest {
         }
     }
 
-    @Test
-    void blankMessageReturnsErrorEmitter() {
-        StubAgentProfileService profileService = new StubAgentProfileService();
-        StubChatService chatService = new StubChatService();
-        AgentOrchestrationController controller = new AgentOrchestrationController(
-            null, null, null, null, profileService, chatService
+    private CapturedSse initializeEmitter(SseEmitter emitter) throws Exception {
+        CapturedSse captured = new CapturedSse();
+        Class<?> handlerType = Class.forName(
+            "org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter$Handler"
         );
-
-        SseEmitter emitter = controller.chat(
-            "agent-1",
-            new AgentOrchestrationController.AgentChatRequest(null, " ", null, "agent detail")
+        Object handler = Proxy.newProxyInstance(
+            handlerType.getClassLoader(),
+            new Class<?>[] { handlerType },
+            (proxy, method, args) -> {
+                if ("send".equals(method.getName()) && args[0] instanceof Set<?> set) {
+                    for (Object item : set) {
+                        captured.add(String.valueOf(item.getClass().getMethod("getData").invoke(item)));
+                    }
+                } else if ("send".equals(method.getName())) {
+                    captured.add(String.valueOf(args[0]));
+                } else if ("complete".equals(method.getName())) {
+                    captured.completed.countDown();
+                } else if ("completeWithError".equals(method.getName())) {
+                    captured.completed.countDown();
+                }
+                return null;
+            }
         );
-
-        assertThat(emitter).isNotNull();
-        assertThat(chatService.request).isNull();
+        var initialize = org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter.class
+            .getDeclaredMethod("initialize", handlerType);
+        initialize.setAccessible(true);
+        initialize.invoke(emitter, handler);
+        return captured;
     }
 
-    @Test
-    void assignRejectsNullAssignmentType() {
-        StubAgentProfileService profileService = new StubAgentProfileService();
-        StubChatService chatService = new StubChatService();
-        AgentOrchestrationController controller = new AgentOrchestrationController(
-            null, new StubAssignmentService(), null, null, profileService, chatService
-        );
+    private static final class CapturedSse {
+        private final List<String> events = java.util.Collections.synchronizedList(new ArrayList<>());
+        private final CountDownLatch completed = new CountDownLatch(1);
 
-        assertThatThrownBy(() -> controller.assign("agent-1", new AssignmentRequest(
-            "agent-1", null, null, null, 0, null, null, java.util.Map.of()
-        ))).isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
-            assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        });
-    }
+        private void add(String event) {
+            events.add(event);
+            synchronized (events) {
+                events.notifyAll();
+            }
+        }
 
-    @Test
-    void assignSucceedsWithValidAssignment() {
-        StubAgentProfileService profileService = new StubAgentProfileService();
-        StubChatService chatService = new StubChatService();
-        AgentOrchestrationController controller = new AgentOrchestrationController(
-            null, new StubAssignmentService(), null, null, profileService, chatService
-        );
-
-        WorkAssignment result = controller.assign("agent-1", new AssignmentRequest(
-            "agent-1", null, null, AssignmentType.TASK_RUN, 0, null, null, java.util.Map.of()
-        ));
-
-        assertThat(result).isNotNull();
-        assertThat(result.agentId()).isEqualTo("agent-1");
-    }
-
-    @Test
-    void agentChatStreamEmitterHasNoTimeout() {
-        StubAgentProfileService profileService = new StubAgentProfileService();
-        StubChatService chatService = new StubChatService();
-        AgentOrchestrationController controller = new AgentOrchestrationController(
-            null, null, null, null, profileService, chatService
-        );
-
-        SseEmitter emitter = controller.chat(
-            "agent-1",
-            new AgentOrchestrationController.AgentChatRequest(null, "hello", "qwen3", "agent detail")
-        );
-
-        assertThat(emitter.getTimeout()).isZero();
-    }
-
-    @Test
-    void agentChatStreamHandlesModelWithNullResponse() {
-        StubAgentProfileService profileService = new StubAgentProfileService();
-        NullResponseChatService nullChatService = new NullResponseChatService();
-        AgentOrchestrationController controller = new AgentOrchestrationController(
-            null, null, null, null, profileService, nullChatService
-        );
-
-        SseEmitter emitter = controller.chat(
-            "agent-1",
-            new AgentOrchestrationController.AgentChatRequest(null, "hello", "qwen3", "agent detail")
-        );
-
-        assertThat(emitter).isNotNull();
+        private boolean awaitEventContaining(String value, long timeout, TimeUnit unit) throws InterruptedException {
+            long deadline = System.nanoTime() + unit.toNanos(timeout);
+            synchronized (events) {
+                while (events.stream().noneMatch(event -> event.contains(value))) {
+                    long remaining = deadline - System.nanoTime();
+                    if (remaining <= 0) {
+                        return false;
+                    }
+                    TimeUnit.NANOSECONDS.timedWait(events, remaining);
+                }
+                return true;
+            }
+        }
     }
 
     private static class StubAssignmentService extends AssignmentService {
@@ -192,6 +315,23 @@ class AgentOrchestrationControllerTest {
         }
     }
 
+    private static class AgentIdCapturingAssignmentService extends AssignmentService {
+        private String receivedAgentId;
+
+        AgentIdCapturingAssignmentService() {
+            super(null, null, null, null);
+        }
+
+        @Override
+        public WorkAssignment create(AssignmentRequest request) {
+            receivedAgentId = request.agentId();
+            return new WorkAssignment("assign-1", request.agentId(), null, null, request.assignmentType(),
+                0, OrchestrationStatus.QUEUED, null, null, 0,
+                java.util.Map.of(), java.util.Map.of(), java.util.Map.of(), java.util.Map.of(),
+                null, null, null, null, null, null, null);
+        }
+    }
+
     private static class NullResponseChatService extends ChatService {
         NullResponseChatService() {
             super(null, null, null, null, null);
@@ -206,6 +346,7 @@ class AgentOrchestrationControllerTest {
 
     private static class StubChatService extends ChatService {
         private ChatRequest.MsgRequest request;
+        private final CountDownLatch completed = new CountDownLatch(1);
 
         StubChatService() {
             super(null, null, null, null, null);
@@ -214,7 +355,31 @@ class AgentOrchestrationControllerTest {
         @Override
         public ChatResponse chat(ChatRequest request) {
             this.request = (ChatRequest.MsgRequest) request;
-            return new ChatResponse.MsgResponse("conversation-1", this.request.model(), "ok", null, ChatPlanState.normal());
+            var response = new ChatResponse.MsgResponse("conversation-1", this.request.model(), "ok", null, ChatPlanState.normal());
+            completed.countDown();
+            return response;
+        }
+    }
+
+    private static class BlockingChatService extends ChatService {
+        private final CountDownLatch started = new CountDownLatch(1);
+        private final CountDownLatch release = new CountDownLatch(1);
+
+        BlockingChatService() {
+            super(null, null, null, null, null);
+        }
+
+        @Override
+        public ChatResponse chat(ChatRequest request) {
+            started.countDown();
+            try {
+                release.await(2, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException(e);
+            }
+            var msg = (ChatRequest.MsgRequest) request;
+            return new ChatResponse.MsgResponse("conv-1", msg.model(), "done", null, ChatPlanState.normal());
         }
     }
 

@@ -1,5 +1,8 @@
 package io.mindspice.magenta2.api.web;
 
+import java.io.IOException;
+import java.lang.reflect.Proxy;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -114,45 +117,74 @@ class SseStreamLifecycleTest {
         FakeDisposable disposable = new FakeDisposable();
         guard.set(disposable);
 
+        SseStreamLifecycle.LifecycleCallbacks callbacks =
+            SseStreamLifecycle.callbacks(guard, null, null);
         SseStreamLifecycle.registerCallbacks(emitter, guard, null, null);
 
-        // Manually trigger the onCompletion logic by calling the completion runnable.
-        // We test the guard directly since the emitter's onCompletion fires asynchronously.
-        assertThat(disposable.disposed).isFalse();
-
-        // The registered onCompletion calls guard::dispose. Simulate completion:
-        guard.dispose();
+        callbacks.onCompletion().run();
 
         assertThat(disposable.disposed).isTrue();
     }
 
     @Test
-    void registerCallbacksWithTimeoutHandlerInvokesIt() {
-        SseEmitter emitter = SseStreamLifecycle.createEmitter();
+    void registerCallbacksTimeoutDisposesGuardAndInvokesHandler() {
         SseStreamLifecycle.SubscriptionGuard guard = SseStreamLifecycle.guardSubscription();
+        FakeDisposable disposable = new FakeDisposable();
+        guard.set(disposable);
         AtomicBoolean handlerCalled = new AtomicBoolean(false);
 
-        SseStreamLifecycle.registerCallbacks(emitter, guard, () -> handlerCalled.set(true), null);
+        SseStreamLifecycle.LifecycleCallbacks callbacks =
+            SseStreamLifecycle.callbacks(guard, () -> handlerCalled.set(true), null);
 
-        // We cannot easily trigger the emitter's timeout path in unit tests,
-        // but we can verify that the guard and handler are wired correctly
-        // by checking the guard's dispose method works.
-        guard.dispose();
-        assertThat(handlerCalled).isFalse(); // timeout handler not called via guard.dispose()
+        callbacks.onTimeout().run();
+
+        assertThat(disposable.disposed).isTrue();
+        assertThat(handlerCalled.get()).isTrue();
     }
 
     @Test
-    void registerCallbacksWithErrorHandlerInvokesIt() {
-        SseEmitter emitter = SseStreamLifecycle.createEmitter();
+    void registerCallbacksErrorDisposesGuardAndInvokesHandler() {
         SseStreamLifecycle.SubscriptionGuard guard = SseStreamLifecycle.guardSubscription();
+        FakeDisposable disposable = new FakeDisposable();
+        guard.set(disposable);
         AtomicReference<Throwable> capturedError = new AtomicReference<>();
 
-        SseStreamLifecycle.registerCallbacks(emitter, guard, null, capturedError::set);
+        SseStreamLifecycle.LifecycleCallbacks callbacks =
+            SseStreamLifecycle.callbacks(guard, null, capturedError::set);
 
-        // Verify wiring by calling the guard callback inline.
-        // The actual error path is managed by the emitter's lifecycle.
-        guard.dispose();
-        assertThat(capturedError.get()).isNull();
+        RuntimeException error = new RuntimeException("test error");
+        callbacks.onError().accept(error);
+
+        assertThat(disposable.disposed).isTrue();
+        assertThat(capturedError.get()).isSameAs(error);
+    }
+
+    @Test
+    void registerCallbacksTimeoutWithNullHandlerOnlyDisposesGuard() {
+        SseStreamLifecycle.SubscriptionGuard guard = SseStreamLifecycle.guardSubscription();
+        FakeDisposable disposable = new FakeDisposable();
+        guard.set(disposable);
+
+        SseStreamLifecycle.LifecycleCallbacks callbacks =
+            SseStreamLifecycle.callbacks(guard, null, null);
+
+        callbacks.onTimeout().run();
+
+        assertThat(disposable.disposed).isTrue();
+    }
+
+    @Test
+    void registerCallbacksErrorWithNullHandlerOnlyDisposesGuard() {
+        SseStreamLifecycle.SubscriptionGuard guard = SseStreamLifecycle.guardSubscription();
+        FakeDisposable disposable = new FakeDisposable();
+        guard.set(disposable);
+
+        SseStreamLifecycle.LifecycleCallbacks callbacks =
+            SseStreamLifecycle.callbacks(guard, null, null);
+
+        callbacks.onError().accept(new RuntimeException("test"));
+
+        assertThat(disposable.disposed).isTrue();
     }
 
     // ── sendSseEvent ─────────────────────────────────────────────────
@@ -172,6 +204,23 @@ class SseStreamLifecycleTest {
             org.springframework.http.MediaType.APPLICATION_JSON)).isNotNull();
     }
 
+    @Test
+    void trySendReturnsFalseWhenEmitterHandlerRejectsSend() throws Exception {
+        SseEmitter emitter = SseStreamLifecycle.createEmitter();
+        initializeEmitterWithFailingSend(emitter);
+
+        assertThat(SseStreamLifecycle.trySendSseEvent(emitter, "test", "data")).isFalse();
+    }
+
+    @Test
+    void trySendReturnsFalseWhenEmitterAlreadyCompleted() throws Exception {
+        SseEmitter emitter = SseStreamLifecycle.createEmitter();
+        initializeEmitterWithFailingSend(emitter);
+        emitter.complete();
+
+        assertThat(SseStreamLifecycle.trySendSseEvent(emitter, "test", "data")).isFalse();
+    }
+
     // ── Fake Disposable for testing ──────────────────────────────────
 
     private static final class FakeDisposable implements Disposable {
@@ -186,5 +235,25 @@ class SseStreamLifecycleTest {
         public boolean isDisposed() {
             return disposed;
         }
+    }
+
+    private void initializeEmitterWithFailingSend(SseEmitter emitter) throws Exception {
+        Class<?> handlerType = Class.forName(
+            "org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter$Handler"
+        );
+        Object handler = Proxy.newProxyInstance(
+            handlerType.getClassLoader(),
+            new Class<?>[] { handlerType },
+            (proxy, method, args) -> {
+                if ("send".equals(method.getName())) {
+                    throw new IOException("client disconnected");
+                }
+                return null;
+            }
+        );
+        var initialize = org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter.class
+            .getDeclaredMethod("initialize", handlerType);
+        initialize.setAccessible(true);
+        initialize.invoke(emitter, handler);
     }
 }

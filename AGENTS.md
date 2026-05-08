@@ -20,12 +20,37 @@
 
 
 
-
 ## Magenta Project Guide
 
 Magenta is an assistant agent and manager life-helper. It is intended to run on a remote host, expose APIs and a web portal, and help users through chat, notes, reminders, task handoff, tool-assisted work, and eventually coordinated subagents.
 
 This project is currently a Spring Boot and Spring AI application with SQLite-backed chat memory, REST/SSE chat endpoints, a simple browser chat surface, and external AI/agent configuration.
+
+
+### Frontend (SimplyPages)
+The frontend makes use of SimplyPages, SimplyPages is our on self maintained frontend library for server side rendering it includes/focuses on:
+- HTMX simplicity over JS
+- Modularity via Components which can be composed into modules
+- A simple opinioned grid based layout
+- A default/exam chat implementation
+- A default forum implementation
+- Demos showing how to use components and do advanced operations
+
+You can gain alot about the frontend library from the demos, complex views like the forum and and editing menus give examples on how to do modal outputs and node/card rendering
+This is the style we want to take with our UI.
+
+ #### SimplyPages Links
+- Documentation `/home/hickelpickle/Code/Java/cannasite/java-html-framework/docs`
+- Demo `/home/hickelpickle/Code/Java/cannasite/java-html-framework/demo`
+
+*Always use the libraries coding style and practices, do not try to shoehorn functionality or use raw html strings, raw html is a fallback for advanced cases most functionality from css, js, htmx
+can be done via functions. The library has a vast set of components and ways to make your own, search the well formated documentation for your operation and read it before any edits, if
+still faced with ambiguity, or needing context refer to the demos, if still confused DO NOT DO AD-HOC HACKISH WORKAROUND CONSULT THE USER.*
+
+*Given the modularity of the library, much of our ui can be reused components across pages, always try to reuse and generalize when similar functionalities exit*
+
+*Keep in mind threading, we have slot keys that allow us to re use the same instance of components/modules where static data is pre-rendered, then we can render with dynamic data. While this isn't a performance
+bottle neck for us, it is one of the libraries patterns to keep in mind, and can avoid instancing multiple objects that will be converted to strings anwy-ways. Remember though you must use slot keys when sharing render objects between requests.*
 
 ### Engineering style
 - Keep code straightforward, simple, readable, and focused on the domain problem at hand.

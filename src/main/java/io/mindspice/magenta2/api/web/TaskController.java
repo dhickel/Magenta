@@ -203,38 +203,30 @@ public class TaskController {
                 .subscribeOn(Schedulers.boundedElastic())
                 .subscribe(
                     event -> {
-                        try {
-                            SseStreamLifecycle.sendSseEvent(emitter, event.name(), event.data());
-                        } catch (java.io.IOException ioException) {
-                            throw new RuntimeException(ioException);
+                        if (!SseStreamLifecycle.trySendSseEvent(emitter, event.name(), event.data())) {
+                            guard.dispose();
+                            SseStreamLifecycle.completeQuietly(emitter);
                         }
                     },
                     error -> {
-                        try {
-                            SseStreamLifecycle.sendSseEvent(emitter, "failed",
-                                Map.of("event", "failed", "error", error.getMessage()));
-                            emitter.complete();
-                        } catch (java.io.IOException ioException) {
-                            emitter.completeWithError(ioException);
+                        if (SseStreamLifecycle.trySendSseEvent(emitter, "failed",
+                                Map.of("event", "failed", "error", error.getMessage()))) {
+                            SseStreamLifecycle.completeQuietly(emitter);
                         }
                     },
-                    emitter::complete
+                    () -> SseStreamLifecycle.completeQuietly(emitter)
                 );
             guard.set(subscription);
         } catch (IllegalArgumentException exception) {
-            try {
-                SseStreamLifecycle.sendSseEvent(emitter, "failed",
-                    Map.of("event", "failed", "error", exception.getMessage()));
-            } catch (java.io.IOException ignored) {
+            if (SseStreamLifecycle.trySendSseEvent(emitter, "failed",
+                    Map.of("event", "failed", "error", exception.getMessage()))) {
+                SseStreamLifecycle.completeQuietly(emitter);
             }
-            emitter.complete();
         } catch (Exception exception) {
-            try {
-                SseStreamLifecycle.sendSseEvent(emitter, "failed",
-                    Map.of("event", "failed", "error", exception.getMessage()));
-            } catch (java.io.IOException ignored) {
+            if (SseStreamLifecycle.trySendSseEvent(emitter, "failed",
+                    Map.of("event", "failed", "error", exception.getMessage()))) {
+                SseStreamLifecycle.completeQuietly(emitter);
             }
-            emitter.completeWithError(exception);
         }
         return emitter;
     }

@@ -1,6 +1,7 @@
 package io.mindspice.magenta2.api.web;
 
 import java.lang.reflect.Proxy;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -108,6 +109,39 @@ class TaskControllerTest {
         assertThat(events).contains("COMPLETED");
     }
 
+    @Test
+    void streamRunFlushesStartedBeforeTaskExecutionCompletes() throws Exception {
+        BlockingTaskChatService chatService = new BlockingTaskChatService();
+        TaskController controller = new TaskController(taskService(), chatService, nullOrchestrationRunService());
+
+        SseEmitter emitter = controller.streamRun("task-1", new TaskController.TaskRunRequest(
+            Map.of("topic", "SQLite"), "conversation-1", null, null, null, null, null
+        ));
+        CapturedSse captured = initializeEmitter(emitter);
+
+        assertThat(chatService.subscribed.await(1, TimeUnit.SECONDS)).isTrue();
+        assertThat(captured.awaitEventContaining("event=started", 1, TimeUnit.SECONDS)).isTrue();
+        assertThat(chatService.release.getCount()).isEqualTo(1);
+
+        chatService.release.countDown();
+        assertThat(captured.awaitEventContaining("event=completed", 2, TimeUnit.SECONDS)).isTrue();
+    }
+
+    @Test
+    void streamRunCompletesQuietlyWhenClientSendFails() throws Exception {
+        PausedFirstEventTaskChatService chatService = new PausedFirstEventTaskChatService();
+        TaskController controller = new TaskController(taskService(), chatService, nullOrchestrationRunService());
+
+        SseEmitter emitter = controller.streamRun("task-1", new TaskController.TaskRunRequest(
+            Map.of("topic", "SQLite"), "conversation-1", null, null, null, null, null
+        ));
+        CapturedSse captured = initializeEmitterWithFailingSend(emitter);
+
+        assertThat(chatService.subscribed.await(1, TimeUnit.SECONDS)).isTrue();
+        chatService.releaseFirstEvent.countDown();
+        assertThat(captured.completed.await(1, TimeUnit.SECONDS)).isTrue();
+    }
+
     private TaskService taskService() throws Exception {
         SingleConnectionDataSource dataSource = new SingleConnectionDataSource("jdbc:sqlite::memory:", true);
         JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
@@ -134,10 +168,36 @@ class TaskControllerTest {
             (proxy, method, args) -> {
                 if ("send".equals(method.getName()) && args[0] instanceof Set<?> set) {
                     for (Object item : set) {
-                        captured.events.add(String.valueOf(item.getClass().getMethod("getData").invoke(item)));
+                        captured.add(String.valueOf(item.getClass().getMethod("getData").invoke(item)));
                     }
                 } else if ("send".equals(method.getName())) {
-                    captured.events.add(String.valueOf(args[0]));
+                    captured.add(String.valueOf(args[0]));
+                } else if ("complete".equals(method.getName())) {
+                    captured.completed.countDown();
+                } else if ("completeWithError".equals(method.getName())) {
+                    captured.completed.countDown();
+                }
+                return null;
+            }
+        );
+        var initialize = org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter.class
+            .getDeclaredMethod("initialize", handlerType);
+        initialize.setAccessible(true);
+        initialize.invoke(emitter, handler);
+        return captured;
+    }
+
+    private CapturedSse initializeEmitterWithFailingSend(SseEmitter emitter) throws Exception {
+        CapturedSse captured = new CapturedSse();
+        Class<?> handlerType = Class.forName(
+            "org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter$Handler"
+        );
+        Object handler = Proxy.newProxyInstance(
+            handlerType.getClassLoader(),
+            new Class<?>[] { handlerType },
+            (proxy, method, args) -> {
+                if ("send".equals(method.getName())) {
+                    throw new IOException("client disconnected");
                 } else if ("complete".equals(method.getName())) {
                     captured.completed.countDown();
                 } else if ("completeWithError".equals(method.getName())) {
@@ -156,6 +216,27 @@ class TaskControllerTest {
     private static final class CapturedSse {
         private final List<String> events = java.util.Collections.synchronizedList(new ArrayList<>());
         private final CountDownLatch completed = new CountDownLatch(1);
+
+        private void add(String event) {
+            events.add(event);
+            synchronized (events) {
+                events.notifyAll();
+            }
+        }
+
+        private boolean awaitEventContaining(String value, long timeout, TimeUnit unit) throws InterruptedException {
+            long deadline = System.nanoTime() + unit.toNanos(timeout);
+            synchronized (events) {
+                while (events.stream().noneMatch(event -> event.contains(value))) {
+                    long remaining = deadline - System.nanoTime();
+                    if (remaining <= 0) {
+                        return false;
+                    }
+                    TimeUnit.NANOSECONDS.timedWait(events, remaining);
+                }
+                return true;
+            }
+        }
     }
 
     @Test
@@ -303,6 +384,36 @@ class TaskControllerTest {
                     Thread.currentThread().interrupt();
                     sink.error(exception);
                 }
+            });
+        }
+    }
+
+    private static final class PausedFirstEventTaskChatService extends ChatService {
+        private final CountDownLatch subscribed = new CountDownLatch(1);
+        private final CountDownLatch releaseFirstEvent = new CountDownLatch(1);
+
+        PausedFirstEventTaskChatService() {
+            super(null, null, null, new io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer(), null);
+        }
+
+        @Override
+        public Flux<TaskExecutionEvent> streamTaskExecution(
+            String taskId,
+            Map<String, Object> inputValues,
+            String conversationId,
+            String modelOverride
+        ) {
+            return Flux.create(sink -> {
+                subscribed.countDown();
+                try {
+                    releaseFirstEvent.await(2, TimeUnit.SECONDS);
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    sink.error(exception);
+                    return;
+                }
+                sink.next(new TaskExecutionEvent("started", conversationId, "run-1", null, null));
+                sink.complete();
             });
         }
     }

@@ -61,25 +61,33 @@ public final class WorkflowStreamSupport {
                     "taskId", step.taskId()
                 )));
             }
-            WorkflowRun run = workflowService.runSynchronously(workflowId);
-            for (var stepRun : run.stepRuns()) {
-                events.add(new SsePayload("step_completed", Map.of(
-                    "event", "step_completed",
-                    "stepKey", stepRun.stepKey(),
-                    "taskRunId", stepRun.taskRunId(),
-                    "status", stepRun.status().name()
-                )));
-            }
-            String terminalEvent = terminalEventName(run.status().name());
-            events.add(new SsePayload(terminalEvent, Map.of(
-                "event", terminalEvent,
-                "runId", run.id(),
-                "status", run.status().name(),
-                "finalOutputs", run.finalOutputs(),
-                "error", run.errorText() == null ? "" : run.errorText()
-            )));
-            return Flux.fromIterable(events);
+            return Flux.concat(
+                Flux.fromIterable(events),
+                Flux.defer(() -> terminalRunEvents(workflowId, workflowService))
+            );
         });
+    }
+
+    private static Flux<SsePayload> terminalRunEvents(String workflowId, WorkflowService workflowService) {
+        WorkflowRun run = workflowService.runSynchronously(workflowId);
+        List<SsePayload> events = new ArrayList<>();
+        for (var stepRun : run.stepRuns()) {
+            events.add(new SsePayload("step_completed", Map.of(
+                "event", "step_completed",
+                "stepKey", stepRun.stepKey(),
+                "taskRunId", stepRun.taskRunId(),
+                "status", stepRun.status().name()
+            )));
+        }
+        String terminalEvent = terminalEventName(run.status().name());
+        events.add(new SsePayload(terminalEvent, Map.of(
+            "event", terminalEvent,
+            "runId", run.id(),
+            "status", run.status().name(),
+            "finalOutputs", run.finalOutputs(),
+            "error", run.errorText() == null ? "" : run.errorText()
+        )));
+        return Flux.fromIterable(events);
     }
 
     /**

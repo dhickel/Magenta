@@ -3,6 +3,37 @@
 Branch: `readiness-fixes`
 Started: 2026-05-08
 
+## Third-Pass Remediation Status
+
+This section supersedes the validation correction status below.
+
+| Finding | Status | Evidence |
+|---|---|---|
+| Agent side-panel SSE first event timing | fixed | `AgentOrchestrationController.chat` emits `start` before bounded-elastic model work; `AgentOrchestrationControllerTest.agentChatStreamFlushesStartBeforeChatServiceCompletes`; fallback browser probe saw `start -> done` |
+| Task/workflow/side-panel SSE abort handling | fixed | `SseStreamLifecycle.trySendSseEvent()` treats send failures as terminal transport cleanup; task/workflow/side-panel controllers no longer throw from `onNext`; focused send-failure tests pass; browser abort log check found no `onErrorDropped`, broken pipe, or completed-emitter stack traces |
+| Browser-visible task/workflow prompt events | fixed | `TaskControllerTest.streamRunFlushesStartedBeforeTaskExecutionCompletes`, `WorkflowControllerTest.streamRunReturnsBeforeWorkflowExecutionCompletesAndEmitsTerminalStatus`; fallback browser probe saw first `started` events within the bounded parser window and intentionally aborted after `started` |
+| Disabled alpha feature persistence assertions | fixed | `OrchestrationDurableRuntimeTest.disabledSchedulesDoNotFireOrCreateAssignments` asserts zero `schedule_firings`; `disabledReactionsDoNotEnqueueAssignments` asserts matching inbox event is handled |
+| Full validation | passed | Focused test groups pass; `mvn test` passes with 312 tests; isolated SQLite startup smoke reached Tomcat on port `40333` and timed out with exit code 124; browser fallback on `18081` passed all third-pass checks |
+
+Validation notes:
+- Initial startup with the default config failed because `./config/ai-config.example.json` is malformed JSON in this worktree. The smoke/browser runs used isolated `/tmp` AI config files and SQLite databases without modifying local config.
+- Playwright MCP was attempted first and blocked by the known `mcp-chrome-4e05678` profile lock. Browser validation used an isolated Chromium DevTools Protocol fallback against the same live app.
+- Browser validation used a local OpenAI-compatible stub on `127.0.0.1:19000` so chat and side-panel model responses were deterministic and not dependent on a local Ollama service.
+
+## Validation Correction Status
+
+This section supersedes the original summary table below.
+
+| Finding | Status | Evidence |
+|---|---|---|
+| Assignment request validation | fixed | `AgentAssignmentCreateRequest` DTO without `agentId`, tests in `AgentOrchestrationControllerTest` (assignUsesPathAgentIdWithoutBodyAgentId, assignIgnoresUnknownJsonFieldAgentId), all 306 tests pass |
+| Feature flags runtime enforcement | fixed | `ScheduleService.pollDueSchedules()` and `OrchestrationEventService.handle()` gated with `@Value`-injected flags, tests in `OrchestrationDurableRuntimeTest` (disabledSchedulesDoNotFireOrCreateAssignments, disabledReactionsDoNotEnqueueAssignments), all 306 tests pass |
+| Side-panel SSE lifecycle | fixed | `/chat/stream` now async with `Flux.defer` + `Schedulers.boundedElastic()` + `SubscriptionGuard`, tests in `AgentOrchestrationControllerTest` (agentChatStreamReturnsBeforeChatServiceCompletes, agentChatStreamEmitsErrorForBlankMessage, agentChatStreamEmitsErrorForUnsupportedChatResponse), all 306 tests pass |
+| Stream lifecycle coverage | fixed | `LifecycleCallbacks` record + `callbacks()` factory added to `SseStreamLifecycle`, real callback tests in `SseStreamLifecycleTest` covering onCompletion, onTimeout, onError with and without domain handlers, all 306 tests pass |
+| ChatStreamEvent serialization | fixed | `ChatStreamEventSerializationTest` covering all 8 event types (Start, Chunk, Tool, SystemNotice, Interrupt, Context, Done, Error) with browser-consumed fields, all 306 tests pass |
+| Startup smoke | fixed | Tomcat started on dynamic port, no errors, exit code 124 (timeout, expected) |
+| Evidence closeout | fixed | Changelog: `.internal-dev/changelogs/2026-05-08-non-security-alpha-remediation-correction.md`, this work log section supersedes stale table rows |
+
 ## Agent Execution Order
 
 | # | Issue | Status | Agent Summary |
@@ -11,7 +42,7 @@ Started: 2026-05-08
 | 1.2 | Shell Cancellation Process Cleanup | completed | Wrapped process execution in try/finally with process destruction and bounded capture-future draining on all paths (normal, timeout, interruption). Removed InterruptedException from ChatService.isRetryable so cancellation is not retried. Added 3 focused tests. |
 | 1.3 | Public Request Validation & Error Mapping | completed | Add Jakarta validation (spring-boot-starter-validation). Add @NotBlank/@NotNull to all request DTOs. Add @Valid on all @RequestBody parameters. Create GlobalExceptionHandler mapping validation/illegalargument/illegalstate to 400/409. Add 43 focused tests. All 214 pass. |
 | 2.1 | Standardize Streaming/SSE Lifecycle | completed | Extracted shared SseStreamLifecycle with outcome table, SubscriptionGuard, and standardized emitter factory. Updated all 4 controllers. 22 new tests. |
-| 2.2 | Workflow Stream Off Servlet Threads | pending | — |
+| 2.2 | Workflow Stream Off Servlet Threads | completed | Refactored to async via Flux.defer + Schedulers.boundedElastic() + SubscriptionGuard. 1 new test. Agent report below. |
 | 2.3 | Prevent Duplicate Queued Assignment Submission | completed | Acquire lease before executor submission in pollQueuedWork; revert on rejection. 3 new tests. |
 | 3.1 | SQLite Schema Ownership & Validation | completed | Schema ownership policy: central schema.sql with narrow ensureSchema safety net. Added all missing tables to schema.sql. Enabled SQLite foreign keys. Added defense-in-depth cascade deletes in TaskRepository and WorkflowRepository. 13 new tests. |
 | 3.2 | Audit Sequence Robustness | completed | — |

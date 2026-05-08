@@ -1,5 +1,6 @@
 package io.mindspice.magenta2.api.web;
 
+import java.io.IOException;
 import java.lang.reflect.Proxy;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -133,6 +134,9 @@ class WorkflowControllerTest {
         SseEmitter emitter = response.get(200, TimeUnit.MILLISECONDS);
         CapturedSse captured = initializeEmitter(emitter);
         assertThat(workflowService.executionStarted.await(1, TimeUnit.SECONDS)).isTrue();
+        assertThat(captured.awaitEventContaining("event=started", 1, TimeUnit.SECONDS)).isTrue();
+        assertThat(captured.awaitEventContaining("event=step_started", 1, TimeUnit.SECONDS)).isTrue();
+        assertThat(workflowService.releaseExecution.getCount()).isEqualTo(1);
         workflowService.releaseExecution.countDown();
         assertThat(captured.completed.await(1, TimeUnit.SECONDS)).isTrue();
 
@@ -142,6 +146,18 @@ class WorkflowControllerTest {
         assertThat(events).contains("step_completed");
         assertThat(events).contains("completed");
         assertThat(events).contains("COMPLETED");
+    }
+
+    @Test
+    void streamRunCompletesQuietlyWhenClientSendFails() throws Exception {
+        BlockingWorkflowService workflowService = new BlockingWorkflowService();
+        WorkflowController controller = new WorkflowController(workflowService, new StubOrchestrationRunService(false));
+
+        SseEmitter emitter = controller.streamRun("wf-1", null);
+        CapturedSse captured = initializeEmitterWithFailingSend(emitter);
+
+        assertThat(captured.completed.await(1, TimeUnit.SECONDS)).isTrue();
+        workflowService.releaseExecution.countDown();
     }
 
     private static WorkflowService stubService() {
@@ -288,12 +304,38 @@ class WorkflowControllerTest {
             (proxy, method, args) -> {
                 if ("send".equals(method.getName()) && args[0] instanceof Set<?> set) {
                     for (Object item : set) {
-                        captured.events.add(String.valueOf(
+                        captured.add(String.valueOf(
                             item.getClass().getMethod("getData").invoke(item)
                         ));
                     }
                 } else if ("send".equals(method.getName())) {
-                    captured.events.add(String.valueOf(args[0]));
+                    captured.add(String.valueOf(args[0]));
+                } else if ("complete".equals(method.getName())) {
+                    captured.completed.countDown();
+                } else if ("completeWithError".equals(method.getName())) {
+                    captured.completed.countDown();
+                }
+                return null;
+            }
+        );
+        var initialize = org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter.class
+            .getDeclaredMethod("initialize", handlerType);
+        initialize.setAccessible(true);
+        initialize.invoke(emitter, handler);
+        return captured;
+    }
+
+    private CapturedSse initializeEmitterWithFailingSend(SseEmitter emitter) throws Exception {
+        CapturedSse captured = new CapturedSse();
+        Class<?> handlerType = Class.forName(
+            "org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter$Handler"
+        );
+        Object handler = Proxy.newProxyInstance(
+            handlerType.getClassLoader(),
+            new Class<?>[] { handlerType },
+            (proxy, method, args) -> {
+                if ("send".equals(method.getName())) {
+                    throw new IOException("client disconnected");
                 } else if ("complete".equals(method.getName())) {
                     captured.completed.countDown();
                 } else if ("completeWithError".equals(method.getName())) {
@@ -312,5 +354,26 @@ class WorkflowControllerTest {
     private static final class CapturedSse {
         private final List<String> events = java.util.Collections.synchronizedList(new ArrayList<>());
         private final CountDownLatch completed = new CountDownLatch(1);
+
+        private void add(String event) {
+            events.add(event);
+            synchronized (events) {
+                events.notifyAll();
+            }
+        }
+
+        private boolean awaitEventContaining(String value, long timeout, TimeUnit unit) throws InterruptedException {
+            long deadline = System.nanoTime() + unit.toNanos(timeout);
+            synchronized (events) {
+                while (events.stream().noneMatch(event -> event.contains(value))) {
+                    long remaining = deadline - System.nanoTime();
+                    if (remaining <= 0) {
+                        return false;
+                    }
+                    TimeUnit.NANOSECONDS.timedWait(events, remaining);
+                }
+                return true;
+            }
+        }
     }
 }

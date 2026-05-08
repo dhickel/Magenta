@@ -41,3 +41,7 @@ build/
 /data/
 /chat-memory.db
 /chat-memory.db-*
+/.playwright-m
+
+### Config has api keys
+/config/ai-config.example.json

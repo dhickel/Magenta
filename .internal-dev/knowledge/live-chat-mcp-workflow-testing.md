@@ -11,6 +11,7 @@ Using the Playwright MCP server to test Magenta live chat workflows.
 - `src/main/java/io/mindspice/magenta2/ai/execution/ConversationTurnCoordinator.java`
 - Live MCP validation run on 2026-05-05 against `http://localhost:18080` with `jdbc:sqlite:/tmp/magenta2-mcp-browser-test.sqlite`
 - Live MCP validation refresh on 2026-05-06 against `http://localhost:18080` with `jdbc:sqlite:/tmp/magenta2-mcp-fix-validation.sqlite`
+- Third-pass readiness fallback validation on 2026-05-08 against `http://localhost:18081` with `jdbc:sqlite:/tmp/magenta2-third-pass-browser.sqlite`
 
 # Key Takeaways
 
@@ -82,6 +83,8 @@ Observed MCP-run gotchas:
 - A 2026-05-07 final orchestration validation attempt found the MCP browser could be blocked by an existing profile lock at `~/.cache/ms-playwright/mcp-chrome-*`. Treat that as an MCP infrastructure blocker, then either restart the MCP session with an isolated profile or run an explicitly documented fallback browser probe against the same live app.
 - A 2026-05-07 wide orchestration validation pass found that collapsed agent side-panel chat hosts are attached but not visible on orchestration pages. Assert `[data-agent-chat-panel]` attachment for page coverage, then separately test visibility/toggle behavior when the panel interaction itself is in scope.
 - Agent detail orchestration tabs render through one dynamic `#agent-tab-panel`; do not expect separate persistent DOM nodes for inbox, queue, schedules, reactions, workspace, or history panels.
+- A 2026-05-08 third-pass validation used an isolated Chromium DevTools Protocol fallback after Playwright MCP hit the `mcp-chrome-4e05678` profile lock. For SSE lifecycle tests, read incrementally from `response.body.getReader()` and return as soon as the target first event arrives. For task/workflow transport checks, abort intentionally after `started`, then inspect server logs for `onErrorDropped`, `ResponseBodyEmitter has already completed`, `broken pipe`, and `AsyncRequestNotUsableException`.
+- If local model services are unavailable, run browser transport validation against a deterministic local OpenAI-compatible stub and point an isolated AI config at it. This keeps `/chat` and side-panel SSE browser contracts testable without depending on Ollama availability or model latency.
 
 # Engine Relevance
 

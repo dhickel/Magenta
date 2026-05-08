@@ -20,6 +20,22 @@ public class ScheduleService {
     private final AgentProfileService agentProfileService;
     private final AssignmentService assignmentService;
     private final OrchestrationEventService eventService;
+    private final boolean schedulesEnabled;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ScheduleService(
+        OrchestrationRuntimeRepository repository,
+        AgentProfileService agentProfileService,
+        AssignmentService assignmentService,
+        OrchestrationEventService eventService,
+        @org.springframework.beans.factory.annotation.Value("${magenta.features.schedules-enabled:false}") boolean schedulesEnabled
+    ) {
+        this.repository = repository;
+        this.agentProfileService = agentProfileService;
+        this.assignmentService = assignmentService;
+        this.eventService = eventService;
+        this.schedulesEnabled = schedulesEnabled;
+    }
 
     public ScheduleService(
         OrchestrationRuntimeRepository repository,
@@ -27,10 +43,7 @@ public class ScheduleService {
         AssignmentService assignmentService,
         OrchestrationEventService eventService
     ) {
-        this.repository = repository;
-        this.agentProfileService = agentProfileService;
-        this.assignmentService = assignmentService;
-        this.eventService = eventService;
+        this(repository, agentProfileService, assignmentService, eventService, true);
     }
 
     public List<AgentSchedule> schedules(String agentId) {
@@ -62,6 +75,9 @@ public class ScheduleService {
     @Scheduled(fixedDelayString = "${magenta.orchestration.scheduler-delay-ms:10000}")
     @Transactional
     public void pollDueSchedules() {
+        if (!schedulesEnabled) {
+            return;
+        }
         Instant now = Instant.now();
         for (AgentSchedule schedule : repository.findDueSchedules(now)) {
             CronExpression cron = cron(schedule.cronExpression());

@@ -29,6 +29,8 @@ The `AgentOrchestrationController` checks these flags before serving schedule an
 
 The `FrontendController` agent detail page removes "Schedules" and "Event Reactions" tab buttons and their dashboard counts from the UI.
 
+Runtime enforcement: `ScheduleService.pollDueSchedules()` and `OrchestrationEventService.handle()` also use these flags to prevent execution of persisted schedules/reactions. When disabled, schedules do not fire or create assignments. Reactions mark events as handled without enqueuing assignments. Existing persisted rows remain stored but inert.
+
 ## What Remains Active
 
 The following surfaces are intentionally kept active during alpha:

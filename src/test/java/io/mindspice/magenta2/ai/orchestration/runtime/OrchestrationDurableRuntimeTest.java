@@ -303,6 +303,56 @@ class OrchestrationDurableRuntimeTest {
             .hasSize(1);
     }
 
+    @Test
+    void disabledSchedulesDoNotFireOrCreateAssignments() throws Exception {
+        Services services = disabledScheduleServices();
+        AgentProfile agent = services.agentService().create(profile("agent-disabled-sched", "main"));
+        OrchestrationJob job = services.jobService().save(new OrchestrationJob(
+            null, agent.id(), "Disabled schedule job", null, null, null, OrchestrationStatus.QUEUED, null, null
+        ));
+        AgentSchedule schedule = services.scheduleService().save(agent.id(), new AgentSchedule(
+            null, agent.id(), job.id(), Map.of("assignmentType", "JOB_RUN", "input", Map.of("jobId", job.id())),
+            "0 0 * * * *", "UTC", true, Instant.now().minusSeconds(1), null, null
+        ));
+
+        services.scheduleService().pollDueSchedules();
+
+        assertThat(services.repository().findSchedule(schedule.id()).orElseThrow().nextRunAt())
+            .isEqualTo(schedule.nextRunAt());
+        Integer firingCount = services.jdbcTemplate().queryForObject(
+            "select count(*) from schedule_firings where schedule_id = ?",
+            Integer.class,
+            schedule.id()
+        );
+        assertThat(firingCount).isZero();
+        assertThat(services.repository().findAssignmentsForAgent(agent.id()))
+            .filteredOn(a -> a.assignmentType() == AssignmentType.JOB_RUN)
+            .isEmpty();
+    }
+
+    @Test
+    void disabledReactionsDoNotEnqueueAssignments() throws Exception {
+        Services services = disabledReactionServices();
+        AgentProfile agent = services.agentService().create(profile("agent-disabled-reaction", "main"));
+        services.reactionService().save(agent.id(), new AgentEventReaction(
+            null, agent.id(), EventType.INBOX_MESSAGE_RECEIVED, Map.of("messageType", "ping"),
+            ReactionActionType.ENQUEUE_ASSIGNMENT,
+            Map.of("assignmentType", "REPORT", "input", Map.of("message", "should not fire")), true, null, null
+        ));
+
+        InboxMessage message = services.inboxService().send(agent.id(), new InboxMessage(
+            null, agent.id(), "user", "ping", "wake", Map.of(), false, false, null, null
+        ));
+
+        assertThat(services.repository().findQueuedAssignments(10))
+            .filteredOn(a -> a.assignmentType() == AssignmentType.REPORT && "should not fire".equals(
+                a.input().get("message")))
+            .isEmpty();
+        assertThat(services.repository().findEventsForSource("INBOX_MESSAGE", message.id()))
+            .hasSize(1)
+            .allSatisfy(event -> assertThat(event.handledAt()).isNotNull());
+    }
+
     private Services services() throws Exception {
         return services(null, 300, 60);
     }
@@ -340,7 +390,75 @@ class OrchestrationDurableRuntimeTest {
         );
         return new Services(
             repository, agentService, taskService, jobService, assignmentService, inboxService, scheduleService,
-            reactionService, runnerService, workflowService, orchestrationRunService
+            reactionService, runnerService, workflowService, orchestrationRunService, jdbcTemplate
+        );
+    }
+
+    private Services disabledScheduleServices() throws Exception {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        AiConfig aiConfig = aiConfig();
+        AgentProfileService agentService = new AgentProfileService(
+            new AgentProfileRepository(jdbcTemplate, objectMapper), aiConfig, null
+        );
+        RuntimeSettingsService settingsService = new RuntimeSettingsService(
+            new RuntimeSettingsRepository(jdbcTemplate), aiConfig, agentService
+        );
+        WorkspaceService workspaceService = new WorkspaceService(new WorkspaceRepository(jdbcTemplate), aiConfig);
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, objectMapper);
+        OrchestrationJobService jobService = new OrchestrationJobService(repository, agentService, workspaceService);
+        AssignmentService assignmentService = new AssignmentService(repository, agentService, settingsService, jobService);
+        OrchestrationEventService eventService = new OrchestrationEventService(repository, assignmentService, true);
+        InboxService inboxService = new InboxService(repository, agentService, eventService);
+        ScheduleService scheduleService = new ScheduleService(repository, agentService, assignmentService, eventService, false);
+        EventReactionService reactionService = new EventReactionService(repository, agentService);
+        TaskService taskService = new TaskService(new TaskRepository(jdbcTemplate, objectMapper));
+        ChatService chatService = new FakeTaskChatService(taskService);
+        WorkflowService workflowService = new WorkflowService(new WorkflowRepository(jdbcTemplate, objectMapper), taskService, chatService);
+        OrchestrationRunnerService runnerService = new OrchestrationRunnerService(
+            repository, assignmentService, jobService, taskService, workflowService, chatService, inboxService,
+            eventService, new MagentaWorkExecutor(Map.of()), 300, 60
+        );
+        OrchestrationRunService orchestrationRunService = new OrchestrationRunService(
+            assignmentService, jobService, runnerService
+        );
+        return new Services(
+            repository, agentService, taskService, jobService, assignmentService, inboxService, scheduleService,
+            reactionService, runnerService, workflowService, orchestrationRunService, jdbcTemplate
+        );
+    }
+
+    private Services disabledReactionServices() throws Exception {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        AiConfig aiConfig = aiConfig();
+        AgentProfileService agentService = new AgentProfileService(
+            new AgentProfileRepository(jdbcTemplate, objectMapper), aiConfig, null
+        );
+        RuntimeSettingsService settingsService = new RuntimeSettingsService(
+            new RuntimeSettingsRepository(jdbcTemplate), aiConfig, agentService
+        );
+        WorkspaceService workspaceService = new WorkspaceService(new WorkspaceRepository(jdbcTemplate), aiConfig);
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, objectMapper);
+        OrchestrationJobService jobService = new OrchestrationJobService(repository, agentService, workspaceService);
+        AssignmentService assignmentService = new AssignmentService(repository, agentService, settingsService, jobService);
+        OrchestrationEventService eventService = new OrchestrationEventService(repository, assignmentService, false);
+        InboxService inboxService = new InboxService(repository, agentService, eventService);
+        ScheduleService scheduleService = new ScheduleService(repository, agentService, assignmentService, eventService, true);
+        EventReactionService reactionService = new EventReactionService(repository, agentService);
+        TaskService taskService = new TaskService(new TaskRepository(jdbcTemplate, objectMapper));
+        ChatService chatService = new FakeTaskChatService(taskService);
+        WorkflowService workflowService = new WorkflowService(new WorkflowRepository(jdbcTemplate, objectMapper), taskService, chatService);
+        OrchestrationRunnerService runnerService = new OrchestrationRunnerService(
+            repository, assignmentService, jobService, taskService, workflowService, chatService, inboxService,
+            eventService, new MagentaWorkExecutor(Map.of()), 300, 60
+        );
+        OrchestrationRunService orchestrationRunService = new OrchestrationRunService(
+            assignmentService, jobService, runnerService
+        );
+        return new Services(
+            repository, agentService, taskService, jobService, assignmentService, inboxService, scheduleService,
+            reactionService, runnerService, workflowService, orchestrationRunService, jdbcTemplate
         );
     }
 
@@ -400,7 +518,8 @@ class OrchestrationDurableRuntimeTest {
         EventReactionService reactionService,
         OrchestrationRunnerService runnerService,
         WorkflowService workflowService,
-        OrchestrationRunService orchestrationRunService
+        OrchestrationRunService orchestrationRunService,
+        JdbcTemplate jdbcTemplate
     ) {
     }
 

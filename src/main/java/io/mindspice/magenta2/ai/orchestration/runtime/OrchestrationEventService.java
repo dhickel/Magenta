@@ -11,10 +11,21 @@ import org.springframework.transaction.annotation.Transactional;
 public class OrchestrationEventService {
     private final OrchestrationRuntimeRepository repository;
     private final AssignmentService assignmentService;
+    private final boolean reactionsEnabled;
 
-    public OrchestrationEventService(OrchestrationRuntimeRepository repository, AssignmentService assignmentService) {
+    @org.springframework.beans.factory.annotation.Autowired
+    public OrchestrationEventService(
+        OrchestrationRuntimeRepository repository,
+        AssignmentService assignmentService,
+        @org.springframework.beans.factory.annotation.Value("${magenta.features.reactions-enabled:false}") boolean reactionsEnabled
+    ) {
         this.repository = repository;
         this.assignmentService = assignmentService;
+        this.reactionsEnabled = reactionsEnabled;
+    }
+
+    public OrchestrationEventService(OrchestrationRuntimeRepository repository, AssignmentService assignmentService) {
+        this(repository, assignmentService, true);
     }
 
     @Transactional
@@ -29,6 +40,13 @@ public class OrchestrationEventService {
 
     @Transactional
     public void handle(OrchestrationEvent event) {
+        if (!reactionsEnabled) {
+            repository.saveEvent(new OrchestrationEvent(
+                event.id(), event.eventType(), event.sourceType(), event.sourceId(),
+                event.payload(), event.createdAt(), Instant.now()
+            ));
+            return;
+        }
         for (AgentEventReaction reaction : repository.findEnabledReactions(event.eventType())) {
             if (!matches(reaction.filter(), event.payload())) {
                 continue;
