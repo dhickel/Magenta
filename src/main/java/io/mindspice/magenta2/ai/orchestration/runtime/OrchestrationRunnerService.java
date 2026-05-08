@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -109,10 +110,20 @@ public class OrchestrationRunnerService {
     public void pollQueuedWork() {
         recoverStaleLeases();
         for (WorkAssignment queued : repository.findQueuedAssignments(4)) {
-            executor.submitBackground(queued.id(), queued.priority(), "orchestration assignment " + queued.id(), () -> {
-                runAssignment(queued.id());
-                return null;
-            });
+            var leased = repository.acquireLease(queued.id(), leaseOwner, Instant.now().plus(leaseDuration));
+            if (leased.isEmpty()) {
+                continue;
+            }
+            WorkAssignment assignment = leased.get();
+            try {
+                executor.submitBackground(assignment.id(), assignment.priority(),
+                    "orchestration assignment " + assignment.id(), () -> {
+                    executeWithLease(assignment);
+                    return null;
+                });
+            } catch (RejectedExecutionException e) {
+                repository.revertToQueued(assignment.id(), leaseOwner);
+            }
         }
     }
 
@@ -129,12 +140,13 @@ public class OrchestrationRunnerService {
     }
 
     public WorkAssignment runAssignment(String assignmentId) {
-        WorkAssignment leased = repository.acquireLease(assignmentId, leaseOwner, Instant.now().plus(leaseDuration))
-            .orElse(null);
-        if (leased == null) {
-            return assignmentService.get(assignmentId);
-        }
-        ScheduledFuture<?> heartbeat = startLeaseHeartbeat(assignmentId);
+        return repository.acquireLease(assignmentId, leaseOwner, Instant.now().plus(leaseDuration))
+            .map(this::executeWithLease)
+            .orElseGet(() -> assignmentService.get(assignmentId));
+    }
+
+    private WorkAssignment executeWithLease(WorkAssignment leased) {
+        ScheduledFuture<?> heartbeat = startLeaseHeartbeat(leased.id());
         try {
             return switch (leased.assignmentType()) {
                 case TASK_RUN -> runTask(leased);
@@ -142,11 +154,12 @@ public class OrchestrationRunnerService {
                 case JOB_RUN -> runJob(leased);
                 case AGENT_MESSAGE -> runAgentMessage(leased);
                 case WAIT_FOR_MESSAGE -> assignmentService.saveStatus(leased, OrchestrationStatus.WAITING);
-                case REPORT -> complete(leased, Map.of("message", text(leased.input().get("message"), "Report completed.")),
+                case REPORT -> complete(leased,
+                    Map.of("message", text(leased.input().get("message"), "Report completed.")),
                     Map.of("reports", List.of(text(leased.input().get("message"), "Report completed."))));
             };
         } catch (RuntimeException exception) {
-            return fail(assignmentService.get(assignmentId), exception.getMessage());
+            return fail(assignmentService.get(leased.id()), exception.getMessage());
         } finally {
             heartbeat.cancel(false);
         }

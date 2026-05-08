@@ -232,6 +232,19 @@ public class OrchestrationRuntimeRepository {
         );
     }
 
+    public boolean revertToQueued(String assignmentId, String leaseOwner) {
+        int updated = jdbcTemplate.update(
+            """
+                update work_assignments
+                set status = ?, lease_owner = null, lease_expires_at = null, updated_at = ?
+                where id = ? and status = ? and lease_owner = ?
+                """,
+            OrchestrationStatus.QUEUED.name(), Instant.now().toString(),
+            assignmentId, OrchestrationStatus.RUNNING.name(), leaseOwner
+        );
+        return updated == 1;
+    }
+
     public int extendRunningLease(String assignmentId, String leaseOwner, Instant leaseExpiresAt) {
         Instant now = Instant.now();
         return jdbcTemplate.update(
