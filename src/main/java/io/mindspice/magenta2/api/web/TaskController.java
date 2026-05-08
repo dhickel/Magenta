@@ -3,10 +3,13 @@ package io.mindspice.magenta2.api.web;
 import java.util.List;
 import java.util.Map;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.mindspice.magenta2.ai.chat.task.TaskDefinition;
 import io.mindspice.magenta2.ai.chat.task.TaskDraft;
+import io.mindspice.magenta2.ai.chat.task.TaskFieldDefinition;
 import io.mindspice.magenta2.ai.chat.task.TaskRun;
 import io.mindspice.magenta2.ai.chat.task.TaskService;
+import io.mindspice.magenta2.ai.chat.task.TaskStep;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationRunContext;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationRunResult;
@@ -64,25 +67,59 @@ public class TaskController {
     }
 
     @PostMapping
-    public TaskDefinition create(@Valid @RequestBody TaskDefinition task) {
+    public TaskDefinition create(@Valid @RequestBody TaskCreateRequest request) {
         try {
-            return taskService.saveTask(task);
+            return taskService.saveTask(toDomain(request));
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
     }
 
     @PutMapping("/{taskId}")
-    public TaskDefinition update(@PathVariable String taskId, @Valid @RequestBody TaskDefinition task) {
+    public TaskDefinition update(@PathVariable String taskId, @Valid @RequestBody TaskUpdateRequest request) {
         try {
-            return taskService.saveTask(new TaskDefinition(
-                taskId, task.title(), task.summary(), task.goal(), task.notes(), task.inputDescription(),
-                task.inputs(), task.outputDescription(), task.outputs(), task.assumptions(), task.steps(),
-                task.validationCriteria(), task.createdAt(), task.updatedAt()
-            ));
+            return taskService.saveTask(toDomain(taskId, request));
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
+    }
+
+    private static TaskDefinition toDomain(TaskCreateRequest request) {
+        return new TaskDefinition(
+            null,
+            request.title(),
+            request.summary(),
+            request.goal(),
+            request.notes(),
+            request.inputDescription(),
+            request.inputs(),
+            request.outputDescription(),
+            request.outputs(),
+            request.assumptions(),
+            request.steps(),
+            request.validationCriteria(),
+            null,
+            null
+        );
+    }
+
+    private static TaskDefinition toDomain(String taskId, TaskUpdateRequest request) {
+        return new TaskDefinition(
+            taskId,
+            request.title(),
+            request.summary(),
+            request.goal(),
+            request.notes(),
+            request.inputDescription(),
+            request.inputs(),
+            request.outputDescription(),
+            request.outputs(),
+            request.assumptions(),
+            request.steps(),
+            request.validationCriteria(),
+            null,
+            null
+        );
     }
 
     @DeleteMapping("/{taskId}")
@@ -217,5 +254,51 @@ public class TaskController {
         String modelOverride,
         Integer priority
     ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record TaskCreateRequest(
+        @NotBlank String title,
+        String summary,
+        String goal,
+        String notes,
+        String inputDescription,
+        List<TaskFieldDefinition> inputs,
+        String outputDescription,
+        List<TaskFieldDefinition> outputs,
+        List<String> assumptions,
+        List<TaskStep> steps,
+        List<String> validationCriteria
+    ) {
+        public TaskCreateRequest {
+            inputs = inputs == null ? List.of() : List.copyOf(inputs);
+            outputs = outputs == null ? List.of() : List.copyOf(outputs);
+            assumptions = assumptions == null ? List.of() : List.copyOf(assumptions);
+            steps = steps == null ? List.of() : List.copyOf(steps);
+            validationCriteria = validationCriteria == null ? List.of() : List.copyOf(validationCriteria);
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record TaskUpdateRequest(
+        @NotBlank String title,
+        String summary,
+        String goal,
+        String notes,
+        String inputDescription,
+        List<TaskFieldDefinition> inputs,
+        String outputDescription,
+        List<TaskFieldDefinition> outputs,
+        List<String> assumptions,
+        List<TaskStep> steps,
+        List<String> validationCriteria
+    ) {
+        public TaskUpdateRequest {
+            inputs = inputs == null ? List.of() : List.copyOf(inputs);
+            outputs = outputs == null ? List.of() : List.copyOf(outputs);
+            assumptions = assumptions == null ? List.of() : List.copyOf(assumptions);
+            steps = steps == null ? List.of() : List.copyOf(steps);
+            validationCriteria = validationCriteria == null ? List.of() : List.copyOf(validationCriteria);
+        }
     }
 }

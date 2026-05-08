@@ -3,6 +3,7 @@ package io.mindspice.magenta2.api.web;
 import java.time.Instant;
 import java.util.List;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentRequest;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentType;
@@ -25,9 +26,8 @@ class OrchestrationJobControllerTest {
     @Test
     void createRejectsBlankTitle() {
         OrchestrationJobController controller = new OrchestrationJobController(stubService(), null);
-        OrchestrationJob blankTitle = new OrchestrationJob(
-            null, "agent-1", "  ", "summary", "qwen3", "ws-1",
-            OrchestrationStatus.QUEUED, null, null
+        OrchestrationJobController.JobCreateRequest blankTitle = new OrchestrationJobController.JobCreateRequest(
+            "agent-1", "  ", "summary", "qwen3", "ws-1"
         );
 
         assertThatThrownBy(() -> controller.create(blankTitle))
@@ -39,9 +39,8 @@ class OrchestrationJobControllerTest {
     @Test
     void createRejectsBlankOwnerAgentId() {
         OrchestrationJobController controller = new OrchestrationJobController(stubService(), null);
-        OrchestrationJob blankOwner = new OrchestrationJob(
-            null, "  ", "Test Job", "summary", null, null,
-            OrchestrationStatus.QUEUED, null, null
+        OrchestrationJobController.JobCreateRequest blankOwner = new OrchestrationJobController.JobCreateRequest(
+            "  ", "Test Job", "summary", null, null
         );
 
         assertThatThrownBy(() -> controller.create(blankOwner))
@@ -74,9 +73,8 @@ class OrchestrationJobControllerTest {
     @Test
     void createSucceedsWithValidJob() {
         OrchestrationJobController controller = new OrchestrationJobController(stubService(), null);
-        OrchestrationJob valid = new OrchestrationJob(
-            null, "agent-1", "Valid Job", "summary", "qwen3", "ws-1",
-            OrchestrationStatus.QUEUED, null, null
+        OrchestrationJobController.JobCreateRequest valid = new OrchestrationJobController.JobCreateRequest(
+            "agent-1", "Valid Job", "summary", "qwen3", "ws-1"
         );
 
         OrchestrationJob result = controller.create(valid);
@@ -88,15 +86,35 @@ class OrchestrationJobControllerTest {
     @Test
     void addItemRejectsInvalidItem() {
         OrchestrationJobController controller = new OrchestrationJobController(stubService(), null);
-        OrchestrationJobItem invalidItem = new OrchestrationJobItem(
-            null, "job-1", 1, null, "task-1", null,
-            null, 0, 0, false, java.util.Map.of(), null, null
+        OrchestrationJobController.JobItemCreateRequest invalidItem = new OrchestrationJobController.JobItemCreateRequest(
+            1, null, "task-1", null, null, 0, 0, false, java.util.Map.of()
         );
 
         assertThatThrownBy(() -> controller.addItem("job-1", invalidItem))
             .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
                 assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
             });
+    }
+
+    @Test
+    void createJobIgnoresLifecycleFieldsInJson() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+        // Extra JSON fields (id, status, createdAt, updatedAt) are silently dropped by the DTO
+        OrchestrationJobController.JobCreateRequest request = objectMapper.readValue(
+            """
+                {
+                  "ownerAgentId": "agent-1",
+                  "title": "Test Job",
+                  "id": "client-set-id",
+                  "status": "COMPLETED",
+                  "createdAt": "2025-01-01T00:00:00Z"
+                }
+                """,
+            OrchestrationJobController.JobCreateRequest.class
+        );
+
+        assertThat(request.ownerAgentId()).isEqualTo("agent-1");
+        assertThat(request.title()).isEqualTo("Test Job");
     }
 
     private static OrchestrationJobService stubService() {

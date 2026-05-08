@@ -41,7 +41,7 @@ class TaskControllerTest {
     void taskApiIgnoresLegacyDeliverablesAndDoesNotExposeThem() throws Exception {
         ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
         TaskController controller = new TaskController(taskService(), null);
-        TaskDefinition request = objectMapper.readValue(
+        TaskController.TaskCreateRequest request = objectMapper.readValue(
             """
                 {
                   "title": "Research task",
@@ -52,7 +52,7 @@ class TaskControllerTest {
                   "validationCriteria": ["research_notes is present."]
                 }
                 """,
-            TaskDefinition.class
+            TaskController.TaskCreateRequest.class
         );
 
         TaskDefinition response = controller.create(request);
@@ -67,8 +67,7 @@ class TaskControllerTest {
     void updateUsesPathIdWithoutDeliverables() throws Exception {
         TaskController controller = new TaskController(taskService(), null);
 
-        TaskDefinition response = controller.update("task-1", new TaskDefinition(
-            null,
+        TaskDefinition response = controller.update("task-1", new TaskController.TaskUpdateRequest(
             "Research task",
             null,
             "Collect notes.",
@@ -79,9 +78,7 @@ class TaskControllerTest {
             List.of(new TaskFieldDefinition("research_notes", TaskValueType.LONG_TEXT, "Notes.", true, null, null)),
             List.of(),
             List.of(new TaskStep(1, "Collect notes.")),
-            List.of("research_notes is present."),
-            null,
-            null
+            List.of("research_notes is present.")
         ));
 
         assertThat(response.id()).isEqualTo("task-1");
@@ -161,11 +158,42 @@ class TaskControllerTest {
     }
 
     @Test
+    void createTaskIgnoresClientProvidedLifecycleFields() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+        TaskController controller = new TaskController(taskService(), null);
+        // JSON with lifecycle fields is silently ignored by the DTO
+        TaskController.TaskCreateRequest request = objectMapper.readValue(
+            """
+                {
+                  "title": "Lifecycle test",
+                  "goal": "Test lifecycle fields are ignored.",
+                  "outputs": [{"name":"result","type":"string","description":"Result.","required":true}],
+                  "steps": [{"order":1,"text":"Run test."}],
+                  "validationCriteria": ["result is present."],
+                  "id": "client-set-id",
+                  "createdAt": "2025-01-01T00:00:00Z",
+                  "updatedAt": "2025-01-01T00:00:00Z"
+                }
+                """,
+            TaskController.TaskCreateRequest.class
+        );
+
+        TaskDefinition response = controller.create(request);
+
+        assertThat(response.id()).isNotNull();
+        assertThat(response.id()).isNotBlank();
+        // Server-assigned id should not match the client-provided value
+        assertThat(response.id()).isNotEqualTo("client-set-id");
+        assertThat(response.createdAt()).isNotNull();
+        assertThat(response.updatedAt()).isNotNull();
+    }
+
+    @Test
     void createTaskRejectsBlankTitle() throws Exception {
         TaskController controller = new TaskController(taskService(), null);
-        TaskDefinition blankTitle = new TaskDefinition(
-            null, "  ", null, "goal", null, null, List.of(), null,
-            List.of(), List.of(), List.of(), List.of(), null, null
+        TaskController.TaskCreateRequest blankTitle = new TaskController.TaskCreateRequest(
+            "  ", null, "goal", null, null, List.of(), null,
+            List.of(), List.of(), List.of(), List.of()
         );
 
         assertThatThrownBy(() -> controller.create(blankTitle))

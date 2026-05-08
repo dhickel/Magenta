@@ -16,7 +16,7 @@ Started: 2026-05-08
 | 3.1 | SQLite Schema Ownership & Validation | completed | Schema ownership policy: central schema.sql with narrow ensureSchema safety net. Added all missing tables to schema.sql. Enabled SQLite foreign keys. Added defense-in-depth cascade deletes in TaskRepository and WorkflowRepository. 13 new tests. |
 | 3.2 | Audit Sequence Robustness | completed | — |
 | 4.1 | Extract Controller Workflow & Stream Logic | completed | Extracted SsePayload to top-level record. Extracted TaskStreamSupport, WorkflowStreamSupport, and ChatStreamSupport classes. Added sendSseEvent helpers to SseStreamLifecycle. Controllers now delegate event mapping to support classes. 276 tests pass. |
-| 4.2 | Public API DTOs For Lifecycle Fields | pending | — |
+| 4.2 | Public API DTOs For Lifecycle Fields | completed | Introduced TaskCreateRequest/TaskUpdateRequest for TaskController, JobCreateRequest/JobItemCreateRequest for OrchestrationJobController. Domain records now stay inside service boundaries. Client lifecycle fields are silently ignored. 278 tests pass. |
 | 4.3 | Move PlanMode To Chat Interaction Package | pending | — |
 | 4.4 | Move AgentJobRepository To Agent Job Ownership | pending | — |
 | 4.5 | Incremental ChatService Seam Extraction | pending | — |
@@ -425,3 +425,32 @@ Chose a **narrow hybrid** policy:
 - `ChatStreamSupport.sendSseEvent` was added to both ChatStreamSupport and SseStreamLifecycle (different overloads). ChatStreamSupport has the MediaType overload for ChatStreamEvent JSON serialization.
 - All existing controller tests pass unchanged — the public API surface of all three controllers is identical.
 - The `ChatController.streamResolved` domain lifecycle (ActiveTurn registration, plan execution finalization, failure recording) was deliberately kept in the controller per the "do not hide domain transitions" guidance established in step 2.1.
+
+### Issue 4.2: Introduce Public API DTOs For Lifecycle-Owned Fields
+
+**Files changed:**
+- `src/main/java/io/mindspice/magenta2/api/web/TaskController.java` — Added `TaskCreateRequest` and `TaskUpdateRequest` public DTO records with `@JsonIgnoreProperties(ignoreUnknown = true)`. These expose only client-provided fields (title, summary, goal, notes, input/output definitions, assumptions, steps, validation criteria) and exclude lifecycle fields (id, createdAt, updatedAt). Added `toDomain(TaskCreateRequest)` and `toDomain(String, TaskUpdateRequest)` mapper methods. Changed `create()` to accept `@Valid @RequestBody TaskCreateRequest` and `update()` to accept `@Valid @RequestBody TaskUpdateRequest`. Added imports for `JsonIgnoreProperties`, `TaskFieldDefinition`, `TaskStep`.
+- `src/main/java/io/mindspice/magenta2/api/web/OrchestrationJobController.java` — Added `JobCreateRequest` and `JobItemCreateRequest` public DTO records with `@JsonIgnoreProperties(ignoreUnknown = true)`. `JobCreateRequest` exposes only ownerAgentId, title, summary, defaultModel, workspaceId. `JobItemCreateRequest` exposes only itemOrder, itemType, taskId, workflowId, modelOverride, priority, retryCount, continueOnFailure, config. Added `toDomain(JobCreateRequest)` and `toDomain(String, JobItemCreateRequest)` mapper methods. Changed `create()` to accept `@Valid @RequestBody JobCreateRequest` and `addItem()` to accept `@Valid @RequestBody JobItemCreateRequest`. Cleaned up fully-qualified `AssignmentType.JOB_RUN` references to use the imported `AssignmentType`. Added imports for `JsonIgnoreProperties`, `Map`, `AssignmentType`, `NotBlank`, `NotNull`.
+- `src/test/java/io/mindspice/magenta2/api/web/TaskControllerTest.java` — Updated `taskApiIgnoresLegacyDeliverablesAndDoesNotExposeThem`, `updateUsesPathIdWithoutDeliverables`, and `createTaskRejectsBlankTitle` to use the new DTO records. Added `createTaskIgnoresClientProvidedLifecycleFields` contract test: sends JSON with `id`, `createdAt`, `updatedAt` fields, verifies DTO silently drops them, and verifies the server assigns its own values.
+- `src/test/java/io/mindspice/magenta2/api/web/OrchestrationJobControllerTest.java` — Updated `createRejectsBlankTitle`, `createRejectsBlankOwnerAgentId`, `createSucceedsWithValidJob`, and `addItemRejectsInvalidItem` to use the new DTO records. Added `createJobIgnoresLifecycleFieldsInJson` contract test: sends JSON with `id`, `status`, `createdAt`, verifies DTO silently drops them.
+
+**What changed and why:**
+
+1. **TaskController DTOs** — Previously, `create()` and `update()` accepted `TaskDefinition` directly, which exposes `id`, `createdAt`, and `updatedAt` — lifecycle fields that should be server-managed. The new `TaskCreateRequest` and `TaskUpdateRequest` records exclude these fields. Mapper methods construct domain records with null lifecycle fields; the `TaskRepository.save()` method handles nulls by assigning `Instant.now()`. The `@NotBlank` annotation on `title` is preserved for Spring MVC validation. Legacy fields like `deliverables` are silently ignored via `@JsonIgnoreProperties(ignoreUnknown = true)`.
+
+2. **OrchestrationJobController DTOs** — Previously, `create()` accepted `OrchestrationJob` directly (exposing `id`, `status`, `createdAt`, `updatedAt`). The new `JobCreateRequest` excludes these fields. Similarly, `addItem()` accepted `OrchestrationJobItem` directly (exposing `id`, `createdAt`, `updatedAt`); the new `JobItemCreateRequest` excludes them. The mapper methods set lifecycle fields to null; the `OrchestrationRuntimeRepository.saveJob()` and `saveJobItem()` methods handle nulls by assigning `Instant.now()`.
+
+3. **Mapper placement** — Mappers are private static methods on their respective controllers, co-located with the DTOs they map. This keeps the conversion logic close to the API surface and avoids a separate mapper layer that would add indirection without benefit at this stage.
+
+4. **Contract tests** — Two new tests prove that lifecycle fields in JSON are silently dropped by the DTOs (Jackson's default `ignoreUnknown=true` behavior for fields not present in the record). An additional contract test on TaskController proves that even if a client sends `id`, `createdAt`, and `updatedAt` in the JSON body, the server assigns its own values for all lifecycle fields.
+
+**Test results:**
+- All 278 tests pass (276 existing + 2 new contract tests). Full suite: 278 run, 0 failures, 0 errors, 0 skipped.
+
+**Reviewer notes:**
+- The `TaskUpdateRequest` and `TaskCreateRequest` records are structurally identical but kept as separate types so their semantics are explicit at the call site. They use identical compact constructors for defensive copying of list fields.
+- The `JobItemCreateRequest` uses `Integer`/`Boolean` boxed types for `priority`, `retryCount`, and `continueOnFailure` so clients can omit them (defaulting to 0/false in the mapper). The `itemOrder` field uses primitive `int` since 0 triggers auto-assignment in the service.
+- The existing `OrchestrationJobService.save()` method checks for `ownerAgentId` being blank and `title` being blank — this validation still triggers even though Spring's `@Valid` does not run during direct controller method calls in unit tests (no Spring MVC test runner). The `@NotBlank` annotations on the DTOs provide validation when running through Spring MVC.
+- No changes were made to response DTOs (TaskDefinition, OrchestrationJob, OrchestrationJobItem are still returned from controller methods). These domain records include lifecycle fields as read-only output, which is appropriate — the fix addresses the input side where clients could previously mutate these fields.
+- The `AssignmentRequest` used by `OrchestrationJobController.run()` and `AgentOrchestrationController.assign()` was already clean (no lifecycle fields) and was not changed.
+- `WorkflowController` has the same pattern (accepts `WorkflowDefinition` in create/update) but was not in scope for this issue. It should be addressed in a follow-up.
