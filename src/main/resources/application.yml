@@ -13,7 +13,7 @@ magenta:
 
 spring:
   datasource:
-    url: jdbc:sqlite:./chat-memory.db
+    url: jdbc:sqlite:./chat-memory.db?foreign_keys=true
     driver-class-name: org.sqlite.JDBC
   sql:
     init:

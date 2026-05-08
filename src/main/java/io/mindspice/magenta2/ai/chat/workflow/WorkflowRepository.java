@@ -65,8 +65,10 @@ public class WorkflowRepository {
         return new WorkflowDefinition(workflow.id(), workflow.title(), workflow.summary(), workflow.steps(), createdAt, updatedAt);
     }
 
+    @Transactional
     public void delete(String id) {
         if (StringUtils.hasText(id)) {
+            jdbcTemplate.update("delete from ai_workflow_runs where workflow_id = ?", id);
             jdbcTemplate.update("delete from ai_workflow_definitions where id = ?", id);
         }
     }

@@ -106,8 +106,10 @@ public class TaskRepository {
         );
     }
 
+    @Transactional
     public void delete(String id) {
         if (StringUtils.hasText(id)) {
+            jdbcTemplate.update("delete from ai_task_runs where task_id = ?", id);
             jdbcTemplate.update("delete from ai_task_definitions where id = ?", id);
         }
     }

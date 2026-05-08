@@ -15,6 +15,7 @@ create table if not exists ai_chat_session_metadata (
     model text,
     title text,
     active_task_run_id text,
+    planning_model text,
     favorite integer not null default 0,
     archived integer not null default 0,
     updated_at text
@@ -203,3 +204,170 @@ create table if not exists ai_workflow_runs (
 
 create index if not exists idx_ai_workflow_runs_workflow
     on ai_workflow_runs (workflow_id, created_at desc);
+
+-- Orchestration and agent tables (repository-owned bootstrapping with schema.sql as canonical source)
+
+create table if not exists agent_profiles (
+    id text primary key,
+    name text not null unique,
+    status text not null,
+    default_model text,
+    system_prompt_text text,
+    approved_tool_names_json text not null,
+    allowed_shell_commands_json text not null,
+    direct_line_enabled integer not null,
+    created_at text not null,
+    updated_at text not null
+);
+
+create table if not exists orchestration_jobs (
+    id text primary key,
+    owner_agent_id text not null,
+    title text not null,
+    summary text,
+    default_model text,
+    workspace_id text,
+    status text not null,
+    created_at text not null,
+    updated_at text not null
+);
+
+create table if not exists orchestration_job_items (
+    id text primary key,
+    job_id text not null,
+    item_order integer not null,
+    item_type text not null,
+    task_id text,
+    workflow_id text,
+    model_override text,
+    priority integer not null,
+    retry_count integer not null default 0,
+    continue_on_failure integer not null default 0,
+    config_json text,
+    created_at text not null,
+    updated_at text not null,
+    foreign key(job_id) references orchestration_jobs(id)
+);
+
+create table if not exists work_assignments (
+    id text primary key,
+    agent_id text not null,
+    job_id text,
+    job_item_id text,
+    assignment_type text not null,
+    priority integer not null,
+    status text not null,
+    model_override text,
+    workspace_id text,
+    current_item_index integer not null,
+    checkpoint_json text,
+    input_json text,
+    output_json text,
+    evidence_json text,
+    error_text text,
+    lease_owner text,
+    lease_expires_at text,
+    created_at text not null,
+    updated_at text not null,
+    started_at text,
+    completed_at text
+);
+
+create index if not exists idx_work_assignments_queue
+    on work_assignments(status, priority, created_at);
+
+create table if not exists agent_inbox_messages (
+    id text primary key,
+    to_agent_id text not null,
+    from_id text,
+    message_type text not null,
+    body text,
+    metadata_json text,
+    read_flag integer not null,
+    handled_flag integer not null,
+    created_at text not null,
+    updated_at text not null
+);
+
+create table if not exists agent_schedules (
+    id text primary key,
+    agent_id text not null,
+    job_id text,
+    assignment_template_json text,
+    cron_expression text not null,
+    timezone text not null,
+    enabled_flag integer not null,
+    next_run_at text,
+    created_at text not null,
+    updated_at text not null
+);
+
+create table if not exists schedule_firings (
+    id text primary key,
+    schedule_id text not null,
+    due_at text not null,
+    assignment_id text not null,
+    created_at text not null,
+    unique(schedule_id, due_at),
+    foreign key(schedule_id) references agent_schedules(id)
+);
+
+create table if not exists agent_event_reactions (
+    id text primary key,
+    agent_id text not null,
+    event_type text not null,
+    filter_json text,
+    action_type text not null,
+    assignment_template_json text,
+    enabled_flag integer not null,
+    created_at text not null,
+    updated_at text not null
+);
+
+create table if not exists orchestration_events (
+    id text primary key,
+    event_type text not null,
+    source_type text,
+    source_id text,
+    payload_json text,
+    created_at text not null,
+    handled_at text
+);
+
+create table if not exists runtime_settings (
+    id text primary key,
+    default_agent_id text,
+    default_agent_name text,
+    default_model text,
+    planning_model text,
+    summary_model text,
+    compaction_model text,
+    context_buffer_percent integer
+);
+
+create table if not exists workspaces (
+    id text primary key,
+    owner_type text not null,
+    owner_id text not null,
+    root_relative_path text not null,
+    display_name text not null,
+    metadata_json text,
+    created_at text not null,
+    updated_at text not null
+);
+
+create unique index if not exists idx_workspaces_owner
+    on workspaces(owner_type, owner_id);
+
+create table if not exists workspace_links (
+    id text primary key,
+    workspace_id text not null,
+    label text not null,
+    link_type text not null,
+    target text not null,
+    readable integer not null,
+    writable integer not null,
+    created_at text not null,
+    updated_at text not null,
+    foreign key(workspace_id) references workspaces(id)
+);

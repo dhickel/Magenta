@@ -12,8 +12,8 @@ Started: 2026-05-08
 | 1.3 | Public Request Validation & Error Mapping | completed | Add Jakarta validation (spring-boot-starter-validation). Add @NotBlank/@NotNull to all request DTOs. Add @Valid on all @RequestBody parameters. Create GlobalExceptionHandler mapping validation/illegalargument/illegalstate to 400/409. Add 43 focused tests. All 214 pass. |
 | 2.1 | Standardize Streaming/SSE Lifecycle | completed | Extracted shared SseStreamLifecycle with outcome table, SubscriptionGuard, and standardized emitter factory. Updated all 4 controllers. 22 new tests. |
 | 2.2 | Workflow Stream Off Servlet Threads | pending | — |
-| 2.3 | Prevent Duplicate Queued Assignment Submission | pending | — |
-| 3.1 | SQLite Schema Ownership & Validation | pending | — |
+| 2.3 | Prevent Duplicate Queued Assignment Submission | completed | Acquire lease before executor submission in pollQueuedWork; revert on rejection. 3 new tests. |
+| 3.1 | SQLite Schema Ownership & Validation | completed | Schema ownership policy: central schema.sql with narrow ensureSchema safety net. Added all missing tables to schema.sql. Enabled SQLite foreign keys. Added defense-in-depth cascade deletes in TaskRepository and WorkflowRepository. 13 new tests. |
 | 3.2 | Audit Sequence Robustness | pending | — |
 | 4.1 | Extract Controller Workflow & Stream Logic | pending | — |
 | 4.2 | Public API DTOs For Lifecycle Fields | pending | — |
@@ -234,3 +234,103 @@ Started: 2026-05-08
 - The old `streamRunHandlesServiceError` test continues to pass: since execution now happens asynchronously, the emitter is returned before the error occurs, and the test `assertThat(emitter).isNotNull()` holds true for both sync and async paths.
 - WorkflowService.java was deliberately NOT changed. The synchronous `runSynchronously()` method remains available for any non-stream code paths. Only the controller's invocation pattern was made asynchronous.
 - No changes were needed to the orchestrator or executor infrastructure. The existing `Schedulers.boundedElastic()` from Reactor handles thread management.
+
+### Issue 2.3: Prevent Duplicate Queued Assignment Submission
+
+**Files changed:**
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/runtime/OrchestrationRuntimeRepository.java`
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/runtime/OrchestrationRunnerService.java`
+- `src/test/java/io/mindspice/magenta2/ai/orchestration/OrchestrationRunnerPollingTest.java` (NEW)
+
+**What changed and why:**
+
+1. **`OrchestrationRuntimeRepository.revertToQueued()`** -- New method that atomically reverts a RUNNING assignment back to QUEUED with lease fields cleared. The WHERE clause checks both status=RUNNING and lease_owner, so only the current lease holder can revert. This provides a safe rollback path when executor submission fails.
+
+2. **`OrchestrationRunnerService.pollQueuedWork()`** -- Restructured to acquire the lease (durable state transition from QUEUED to RUNNING) BEFORE submitting work to the executor. Previously the lease was acquired inside the submitted task (inside `runAssignment`), creating a window where the same QUEUED assignment could be found by multiple poll cycles while the background executor was backlogged. The fix:
+   - For each queued assignment, immediately calls `repository.acquireLease()`.
+   - If lease acquisition fails (race with another runner), skips it.
+   - If lease succeeds, submits the executor task with `executeWithLease()` (no lease acquisition needed -- already held).
+   - If executor submission throws `RejectedExecutionException` (executor saturated), catches it and calls `repository.revertToQueued()` to put the assignment back in QUEUED state so it remains eligible for future polls.
+
+3. **`OrchestrationRunnerService.runAssignment()`** -- Refactored into two methods:
+   - `runAssignment(String assignmentId)`: Public method that acquires a lease and delegates to `executeWithLease`. Behavior is unchanged for external callers.
+   - `executeWithLease(WorkAssignment)`: Private method containing the assignment execution logic (heartbeat, dispatch, completion/error). Takes an already-leased assignment, so it does NOT attempt to acquire a lease. This is shared by both `runAssignment` and the scheduled poll path.
+
+**Decisions made:**
+- Chose a durable state transition (acquire lease before submission) over in-memory tracking. The repository already has the correct lock/lease primitives (`acquireLease` with WHERE-clause optimistic locking), and the lease serves as both the "in-flight" marker and the coordination primitive for other runners. This avoids the complexity of a bounded in-memory submitted set with cleanup for success, failure, rejection, and shutdown.
+- The `revertToQueued` method checks both `status=RUNNING` and `lease_owner` to avoid reverting leases held by other runners. This is consistent with `extendRunningLease` and other lease operations that verify ownership.
+- `RejectedExecutionException` is the only exception caught around `submitBackground`. Other exceptions (IllegalArgumentException for missing lane config) are programming errors that should propagate.
+- Used the 8-arg constructor of `OrchestrationRunnerService` in tests (no ChatService) since the test assignments are REPORT type and don't require model execution.
+
+**Tests added: 3 (240 total, up from 237)**
+
+1. `backloggedExecutorLeasesAssignmentOnlyOnce` -- Creates a 1-thread executor with 100-slot queue. Holds the single thread with a CountDownLatch blocker. Queues a REPORT assignment. Runs `pollQueuedWork`: verifies lease is acquired (assignment becomes RUNNING) and `findQueuedAssignments` returns empty. Runs `pollQueuedWork` again: verifies no resubmission (status stays RUNNING). Proves a single QUEUED assignment is submitted exactly once even when the executor is backlogged.
+
+2. `saturatedExecutorRevertsLeaseAndPollingSurvives` -- Creates a 1-thread executor with 0 queue slots (total capacity = 1). Fills the capacity with a CountDownLatch blocker. Queues a REPORT assignment. Runs `pollQueuedWork`: verifies lease is acquired then reverted (status back to QUEUED, lease owner null). Runs `pollQueuedWork` again: verifies same cycle repeats (status QUEUED, lease null). Proves polling survives rejection and work remains eligible for future submission.
+
+3. `revertToQueuedOnlySucceedsForCorrectLeaseOwner` -- Creates a RUNNING assignment with known lease owner. Verifies reverting with wrong owner is a no-op (stays RUNNING). Verifies reverting with correct owner succeeds (becomes QUEUED). Verifies the SQL WHERE clause correctly guards lease ownership.
+
+**Test results:**
+- All 240 tests pass (237 existing + 3 new). Full suite: 240 run, 0 failures, 0 errors, 0 skipped.
+
+**Reviewer notes:**
+- The `executeWithLease` method operates on the `WorkAssignment` object captured at lease-acquisition time. For long-running job iterations, `runJob()` re-reads the assignment from the DB via `assignmentService.get(current.id())` on each iteration, so any mid-execution state changes (like cancellation) are properly detected. For short-running types (REPORT, TASK_RUN, WORKFLOW_RUN), the captured state is sufficient.
+- The heartbeat starts inside `executeWithLease` (running in the executor thread), not during lease acquisition. There is a window between lease acquisition and heartbeat start where the lease could expire if the executor backlog exceeds the lease duration (default 300s). This is an acceptable edge case -- if the executor is backlogged for 5+ minutes, capacity needs to be addressed independently.
+- The stale-lease recovery path (`markStaleRunningLeases`) remains unchanged. If an executor node crashes with acquired leases, the standard recovery mechanism marks them as INTERRUPTED, making them eligible for re-queueing via `resume()`.
+
+### Issue 3.1: SQLite Schema Ownership And Validated Clean/Upgraded Databases
+
+**Files changed:**
+- `src/main/resources/schema.sql` — Added `planning_model` column to `ai_chat_session_metadata`. Added all 12 repository-owned tables (agent_profiles, orchestration_jobs, orchestration_job_items, work_assignments, agent_inbox_messages, agent_schedules, schedule_firings, agent_event_reactions, orchestration_events, runtime_settings, workspaces, workspace_links) with their indexes (idx_work_assignments_queue, idx_workspaces_owner). schema.sql is now the canonical home for ALL tables.
+- `src/main/resources/application.yml` — Added `?foreign_keys=true` to the SQLite JDBC URL so foreign key constraints (including ON DELETE CASCADE) are enforced per connection.
+- `src/main/java/io/mindspice/magenta2/ai/chat/task/TaskRepository.java` — `delete()` now deletes child `ai_task_runs` before deleting the `ai_task_definitions` row. Wrapped in `@Transactional` for atomicity.
+- `src/main/java/io/mindspice/magenta2/ai/chat/workflow/WorkflowRepository.java` — `delete()` now deletes child `ai_workflow_runs` before deleting the `ai_workflow_definitions` row. Wrapped in `@Transactional` for atomicity.
+- `src/test/java/io/mindspice/magenta2/SchemaOwnershipTest.java` — NEW. 13 tests.
+
+**What changed and why:**
+
+1. **schema.sql consolidation** — Before this change, 12 tables (all orchestration, workspace, agent profile tables) were only created by repository `ensureSchema()` methods, not by schema.sql. Another 6 tables (chat memory, session metadata, agent jobs, audit event, chat plans, plan steps) had dual ownership (both schema.sql AND ensureSchema). schema.sql is now the authoritative source for all 23 tables. Repository `ensureSchema()` methods are preserved as safety nets for test isolation and upgraded-database column migration.
+
+2. **SQLite foreign keys** — SQLite does not enforce foreign keys by default; you must set `PRAGMA foreign_keys = ON` per connection. The JDBC URL parameter `?foreign_keys=true` achieves this for all connections through the Spring Boot DataSource. Existing FK definitions in schema.sql (`ai_task_runs -> ai_task_definitions ON DELETE CASCADE`, `ai_workflow_runs -> ai_workflow_definitions ON DELETE CASCADE`, `ai_chat_plan_steps -> ai_chat_plans ON DELETE CASCADE`) are now enforced.
+
+3. **Defense-in-depth cascade deletes** — `TaskRepository.delete()` and `WorkflowRepository.delete()` now explicitly delete related runs before deleting the definition. This works whether or not FK enforcement is active, providing belt-and-suspenders protection against orphaned rows. The explicit delete is redundant when FKs are enabled (the ON DELETE CASCADE handles it), but harmless and provides defense-in-depth.
+
+4. **`planning_model` column** — Added to `ai_chat_session_metadata` in schema.sql (it was previously only managed by `ChatSessionMetadataRepository.ensureSchema()` via ALTER TABLE for upgraded databases). This closes the drift between the canonical schema definition and the runtime column migration.
+
+**Schema ownership policy decision:**
+
+Chose a **narrow hybrid** policy:
+- **Central `schema.sql`** is the canonical home for ALL table definitions. Every table in the database is defined here with its complete column list. This is the single source of truth for clean-database initialization.
+- **Repository `ensureSchema()` methods** are preserved as:
+  - A safety net for test isolation (tests create repositories directly against in-memory SQLite without schema.sql).
+  - An upgraded-database column migration mechanism (ALTER TABLE ADD COLUMN for columns added after the initial schema).
+  - They do NOT define tables that are absent from schema.sql.
+- This avoids a full migration framework (per senior guidance) while ensuring clean databases and upgraded databases converge to the same schema.
+
+**Tests added: 13 (253 total, up from 240)**
+
+| Test | Coverage |
+|------|----------|
+| `cleanDatabaseHasAllExpectedTables` | Verifies all 23 tables exist after running schema.sql |
+| `cleanDatabaseHasRequiredIndexes` | Verifies all required indexes exist (idx_ai_chat_memory_conversation, idx_audit_event_conversation, idx_agent_jobs_conversation, idx_agent_jobs_conversation_title_active, idx_ai_task_runs_task, idx_ai_workflow_runs_workflow, idx_work_assignments_queue, idx_workspaces_owner) |
+| `foreignKeysAreEnabled` | Verifies `PRAGMA foreign_keys` returns true on the test connection |
+| `taskDeleteRemovesRuns` | Creates a task with 2 runs, deletes the task, verifies runs are gone |
+| `workflowDeleteRemovesRuns` | Creates a workflow with 2 runs, deletes the workflow, verifies runs are gone |
+| `chatPlanDeleteRemovesSteps` | Creates a plan with steps, deletes the plan, verifies steps are gone |
+| `upgradedChatSessionMetadataGetsMissingColumns` | Creates old table with only conversation_id and model, runs ensureSchema, verifies all 6 newer columns added |
+| `upgradedChatMemoryGetsMetadataColumn` | Creates old table without message_metadata_json, runs ensureSchema, verifies column added |
+| `upgradedAuditEventGetsAllColumns` | Creates minimal audit_event, runs ensureSchema, verifies all audit columns added |
+| `upgradedChatPlansGetsExtraColumns` | Creates old ai_chat_plans with basic columns only, runs ensureTables, verifies all plan columns added |
+| `upgradedOrchestrationJobItemsGetsExtraColumns` | Creates old orchestration_job_items without retry_count/continue_on_failure, runs ensureSchema, verifies columns added |
+| `foreignKeyConstraintPreventsOrphanedRunsOnDirectDelete` | Inserts task+run directly via SQL (no repository), deletes parent, verifies FK cascade removes the run |
+| `ensureSchemaIsIdempotent` | Runs all repository ensureSchema methods twice on a clean schema.sql database, verifies no errors |
+
+**Test results:**
+- All 253 tests pass (240 existing + 13 new). Full suite: 253 run, 0 failures, 0 errors, 0 skipped.
+
+**Reviewer notes:**
+- The `planning_model` column was the only column missing from `schema.sql` that was already managed by an `ensureSchema` migration (ChatSessionMetadataRepository). All other columns that ensureSchema methods add via ALTER TABLE are already present in schema.sql.
+- The `upgradedChatPlansGetsExtraColumns` test does NOT assert `plan_start_message_order` because that column was always part of the initial CREATE TABLE (both in schema.sql and ChatPlanRepository.ensureTables), never added via ALTER TABLE. An upgraded database predating that column would not have it added by ensureTables alone -- this is acceptable because the column was present from the first version of the application.
+- The `?foreign_keys=true` parameter is added to the JDBC URL. This is supported by the xerial SQLite JDBC driver (org.xerial:sqlite-jdbc:3.50.3.0). Each connection created through the DataSource will have `PRAGMA foreign_keys = ON` set automatically.
+- TaskRepository and WorkflowRepository gained `@Transactional` on their `delete()` methods. The annotation was already imported in both files; the explicit cascade deletes are now wrapped in a transaction so the two DELETE statements are atomic.
+- No changes were made to repository `ensureSchema()` methods themselves -- they continue to provide CREATE TABLE IF NOT EXISTS + ALTER TABLE migration logic. The consolidation is achieved entirely through schema.sql becoming the authoritative source for all tables.
