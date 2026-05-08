@@ -197,3 +197,40 @@ Started: 2026-05-08
 - ChatController's `streamResolved` still owns the full domain lifecycle: turn registration, plan finalization guard (`AtomicBoolean planExecutionFinalized`), and failure recording. Only the subscription reference management was extracted.
 - The synchronous endpoints (WorkflowController.streamRun, AgentOrchestrationController.chat) already complete the emitter before returning, so timeouts and subscription lifecycle don't apply. They use `createEmitter()` for consistency and future-proofing.
 
+
+### Issue 2.2: Move Workflow Stream Execution Off Servlet Threads
+
+**Files changed:**
+- `src/main/java/io/mindspice/magenta2/api/web/WorkflowController.java`
+- `src/test/java/io/mindspice/magenta2/api/web/WorkflowControllerTest.java`
+
+**What changed and why:**
+
+1. **WorkflowController.streamRun** -- Refactored from synchronous execution on the servlet thread to async execution via `Flux.defer` + `Schedulers.boundedElastic()`, matching the pattern established by TaskController. Both code paths (orchestration context and local workflow execution) are now wrapped in lazy `Flux.defer` blocks and subscribed on a bounded elastic scheduler. The emitter is returned immediately; all blocking work (including `runSynchronously` and `orchestrationRunService.runWorkflow`) executes on a background thread.
+
+2. **SSE lifecycle** -- Added `SseStreamLifecycle.SubscriptionGuard` with `registerCallbacks()` for proper subscription disposal on all terminal paths (completion, timeout, client disconnect, error). The guard tracks the `Disposable` from the `subscribe` call and disposes it when the emitter completes, times out, errors, or the client disconnects.
+
+3. **SsePayload record** -- Added a private `SsePayload(String name, Object data)` record (same pattern as `TaskController`) to carry SSE event name/data pairs through the reactive pipeline.
+
+4. **Error handling** -- Synchronous setup errors (before subscription) are caught by the existing `IllegalArgumentException` and `Exception` catch blocks. Asynchronous errors during execution are caught by the subscriber's error handler, which sends a "failed" event and completes the emitter. This preserves the existing error contract while moving execution off the request thread.
+
+5. **Preserved synchronous path** -- `WorkflowService.runSynchronously()` remains unchanged. It is still callable directly for non-stream code paths. Only `WorkflowController.streamRun` changed its calling pattern from synchronous to asynchronous.
+
+**Decisions made:**
+- Followed TaskController async semantics exactly: `Flux.defer` wrapping blocking calls, `subscribeOn(Schedulers.boundedElastic())`, and `SseStreamLifecycle.SubscriptionGuard` for lifecycle management. This matches the senior guidance to "match task stream semantics first."
+- Used `registerCallbacks(emitter, guard, null, null)` since there are no domain transitions (no ActiveTurn, no plan execution failure recording) on terminal paths -- the guard's subscription disposal is the only cleanup needed.
+- Both the orchestration-context and local-workflow paths fire events that are identical to the original synchronous version. The event schema is unchanged, ensuring backward compatibility for SSE clients.
+- The `SsePayload` record is private to the controller, consistent with TaskController's treatment.
+
+**Tests added:**
+1. `streamRunReturnsBeforeWorkflowExecutionCompletesAndEmitsTerminalStatus` -- Creates a `BlockingWorkflowService` that holds `runSynchronously` until released. Calls `streamRun` in a separate thread via `CompletableFuture.supplyAsync`, asserts the emitter is returned within 200ms (proving non-blocking return), then waits for execution to start, releases the block, and verifies all expected events arrive (started, step_started, step_completed, completed, COMPLETED).
+
+**Test results:**
+- All 237 tests pass (236 existing + 1 new in WorkflowControllerTest).
+
+**Reviewer notes:**
+- The `BlockingWorkflowService` test stub uses `CountDownLatch` to coordinate the test thread with the background execution thread. The test asserts `executionStarted.await(1, SECONDS)` before releasing, proving the async subscription was activated before measuring completion.
+- The `initializeEmitter` helper uses `Proxy` to intercept `SseEmitter` internal handler calls, matching the pattern used in `TaskControllerTest.CapturedSse`. This captures SSE events without needing a running servlet container.
+- The old `streamRunHandlesServiceError` test continues to pass: since execution now happens asynchronously, the emitter is returned before the error occurs, and the test `assertThat(emitter).isNotNull()` holds true for both sync and async paths.
+- WorkflowService.java was deliberately NOT changed. The synchronous `runSynchronously()` method remains available for any non-stream code paths. Only the controller's invocation pattern was made asynchronous.
+- No changes were needed to the orchestrator or executor infrastructure. The existing `Schedulers.boundedElastic()` from Reactor handles thread management.
