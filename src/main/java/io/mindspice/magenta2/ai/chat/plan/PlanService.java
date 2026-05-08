@@ -206,32 +206,12 @@ public class PlanService {
         if (normalizedGoal == null) {
             throw new IllegalArgumentException("plan_set_goal requires a goal");
         }
-        return planRepository.save(new ExecutionPlan(
-            existing.conversationId(),
-            PlanMode.PLAN,
-            PlanStatus.DRAFT,
-            nextTaskAfterGoal(existing),
-            normalizedGoal,
-            choose(existing.title(), titleFromGoal(normalizedGoal)),
-            existing.summary(),
-            existing.notes(),
-            existing.deliverables(),
-            existing.inputs(),
-            existing.outputs(),
-            existing.assumptions(),
-            existing.steps(),
-            existing.acceptanceCriteria(),
-            existing.executionEvidence(),
-            existing.validationFeedback(),
-            existing.prePlanningModel(),
-            existing.executionModel(),
-            existing.pendingQuestions(),
-            existing.pendingQuestionIndex(),
-            existing.planStartMessageOrder(),
-            existing.finalMessage(),
-            existing.createdAt(),
-            Instant.now()
-        ));
+        String newTitle = choose(existing.title(), titleFromGoal(normalizedGoal));
+        return planRepository.save(existing
+            .withGoal(normalizedGoal)
+            .withTitle(newTitle)
+            .withPlanningTask(nextTaskAfterGoal(existing))
+            .withModeStatus(PlanMode.PLAN, PlanStatus.DRAFT));
     }
 
     public ExecutionPlan setPlanningTask(String conversationId, String planningTask) {
@@ -276,32 +256,10 @@ public class PlanService {
         if (cleanQuestions.size() > MAX_QUEUED_QUESTIONS) {
             throw new IllegalArgumentException("ask_user_questions accepts at most five questions");
         }
-        return planRepository.save(new ExecutionPlan(
-            existing.conversationId(),
-            PlanMode.PLAN,
-            PlanStatus.DRAFT,
-            "clarification_questions",
-            existing.goal(),
-            existing.title(),
-            existing.summary(),
-            existing.notes(),
-            existing.deliverables(),
-            existing.inputs(),
-            existing.outputs(),
-            existing.assumptions(),
-            existing.steps(),
-            existing.acceptanceCriteria(),
-            existing.executionEvidence(),
-            existing.validationFeedback(),
-            existing.prePlanningModel(),
-            existing.executionModel(),
-            cleanQuestions,
-            0,
-            existing.planStartMessageOrder(),
-            existing.finalMessage(),
-            existing.createdAt(),
-            Instant.now()
-        ));
+        return planRepository.save(existing
+            .withModeStatus(PlanMode.PLAN, PlanStatus.DRAFT)
+            .withPlanningTask("clarification_questions")
+            .withPendingQuestions(cleanQuestions, 0));
     }
 
     public ExecutionPlan recordPromptAnswer(String conversationId, String answer, String notes) {
@@ -328,32 +286,9 @@ public class PlanService {
         List<String> pendingQuestions = nextIndex >= plan.pendingQuestions().size()
             ? List.of()
             : plan.pendingQuestions();
-        return planRepository.save(new ExecutionPlan(
-            plan.conversationId(),
-            PlanMode.PLAN,
-            PlanStatus.DRAFT,
-            plan.planningTask(),
-            plan.goal(),
-            plan.title(),
-            plan.summary(),
-            plan.notes(),
-            plan.deliverables(),
-            plan.inputs(),
-            plan.outputs(),
-            plan.assumptions(),
-            plan.steps(),
-            plan.acceptanceCriteria(),
-            plan.executionEvidence(),
-            plan.validationFeedback(),
-            plan.prePlanningModel(),
-            plan.executionModel(),
-            pendingQuestions,
-            pendingQuestions.isEmpty() ? 0 : nextIndex,
-            plan.planStartMessageOrder(),
-            plan.finalMessage(),
-            plan.createdAt(),
-            Instant.now()
-        ));
+        return planRepository.save(plan
+            .withModeStatus(PlanMode.PLAN, PlanStatus.DRAFT)
+            .withPendingQuestions(pendingQuestions, pendingQuestions.isEmpty() ? 0 : nextIndex));
     }
 
     public ExecutionPlan markReadyForApproval(String conversationId) {
@@ -379,32 +314,13 @@ public class PlanService {
 
     public ExecutionPlan markExecuting(String conversationId) {
         ExecutionPlan plan = requireSavedPlan(conversationId);
-        return planRepository.save(new ExecutionPlan(
-            plan.conversationId(),
-            PlanMode.EXECUTE_PLAN,
-            PlanStatus.EXECUTING,
-            null,
-            plan.goal(),
-            plan.title(),
-            plan.summary(),
-            plan.notes(),
-            plan.deliverables(),
-            plan.inputs(),
-            plan.outputs(),
-            plan.assumptions(),
-            plan.steps(),
-            plan.acceptanceCriteria(),
-            List.of(),
-            List.of(),
-            plan.prePlanningModel(),
-            plan.executionModel(),
-            List.of(),
-            0,
-            plan.planStartMessageOrder(),
-            null,
-            plan.createdAt(),
-            Instant.now()
-        ));
+        return planRepository.save(plan
+            .withModeStatus(PlanMode.EXECUTE_PLAN, PlanStatus.EXECUTING)
+            .withPlanningTask(null)
+            .withExecutionEvidence(List.of())
+            .withValidationFeedback(List.of())
+            .withPendingQuestions(List.of(), 0)
+            .withFinalMessage(null));
     }
 
     public ExecutionPlan markCompleted(String conversationId) {
@@ -413,32 +329,10 @@ public class PlanService {
 
     public ExecutionPlan markCompleted(String conversationId, String finalMessage) {
         ExecutionPlan plan = requirePlanConversation(conversationId);
-        return planRepository.save(new ExecutionPlan(
-            plan.conversationId(),
-            PlanMode.NORMAL,
-            PlanStatus.COMPLETED,
-            plan.planningTask(),
-            plan.goal(),
-            plan.title(),
-            plan.summary(),
-            plan.notes(),
-            plan.deliverables(),
-            plan.inputs(),
-            plan.outputs(),
-            plan.assumptions(),
-            plan.steps(),
-            plan.acceptanceCriteria(),
-            plan.executionEvidence(),
-            plan.validationFeedback(),
-            plan.prePlanningModel(),
-            plan.executionModel(),
-            List.of(),
-            0,
-            plan.planStartMessageOrder(),
-            finalMessage,
-            plan.createdAt(),
-            Instant.now()
-        ));
+        return planRepository.save(plan
+            .withModeStatus(PlanMode.NORMAL, PlanStatus.COMPLETED)
+            .withPendingQuestions(List.of(), 0)
+            .withFinalMessage(finalMessage));
     }
 
     public ExecutionPlan markNeedsReview(String conversationId) {
@@ -469,7 +363,7 @@ public class PlanService {
         }
         List<String> updatedEvidence = new ArrayList<>(plan.executionEvidence());
         updatedEvidence.addAll(entries);
-        return planRepository.save(withExecutionEvidence(plan, updatedEvidence));
+        return planRepository.save(plan.withExecutionEvidence(updatedEvidence));
     }
 
     public ExecutionPlan recordFallbackExecutionEvidence(String conversationId) {
@@ -477,40 +371,14 @@ public class PlanService {
         if (!plan.executionEvidence().isEmpty()) {
             return plan;
         }
-        return planRepository.save(withExecutionEvidence(
-            plan,
+        return planRepository.save(plan.withExecutionEvidence(
             List.of("Deviation: execution returned without a structured completion ledger.")
         ));
     }
 
     public ExecutionPlan recordValidationFeedback(String conversationId, List<String> feedback) {
         ExecutionPlan plan = requirePlanConversation(conversationId);
-        return planRepository.save(new ExecutionPlan(
-            plan.conversationId(),
-            plan.mode(),
-            plan.status(),
-            plan.planningTask(),
-            plan.goal(),
-            plan.title(),
-            plan.summary(),
-            plan.notes(),
-            plan.deliverables(),
-            plan.inputs(),
-            plan.outputs(),
-            plan.assumptions(),
-            plan.steps(),
-            plan.acceptanceCriteria(),
-            plan.executionEvidence(),
-            cleanList(feedback),
-            plan.prePlanningModel(),
-            plan.executionModel(),
-            plan.pendingQuestions(),
-            plan.pendingQuestionIndex(),
-            plan.planStartMessageOrder(),
-            plan.finalMessage(),
-            plan.createdAt(),
-            Instant.now()
-        ));
+        return planRepository.save(plan.withValidationFeedback(cleanList(feedback)));
     }
 
     public void exitPlan(String conversationId) {
@@ -721,90 +589,14 @@ Approved plan:
         List<String> pendingQuestions,
         int pendingQuestionIndex
     ) {
-        return new ExecutionPlan(
-            plan.conversationId(),
-            mode,
-            status,
-            status == PlanStatus.READY_FOR_APPROVAL ? "approval" : plan.planningTask(),
-            plan.goal(),
-            plan.title(),
-            plan.summary(),
-            plan.notes(),
-            plan.deliverables(),
-            plan.inputs(),
-            plan.outputs(),
-            plan.assumptions(),
-            plan.steps(),
-            plan.acceptanceCriteria(),
-            plan.executionEvidence(),
-            plan.validationFeedback(),
-            plan.prePlanningModel(),
-            plan.executionModel(),
-            pendingQuestions,
-            pendingQuestionIndex,
-            plan.planStartMessageOrder(),
-            plan.finalMessage(),
-            plan.createdAt(),
-            Instant.now()
-        );
-    }
-
-    private ExecutionPlan withExecutionEvidence(ExecutionPlan plan, List<String> executionEvidence) {
-        return new ExecutionPlan(
-            plan.conversationId(),
-            plan.mode(),
-            plan.status(),
-            plan.planningTask(),
-            plan.goal(),
-            plan.title(),
-            plan.summary(),
-            plan.notes(),
-            plan.deliverables(),
-            plan.inputs(),
-            plan.outputs(),
-            plan.assumptions(),
-            plan.steps(),
-            plan.acceptanceCriteria(),
-            executionEvidence == null ? List.of() : List.copyOf(executionEvidence),
-            plan.validationFeedback(),
-            plan.prePlanningModel(),
-            plan.executionModel(),
-            plan.pendingQuestions(),
-            plan.pendingQuestionIndex(),
-            plan.planStartMessageOrder(),
-            plan.finalMessage(),
-            plan.createdAt(),
-            Instant.now()
-        );
+        return plan
+            .withModeStatus(mode, status)
+            .withPlanningTask(status == PlanStatus.READY_FOR_APPROVAL ? "approval" : plan.planningTask())
+            .withPendingQuestions(pendingQuestions, pendingQuestionIndex);
     }
 
     private ExecutionPlan saveWithPlanningTask(ExecutionPlan plan, String planningTask) {
-        return planRepository.save(new ExecutionPlan(
-            plan.conversationId(),
-            plan.mode(),
-            plan.status(),
-            planningTask,
-            plan.goal(),
-            plan.title(),
-            plan.summary(),
-            plan.notes(),
-            plan.deliverables(),
-            plan.inputs(),
-            plan.outputs(),
-            plan.assumptions(),
-            plan.steps(),
-            plan.acceptanceCriteria(),
-            plan.executionEvidence(),
-            plan.validationFeedback(),
-            plan.prePlanningModel(),
-            plan.executionModel(),
-            plan.pendingQuestions(),
-            plan.pendingQuestionIndex(),
-            plan.planStartMessageOrder(),
-            plan.finalMessage(),
-            plan.createdAt(),
-            Instant.now()
-        ));
+        return planRepository.save(plan.withPlanningTask(planningTask));
     }
 
     private ExecutionPlan saveWithSection(

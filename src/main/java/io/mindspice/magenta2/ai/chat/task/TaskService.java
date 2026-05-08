@@ -127,10 +127,7 @@ public class TaskService {
         if (normalizedGoal == null) {
             throw new IllegalArgumentException("task_set_goal requires a goal");
         }
-        return saveDraft(copyDraft(draft, draft.status(), "define_outputs", draft.title(), draft.summary(),
-            normalizedGoal, draft.notes(), draft.inputDescription(), draft.inputs(), draft.outputDescription(),
-            draft.outputs(), draft.assumptions(), draft.steps(),
-            draft.validationCriteria(), draft.pendingQuestions(), draft.pendingQuestionIndex(), draft.createdTaskId()));
+        return saveDraft(draft.withPlanningTask("define_outputs").withGoal(normalizedGoal));
     }
 
     public TaskDraft setTask(String conversationId, String planningTask) {
@@ -139,10 +136,7 @@ public class TaskService {
         if (normalizedTask == null) {
             throw new IllegalArgumentException("task_set_task requires a current task");
         }
-        return saveDraft(copyDraft(draft, draft.status(), normalizedTask, draft.title(), draft.summary(),
-            draft.goal(), draft.notes(), draft.inputDescription(), draft.inputs(), draft.outputDescription(),
-            draft.outputs(), draft.assumptions(), draft.steps(),
-            draft.validationCriteria(), draft.pendingQuestions(), draft.pendingQuestionIndex(), draft.createdTaskId()));
+        return saveDraft(draft.withPlanningTask(normalizedTask));
     }
 
     public TaskDraft putTextItem(String conversationId, String section, Integer key, String text) {
@@ -179,10 +173,7 @@ public class TaskService {
         if (cleanQuestions.size() > MAX_QUEUED_QUESTIONS) {
             throw new IllegalArgumentException("ask_user_questions accepts at most five questions");
         }
-        return saveDraft(copyDraft(draft, TaskDraftStatus.DRAFT, "clarification_questions", draft.title(), draft.summary(),
-            draft.goal(), draft.notes(), draft.inputDescription(), draft.inputs(), draft.outputDescription(),
-            draft.outputs(), draft.assumptions(), draft.steps(),
-            draft.validationCriteria(), cleanQuestions, 0, draft.createdTaskId()));
+        return saveDraft(draft.withPlanningTask("clarification_questions").withPendingQuestions(cleanQuestions, 0));
     }
 
     public TaskDraft recordPromptAnswer(String conversationId, String answer, String notes, Integer expectedQuestionIndex) {
@@ -203,11 +194,9 @@ public class TaskService {
         List<String> pendingQuestions = nextIndex >= draft.pendingQuestions().size()
             ? List.of()
             : draft.pendingQuestions();
-        return saveDraft(copyDraft(draft, TaskDraftStatus.DRAFT, draft.planningTask(), draft.title(), draft.summary(),
-            draft.goal(), appendAnswerNote(draft.notes(), draft.currentQuestion(), answer, notes), draft.inputDescription(),
-            draft.inputs(), draft.outputDescription(), draft.outputs(), draft.assumptions(),
-            draft.steps(), draft.validationCriteria(), pendingQuestions, pendingQuestions.isEmpty() ? 0 : nextIndex,
-            draft.createdTaskId()));
+        return saveDraft(draft
+            .withNotes(appendAnswerNote(draft.notes(), draft.currentQuestion(), answer, notes))
+            .withPendingQuestions(pendingQuestions, pendingQuestions.isEmpty() ? 0 : nextIndex));
     }
 
     public TaskDraft markReadyForApproval(String conversationId) {
@@ -216,10 +205,10 @@ public class TaskService {
             throw new IllegalStateException("task_ready_for_approval requires all queued questions to be answered");
         }
         validateComplete(draft, "task_ready_for_approval");
-        return saveDraft(copyDraft(draft, TaskDraftStatus.READY_FOR_APPROVAL, "approval", draft.title(), draft.summary(),
-            draft.goal(), draft.notes(), draft.inputDescription(), draft.inputs(), draft.outputDescription(),
-            draft.outputs(), draft.assumptions(), draft.steps(),
-            draft.validationCriteria(), List.of(), 0, draft.createdTaskId()));
+        return saveDraft(draft
+            .withStatus(TaskDraftStatus.READY_FOR_APPROVAL)
+            .withPlanningTask("approval")
+            .withPendingQuestions(List.of(), 0));
     }
 
     public TaskDefinition approveDraft(String conversationId) {
@@ -241,9 +230,11 @@ public class TaskService {
             null,
             null
         ));
-        saveDraft(copyDraft(draft, TaskDraftStatus.APPROVED, "approved", draft.title(), draft.summary(), draft.goal(),
-            draft.notes(), draft.inputDescription(), draft.inputs(), draft.outputDescription(), draft.outputs(),
-            draft.assumptions(), draft.steps(), draft.validationCriteria(), List.of(), 0, task.id()));
+        saveDraft(draft
+            .withStatus(TaskDraftStatus.APPROVED)
+            .withPlanningTask("approved")
+            .withPendingQuestions(List.of(), 0)
+            .withCreatedTaskId(task.id()));
         return task;
     }
 
@@ -334,8 +325,7 @@ public class TaskService {
         for (String value : cleanList(evidence)) {
             entries.add("Evidence: " + value);
         }
-        return taskRepository.saveRun(copyRun(run, TaskRunStatus.RUNNING, run.outputValues(), entries,
-            run.validationFeedback(), run.finalMessage(), run.errorText(), run.startedAt(), null));
+        return taskRepository.saveRun(run.withExecutionEvidence(entries));
     }
 
     public TaskRun completeRun(String runId, Map<String, Object> outputValues, String finalMessage, List<String> evidence) {
@@ -353,14 +343,20 @@ public class TaskService {
         if (entries.isEmpty()) {
             entries.add("Summary: task completed.");
         }
-        return taskRepository.saveRun(copyRun(run, TaskRunStatus.COMPLETED, cleanOutputs, entries,
-            run.validationFeedback(), normalize(finalMessage), null, run.startedAt(), Instant.now()));
+        return taskRepository.saveRun(run
+            .withStatus(TaskRunStatus.COMPLETED)
+            .withOutputValues(cleanOutputs)
+            .withExecutionEvidence(entries)
+            .withFinalMessage(normalize(finalMessage))
+            .withCompletedAt(Instant.now()));
     }
 
     public TaskRun failRun(String runId, String errorText) {
         TaskRun run = requireRun(runId);
-        return taskRepository.saveRun(copyRun(run, TaskRunStatus.FAILED, run.outputValues(), run.executionEvidence(),
-            run.validationFeedback(), run.finalMessage(), normalize(errorText), run.startedAt(), Instant.now()));
+        return taskRepository.saveRun(run
+            .withStatus(TaskRunStatus.FAILED)
+            .withErrorText(normalize(errorText))
+            .withCompletedAt(Instant.now()));
     }
 
     public TaskRun markNeedsReview(String runId, String reason) {
@@ -370,8 +366,10 @@ public class TaskService {
         if (normalizedReason != null) {
             feedback.add(normalizedReason);
         }
-        return taskRepository.saveRun(copyRun(run, TaskRunStatus.NEEDS_REVIEW, run.outputValues(), run.executionEvidence(),
-            feedback, run.finalMessage(), null, run.startedAt(), Instant.now()));
+        return taskRepository.saveRun(run
+            .withStatus(TaskRunStatus.NEEDS_REVIEW)
+            .withValidationFeedback(feedback)
+            .withCompletedAt(Instant.now()));
     }
 
     public TaskRun markActiveRunNeedsReview(String conversationId, String reason) {
@@ -439,49 +437,6 @@ public class TaskService {
         return taskRepository.saveDraft(draft);
     }
 
-    private TaskDraft copyDraft(
-        TaskDraft draft,
-        TaskDraftStatus status,
-        String planningTask,
-        String title,
-        String summary,
-        String goal,
-        String notes,
-        String inputDescription,
-        List<TaskFieldDefinition> inputs,
-        String outputDescription,
-        List<TaskFieldDefinition> outputs,
-        List<String> assumptions,
-        List<TaskStep> steps,
-        List<String> validationCriteria,
-        List<String> pendingQuestions,
-        int pendingQuestionIndex,
-        String createdTaskId
-    ) {
-        return new TaskDraft(
-            draft.conversationId(), status, planningTask, normalize(title), normalize(summary), normalize(goal),
-            normalize(notes), normalize(inputDescription), cleanFields(inputs), normalize(outputDescription),
-            cleanFields(outputs), cleanList(assumptions), cleanSteps(steps),
-            cleanList(validationCriteria), pendingQuestions, pendingQuestionIndex, draft.prePlanningModel(),
-            draft.executionModel(), createdTaskId, draft.createdAt(), Instant.now()
-        );
-    }
-
-    private TaskRun copyRun(
-        TaskRun run,
-        TaskRunStatus status,
-        Map<String, Object> outputs,
-        List<String> evidence,
-        List<String> feedback,
-        String finalMessage,
-        String errorText,
-        Instant startedAt,
-        Instant completedAt
-    ) {
-        return new TaskRun(run.id(), run.taskId(), status, run.inputValues(), outputs, run.taskSnapshot(), evidence,
-            feedback, finalMessage, errorText, run.createdAt(), Instant.now(), startedAt, completedAt);
-    }
-
     private TaskDraft withSection(
         TaskDraft draft,
         String section,
@@ -491,30 +446,24 @@ public class TaskService {
         boolean delete
     ) {
         return switch (normalize(section) == null ? "" : normalize(section)) {
-            case "input" -> copyDraft(draft, TaskDraftStatus.DRAFT, "define_runtime_inputs", draft.title(),
-                draft.summary(), draft.goal(), draft.notes(), draft.inputDescription(), keyedFields(draft.inputs(), key, field, delete),
-                draft.outputDescription(), draft.outputs(), draft.assumptions(), draft.steps(), draft.validationCriteria(),
-                draft.pendingQuestions(), draft.pendingQuestionIndex(), draft.createdTaskId());
-            case "output" -> copyDraft(draft, TaskDraftStatus.DRAFT, "define_outputs", draft.title(),
-                draft.summary(), draft.goal(), draft.notes(), draft.inputDescription(), draft.inputs(), draft.outputDescription(),
-                keyedFields(draft.outputs(), key, field, delete), draft.assumptions(), draft.steps(), draft.validationCriteria(),
-                draft.pendingQuestions(), draft.pendingQuestionIndex(), draft.createdTaskId());
-            case "assumption" -> copyDraft(draft, TaskDraftStatus.DRAFT, "clarify_and_elaborate", draft.title(),
-                draft.summary(), draft.goal(), draft.notes(), draft.inputDescription(), draft.inputs(), draft.outputDescription(),
-                draft.outputs(), keyedList(draft.assumptions(), key, text, delete), draft.steps(), draft.validationCriteria(),
-                draft.pendingQuestions(), draft.pendingQuestionIndex(), draft.createdTaskId());
-            case "note" -> copyDraft(draft, TaskDraftStatus.DRAFT, "clarify_and_elaborate", draft.title(),
-                draft.summary(), draft.goal(), keyedNoteText(draft.notes(), key, text, delete), draft.inputDescription(),
-                draft.inputs(), draft.outputDescription(), draft.outputs(), draft.assumptions(), draft.steps(),
-                draft.validationCriteria(), draft.pendingQuestions(), draft.pendingQuestionIndex(), draft.createdTaskId());
-            case "step" -> copyDraft(draft, TaskDraftStatus.DRAFT, "build_task_steps", draft.title(),
-                draft.summary(), draft.goal(), draft.notes(), draft.inputDescription(), draft.inputs(), draft.outputDescription(),
-                draft.outputs(), draft.assumptions(), keyedSteps(draft.steps(), key, text, delete), draft.validationCriteria(),
-                draft.pendingQuestions(), draft.pendingQuestionIndex(), draft.createdTaskId());
-            case "validation_criterion" -> copyDraft(draft, TaskDraftStatus.DRAFT, "approval_readiness", draft.title(),
-                draft.summary(), draft.goal(), draft.notes(), draft.inputDescription(), draft.inputs(), draft.outputDescription(),
-                draft.outputs(), draft.assumptions(), draft.steps(), keyedList(draft.validationCriteria(), key, text, delete),
-                draft.pendingQuestions(), draft.pendingQuestionIndex(), draft.createdTaskId());
+            case "input" -> draft
+                .withPlanningTask("define_runtime_inputs")
+                .withInputs(keyedFields(draft.inputs(), key, field, delete));
+            case "output" -> draft
+                .withPlanningTask("define_outputs")
+                .withOutputs(keyedFields(draft.outputs(), key, field, delete));
+            case "assumption" -> draft
+                .withPlanningTask("clarify_and_elaborate")
+                .withAssumptions(keyedList(draft.assumptions(), key, text, delete));
+            case "note" -> draft
+                .withPlanningTask("clarify_and_elaborate")
+                .withNotes(keyedNoteText(draft.notes(), key, text, delete));
+            case "step" -> draft
+                .withPlanningTask("build_task_steps")
+                .withSteps(keyedSteps(draft.steps(), key, text, delete));
+            case "validation_criterion" -> draft
+                .withPlanningTask("approval_readiness")
+                .withValidationCriteria(keyedList(draft.validationCriteria(), key, text, delete));
             default -> throw new IllegalArgumentException("Unknown task section: " + section);
         };
     }

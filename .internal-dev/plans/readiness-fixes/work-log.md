@@ -20,7 +20,7 @@ Started: 2026-05-08
 | 4.3 | Move PlanMode To Chat Interaction Package | completed | Moved PlanMode enum from `ai.chat.plan` to `ai.chat.model`. Updated 12 import paths across main and test sources. Updated plan and model package AGENTS.md guides. 278 tests pass. |
 | 4.4 | Move AgentJobRepository To Agent Job Ownership | completed | Moved AgentJobRepository from `ai.chat.repository` to `ai.agent.job`. Updated 4 import paths across main and test sources. 20 targeted tests pass. |
 | 4.5 | Incremental ChatService Seam Extraction | completed | Extracted 4 inner classes/records to top-level files (ToolLoopGuard, ToolUseAbort, TaskExecutionResult, TaskExecutionEvent). Delegated audit/title methods to AuditService. Delegated request resolution to RequestResolver. Removed duplicate inner ResolvedChatRequest and StoredContextUsage records. 288 tests pass. |
-| 5.1 | Long-Record Mutation Helpers | pending | — |
+| 5.1 | Long-Record Mutation Helpers | completed | Added private derive() + public with* withers to ExecutionPlan, TaskDraft, TaskRun. Simplified 10+ mutation sites in PlanService and TaskService from full-constructor calls to targeted wither chains. Removed copyDraft/copyRun private helpers. 288 tests pass. |
 | 5.2 | Remove Dead Command Compatibility Code | pending | — |
 | 5.3 | Replace Nullable-Union Stream Event DTO | pending | — |
 | 5.4 | Workflow/Schedule/Reaction Alpha Decision | pending | — |
@@ -570,3 +570,54 @@ Extracted focused collaborators from ChatService.java (2030-line orchestrator) t
 
 **Test results:**
 - All 288 tests pass (278 existing + 10 new). Full suite: 288 run, 0 failures, 0 errors, 0 skipped.
+
+### Issue 5.1: Long-Record Mutation Helpers In Plan/Task Services
+
+**Files changed:**
+- `src/main/java/io/mindspice/magenta2/ai/chat/plan/ExecutionPlan.java`
+- `src/main/java/io/mindspice/magenta2/ai/chat/plan/PlanService.java`
+- `src/main/java/io/mindspice/magenta2/ai/chat/task/TaskDraft.java`
+- `src/main/java/io/mindspice/magenta2/ai/chat/task/TaskRun.java`
+- `src/main/java/io/mindspice/magenta2/ai/chat/task/TaskService.java`
+
+**What changed and why:**
+
+1. **ExecutionPlan wither methods** — Added a private `derive()` helper and 8 public wither methods: `withModeStatus`, `withPlanningTask`, `withGoal`, `withTitle`, `withPendingQuestions`, `withExecutionEvidence`, `withValidationFeedback`, `withFinalMessage`. Each returns a new record with `updatedAt=Instant.now()` and the given field(s) replaced. This replaces the pattern of manually constructing 22-argument `new ExecutionPlan(...)` calls where most fields are passed through from an existing plan.
+
+2. **PlanService simplified mutation sites** — 10 constructor-based mutation sites were converted to wither chains:
+   - `setGoal()`: replaced 22-arg constructor with `.withGoal().withTitle().withPlanningTask().withModeStatus()` chain
+   - `askQuestions()`: replaced 22-arg constructor with `.withModeStatus().withPlanningTask().withPendingQuestions()` chain
+   - `recordPromptAnswer()`: replaced 22-arg constructor with `.withModeStatus().withPendingQuestions()` chain
+   - `markExecuting()`: replaced 22-arg constructor with `.withModeStatus().withPlanningTask().withExecutionEvidence().withValidationFeedback().withPendingQuestions().withFinalMessage()` chain
+   - `markCompleted()`: replaced 22-arg constructor with `.withModeStatus().withPendingQuestions().withFinalMessage()` chain
+   - `recordValidationFeedback()`: replaced 22-arg constructor with `.withValidationFeedback()` call
+   - `copyWith()`: simplified from full constructor to `.withModeStatus().withPlanningTask().withPendingQuestions()` chain
+   - `saveWithPlanningTask()`: inlined to single `.withPlanningTask()` call
+   - `withExecutionEvidence()`: inlined to single `.withExecutionEvidence()` call at its two call sites
+
+3. **TaskDraft wither methods** — Added a private `derive()` helper and 11 public wither methods: `withStatus`, `withPlanningTask`, `withGoal`, `withNotes`, `withPendingQuestions`, `withCreatedTaskId`, `withInputs`, `withOutputs`, `withAssumptions`, `withSteps`, `withValidationCriteria`. Each returns a new record with `updatedAt=Instant.now()`.
+
+4. **TaskRun wither methods** — Added a private `derive()` helper and 8 public wither methods: `withStatus`, `withOutputValues`, `withExecutionEvidence`, `withValidationFeedback`, `withFinalMessage`, `withErrorText`, `withStartedAt`, `withCompletedAt`. Each returns a new record with `updatedAt=Instant.now()`.
+
+5. **TaskService simplified mutation sites** — Replaced all `copyDraft()` and `copyRun()` calls with wither chains:
+   - `setGoal()`: replaced 18-param copyDraft with `.withPlanningTask().withGoal()` chain
+   - `setTask()`: replaced 18-param copyDraft with `.withPlanningTask()` chain
+   - `askQuestions()`: replaced 18-param copyDraft with `.withPlanningTask().withPendingQuestions()` chain
+   - `recordPromptAnswer()`: replaced 18-param copyDraft with `.withNotes().withPendingQuestions()` chain
+   - `markReadyForApproval()`: replaced 18-param copyDraft with `.withStatus().withPlanningTask().withPendingQuestions()` chain
+   - `approveDraft()`: replaced 18-param copyDraft with `.withStatus().withPlanningTask().withPendingQuestions().withCreatedTaskId()` chain
+   - `withSection()`: replaced 6 copyDraft-per-section calls with direct wither chains
+   - `recordReport()`: replaced 9-param copyRun with `.withExecutionEvidence()` call
+   - `completeRun()`: replaced 9-param copyRun with `.withStatus().withOutputValues().withExecutionEvidence().withFinalMessage().withCompletedAt()` chain
+   - `failRun()`: replaced 9-param copyRun with `.withStatus().withErrorText().withCompletedAt()` chain
+   - `markNeedsReview()`: replaced 9-param copyRun with `.withStatus().withValidationFeedback().withCompletedAt()` chain
+   - Removed the `copyDraft()` and `copyRun()` private helper methods entirely
+
+**Decisions made:**
+- Wither methods do not normalize/clean their arguments — the callers already normalize, and the canonical constructors handle null-to-empty-list for collection fields. This keeps withers simple and avoids hidden behavior.
+- `updateDraftPlan()` in PlanService and `beginPlan()`/`beginDraft()` construct-from-scratch were deliberately NOT converted. These either change too many unique fields to benefit from individual withers (`updateDraftPlan`) or construct from scratch with no prior state to copy (`beginPlan`, `beginDraft`).
+- The `saveWithSection` method in PlanService was also deliberately kept as-is because it computes per-section overrides (only one field changes per section) that would require 6+ additional withers with conditional logic, offering no simplification over the current pattern.
+- Both `copyWith` in PlanService and the removed `copyDraft`/`copyRun` in TaskService were already extracted helpers — the improvement is moving the long-parameter construction inside the record where field defaults from `this` are guaranteed correct, rather than requiring the caller to pass every field explicitly.
+
+**Test results:**
+- All 288 tests pass (0 new, 288 existing). Full suite: 288 run, 0 failures, 0 errors, 0 skipped.
