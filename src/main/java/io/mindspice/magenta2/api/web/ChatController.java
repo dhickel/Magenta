@@ -118,13 +118,13 @@ public class ChatController {
             ChatStreamSupport.sendSseEvent(
                 emitter,
                 "start",
-                ChatStreamEvent.start(
+                new ChatStreamEvent.Start(
                     resolvedRequest.conversationId(),
                     resolvedRequest.model(),
                     activeTurn.turnId(),
-                    activeTurn.token()
+                    activeTurn.token(),
+                    chatService.planState(resolvedRequest.conversationId())
                 )
-                    .withPlanState(chatService.planState(resolvedRequest.conversationId()))
             );
         } catch (Exception e) {
             emitter.completeWithError(e);
@@ -140,12 +140,11 @@ public class ChatController {
                         ChatStreamSupport.sendSseEvent(
                             emitter,
                             "tool",
-                            ChatStreamEvent.tool(
-                                resolvedRequest.conversationId(),
-                                resolvedRequest.model(),
-                                message,
-                                chatService.contextUsage(resolvedRequest.conversationId(), resolvedRequest.model())
-                            ).withPlanState(chatService.planState(resolvedRequest.conversationId()))
+                            new ChatStreamEvent.Tool(
+                                message.toolActivity(),
+                                chatService.contextUsage(resolvedRequest.conversationId(), resolvedRequest.model()),
+                                chatService.planState(resolvedRequest.conversationId())
+                            )
                         );
                         return;
                     }
@@ -153,12 +152,11 @@ public class ChatController {
                         ChatStreamSupport.sendSseEvent(
                             emitter,
                             "interrupt",
-                            ChatStreamEvent.message(
-                                resolvedRequest.conversationId(),
-                                resolvedRequest.model(),
-                                message,
-                                chatService.contextUsage(resolvedRequest.conversationId(), resolvedRequest.model())
-                            ).withPlanState(chatService.planState(resolvedRequest.conversationId()))
+                            new ChatStreamEvent.Interrupt(
+                                message.text(),
+                                chatService.contextUsage(resolvedRequest.conversationId(), resolvedRequest.model()),
+                                chatService.planState(resolvedRequest.conversationId())
+                            )
                         );
                         return;
                     }
@@ -166,34 +164,34 @@ public class ChatController {
                         ChatStreamSupport.sendSseEvent(
                             emitter,
                             "system",
-                            ChatStreamEvent.message(
-                                resolvedRequest.conversationId(),
-                                resolvedRequest.model(),
-                                message,
-                                chatService.contextUsage(resolvedRequest.conversationId(), resolvedRequest.model())
-                            ).withPlanState(chatService.planState(resolvedRequest.conversationId()))
+                            new ChatStreamEvent.SystemNotice(
+                                message.text(),
+                                message.renderedHtml(),
+                                chatService.contextUsage(resolvedRequest.conversationId(), resolvedRequest.model()),
+                                chatService.planState(resolvedRequest.conversationId())
+                            )
                         );
                         return;
                     }
                     ChatStreamSupport.sendSseEvent(
                         emitter,
                         "context",
-                        ChatStreamEvent.context(
-                            resolvedRequest.conversationId(),
-                            resolvedRequest.model(),
-                            chatService.contextUsage(resolvedRequest.conversationId(), resolvedRequest.model())
-                        ).withPlanState(chatService.planState(resolvedRequest.conversationId()))
+                        new ChatStreamEvent.Context(
+                            chatService.contextUsage(resolvedRequest.conversationId(), resolvedRequest.model()),
+                            chatService.planState(resolvedRequest.conversationId())
+                        )
                     );
                     ChatStreamSupport.sendSseEvent(
                         emitter,
                         "chunk",
-                        ChatStreamEvent.message(
-                            resolvedRequest.conversationId(),
-                            resolvedRequest.model(),
-                            message,
-                            chatService.contextUsage(resolvedRequest.conversationId(), resolvedRequest.model())
-                        ).withPlanState(chatService.planState(resolvedRequest.conversationId()))
-                    );
+                        new ChatStreamEvent.Chunk(
+                            message.text(),
+                            message.renderedHtml(),
+                            message.thinkingHtml(),
+                            chatService.contextUsage(resolvedRequest.conversationId(), resolvedRequest.model()),
+                            chatService.planState(resolvedRequest.conversationId())
+                            )
+                        );
                 } catch (Exception e) {
                     failPlanExecution.accept(new IllegalStateException(
                         "Plan execution stream ended before the client received completion.", e
@@ -214,7 +212,7 @@ public class ChatController {
                     } else {
                         chatService.discardLastUserMessage(resolvedRequest.conversationId(), resolvedRequest.message());
                     }
-                    ChatStreamSupport.sendSseEvent(emitter, "error", ChatStreamEvent.error(error.getMessage()));
+                    ChatStreamSupport.sendSseEvent(emitter, "error", new ChatStreamEvent.Error(error.getMessage()));
                     emitter.complete();
                 } catch (Exception sendError) {
                     emitter.completeWithError(sendError);
@@ -232,27 +230,35 @@ public class ChatController {
                         resolvedRequest.model()
                     );
                     if (contextUsage.compacted()) {
+                        ChatMessage compactionNotice = chatService.systemNotice(
+                            ContextManagementAdvisor.COMPACTION_NOTICE
+                        );
                         ChatStreamSupport.sendSseEvent(
                             emitter,
                             "system",
-                            ChatStreamEvent.message(
-                                resolvedRequest.conversationId(),
-                                resolvedRequest.model(),
-                                chatService.systemNotice(ContextManagementAdvisor.COMPACTION_NOTICE),
-                                contextUsage.usage()
-                            ).withPlanState(chatService.planState(resolvedRequest.conversationId()))
+                            new ChatStreamEvent.SystemNotice(
+                                compactionNotice.text(),
+                                compactionNotice.renderedHtml(),
+                                contextUsage.usage(),
+                                chatService.planState(resolvedRequest.conversationId())
+                            )
                         );
                     }
+                    ChatMessage lastMessage = ChatStreamSupport.lastAssistantMessage(
+                        chatService, resolvedRequest.conversationId()
+                    );
                     ChatStreamSupport.sendSseEvent(
                         emitter,
                         "done",
-                        ChatStreamEvent.message(
+                        new ChatStreamEvent.Done(
                             resolvedRequest.conversationId(),
                             resolvedRequest.model(),
-                            ChatStreamSupport.lastAssistantMessage(chatService, resolvedRequest.conversationId()),
-                            contextUsage.usage()
-                        ).withPlanState(chatService.planState(resolvedRequest.conversationId()))
-                    );
+                            lastMessage.text(),
+                            lastMessage.renderedHtml(),
+                            contextUsage.usage(),
+                            chatService.planState(resolvedRequest.conversationId())
+                            )
+                        );
                     emitter.complete();
                 } catch (Exception e) {
                     failPlanExecution.accept(new IllegalStateException(

@@ -1,97 +1,61 @@
 package io.mindspice.magenta2.ai.chat.model;
 
-public record ChatStreamEvent(
-    String conversationId,
-    String model,
-    String text,
-    String renderedHtml,
-    String thinkingHtml,
-    ChatToolActivity toolActivity,
-    ContextUsage contextUsage,
-    ChatPlanState planState,
-    String message,
-    String turnId,
-    String interruptToken
-) {
-    public static ChatStreamEvent start(String conversationId, String model) {
-        return start(conversationId, model, null, null);
-    }
+/**
+ * Typed stream event hierarchy for SSE chat streaming.
+ * Each event type carries only the fields relevant to that event.
+ */
+public sealed interface ChatStreamEvent {
 
-    public static ChatStreamEvent start(String conversationId, String model, String turnId, String interruptToken) {
-        return new ChatStreamEvent(conversationId, model, null, null, null, null, null, null, null, turnId, interruptToken);
-    }
-
-    public static ChatStreamEvent message(String conversationId, String model, ChatMessage message) {
-        return message(conversationId, model, message, null);
-    }
-
-    public static ChatStreamEvent message(
+    record Start(
         String conversationId,
         String model,
-        ChatMessage message,
-        ContextUsage contextUsage
-    ) {
-        return new ChatStreamEvent(
-            conversationId,
-            model,
-            message.text(),
-            message.renderedHtml(),
-            message.thinkingHtml(),
-            message.toolActivity(),
-            contextUsage,
-            null,
-            null,
-            null,
-            null
-        );
-    }
+        String turnId,
+        String interruptToken,
+        ChatPlanState planState
+    ) implements ChatStreamEvent {}
 
-    public static ChatStreamEvent tool(String conversationId, String model, ChatMessage message) {
-        return tool(conversationId, model, message, null);
-    }
+    record Chunk(
+        String text,
+        String renderedHtml,
+        String thinkingHtml,
+        ContextUsage contextUsage,
+        ChatPlanState planState
+    ) implements ChatStreamEvent {}
 
-    public static ChatStreamEvent tool(
+    record Tool(
+        ChatToolActivity toolActivity,
+        ContextUsage contextUsage,
+        ChatPlanState planState
+    ) implements ChatStreamEvent {}
+
+    record SystemNotice(
+        String text,
+        String renderedHtml,
+        ContextUsage contextUsage,
+        ChatPlanState planState
+    ) implements ChatStreamEvent {}
+
+    record Interrupt(
+        String text,
+        ContextUsage contextUsage,
+        ChatPlanState planState
+    ) implements ChatStreamEvent {}
+
+    record Context(
+        ContextUsage contextUsage,
+        ChatPlanState planState
+    ) implements ChatStreamEvent {}
+
+    record Done(
         String conversationId,
         String model,
-        ChatMessage message,
-        ContextUsage contextUsage
-    ) {
-        return new ChatStreamEvent(
-            conversationId,
-            model,
-            message.text(),
-            message.renderedHtml(),
-            message.thinkingHtml(),
-            message.toolActivity(),
-            contextUsage,
-            null,
-            null,
-            null,
-            null
-        );
-    }
+        String text,
+        String renderedHtml,
+        ContextUsage contextUsage,
+        ChatPlanState planState
+    ) implements ChatStreamEvent {}
 
-    public static ChatStreamEvent context(String conversationId, String model, ContextUsage contextUsage) {
-        return new ChatStreamEvent(conversationId, model, null, null, null, null, contextUsage, null, null, null, null);
-    }
-
-    public static ChatStreamEvent error(String message) {
-        return new ChatStreamEvent(null, null, null, null, null, null, null, null, message, null, null);
-    }
-
-    public ChatStreamEvent withPlanState(ChatPlanState planState) {
-        return new ChatStreamEvent(
-            conversationId,
-            model,
-            text,
-            renderedHtml,
-            thinkingHtml,
-            toolActivity,
-            contextUsage,
-            planState,
-            message,
-            turnId,
-            interruptToken
-        );
-    }
+    record Error(
+        String message
+    ) implements ChatStreamEvent {}
 }

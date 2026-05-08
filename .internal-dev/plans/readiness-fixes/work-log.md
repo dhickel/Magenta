@@ -56,7 +56,7 @@ Started: 2026-05-08
 - `rg` confirmed zero references to `io.mindspice.magenta2.core.util.Option` or `io.mindspice.magenta2.core.DataService` outside the removed files themselves.
 - `rg` confirmed zero references to `handleSwitch`, `handleClear`, `requiredSingleArgument`, `optionalSingleArgument`, or `singleArgument` in the codebase.
 - All 288 tests pass.
-| 5.3 | Replace Nullable-Union Stream Event DTO | pending | — |
+| 5.3 | Replace Nullable-Union Stream Event DTO Shape | completed | Replaced flat nullable-field ChatStreamEvent record with sealed interface + typed records (Start, Chunk, Tool, SystemNotice, Interrupt, Context, Done, Error). Updated ChatController producers. No browser changes needed. 288 tests pass. |
 | 5.4 | Workflow/Schedule/Reaction Alpha Decision | pending | — |
 
 ---
@@ -652,6 +652,54 @@ Extracted focused collaborators from ChatService.java (2030-line orchestrator) t
 - `updateDraftPlan()` in PlanService and `beginPlan()`/`beginDraft()` construct-from-scratch were deliberately NOT converted. These either change too many unique fields to benefit from individual withers (`updateDraftPlan`) or construct from scratch with no prior state to copy (`beginPlan`, `beginDraft`).
 - The `saveWithSection` method in PlanService was also deliberately kept as-is because it computes per-section overrides (only one field changes per section) that would require 6+ additional withers with conditional logic, offering no simplification over the current pattern.
 - Both `copyWith` in PlanService and the removed `copyDraft`/`copyRun` in TaskService were already extracted helpers — the improvement is moving the long-parameter construction inside the record where field defaults from `this` are guaranteed correct, rather than requiring the caller to pass every field explicitly.
+
+**Test results:**
+- All 288 tests pass (0 new, 288 existing). Full suite: 288 run, 0 failures, 0 errors, 0 skipped.
+
+### Issue 5.3: Replace Nullable-Union Stream Event DTO Shape
+
+**Files changed:**
+- `src/main/java/io/mindspice/magenta2/ai/chat/model/ChatStreamEvent.java` — Replaced flat 11-field nullable record with a sealed interface containing 8 typed payload records: Start, Chunk, Tool, SystemNotice, Interrupt, Context, Done, Error. Each record carries only the fields relevant to its event type (no nullable unions).
+- `src/main/java/io/mindspice/magenta2/api/web/ChatController.java` — Replaced all factory-method calls (`ChatStreamEvent.start(...).withPlanState(...)`, `ChatStreamEvent.tool(...)`, `ChatStreamEvent.message(...)`, `ChatStreamEvent.context(...)`, `ChatStreamEvent.error(...)`) with direct constructor calls on the typed records (`new ChatStreamEvent.Start(...)`, `new ChatStreamEvent.Tool(...)`, `new ChatStreamEvent.SystemNotice(...)`, `new ChatStreamEvent.Interrupt(...)`, `new ChatStreamEvent.Chunk(...)`, `new ChatStreamEvent.Context(...)`, `new ChatStreamEvent.Done(...)`, `new ChatStreamEvent.Error(...)`). The `withPlanState()` pattern was eliminated — planState is now a constructor argument for each record that needs it.
+
+**What changed and why:**
+
+1. **Typed hierarchy replaces nullable union** — The original `ChatStreamEvent` record had 11 fields, most nullable in any given instance. Factory methods like `start()`, `message()`, `tool()`, `context()`, `error()` would null out irrelevant fields, and `withPlanState()` would copy all fields to set one. This made the wire contract opaque: clients had to know which fields to expect for each event name.
+
+   The replacement is a sealed interface `ChatStreamEvent` with 8 nested records, each typed to its event semantics:
+
+   | SSE Event | Record | Fields |
+   |-----------|--------|--------|
+   | `start` | `Start` | conversationId, model, turnId, interruptToken, planState |
+   | `chunk` | `Chunk` | text, renderedHtml, thinkingHtml, contextUsage, planState |
+   | `tool` | `Tool` | toolActivity, contextUsage, planState |
+   | `system` | `SystemNotice` | text, renderedHtml, contextUsage, planState |
+   | `interrupt` | `Interrupt` | text, contextUsage, planState |
+   | `context` | `Context` | contextUsage, planState |
+   | `done` | `Done` | conversationId, model, text, renderedHtml, contextUsage, planState |
+   | `error` | `Error` | message |
+
+   No nulls. No mutual exclusion. Each type is self-documenting.
+
+2. **Wire shape preserved** — The browser JS client accesses JSON field names (`data.conversationId`, `data.text`, `data.renderedHtml`, `data.thinkingHtml`, `data.toolActivity`, `data.contextUsage`, `data.planState`, `data.turnId`, `data.interruptToken`, `data.model`, `data.message`). All these names match the typed record component names. The browser accesses `data.message` from Error events — the `Error` record has a `message` field, so serialization is identical.
+
+3. **Plan state elimination** — The old pattern of `ChatStreamEvent.message(...).withPlanState(...)` is replaced by passing `planState` directly to the record constructor. This is simpler and eliminates the copy-mutation pattern.
+
+4. **Controller alignment** — ChatController now creates typed events with only the fields relevant to each SSE event name:
+   - Tool events no longer serialize redundant text/renderedHtml/thinkingHtml (browser only reads toolActivity).
+   - Interrupt events serialize only text (browser only reads text for interrupt display).
+   - Context events serialize only contextUsage and planState.
+
+**Wire compatibility verified:**
+- Browser `chat-client.js` accesses: `data.conversationId` (start, done), `data.turnId` (start), `data.interruptToken` (start), `data.model` (start, done), `data.text` (chunk, system, interrupt, done), `data.renderedHtml` (chunk, system, done), `data.thinkingHtml` (chunk), `data.toolActivity` (tool), `data.contextUsage` (chunk, tool, system, interrupt, context, done), `data.planState` (start, chunk, tool, system, interrupt, context, done), `data.message` (error). All field names match the new record definitions.
+- Agent chat (`agent-chat.js`) uses a separate SSE event shape (`data.agentId`, `data.message`, `data.response`, `data.error`) — no ChatStreamEvent dependency.
+- Generic SSE parser (`api.js`) handles any JSON event data — no ChatStreamEvent-specific logic.
+
+**Decisions made:**
+- Sealed interface + nested records was chosen over a single payload-record field with a discriminator. The sealed hierarchy gives compile-time exhaustiveness checking and avoids unwrapping a payload field on the serialization side. Each record serializes directly as a flat JSON object, which is what the browser expects.
+- The `Interrupt` record does not include `renderedHtml` or `thinkingHtml` since interrupt messages are plain user text (ChatMessage for user role has null renderedHtml and null toolActivity).
+- The `Tool` record omits `text`, `renderedHtml`, and `thinkingHtml` since the browser only reads `toolActivity` from tool events. These fields were unnecessary bloat in the old flat record.
+- The `Done` record includes `conversationId` and `model` because the browser reads `data.conversationId` from done events for the `completedConversationId` variable.
 
 **Test results:**
 - All 288 tests pass (0 new, 288 existing). Full suite: 288 run, 0 failures, 0 errors, 0 skipped.
