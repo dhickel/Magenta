@@ -1,7 +1,5 @@
 package io.mindspice.magenta2.api.web;
 
-import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -105,76 +103,32 @@ public class WorkflowController {
         SseStreamLifecycle.registerCallbacks(emitter, guard, null, null);
 
         try {
-            OrchestrationRunContext context = context(request);
+            OrchestrationRunContext context = WorkflowStreamSupport.toContext(request);
             Flux<SsePayload> stream;
             if (context.hasContext()) {
                 stream = Flux.defer(() -> {
                     OrchestrationRunResult result = orchestrationRunService.runWorkflow(workflowId, context);
-                    String terminalEvent = result.assignment().status().name().equals("COMPLETED") ? "completed" : "failed";
-                    return Flux.just(
-                        new SsePayload("started", Map.of(
-                            "event", "started",
-                            "assignmentId", result.assignment().id(),
-                            "runId", result.runId() == null ? "" : result.runId(),
-                            "workflowId", workflowId
-                        )),
-                        new SsePayload(terminalEvent, Map.of(
-                            "event", terminalEvent,
-                            "assignmentId", result.assignment().id(),
-                            "runId", result.runId() == null ? "" : result.runId(),
-                            "status", result.assignment().status().name(),
-                            "finalOutputs", result.outputValues(),
-                            "error", result.assignment().errorText() == null ? "" : result.assignment().errorText()
-                        ))
-                    );
+                    return WorkflowStreamSupport.orchestrationRunEvents(workflowId, result);
                 });
             } else {
-                stream = Flux.defer(() -> {
-                    WorkflowDefinition workflow = workflowService.getWorkflow(workflowId);
-                    List<SsePayload> events = new ArrayList<>();
-                    events.add(new SsePayload("started", Map.of("event", "started", "workflowId", workflowId)));
-                    for (var step : workflow.steps()) {
-                        events.add(new SsePayload("step_started", Map.of(
-                            "event", "step_started",
-                            "stepKey", step.stepKey(),
-                            "taskId", step.taskId()
-                        )));
-                    }
-                    WorkflowRun run = workflowService.runSynchronously(workflowId);
-                    for (var stepRun : run.stepRuns()) {
-                        events.add(new SsePayload("step_completed", Map.of(
-                            "event", "step_completed",
-                            "stepKey", stepRun.stepKey(),
-                            "taskRunId", stepRun.taskRunId(),
-                            "status", stepRun.status().name()
-                        )));
-                    }
-                    String terminalEvent = run.status().name().equals("COMPLETED") ? "completed" : "failed";
-                    events.add(new SsePayload(terminalEvent, Map.of(
-                        "event", terminalEvent,
-                        "runId", run.id(),
-                        "status", run.status().name(),
-                        "finalOutputs", run.finalOutputs(),
-                        "error", run.errorText() == null ? "" : run.errorText()
-                    )));
-                    return Flux.fromIterable(events);
-                });
+                stream = WorkflowStreamSupport.synchronousRunEvents(workflowId, workflowService);
             }
             Disposable subscription = stream
                 .subscribeOn(Schedulers.boundedElastic())
                 .subscribe(
                     event -> {
                         try {
-                            send(emitter, event.name(), event.data());
-                        } catch (IOException ioException) {
+                            SseStreamLifecycle.sendSseEvent(emitter, event.name(), event.data());
+                        } catch (java.io.IOException ioException) {
                             throw new RuntimeException(ioException);
                         }
                     },
                     error -> {
                         try {
-                            send(emitter, "failed", Map.of("event", "failed", "error", error.getMessage()));
+                            SseStreamLifecycle.sendSseEvent(emitter, "failed",
+                                Map.of("event", "failed", "error", error.getMessage()));
                             emitter.complete();
-                        } catch (IOException ioException) {
+                        } catch (java.io.IOException ioException) {
                             emitter.completeWithError(ioException);
                         }
                     },
@@ -183,34 +137,20 @@ public class WorkflowController {
             guard.set(subscription);
         } catch (IllegalArgumentException exception) {
             try {
-                send(emitter, "failed", Map.of("event", "failed", "error", exception.getMessage()));
-            } catch (IOException ignored) {
+                SseStreamLifecycle.sendSseEvent(emitter, "failed",
+                    Map.of("event", "failed", "error", exception.getMessage()));
+            } catch (java.io.IOException ignored) {
             }
             emitter.complete();
         } catch (Exception exception) {
             try {
-                send(emitter, "failed", Map.of("event", "failed", "error", exception.getMessage()));
-            } catch (IOException ignored) {
+                SseStreamLifecycle.sendSseEvent(emitter, "failed",
+                    Map.of("event", "failed", "error", exception.getMessage()));
+            } catch (java.io.IOException ignored) {
             }
             emitter.completeWithError(exception);
         }
         return emitter;
-    }
-
-    private void send(SseEmitter emitter, String name, Object data) throws IOException {
-        emitter.send(SseEmitter.event().name(name).data(data));
-    }
-
-    private OrchestrationRunContext context(WorkflowRunRequest request) {
-        if (request == null) {
-            return new OrchestrationRunContext(null, null, null, null, null);
-        }
-        return new OrchestrationRunContext(
-            request.agentId(), request.jobId(), request.workspaceId(), request.modelOverride(), request.priority()
-        );
-    }
-
-    private record SsePayload(String name, Object data) {
     }
 
     public record WorkflowRunRequest(

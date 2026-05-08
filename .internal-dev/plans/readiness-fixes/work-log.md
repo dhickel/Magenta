@@ -15,7 +15,7 @@ Started: 2026-05-08
 | 2.3 | Prevent Duplicate Queued Assignment Submission | completed | Acquire lease before executor submission in pollQueuedWork; revert on rejection. 3 new tests. |
 | 3.1 | SQLite Schema Ownership & Validation | completed | Schema ownership policy: central schema.sql with narrow ensureSchema safety net. Added all missing tables to schema.sql. Enabled SQLite foreign keys. Added defense-in-depth cascade deletes in TaskRepository and WorkflowRepository. 13 new tests. |
 | 3.2 | Audit Sequence Robustness | completed | — |
-| 4.1 | Extract Controller Workflow & Stream Logic | pending | — |
+| 4.1 | Extract Controller Workflow & Stream Logic | completed | Extracted SsePayload to top-level record. Extracted TaskStreamSupport, WorkflowStreamSupport, and ChatStreamSupport classes. Added sendSseEvent helpers to SseStreamLifecycle. Controllers now delegate event mapping to support classes. 276 tests pass. |
 | 4.2 | Public API DTOs For Lifecycle Fields | pending | — |
 | 4.3 | Move PlanMode To Chat Interaction Package | pending | — |
 | 4.4 | Move AgentJobRepository To Agent Job Ownership | pending | — |
@@ -368,3 +368,60 @@ Chose a **narrow hybrid** policy:
 - The hash code of `String` is stable across JVM invocations (documented in Java spec), so same conversation IDs always map to the same stripe.
 - The lock array is initialized in the constructor (not lazy), so there's no allocation or synchronization cost at runtime.
 - `SingleConnectionDataSource` was used in the concurrent test instead of `SimpleDriverDataSource` to avoid creating a new connection per SQL statement. The single connection is protected by the same striped lock, making it safe for multi-threaded access.
+
+### Issue 4.1: Extract Controller Workflow And Stream Logic
+
+**Files changed:**
+- `src/main/java/io/mindspice/magenta2/api/web/SsePayload.java` — NEW. Top-level record extracted from duplicate private records in TaskController and WorkflowController.
+- `src/main/java/io/mindspice/magenta2/api/web/TaskStreamSupport.java` — NEW. Static methods for orchestration and chat-service task event mapping, context conversion, and error payload creation.
+- `src/main/java/io/mindspice/magenta2/api/web/WorkflowStreamSupport.java` — NEW. Static methods for orchestration and synchronous workflow event mapping, context conversion, and error payload creation.
+- `src/main/java/io/mindspice/magenta2/api/web/ChatStreamSupport.java` — NEW. Static helpers for chat SSE event sending, safe error messages, and last-assistant-message extraction.
+- `src/main/java/io/mindspice/magenta2/api/web/SseStreamLifecycle.java` — Added `sendSseEvent(SseEmitter, String, Object)` and `sendSseEvent(SseEmitter, String, Object, MediaType)` convenience methods. These replace the duplicated `send()` methods in TaskController/WorkflowController and `sendEvent()` in ChatController.
+- `src/main/java/io/mindspice/magenta2/api/web/TaskController.java` — Removed private `SsePayload` record, `send()` method, and `context()` method. `streamRun()` now delegates event production to `TaskStreamSupport.orchestrationRunEvents()` and `TaskStreamSupport.chatServiceRunEvents()`, context conversion to `TaskStreamSupport.toContext()`, and event sending to `SseStreamLifecycle.sendSseEvent()`.
+- `src/main/java/io/mindspice/magenta2/api/web/WorkflowController.java` — Removed private `SsePayload` record, `send()` method, and `context()` method. `streamRun()` now delegates event production to `WorkflowStreamSupport.orchestrationRunEvents()` and `WorkflowStreamSupport.synchronousRunEvents()`, context conversion to `WorkflowStreamSupport.toContext()`, and event sending to `SseStreamLifecycle.sendSseEvent()`.
+- `src/main/java/io/mindspice/magenta2/api/web/ChatController.java` — Removed private `sendEvent()`, `safeMessage()`, and `lastAssistantMessage()` methods. `streamResolved()` now delegates to `ChatStreamSupport.sendSseEvent()`, `ChatStreamSupport.safeMessage()`, and `ChatStreamSupport.lastAssistantMessage()`.
+- `src/test/java/io/mindspice/magenta2/api/web/TaskStreamSupportTest.java` — NEW. 8 tests.
+- `src/test/java/io/mindspice/magenta2/api/web/WorkflowStreamSupportTest.java` — NEW. 6 tests.
+- `src/test/java/io/mindspice/magenta2/api/web/ChatStreamSupportTest.java` — NEW. 4 tests.
+- `src/test/java/io/mindspice/magenta2/api/web/SseStreamLifecycleTest.java` — Added 2 tests.
+
+**What changed and why:**
+
+1. **SsePayload extraction** — Both TaskController and WorkflowController defined identical `private record SsePayload(String name, Object data)`. Extracted to a top-level file, eliminating duplication and making it available to support classes without coupling to controller internals.
+
+2. **TaskStreamSupport** — The `streamRun` method's event mapping logic (OrchestrationRunResult to SSE events, TaskExecutionEvent to SsePayload) and request-to-context conversion were extracted into static methods. The controller now only handles: emitter/guard creation, stream source selection (orchestration vs chat), subscription wiring, and error fallback.
+
+3. **WorkflowStreamSupport** — Same pattern as TaskStreamSupport. The orchestration and synchronous workflow event mapping (including step-by-step event production for synchronous runs) was extracted.
+
+4. **ChatStreamSupport** — Three private methods extracted: `sendEvent`, `safeMessage`, and `lastAssistantMessage`. All moved with unchanged logic.
+
+5. **SseStreamLifecycle.sendSseEvent** — Both TaskController and WorkflowController had identical `private void send(SseEmitter, String, Object)` methods. Added as a shared utility.
+
+**What stayed in the controllers (by design):**
+- Emitter/guard creation and lifecycle callbacks — controllers already use SseStreamLifecycle (from step 2.1).
+- Subscription wiring and error fallback — the try/catch blocks differ per controller context.
+- ChatController's domain lifecycle (ActiveTurn, plan finalization guard, failure recording) — tightly coupled to `streamResolved` local state.
+
+**Decisions made:**
+- Created four small support classes (plus SsePayload) rather than a single "StreamService". Each has focused responsibility matching one controller's extraction surface.
+- Made support classes `final` with private constructors (static utility pattern) since they hold no state and need no dependency injection.
+- TaskStreamSupport and WorkflowStreamSupport reference inner records on their respective controllers (`TaskRunRequest`, `WorkflowRunRequest`). These are `public record`s, so the reference is valid from the same package.
+- Did NOT extract the error event sending into a shared helper — the catch blocks are simple enough.
+- Did NOT move `normalize()`, `requireValidUuid()`, or other validation helpers from ChatController. These are cross-cutting, not stream-specific.
+
+**Tests added:** 20 new (276 total, up from 254)
+
+| Test Class | Tests Added | Coverage |
+|------------|-------------|----------|
+| TaskStreamSupportTest | 8 | Orchestration run completed/failed, chat service started/tool/terminal, context conversion, error payload |
+| WorkflowStreamSupportTest | 6 | Orchestration run completed/failed, synchronous run full event sequence, context conversion, error payload |
+| ChatStreamSupportTest | 4 | safeMessage (null, with/without message), lastAssistantMessage (assistant, user, empty) |
+| SseStreamLifecycleTest | 2 | sendSseEvent builder construction |
+
+**Test results:** All 276 tests pass. Full suite: 276 run, 0 failures, 0 errors, 0 skipped.
+
+**Reviewer notes:**
+- `TaskStreamSupport.orchestrationRunEvents` and `WorkflowStreamSupport.orchestrationRunEvents` are structurally similar but differ in map keys (`taskId` vs `workflowId`, `outputValues` vs `finalOutputs`). A shared helper would need conditional logic that obscures the per-controller event contract.
+- `ChatStreamSupport.sendSseEvent` was added to both ChatStreamSupport and SseStreamLifecycle (different overloads). ChatStreamSupport has the MediaType overload for ChatStreamEvent JSON serialization.
+- All existing controller tests pass unchanged — the public API surface of all three controllers is identical.
+- The `ChatController.streamResolved` domain lifecycle (ActiveTurn registration, plan execution finalization, failure recording) was deliberately kept in the controller per the "do not hide domain transitions" guidance established in step 2.1.

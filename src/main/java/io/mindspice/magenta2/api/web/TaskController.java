@@ -1,6 +1,5 @@
 package io.mindspice.magenta2.api.web;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
@@ -143,81 +142,42 @@ public class TaskController {
         SseStreamLifecycle.registerCallbacks(emitter, guard, null, null);
 
         try {
-            OrchestrationRunContext context = context(request);
+            OrchestrationRunContext context = TaskStreamSupport.toContext(request);
             Flux<SsePayload> stream;
             if (context.hasContext()) {
                 stream = Flux.defer(() -> {
                     OrchestrationRunResult result = orchestrationRunService.runTask(taskId, inputs, context);
-                    String terminalEvent = result.assignment().status().name().equals("COMPLETED") ? "completed" : "failed";
-                    return Flux.just(
-                        new SsePayload("started", Map.of(
-                            "event", "started",
-                            "assignmentId", result.assignment().id(),
-                            "runId", result.runId() == null ? "" : result.runId(),
-                            "taskId", taskId
-                        )),
-                        new SsePayload(terminalEvent, Map.of(
-                            "event", terminalEvent,
-                            "assignmentId", result.assignment().id(),
-                            "runId", result.runId() == null ? "" : result.runId(),
-                            "status", result.assignment().status().name(),
-                            "outputValues", result.outputValues(),
-                            "error", result.assignment().errorText() == null ? "" : result.assignment().errorText()
-                        ))
-                    );
+                    return TaskStreamSupport.orchestrationRunEvents(taskId, result);
                 });
             } else if (chatService == null) {
                 throw new IllegalStateException("Task streaming requires model-backed chat execution");
             } else {
-                stream = chatService.streamTaskExecution(
+                stream = TaskStreamSupport.chatServiceRunEvents(
                     taskId,
-                    inputs,
-                    request == null ? null : request.conversationId(),
-                    request == null ? null : request.modelOverride()
-                ).map(event -> {
-                    if ("started".equals(event.event())) {
-                        return new SsePayload("started", Map.of(
-                            "event", "started",
-                            "conversationId", event.conversationId(),
-                            "runId", event.runId(),
-                            "taskId", taskId
-                        ));
-                    }
-                    if ("tool".equals(event.event()) || "progress".equals(event.event())) {
-                        java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
-                        payload.put("event", event.event());
-                        payload.put("conversationId", event.conversationId());
-                        payload.put("runId", event.runId());
-                        payload.put("message", event.message() == null ? "" : event.message().text());
-                        payload.put("toolActivity", event.message() == null ? null : event.message().toolActivity());
-                        return new SsePayload(event.event(), payload);
-                    }
-                    TaskRun run = event.run();
-                    return new SsePayload(event.event(), Map.of(
-                        "event", event.event(),
-                        "conversationId", event.conversationId(),
-                        "runId", event.runId(),
-                        "status", run.status().name(),
-                        "outputValues", run.outputValues(),
-                        "error", run.errorText() == null ? "" : run.errorText()
-                    ));
-                });
+                    chatService.streamTaskExecution(
+                        taskId,
+                        inputs,
+                        request == null ? null : request.conversationId(),
+                        request == null ? null : request.modelOverride()
+                    )
+                );
             }
             Disposable subscription = stream
                 .subscribeOn(Schedulers.boundedElastic())
                 .subscribe(
                     event -> {
                         try {
-                            send(emitter, event.name(), event.data());
-                        } catch (IOException ioException) {
+                            SseStreamLifecycle.sendSseEvent(emitter, event.name(), event.data());
+                        } catch (java.io.IOException ioException) {
                             throw new RuntimeException(ioException);
                         }
                     },
                     error -> {
                         try {
-                            send(emitter, "failed", Map.of("event", "failed", "error", error.getMessage()));
+                            SseStreamLifecycle.sendSseEvent(emitter, "failed",
+                                Map.of("event", "failed", "error", error.getMessage()));
                             emitter.complete();
-                        } catch (IOException ioException) {
+                        } catch (java.io.IOException ioException) {
                             emitter.completeWithError(ioException);
                         }
                     },
@@ -226,34 +186,20 @@ public class TaskController {
             guard.set(subscription);
         } catch (IllegalArgumentException exception) {
             try {
-                send(emitter, "failed", Map.of("event", "failed", "error", exception.getMessage()));
-            } catch (IOException ignored) {
+                SseStreamLifecycle.sendSseEvent(emitter, "failed",
+                    Map.of("event", "failed", "error", exception.getMessage()));
+            } catch (java.io.IOException ignored) {
             }
             emitter.complete();
         } catch (Exception exception) {
             try {
-                send(emitter, "failed", Map.of("event", "failed", "error", exception.getMessage()));
-            } catch (IOException ignored) {
+                SseStreamLifecycle.sendSseEvent(emitter, "failed",
+                    Map.of("event", "failed", "error", exception.getMessage()));
+            } catch (java.io.IOException ignored) {
             }
             emitter.completeWithError(exception);
         }
         return emitter;
-    }
-
-    private void send(SseEmitter emitter, String name, Object data) throws IOException {
-        emitter.send(SseEmitter.event().name(name).data(data));
-    }
-
-    private OrchestrationRunContext context(TaskRunRequest request) {
-        if (request == null) {
-            return new OrchestrationRunContext(null, null, null, null, null);
-        }
-        return new OrchestrationRunContext(
-            request.agentId(), request.jobId(), request.workspaceId(), request.modelOverride(), request.priority()
-        );
-    }
-
-    private record SsePayload(String name, Object data) {
     }
 
     public record DraftRequest(String prePlanningModel, String executionModel) {

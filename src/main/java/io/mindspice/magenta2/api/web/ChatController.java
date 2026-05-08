@@ -110,11 +110,11 @@ public class ChatController {
             "Plan execution stream timed out after " + (planExecutionStreamTimeoutMillis / 1000) + " seconds"
         )));
         emitter.onError(error -> failPlanExecution.accept(new IllegalStateException(
-            "Plan execution stream ended before completion: " + safeMessage(error), error
+            "Plan execution stream ended before completion: " + ChatStreamSupport.safeMessage(error), error
         )));
 
         try {
-            sendEvent(
+            ChatStreamSupport.sendSseEvent(
                 emitter,
                 "start",
                 ChatStreamEvent.start(
@@ -136,7 +136,7 @@ public class ChatController {
             message -> {
                 try {
                     if ("tool".equalsIgnoreCase(message.role())) {
-                        sendEvent(
+                        ChatStreamSupport.sendSseEvent(
                             emitter,
                             "tool",
                             ChatStreamEvent.tool(
@@ -149,7 +149,7 @@ public class ChatController {
                         return;
                     }
                     if ("user".equalsIgnoreCase(message.role())) {
-                        sendEvent(
+                        ChatStreamSupport.sendSseEvent(
                             emitter,
                             "interrupt",
                             ChatStreamEvent.message(
@@ -162,7 +162,7 @@ public class ChatController {
                         return;
                     }
                     if ("system".equalsIgnoreCase(message.role())) {
-                        sendEvent(
+                        ChatStreamSupport.sendSseEvent(
                             emitter,
                             "system",
                             ChatStreamEvent.message(
@@ -174,7 +174,7 @@ public class ChatController {
                         );
                         return;
                     }
-                    sendEvent(
+                    ChatStreamSupport.sendSseEvent(
                         emitter,
                         "context",
                         ChatStreamEvent.context(
@@ -183,7 +183,7 @@ public class ChatController {
                             chatService.contextUsage(resolvedRequest.conversationId(), resolvedRequest.model())
                         ).withPlanState(chatService.planState(resolvedRequest.conversationId()))
                     );
-                    sendEvent(
+                    ChatStreamSupport.sendSseEvent(
                         emitter,
                         "chunk",
                         ChatStreamEvent.message(
@@ -206,14 +206,14 @@ public class ChatController {
                     if (planExecution) {
                         RuntimeException runtimeException = error instanceof RuntimeException existing
                             ? existing
-                            : new IllegalStateException(safeMessage(error), error);
+                            : new IllegalStateException(ChatStreamSupport.safeMessage(error), error);
                         if (planExecutionFinalized.compareAndSet(false, true)) {
                             chatService.recordExecutionFailure(resolvedRequest.conversationId(), runtimeException);
                         }
                     } else {
                         chatService.discardLastUserMessage(resolvedRequest.conversationId(), resolvedRequest.message());
                     }
-                    sendEvent(emitter, "error", ChatStreamEvent.error(error.getMessage()));
+                    ChatStreamSupport.sendSseEvent(emitter, "error", ChatStreamEvent.error(error.getMessage()));
                     emitter.complete();
                 } catch (Exception sendError) {
                     emitter.completeWithError(sendError);
@@ -231,7 +231,7 @@ public class ChatController {
                         resolvedRequest.model()
                     );
                     if (contextUsage.compacted()) {
-                        sendEvent(
+                        ChatStreamSupport.sendSseEvent(
                             emitter,
                             "system",
                             ChatStreamEvent.message(
@@ -242,13 +242,13 @@ public class ChatController {
                             ).withPlanState(chatService.planState(resolvedRequest.conversationId()))
                         );
                     }
-                    sendEvent(
+                    ChatStreamSupport.sendSseEvent(
                         emitter,
                         "done",
                         ChatStreamEvent.message(
                             resolvedRequest.conversationId(),
                             resolvedRequest.model(),
-                            lastAssistantMessage(resolvedRequest),
+                            ChatStreamSupport.lastAssistantMessage(chatService, resolvedRequest.conversationId()),
                             contextUsage.usage()
                         ).withPlanState(chatService.planState(resolvedRequest.conversationId()))
                     );
@@ -274,17 +274,6 @@ public class ChatController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "conversationId, interruptToken, and message are required");
         }
         return activeTurnRegistry.interrupt(turnId, conversationId, token, message);
-    }
-
-    private ChatMessage lastAssistantMessage(ResolvedChatRequest resolvedRequest) {
-        List<ChatMessage> history = chatService.history(resolvedRequest.conversationId());
-        if (!history.isEmpty()) {
-            ChatMessage lastMessage = history.get(history.size() - 1);
-            if ("assistant".equalsIgnoreCase(lastMessage.role())) {
-                return lastMessage;
-            }
-        }
-        return chatService.renderAssistantMessage("");
     }
 
     @GetMapping("/sessions")
@@ -545,10 +534,6 @@ public class ChatController {
         return value.startsWith("/") ? value.substring(1) : value;
     }
 
-    private static String safeMessage(Throwable error) {
-        return error == null || error.getMessage() == null ? "unknown error" : error.getMessage();
-    }
-
     private void requireNoArguments(String command, String[] parts) {
         if (parts.length > 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, command + " does not accept arguments");
@@ -607,9 +592,4 @@ public class ChatController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid UUID: " + value);
         }
     }
-
-    private void sendEvent(SseEmitter emitter, String eventName, ChatStreamEvent event) throws Exception {
-        emitter.send(SseEmitter.event().name(eventName).data(event, MediaType.APPLICATION_JSON));
-    }
-
 }

@@ -1,5 +1,6 @@
 package io.mindspice.magenta2.api.web;
 
+import java.io.IOException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
@@ -140,6 +141,22 @@ public final class SseStreamLifecycle {
                 onErrorHandler.accept(error);
             }
         });
+    }
+
+    /**
+     * Sends an SSE event with the given name and data. Uses the default media type
+     * extracted from the data object.
+     */
+    public static void sendSseEvent(SseEmitter emitter, String name, Object data) throws IOException {
+        emitter.send(SseEmitter.event().name(name).data(data));
+    }
+
+    /**
+     * Sends an SSE event with the given name, data, and explicit media type.
+     */
+    public static void sendSseEvent(SseEmitter emitter, String name, Object data,
+            org.springframework.http.MediaType mediaType) throws Exception {
+        emitter.send(SseEmitter.event().name(name).data(data, mediaType));
     }
 
     /**
