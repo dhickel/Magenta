@@ -6,6 +6,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 import io.mindspice.magenta2.ai.chat.task.TaskRun;
 import io.mindspice.magenta2.ai.chat.task.TaskRunStatus;
@@ -14,14 +18,17 @@ import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.chat.workflow.WorkflowRun;
 import io.mindspice.magenta2.ai.chat.workflow.WorkflowService;
 import io.mindspice.magenta2.ai.execution.MagentaWorkExecutor;
+import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 @Service
 public class OrchestrationRunnerService {
-    private static final Duration LEASE_DURATION = Duration.ofMinutes(5);
+    private static final Duration DEFAULT_LEASE_DURATION = Duration.ofMinutes(5);
+    private static final Duration DEFAULT_HEARTBEAT_INTERVAL = Duration.ofMinutes(1);
 
     private final OrchestrationRuntimeRepository repository;
     private final AssignmentService assignmentService;
@@ -32,6 +39,13 @@ public class OrchestrationRunnerService {
     private final InboxService inboxService;
     private final OrchestrationEventService eventService;
     private final MagentaWorkExecutor executor;
+    private final Duration leaseDuration;
+    private final Duration heartbeatInterval;
+    private final ScheduledExecutorService heartbeatExecutor = Executors.newSingleThreadScheduledExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "orchestration-lease-heartbeat");
+        thread.setDaemon(true);
+        return thread;
+    });
     private final String leaseOwner = UUID.randomUUID().toString();
 
     public OrchestrationRunnerService(
@@ -57,7 +71,9 @@ public class OrchestrationRunnerService {
         ChatService chatService,
         InboxService inboxService,
         OrchestrationEventService eventService,
-        MagentaWorkExecutor executor
+        MagentaWorkExecutor executor,
+        @Value("${magenta.orchestration.lease-seconds:300}") long leaseSeconds,
+        @Value("${magenta.orchestration.heartbeat-seconds:60}") long heartbeatSeconds
     ) {
         this.repository = repository;
         this.assignmentService = assignmentService;
@@ -68,6 +84,25 @@ public class OrchestrationRunnerService {
         this.inboxService = inboxService;
         this.eventService = eventService;
         this.executor = executor;
+        this.leaseDuration = secondsOrDefault(leaseSeconds, DEFAULT_LEASE_DURATION);
+        this.heartbeatInterval = secondsOrDefault(heartbeatSeconds, DEFAULT_HEARTBEAT_INTERVAL);
+    }
+
+    public OrchestrationRunnerService(
+        OrchestrationRuntimeRepository repository,
+        AssignmentService assignmentService,
+        OrchestrationJobService jobService,
+        TaskService taskService,
+        WorkflowService workflowService,
+        ChatService chatService,
+        InboxService inboxService,
+        OrchestrationEventService eventService,
+        MagentaWorkExecutor executor
+    ) {
+        this(
+            repository, assignmentService, jobService, taskService, workflowService, chatService, inboxService,
+            eventService, executor, DEFAULT_LEASE_DURATION.toSeconds(), DEFAULT_HEARTBEAT_INTERVAL.toSeconds()
+        );
     }
 
     @Scheduled(fixedDelayString = "${magenta.orchestration.runner-delay-ms:2000}")
@@ -94,11 +129,12 @@ public class OrchestrationRunnerService {
     }
 
     public WorkAssignment runAssignment(String assignmentId) {
-        WorkAssignment leased = repository.acquireLease(assignmentId, leaseOwner, Instant.now().plus(LEASE_DURATION))
+        WorkAssignment leased = repository.acquireLease(assignmentId, leaseOwner, Instant.now().plus(leaseDuration))
             .orElse(null);
         if (leased == null) {
             return assignmentService.get(assignmentId);
         }
+        ScheduledFuture<?> heartbeat = startLeaseHeartbeat(assignmentId);
         try {
             return switch (leased.assignmentType()) {
                 case TASK_RUN -> runTask(leased);
@@ -111,7 +147,24 @@ public class OrchestrationRunnerService {
             };
         } catch (RuntimeException exception) {
             return fail(assignmentService.get(assignmentId), exception.getMessage());
+        } finally {
+            heartbeat.cancel(false);
         }
+    }
+
+    @PreDestroy
+    void shutdownHeartbeatExecutor() {
+        heartbeatExecutor.shutdownNow();
+    }
+
+    private ScheduledFuture<?> startLeaseHeartbeat(String assignmentId) {
+        long heartbeatMillis = Math.max(1, heartbeatInterval.toMillis());
+        return heartbeatExecutor.scheduleAtFixedRate(
+            () -> repository.extendRunningLease(assignmentId, leaseOwner, Instant.now().plus(leaseDuration)),
+            heartbeatMillis,
+            heartbeatMillis,
+            TimeUnit.MILLISECONDS
+        );
     }
 
     private WorkAssignment runTask(WorkAssignment assignment) {
@@ -290,7 +343,7 @@ public class OrchestrationRunnerService {
     ) {
         return assignmentService.copy(
             assignment, OrchestrationStatus.RUNNING, currentItemIndex, checkpoint, output, evidence, null,
-            leaseOwner, Instant.now().plus(LEASE_DURATION), null
+            leaseOwner, Instant.now().plus(leaseDuration), null
         );
     }
 
@@ -330,6 +383,10 @@ public class OrchestrationRunnerService {
         }
         String text = value.toString();
         return StringUtils.hasText(text) ? text : fallback;
+    }
+
+    private Duration secondsOrDefault(long seconds, Duration fallback) {
+        return seconds > 0 ? Duration.ofSeconds(seconds) : fallback;
     }
 
     private record JobItemResult(boolean succeeded, Object output, Map<String, Object> evidence, String errorText) {

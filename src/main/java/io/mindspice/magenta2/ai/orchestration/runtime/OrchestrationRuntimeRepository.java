@@ -232,6 +232,18 @@ public class OrchestrationRuntimeRepository {
         );
     }
 
+    public int extendRunningLease(String assignmentId, String leaseOwner, Instant leaseExpiresAt) {
+        Instant now = Instant.now();
+        return jdbcTemplate.update(
+            """
+                update work_assignments
+                set lease_expires_at = ?, updated_at = ?
+                where id = ? and status = ? and lease_owner = ?
+                """,
+            leaseExpiresAt.toString(), now.toString(), assignmentId, OrchestrationStatus.RUNNING.name(), leaseOwner
+        );
+    }
+
     public InboxMessage saveInboxMessage(InboxMessage message) {
         Instant now = Instant.now();
         Instant createdAt = message.createdAt() == null ? now : message.createdAt();

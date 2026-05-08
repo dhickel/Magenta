@@ -5,11 +5,16 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.chat.task.TaskDefinition;
 import io.mindspice.magenta2.ai.chat.task.TaskFieldDefinition;
 import io.mindspice.magenta2.ai.chat.task.TaskRepository;
+import io.mindspice.magenta2.ai.chat.task.TaskRun;
+import io.mindspice.magenta2.ai.chat.task.TaskRunStatus;
 import io.mindspice.magenta2.ai.chat.task.TaskService;
 import io.mindspice.magenta2.ai.chat.task.TaskStep;
 import io.mindspice.magenta2.ai.chat.task.TaskValueType;
@@ -175,6 +180,50 @@ class OrchestrationDurableRuntimeTest {
     }
 
     @Test
+    void runningAssignmentHeartbeatExtendsLease() throws Exception {
+        SlowTaskChatService chatService = new SlowTaskChatService();
+        Services services = services(chatService, 2, 1);
+        AgentProfile agent = services.agentService().create(profile("agent-heartbeat", "main"));
+        TaskDefinition task = services.taskService().saveTask(task());
+        WorkAssignment assignment = services.assignmentService().create(new AssignmentRequest(
+            agent.id(), null, null, AssignmentType.TASK_RUN, 0, null, null,
+            Map.of("taskId", task.id(), "inputValues", Map.of("topic", "lease"))
+        ));
+
+        CompletableFuture<WorkAssignment> result = CompletableFuture.supplyAsync(() ->
+            services.runnerService().runAssignment(assignment.id())
+        );
+
+        assertThat(chatService.started.await(1, TimeUnit.SECONDS)).isTrue();
+        Instant firstLeaseExpiry = services.assignmentService().get(assignment.id()).leaseExpiresAt();
+        Thread.sleep(1300);
+        Instant extendedLeaseExpiry = services.assignmentService().get(assignment.id()).leaseExpiresAt();
+        chatService.release.countDown();
+
+        assertThat(result.get(2, TimeUnit.SECONDS).status()).isEqualTo(OrchestrationStatus.COMPLETED);
+        assertThat(extendedLeaseExpiry).isAfter(firstLeaseExpiry);
+    }
+
+    @Test
+    void heartbeatDoesNotExtendLeaseOwnedByAnotherRunner() throws Exception {
+        Services services = services();
+        AgentProfile agent = services.agentService().create(profile("agent-heartbeat-negative", "main"));
+        Instant originalExpiry = Instant.now().plusSeconds(30);
+        WorkAssignment assignment = services.repository().saveAssignment(new WorkAssignment(
+            "owned-by-other", agent.id(), null, null, AssignmentType.REPORT, 0, OrchestrationStatus.RUNNING,
+            null, null, 0, Map.of(), Map.of("message", "owned"), Map.of(), Map.of(), null,
+            "other-runner", originalExpiry, null, null, Instant.now(), null
+        ));
+
+        int updated = services.repository().extendRunningLease(
+            assignment.id(), "current-runner", originalExpiry.plusSeconds(60)
+        );
+
+        assertThat(updated).isZero();
+        assertThat(services.assignmentService().get(assignment.id()).leaseExpiresAt()).isEqualTo(originalExpiry);
+    }
+
+    @Test
     void contextBearingTaskAndWorkflowRunsCreateDurableAssignments() throws Exception {
         Services services = services();
         AgentProfile agent = services.agentService().create(profile("agent-d", "main"));
@@ -254,6 +303,10 @@ class OrchestrationDurableRuntimeTest {
     }
 
     private Services services() throws Exception {
+        return services(null, 300, 60);
+    }
+
+    private Services services(ChatService chatServiceOverride, long leaseSeconds, long heartbeatSeconds) throws Exception {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         ObjectMapper objectMapper = new ObjectMapper();
         AiConfig aiConfig = aiConfig();
@@ -272,13 +325,14 @@ class OrchestrationDurableRuntimeTest {
         ScheduleService scheduleService = new ScheduleService(repository, agentService, assignmentService, eventService);
         EventReactionService reactionService = new EventReactionService(repository, agentService);
         TaskService taskService = new TaskService(new TaskRepository(jdbcTemplate, objectMapper));
-        ChatService chatService = new FakeTaskChatService(taskService);
+        ChatService chatService = chatServiceOverride == null ? new FakeTaskChatService(taskService) : chatServiceOverride;
         WorkflowService workflowService = new WorkflowService(new WorkflowRepository(jdbcTemplate, objectMapper), taskService, chatService);
         MagentaWorkExecutor executor = new MagentaWorkExecutor(Map.of(
             MagentaWorkKind.BACKGROUND_JOB, new MagentaWorkExecutor.LaneSettings("test-bg-", 1, 10)
         ));
         OrchestrationRunnerService runnerService = new OrchestrationRunnerService(
-            repository, assignmentService, jobService, taskService, workflowService, chatService, inboxService, eventService, executor
+            repository, assignmentService, jobService, taskService, workflowService, chatService, inboxService,
+            eventService, executor, leaseSeconds, heartbeatSeconds
         );
         OrchestrationRunService orchestrationRunService = new OrchestrationRunService(
             assignmentService, jobService, runnerService
@@ -372,6 +426,36 @@ class OrchestrationDurableRuntimeTest {
             var completed = taskService.completeRun(run.id(), outputs, "done", List.of("fake task_complete"));
             taskService.clearExecutionContext(conversationId);
             return new TaskExecutionResult(conversationId, completed, null);
+        }
+    }
+
+    private static final class SlowTaskChatService extends ChatService {
+        private final CountDownLatch started = new CountDownLatch(1);
+        private final CountDownLatch release = new CountDownLatch(1);
+
+        SlowTaskChatService() {
+            super(null, null, null, new io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer(), null);
+        }
+
+        @Override
+        public TaskExecutionResult executeTaskBlocking(
+            String taskId,
+            Map<String, Object> inputValues,
+            String conversationId,
+            String modelOverride
+        ) {
+            started.countDown();
+            try {
+                release.await(2, TimeUnit.SECONDS);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Interrupted waiting for slow task release", exception);
+            }
+            return new TaskExecutionResult(conversationId, new TaskRun(
+                "slow-run", taskId, TaskRunStatus.COMPLETED, inputValues, Map.of("notes", "done"),
+                null, List.of("slow evidence"), List.of(), "done", null,
+                Instant.now(), Instant.now(), Instant.now(), Instant.now()
+            ), null);
         }
     }
 }
