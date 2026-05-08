@@ -1,6 +1,6 @@
 package io.mindspice.magenta2.ai.agent.job;
 
-import io.mindspice.magenta2.ai.chat.repository.AgentJobRepository;
+import io.mindspice.magenta2.ai.agent.job.AgentJobRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;

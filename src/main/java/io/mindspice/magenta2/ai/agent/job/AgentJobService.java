@@ -7,7 +7,7 @@ import java.util.UUID;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.mindspice.magenta2.ai.chat.repository.AgentJobRepository;
+import io.mindspice.magenta2.ai.agent.job.AgentJobRepository;
 import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
 import io.mindspice.magenta2.ai.chat.service.ChatModelRouter;
 import io.mindspice.magenta2.ai.config.user.AiConfig;

@@ -5,7 +5,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.mindspice.magenta2.ai.chat.repository.AgentJobRepository;
+import io.mindspice.magenta2.ai.agent.job.AgentJobRepository;
 import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
 import io.mindspice.magenta2.ai.execution.MagentaWorkExecutor;
 import io.mindspice.magenta2.ai.execution.MagentaWorkKind;

@@ -18,7 +18,7 @@ Started: 2026-05-08
 | 4.1 | Extract Controller Workflow & Stream Logic | completed | Extracted SsePayload to top-level record. Extracted TaskStreamSupport, WorkflowStreamSupport, and ChatStreamSupport classes. Added sendSseEvent helpers to SseStreamLifecycle. Controllers now delegate event mapping to support classes. 276 tests pass. |
 | 4.2 | Public API DTOs For Lifecycle Fields | completed | Introduced TaskCreateRequest/TaskUpdateRequest for TaskController, JobCreateRequest/JobItemCreateRequest for OrchestrationJobController. Domain records now stay inside service boundaries. Client lifecycle fields are silently ignored. 278 tests pass. |
 | 4.3 | Move PlanMode To Chat Interaction Package | completed | Moved PlanMode enum from `ai.chat.plan` to `ai.chat.model`. Updated 12 import paths across main and test sources. Updated plan and model package AGENTS.md guides. 278 tests pass. |
-| 4.4 | Move AgentJobRepository To Agent Job Ownership | pending | — |
+| 4.4 | Move AgentJobRepository To Agent Job Ownership | completed | Moved AgentJobRepository from `ai.chat.repository` to `ai.agent.job`. Updated 4 import paths across main and test sources. 20 targeted tests pass. |
 | 4.5 | Incremental ChatService Seam Extraction | pending | — |
 | 5.1 | Long-Record Mutation Helpers | pending | — |
 | 5.2 | Remove Dead Command Compatibility Code | pending | — |
@@ -491,3 +491,28 @@ Chose a **narrow hybrid** policy:
 
 **Test results:**
 - All 278 tests pass (278 existing, 0 new). Full suite: 278 run, 0 failures, 0 errors, 0 skipped.
+
+### Issue 4.4: Move AgentJobRepository To Agent Job Ownership
+
+**Files changed:**
+- `src/main/java/io/mindspice/magenta2/ai/chat/repository/AgentJobRepository.java` — REMOVED from chat repository package.
+- `src/main/java/io/mindspice/magenta2/ai/agent/job/AgentJobRepository.java` — NEW. Same class body, package `io.mindspice.magenta2.ai.agent.job`.
+- `src/main/java/io/mindspice/magenta2/ai/agent/job/AgentJobService.java` — Updated AgentJobRepository import to `ai.agent.job`.
+- `src/test/java/io/mindspice/magenta2/ai/agent/job/AgentJobRepositoryTest.java` — Updated AgentJobRepository import to `ai.agent.job`.
+- `src/test/java/io/mindspice/magenta2/ai/agent/job/AgentJobServiceTest.java` — Updated AgentJobRepository import to `ai.agent.job`.
+- `src/test/java/io/mindspice/magenta2/SchemaOwnershipTest.java` — Updated AgentJobRepository import to `ai.agent.job`.
+
+**What changed and why:**
+
+1. **AgentJobRepository relocation** — The repository persists `ai.agent.job` domain records (AgentJob, AgentJobStatus, AgentJobType) and is consumed by AgentJobService, but lived in `ai.chat.repository`. Moved to `ai.agent.job` where its domain types already reside, matching ownership to persistence.
+
+2. **Import updates** — 4 files referencing the old package path were updated. The `AgentJobService` (main source) and 3 test files (`AgentJobRepositoryTest`, `AgentJobServiceTest`, `SchemaOwnershipTest`) now import from `io.mindspice.magenta2.ai.agent.job.AgentJobRepository`.
+
+3. **Package guide** — The `ai.agent.job` AGENTS.md already lists "persist internal agent jobs" as a responsibility. No changes needed.
+
+**Decisions made:**
+- Moved directly to `ai.agent.job` rather than a `persistence` sub-package, since the agent job package is already small (6 files) and a sub-package would add hierarchy without benefit. The AGENTS.md already describes persistence as a core ownership.
+- Did not change the class body, table names, schema logic, or any behavior — pure mechanical move per the "ownership clarity, not persistence redesign" guidance.
+
+**Test results:**
+- 20 tests pass (2 AgentJobRepository + 5 AgentJobService + 13 SchemaOwnership). Full suite: 20 run, 0 failures, 0 errors, 0 skipped.

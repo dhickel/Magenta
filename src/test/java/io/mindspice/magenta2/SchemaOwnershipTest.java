@@ -6,7 +6,7 @@ import java.util.Map;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.chat.plan.ChatPlanRepository;
-import io.mindspice.magenta2.ai.chat.repository.AgentJobRepository;
+import io.mindspice.magenta2.ai.agent.job.AgentJobRepository;
 import io.mindspice.magenta2.ai.chat.repository.AuditRepository;
 import io.mindspice.magenta2.ai.chat.repository.ChatMemoryRepository;
 import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
