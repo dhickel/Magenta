@@ -1284,20 +1284,20 @@
                     setError(error.message);
                 }
             });
-
-            planningPanel.addEventListener('click', async function(event) {
-                const button = event.target.closest('[data-plan-action]');
-                if (!button) {
-                    return;
-                }
-                event.preventDefault();
-                try {
-                    await runPlanningAction(button.getAttribute('data-plan-action'));
-                } catch (error) {
-                    setError(error.message);
-                }
-            });
         }
+
+        document.addEventListener('click', async function(event) {
+            const button = event.target.closest('[data-plan-action]');
+            if (!button) {
+                return;
+            }
+            event.preventDefault();
+            try {
+                await runPlanningAction(button.getAttribute('data-plan-action'));
+            } catch (error) {
+                setError(error.message);
+            }
+        });
 
         byId('chat-session-list').addEventListener('click', async function(event) {
             const favoriteButton = event.target.closest('[data-favorite-id]');

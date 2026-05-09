@@ -39,7 +39,7 @@ The frontend makes use of SimplyPages, SimplyPages is our on self maintained fro
 You can gain alot about the frontend library from the demos, complex views like the forum and and editing menus give examples on how to do modal outputs and node/card rendering
 This is the style we want to take with our UI.
 
- #### SimplyPages Links
+#### SimplyPages Links
 - Documentation `/home/hickelpickle/Code/Java/cannasite/java-html-framework/docs`
 - Demo `/home/hickelpickle/Code/Java/cannasite/java-html-framework/demo`
 
@@ -50,7 +50,12 @@ still faced with ambiguity, or needing context refer to the demos, if still conf
 *Given the modularity of the library, much of our ui can be reused components across pages, always try to reuse and generalize when similar functionalities exit*
 
 *Keep in mind threading, we have slot keys that allow us to re use the same instance of components/modules where static data is pre-rendered, then we can render with dynamic data. While this isn't a performance
-bottle neck for us, it is one of the libraries patterns to keep in mind, and can avoid instancing multiple objects that will be converted to strings anwy-ways. Remember though you must use slot keys when sharing render objects between requests.*
+bottleneck for us, it is one of the library patterns to keep in mind, and can avoid instancing multiple objects that will be converted to strings anwy-ways. Remember though you must use slot keys when sharing render objects between requests.*
+
+#### When encountering bug/issues with SimplyPages
+SimplyPages is develop and maintained by use, any issues and/or bug that are found can be directly address by use, if you find much needed missing functionality we can add it, if there is a bug we can fix it directly.
+If you find yourself in a situation where the library cannot do something you reasonably expect decide if it is worth raising to an issue and file and document the issue on our github repository, you dont need to make a PR, but well document your ideas around addressing the issue, your justification, targets and scope.
+If you find a bug pull the recent version of the library and directly implement a fix and file a pr.
 
 ### Engineering style
 - Keep code straightforward, simple, readable, and focused on the domain problem at hand.

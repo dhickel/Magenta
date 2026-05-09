@@ -124,6 +124,21 @@ public class ChatModelRouter {
         return toolCallingOptions(model);
     }
 
+    /** Endpoint-polymorphic options without think/reasoning-effort settings.
+     * Use for utility calls like title generation that should work across
+     * all model types without extra configuration. */
+    public ToolCallingChatOptions basicChatOptions(String model) {
+        ModelConfig config = modelConfig(model);
+        return switch (config.endpointType()) {
+            case OLLAMA -> OllamaChatOptions.builder()
+                .model(config.remoteModelName())
+                .build();
+            case OPENAI_COMPATIBLE, DEEPSEEK -> OpenAiChatOptions.builder()
+                .model(config.remoteModelName())
+                .build();
+        };
+    }
+
     private static int effectiveThinkLevel(ModelConfig config) {
         Integer level = config.thinkLevel();
         if (level == null) return 0;

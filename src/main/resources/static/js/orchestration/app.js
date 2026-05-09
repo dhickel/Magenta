@@ -75,6 +75,7 @@ async function initAgents(root) {
             await load();
         }));
         $$("[data-action='delete-agent']", cards).forEach(button => button.addEventListener("click", async () => {
+            if (!confirm("Delete or disable this agent?")) return;
             await jsonFetch(`/api/agents/${button.dataset.agentId}`, { method: "DELETE" });
             await load();
         }));
@@ -113,7 +114,7 @@ function agentCard(agent) {
             <div class="orch-actions">
                 <a href="/agents/${escapeHtml(agent.id)}">Open</a>
                 <button type="button" data-action="clone-agent" data-agent-id="${escapeHtml(agent.id)}">Clone</button>
-                <button type="button" data-action="delete-agent" data-agent-id="${escapeHtml(agent.id)}">Disable</button>
+                <button type="button" data-action="delete-agent" data-agent-id="${escapeHtml(agent.id)}">Delete</button>
             </div>
         </article>`;
 }

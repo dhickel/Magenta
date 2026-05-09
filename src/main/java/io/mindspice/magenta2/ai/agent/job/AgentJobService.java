@@ -61,6 +61,9 @@ public class AgentJobService {
         if (StringUtils.hasText(chatSessionMetadataRepository.findTitle(conversationId).orElse(null))) {
             return Optional.empty();
         }
+        if (agentJobRepository.latestStatus(AgentJobType.CONVERSATION_TITLE, conversationId).isPresent()) {
+            return Optional.empty();
+        }
         Optional<AgentJob> enqueued = agentJobRepository.enqueue(
             UUID.randomUUID().toString(),
             AgentJobType.CONVERSATION_TITLE,
@@ -109,7 +112,7 @@ public class AgentJobService {
                     new org.springframework.ai.chat.messages.SystemMessage(TITLE_SYSTEM_PROMPT),
                     new org.springframework.ai.chat.messages.UserMessage("Title this conversation:\n\n" + firstUserMessage)
                 ),
-                chatModelRouter.toolCallingOptions(selectedModel)
+                chatModelRouter.basicChatOptions(selectedModel)
             ))
             .call()
             .chatClientResponse();
