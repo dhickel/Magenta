@@ -52,18 +52,20 @@ public class ChatController {
     }
 
     public ChatController(ChatService chatService, ActiveTurnRegistry activeTurnRegistry) {
-        this(chatService, activeTurnRegistry, 360);
+        this(chatService, activeTurnRegistry, 0);
     }
 
     @Autowired
     public ChatController(
         ChatService chatService,
         ActiveTurnRegistry activeTurnRegistry,
-        @Value("${magenta.plan.execution-stream-timeout-seconds:360}") long planExecutionStreamTimeoutSeconds
+        @Value("${magenta.plan.execution-stream-timeout-seconds:0}") long planExecutionStreamTimeoutSeconds
     ) {
         this.chatService = chatService;
         this.activeTurnRegistry = activeTurnRegistry;
-        this.planExecutionStreamTimeoutMillis = Math.max(1, planExecutionStreamTimeoutSeconds) * 1000;
+        this.planExecutionStreamTimeoutMillis = planExecutionStreamTimeoutSeconds <= 0
+            ? 0L
+            : planExecutionStreamTimeoutSeconds * 1000;
     }
 
     @PostMapping

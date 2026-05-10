@@ -20,14 +20,19 @@ import io.mindspice.magenta2.ai.chat.workflow.WorkflowRun;
 import io.mindspice.magenta2.ai.chat.workflow.WorkflowService;
 import io.mindspice.magenta2.ai.execution.MagentaWorkExecutor;
 import jakarta.annotation.PreDestroy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 @Service
 public class OrchestrationRunnerService {
+    private static final Logger logger = LoggerFactory.getLogger(OrchestrationRunnerService.class);
     private static final Duration DEFAULT_LEASE_DURATION = Duration.ofMinutes(5);
     private static final Duration DEFAULT_HEARTBEAT_INTERVAL = Duration.ofMinutes(1);
 
@@ -109,7 +114,7 @@ public class OrchestrationRunnerService {
     @Scheduled(fixedDelayString = "${magenta.orchestration.runner-delay-ms:2000}")
     public void pollQueuedWork() {
         recoverStaleLeases();
-        for (WorkAssignment queued : repository.findQueuedAssignments(4)) {
+        for (WorkAssignment queued : repository.findRecoverableAssignments(4)) {
             var leased = repository.acquireLease(queued.id(), leaseOwner, Instant.now().plus(leaseDuration));
             if (leased.isEmpty()) {
                 continue;
@@ -131,9 +136,18 @@ public class OrchestrationRunnerService {
         return repository.markStaleRunningLeases(Instant.now());
     }
 
+    @EventListener(ApplicationReadyEvent.class)
+    public void onApplicationReady() {
+        int interrupted = recoverStaleLeases();
+        logger.info("Startup recovery: marked {} stale RUNNING assignments as INTERRUPTED", interrupted);
+        if (interrupted > 0) {
+            logger.info("INTERRUPTED assignments will be picked up by the normal polling loop via findRecoverableAssignments");
+        }
+    }
+
     public WorkAssignment runNextSynchronously() {
         recoverStaleLeases();
-        return repository.findQueuedAssignments(1).stream()
+        return repository.findRecoverableAssignments(1).stream()
             .findFirst()
             .map(assignment -> runAssignment(assignment.id()))
             .orElse(null);

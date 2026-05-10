@@ -38,6 +38,11 @@ public class AgentFileToolService {
     private static final int HASH_LENGTH = 12;
     private static final int MAX_DISPLAY_LINE_CHARS = 2_000;
 
+    // Maximum file size for full-buffer operations (replace). Files larger than
+    // this are rejected with a clear message directing the caller to streaming tools.
+    private static final long MAX_FULL_BUFFER_BYTES =
+        Long.parseLong(System.getProperty("magenta.file.maxFullBufferBytes", Long.toString(10_485_760))); // 10 MB
+
     private final Path root;
 
     @Autowired
@@ -253,6 +258,14 @@ public class AgentFileToolService {
 
     public FileReplaceResult replace(String path, String startAnchor, String endAnchor, String replacement) throws IOException {
         Path target = resolveTextFile(path);
+        long fileSize = Files.size(target);
+        if (fileSize > MAX_FULL_BUFFER_BYTES) {
+            throw new IllegalArgumentException(
+                "File is too large for file_replace (" + fileSize + " bytes exceeds "
+                + MAX_FULL_BUFFER_BYTES + " byte limit). To edit large files, use file_read "
+                + "to inspect content, then use file_write to write the desired content."
+            );
+        }
         LineAnchor start = parseAnchor(startAnchor, "startAnchor");
         LineAnchor end = StringUtils.hasText(endAnchor) ? parseAnchor(endAnchor, "endAnchor") : start;
         if (end.lineNumber() < start.lineNumber()) {

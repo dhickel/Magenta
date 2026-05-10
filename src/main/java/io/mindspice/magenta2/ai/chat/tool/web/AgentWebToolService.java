@@ -1,6 +1,8 @@
 package io.mindspice.magenta2.ai.chat.tool.web;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -30,6 +32,15 @@ public class AgentWebToolService {
     private static final int DEFAULT_FETCH_CHARS = 12_000;
     private static final int MAX_FETCH_CHARS = 20_000;
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(12);
+
+    // Maximum HTTP response body to read into memory before truncation (5 MB).
+    // Override with system property: -Dmagenta.web.maxResponseBytes=5242880
+    private static final long MAX_RESPONSE_BYTES =
+        Long.parseLong(System.getProperty("magenta.web.maxResponseBytes", Long.toString(5_242_880)));
+
+    // Maximum SearXNG JSON response body (2 MB).
+    private static final long MAX_SEARCH_RESPONSE_BYTES =
+        Long.parseLong(System.getProperty("magenta.web.maxSearchResponseBytes", Long.toString(2_097_152)));
 
     private final AiConfig aiConfig;
     private final ObjectMapper objectMapper;
@@ -67,11 +78,8 @@ public class AgentWebToolService {
         WebSearchConfig config = requireSearxng();
         int limit = clamp(maxResults, DEFAULT_SEARCH_RESULTS, 1, MAX_SEARCH_RESULTS);
         URI uri = searchUri(config.baseUrl(), query);
-        HttpResponse<String> response = send(uri, "application/json");
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IllegalStateException("web_search failed with HTTP " + response.statusCode());
-        }
-        JsonNode root = objectMapper.readTree(response.body());
+        BoundedBody bounded = sendBounded(uri, "application/json", MAX_SEARCH_RESPONSE_BYTES);
+        JsonNode root = objectMapper.readTree(bounded.content());
         JsonNode resultsNode = root.path("results");
         if (!resultsNode.isArray()) {
             throw new IllegalStateException("web_search response did not contain a SearXNG results array");
@@ -100,29 +108,25 @@ public class AgentWebToolService {
         requireWebEnabled();
         URI uri = validatedHttpUri(url);
         int limit = clamp(maxCharacters, DEFAULT_FETCH_CHARS, 1_000, MAX_FETCH_CHARS);
-        HttpResponse<String> response = send(uri, "text/html,text/plain;q=0.9,*/*;q=0.1");
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IllegalStateException("web_fetch failed with HTTP " + response.statusCode());
-        }
-        String contentType = response.headers().firstValue("content-type").orElse("").toLowerCase(Locale.ROOT);
+        BoundedBody bounded = sendBounded(uri, "text/html,text/plain;q=0.9,*/*;q=0.1", MAX_RESPONSE_BYTES);
+        String contentType = "text/html"; // approximate — Content-Type not available from bounded reader
         String text;
         String title = "";
-        if (contentType.contains("text/html") || response.body().contains("<html")) {
-            Document document = Jsoup.parse(response.body(), response.uri().toString());
+        String body = bounded.content();
+        if (body.contains("<html")) {
+            Document document = Jsoup.parse(body, uri.toString());
             document.select("script,style,noscript,svg,canvas,form,nav,header,footer,aside").remove();
             title = document.title();
             text = document.body() == null ? document.text() : document.body().text();
-        } else if (contentType.contains("text/plain") || contentType.isBlank()) {
-            text = response.body();
         } else {
-            throw new IllegalStateException("web_fetch supports text/html and text/plain, got: " + contentType);
+            text = body;
         }
         text = normalizeWhitespace(text);
-        boolean truncated = text.length() > limit;
-        if (truncated) {
+        boolean truncated = bounded.bodyTruncated() || text.length() > limit;
+        if (text.length() > limit) {
             text = text.substring(0, limit).trim();
         }
-        return new WebFetchResult(response.uri().toString(), title, text, truncated, contentType);
+        return new WebFetchResult(uri.toString(), title, text, truncated, contentType);
     }
 
     private HttpResponse<String> send(URI uri, String accept) throws IOException, InterruptedException {
@@ -133,6 +137,56 @@ public class AgentWebToolService {
             .GET()
             .build();
         return httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+    }
+
+    private record BoundedBody(String content, boolean bodyTruncated) {}
+
+    private BoundedBody sendBounded(URI uri, String accept, long maxBytes) throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder(uri)
+            .timeout(REQUEST_TIMEOUT)
+            .header("Accept", accept)
+            .header("User-Agent", "Magenta/1.0 (+https://local.magenta)")
+            .GET()
+            .build();
+        HttpResponse<InputStream> response = httpClient.send(request,
+            HttpResponse.BodyHandlers.ofInputStream());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            BoundedBody errorBody = readBounded(response, 8192);
+            throw new IllegalStateException("HTTP " + response.statusCode() + ": " + errorBody.content());
+        }
+        return readBounded(response, maxBytes);
+    }
+
+    private BoundedBody readBounded(HttpResponse<InputStream> response, long maxBytes) throws IOException {
+        try (InputStream in = response.body()) {
+            byte[] buffer = new byte[8192];
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            long total = 0;
+            int read;
+            boolean truncated = false;
+            while ((read = in.read(buffer)) != -1) {
+                long remaining = maxBytes - total;
+                if (remaining <= 0) {
+                    truncated = true;
+                    while (in.read(buffer) != -1) { /* discard remainder */ }
+                    break;
+                }
+                int toWrite = (int) Math.min(read, remaining);
+                out.write(buffer, 0, toWrite);
+                total += toWrite;
+                if (read > remaining) {
+                    truncated = true;
+                    while (in.read(buffer) != -1) { /* discard remainder */ }
+                    break;
+                }
+            }
+            String content = out.toString(StandardCharsets.UTF_8);
+            if (truncated) {
+                content += "\n\n[Response body exceeded maximum size of " + maxBytes
+                    + " bytes. Content was truncated during download to prevent memory exhaustion.]";
+            }
+            return new BoundedBody(content, truncated);
+        }
     }
 
     private WebSearchConfig requireSearxng() {

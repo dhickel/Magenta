@@ -199,7 +199,7 @@ public class ChatPlanRepository {
                 where conversation_id = ?
                 order by step_order asc
                 """,
-            (rs, rowNum) -> new PlanStep(rs.getInt("step_order"), rs.getString("step_text")),
+            (rs, rowNum) -> new PlanStep(rs.getInt("step_order"), PlanText.normalize(rs.getString("step_text"))),
             conversationId
         );
     }

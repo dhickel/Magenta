@@ -90,7 +90,7 @@ class PlanSaveToolsTest {
             tools.setTask("collect_user_guidance");
             tools.putItem("deliverable", 1, "Implementation plan");
             tools.putItem("step", 2, "Run focused tests and inspect failures before changing code.");
-            tools.putItem("step", 1, "Review current planning state and recent changelogs.");
+            tools.putItem("step", 1, "<![CDATA[Review current planning state and recent changelogs.]]>");
             tools.deleteItem("step", 2);
             tools.putItem("validation_criterion", 1, "Planning ends with a question or approval.");
         } finally {

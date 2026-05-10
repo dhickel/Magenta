@@ -188,7 +188,21 @@ class ChatControllerTest {
     }
 
     @Test
-    void planExecutionStreamUsesConfiguredTimeout() throws Exception {
+    void planExecutionStreamUsesNoTimeoutByDefault() throws Exception {
+        BlockingStreamChatService blockingChatService = new BlockingStreamChatService(
+            List.of(CONVERSATION_ID),
+            Map.of(CONVERSATION_ID, "qwen3")
+        );
+        ChatController controller = new ChatController(blockingChatService);
+
+        SseEmitter emitter = controller.streamPlanExecution(CONVERSATION_ID);
+
+        assertThat(emitter.getTimeout()).isZero();
+        blockingChatService.release.countDown();
+    }
+
+    @Test
+    void planExecutionStreamUsesConfiguredPositiveTimeout() throws Exception {
         BlockingStreamChatService blockingChatService = new BlockingStreamChatService(
             List.of(CONVERSATION_ID),
             Map.of(CONVERSATION_ID, "qwen3")
@@ -307,6 +321,21 @@ class ChatControllerTest {
         SseEmitter emitter = controller.streamPlanExecution(CONVERSATION_ID);
 
         assertThat(emitter.getTimeout()).isEqualTo(30000L);
+        blockingChatService.release.countDown();
+    }
+
+    @Test
+    void planExecutionStreamEmitterDisablesNonPositiveConfiguredTimeout() throws Exception {
+        BlockingStreamChatService blockingChatService = new BlockingStreamChatService(
+            List.of(CONVERSATION_ID),
+            Map.of(CONVERSATION_ID, "qwen3")
+        );
+        ChatController controller = new ChatController(blockingChatService,
+            new io.mindspice.magenta2.ai.execution.ActiveTurnRegistry(), -1);
+
+        SseEmitter emitter = controller.streamPlanExecution(CONVERSATION_ID);
+
+        assertThat(emitter.getTimeout()).isZero();
         blockingChatService.release.countDown();
     }
 

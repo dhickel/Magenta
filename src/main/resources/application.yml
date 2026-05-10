@@ -10,7 +10,7 @@ magenta:
     schedules-enabled: false
     reactions-enabled: false
   plan:
-    execution-stream-timeout-seconds: 360
+    execution-stream-timeout-seconds: 0
   ai:
     openai-compatible-read-timeout-seconds: 360
 

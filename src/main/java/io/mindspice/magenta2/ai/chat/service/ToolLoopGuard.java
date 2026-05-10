@@ -20,7 +20,7 @@ import org.springframework.util.StringUtils;
  * error rates. Throws {@link ToolUseAbort} when either threshold is exceeded, which
  * the tool loop catches to send a control message before the final model call.
  */
-final class ToolLoopGuard {
+public final class ToolLoopGuard {
     private static final int TOOL_ERROR_WINDOW_SIZE = 8;
     private static final int TOOL_ERROR_WINDOW_LIMIT = 5;
     private static final int IDENTICAL_TOOL_CALL_LIMIT = 5;

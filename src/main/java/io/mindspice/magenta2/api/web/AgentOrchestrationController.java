@@ -7,6 +7,7 @@ import java.util.Map;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.mindspice.magenta2.ai.chat.model.ChatRequest;
 import io.mindspice.magenta2.ai.chat.model.ChatResponse;
+import io.mindspice.magenta2.ai.chat.service.AgentChatPromptService;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
@@ -48,6 +49,7 @@ public class AgentOrchestrationController {
     private final EventReactionService reactionService;
     private final AgentProfileService agentProfileService;
     private final ChatService chatService;
+    private final AgentChatPromptService agentChatPromptService;
 
     @Value("${magenta.features.schedules-enabled:false}")
     private boolean schedulesEnabled;
@@ -61,7 +63,8 @@ public class AgentOrchestrationController {
         ScheduleService scheduleService,
         EventReactionService reactionService,
         AgentProfileService agentProfileService,
-        ChatService chatService
+        ChatService chatService,
+        AgentChatPromptService agentChatPromptService
     ) {
         this.inboxService = inboxService;
         this.assignmentService = assignmentService;
@@ -69,6 +72,7 @@ public class AgentOrchestrationController {
         this.reactionService = reactionService;
         this.agentProfileService = agentProfileService;
         this.chatService = chatService;
+        this.agentChatPromptService = agentChatPromptService;
     }
 
     @GetMapping("/inbox")
@@ -191,10 +195,7 @@ public class AgentOrchestrationController {
                         "error", "message is required"
                     )));
                 }
-                String pageContext = request.pageContext() == null || request.pageContext().isBlank()
-                    ? "orchestration page"
-                    : request.pageContext();
-                String prompt = "Agent page context: " + pageContext + "\n\n" + message;
+                String prompt = agentChatPromptService.buildPrompt(request.pageContext(), message);
                 String model = request.model() == null || request.model().isBlank() ? agent.defaultModel() : request.model();
                 var start = new LinkedHashMap<String, Object>();
                 start.put("event", "start");

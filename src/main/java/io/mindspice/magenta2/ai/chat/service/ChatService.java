@@ -37,6 +37,12 @@ import io.mindspice.magenta2.ai.chat.plan.PlanToolExecutionContext;
 import io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer;
 import io.mindspice.magenta2.ai.chat.repository.AuditRepository;
 import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
+import io.mindspice.magenta2.ai.chat.service.turn.PromptContextAssembler;
+import io.mindspice.magenta2.ai.chat.service.turn.TerminalTurnRepair;
+import io.mindspice.magenta2.ai.chat.service.turn.ToolAccessPolicy;
+import io.mindspice.magenta2.ai.chat.service.turn.TurnAuditWriter;
+import io.mindspice.magenta2.ai.chat.service.turn.TurnDiagnostic;
+import io.mindspice.magenta2.ai.chat.service.turn.TurnPhase;
 import io.mindspice.magenta2.ai.chat.task.TaskRun;
 import io.mindspice.magenta2.ai.chat.task.TaskRunStatus;
 import io.mindspice.magenta2.ai.chat.task.TaskService;
@@ -86,45 +92,9 @@ public class ChatService {
     private static final int PLAN_TURN_REPAIR_RETRY_LIMIT = 2;
     private static final int EXECUTION_COMPLETION_REPAIR_RETRY_LIMIT = 2;
     private static final String OLLAMA_TOOLS_UNSUPPORTED_MESSAGE = "does not support tools";
-    static final List<String> PLAN_MODE_TOOLS = List.of(
-        "file_list",
-        "file_read",
-        "file_search",
-        "shell_exec",
-        "web_search",
-        "web_fetch",
-        "plan_set_goal",
-        "plan_set_task",
-        "plan_put_item",
-        "plan_delete_item",
-        "ask_user_questions",
-        "plan_ready_for_approval"
-    );
-    static final List<String> TASK_MODE_TOOLS = List.of(
-        "file_list",
-        "file_read",
-        "file_search",
-        "shell_exec",
-        "web_search",
-        "web_fetch",
-        "ask_user_questions",
-        "task_set_goal",
-        "task_set_task",
-        "task_put_item",
-        "task_delete_item",
-        "task_ready_for_approval"
-    );
-    private static final List<String> NORMAL_BLOCKED_TOOLS = List.of(
-        "plan_update", "plan_set_goal", "plan_set_task", "plan_put_item", "plan_delete_item",
-        "ask_user_questions", "plan_ready_for_approval", "plan_report", "plan_complete",
-        "task_set_goal", "task_set_task", "task_put_item", "task_delete_item", "task_ready_for_approval",
-        "task_report", "task_complete"
-    );
-    private static final List<String> EXECUTION_BLOCKED_TOOLS = List.of(
-        "plan_update", "plan_set_goal", "plan_set_task", "plan_put_item", "plan_delete_item",
-        "ask_user_questions", "plan_ready_for_approval",
-        "task_set_goal", "task_set_task", "task_put_item", "task_delete_item", "task_ready_for_approval"
-    );
+    // Backward-compatible references to ToolAccessPolicy constants
+    public static final List<String> PLAN_MODE_TOOLS = ToolAccessPolicy.PLAN_MODE_TOOLS;
+    public static final List<String> TASK_MODE_TOOLS = ToolAccessPolicy.TASK_MODE_TOOLS;
     private static final String EXECUTE_PLAN_MESSAGE = "Execute the saved plan now. Work through the plan directly and report the completed result.";
     private static final String EXECUTE_TASK_MESSAGE = """
         Execute the reusable task now using the provided runtime inputs.
@@ -155,6 +125,12 @@ public class ChatService {
     private final RequestResolver requestResolver;
     private final Set<String> toolUnsupportedModels = ConcurrentHashMap.newKeySet();
     private final Map<String, Semaphore> streamLocks = new ConcurrentHashMap<>();
+
+    // Extracted turn components (Plan 01 — Chat Turn Orchestration)
+    private final PromptContextAssembler promptAssembler;
+    private final ToolAccessPolicy toolAccessPolicy;
+    private final TerminalTurnRepair turnRepair;
+    private final TurnAuditWriter turnAuditWriter;
 
     public ChatService(
         ChatMemory chatMemory,
@@ -270,6 +246,12 @@ public class ChatService {
         this.runtimeSettingsService = runtimeSettingsService;
         this.auditService = auditService;
         this.requestResolver = requestResolver;
+
+        // Initialize extracted turn components
+        this.promptAssembler = new PromptContextAssembler(aiConfig, runtimeSettingsService, planService, taskService);
+        this.toolAccessPolicy = new ToolAccessPolicy(chatToolRegistry, planService, taskService);
+        this.turnRepair = new TerminalTurnRepair(planService, taskService);
+        this.turnAuditWriter = new TurnAuditWriter(auditService, auditRepository);
     }
 
     public ChatResponse chat(ChatRequest request) {
@@ -313,21 +295,21 @@ public class ChatService {
     }
 
     private ChatResponse.MsgResponse plainChat(ResolvedChatRequest resolvedRequest) {
-        if (auditService != null) auditService.auditUserMessage(resolvedRequest);
+        turnAuditWriter.recordTurnStart(resolvedRequest);
         ChatClient.ChatClientRequestSpec prompt = prompt(resolvedRequest);
 
         ChatClientResponse chatClientResponse = prompt.call().chatClientResponse();
         String response = chatClientResponse.chatResponse().getResult().getOutput().getText();
         chatSessionMetadataRepository.saveModel(resolvedRequest.conversationId(), resolvedRequest.model());
-        if (auditService != null) auditService.enqueueTitleJobIfFirstTurn(resolvedRequest);
+        turnAuditWriter.enqueueTitleJob(resolvedRequest);
 
         AssistantMessage assistantMsg = chatClientResponse.chatResponse().getResult().getOutput();
         if (assistantMsg != null) {
-            if (auditService != null) auditService.auditAssistantMessage(assistantMsg, resolvedRequest);
+            turnAuditWriter.recordAssistantMessage(assistantMsg, resolvedRequest);
         }
 
         StoredContextUsage maintenance = maintainContextUsage(resolvedRequest.conversationId(), resolvedRequest.model());
-        if (auditService != null) auditService.auditEndOfTurnContext(resolvedRequest, maintenance);
+        turnAuditWriter.recordEndOfTurnContext(resolvedRequest, maintenance);
         return new ChatResponse.MsgResponse(
             resolvedRequest.conversationId(),
             resolvedRequest.model(),
@@ -402,7 +384,7 @@ public class ChatService {
             }
             return Flux.just(renderAssistantMessage(chatClientResponse.chatResponse()));
         }).doOnComplete(() -> {
-            if (auditService != null) auditService.enqueueTitleJobIfFirstTurn(request);
+            turnAuditWriter.enqueueTitleJob(request);
         });
     }
 
@@ -951,6 +933,10 @@ public class ChatService {
         ToolCallingChatOptions options = toolOptions(request.model(), approvedTools);
         Prompt prompt = new Prompt(preparedPrompt.messages(), options);
         PlanMode mode = interactionMode(request.conversationId());
+        if (logger.isDebugEnabled()) {
+            logger.debug("{}", TurnDiagnostic.start(request.conversationId(), TurnPhase.PREPARE,
+                Map.of("mode", mode, "model", request.model(), "toolCount", approvedTools.size())));
+        }
         logger.debug("Starting tool chat turn conv={} mode={} model={}", request.conversationId(), mode, request.model());
         PlanToolExecutionContext.set(new PlanToolContext(
             request.conversationId(),
@@ -959,7 +945,7 @@ public class ChatService {
                 ? taskService.runIdForConversation(request.conversationId())
                 : null
         ));
-        if (auditService != null) auditService.auditUserMessage(request);
+        turnAuditWriter.recordTurnStart(request);
         try {
             phase(activeTurn, ActiveTurnPhase.MODEL_CALL);
             org.springframework.ai.chat.model.ChatResponse response = chatModelRouter.chatModel(request.model()).call(prompt);
@@ -1003,9 +989,7 @@ public class ChatService {
                             toolActivities.add(toolMessage.toolActivity());
                         }
                         pendingToolMessages.add(toolMessage);
-                        if (auditRepository != null) {
-                            auditRepository.recordToolExec(entry, request.conversationId(), request.model());
-                        }
+                        turnAuditWriter.recordToolExec(entry, request.conversationId(), request.model());
                     }
                     conversationHistory = new ArrayList<>(toolExecutionResult.conversationHistory());
                     if (conversationHistory.size() > promptMessageCount) {
@@ -1057,7 +1041,7 @@ public class ChatService {
                         );
                         break;
                     }
-                    if (auditService != null) auditService.recordContextUsage(request.conversationId(), checkpoint.usage(), request.model());
+                    turnAuditWriter.recordContextUsage(request.conversationId(), checkpoint.usage(), request.model());
                     if (toolMessageConsumer != null) {
                         pendingToolMessages.forEach(toolMessageConsumer);
                     }
@@ -1090,7 +1074,7 @@ public class ChatService {
                         currentSystemInstructions,
                         request.model()
                     );
-                    if (auditService != null) auditService.recordContextUsage(request.conversationId(), checkpoint.usage(), request.model());
+                    turnAuditWriter.recordContextUsage(request.conversationId(), checkpoint.usage(), request.model());
                     if (!checkpoint.toolUseAllowed()) {
                         throw new IllegalStateException(
                             "Context is too large to send safely after tool compaction: "
@@ -1168,11 +1152,11 @@ public class ChatService {
             }
             if (finalAssistantMessage != null) {
                 messagesToPersist.add(finalAssistantMessage);
-                if (auditService != null) auditService.auditAssistantMessage(finalAssistantMessage, request);
+                turnAuditWriter.recordAssistantMessage(finalAssistantMessage, request);
             }
             contextManagementAdvisor.saveAssistantMessages(request.conversationId(), messagesToPersist);
             StoredContextUsage maintenance = maintainContextUsage(request.conversationId(), request.model());
-            if (auditService != null) auditService.auditEndOfTurnContext(request, maintenance);
+            turnAuditWriter.recordEndOfTurnContext(request, maintenance);
             if (maintenance.compacted() && toolMessageConsumer != null) {
                 toolMessageConsumer.accept(systemMessage(ContextManagementAdvisor.COMPACTION_NOTICE));
             }
@@ -1188,7 +1172,7 @@ public class ChatService {
                 finalAssistantMessage,
                 finalAssistantMessage == null ? "" : finalAssistantMessage.getText()
             ));
-            if (auditService != null) auditService.enqueueTitleJobIfFirstTurn(request);
+            turnAuditWriter.enqueueTitleJob(request);
             logger.debug("Tool chat turn completed conv={} mode={} tokens={}",
                 request.conversationId(), mode, maintenance.usage() != null ? maintenance.usage().usedTokens() : "?");
             return new ToolChatResult(chatResponse, finalMessage);
@@ -1201,13 +1185,8 @@ public class ChatService {
     }
 
     private List<Message> currentInstructions(ResolvedChatRequest request) {
-        List<Message> messages = new ArrayList<>();
         String systemPrompt = effectiveSystemPrompt(request);
-        if (StringUtils.hasText(systemPrompt)) {
-            messages.add(new SystemMessage(systemPrompt));
-        }
-        messages.add(new UserMessage(request.message()));
-        return messages;
+        return promptAssembler.assembleTurnInstructions(request, systemPrompt);
     }
 
     private ChatMessage toolChatMessage(
@@ -1277,109 +1256,31 @@ public class ChatService {
     }
 
     private SystemMessage toolUseAbortControlMessage(ToolUseAbort abort) {
-        StringBuilder message = new StringBuilder("""
-            Tool use was aborted by Magenta before another tool call was allowed.
-            Reason: %s
-            """.formatted(abort.getMessage()).trim());
-        if (!abort.recentErrors().isEmpty()) {
-            message.append("\nRecent tool errors:");
-            for (String error : abort.recentErrors()) {
-                message.append("\n- ").append(error);
-            }
-        }
-        message.append(
-            "\nThe prior tool results remain available in the conversation context. "
-                + "Do not request more tools for this turn; explain the failure state or continue from the available information."
-        );
-        return new SystemMessage(message.toString());
+        return turnRepair.toolUseAbortControlMessage(abort);
     }
 
     private boolean isEmptyFinalResponse(org.springframework.ai.chat.model.ChatResponse response) {
-        if (response == null || response.getResult() == null || response.hasToolCalls()) {
-            return false;
-        }
-        AssistantMessage output = response.getResult().getOutput();
-        return output == null || !StringUtils.hasText(output.getText());
+        return turnRepair.hasNoContentOrToolCalls(response);
     }
 
     private SystemMessage emptyFinalResponseControlMessage(PlanMode mode) {
-        String instruction = switch (mode) {
-            case PLAN -> """
-                Your previous response had thinking but no user-visible message and no tool calls, so Magenta cannot treat it as a completed planning turn.
-                Continue the PLAN-mode turn now. Use planning edit tools if the draft state should change, then end by calling ask_user_questions or plan_ready_for_approval.
-                Do not return an empty assistant message.
-                """;
-            case TASK -> """
-                Your previous response had thinking but no user-visible message and no tool calls, so Magenta cannot treat it as a completed task-design turn.
-                Continue the TASK-mode turn now. Use task edit tools if the draft state should change, then end by calling ask_user_questions or task_ready_for_approval.
-                Do not return an empty assistant message.
-                """;
-            case EXECUTE_PLAN -> """
-                Your previous response had thinking but no user-visible message and no tool calls, so Magenta cannot treat it as completed saved-plan execution.
-                Continue executing the approved plan now. Use tools as needed and call plan_complete before any final user-visible completion answer.
-                Do not return an empty assistant message.
-                """;
-            case EXECUTE_TASK -> """
-                Your previous response had thinking but no user-visible message and no tool calls, so Magenta cannot treat it as completed task execution.
-                Continue executing the task now and call task_complete with declared output values before any final user-visible completion answer.
-                Do not return an empty assistant message.
-                """;
-            case NORMAL -> """
-                Your previous response had thinking but no user-visible message and no tool calls.
-                Continue the turn now with a concise user-visible answer or an appropriate tool call.
-                Do not return an empty assistant message.
-                """;
-        };
-        return new SystemMessage(instruction.trim());
+        return turnRepair.emptyFinalResponseControlMessage(mode);
     }
 
     private boolean requiresPlanTurnRepair(String conversationId, PlanMode mode) {
-        if (mode != PlanMode.PLAN || planService == null) {
-            return false;
-        }
-        ChatPlanState state = planService.view(conversationId);
-        return !"READY_FOR_APPROVAL".equals(state.status())
-            && !StringUtils.hasText(state.promptQuestion());
+        return turnRepair.needsPlanTurnRepair(conversationId, mode);
     }
 
     private boolean requiresExecutionCompletionRepair(String conversationId, PlanMode mode) {
-        if (mode == PlanMode.EXECUTE_PLAN) {
-            return planService != null && planService.mode(conversationId) == PlanMode.EXECUTE_PLAN;
-        }
-        return mode == PlanMode.EXECUTE_TASK
-            && taskService != null
-            && taskService.mode(conversationId) == PlanMode.EXECUTE_TASK;
+        return turnRepair.needsExecutionCompletionRepair(conversationId, mode);
     }
 
     private SystemMessage invalidPlanTurnControlMessage() {
-        return new SystemMessage("""
-            Your PLAN-mode turn attempted to finish without a queued clarification question or a plan ready for approval.
-            Continue the same turn now. Update the draft with keyed planning tools as needed, then call exactly one terminal planning tool:
-            - ask_user_questions if the user needs to clarify, choose an approach, confirm constraints, or provide more context.
-            - plan_ready_for_approval only when the plan is complete enough to execute without guessing.
-            Do not finish with ordinary assistant text.
-            """.trim());
+        return turnRepair.invalidPlanTurnControlMessage();
     }
 
     private SystemMessage invalidExecutionCompletionControlMessage(PlanMode mode) {
-        if (mode == PlanMode.EXECUTE_TASK) {
-            return new SystemMessage("""
-                Your task execution attempted to finish without task completion.
-                Continue the same execution turn now. You may keep working or report incomplete work, but before any final user-visible completion answer you must call task_complete.
-                task_complete must include outputValues keyed exactly by declared output name. Required outputs may not be empty.
-                Do not finish with ordinary assistant text until task_complete has accepted the run.
-                """.trim());
-        }
-        return new SystemMessage("""
-            Your saved-plan execution attempted to finish without validator-gated completion.
-            Continue the same execution turn now. You may keep working or report incomplete work, but before any final user-visible completion answer you must call plan_complete.
-            plan_complete must include one evidence entry per approved validation criterion, formatted as:
-            Criterion: <exact criterion text> | Evidence: <specific proof>
-            Also include your finalMessage: the exact text that will be shown to the user after validation passes.
-            If a criterion is not met, include it in unmetCriteria with the specific missing work or evidence.
-            If validation fails, address the returned remediation and call plan_complete again.
-            Do not finish with ordinary assistant text until plan_complete has passed validation.
-            """.trim());
+        return turnRepair.invalidExecutionCompletionControlMessage(mode);
     }
 
     private List<ToolTranscriptEntry> toolTranscriptEntries(
@@ -1451,25 +1352,7 @@ public class ChatService {
 
     private List<ToolCallback> filterApprovedTools(List<String> approvedToolNames, ResolvedChatRequest request) {
         PlanMode mode = interactionMode(request.conversationId());
-        if (mode == PlanMode.PLAN) {
-            return chatToolRegistry.resolveApprovedTools(approvedToolNames, PLAN_MODE_TOOLS);
-        }
-        if (mode == PlanMode.TASK) {
-            return chatToolRegistry.resolveApprovedTools(approvedToolNames, TASK_MODE_TOOLS);
-        }
-        if (mode == PlanMode.EXECUTE_PLAN) {
-            return chatToolRegistry.resolveApprovedTools(approvedToolNames).stream()
-                .filter(callback -> !EXECUTION_BLOCKED_TOOLS.contains(callback.getToolDefinition().name()))
-                .toList();
-        }
-        if (mode == PlanMode.EXECUTE_TASK) {
-            return chatToolRegistry.resolveApprovedTools(approvedToolNames).stream()
-                .filter(callback -> !EXECUTION_BLOCKED_TOOLS.contains(callback.getToolDefinition().name()))
-                .toList();
-        }
-        return chatToolRegistry.resolveApprovedTools(approvedToolNames).stream()
-            .filter(callback -> !NORMAL_BLOCKED_TOOLS.contains(callback.getToolDefinition().name()))
-            .toList();
+        return toolAccessPolicy.filterToolsByMode(approvedToolNames, mode);
     }
 
     private boolean supportsTools(String model) {
@@ -1522,48 +1405,16 @@ public class ChatService {
     }
 
     String defaultSystemPrompt() {
-        if (runtimeSettingsService != null) {
-            return runtimeSettingsService.defaultSystemPrompt();
-        }
-        if (aiConfig == null || !StringUtils.hasText(aiConfig.defaultAgent()) || aiConfig.agents() == null) {
-            return null;
-        }
-        AgentConfig defaultAgent = aiConfig.agents().get(aiConfig.defaultAgent());
-        return defaultAgent == null ? null : defaultAgent.systemPrompt();
+        return promptAssembler.defaultSystemPrompt();
     }
 
     String effectiveSystemPrompt(ResolvedChatRequest request) {
         PlanMode mode = interactionMode(request.conversationId());
-        String systemPrompt = defaultSystemPrompt();
-        String runtimePrompt = planService == null ? "" : planService.runtimeInstructions(request.conversationId());
-        if (mode == PlanMode.PLAN) {
-            return runtimePrompt;
-        }
-        if (mode == PlanMode.TASK) {
-            return taskService == null ? "" : taskService.runtimeInstructions(request.conversationId());
-        }
-        if (mode == PlanMode.EXECUTE_TASK) {
-            String taskRuntimePrompt = taskService == null ? "" : taskService.runtimeInstructions(request.conversationId());
-            if (!StringUtils.hasText(systemPrompt)) {
-                return taskRuntimePrompt;
-            }
-            return systemPrompt + "\n\n" + taskRuntimePrompt;
-        }
-        if (!StringUtils.hasText(runtimePrompt)) {
-            return systemPrompt;
-        }
-        if (!StringUtils.hasText(systemPrompt)) {
-            return runtimePrompt;
-        }
-        return systemPrompt + "\n\n" + runtimePrompt;
+        return promptAssembler.mergeModePrompt(mode, request.conversationId());
     }
 
     private PlanMode interactionMode(String conversationId) {
-        PlanMode planMode = planService == null ? PlanMode.NORMAL : planService.mode(conversationId);
-        if (planMode != PlanMode.NORMAL) {
-            return planMode;
-        }
-        return taskService == null ? PlanMode.NORMAL : taskService.mode(conversationId);
+        return toolAccessPolicy.interactionMode(conversationId);
     }
 
     private void requirePlanService() {

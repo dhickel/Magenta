@@ -50,8 +50,8 @@ import reactor.core.Disposable;
  *
  * <p>Each stream endpoint should use the same timeout, cancellation, and cleanup
  * policy unless there is a documented product reason to differ. Chat plan-execution
- * streams are the one current exception: they use a configurable timeout because
- * saved-plan runs have bounded expected duration.
+ * streams may opt into a configurable timeout, but use no server-side SSE timeout
+ * by default because active saved-plan runs can exceed a short wall-clock window.
  *
  * <p>This class handles only the transport lifecycle. Domain transitions (turn
  * completion, execution failure recording, message discard) remain in the calling

@@ -206,6 +206,45 @@ public class OrchestrationRuntimeRepository {
         );
     }
 
+    public List<WorkAssignment> findRecoverableAssignments(int limit) {
+        return jdbcTemplate.query(
+            """
+                select * from work_assignments
+                where status in (?, ?)
+                order by priority desc, created_at asc
+                limit ?
+                """,
+            (rs, rowNum) -> toAssignment(rs),
+            OrchestrationStatus.QUEUED.name(),
+            OrchestrationStatus.INTERRUPTED.name(),
+            limit
+        );
+    }
+
+    public List<WorkAssignment> findWaitingAssignmentsForAgent(String agentId) {
+        return jdbcTemplate.query(
+            """
+                select * from work_assignments
+                where agent_id = ? and status = ?
+                order by priority desc, created_at asc
+                """,
+            (rs, rowNum) -> toAssignment(rs),
+            agentId,
+            OrchestrationStatus.WAITING.name()
+        );
+    }
+
+    public int markInterruptedAsQueued(String agentId) {
+        return jdbcTemplate.update(
+            """
+                update work_assignments set status = ?, updated_at = ?
+                where status = ? and agent_id = ?
+                """,
+            OrchestrationStatus.QUEUED.name(), Instant.now().toString(),
+            OrchestrationStatus.INTERRUPTED.name(), agentId
+        );
+    }
+
     @Transactional
     public Optional<WorkAssignment> acquireLease(String assignmentId, String leaseOwner, Instant leaseExpiresAt) {
         Instant now = Instant.now();

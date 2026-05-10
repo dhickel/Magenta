@@ -14,6 +14,7 @@ import java.util.concurrent.TimeUnit;
 import io.mindspice.magenta2.ai.chat.model.ChatPlanState;
 import io.mindspice.magenta2.ai.chat.model.ChatRequest;
 import io.mindspice.magenta2.ai.chat.model.ChatResponse;
+import io.mindspice.magenta2.ai.chat.service.AgentChatPromptService;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
@@ -23,7 +24,10 @@ import io.mindspice.magenta2.ai.orchestration.runtime.AgentSchedule;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentRequest;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentType;
+import io.mindspice.magenta2.ai.orchestration.runtime.EventReactionService;
 import io.mindspice.magenta2.ai.orchestration.runtime.EventType;
+import io.mindspice.magenta2.ai.orchestration.runtime.InboxService;
+import io.mindspice.magenta2.ai.orchestration.runtime.ScheduleService;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationStatus;
 import io.mindspice.magenta2.ai.orchestration.runtime.ReactionActionType;
 import io.mindspice.magenta2.ai.orchestration.runtime.WorkAssignment;
@@ -38,11 +42,25 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AgentOrchestrationControllerTest {
 
+    private static AgentOrchestrationController newController(
+        InboxService inboxService,
+        AssignmentService assignmentService,
+        ScheduleService scheduleService,
+        EventReactionService reactionService,
+        AgentProfileService agentProfileService,
+        ChatService chatService
+    ) {
+        return new AgentOrchestrationController(
+            inboxService, assignmentService, scheduleService, reactionService,
+            agentProfileService, chatService, new AgentChatPromptService()
+        );
+    }
+
     @Test
     void agentChatStreamReturnsBeforeChatServiceCompletes() throws Exception {
         BlockingChatService chatService = new BlockingChatService();
         StubAgentProfileService profileService = new StubAgentProfileService();
-        AgentOrchestrationController controller = new AgentOrchestrationController(
+        AgentOrchestrationController controller = newController(
             null, null, null, null, profileService, chatService
         );
 
@@ -61,7 +79,7 @@ class AgentOrchestrationControllerTest {
     void agentChatStreamFlushesStartBeforeChatServiceCompletes() throws Exception {
         BlockingChatService chatService = new BlockingChatService();
         StubAgentProfileService profileService = new StubAgentProfileService();
-        AgentOrchestrationController controller = new AgentOrchestrationController(
+        AgentOrchestrationController controller = newController(
             null, null, null, null, profileService, chatService
         );
 
@@ -82,7 +100,7 @@ class AgentOrchestrationControllerTest {
     void agentChatStreamEmitsStartAndDone() throws Exception {
         StubChatService chatService = new StubChatService();
         StubAgentProfileService profileService = new StubAgentProfileService();
-        AgentOrchestrationController controller = new AgentOrchestrationController(
+        AgentOrchestrationController controller = newController(
             null, null, null, null, profileService, chatService
         );
 
@@ -100,7 +118,7 @@ class AgentOrchestrationControllerTest {
     void agentChatStreamEmitsErrorForBlankMessage() throws Exception {
         StubAgentProfileService profileService = new StubAgentProfileService();
         StubChatService chatService = new StubChatService();
-        AgentOrchestrationController controller = new AgentOrchestrationController(
+        AgentOrchestrationController controller = newController(
             null, null, null, null, profileService, chatService
         );
 
@@ -118,7 +136,7 @@ class AgentOrchestrationControllerTest {
     void agentChatStreamEmitsErrorForUnsupportedChatResponse() throws Exception {
         StubAgentProfileService profileService = new StubAgentProfileService();
         NullResponseChatService nullChatService = new NullResponseChatService();
-        AgentOrchestrationController controller = new AgentOrchestrationController(
+        AgentOrchestrationController controller = newController(
             null, null, null, null, profileService, nullChatService
         );
 
@@ -136,7 +154,7 @@ class AgentOrchestrationControllerTest {
     void assignRejectsNullAssignmentType() {
         StubAgentProfileService profileService = new StubAgentProfileService();
         StubChatService chatService = new StubChatService();
-        AgentOrchestrationController controller = new AgentOrchestrationController(
+        AgentOrchestrationController controller = newController(
             null, new StubAssignmentService(), null, null, profileService, chatService
         );
 
@@ -151,7 +169,7 @@ class AgentOrchestrationControllerTest {
     void assignSucceedsWithValidAssignment() {
         StubAgentProfileService profileService = new StubAgentProfileService();
         StubChatService chatService = new StubChatService();
-        AgentOrchestrationController controller = new AgentOrchestrationController(
+        AgentOrchestrationController controller = newController(
             null, new StubAssignmentService(), null, null, profileService, chatService
         );
 
@@ -168,7 +186,7 @@ class AgentOrchestrationControllerTest {
         StubAgentProfileService profileService = new StubAgentProfileService();
         StubChatService chatService = new StubChatService();
         var assignmentService = new AgentIdCapturingAssignmentService();
-        AgentOrchestrationController controller = new AgentOrchestrationController(
+        AgentOrchestrationController controller = newController(
             null, assignmentService, null, null, profileService, chatService
         );
 
@@ -202,7 +220,7 @@ class AgentOrchestrationControllerTest {
     void agentChatStreamEmitterHasNoTimeout() {
         StubAgentProfileService profileService = new StubAgentProfileService();
         StubChatService chatService = new StubChatService();
-        AgentOrchestrationController controller = new AgentOrchestrationController(
+        AgentOrchestrationController controller = newController(
             null, null, null, null, profileService, chatService
         );
 
@@ -385,7 +403,7 @@ class AgentOrchestrationControllerTest {
 
     @Test
     void schedulesEndpointReturns404WhenDisabled() {
-        AgentOrchestrationController controller = new AgentOrchestrationController(
+        AgentOrchestrationController controller = newController(
             null, null, null, null, null, null
         );
 
@@ -398,7 +416,7 @@ class AgentOrchestrationControllerTest {
 
     @Test
     void scheduleCreateEndpointReturns404WhenDisabled() {
-        AgentOrchestrationController controller = new AgentOrchestrationController(
+        AgentOrchestrationController controller = newController(
             null, null, null, null, null, null
         );
 
@@ -413,7 +431,7 @@ class AgentOrchestrationControllerTest {
 
     @Test
     void reactionsEndpointReturns404WhenDisabled() {
-        AgentOrchestrationController controller = new AgentOrchestrationController(
+        AgentOrchestrationController controller = newController(
             null, null, null, null, null, null
         );
 
@@ -426,7 +444,7 @@ class AgentOrchestrationControllerTest {
 
     @Test
     void reactionCreateEndpointReturns404WhenDisabled() {
-        AgentOrchestrationController controller = new AgentOrchestrationController(
+        AgentOrchestrationController controller = newController(
             null, null, null, null, null, null
         );
 

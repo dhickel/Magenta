@@ -670,7 +670,10 @@ Approved plan:
         List<PlanStep> updated = new ArrayList<>(steps == null ? List.of() : steps);
         updated.removeIf(step -> step.order() == key);
         if (!delete) {
-            updated.add(new PlanStep(key, text));
+            String normalized = normalize(text);
+            if (normalized != null) {
+                updated.add(new PlanStep(key, normalized));
+            }
         }
         return updated.stream()
             .sorted(java.util.Comparator.comparingInt(PlanStep::order))
@@ -830,11 +833,7 @@ Approved plan:
     }
 
     private String normalize(String value) {
-        if (value == null) {
-            return null;
-        }
-        String trimmed = value.trim();
-        return trimmed.isEmpty() ? null : trimmed;
+        return PlanText.normalize(value);
     }
 
     private void appendValue(StringBuilder builder, String label, String value) {

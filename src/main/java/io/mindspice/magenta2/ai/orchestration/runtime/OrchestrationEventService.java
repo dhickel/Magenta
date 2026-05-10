@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 @Service
 public class OrchestrationEventService {
@@ -55,6 +56,18 @@ public class OrchestrationEventService {
                 assignmentService.create(requestFromTemplate(reaction.agentId(), reaction.assignmentTemplate()));
             }
         }
+
+        // Auto-resume WAITING assignments when inbox message arrives for the owning agent
+        if (event.eventType() == EventType.INBOX_MESSAGE_RECEIVED) {
+            String agentId = stringValue(event.payload(), "toAgentId");
+            if (StringUtils.hasText(agentId)) {
+                var waitingAssignments = repository.findWaitingAssignmentsForAgent(agentId);
+                for (var assignment : waitingAssignments) {
+                    assignmentService.resume(assignment.id());
+                }
+            }
+        }
+
         repository.saveEvent(new OrchestrationEvent(
             event.id(), event.eventType(), event.sourceType(), event.sourceId(), event.payload(),
             event.createdAt(), Instant.now()
@@ -88,6 +101,13 @@ public class OrchestrationEventService {
             text(template, "workspaceId", null),
             input
         );
+    }
+
+    private String stringValue(Map<String, Object> values, String key) {
+        if (values == null || values.get(key) == null) {
+            return null;
+        }
+        return values.get(key).toString();
     }
 
     private String text(Map<String, Object> values, String key, String fallback) {
