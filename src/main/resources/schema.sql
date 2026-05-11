@@ -109,6 +109,8 @@ create table if not exists audit_event (
     trigger_tokens integer,
     percent_used real,
     stored_message_count integer,
+    error_type text,
+    stack_trace text,
     recorded_at text not null
 );
 

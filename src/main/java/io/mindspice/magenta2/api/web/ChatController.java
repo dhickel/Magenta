@@ -1,5 +1,7 @@
 package io.mindspice.magenta2.api.web;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -17,6 +19,7 @@ import io.mindspice.magenta2.ai.chat.service.ResolvedChatRequest;
 import io.mindspice.magenta2.ai.chat.service.StoredContextUsage;
 import io.mindspice.magenta2.ai.chat.service.ContextManagementAdvisor;
 import io.mindspice.magenta2.ai.chat.model.ChatStreamEvent;
+import io.mindspice.magenta2.ai.chat.service.AuditService;
 import io.mindspice.magenta2.ai.execution.ActiveTurnRegistry;
 import io.mindspice.magenta2.ai.execution.ActiveTurnRegistry.ActiveTurn;
 import io.mindspice.magenta2.ai.execution.InterruptResult;
@@ -45,6 +48,7 @@ import reactor.core.scheduler.Schedulers;
 public class ChatController {
     private final ChatService chatService;
     private final ActiveTurnRegistry activeTurnRegistry;
+    private final AuditService auditService;
     private final long planExecutionStreamTimeoutMillis;
 
     public ChatController(ChatService chatService) {
@@ -52,17 +56,23 @@ public class ChatController {
     }
 
     public ChatController(ChatService chatService, ActiveTurnRegistry activeTurnRegistry) {
-        this(chatService, activeTurnRegistry, 0);
+        this(chatService, activeTurnRegistry, null, 0);
+    }
+
+    public ChatController(ChatService chatService, ActiveTurnRegistry activeTurnRegistry, long planExecutionStreamTimeoutSeconds) {
+        this(chatService, activeTurnRegistry, null, planExecutionStreamTimeoutSeconds);
     }
 
     @Autowired
     public ChatController(
         ChatService chatService,
         ActiveTurnRegistry activeTurnRegistry,
+        @Autowired(required = false) AuditService auditService,
         @Value("${magenta.plan.execution-stream-timeout-seconds:0}") long planExecutionStreamTimeoutSeconds
     ) {
         this.chatService = chatService;
         this.activeTurnRegistry = activeTurnRegistry;
+        this.auditService = auditService;
         this.planExecutionStreamTimeoutMillis = planExecutionStreamTimeoutSeconds <= 0
             ? 0L
             : planExecutionStreamTimeoutSeconds * 1000;
@@ -106,6 +116,7 @@ public class ChatController {
             if (planExecution && planExecutionFinalized.compareAndSet(false, true)) {
                 chatService.recordExecutionFailure(resolvedRequest.conversationId(), exception);
             }
+            recordStreamError(resolvedRequest, planExecution ? "plan_stream_error" : "stream_error", exception);
         };
 
         emitter.onCompletion(domainCleanup);
@@ -214,6 +225,7 @@ public class ChatController {
                     } else {
                         chatService.discardLastUserMessage(resolvedRequest.conversationId(), resolvedRequest.message());
                     }
+                    recordStreamError(resolvedRequest, planExecution ? "plan_stream_error" : "stream_error", error);
                     ChatStreamSupport.sendSseEvent(emitter, "error", new ChatStreamEvent.Error(error.getMessage()));
                     emitter.complete();
                 } catch (Exception sendError) {
@@ -531,6 +543,15 @@ public class ChatController {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private void recordStreamError(ResolvedChatRequest request, String errorType, Throwable error) {
+        if (auditService != null) {
+            StringWriter sw = new StringWriter();
+            error.printStackTrace(new PrintWriter(sw));
+            auditService.recordError(
+                request.conversationId(), errorType, error.getMessage(), sw.toString(), request.model());
+        }
     }
 
     private void requireValidUuid(String value) {

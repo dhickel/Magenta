@@ -96,6 +96,18 @@ public class AuditService {
         }
     }
 
+    private static final int MAX_STACK_TRACE_LENGTH = 4000;
+
+    public void recordError(String conversationId, String errorType,
+                            String errorMessage, String stackTrace, String model) {
+        if (auditRepository != null) {
+            String boundedTrace = stackTrace != null && stackTrace.length() > MAX_STACK_TRACE_LENGTH
+                ? stackTrace.substring(0, MAX_STACK_TRACE_LENGTH)
+                : stackTrace;
+            auditRepository.recordError(conversationId, errorType, errorMessage, boundedTrace, model);
+        }
+    }
+
     public void enqueueTitleJobIfFirstTurn(ResolvedChatRequest request) {
         if (agentJobService == null || request == null || !request.newConversation() || !request.titleJobEligible()) {
             return;

@@ -15,6 +15,8 @@ import java.util.LinkedHashMap;
 import java.util.regex.Pattern;
 
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 
 import org.springframework.web.client.ResourceAccessException;
 
@@ -571,6 +573,14 @@ public class ChatService {
 
     public void recordExecutionFailure(String conversationId, RuntimeException exception) {
         requirePlanService();
+        if (auditService != null) {
+            auditService.recordError(
+                conversationId, "plan_execution",
+                rootCauseMessage(exception),
+                stackTraceString(exception),
+                null
+            );
+        }
         try {
             planService.recordExecutionReport(
                 conversationId,
@@ -680,6 +690,12 @@ public class ChatService {
             message = throwable.getMessage();
         }
         return StringUtils.hasText(message) ? message : "unknown execution error";
+    }
+
+    private static String stackTraceString(Throwable throwable) {
+        StringWriter sw = new StringWriter();
+        throwable.printStackTrace(new PrintWriter(sw));
+        return sw.toString();
     }
 
     public ChatPlanState planState(String conversationId) {
@@ -1178,6 +1194,11 @@ public class ChatService {
             return new ToolChatResult(chatResponse, finalMessage);
         } catch (RuntimeException e) {
             logger.error("Tool chat turn failed conv={} mode={}: {}", request.conversationId(), mode, e.getMessage(), e);
+            if (auditService != null) {
+                auditService.recordError(
+                    request.conversationId(), "tool_execution",
+                    e.getMessage(), stackTraceString(e), request.model());
+            }
             throw e;
         } finally {
             PlanToolExecutionContext.clear();

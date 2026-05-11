@@ -12,12 +12,14 @@ Saved-plan execution stream finalization
 
 - Saved-plan execution is entered by `ChatService.resolveSavedPlanExecution`, which clears chat context, clears tracked context usage, and marks the plan `EXECUTE_PLAN` / `EXECUTING`.
 - Successful stream completion must call `ChatService.handlePlanExecutionStreamFinished`, which records fallback evidence when no structured completion ledger exists and moves still-executing plans to `NEEDS_REVIEW`.
-- Failure, timeout, and client-disconnect paths must call `ChatService.recordExecutionFailure`, which records failure evidence and moves the plan to `NORMAL` / `NEEDS_REVIEW`.
+- Model/tool failure paths must call `ChatService.recordExecutionFailure`, which records failure evidence and moves the plan to `NORMAL` / `NEEDS_REVIEW`.
+- Saved-plan execution streams use no server-side SSE timeout by default. A positive `magenta.plan.execution-stream-timeout-seconds` value is an optional wall-clock cap and should be used carefully because it can stop active long-running work.
+- Tool transcript messages are persisted to chat memory only when the model turn completes. Intermediate tool activity from an incomplete run belongs in audit/evidence, not in durable model-visible chat history.
 - Re-executing a saved or review-needed plan is effectively a reset-and-rerun: `markExecuting` clears previous execution evidence and starts from the saved plan. There is no true resume-from-last-tool-state behavior.
 
 ## Engine Relevance
 
-The stream controller owns transport lifecycle events, so it must bridge servlet/SSE timeout and client-abandon signals back into plan lifecycle state. The plan service should remain the source of truth for mode/status transitions, while the controller decides which terminal path applies to the stream.
+The stream controller owns transport lifecycle events, so it must bridge model/tool failures and optional servlet/SSE timeout signals back into plan lifecycle state. The plan service should remain the source of truth for mode/status transitions, while the controller decides which terminal path applies to the stream.
 
 ## Open Questions
 

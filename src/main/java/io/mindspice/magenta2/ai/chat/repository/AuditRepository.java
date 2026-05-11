@@ -58,6 +58,8 @@ public class AuditRepository {
                 trigger_tokens integer,
                 percent_used real,
                 stored_message_count integer,
+                error_type text,
+                stack_trace text,
                 recorded_at text not null
             )
             """);
@@ -72,7 +74,8 @@ public class AuditRepository {
             "call_preview", "result_text", "result_summary", "result_preview",
             "tool_status", "result_truncated", "result_large",
             "compaction_method", "compaction_summary",
-            "used_tokens", "max_tokens", "trigger_tokens", "percent_used", "stored_message_count"
+            "used_tokens", "max_tokens", "trigger_tokens", "percent_used", "stored_message_count",
+            "error_type", "stack_trace"
         );
         for (String col : required) {
             if (!columns.contains(col)) {
@@ -200,6 +203,18 @@ public class AuditRepository {
         );
     }
 
+    public void recordError(String conversationId, String errorType,
+                             String errorMessage, String stackTrace, String model) {
+        insertSerialized(conversationId,
+            """
+                insert into audit_event (conversation_id, sequence, event_type,
+                    message_text, error_type, stack_trace, model, recorded_at)
+                values (?, ?, 'error', ?, ?, ?, ?, ?)
+                """,
+            errorMessage, errorType, stackTrace, model, Instant.now().toString()
+        );
+    }
+
     public List<AuditEvent> findByConversationId(String conversationId) {
         return jdbcTemplate.query(
             """
@@ -209,6 +224,7 @@ public class AuditRepository {
                        result_truncated, result_large,
                        compaction_method, compaction_summary,
                        used_tokens, max_tokens, trigger_tokens, percent_used, stored_message_count,
+                       error_type, stack_trace,
                        recorded_at
                 from audit_event
                 where conversation_id = ?
@@ -244,6 +260,8 @@ public class AuditRepository {
             rs.getInt("trigger_tokens"),
             rs.getDouble("percent_used"),
             rs.getInt("stored_message_count"),
+            rs.getString("error_type"),
+            rs.getString("stack_trace"),
             rs.getString("recorded_at")
         );
     }
@@ -272,6 +290,8 @@ public class AuditRepository {
         int triggerTokens,
         double percentUsed,
         int storedMessageCount,
+        String errorType,
+        String stackTrace,
         String recordedAt
     ) {}
 }

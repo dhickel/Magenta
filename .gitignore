@@ -45,3 +45,9 @@ build/
 
 ### Config has api keys
 /config/ai-config.example.json
+
+### Node modules
+node_modules/
+
+### Docs (auto-generated / build output)
+docs/
