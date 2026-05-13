@@ -31,7 +31,7 @@ import io.mindspice.magenta2.ai.chat.model.ChatResponse;
 import io.mindspice.magenta2.ai.chat.model.ChatSession;
 import io.mindspice.magenta2.ai.chat.model.ChatToolActivity;
 import io.mindspice.magenta2.ai.chat.model.ContextUsage;
-import io.mindspice.magenta2.ai.chat.plan.ExecutionPlan;
+import io.mindspice.magenta2.ai.chat.plan.PlanDefinition;
 import io.mindspice.magenta2.ai.chat.model.PlanMode;
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
 import io.mindspice.magenta2.ai.chat.plan.PlanToolContext;
@@ -161,6 +161,7 @@ public class ChatService {
             null,
             null,
             null,
+            null,
             null
         );
     }
@@ -201,7 +202,8 @@ public class ChatService {
             null,
             aiConfig != null && chatSessionMetadataRepository != null
                 ? new RequestResolver(aiConfig, chatSessionMetadataRepository, chatMemoryRepository, planService, null, null)
-                : null
+                : null,
+            null
         );
     }
 
@@ -226,7 +228,8 @@ public class ChatService {
         @Autowired(required = false) ObjectMapper objectMapper,
         @Autowired(required = false) RuntimeSettingsService runtimeSettingsService,
         @Autowired(required = false) AuditService auditService,
-        @Autowired(required = false) RequestResolver requestResolver
+        @Autowired(required = false) RequestResolver requestResolver,
+        @Autowired(required = false) io.mindspice.magenta2.ai.chat.plan.WorkTypeProfileService workTypeProfileService
     ) {
         this.chatMemory = chatMemory;
         this.chatMemoryRepository = chatMemoryRepository;
@@ -250,7 +253,7 @@ public class ChatService {
         this.requestResolver = requestResolver;
 
         // Initialize extracted turn components
-        this.promptAssembler = new PromptContextAssembler(aiConfig, runtimeSettingsService, planService, taskService);
+        this.promptAssembler = new PromptContextAssembler(aiConfig, runtimeSettingsService, planService, taskService, workTypeProfileService);
         this.toolAccessPolicy = new ToolAccessPolicy(chatToolRegistry, planService, taskService);
         this.turnRepair = new TerminalTurnRepair(planService, taskService);
         this.turnAuditWriter = new TurnAuditWriter(auditService, auditRepository);
@@ -477,7 +480,7 @@ public class ChatService {
 
     public ChatResponse.MsgResponse submitPlanAnswer(String conversationId, String answer, String notes, Integer questionIndex) {
         requirePlanService();
-        ExecutionPlan plan = planService.recordPromptAnswer(conversationId, answer, notes, questionIndex);
+        PlanDefinition plan = planService.recordPromptAnswer(conversationId, answer, notes, questionIndex);
         if (plan.hasPendingQuestion()) {
             String model = resolvedPlanningModel(conversationId);
             return new ChatResponse.MsgResponse(
@@ -926,7 +929,7 @@ public class ChatService {
         return toolChat(request, approvedTools, null, null).response();
     }
 
-    private ToolChatResult toolChat(
+    private ToolChatResult legacyToolChat(
         ResolvedChatRequest request,
         List<ToolCallback> approvedTools,
         Consumer<ChatMessage> toolMessageConsumer,
@@ -1204,6 +1207,341 @@ public class ChatService {
             PlanToolExecutionContext.clear();
         }
     }
+
+    // ── Refactored toolChat: state machine dispatcher ──
+
+    private ToolChatResult toolChat(
+        ResolvedChatRequest request,
+        List<ToolCallback> approvedTools,
+        Consumer<ChatMessage> toolMessageConsumer,
+        ActiveTurn activeTurn
+    ) {
+        if (chatModelRouter == null || toolCallingManager == null || contextManagementAdvisor == null || toolTranscriptService == null) {
+            throw new IllegalStateException("Tool execution requires model routing, ToolCallingManager, context management, and tool transcripts");
+        }
+        chatSessionMetadataRepository.saveModel(request.conversationId(), request.model());
+
+        List<Message> currentInstructions = currentInstructions(request);
+        List<Message> currentSystemInstructions = currentInstructions.stream()
+            .filter(SystemMessage.class::isInstance)
+            .toList();
+        ToolCallingChatOptions options = toolOptions(request.model(), approvedTools);
+        PlanMode mode = interactionMode(request.conversationId());
+
+        ContextManagementAdvisor.PreparedPrompt preparedPrompt = contextManagementAdvisor.preparePrompt(
+            request.conversationId(), currentInstructions, request.model());
+        Prompt prompt = new Prompt(preparedPrompt.messages(), options);
+
+        if (logger.isDebugEnabled()) {
+            logger.debug("{}", TurnDiagnostic.start(request.conversationId(), TurnPhase.PREPARE,
+                Map.of("mode", mode, "model", request.model(), "toolCount", approvedTools.size())));
+        }
+        logger.debug("Starting tool chat turn conv={} mode={} model={}",
+            request.conversationId(), mode, request.model());
+
+        PlanToolExecutionContext.set(new PlanToolContext(
+            request.conversationId(), mode,
+            mode == PlanMode.EXECUTE_TASK && taskService != null
+                ? taskService.runIdForConversation(request.conversationId()) : null));
+        turnAuditWriter.recordTurnStart(request);
+
+        var s = new ToolLoopState(request, approvedTools, toolMessageConsumer,
+            activeTurn, mode, options, currentSystemInstructions);
+        s.prompt = prompt;
+        s.phase = TurnPhase.INVOKE_MODEL;
+
+        try {
+            while (s.phase != TurnPhase.DONE) {
+                switch (s.phase) {
+                    case INVOKE_MODEL  -> handleInvokeModel(s);
+                    case EVALUATE      -> handleEvaluate(s);
+                    case EXECUTE_TOOLS -> handleExecuteTools(s);
+                    case REPAIR        -> handleRepair(s);
+                    case FINALIZE      -> handleFinalize(s);
+                }
+            }
+            return new ToolChatResult(s.chatResponse, s.finalMessage);
+        } catch (RuntimeException e) {
+            logger.error("Tool chat turn failed conv={} mode={}: {}",
+                request.conversationId(), mode, e.getMessage(), e);
+            if (auditService != null) {
+                auditService.recordError(request.conversationId(), "tool_execution",
+                    e.getMessage(), stackTraceString(e), request.model());
+            }
+            throw e;
+        } finally {
+            PlanToolExecutionContext.clear();
+        }
+    }
+
+    private void handleInvokeModel(ToolLoopState s) {
+        phase(s.activeTurn, ActiveTurnPhase.MODEL_CALL);
+        s.response = chatModelRouter.chatModel(s.request.model()).call(s.prompt);
+        s.phase = TurnPhase.EVALUATE;
+    }
+
+    private void handleEvaluate(ToolLoopState s) {
+        if (s.planCompletionDetected) {
+            s.phase = TurnPhase.FINALIZE;
+            return;
+        }
+        if (s.response != null && s.response.hasToolCalls()) {
+            s.phase = TurnPhase.EXECUTE_TOOLS;
+            return;
+        }
+        if (s.toolUseAbort != null) {
+            s.phase = TurnPhase.REPAIR;
+            return;
+        }
+        if (isEmptyFinalResponse(s.response)
+            && s.emptyFinalResponseRetries < EMPTY_FINAL_RESPONSE_RETRY_LIMIT) {
+            s.phase = TurnPhase.REPAIR;
+            return;
+        }
+        if (requiresPlanTurnRepair(s.request.conversationId(), s.mode)
+            && s.planTurnRepairRetries < PLAN_TURN_REPAIR_RETRY_LIMIT) {
+            s.phase = TurnPhase.REPAIR;
+            return;
+        }
+        if (requiresExecutionCompletionRepair(s.request.conversationId(), s.mode)
+            && s.executionCompletionRepairRetries < EXECUTION_COMPLETION_REPAIR_RETRY_LIMIT) {
+            s.phase = TurnPhase.REPAIR;
+            return;
+        }
+        s.phase = TurnPhase.FINALIZE;
+    }
+
+    private void handleExecuteTools(ToolLoopState s) {
+        collectThinking(s.response, s.thinkingParts);
+
+        try {
+            s.toolLoopGuard.recordToolCalls(s.response.getResult().getOutput().getToolCalls());
+        } catch (ToolUseAbort abort) {
+            logger.warn("Tool use aborted conv={} (identical calls): {}",
+                s.request.conversationId(), abort.getMessage());
+            s.toolUseAbort = abort;
+            s.conversationHistory = new ArrayList<>(s.prompt.getInstructions());
+            s.phase = TurnPhase.EVALUATE;
+            return;
+        }
+
+        phase(s.activeTurn, ActiveTurnPhase.TOOL_CALL);
+        int promptMessageCount = s.prompt.getInstructions().size();
+        ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(s.prompt, s.response);
+        List<ToolTranscriptEntry> toolTranscriptEntries = toolTranscriptEntries(s.response, toolExecutionResult);
+        List<ChatMessage> pendingToolMessages = new ArrayList<>();
+
+        for (ToolTranscriptEntry entry : toolTranscriptEntries) {
+            Message transcriptMessage = toolTranscriptService.message(entry);
+            s.messagesToPersist.add(transcriptMessage);
+            ChatMessage toolMessage = toolMessage(transcriptMessage);
+            if (toolMessage.toolActivity() != null) {
+                s.toolActivities.add(toolMessage.toolActivity());
+            }
+            pendingToolMessages.add(toolMessage);
+            turnAuditWriter.recordToolExec(entry, s.request.conversationId(), s.request.model());
+        }
+
+        s.conversationHistory = new ArrayList<>(toolExecutionResult.conversationHistory());
+        if (s.conversationHistory.size() > promptMessageCount) {
+            s.activeToolMessages.addAll(
+                s.conversationHistory.subList(promptMessageCount, s.conversationHistory.size()));
+        }
+
+        phase(s.activeTurn, ActiveTurnPhase.TOOL_CHECKPOINT);
+        if (s.activeTurn != null) {
+            java.util.Optional<String> nextInterrupt = s.activeTurn.pollInterrupt();
+            while (nextInterrupt.isPresent()) {
+                String interrupt = nextInterrupt.get();
+                UserMessage interruptMessage = new UserMessage(interrupt);
+                s.conversationHistory.add(interruptMessage);
+                s.activeToolMessages.add(interruptMessage);
+                s.messagesToPersist.add(interruptMessage);
+                if (s.toolMessageConsumer != null) {
+                    s.toolMessageConsumer.accept(userMessage(interrupt));
+                }
+                nextInterrupt = s.activeTurn.pollInterrupt();
+            }
+        }
+
+        try {
+            s.toolLoopGuard.recordToolResponses(toolExecutionResult);
+        } catch (ToolUseAbort abort) {
+            logger.warn("Tool use aborted conv={} (error rate): {}",
+                s.request.conversationId(), abort.getMessage());
+            s.toolUseAbort = abort;
+            s.phase = TurnPhase.EVALUATE;
+            return;
+        }
+
+        ContextManagementAdvisor.ToolLoopPrompt checkpoint = contextManagementAdvisor.prepareToolLoopPrompt(
+            s.request.conversationId(), s.activeToolMessages,
+            s.currentSystemInstructions, s.request.model());
+        s.activeToolMessages = new ArrayList<>(checkpoint.activeMessages());
+        s.conversationHistory = new ArrayList<>(checkpoint.messages());
+        s.prompt = new Prompt(s.conversationHistory, s.toolOptions);
+
+        if (checkpoint.compacted() && !s.compactionNoticeEmitted) {
+            s.compactionNoticeEmitted = true;
+            if (!hasCompactionNotice(s.request.conversationId())) {
+                s.messagesToPersist.add(compactionNoticeMessage());
+            }
+            if (s.toolMessageConsumer != null) {
+                s.toolMessageConsumer.accept(systemMessage(ContextManagementAdvisor.COMPACTION_NOTICE));
+            }
+        }
+
+        if (!checkpoint.toolUseAllowed()) {
+            s.toolUseAbort = new ToolUseAbort(
+                "Context is too large to safely continue tool use after compaction.");
+            s.phase = TurnPhase.EVALUATE;
+            return;
+        }
+
+        turnAuditWriter.recordContextUsage(s.request.conversationId(), checkpoint.usage(), s.request.model());
+
+        if (s.toolMessageConsumer != null) {
+            pendingToolMessages.forEach(s.toolMessageConsumer);
+        }
+
+        if (s.mode == PlanMode.EXECUTE_PLAN && planService != null
+            && planService.mode(s.request.conversationId()) != PlanMode.EXECUTE_PLAN) {
+            s.validatedFinalMessage = planService.finalMessage(s.request.conversationId());
+            s.planCompletionDetected = true;
+            s.phase = TurnPhase.EVALUATE;
+            return;
+        }
+        if (s.mode == PlanMode.EXECUTE_TASK && taskService != null
+            && taskService.mode(s.request.conversationId()) != PlanMode.EXECUTE_TASK) {
+            String taskRunId = PlanToolExecutionContext.current() == null
+                ? null : PlanToolExecutionContext.current().runId();
+            s.validatedFinalMessage = taskRunId == null ? null : taskService.finalMessage(taskRunId);
+            s.planCompletionDetected = true;
+            s.phase = TurnPhase.EVALUATE;
+            return;
+        }
+
+        s.phase = TurnPhase.INVOKE_MODEL;
+    }
+
+    private void handleRepair(ToolLoopState s) {
+        if (s.toolUseAbort != null) {
+            Message controlMessage = toolUseAbortControlMessage(s.toolUseAbort);
+            s.messagesToPersist.add(controlMessage);
+            s.activeToolMessages.add(controlMessage);
+            ContextManagementAdvisor.ToolLoopPrompt checkpoint = contextManagementAdvisor.prepareToolLoopPrompt(
+                s.request.conversationId(), s.activeToolMessages,
+                s.currentSystemInstructions, s.request.model());
+            turnAuditWriter.recordContextUsage(s.request.conversationId(), checkpoint.usage(), s.request.model());
+            if (!checkpoint.toolUseAllowed()) {
+                throw new IllegalStateException(
+                    "Context is too large to send safely after tool compaction: "
+                        + checkpoint.usage().usedTokens() + " estimated tokens exceeds trigger budget "
+                        + checkpoint.usage().triggerTokens());
+            }
+            s.prompt = new Prompt(checkpoint.messages(), toolFinalOptions(s.request.model()));
+            s.toolUseAbort = null;
+            s.phase = TurnPhase.INVOKE_MODEL;
+            return;
+        }
+
+        if (!s.planCompletionDetected && isEmptyFinalResponse(s.response)
+            && s.emptyFinalResponseRetries < EMPTY_FINAL_RESPONSE_RETRY_LIMIT) {
+            collectThinking(s.response, s.thinkingParts);
+            s.emptyFinalResponseRetries++;
+            Message controlMessage = emptyFinalResponseControlMessage(s.mode);
+            List<Message> retryMessages = new ArrayList<>(s.prompt.getInstructions());
+            retryMessages.add(controlMessage);
+            s.prompt = new Prompt(retryMessages, s.prompt.getOptions());
+            s.phase = TurnPhase.INVOKE_MODEL;
+            return;
+        }
+
+        if (requiresPlanTurnRepair(s.request.conversationId(), s.mode)
+            && s.planTurnRepairRetries < PLAN_TURN_REPAIR_RETRY_LIMIT) {
+            collectThinking(s.response, s.thinkingParts);
+            s.planTurnRepairRetries++;
+            Message controlMessage = invalidPlanTurnControlMessage();
+            List<Message> retryMessages = new ArrayList<>(s.prompt.getInstructions());
+            retryMessages.add(controlMessage);
+            s.prompt = new Prompt(retryMessages, s.prompt.getOptions());
+            s.phase = TurnPhase.INVOKE_MODEL;
+            return;
+        }
+
+        if (requiresExecutionCompletionRepair(s.request.conversationId(), s.mode)
+            && s.executionCompletionRepairRetries < EXECUTION_COMPLETION_REPAIR_RETRY_LIMIT) {
+            collectThinking(s.response, s.thinkingParts);
+            s.executionCompletionRepairRetries++;
+            Message controlMessage = invalidExecutionCompletionControlMessage(s.mode);
+            List<Message> retryMessages = new ArrayList<>(s.prompt.getInstructions());
+            retryMessages.add(controlMessage);
+            s.prompt = new Prompt(retryMessages, s.prompt.getOptions());
+            s.phase = TurnPhase.INVOKE_MODEL;
+            return;
+        }
+
+        s.phase = TurnPhase.FINALIZE;
+    }
+
+    private void handleFinalize(ToolLoopState s) {
+        String forcedPlanningQuestion = null;
+        if (requiresPlanTurnRepair(s.request.conversationId(), s.mode)) {
+            forcedPlanningQuestion = "What should we clarify, change, or add before continuing this plan?";
+            planService.askQuestions(s.request.conversationId(), List.of(forcedPlanningQuestion));
+        }
+
+        phase(s.activeTurn, ActiveTurnPhase.COMPLETING);
+        collectThinking(s.response, s.thinkingParts);
+
+        AssistantMessage finalAssistantMessage;
+        if (s.planCompletionDetected) {
+            finalAssistantMessage = StringUtils.hasText(s.validatedFinalMessage)
+                ? new AssistantMessage(s.validatedFinalMessage)
+                : new AssistantMessage("");
+        } else if (StringUtils.hasText(forcedPlanningQuestion)) {
+            finalAssistantMessage = new AssistantMessage(forcedPlanningQuestion);
+        } else if (s.response == null || s.response.getResult() == null) {
+            finalAssistantMessage = new AssistantMessage("");
+        } else {
+            finalAssistantMessage = assistantMessageWithThinking(
+                s.response.getResult(), combinedThinking(s.thinkingParts));
+        }
+
+        if (finalAssistantMessage != null) {
+            s.messagesToPersist.add(finalAssistantMessage);
+            turnAuditWriter.recordAssistantMessage(finalAssistantMessage, s.request);
+        }
+        contextManagementAdvisor.saveAssistantMessages(s.request.conversationId(), s.messagesToPersist);
+
+        StoredContextUsage maintenance = maintainContextUsage(s.request.conversationId(), s.request.model());
+        turnAuditWriter.recordEndOfTurnContext(s.request, maintenance);
+        if (maintenance.compacted() && s.toolMessageConsumer != null) {
+            s.toolMessageConsumer.accept(systemMessage(ContextManagementAdvisor.COMPACTION_NOTICE));
+        }
+
+        ChatResponse.MsgResponse chatResponse = new ChatResponse.MsgResponse(
+            s.request.conversationId(), s.request.model(),
+            finalAssistantMessage == null ? "" : finalAssistantMessage.getText(),
+            maintenance.usage(),
+            planState(s.request.conversationId()),
+            List.copyOf(s.toolActivities));
+
+        ChatMessage finalMessage = renderAssistantMessage(assistantMessageParts(
+            finalAssistantMessage,
+            finalAssistantMessage == null ? "" : finalAssistantMessage.getText()));
+
+        turnAuditWriter.enqueueTitleJob(s.request);
+        logger.debug("Tool chat turn completed conv={} mode={} tokens={}",
+            s.request.conversationId(), s.mode,
+            maintenance.usage() != null ? maintenance.usage().usedTokens() : "?");
+
+        s.chatResponse = chatResponse;
+        s.finalMessage = finalMessage;
+        s.phase = TurnPhase.DONE;
+    }
+
+    // ── End refactored toolChat ──
 
     private List<Message> currentInstructions(ResolvedChatRequest request) {
         String systemPrompt = effectiveSystemPrompt(request);
@@ -1582,6 +1920,65 @@ public class ChatService {
     }
 
     private record ToolChatResult(ChatResponse.MsgResponse response, ChatMessage finalMessage) {
+    }
+
+    private static final class ToolLoopState {
+        // ── Immutable request context ──
+        final ResolvedChatRequest request;
+        final List<ToolCallback> approvedTools;
+        final Consumer<ChatMessage> toolMessageConsumer;
+        final ActiveTurn activeTurn;
+        final PlanMode mode;
+        final ToolCallingChatOptions toolOptions;
+        final List<Message> currentSystemInstructions;
+
+        // ── Current phase ──
+        TurnPhase phase = TurnPhase.PREPARE;
+
+        // ── Mutable prompt/response ──
+        Prompt prompt;
+        org.springframework.ai.chat.model.ChatResponse response;
+
+        // ── Accumulators ──
+        final List<Message> messagesToPersist = new ArrayList<>();
+        final List<ChatToolActivity> toolActivities = new ArrayList<>();
+        final List<String> thinkingParts = new ArrayList<>();
+
+        // ── Tool execution state ──
+        final ToolLoopGuard toolLoopGuard = new ToolLoopGuard();
+        List<Message> activeToolMessages = new ArrayList<>();
+        List<Message> conversationHistory = null;
+        ToolUseAbort toolUseAbort = null;
+
+        // ── Flags and counters ──
+        boolean compactionNoticeEmitted = false;
+        boolean planCompletionDetected = false;
+        String validatedFinalMessage = null;
+        int emptyFinalResponseRetries = 0;
+        int planTurnRepairRetries = 0;
+        int executionCompletionRepairRetries = 0;
+
+        // ── Output (set by FINALIZE, returned by dispatcher) ──
+        ChatResponse.MsgResponse chatResponse;
+        ChatMessage finalMessage;
+
+        ToolLoopState(
+            ResolvedChatRequest request,
+            List<ToolCallback> approvedTools,
+            Consumer<ChatMessage> toolMessageConsumer,
+            ActiveTurn activeTurn,
+            PlanMode mode,
+            ToolCallingChatOptions toolOptions,
+            List<Message> currentSystemInstructions
+        ) {
+            this.request = request;
+            this.approvedTools = approvedTools;
+            this.toolMessageConsumer = toolMessageConsumer;
+            this.activeTurn = activeTurn;
+            this.mode = mode;
+            this.toolOptions = toolOptions;
+            this.currentSystemInstructions = currentSystemInstructions;
+        }
     }
 
     private <T> T await(java.util.concurrent.CompletableFuture<T> future) {

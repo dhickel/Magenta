@@ -9,12 +9,12 @@ import org.springframework.util.StringUtils;
 @Service
 public class OrchestrationRunService {
     private final AssignmentService assignmentService;
-    private final OrchestrationJobService jobService;
+    private final JobService jobService;
     private final OrchestrationRunnerService runnerService;
 
     public OrchestrationRunService(
         AssignmentService assignmentService,
-        OrchestrationJobService jobService,
+        JobService jobService,
         OrchestrationRunnerService runnerService
     ) {
         this.assignmentService = assignmentService;
@@ -41,7 +41,7 @@ public class OrchestrationRunService {
 
     private WorkAssignment createAssignment(AssignmentType type, Map<String, Object> input, OrchestrationRunContext context) {
         OrchestrationRunContext effective = context == null ? new OrchestrationRunContext(null, null, null, null, null) : context;
-        OrchestrationJob job = StringUtils.hasText(effective.jobId()) ? jobService.get(effective.jobId()) : null;
+        JobDefinition job = StringUtils.hasText(effective.jobId()) ? jobService.getDefinition(effective.jobId()) : null;
         String agentId = StringUtils.hasText(effective.agentId())
             ? effective.agentId()
             : job == null ? null : job.ownerAgentId();

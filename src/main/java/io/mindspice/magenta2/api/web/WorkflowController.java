@@ -1,149 +1,225 @@
 package io.mindspice.magenta2.api.web;
 
-import java.util.List;
-import java.util.Map;
-
-import io.mindspice.magenta2.ai.chat.workflow.WorkflowDefinition;
-import io.mindspice.magenta2.ai.chat.workflow.WorkflowRun;
-import io.mindspice.magenta2.ai.chat.workflow.WorkflowService;
-import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationRunContext;
-import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationRunResult;
-import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationRunService;
+import io.mindspice.magenta2.ai.orchestration.workflow.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import reactor.core.Disposable;
-import reactor.core.publisher.Flux;
-import reactor.core.scheduler.Schedulers;
 
-import jakarta.validation.Valid;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
+/**
+ * Workflow definition CRUD, run lifecycle, SSE streaming, and inbox endpoints.
+ */
 @RestController
-@RequestMapping("/api/workflows")
 public class WorkflowController {
     private final WorkflowService workflowService;
-    private final OrchestrationRunService orchestrationRunService;
+    private final InboxService inboxService;
 
-    public WorkflowController(WorkflowService workflowService, OrchestrationRunService orchestrationRunService) {
+    public WorkflowController(WorkflowService workflowService, InboxService inboxService) {
         this.workflowService = workflowService;
-        this.orchestrationRunService = orchestrationRunService;
+        this.inboxService = inboxService;
     }
 
-    @GetMapping
+    // ════════════════════════════════════════════════════════════════
+    //  Workflow Definition CRUD
+    // ════════════════════════════════════════════════════════════════
+
+    @GetMapping("/api/workflows")
     public List<WorkflowDefinition> list() {
-        return workflowService.listWorkflows();
+        return workflowService.listDefinitions();
     }
 
-    @GetMapping("/{workflowId}")
+    @GetMapping("/api/workflows/{workflowId}")
     public WorkflowDefinition get(@PathVariable String workflowId) {
         try {
-            return workflowService.getWorkflow(workflowId);
-        } catch (IllegalStateException exception) {
+            return workflowService.getDefinition(workflowId);
+        } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage());
         }
     }
 
-    @PostMapping
-    public WorkflowDefinition create(@Valid @RequestBody WorkflowDefinition workflow) {
+    @PostMapping("/api/workflows")
+    public WorkflowDefinition create(@RequestBody WorkflowDefinition definition) {
         try {
-            return workflowService.saveWorkflow(workflow);
+            return workflowService.saveDefinitionValidated(
+                new WorkflowDefinition(UUID.randomUUID().toString(),
+                    definition.title(), definition.summary(),
+                    definition.nodes(), definition.routes(), null, null));
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
     }
 
-    @PutMapping("/{workflowId}")
-    public WorkflowDefinition update(@PathVariable String workflowId, @Valid @RequestBody WorkflowDefinition workflow) {
+    @PutMapping("/api/workflows/{workflowId}")
+    public WorkflowDefinition update(@PathVariable String workflowId,
+                                     @RequestBody WorkflowDefinition definition) {
         try {
-            return workflowService.saveWorkflow(new WorkflowDefinition(
-                workflowId, workflow.title(), workflow.summary(), workflow.steps(), workflow.createdAt(), workflow.updatedAt()
-            ));
+            return workflowService.saveDefinitionValidated(
+                new WorkflowDefinition(workflowId,
+                    definition.title(), definition.summary(),
+                    definition.nodes(), definition.routes(),
+                    definition.createdAt(), definition.updatedAt()));
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
     }
 
-    @DeleteMapping("/{workflowId}")
+    @DeleteMapping("/api/workflows/{workflowId}")
     public void delete(@PathVariable String workflowId) {
-        workflowService.deleteWorkflow(workflowId);
+        workflowService.deleteDefinition(workflowId);
     }
 
-    @GetMapping("/{workflowId}/warnings")
-    public List<String> warnings(@PathVariable String workflowId) {
-        return workflowService.compatibilityWarnings(workflowService.getWorkflow(workflowId));
+    // ════════════════════════════════════════════════════════════════
+    //  Validation (structured errors + warnings)
+    // ════════════════════════════════════════════════════════════════
+
+    @PostMapping("/api/workflows/validate")
+    public WorkflowValidator.ValidationResult validateNew(@RequestBody WorkflowDefinition definition) {
+        return workflowService.validateGraph(
+            new WorkflowDefinition(UUID.randomUUID().toString(),
+                definition.title(), definition.summary(),
+                definition.nodes(), definition.routes(), null, null));
     }
 
-    @GetMapping("/{workflowId}/runs")
-    public List<WorkflowRun> listRuns(@PathVariable String workflowId) {
-        return workflowService.listRuns(workflowId);
+    @PostMapping("/api/workflows/{workflowId}/validate")
+    public WorkflowValidator.ValidationResult validate(@PathVariable String workflowId,
+                                  @RequestBody WorkflowDefinition definition) {
+        return workflowService.validateGraph(
+            new WorkflowDefinition(workflowId, definition.title(), definition.summary(),
+                definition.nodes(), definition.routes(), null, null));
     }
 
-    @GetMapping("/runs/{runId}")
-    public WorkflowRun getRun(@PathVariable String runId) {
+    // ════════════════════════════════════════════════════════════════
+    //  Runs
+    // ════════════════════════════════════════════════════════════════
+
+    @PostMapping("/api/workflows/{workflowId}/runs")
+    public WorkflowRun startRun(@PathVariable String workflowId) {
         try {
-            return workflowService.getRun(runId);
-        } catch (IllegalStateException exception) {
+            return workflowService.startRun(workflowId);
+        } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage());
         }
     }
 
-    @PostMapping(value = "/{workflowId}/runs/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter streamRun(@PathVariable String workflowId, @RequestBody(required = false) WorkflowRunRequest request) {
+    @PostMapping(value = "/api/workflows/{workflowId}/runs/stream",
+            produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamRun(@PathVariable String workflowId) {
         SseEmitter emitter = SseStreamLifecycle.createEmitter();
         SseStreamLifecycle.SubscriptionGuard guard = SseStreamLifecycle.guardSubscription();
         SseStreamLifecycle.registerCallbacks(emitter, guard, null, null);
 
         try {
-            OrchestrationRunContext context = WorkflowStreamSupport.toContext(request);
-            Flux<SsePayload> stream;
-            if (context.hasContext()) {
-                stream = Flux.defer(() -> {
-                    OrchestrationRunResult result = orchestrationRunService.runWorkflow(workflowId, context);
-                    return WorkflowStreamSupport.orchestrationRunEvents(workflowId, result);
-                });
-            } else {
-                stream = WorkflowStreamSupport.synchronousRunEvents(workflowId, workflowService);
-            }
-            Disposable subscription = stream
-                .subscribeOn(Schedulers.boundedElastic())
+            WorkflowRun run = workflowService.startRun(workflowId);
+
+            SseStreamLifecycle.sendSseEvent(emitter, "started",
+                Map.of("workflowRunId", run.id(), "workflowId", workflowId,
+                       "event", "started"));
+
+            reactor.core.Disposable subscription = reactor.core.publisher.Flux
+                .interval(java.time.Duration.ofSeconds(1))
                 .subscribe(
-                    event -> {
-                        if (!SseStreamLifecycle.trySendSseEvent(emitter, event.name(), event.data())) {
+                    i -> {
+                        try {
+                            WorkflowRun current = workflowService.getRun(run.id());
+                            String eventType = switch (current.status()) {
+                                case WAITING -> "waiting";
+                                case COMPLETED -> "completed";
+                                case FAILED, CANCELLED, NEEDS_REVIEW -> "failed";
+                                default -> "progress";
+                            };
+                            if (SseStreamLifecycle.trySendSseEvent(emitter, eventType,
+                                    Map.of("event", eventType,
+                                           "workflowRunId", current.id(),
+                                           "status", current.status().wireName(),
+                                           "nodeIndex", current.currentNodeIndex()))) {
+                                if (current.isTerminal()) {
+                                    guard.dispose();
+                                    SseStreamLifecycle.completeQuietly(emitter);
+                                }
+                            }
+                        } catch (Exception e) {
                             guard.dispose();
                             SseStreamLifecycle.completeQuietly(emitter);
                         }
                     },
                     error -> {
-                        if (SseStreamLifecycle.trySendSseEvent(emitter, "failed",
-                                Map.of("event", "failed", "error", error.getMessage()))) {
-                            SseStreamLifecycle.completeQuietly(emitter);
-                        }
-                    },
-                    () -> SseStreamLifecycle.completeQuietly(emitter)
+                        guard.dispose();
+                        SseStreamLifecycle.trySendSseEvent(emitter, "failed",
+                            Map.of("event", "failed", "error", error.getMessage()));
+                        SseStreamLifecycle.completeQuietly(emitter);
+                    }
                 );
             guard.set(subscription);
         } catch (IllegalArgumentException exception) {
-            if (SseStreamLifecycle.trySendSseEvent(emitter, "failed",
-                    Map.of("event", "failed", "error", exception.getMessage()))) {
-                SseStreamLifecycle.completeQuietly(emitter);
-            }
+            SseStreamLifecycle.trySendSseEvent(emitter, "failed",
+                Map.of("event", "failed", "error", exception.getMessage()));
+            SseStreamLifecycle.completeQuietly(emitter);
         } catch (Exception exception) {
-            if (SseStreamLifecycle.trySendSseEvent(emitter, "failed",
-                    Map.of("event", "failed", "error", exception.getMessage()))) {
-                SseStreamLifecycle.completeQuietly(emitter);
-            }
+            SseStreamLifecycle.trySendSseEvent(emitter, "failed",
+                Map.of("event", "failed", "error", exception.getMessage()));
+            SseStreamLifecycle.completeQuietly(emitter);
         }
+
         return emitter;
     }
+
+    @GetMapping("/api/workflow-runs/{runId}")
+    public WorkflowRun getRun(@PathVariable String runId) {
+        try {
+            return workflowService.getRun(runId);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage());
+        }
+    }
+
+    @GetMapping("/api/workflows/{workflowId}/runs")
+    public List<WorkflowRun> listRuns(@PathVariable String workflowId) {
+        return workflowService.listRuns(workflowId);
+    }
+
+    @PostMapping("/api/workflow-runs/{runId}/resume")
+    public WorkflowRun resumeRun(@PathVariable String runId) {
+        try {
+            return workflowService.resumeRun(runId);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage());
+        } catch (IllegalStateException exception) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, exception.getMessage());
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  User Inbox
+    // ════════════════════════════════════════════════════════════════
+
+    @GetMapping("/api/users/inbox")
+    public List<InboxMessage> userInbox() {
+        return inboxService.userInbox();
+    }
+
+    @PostMapping("/api/users/inbox/{messageId}/respond")
+    public Map<String, Object> respondUser(@PathVariable String messageId,
+                                           @RequestBody InboxRespondRequest request) {
+        try {
+            InboxMessage message = inboxService.respondUserApproval(
+                messageId, request.approved(), request.comment());
+            return Map.of(
+                "messageId", message.id(),
+                "responded", true,
+                "approved", request.approved(),
+                "workflowRunId", workflowRunId(message)
+            );
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage());
+        }
+    }
+
+    // ── Request DTOs ──
 
     public record WorkflowRunRequest(
         String agentId,
@@ -151,6 +227,22 @@ public class WorkflowController {
         String workspaceId,
         String modelOverride,
         Integer priority
-    ) {
+    ) {}
+
+    public record InboxRespondRequest(boolean approved, String comment) {
+    }
+
+    private String workflowRunId(InboxMessage message) {
+        if (message.metadataJson() == null || message.metadataJson().isBlank()) {
+            return "";
+        }
+        try {
+            Object value = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readValue(message.metadataJson(), Map.class)
+                .get("workflowRunId");
+            return value == null ? "" : value.toString();
+        } catch (Exception ignored) {
+            return "";
+        }
     }
 }

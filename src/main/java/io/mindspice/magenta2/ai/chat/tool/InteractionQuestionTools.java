@@ -2,12 +2,11 @@ package io.mindspice.magenta2.ai.chat.tool;
 
 import java.util.List;
 
-import io.mindspice.magenta2.ai.chat.plan.ExecutionPlan;
 import io.mindspice.magenta2.ai.chat.model.PlanMode;
+import io.mindspice.magenta2.ai.chat.plan.PlanDefinition;
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
 import io.mindspice.magenta2.ai.chat.plan.PlanToolContext;
 import io.mindspice.magenta2.ai.chat.plan.PlanToolExecutionContext;
-import io.mindspice.magenta2.ai.chat.task.TaskDraft;
 import io.mindspice.magenta2.ai.chat.task.TaskService;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -44,15 +43,15 @@ public class InteractionQuestionTools {
             if (planService == null) {
                 throw new IllegalStateException("Plan service is not available");
             }
-            ExecutionPlan plan = planService.askQuestions(context.conversationId(), questions);
+            PlanDefinition plan = planService.askQuestions(context.conversationId(), questions);
             return "Queued " + plan.pendingQuestions().size() + " planning question(s) for the user.";
         }
         if (context.mode() == PlanMode.TASK) {
             if (taskService == null) {
                 throw new IllegalStateException("Task service is not available");
             }
-            TaskDraft draft = taskService.askQuestions(context.conversationId(), questions);
-            return "Queued " + draft.pendingQuestions().size() + " task question(s) for the user.";
+            planService.askTaskQuestions(context.conversationId(), questions);
+            return "Queued task question(s) for the user.";
         }
         throw new IllegalStateException("ask_user_questions is available only in plan or task mode");
     }

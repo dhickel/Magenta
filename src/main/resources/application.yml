@@ -13,8 +13,23 @@ magenta:
     execution-stream-timeout-seconds: 0
   ai:
     openai-compatible-read-timeout-seconds: 360
+  docker:
+    # Disabled by default for local alpha development.
+    # Enable when a Podman/Docker socket and agent image are available.
+    enabled: false
+    # host: unix:///run/user/1000/podman/podman.sock
+    # DOCKER_HOST env var takes precedence over host property.
+    # Default detection order: $DOCKER_HOST, property, $XDG_RUNTIME_DIR/podman/podman.sock,
+    #   /run/user/$UID/podman/podman.sock, /var/run/docker.sock
+    agent-image: python:3.11-slim
+    exec-timeout-seconds: 600
+    selinux-relabel: true
 
 spring:
+  web:
+    resources:
+      chain:
+        enabled: true
   datasource:
     url: jdbc:sqlite:./chat-memory.db?foreign_keys=true
     driver-class-name: org.sqlite.JDBC

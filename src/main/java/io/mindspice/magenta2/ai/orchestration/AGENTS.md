@@ -11,6 +11,7 @@ This package owns durable runtime agent, setting, workspace, and orchestration s
 - Keep durable assignment execution resumable at task/workflow/job item boundaries; do not attempt token-level or partial model response resume.
 - Execute task and workflow assignments through the chat task execution service so durable orchestration never fabricates task outputs.
 - Persist job item retry policy with explicit retry count and continue-on-failure behavior.
+- Public operational job definitions may be saved as empty `DRAFT` records so the UI can create metadata before ordered items are added.
 
 ### Change guidance
 - Do not add subagent lifecycle behavior without a concrete workflow.

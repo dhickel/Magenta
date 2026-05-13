@@ -59,7 +59,7 @@ public class PlanCompletionService {
         String finalMessage
     ) {
         List<String> reportedArtifactPaths = cleanList(artifactPaths);
-        ExecutionPlan reported = planService.recordExecutionReport(
+        PlanDefinition reported = planService.recordExecutionReport(
             conversationId,
             summary,
             evidence,
@@ -79,8 +79,8 @@ public class PlanCompletionService {
             + renderFeedback(feedback);
     }
 
-    private java.util.Optional<ValidationResult> coverageValidation(ExecutionPlan plan, List<String> evidence) {
-        List<String> criteria = cleanList(plan.acceptanceCriteria());
+    private java.util.Optional<ValidationResult> coverageValidation(PlanDefinition plan, List<String> evidence) {
+        List<String> criteria = cleanList(plan.validationCriteria());
         if (criteria.isEmpty()) {
             return java.util.Optional.empty();
         }
@@ -119,7 +119,7 @@ public class PlanCompletionService {
         return normalize(label);
     }
 
-    private ValidationResult validate(ExecutionPlan plan, List<String> artifactPaths, String finalMessage) {
+    private ValidationResult validate(PlanDefinition plan, List<String> artifactPaths, String finalMessage) {
         if (chatModelRouter == null || aiConfig == null || aiConfig.models() == null) {
             return new ValidationResult(
                 false,
@@ -150,7 +150,7 @@ public class PlanCompletionService {
         return parseValidation(response);
     }
 
-    private String validatorModel(ExecutionPlan plan) {
+    private String validatorModel(PlanDefinition plan) {
         String planningModelKey = aiConfig.resolvedPlanningModelKey();
         ModelConfig planningModel = aiConfig.models().get(planningModelKey);
         if (planningModel != null && StringUtils.hasText(planningModel.remoteModelName())) {
@@ -159,13 +159,13 @@ public class PlanCompletionService {
         if (StringUtils.hasText(plan.executionModel())) {
             return plan.executionModel();
         }
-        if (StringUtils.hasText(plan.prePlanningModel())) {
-            return plan.prePlanningModel();
+        if (StringUtils.hasText(plan.planningModel())) {
+            return plan.planningModel();
         }
         return null;
     }
 
-    private String validationInput(ExecutionPlan plan, List<String> artifactPaths, String finalMessage) {
+    private String validationInput(PlanDefinition plan, List<String> artifactPaths, String finalMessage) {
         StringBuilder builder = new StringBuilder();
         builder.append("Approved plan:\n\n")
             .append(planService.approvalMarkdown(plan))

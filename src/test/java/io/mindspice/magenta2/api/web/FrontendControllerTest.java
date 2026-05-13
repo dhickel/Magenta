@@ -11,9 +11,26 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class FrontendControllerTest {
 
+    private static ChatService stubChatService() {
+        return new StubChatService();
+    }
+
+    @Test
+    void homePageRendersWithDashboardLinks() {
+        FrontendController controller = new FrontendController(stubChatService());
+        String html = controller.home(null, null);
+
+        assertThat(html).contains("/css/magenta.css?v=2");
+        assertThat(html).contains("Magenta Portal");
+        assertThat(html).contains("/chat");
+        assertThat(html).contains("/dashboard");
+        assertThat(html).contains("/webjars/htmx.org/dist/htmx.min.js");
+        assertThat(html).doesNotContain("<style>");
+    }
+
     @Test
     void chatPageRendersSimplyPagesChatShell() {
-        FrontendController controller = new FrontendController(new StubChatService());
+        FrontendController controller = new FrontendController(stubChatService());
 
         String html = controller.chat(null, null);
 
@@ -32,7 +49,21 @@ class FrontendControllerTest {
         assertThat(html).doesNotContain("id=\"chat-session-bulk-list\"");
         assertThat(html).contains("data-active-conversation-id");
         assertThat(html).contains("<code id=\"chat-active-session\">New chat</code>");
+        assertThat(html).contains("/webjars/htmx.org/dist/htmx.min.js");
         assertThat(html).doesNotContain("<style>");
+    }
+
+    @Test
+    void chatPageIsolatesFromOrchestrationScripts() {
+        FrontendController controller = new FrontendController(stubChatService());
+        String html = controller.chat(null, null);
+
+        // Chat page must NOT load orchestration dashboard scripts
+        assertThat(html).doesNotContain("/js/orchestration/dashboard.js");
+        assertThat(html).doesNotContain("/js/orchestration/plans.js");
+        assertThat(html).doesNotContain("/js/orchestration/workflows.js");
+        assertThat(html).doesNotContain("/js/orchestration/inbox.js");
+        assertThat(html).doesNotContain("data-orchestration-page");
     }
 
     @Test
@@ -72,86 +103,7 @@ class FrontendControllerTest {
         assertThat(js).contains("clearPlanningPanel();");
     }
 
-    @Test
-    void taskAndWorkflowPagesExposeEditorAndRunControls() {
-        FrontendController controller = new FrontendController(new StubChatService());
-
-        assertThat(controller.tasks())
-            .contains("id=\"tasks-page\"")
-            .contains("data-orchestration-page=\"tasks\"")
-            .contains("Task Editor")
-            .contains("id=\"task-inputs\"")
-            .contains("id=\"task-outputs\"")
-            .contains("id=\"task-run-form\"")
-            .contains("id=\"task-run-agent-id\"")
-            .contains("modelOverride")
-            .contains("/js/magenta-tools.js?v=1")
-            .doesNotContain("task-deliverables")
-            .doesNotContain("deliverables: lines");
-        assertThat(controller.workflows())
-            .contains("id=\"workflows-page\"")
-            .contains("data-orchestration-page=\"workflows\"")
-            .contains("Workflow Editor")
-            .contains("id=\"workflow-steps\"")
-            .contains("id=\"workflow-warnings\"")
-            .contains("id=\"workflow-run-agent-id\"")
-            .contains("modelOverride")
-            .contains("/js/magenta-tools.js?v=1");
-    }
-
-    @Test
-    void orchestrationPagesLoadStaticAssetsWithoutChatClient() {
-        FrontendController controller = new FrontendController(new StubChatService());
-
-        for (String html : List.of(
-            controller.settings(),
-            controller.agents(),
-            controller.agentDetail("agent-1"),
-            controller.jobs(),
-            controller.jobDetail("job-1"),
-            controller.tasks(),
-            controller.workflows()
-        )) {
-            assertThat(html).contains("/css/magenta.css?v=2");
-            assertThat(html).contains("/js/orchestration/app.js?v=2");
-            assertThat(html).doesNotContain("/js/chat-client.js");
-            assertThat(html).doesNotContain("<style>");
-        }
-    }
-
-    @Test
-    void orchestrationStaticFilesExposeEndpointsAndSseParsing() throws Exception {
-        String app = Files.readString(Path.of("src/main/resources/static/js/orchestration/app.js"));
-        String api = Files.readString(Path.of("src/main/resources/static/js/orchestration/api.js"));
-        String chat = Files.readString(Path.of("src/main/resources/static/js/orchestration/agent-chat.js"));
-
-        assertThat(app)
-            .contains("data-orchestration-page")
-            .contains("/api/settings/runtime")
-            .contains("/api/agents")
-            .contains("/api/jobs")
-            .contains("/api/tasks")
-            .contains("/api/workflows");
-        assertThat(api)
-            .contains("function parseSse")
-            .contains("event:")
-            .contains("data:")
-            .contains("renderError");
-        assertThat(chat)
-            .contains("data-agent-chat-panel")
-            .contains("/api/agents/${encodeURIComponent(agentId)}/chat/stream")
-            .contains("pageContext");
-    }
-
-    @Test
-    void htmxCompatibilityResourceStopsShell404() {
-        FrontendController controller = new FrontendController(new StubChatService());
-
-        assertThat(controller.htmxCompatResource()).contains("window.htmx");
-    }
-
     private static class StubChatService extends ChatService {
-
         StubChatService() {
             super(null, null, null, null, null);
         }

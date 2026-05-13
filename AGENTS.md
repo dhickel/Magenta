@@ -43,6 +43,12 @@ This is the style we want to take with our UI.
 - Documentation `/home/hickelpickle/Code/Java/cannasite/java-html-framework/docs`
 - Demo `/home/hickelpickle/Code/Java/cannasite/java-html-framework/demo`
 
+#### HTMX Default Policy
+- Default to HTMX for UI interactions when building with SimplyPages.
+- Most CRUD operations (create, read, update, delete), filtering, row actions, form submissions, and partial refreshes should be implemented with HTMX.
+- Use JavaScript only when it is clearly the simpler path and path of least resistance for the specific behavior.
+- When JavaScript is used, keep it narrowly scoped to that interaction instead of turning the page into a JS-transport surface.
+
 *Always use the libraries coding style and practices, do not try to shoehorn functionality or use raw html strings, raw html is a fallback for advanced cases most functionality from css, js, htmx
 can be done via functions. The library has a vast set of components and ways to make your own, search the well formated documentation for your operation and read it before any edits, if
 still faced with ambiguity, or needing context refer to the demos, if still confused DO NOT DO AD-HOC HACKISH WORKAROUND CONSULT THE USER.*
@@ -90,4 +96,5 @@ If you find a bug pull the recent version of the library and directly implement 
 - After nontrivial code changes, run the relevant automated tests.
 - Before considering backend or application-wiring work complete, smoke test that the Spring Boot application context starts successfully. Prefer a bounded startup command such as `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` unless the task has a more specific startup path.
 - For live chat, browser, SSE, agent/model routing, planning, interruption, chat switching, or concurrent-interaction validation, use the Playwright MCP workflow documented in `.internal-dev/knowledge/live-chat-mcp-workflow-testing.md`. Read that file before running this class of test, follow its MCP-first approach, and update it when you discover better methods, new gotchas, or changed endpoint behavior.
+- During UI validation and review, verify JavaScript usage is explicitly justified as the path of least resistance and that HTMX was used for standard CRUD/interaction flows.
 - If startup cannot be run because required local services or secrets are unavailable, report that explicitly with the blocking dependency.

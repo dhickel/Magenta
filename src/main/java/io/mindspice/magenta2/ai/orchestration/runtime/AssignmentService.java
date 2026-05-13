@@ -15,13 +15,13 @@ public class AssignmentService {
     private final OrchestrationRuntimeRepository repository;
     private final AgentProfileService agentProfileService;
     private final RuntimeSettingsService runtimeSettingsService;
-    private final OrchestrationJobService jobService;
+    private final JobService jobService;
 
     public AssignmentService(
         OrchestrationRuntimeRepository repository,
         AgentProfileService agentProfileService,
         RuntimeSettingsService runtimeSettingsService,
-        OrchestrationJobService jobService
+        JobService jobService
     ) {
         this.repository = repository;
         this.agentProfileService = agentProfileService;
@@ -42,7 +42,7 @@ public class AssignmentService {
         }
         agentProfileService.get(request.agentId());
         if (StringUtils.hasText(request.jobId())) {
-            jobService.get(request.jobId());
+            jobService.getDefinition(request.jobId());
         }
         Map<String, Object> input = request.input() == null ? Map.of() : request.input();
         validateInput(request.assignmentType(), input, request.jobId());
@@ -108,12 +108,12 @@ public class AssignmentService {
         return saveStatus(current, OrchestrationStatus.QUEUED);
     }
 
-    public String resolveModel(WorkAssignment assignment, OrchestrationJobItem item) {
+    public String resolveModel(WorkAssignment assignment, JobWorkItem item) {
         String explicit = assignment.modelOverride();
         String itemOverride = item == null ? null : item.modelOverride();
-        OrchestrationJob job = StringUtils.hasText(assignment.jobId()) ? jobService.get(assignment.jobId()) : null;
+        JobDefinition job = StringUtils.hasText(assignment.jobId()) ? jobService.getDefinition(assignment.jobId()) : null;
         AgentProfile agent = agentProfileService.get(assignment.agentId());
-        String key = firstText(explicit, itemOverride, job == null ? null : job.defaultModel(), agent.defaultModel());
+        String key = firstText(explicit, itemOverride, job == null ? null : job.model(), agent.defaultModel());
         return runtimeSettingsService.resolveModel(key, null);
     }
 

@@ -1,13 +1,25 @@
 package io.mindspice.magenta2.ai.chat.plan;
 
+import java.io.IOException;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
-import io.mindspice.magenta2.ai.chat.model.PlanMode;
 import io.mindspice.magenta2.ai.chat.model.ChatPlanState;
+import io.mindspice.magenta2.ai.chat.model.PlanMode;
 import io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer;
+import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
+import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
@@ -15,240 +27,207 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+/**
+ * Unified plan/task service. Owns all definition and run lifecycle operations
+ * for both in-session plans ({@link PlanKind#SESSION_PLAN}) and reusable task
+ * templates ({@link PlanKind#TASK_TEMPLATE}).
+ *
+ * <p>In-session plans use {@code id = conversationId}. Task templates use a
+ * UUID id with an optional {@code conversationId} tracking the drafting session.
+ */
 @Service
 public class PlanService {
+    private static final Logger log = LoggerFactory.getLogger(PlanService.class);
     private static final int MAX_QUEUED_QUESTIONS = 5;
 
-    private final ChatPlanRepository planRepository;
+    private final PlanRepository planRepository;
     private final ChatMemoryRepository chatMemoryRepository;
+    private final ChatSessionMetadataRepository chatSessionMetadataRepository;
     private final ChatMarkdownRenderer markdownRenderer;
+    private final WorkspaceDirectoryService workspaceDirectoryService;
+    private final OutputArtifactService outputArtifactService;
+    private final Map<String, String> executionRunsByConversationId = new ConcurrentHashMap<>();
 
-    public PlanService(ChatPlanRepository planRepository, ChatMemoryRepository chatMemoryRepository) {
-        this(planRepository, chatMemoryRepository, new ChatMarkdownRenderer());
+    public PlanService(PlanRepository planRepository, ChatMemoryRepository chatMemoryRepository) {
+        this(planRepository, chatMemoryRepository, null, new ChatMarkdownRenderer(), null, null);
+    }
+
+    // Used by tests that need session metadata and markdown rendering
+    public PlanService(
+        PlanRepository planRepository,
+        ChatMemoryRepository chatMemoryRepository,
+        ChatSessionMetadataRepository chatSessionMetadataRepository,
+        ChatMarkdownRenderer markdownRenderer
+    ) {
+        this(planRepository, chatMemoryRepository, chatSessionMetadataRepository, markdownRenderer, null, null);
     }
 
     @Autowired
     public PlanService(
-        ChatPlanRepository planRepository,
+        PlanRepository planRepository,
         ChatMemoryRepository chatMemoryRepository,
-        ChatMarkdownRenderer markdownRenderer
+        @Autowired(required = false) ChatSessionMetadataRepository chatSessionMetadataRepository,
+        ChatMarkdownRenderer markdownRenderer,
+        @Autowired(required = false) WorkspaceDirectoryService workspaceDirectoryService,
+        @Autowired(required = false) OutputArtifactService outputArtifactService
     ) {
         this.planRepository = planRepository;
         this.chatMemoryRepository = chatMemoryRepository;
+        this.chatSessionMetadataRepository = chatSessionMetadataRepository;
         this.markdownRenderer = markdownRenderer;
+        this.workspaceDirectoryService = workspaceDirectoryService;
+        this.outputArtifactService = outputArtifactService;
     }
 
-    public ExecutionPlan beginPlan(String conversationId, String prePlanningModel, String executionModel) {
+    // ════════════════════════════════════════════════════════════════
+    //  Mode resolution
+    // ════════════════════════════════════════════════════════════════
+
+    public PlanMode mode(String conversationId) {
+        // Check active execution run first
+        String runId = activeRunId(conversationId);
+        if (StringUtils.hasText(runId)) {
+            PlanRun run = planRepository.findRun(runId).orElse(null);
+            if (run != null && run.status() == PlanRunStatus.RUNNING) {
+                PlanDefinition def = run.planSnapshot();
+                return def.kind() == PlanKind.TASK_TEMPLATE ? PlanMode.EXECUTE_TASK : PlanMode.EXECUTE_PLAN;
+            }
+        }
+        PlanDefinition def = planRepository.findDefinition(conversationId).orElse(null);
+        if (def == null) {
+            // Check if there's a task draft with this conversation
+            def = planRepository.findDefinitionByConversationId(conversationId).orElse(null);
+        }
+        if (def == null) {
+            return PlanMode.NORMAL;
+        }
+        if (def.kind() == PlanKind.TASK_TEMPLATE) {
+            return def.status() == PlanStatus.APPROVED ? PlanMode.NORMAL : PlanMode.TASK;
+        }
+        // SESSION_PLAN
+        if (def.status() == PlanStatus.EXECUTING) {
+            return PlanMode.EXECUTE_PLAN;
+        }
+        if (def.status() == PlanStatus.APPROVED || def.status() == PlanStatus.COMPLETED
+            || def.status() == PlanStatus.SAVED_TASK || def.status() == PlanStatus.CANCELLED) {
+            return PlanMode.NORMAL;
+        }
+        return PlanMode.PLAN;
+    }
+
+    public String prePlanningModel(String conversationId) {
+        return planRepository.findDefinition(conversationId)
+            .map(PlanDefinition::planningModel)
+            .filter(StringUtils::hasText)
+            .orElse(null);
+    }
+
+    public String executionModel(String conversationId) {
+        return planRepository.findDefinition(conversationId)
+            .map(PlanDefinition::executionModel)
+            .filter(StringUtils::hasText)
+            .orElse(null);
+    }
+
+    public String finalMessage(String conversationId) {
+        return planRepository.findDefinition(conversationId)
+            .map(PlanDefinition::finalMessage)
+            .orElse(null);
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  In-session plan (SESSION_PLAN) operations
+    // ════════════════════════════════════════════════════════════════
+
+    public PlanDefinition beginPlan(String conversationId, String prePlanningModel, String executionModel) {
         int startOrder = chatMemoryRepository.findByConversationId(conversationId).size();
         Instant now = Instant.now();
-        ExecutionPlan existing = planRepository.find(conversationId).orElse(null);
-        return planRepository.save(new ExecutionPlan(
+        PlanDefinition existing = planRepository.findDefinition(conversationId).orElse(null);
+        return planRepository.saveDefinition(new PlanDefinition(
             conversationId,
-            PlanMode.PLAN,
+            PlanKind.SESSION_PLAN,
             PlanStatus.DRAFT,
-            "goal_and_deliverables",
+            "Untitled Plan",
             null,
             null,
             null,
+            List.of(),
+            List.of(),
+            List.of(),
+            List.of(),
+            List.of(),
+            List.of(),
+            List.of(),
+            List.of(),
             null,
-            List.of(),
-            List.of(),
-            List.of(),
-            List.of(),
-            List.of(),
-            List.of(),
-            List.of(),
-            List.of(),
             normalize(prePlanningModel),
             normalize(executionModel),
+            null,
+            "goal_and_deliverables",
             List.of(),
             0,
             startOrder,
+            null,
             null,
             existing == null ? now : existing.createdAt(),
             now
         ));
     }
 
-    public ExecutionPlan beginPlan(String conversationId) {
+    public PlanDefinition beginPlan(String conversationId) {
         return beginPlan(conversationId, null, null);
     }
 
-    public Optional<ExecutionPlan> activePlan(String conversationId) {
-        return planRepository.find(conversationId);
+    public Optional<PlanDefinition> activePlan(String conversationId) {
+        return planRepository.findDefinition(conversationId);
     }
 
     public List<String> listConversationIds() {
         return planRepository.findConversationIds();
     }
 
-    public PlanMode mode(String conversationId) {
-        return planRepository.find(conversationId)
-            .map(ExecutionPlan::mode)
-            .orElse(PlanMode.NORMAL);
-    }
-
-    public String prePlanningModel(String conversationId) {
-        return planRepository.find(conversationId)
-            .map(ExecutionPlan::prePlanningModel)
-            .filter(StringUtils::hasText)
-            .orElse(null);
-    }
-
-    public String executionModel(String conversationId) {
-        return planRepository.find(conversationId)
-            .map(ExecutionPlan::executionModel)
-            .filter(StringUtils::hasText)
-            .orElse(null);
-    }
-
-    public String finalMessage(String conversationId) {
-        return planRepository.find(conversationId)
-            .map(ExecutionPlan::finalMessage)
-            .orElse(null);
-    }
-
-    public ExecutionPlan updateDraftPlan(
-        String conversationId,
-        String goal,
-        String title,
-        String summary,
-        String notes,
-        List<String> deliverables,
-        List<String> steps,
-        List<String> acceptanceCriteria
-    ) {
-        return updateDraftPlan(
-            conversationId,
-            goal,
-            title,
-            summary,
-            notes,
-            deliverables,
-            null,
-            null,
-            null,
-            steps,
-            acceptanceCriteria
-        );
-    }
-
-    public ExecutionPlan updateDraftPlan(
-        String conversationId,
-        String goal,
-        String title,
-        String summary,
-        String notes,
-        List<String> deliverables,
-        List<String> inputs,
-        List<String> outputs,
-        List<String> assumptions,
-        List<String> steps,
-        List<String> acceptanceCriteria
-    ) {
-        ExecutionPlan existing = requirePlanMode(conversationId, "plan_update");
-        return planRepository.save(new ExecutionPlan(
-            existing.conversationId(),
-            PlanMode.PLAN,
-            PlanStatus.DRAFT,
-            existing.planningTask(),
-            choose(goal, existing.goal()),
-            choose(title, existing.title()),
-            choose(summary, existing.summary()),
-            mergeNotes(existing.notes(), notes),
-            deliverables == null ? existing.deliverables() : cleanList(deliverables),
-            inputs == null ? existing.inputs() : cleanList(inputs),
-            outputs == null ? existing.outputs() : cleanList(outputs),
-            assumptions == null ? existing.assumptions() : cleanList(assumptions),
-            steps == null ? existing.steps() : orderedSteps(steps),
-            acceptanceCriteria == null ? existing.acceptanceCriteria() : cleanList(acceptanceCriteria),
-            existing.executionEvidence(),
-            existing.validationFeedback(),
-            existing.prePlanningModel(),
-            existing.executionModel(),
-            existing.pendingQuestions(),
-            existing.pendingQuestionIndex(),
-            existing.planStartMessageOrder(),
-            existing.finalMessage(),
-            existing.createdAt(),
-            Instant.now()
-        ));
-    }
-
-    public ExecutionPlan saveDraftPlan(
-        String conversationId,
-        String goal,
-        String title,
-        String summary,
-        String notes,
-        List<String> steps,
-        List<String> assumptions,
-        List<String> acceptanceCriteria
-    ) {
-        return updateDraftPlan(
-            conversationId,
-            goal,
-            title,
-            summary,
-            notes,
-            StringUtils.hasText(title) ? List.of(title.trim()) : null,
-            null,
-            null,
-            assumptions,
-            steps,
-            acceptanceCriteria
-        );
-    }
-
-    public ExecutionPlan setGoal(String conversationId, String goal) {
-        ExecutionPlan existing = requirePlanMode(conversationId, "plan_set_goal");
+    public PlanDefinition setGoal(String conversationId, String goal) {
+        PlanDefinition existing = requirePlanMode(conversationId, "plan_set_goal");
         String normalizedGoal = normalize(goal);
         if (normalizedGoal == null) {
             throw new IllegalArgumentException("plan_set_goal requires a goal");
         }
         String newTitle = choose(existing.title(), titleFromGoal(normalizedGoal));
-        return planRepository.save(existing
+        return planRepository.saveDefinition(existing
             .withGoal(normalizedGoal)
             .withTitle(newTitle)
-            .withPlanningTask(nextTaskAfterGoal(existing))
-            .withModeStatus(PlanMode.PLAN, PlanStatus.DRAFT));
+            .withPlanningTask(nextTaskAfterGoal(existing)));
     }
 
-    public ExecutionPlan setPlanningTask(String conversationId, String planningTask) {
-        ExecutionPlan existing = requirePlanMode(conversationId, "plan_set_task");
+    public PlanDefinition setPlanningTask(String conversationId, String planningTask) {
+        PlanDefinition existing = requirePlanMode(conversationId, "plan_set_task");
         String normalizedTask = normalize(planningTask);
         if (normalizedTask == null) {
             throw new IllegalArgumentException("plan_set_task requires a current planning task");
         }
-        return saveWithPlanningTask(existing, normalizedTask);
+        return planRepository.saveDefinition(existing.withPlanningTask(normalizedTask));
     }
 
-    public ExecutionPlan putItem(String conversationId, String sectionName, Integer key, String text) {
-        ExecutionPlan existing = requirePlanMode(conversationId, "plan_put_item");
+    public PlanDefinition putItem(String conversationId, String sectionName, Integer key, String text) {
+        PlanDefinition existing = requirePlanMode(conversationId, "plan_put_item");
         PlanSection section = PlanSection.fromToolName(sectionName);
         int itemKey = requirePositiveKey(key, "plan_put_item");
         String normalizedText = normalize(text);
         if (normalizedText == null) {
             throw new IllegalArgumentException("plan_put_item requires text");
         }
-        return saveWithSection(
-            existing,
-            section,
-            itemKey,
-            normalizedText,
-            false
-        );
+        return planRepository.saveDefinition(withSection(existing, section, itemKey, normalizedText, null, false));
     }
 
-    public ExecutionPlan deleteItem(String conversationId, String sectionName, Integer key) {
-        ExecutionPlan existing = requirePlanMode(conversationId, "plan_delete_item");
+    public PlanDefinition deleteItem(String conversationId, String sectionName, Integer key) {
+        PlanDefinition existing = requirePlanMode(conversationId, "plan_delete_item");
         PlanSection section = PlanSection.fromToolName(sectionName);
         int itemKey = requirePositiveKey(key, "plan_delete_item");
-        return saveWithSection(existing, section, itemKey, null, true);
+        return planRepository.saveDefinition(withSection(existing, section, itemKey, null, null, true));
     }
 
-    public ExecutionPlan askQuestions(String conversationId, List<String> questions) {
-        ExecutionPlan existing = requirePlanMode(conversationId, "ask_user_questions");
+    public PlanDefinition askQuestions(String conversationId, List<String> questions) {
+        PlanDefinition existing = requirePlanMode(conversationId, "ask_user_questions");
         List<String> cleanQuestions = cleanList(questions);
         if (cleanQuestions.isEmpty()) {
             throw new IllegalArgumentException("ask_user_questions requires at least one question");
@@ -256,18 +235,17 @@ public class PlanService {
         if (cleanQuestions.size() > MAX_QUEUED_QUESTIONS) {
             throw new IllegalArgumentException("ask_user_questions accepts at most five questions");
         }
-        return planRepository.save(existing
-            .withModeStatus(PlanMode.PLAN, PlanStatus.DRAFT)
+        return planRepository.saveDefinition(existing
             .withPlanningTask("clarification_questions")
             .withPendingQuestions(cleanQuestions, 0));
     }
 
-    public ExecutionPlan recordPromptAnswer(String conversationId, String answer, String notes) {
+    public PlanDefinition recordPromptAnswer(String conversationId, String answer, String notes) {
         return recordPromptAnswer(conversationId, answer, notes, null);
     }
 
-    public ExecutionPlan recordPromptAnswer(String conversationId, String answer, String notes, Integer expectedQuestionIndex) {
-        ExecutionPlan plan = requirePlanMode(conversationId, "planning answer");
+    public PlanDefinition recordPromptAnswer(String conversationId, String answer, String notes, Integer expectedQuestionIndex) {
+        PlanDefinition plan = requirePlanConversation(conversationId, "planning answer");
         if (!plan.hasPendingQuestion()) {
             throw new IllegalStateException("No active planning question exists for this conversation");
         }
@@ -286,36 +264,42 @@ public class PlanService {
         List<String> pendingQuestions = nextIndex >= plan.pendingQuestions().size()
             ? List.of()
             : plan.pendingQuestions();
-        return planRepository.save(plan
-            .withModeStatus(PlanMode.PLAN, PlanStatus.DRAFT)
+        return planRepository.saveDefinition(plan
             .withPendingQuestions(pendingQuestions, pendingQuestions.isEmpty() ? 0 : nextIndex));
     }
 
-    public ExecutionPlan markReadyForApproval(String conversationId) {
-        ExecutionPlan plan = requirePlanMode(conversationId, "plan_ready_for_approval");
+    public PlanDefinition markReadyForApproval(String conversationId) {
+        PlanDefinition plan = requirePlanMode(conversationId, "plan_ready_for_approval");
         if (plan.hasPendingQuestion()) {
             throw new IllegalStateException("plan_ready_for_approval requires all queued planning questions to be answered");
         }
         validateComplete(plan, "plan_ready_for_approval");
-        return planRepository.save(copyWith(plan, PlanMode.PLAN, PlanStatus.READY_FOR_APPROVAL, List.of(), 0));
+        return planRepository.saveDefinition(plan
+            .withStatus(PlanStatus.READY_FOR_APPROVAL)
+            .withPlanningTask("approval")
+            .withPendingQuestions(List.of(), 0));
     }
 
-    public ExecutionPlan approvePlan(String conversationId) {
-        ExecutionPlan plan = requirePlanMode(conversationId, "approve plan");
+    public PlanDefinition approvePlan(String conversationId) {
+        PlanDefinition plan = requirePlanConversation(conversationId, "approve plan");
         validateComplete(plan, "approve plan");
-        return planRepository.save(copyWith(plan, PlanMode.PLAN, PlanStatus.APPROVED, List.of(), 0));
+        return planRepository.saveDefinition(plan
+            .withStatus(PlanStatus.APPROVED)
+            .withPendingQuestions(List.of(), 0));
     }
 
-    public ExecutionPlan saveAsTask(String conversationId) {
-        ExecutionPlan plan = requirePlanConversation(conversationId);
+    public PlanDefinition saveAsTask(String conversationId) {
+        PlanDefinition plan = requirePlanConversation(conversationId, "save as task");
         validateComplete(plan, "save as task");
-        return planRepository.save(copyWith(plan, PlanMode.NORMAL, PlanStatus.SAVED_TASK, List.of(), 0));
+        return planRepository.saveDefinition(plan
+            .withStatus(PlanStatus.SAVED_TASK)
+            .withPendingQuestions(List.of(), 0));
     }
 
-    public ExecutionPlan markExecuting(String conversationId) {
-        ExecutionPlan plan = requireSavedPlan(conversationId);
-        return planRepository.save(plan
-            .withModeStatus(PlanMode.EXECUTE_PLAN, PlanStatus.EXECUTING)
+    public PlanDefinition markExecuting(String conversationId) {
+        PlanDefinition plan = requireSavedPlan(conversationId);
+        return planRepository.saveDefinition(plan
+            .withStatus(PlanStatus.EXECUTING)
             .withPlanningTask(null)
             .withExecutionEvidence(List.of())
             .withValidationFeedback(List.of())
@@ -323,24 +307,26 @@ public class PlanService {
             .withFinalMessage(null));
     }
 
-    public ExecutionPlan markCompleted(String conversationId) {
+    public PlanDefinition markCompleted(String conversationId) {
         return markCompleted(conversationId, null);
     }
 
-    public ExecutionPlan markCompleted(String conversationId, String finalMessage) {
-        ExecutionPlan plan = requirePlanConversation(conversationId);
-        return planRepository.save(plan
-            .withModeStatus(PlanMode.NORMAL, PlanStatus.COMPLETED)
+    public PlanDefinition markCompleted(String conversationId, String finalMessage) {
+        PlanDefinition plan = requirePlanConversation(conversationId, "mark completed");
+        return planRepository.saveDefinition(plan
+            .withStatus(PlanStatus.COMPLETED)
             .withPendingQuestions(List.of(), 0)
             .withFinalMessage(finalMessage));
     }
 
-    public ExecutionPlan markNeedsReview(String conversationId) {
-        ExecutionPlan plan = requirePlanConversation(conversationId);
-        return planRepository.save(copyWith(plan, PlanMode.NORMAL, PlanStatus.NEEDS_REVIEW, List.of(), 0));
+    public PlanDefinition markNeedsReview(String conversationId) {
+        PlanDefinition plan = requirePlanConversation(conversationId, "mark needs review");
+        return planRepository.saveDefinition(plan
+            .withStatus(PlanStatus.NEEDS_REVIEW)
+            .withPendingQuestions(List.of(), 0));
     }
 
-    public ExecutionPlan recordExecutionReport(
+    public PlanDefinition recordExecutionReport(
         String conversationId,
         String summary,
         List<String> evidence,
@@ -348,8 +334,8 @@ public class PlanService {
         List<String> unmetCriteria,
         List<String> artifactPaths
     ) {
-        ExecutionPlan plan = requirePlanConversation(conversationId);
-        if (plan.mode() != PlanMode.EXECUTE_PLAN) {
+        PlanDefinition plan = requirePlanConversation(conversationId, "record execution");
+        if (plan.status() != PlanStatus.EXECUTING) {
             throw new IllegalStateException("plan_report is available only while executing a saved plan");
         }
         List<String> entries = new ArrayList<>();
@@ -363,28 +349,101 @@ public class PlanService {
         }
         List<String> updatedEvidence = new ArrayList<>(plan.executionEvidence());
         updatedEvidence.addAll(entries);
-        return planRepository.save(plan.withExecutionEvidence(updatedEvidence));
+        return planRepository.saveDefinition(plan.withExecutionEvidence(updatedEvidence));
     }
 
-    public ExecutionPlan recordFallbackExecutionEvidence(String conversationId) {
-        ExecutionPlan plan = requirePlanConversation(conversationId);
+    public PlanDefinition recordFallbackExecutionEvidence(String conversationId) {
+        PlanDefinition plan = requirePlanConversation(conversationId, "fallback evidence");
         if (!plan.executionEvidence().isEmpty()) {
             return plan;
         }
-        return planRepository.save(plan.withExecutionEvidence(
+        return planRepository.saveDefinition(plan.withExecutionEvidence(
             List.of("Deviation: execution returned without a structured completion ledger.")
         ));
     }
 
-    public ExecutionPlan recordValidationFeedback(String conversationId, List<String> feedback) {
-        ExecutionPlan plan = requirePlanConversation(conversationId);
-        return planRepository.save(plan.withValidationFeedback(cleanList(feedback)));
+    public PlanDefinition recordValidationFeedback(String conversationId, List<String> feedback) {
+        PlanDefinition plan = requirePlanConversation(conversationId, "validation feedback");
+        return planRepository.saveDefinition(plan.withValidationFeedback(cleanList(feedback)));
+    }
+
+    public PlanDefinition updateDraftPlan(
+        String conversationId,
+        String goal,
+        String title,
+        String summary,
+        String notes,
+        List<String> deliverables,
+        List<String> steps,
+        List<String> acceptanceCriteria
+    ) {
+        return updateDraftPlan(conversationId, goal, title, summary, notes, deliverables, null, null, null, steps, acceptanceCriteria);
+    }
+
+    public PlanDefinition updateDraftPlan(
+        String conversationId,
+        String goal,
+        String title,
+        String summary,
+        String notes,
+        List<String> deliverables,
+        List<String> inputs,
+        List<String> outputs,
+        List<String> assumptions,
+        List<String> steps,
+        List<String> acceptanceCriteria
+    ) {
+        PlanDefinition existing = requirePlanMode(conversationId, "plan_update");
+        return planRepository.saveDefinition(new PlanDefinition(
+            existing.id(),
+            existing.kind(),
+            existing.status(),
+            choose(title, existing.title()),
+            choose(summary, existing.summary()),
+            choose(goal, existing.goal()),
+            mergeNotes(existing.notes(), notes),
+            deliverables == null ? existing.deliverables() : cleanList(deliverables),
+            inputs == null ? existing.inputs() : textFieldList(inputs),
+            outputs == null ? existing.outputs() : textFieldList(outputs),
+            assumptions == null ? existing.assumptions() : cleanList(assumptions),
+            steps == null ? existing.steps() : orderedSteps(steps),
+            acceptanceCriteria == null ? existing.validationCriteria() : cleanList(acceptanceCriteria),
+            existing.executionEvidence(),
+            existing.validationFeedback(),
+            existing.promptProfile(),
+            existing.planningModel(),
+            existing.executionModel(),
+            existing.settingsOverrideJson(),
+            existing.planningTask(),
+            existing.pendingQuestions(),
+            existing.pendingQuestionIndex(),
+            existing.planStartMessageOrder(),
+            existing.finalMessage(),
+            existing.conversationId(),
+            existing.createdAt(),
+            Instant.now()
+        ));
+    }
+
+    public PlanDefinition saveDraftPlan(
+        String conversationId,
+        String goal,
+        String title,
+        String summary,
+        String notes,
+        List<String> steps,
+        List<String> assumptions,
+        List<String> acceptanceCriteria
+    ) {
+        return updateDraftPlan(conversationId, goal, title, summary, notes,
+            StringUtils.hasText(title) ? List.of(title.trim()) : null,
+            null, null, assumptions, steps, acceptanceCriteria);
     }
 
     public void exitPlan(String conversationId) {
-        planRepository.find(conversationId).ifPresent(plan -> {
+        planRepository.findDefinition(conversationId).ifPresent(plan -> {
             trimConversation(conversationId, plan.planStartMessageOrder());
-            planRepository.delete(conversationId);
+            planRepository.deleteDefinition(conversationId);
         });
     }
 
@@ -392,30 +451,522 @@ public class PlanService {
         chatMemoryRepository.saveAll(conversationId, List.of());
     }
 
-    public ChatPlanState view(String conversationId) {
-        return planRepository.find(conversationId)
-            .map(this::view)
-            .orElseGet(ChatPlanState::normal);
+    // ════════════════════════════════════════════════════════════════
+    //  Task template (TASK_TEMPLATE) operations
+    // ════════════════════════════════════════════════════════════════
+
+    public List<PlanDefinition> listTasks() {
+        return planRepository.findAllDefinitions().stream()
+            .filter(def -> def.kind() == PlanKind.TASK_TEMPLATE)
+            .toList();
     }
 
+    public PlanDefinition getTask(String id) {
+        return planRepository.findDefinition(id)
+            .orElseThrow(() -> new IllegalStateException("Task not found: " + id));
+    }
+
+    public PlanDefinition saveTask(PlanDefinition task) {
+        String id = StringUtils.hasText(task.id()) ? task.id() : UUID.randomUUID().toString();
+        String title = normalize(task.title());
+        if (title == null) {
+            throw new IllegalArgumentException("Task title is required");
+        }
+        validateFieldNames(task.inputs(), "input");
+        validateFieldNames(task.outputs(), "output");
+        return planRepository.saveDefinition(new PlanDefinition(
+            id,
+            PlanKind.TASK_TEMPLATE,
+            PlanStatus.APPROVED,
+            title,
+            normalize(task.summary()),
+            normalize(task.goal()),
+            normalize(task.notes()),
+            cleanList(task.deliverables()),
+            cleanFields(task.inputs()),
+            cleanFields(task.outputs()),
+            cleanList(task.assumptions()),
+            cleanSteps(task.steps()),
+            cleanList(task.validationCriteria()),
+            List.of(),
+            List.of(),
+            normalize(task.promptProfile()),
+            normalize(task.planningModel()),
+            normalize(task.executionModel()),
+            task.settingsOverrideJson(),
+            null,
+            List.of(),
+            0,
+            0,
+            null,
+            null,
+            task.createdAt(),
+            task.updatedAt()
+        ));
+    }
+
+    public void deleteTask(String id) {
+        planRepository.deleteDefinition(id);
+    }
+
+    public PlanDefinition beginDraft(String conversationId, String prePlanningModel, String executionModel) {
+        if (!StringUtils.hasText(conversationId)) {
+            throw new IllegalArgumentException("conversationId is required");
+        }
+        Instant now = Instant.now();
+        PlanDefinition existing = planRepository.findDefinitionByConversationId(conversationId).orElse(null);
+        String draftId = existing != null ? existing.id() : UUID.randomUUID().toString();
+        return planRepository.saveDefinition(new PlanDefinition(
+            draftId,
+            PlanKind.TASK_TEMPLATE,
+            PlanStatus.DRAFT,
+            "Untitled Task",
+            null,
+            null,
+            null,
+            List.of(),
+            List.of(),
+            List.of(),
+            List.of(),
+            List.of(),
+            List.of(),
+            List.of(),
+            List.of(),
+            null,
+            normalize(prePlanningModel),
+            normalize(executionModel),
+            null,
+            "define_runtime_inputs",
+            List.of("What runtime inputs should this reusable task accept?"),
+            0,
+            0,
+            null,
+            conversationId,
+            existing == null ? now : existing.createdAt(),
+            now
+        ));
+    }
+
+    public Optional<PlanDefinition> activeDraft(String conversationId) {
+        return planRepository.findDefinitionByConversationId(conversationId);
+    }
+
+    public List<String> listDraftConversationIds() {
+        return planRepository.findDraftConversationIds();
+    }
+
+    public PlanDefinition setGoal(String conversationId, String goal, boolean isTask) {
+        if (isTask) {
+            return setTaskGoal(conversationId, goal);
+        }
+        return setGoal(conversationId, goal);
+    }
+
+    public PlanDefinition setTaskGoal(String conversationId, String goal) {
+        PlanDefinition draft = requireTaskDraft(conversationId, "task_set_goal");
+        String normalizedGoal = normalize(goal);
+        if (normalizedGoal == null) {
+            throw new IllegalArgumentException("task_set_goal requires a goal");
+        }
+        return saveTaskDraft(draft.withPlanningTask("define_outputs").withGoal(normalizedGoal));
+    }
+
+    public PlanDefinition setTask(String conversationId, String planningTask) {
+        PlanDefinition draft = requireTaskDraft(conversationId, "task_set_task");
+        String normalizedTask = normalizePlanningTask(planningTask);
+        if (normalizedTask == null) {
+            throw new IllegalArgumentException("task_set_task requires a current task");
+        }
+        return saveTaskDraft(draft.withPlanningTask(normalizedTask));
+    }
+
+    public PlanDefinition putTextItem(String conversationId, String section, Integer key, String text) {
+        PlanDefinition draft = requireTaskDraft(conversationId, "task_put_item");
+        int itemKey = requirePositiveKey(key);
+        String normalizedText = normalize(text);
+        if (normalizedText == null) {
+            throw new IllegalArgumentException("task_put_item requires text");
+        }
+        return saveTaskDraft(withSection(draft, PlanSection.fromToolName(section), itemKey, normalizedText, null, false));
+    }
+
+    public PlanDefinition putFieldItem(String conversationId, String section, Integer key, PlanFieldDefinition field) {
+        PlanDefinition draft = requireTaskDraft(conversationId, "task_put_item");
+        int itemKey = requirePositiveKey(key);
+        PlanFieldDefinition cleanField = cleanField(field);
+        if (cleanField == null) {
+            throw new IllegalArgumentException("task_put_item requires a named input or output");
+        }
+        return saveTaskDraft(withSection(draft, PlanSection.fromToolName(section), itemKey, null, cleanField, false));
+    }
+
+    public PlanDefinition deleteTaskItem(String conversationId, String section, Integer key) {
+        PlanDefinition draft = requireTaskDraft(conversationId, "task_delete_item");
+        return saveTaskDraft(withSection(draft, PlanSection.fromToolName(section), requirePositiveKey(key), null, null, true));
+    }
+
+    public PlanDefinition askTaskQuestions(String conversationId, List<String> questions) {
+        PlanDefinition draft = requireTaskDraft(conversationId, "ask_user_questions");
+        List<String> cleanQuestions = cleanList(questions);
+        if (cleanQuestions.isEmpty()) {
+            throw new IllegalArgumentException("ask_user_questions requires at least one question");
+        }
+        if (cleanQuestions.size() > MAX_QUEUED_QUESTIONS) {
+            throw new IllegalArgumentException("ask_user_questions accepts at most five questions");
+        }
+        return saveTaskDraft(draft.withPlanningTask("clarification_questions")
+            .withPendingQuestions(cleanQuestions, 0));
+    }
+
+    public PlanDefinition recordTaskPromptAnswer(String conversationId, String answer, String notes, Integer expectedQuestionIndex) {
+        PlanDefinition draft = requireTaskDraft(conversationId, "task answer");
+        if (!draft.hasPendingQuestion()) {
+            throw new IllegalStateException("No active task question exists for this conversation");
+        }
+        int currentQuestionIndex = draft.pendingQuestionIndex() + 1;
+        if (expectedQuestionIndex != null && expectedQuestionIndex != currentQuestionIndex) {
+            throw new IllegalStateException(
+                "Stale task answer. Expected question " + currentQuestionIndex + " but received " + expectedQuestionIndex
+            );
+        }
+        if (!StringUtils.hasText(answer) && !StringUtils.hasText(notes)) {
+            throw new IllegalArgumentException("Task answer requires an answer");
+        }
+        int nextIndex = draft.pendingQuestionIndex() + 1;
+        List<String> pendingQuestions = nextIndex >= draft.pendingQuestions().size()
+            ? List.of()
+            : draft.pendingQuestions();
+        return saveTaskDraft(draft
+            .withNotes(appendAnswerNote(draft.notes(), draft.currentQuestion(), answer, notes))
+            .withPendingQuestions(pendingQuestions, pendingQuestions.isEmpty() ? 0 : nextIndex));
+    }
+
+    public PlanDefinition markTaskReadyForApproval(String conversationId) {
+        PlanDefinition draft = requireTaskDraft(conversationId, "task_ready_for_approval");
+        if (draft.hasPendingQuestion()) {
+            throw new IllegalStateException("task_ready_for_approval requires all queued questions to be answered");
+        }
+        validateTaskComplete(draft, "task_ready_for_approval");
+        return saveTaskDraft(draft
+            .withStatus(PlanStatus.READY_FOR_APPROVAL)
+            .withPlanningTask("approval")
+            .withPendingQuestions(List.of(), 0));
+    }
+
+    public PlanDefinition approveDraft(String conversationId) {
+        PlanDefinition draft = requireTaskDraft(conversationId, "approve task");
+        validateTaskComplete(draft, "approve task");
+        PlanDefinition task = saveTask(draft);
+        saveTaskDraft(draft
+            .withStatus(PlanStatus.APPROVED)
+            .withPlanningTask("approved")
+            .withPendingQuestions(List.of(), 0));
+        return task;
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  Plan run operations (unified)
+    // ════════════════════════════════════════════════════════════════
+
+    public PlanRun startRun(String planId, Map<String, Object> inputValues) {
+        PlanDefinition definition = planRepository.findDefinition(planId)
+            .orElseThrow(() -> new IllegalStateException("Plan/task not found: " + planId));
+        Map<String, Object> cleanInputs = cleanMap(inputValues);
+        List<String> missing = missingRequiredInputs(definition, cleanInputs);
+        if (!missing.isEmpty()) {
+            throw new IllegalArgumentException("Missing required input(s): " + String.join(", ", missing));
+        }
+        Instant now = Instant.now();
+        String runId = UUID.randomUUID().toString();
+
+        // Allocate workspace directories
+        String tempWorkspacePath = null;
+        String outputDirectoryPath = null;
+        if (workspaceDirectoryService != null) {
+            try {
+                Path tempDir = workspaceDirectoryService.taskTemp(runId);
+                tempWorkspacePath = tempDir.toString();
+                String slug = slugFromTitle(definition.title());
+                Path outputDir;
+                if (definition.kind() == PlanKind.TASK_TEMPLATE) {
+                    // TASK_TEMPLATE outputs go under agent or generic path
+                    outputDir = workspaceDirectoryService.agentOutput("system", slug, runId);
+                } else {
+                    // SESSION_PLAN outputs go under agent or generic path
+                    outputDir = workspaceDirectoryService.agentOutput("system", slug, runId);
+                }
+                outputDirectoryPath = outputDir.toString();
+                log.info("Allocated temp={} output={} for run={}", tempWorkspacePath, outputDirectoryPath, runId);
+            } catch (Exception e) {
+                log.error("Failed to allocate workspace directories for run={}: {}", runId, e.getMessage());
+                // Continue without workspace dirs — execution will fail at Docker level
+            }
+        }
+
+        return planRepository.saveRun(new PlanRun(
+            runId,
+            definition.id(),
+            PlanRunStatus.RUNNING,
+            cleanInputs,
+            Map.of(),
+            definition,
+            null,
+            outputDirectoryPath,
+            List.of(definition.kind() == PlanKind.TASK_TEMPLATE ? "Task run started." : "Plan execution started."),
+            List.of(),
+            List.of(),
+            null,
+            null,
+            now,
+            now,
+            now,
+            null
+        ));
+    }
+
+    public PlanRun startChatExecution(String conversationId, String planId, Map<String, Object> inputValues) {
+        PlanRun run = startRun(planId, inputValues);
+        registerExecutionContext(conversationId, run.id());
+        return run;
+    }
+
+    public void registerExecutionContext(String conversationId, String runId) {
+        if (!StringUtils.hasText(conversationId) || !StringUtils.hasText(runId)) {
+            throw new IllegalArgumentException("conversationId and runId are required");
+        }
+        PlanRun run = requireRun(runId);
+        if (run.status() != PlanRunStatus.RUNNING) {
+            throw new IllegalStateException("Plan run is not active: " + runId);
+        }
+        executionRunsByConversationId.put(conversationId, runId);
+        if (chatSessionMetadataRepository != null) {
+            chatSessionMetadataRepository.saveActiveTaskRunId(conversationId, runId);
+        }
+    }
+
+    public void clearExecutionContext(String conversationId) {
+        if (StringUtils.hasText(conversationId)) {
+            executionRunsByConversationId.remove(conversationId);
+            if (chatSessionMetadataRepository != null) {
+                chatSessionMetadataRepository.clearActiveTaskRunId(conversationId);
+            }
+        }
+    }
+
+    public String runIdForConversation(String conversationId) {
+        return activeRunId(conversationId);
+    }
+
+    public String runFinalMessage(String runId) {
+        return requireRun(runId).finalMessage();
+    }
+
+    public PlanRun recordRunReport(String runId, String summary, List<String> evidence) {
+        PlanRun run = requireRun(runId);
+        if (run.status() != PlanRunStatus.RUNNING) {
+            throw new IllegalStateException("report is available only while a run is active");
+        }
+        List<String> entries = new ArrayList<>(run.executionEvidence());
+        String normalizedSummary = normalize(summary);
+        if (normalizedSummary != null) {
+            entries.add("Summary: " + normalizedSummary);
+        }
+        for (String value : cleanList(evidence)) {
+            entries.add("Evidence: " + value);
+        }
+        return planRepository.saveRun(run.withExecutionEvidence(entries));
+    }
+
+    public PlanRun completeRun(String runId, Map<String, Object> outputValues, String finalMessage, List<String> evidence) {
+        return completeRun(runId, outputValues, finalMessage, evidence, List.of());
+    }
+
+    public PlanRun completeRun(String runId, Map<String, Object> outputValues, String finalMessage,
+                                List<String> evidence, List<String> deliverableEvidence) {
+        PlanRun run = requireRun(runId);
+        if (run.status() != PlanRunStatus.RUNNING) {
+            throw new IllegalStateException("complete is available only while a run is active");
+        }
+        PlanDefinition task = run.planSnapshot();
+        Map<String, Object> cleanOutputs = cleanMap(outputValues);
+        List<String> missing = missingRequiredOutputs(task, cleanOutputs);
+        if (!missing.isEmpty()) {
+            throw new IllegalArgumentException("Missing required output(s): " + String.join(", ", missing));
+        }
+
+        // Materialize outputs to the output directory
+        materializeRunOutputs(run, cleanOutputs, task);
+
+        List<String> entries = new ArrayList<>(run.executionEvidence());
+        entries.addAll(cleanList(evidence).stream().map(value -> "Evidence: " + value).toList());
+        if (entries.isEmpty()) {
+            entries.add("Summary: plan/task completed.");
+        }
+
+        PlanRun completed = planRepository.saveRun(run
+            .withStatus(PlanRunStatus.COMPLETED)
+            .withOutputValues(cleanOutputs)
+            .withExecutionEvidence(entries)
+            .withDeliverableEvidence(cleanList(deliverableEvidence))
+            .withFinalMessage(normalize(finalMessage))
+            .withCompletedAt(Instant.now()));
+
+        // Clean up temp dir (never delete output dir)
+        cleanupTempForRun(run);
+
+        return completed;
+    }
+
+    public PlanRun failRun(String runId, String errorText) {
+        PlanRun run = requireRun(runId);
+        PlanRun failed = planRepository.saveRun(run
+            .withStatus(PlanRunStatus.FAILED)
+            .withErrorText(normalize(errorText))
+            .withCompletedAt(Instant.now()));
+        cleanupTempForRun(run);
+        return failed;
+    }
+
+    public PlanRun markRunNeedsReview(String runId, String reason) {
+        PlanRun run = requireRun(runId);
+        List<String> feedback = new ArrayList<>(run.validationFeedback());
+        String normalizedReason = normalize(reason);
+        if (normalizedReason != null) {
+            feedback.add(normalizedReason);
+        }
+        PlanRun reviewed = planRepository.saveRun(run
+            .withStatus(PlanRunStatus.NEEDS_REVIEW)
+            .withValidationFeedback(feedback)
+            .withCompletedAt(Instant.now()));
+        cleanupTempForRun(run);
+        return reviewed;
+    }
+
+    public PlanRun markActiveRunNeedsReview(String conversationId, String reason) {
+        String runId = activeRunId(conversationId);
+        if (!StringUtils.hasText(runId)) {
+            throw new IllegalStateException("No active plan run exists for this conversation");
+        }
+        try {
+            return markRunNeedsReview(runId, reason);
+        } finally {
+            clearExecutionContext(conversationId);
+        }
+    }
+
+    public PlanRun failActiveRun(String conversationId, String errorText) {
+        String runId = activeRunId(conversationId);
+        if (!StringUtils.hasText(runId)) {
+            throw new IllegalStateException("No active plan run exists for this conversation");
+        }
+        try {
+            return failRun(runId, errorText);
+        } finally {
+            clearExecutionContext(conversationId);
+        }
+    }
+
+    public PlanRun getRun(String runId) {
+        return requireRun(runId);
+    }
+
+    public List<PlanRun> listRuns(String planId) {
+        return planRepository.findRunsByPlanId(planId);
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  Runtime instructions
+    // ════════════════════════════════════════════════════════════════
+
     public String runtimeInstructions(String conversationId) {
-        return planRepository.find(conversationId)
-            .map(this::runtimeInstructions)
-            .orElse("");
+        // Check for active task run
+        String runId = activeRunId(conversationId);
+        if (StringUtils.hasText(runId)) {
+            PlanRun run = planRepository.findRun(runId).orElse(null);
+            if (run != null && run.status() == PlanRunStatus.RUNNING) {
+                return executionInstructions(run);
+            }
+        }
+        PlanDefinition def = planRepository.findDefinition(conversationId).orElse(null);
+        if (def == null) {
+            def = planRepository.findDefinitionByConversationId(conversationId).orElse(null);
+        }
+        if (def == null) {
+            return "";
+        }
+        if (def.kind() == PlanKind.TASK_TEMPLATE && def.status() != PlanStatus.APPROVED) {
+            return taskDraftInstructions(def);
+        }
+        if (def.kind() == PlanKind.SESSION_PLAN && def.status() == PlanStatus.EXECUTING) {
+            return planExecutionInstructions(def);
+        }
+        if (def.kind() == PlanKind.SESSION_PLAN && def.status() != PlanStatus.APPROVED
+            && def.status() != PlanStatus.COMPLETED && def.status() != PlanStatus.CANCELLED) {
+            return planningInstructions(def);
+        }
+        return "";
+    }
+
+    public ChatPlanState view(String conversationId) {
+        PlanDefinition def = planRepository.findDefinition(conversationId).orElse(null);
+        if (def == null) {
+            def = planRepository.findDefinitionByConversationId(conversationId).orElse(null);
+        }
+        if (def == null) {
+            return ChatPlanState.normal();
+        }
+        String approvalMarkdown = def.status() == PlanStatus.READY_FOR_APPROVAL ? approvalMarkdown(def) : null;
+        return new ChatPlanState(
+            def.kind() == PlanKind.TASK_TEMPLATE ? "TASK" : "PLAN",
+            def.status().name(),
+            def.planningTask(),
+            def.title(),
+            def.summary(),
+            def.goal(),
+            def.notes(),
+            def.deliverables(),
+            inputNames(def.inputs()),
+            outputNames(def.outputs()),
+            def.assumptions(),
+            def.steps().stream().map(PlanStep::text).toList(),
+            def.validationCriteria(),
+            def.executionEvidence(),
+            def.validationFeedback(),
+            def.hasPendingQuestion() ? "questions" : null,
+            def.currentQuestion(),
+            List.of(),
+            def.hasPendingQuestion() ? def.pendingQuestionIndex() + 1 : 0,
+            def.hasPendingQuestion() ? def.pendingQuestions().size() : 0,
+            approvalMarkdown,
+            approvalMarkdown == null ? null : markdownRenderer.render(approvalMarkdown)
+        );
     }
 
     public String approvalMarkdown(String conversationId) {
-        ExecutionPlan plan = requirePlanConversation(conversationId);
+        PlanDefinition plan = requirePlanConversation(conversationId, "approval markdown");
         return plan.hasSavedPlan() ? approvalMarkdown(plan) : null;
     }
 
-    public String approvalMarkdown(ExecutionPlan plan) {
+    public String approvalMarkdown(PlanDefinition plan) {
         StringBuilder builder = new StringBuilder();
         builder.append("# ").append(planTitle(plan)).append("\n\n");
         appendMarkdownValue(builder, "Goal", plan.goal());
         appendMarkdownValue(builder, "Summary", plan.summary());
-        appendMarkdownList(builder, "Deliverables", effectiveDeliverables(plan));
-        appendMarkdownList(builder, "Inputs", plan.inputs());
+        appendMarkdownList(builder, "Deliverables", plan.deliverables());
+        if (!plan.inputs().isEmpty()) {
+            builder.append("## Inputs\n\n");
+            for (PlanFieldDefinition input : plan.inputs()) {
+                builder.append("- ").append(fieldSummary(input)).append("\n");
+            }
+            builder.append("\n");
+        }
+        if (!plan.outputs().isEmpty()) {
+            builder.append("## Outputs\n\n");
+            for (PlanFieldDefinition output : plan.outputs()) {
+                builder.append("- ").append(fieldSummary(output)).append("\n");
+            }
+            builder.append("\n");
+        }
         appendMarkdownList(builder, "Assumptions", plan.assumptions());
         appendMarkdownValue(builder, "Notes", plan.notes());
         if (!plan.steps().isEmpty()) {
@@ -425,21 +976,15 @@ public class PlanService {
             }
             builder.append("\n");
         }
-        appendMarkdownList(builder, "Validation Criteria", plan.acceptanceCriteria());
+        appendMarkdownList(builder, "Validation Criteria", plan.validationCriteria());
         return builder.toString().trim();
     }
 
-    private String runtimeInstructions(ExecutionPlan plan) {
-        if (plan.mode() == PlanMode.PLAN) {
-            return planningInstructions(plan);
-        }
-        if (plan.mode() == PlanMode.EXECUTE_PLAN && plan.hasSavedPlan()) {
-            return executionInstructions(plan);
-        }
-        return "";
-    }
+    // ════════════════════════════════════════════════════════════════
+    //  Prompt instructions (package-private for tool access)
+    // ════════════════════════════════════════════════════════════════
 
-    private String planningInstructions(ExecutionPlan plan) {
+    String planningInstructions(PlanDefinition plan) {
         StringBuilder builder = new StringBuilder();
         builder.append("""
 You are Magenta in PLAN mode.
@@ -482,7 +1027,7 @@ Runtime planning state:
 Mode: PLAN
 Status: """).append(" ").append(plan.status().name()).append("\n");
         appendValue(builder, "Current planning task", plan.planningTask());
-        appendPlanState(builder, plan);
+        appendDefinitionState(builder, plan);
         if (plan.hasPendingQuestion()) {
             appendValue(builder, "Pending question", plan.currentQuestion());
             builder.append("Pending question progress: ")
@@ -494,7 +1039,7 @@ Status: """).append(" ").append(plan.status().name()).append("\n");
         return builder.toString().trim();
     }
 
-    private String executionInstructions(ExecutionPlan plan) {
+    String planExecutionInstructions(PlanDefinition plan) {
         StringBuilder builder = new StringBuilder();
         builder.append("""
 You are Magenta executing an approved plan in a fresh chat context.
@@ -516,226 +1061,170 @@ Approved plan:
 
 """).append(approvalMarkdown(plan)).append("\n\n");
         appendList(builder, "Prior validation feedback to address", plan.validationFeedback());
+        builder.append("\n\n").append(dockerRuntimeContext());
         return builder.toString().trim();
     }
 
-    private void appendPlanState(StringBuilder builder, ExecutionPlan plan) {
-        appendValue(builder, "Goal", plan.goal());
-        appendValue(builder, "Title", plan.title());
-        appendValue(builder, "Summary", plan.summary());
-        appendList(builder, "Deliverables", plan.deliverables());
-        appendList(builder, "Inputs", plan.inputs());
-        appendList(builder, "Outputs", plan.outputs());
-        appendList(builder, "Assumptions", plan.assumptions());
-        appendValue(builder, "Notes", plan.notes());
-        appendSteps(builder, plan.steps());
-        appendList(builder, "Validation criteria", plan.acceptanceCriteria());
-        appendList(builder, "Validation feedback", plan.validationFeedback());
+    String taskDraftInstructions(PlanDefinition draft) {
+        StringBuilder builder = new StringBuilder("""
+            You are Magenta in TASK mode.
+
+            Your job is to create a reusable task definition, not to execute one-off work.
+            Tasks use typed runtime inputs, such as <Topic> or <SourceFile>, as placeholders for values supplied when the task runs.
+            First confirm proposed input definitions with ask_user_questions before persisting them.
+            Define concrete named outputs for workflow chaining. Named outputs are the reusable task's deliverables for downstream workflow binding.
+
+            Required terminal states for every TASK-mode turn:
+            - Queue one to five focused questions with ask_user_questions, or
+            - Mark a complete draft with task_ready_for_approval.
+
+            Tool rules:
+            - Use task_set_goal, task_set_task, task_put_item, task_delete_item, and task_ready_for_approval.
+            - task_put_item sections: input, output, assumption, note, step, validation_criterion.
+            - Inputs and outputs require name, type, description, required, schema, and example fields.
+            - Do not ask for concrete runtime values during task creation; ask only what the reusable task should accept.
+
+            Runtime task draft:
+            """.stripIndent());
+        appendValue(builder, "Status", draft.status().name());
+        appendValue(builder, "Current task", draft.planningTask());
+        appendValue(builder, "Title", draft.title());
+        appendValue(builder, "Goal", draft.goal());
+        appendValue(builder, "Summary", draft.summary());
+        appendList(builder, "Inputs", draft.inputs().stream().map(this::fieldSummary).toList());
+        appendList(builder, "Outputs", draft.outputs().stream().map(this::fieldSummary).toList());
+        appendList(builder, "Assumptions", draft.assumptions());
+        appendList(builder, "Steps", draft.steps().stream().map(step -> step.order() + ". " + step.text()).toList());
+        appendList(builder, "Validation criteria", draft.validationCriteria());
+        if (draft.hasPendingQuestion()) {
+            appendValue(builder, "Pending question", draft.currentQuestion());
+            appendValue(builder, "Pending question progress", (draft.pendingQuestionIndex() + 1) + "/" + draft.pendingQuestions().size());
+        }
+        return builder.toString().trim();
     }
 
-    private ChatPlanState view(ExecutionPlan plan) {
-        String approvalMarkdown = plan.status() == PlanStatus.READY_FOR_APPROVAL ? approvalMarkdown(plan) : null;
-        return new ChatPlanState(
-            plan.mode().name(),
-            plan.status().name(),
-            plan.planningTask(),
-            plan.title(),
-            plan.summary(),
-            plan.goal(),
-            plan.notes(),
-            plan.deliverables(),
-            plan.inputs(),
-            plan.outputs(),
-            plan.assumptions(),
-            plan.steps().stream().map(PlanStep::text).toList(),
-            plan.acceptanceCriteria(),
-            plan.executionEvidence(),
-            plan.validationFeedback(),
-            plan.hasPendingQuestion() ? "questions" : null,
-            plan.currentQuestion(),
-            List.of(),
-            plan.hasPendingQuestion() ? plan.pendingQuestionIndex() + 1 : 0,
-            plan.hasPendingQuestion() ? plan.pendingQuestions().size() : 0,
-            approvalMarkdown,
-            approvalMarkdown == null ? null : markdownRenderer.render(approvalMarkdown)
-        );
+    String executionInstructions(PlanRun run) {
+        StringBuilder builder = new StringBuilder("""
+            You are Magenta executing a reusable task in an isolated task-run context.
+
+            Use the concrete runtime input values below. Record useful evidence with task_report while working.
+            Complete only by calling task_complete with outputValues keyed exactly by declared output name.
+            Missing required declared outputs are rejected.
+
+            Task snapshot:
+            """.stripIndent());
+        PlanDefinition task = run.planSnapshot();
+        appendValue(builder, "Run id", run.id());
+        appendValue(builder, "Title", task.title());
+        appendValue(builder, "Goal", task.goal());
+        appendList(builder, "Inputs", run.inputValues().entrySet().stream()
+            .map(entry -> entry.getKey() + ": " + entry.getValue())
+            .toList());
+        appendList(builder, "Declared outputs", task.outputs().stream().map(this::fieldSummary).toList());
+        appendList(builder, "Steps", task.steps().stream().map(step -> step.order() + ". " + step.text()).toList());
+        appendList(builder, "Validation criteria", task.validationCriteria());
+        builder.append("\n\n").append(dockerRuntimeContext());
+        return builder.toString().trim();
     }
 
-    private ExecutionPlan requireSavedPlan(String conversationId) {
-        ExecutionPlan plan = requirePlanConversation(conversationId);
+    // ════════════════════════════════════════════════════════════════
+    //  Private helpers
+    // ════════════════════════════════════════════════════════════════
+
+    private PlanDefinition requirePlanMode(String conversationId, String action) {
+        PlanDefinition plan = requirePlanConversation(conversationId, action);
+        if (plan.kind() != PlanKind.SESSION_PLAN || plan.status() == PlanStatus.APPROVED
+            || plan.status() == PlanStatus.COMPLETED || plan.status() == PlanStatus.CANCELLED
+            || plan.status() == PlanStatus.SAVED_TASK) {
+            throw new IllegalStateException(action + " is available only in plan mode");
+        }
+        return plan;
+    }
+
+    private PlanDefinition requirePlanConversation(String conversationId, String action) {
+        return planRepository.findDefinition(conversationId)
+            .orElseThrow(() -> new IllegalStateException("No plan exists for this conversation"));
+    }
+
+    private PlanDefinition requireSavedPlan(String conversationId) {
+        PlanDefinition plan = requirePlanConversation(conversationId, "saved plan operations");
         if (!plan.hasSavedPlan()) {
             throw new IllegalStateException("No saved plan exists for this conversation");
         }
         return plan;
     }
 
-    private ExecutionPlan requirePlanMode(String conversationId, String action) {
-        ExecutionPlan plan = requirePlanConversation(conversationId);
-        if (plan.mode() != PlanMode.PLAN) {
-            throw new IllegalStateException(action + " is available only in plan mode");
+    private PlanDefinition requireTaskDraft(String conversationId, String action) {
+        PlanDefinition draft = planRepository.findDefinitionByConversationId(conversationId)
+            .orElseThrow(() -> new IllegalStateException("No task draft exists for this conversation"));
+        if (draft.status() == PlanStatus.APPROVED) {
+            throw new IllegalStateException(action + " is not available after task approval");
         }
-        return plan;
+        return draft;
     }
 
-    private ExecutionPlan requirePlanConversation(String conversationId) {
-        return planRepository.find(conversationId)
-            .orElseThrow(() -> new IllegalStateException("No plan exists for this conversation"));
+    private PlanDefinition saveTaskDraft(PlanDefinition draft) {
+        return planRepository.saveDefinition(draft);
     }
 
-    private ExecutionPlan copyWith(
-        ExecutionPlan plan,
-        PlanMode mode,
-        PlanStatus status,
-        List<String> pendingQuestions,
-        int pendingQuestionIndex
-    ) {
-        return plan
-            .withModeStatus(mode, status)
-            .withPlanningTask(status == PlanStatus.READY_FOR_APPROVAL ? "approval" : plan.planningTask())
-            .withPendingQuestions(pendingQuestions, pendingQuestionIndex);
+    private PlanRun requireRun(String runId) {
+        return planRepository.findRun(runId)
+            .orElseThrow(() -> new IllegalStateException("Plan run not found: " + runId));
     }
 
-    private ExecutionPlan saveWithPlanningTask(ExecutionPlan plan, String planningTask) {
-        return planRepository.save(plan.withPlanningTask(planningTask));
+    private String activeRunId(String conversationId) {
+        if (!StringUtils.hasText(conversationId)) {
+            return null;
+        }
+        String cached = executionRunsByConversationId.get(conversationId);
+        if (StringUtils.hasText(cached) && isActiveRun(cached)) {
+            return cached;
+        }
+        if (StringUtils.hasText(cached)) {
+            executionRunsByConversationId.remove(conversationId);
+        }
+        if (chatSessionMetadataRepository == null) {
+            return null;
+        }
+        String stored = chatSessionMetadataRepository.findActiveTaskRunId(conversationId).orElse(null);
+        if (!StringUtils.hasText(stored)) {
+            return null;
+        }
+        if (isActiveRun(stored)) {
+            executionRunsByConversationId.put(conversationId, stored);
+            return stored;
+        }
+        chatSessionMetadataRepository.clearActiveTaskRunId(conversationId);
+        return null;
     }
 
-    private ExecutionPlan saveWithSection(
-        ExecutionPlan plan,
-        PlanSection section,
-        int key,
-        String text,
-        boolean delete
-    ) {
-        return planRepository.save(new ExecutionPlan(
-            plan.conversationId(),
-            plan.mode(),
-            plan.status(),
-            nextTaskAfterSection(plan, section),
-            plan.goal(),
-            plan.title(),
-            plan.summary(),
+    private boolean isActiveRun(String runId) {
+        return planRepository.findRun(runId)
+            .map(run -> run.status() == PlanRunStatus.RUNNING)
+            .orElse(false);
+    }
+
+    private PlanDefinition withSection(PlanDefinition plan, PlanSection section, int key, String text, PlanFieldDefinition field, boolean delete) {
+        return new PlanDefinition(
+            plan.id(), plan.kind(), plan.status(),
+            plan.title(), plan.summary(), plan.goal(),
             section == PlanSection.NOTE ? keyedNoteText(plan.notes(), key, text, delete) : plan.notes(),
             section == PlanSection.DELIVERABLE ? keyedList(plan.deliverables(), key, text, delete) : plan.deliverables(),
-            section == PlanSection.INPUT ? keyedList(plan.inputs(), key, text, delete) : plan.inputs(),
-            section == PlanSection.OUTPUT ? keyedList(plan.outputs(), key, text, delete) : plan.outputs(),
+            section == PlanSection.INPUT ? keyedFields(plan.inputs(), key, field, delete) : plan.inputs(),
+            section == PlanSection.OUTPUT ? keyedFields(plan.outputs(), key, field, delete) : plan.outputs(),
             section == PlanSection.ASSUMPTION ? keyedList(plan.assumptions(), key, text, delete) : plan.assumptions(),
             section == PlanSection.STEP ? keyedSteps(plan.steps(), key, text, delete) : plan.steps(),
-            section == PlanSection.VALIDATION_CRITERION
-                ? keyedList(plan.acceptanceCriteria(), key, text, delete)
-                : plan.acceptanceCriteria(),
-            plan.executionEvidence(),
-            plan.validationFeedback(),
-            plan.prePlanningModel(),
-            plan.executionModel(),
-            plan.pendingQuestions(),
-            plan.pendingQuestionIndex(),
-            plan.planStartMessageOrder(),
-            plan.finalMessage(),
-            plan.createdAt(),
-            Instant.now()
-        ));
+            section == PlanSection.VALIDATION_CRITERION ? keyedList(plan.validationCriteria(), key, text, delete) : plan.validationCriteria(),
+            plan.executionEvidence(), plan.validationFeedback(),
+            plan.promptProfile(), plan.planningModel(), plan.executionModel(), plan.settingsOverrideJson(),
+            nextTaskAfterSection(plan, section),
+            plan.pendingQuestions(), plan.pendingQuestionIndex(),
+            plan.planStartMessageOrder(), plan.finalMessage(), plan.conversationId(),
+            plan.createdAt(), Instant.now()
+        );
     }
 
-    private int requirePositiveKey(Integer key, String toolName) {
-        if (key == null || key < 1) {
-            throw new IllegalArgumentException(toolName + " requires a positive integer key");
-        }
-        return key;
-    }
-
-    private List<String> keyedList(List<String> values, int key, String text, boolean delete) {
-        List<String> updated = new ArrayList<>(values == null ? List.of() : values);
-        int index = key - 1;
-        if (delete) {
-            if (index < updated.size()) {
-                updated.remove(index);
-            }
-            return List.copyOf(updated);
-        }
-        while (updated.size() < index) {
-            updated.add("");
-        }
-        if (index < updated.size()) {
-            updated.set(index, text);
-        } else {
-            updated.add(text);
-        }
-        return updated.stream()
-            .map(this::normalize)
-            .filter(value -> value != null)
-            .toList();
-    }
-
-    private List<PlanStep> keyedSteps(List<PlanStep> steps, int key, String text, boolean delete) {
-        List<PlanStep> updated = new ArrayList<>(steps == null ? List.of() : steps);
-        updated.removeIf(step -> step.order() == key);
-        if (!delete) {
-            String normalized = normalize(text);
-            if (normalized != null) {
-                updated.add(new PlanStep(key, normalized));
-            }
-        }
-        return updated.stream()
-            .sorted(java.util.Comparator.comparingInt(PlanStep::order))
-            .toList();
-    }
-
-    private String keyedNoteText(String notes, int key, String text, boolean delete) {
-        List<String> updated = keyedList(noteLines(notes), key, text, delete);
-        return updated.isEmpty() ? null : String.join("\n", updated);
-    }
-
-    private List<String> noteLines(String notes) {
-        if (!StringUtils.hasText(notes)) {
-            return List.of();
-        }
-        return notes.lines()
-            .map(this::normalize)
-            .filter(value -> value != null)
-            .toList();
-    }
-
-    private String nextTaskAfterGoal(ExecutionPlan plan) {
-        return plan.deliverables().isEmpty() && plan.outputs().isEmpty()
-            ? "define_deliverables"
-            : "collect_user_guidance";
-    }
-
-    private String nextTaskAfterSection(ExecutionPlan plan, PlanSection section) {
-        if (section == PlanSection.DELIVERABLE || section == PlanSection.OUTPUT) {
-            return "collect_user_guidance";
-        }
-        if (section == PlanSection.ASSUMPTION || section == PlanSection.NOTE || section == PlanSection.INPUT) {
-            return "clarify_and_elaborate";
-        }
-        if (section == PlanSection.STEP) {
-            return "build_plan_steps";
-        }
-        if (section == PlanSection.VALIDATION_CRITERION) {
-            return "approval_readiness";
-        }
-        return plan.planningTask();
-    }
-
-    private String titleFromGoal(String goal) {
-        String compact = goal.trim().replaceAll("\\s+", " ");
-        if (compact.length() <= 64) {
-            return "Plan for " + compact;
-        }
-        return "Plan for " + compact.substring(0, 64).replaceAll("\\s+\\S*$", "").trim();
-    }
-
-    private String planTitle(ExecutionPlan plan) {
-        if (StringUtils.hasText(plan.title())) {
-            return plan.title();
-        }
-        if (StringUtils.hasText(plan.goal())) {
-            return titleFromGoal(plan.goal());
-        }
-        return "New Plan";
-    }
-
-    private void validateComplete(ExecutionPlan plan, String action) {
+    private void validateComplete(PlanDefinition plan, String action) {
         if (!StringUtils.hasText(plan.goal())) {
             throw new IllegalArgumentException(action + " requires a goal");
         }
@@ -745,10 +1234,177 @@ Approved plan:
         if (plan.steps().isEmpty()) {
             throw new IllegalArgumentException(action + " requires at least one step");
         }
-        if (plan.acceptanceCriteria().isEmpty()) {
+        if (plan.validationCriteria().isEmpty()) {
             throw new IllegalArgumentException(action + " requires at least one validation criterion");
         }
     }
+
+    private void validateTaskComplete(PlanDefinition draft, String action) {
+        if (!StringUtils.hasText(draft.title())) {
+            throw new IllegalArgumentException(action + " requires a title");
+        }
+        if (!StringUtils.hasText(draft.goal())) {
+            throw new IllegalArgumentException(action + " requires a goal");
+        }
+        if (draft.outputs().isEmpty()) {
+            throw new IllegalArgumentException(action + " requires at least one named output");
+        }
+        if (draft.steps().isEmpty()) {
+            throw new IllegalArgumentException(action + " requires at least one step");
+        }
+        if (draft.validationCriteria().isEmpty()) {
+            throw new IllegalArgumentException(action + " requires at least one validation criterion");
+        }
+    }
+
+    private void validateFieldNames(List<PlanFieldDefinition> fields, String label) {
+        java.util.Set<String> names = new java.util.HashSet<>();
+        for (PlanFieldDefinition field : cleanFields(fields)) {
+            if (!names.add(field.name())) {
+                throw new IllegalArgumentException("Duplicate " + label + " name: " + field.name());
+            }
+            if (field.required() && !StringUtils.hasText(field.description())) {
+                throw new IllegalArgumentException(
+                    "Required " + label + " '" + field.name() + "' must have a description");
+            }
+            if (StringUtils.hasText(field.schema())) {
+                try {
+                    com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                    mapper.readTree(field.schema());
+                } catch (Exception e) {
+                    throw new IllegalArgumentException(
+                        "Invalid JSON schema for " + label + " '" + field.name() + "': " + e.getMessage());
+                }
+            }
+        }
+    }
+
+    private List<String> missingRequiredInputs(PlanDefinition task, Map<String, Object> values) {
+        return task.inputs().stream()
+            .filter(PlanFieldDefinition::required)
+            .filter(field -> !values.containsKey(field.name()) || values.get(field.name()) == null
+                || (values.get(field.name()) instanceof String text && !StringUtils.hasText(text)))
+            .map(PlanFieldDefinition::name)
+            .toList();
+    }
+
+    private List<String> missingRequiredOutputs(PlanDefinition task, Map<String, Object> values) {
+        return task.outputs().stream()
+            .filter(PlanFieldDefinition::required)
+            .filter(field -> !values.containsKey(field.name()) || values.get(field.name()) == null
+                || (values.get(field.name()) instanceof String text && !StringUtils.hasText(text)))
+            .map(PlanFieldDefinition::name)
+            .toList();
+    }
+
+    private PlanFieldDefinition fieldByName(List<PlanFieldDefinition> fields, String name) {
+        if (!StringUtils.hasText(name)) return null;
+        return fields.stream().filter(field -> name.equals(field.name())).findFirst().orElse(null);
+    }
+
+    private List<String> effectiveDeliverables(PlanDefinition plan) {
+        List<String> values = new ArrayList<>(plan.deliverables());
+        for (PlanFieldDefinition output : plan.outputs()) {
+            String name = output.name();
+            if (!values.contains(name)) {
+                values.add(name);
+            }
+        }
+        return List.copyOf(values);
+    }
+
+    private List<PlanStep> orderedSteps(List<String> steps) {
+        List<PlanStep> ordered = new ArrayList<>();
+        for (String raw : steps == null ? List.<String>of() : steps) {
+            String step = normalize(raw);
+            if (step != null) {
+                ordered.add(new PlanStep(ordered.size() + 1, step));
+            }
+        }
+        return List.copyOf(ordered);
+    }
+
+    // ── Section helpers ──
+
+    private List<String> keyedList(List<String> values, int key, String text, boolean delete) {
+        List<String> updated = new ArrayList<>(values);
+        int index = key - 1;
+        if (delete) {
+            if (index < updated.size()) updated.remove(index);
+            return List.copyOf(updated);
+        }
+        while (updated.size() < index) updated.add("");
+        if (index < updated.size()) updated.set(index, text);
+        else updated.add(text);
+        return updated.stream().map(this::normalize).filter(v -> v != null).toList();
+    }
+
+    private List<PlanStep> keyedSteps(List<PlanStep> steps, int key, String text, boolean delete) {
+        List<PlanStep> updated = new ArrayList<>(steps);
+        updated.removeIf(step -> step.order() == key);
+        if (!delete) {
+            String normalized = normalize(text);
+            if (normalized != null) updated.add(new PlanStep(key, normalized));
+        }
+        return updated.stream().sorted(Comparator.comparingInt(PlanStep::order)).toList();
+    }
+
+    private List<PlanFieldDefinition> keyedFields(List<PlanFieldDefinition> values, int key, PlanFieldDefinition field, boolean delete) {
+        List<PlanFieldDefinition> updated = new ArrayList<>(values);
+        int index = key - 1;
+        if (delete) {
+            if (index < updated.size()) updated.remove(index);
+            return List.copyOf(updated);
+        }
+        while (updated.size() < index) {
+            updated.add(new PlanFieldDefinition("field_" + (updated.size() + 1), PlanFieldType.STRING, false, null, false, null, null));
+        }
+        if (index < updated.size()) updated.set(index, field);
+        else updated.add(field);
+        return cleanFields(updated);
+    }
+
+    private String keyedNoteText(String notes, int key, String text, boolean delete) {
+        List<String> updated = keyedList(noteLines(notes), key, text, delete);
+        return updated.isEmpty() ? null : String.join("\n", updated);
+    }
+
+    private List<String> noteLines(String notes) {
+        if (!StringUtils.hasText(notes)) return List.of();
+        return notes.lines().map(this::normalize).filter(v -> v != null).toList();
+    }
+
+    // ── Planning task transitions ──
+
+    private String nextTaskAfterGoal(PlanDefinition plan) {
+        return plan.deliverables().isEmpty() && plan.outputs().isEmpty()
+            ? "define_deliverables" : "collect_user_guidance";
+    }
+
+    private String nextTaskAfterSection(PlanDefinition plan, PlanSection section) {
+        return switch (section) {
+            case DELIVERABLE, OUTPUT -> "collect_user_guidance";
+            case ASSUMPTION, NOTE, INPUT -> "clarify_and_elaborate";
+            case STEP -> "build_plan_steps";
+            case VALIDATION_CRITERION -> "approval_readiness";
+        };
+    }
+
+    // ── Title helpers ──
+
+    private String titleFromGoal(String goal) {
+        String compact = goal.trim().replaceAll("\\s+", " ");
+        if (compact.length() <= 64) return "Plan for " + compact;
+        return "Plan for " + compact.substring(0, 64).replaceAll("\\s+\\S*$", "").trim();
+    }
+
+    private String planTitle(PlanDefinition plan) {
+        if (StringUtils.hasText(plan.title())) return plan.title();
+        if (StringUtils.hasText(plan.goal())) return titleFromGoal(plan.goal());
+        return "Untitled Plan";
+    }
+
+    // ── Answer persistence ──
 
     private void appendPlanningAnswer(String conversationId, String question, String answer, String notes) {
         StringBuilder message = new StringBuilder();
@@ -765,26 +1421,71 @@ Approved plan:
         chatMemoryRepository.saveAll(conversationId, messages);
     }
 
-    private List<String> effectiveDeliverables(ExecutionPlan plan) {
-        List<String> values = new ArrayList<>();
-        values.addAll(plan.deliverables());
-        for (String output : plan.outputs()) {
-            if (!values.contains(output)) {
-                values.add(output);
-            }
-        }
-        return List.copyOf(values);
+    private String appendAnswerNote(String notes, String question, String answer, String answerNotes) {
+        List<String> lines = new ArrayList<>(noteLines(notes));
+        StringBuilder line = new StringBuilder("Answered: ").append(question);
+        if (StringUtils.hasText(answer)) line.append(" | ").append(answer.trim());
+        if (StringUtils.hasText(answerNotes)) line.append(" | Notes: ").append(answerNotes.trim());
+        lines.add(line.toString());
+        return String.join("\n", lines);
     }
 
-    private List<PlanStep> orderedSteps(List<String> steps) {
-        List<PlanStep> orderedSteps = new ArrayList<>();
-        for (String rawStep : steps == null ? List.<String>of() : steps) {
-            String step = normalize(rawStep);
-            if (step != null) {
-                orderedSteps.add(new PlanStep(orderedSteps.size() + 1, step));
+    // ── Clean/normalize helpers ──
+
+    private int requirePositiveKey(Integer key) {
+        if (key == null || key < 1) throw new IllegalArgumentException("A positive integer key is required");
+        return key;
+    }
+
+    private int requirePositiveKey(Integer key, String toolName) {
+        if (key == null || key < 1) throw new IllegalArgumentException(toolName + " requires a positive integer key");
+        return key;
+    }
+
+    private List<String> cleanList(List<String> values) {
+        if (values == null) return List.of();
+        return values.stream().map(this::normalize).filter(v -> v != null).toList();
+    }
+
+    private List<PlanFieldDefinition> cleanFields(List<PlanFieldDefinition> fields) {
+        if (fields == null) return List.of();
+        return fields.stream().map(this::cleanField).filter(f -> f != null).toList();
+    }
+
+    private PlanFieldDefinition cleanField(PlanFieldDefinition field) {
+        if (field == null || !StringUtils.hasText(field.name())) return null;
+        return new PlanFieldDefinition(field.name().trim(), field.type(), field.array(),
+            normalize(field.description()), field.required(),
+            normalize(field.schema()), normalize(field.example()));
+    }
+
+    private List<PlanStep> cleanSteps(List<PlanStep> steps) {
+        if (steps == null) return List.of();
+        return steps.stream()
+            .filter(step -> step != null && StringUtils.hasText(step.text()))
+            .map(step -> new PlanStep(step.order() <= 0 ? 1 : step.order(), step.text().trim()))
+            .sorted(Comparator.comparingInt(PlanStep::order))
+            .toList();
+    }
+
+    private Map<String, Object> cleanMap(Map<String, Object> values) {
+        if (values == null || values.isEmpty()) return Map.of();
+        Map<String, Object> clean = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : values.entrySet()) {
+            if (StringUtils.hasText(entry.getKey())) {
+                clean.put(entry.getKey().trim(), entry.getValue());
             }
         }
-        return List.copyOf(orderedSteps);
+        return clean;
+    }
+
+    private String normalize(String value) {
+        return PlanText.normalize(value);
+    }
+
+    private String normalizePlanningTask(String value) {
+        String normalized = normalize(value);
+        return "define_deliverables".equals(normalized) ? "define_outputs" : normalized;
     }
 
     private String choose(String value, String fallback) {
@@ -795,26 +1496,32 @@ Approved plan:
     private String mergeNotes(String existing, String addition) {
         String cleanExisting = normalize(existing);
         String cleanAddition = normalize(addition);
-        if (cleanExisting == null) {
-            return cleanAddition;
-        }
-        if (cleanAddition == null || cleanExisting.contains(cleanAddition)) {
-            return cleanExisting;
-        }
+        if (cleanExisting == null) return cleanAddition;
+        if (cleanAddition == null || cleanExisting.contains(cleanAddition)) return cleanExisting;
         return cleanExisting + "\n" + cleanAddition;
     }
 
-    private void addLabeled(List<String> entries, String label, String value) {
-        if (StringUtils.hasText(value)) {
-            entries.add(label + ": " + value);
-        }
+    private String fieldSummary(PlanFieldDefinition field) {
+        return field.name() + " (" + field.type().wireName() + (field.array() ? "[]" : "")
+            + ", required=" + field.required() + "): " + field.description();
     }
 
-    private void addLabeled(List<String> entries, String label, List<String> values) {
-        for (String value : values) {
-            entries.add(label + ": " + value);
-        }
+    private List<String> inputNames(List<PlanFieldDefinition> fields) {
+        return fields.stream().map(PlanFieldDefinition::name).toList();
     }
+
+    private List<String> outputNames(List<PlanFieldDefinition> fields) {
+        return fields.stream().map(PlanFieldDefinition::name).toList();
+    }
+
+    private List<PlanFieldDefinition> textFieldList(List<String> names) {
+        if (names == null) return List.of();
+        return names.stream()
+            .map(name -> new PlanFieldDefinition(name.trim(), PlanFieldType.STRING, false, null, false, null, null))
+            .toList();
+    }
+
+    // ── Conversation trimming ──
 
     private void trimConversation(String conversationId, int messageCount) {
         List<Message> messages = chatMemoryRepository.findByConversationId(conversationId);
@@ -822,60 +1529,169 @@ Approved plan:
         chatMemoryRepository.saveAll(conversationId, new ArrayList<>(messages.subList(0, end)));
     }
 
-    private List<String> cleanList(List<String> values) {
-        if (values == null || values.isEmpty()) {
-            return List.of();
-        }
-        return values.stream()
-            .map(this::normalize)
-            .filter(value -> value != null)
-            .toList();
+    private void addLabeled(List<String> entries, String label, String value) {
+        if (StringUtils.hasText(value)) entries.add(label + ": " + value);
     }
 
-    private String normalize(String value) {
-        return PlanText.normalize(value);
+    private void addLabeled(List<String> entries, String label, List<String> values) {
+        for (String value : values) entries.add(label + ": " + value);
     }
+
+    // ── Builder helpers ──
 
     private void appendValue(StringBuilder builder, String label, String value) {
-        if (StringUtils.hasText(value)) {
-            builder.append(label).append(": ").append(value).append("\n");
-        }
+        if (StringUtils.hasText(value)) builder.append(label).append(": ").append(value).append("\n");
     }
 
     private void appendList(StringBuilder builder, String label, List<String> values) {
-        if (values == null || values.isEmpty()) {
-            return;
-        }
+        if (values == null || values.isEmpty()) return;
         builder.append(label).append(":\n");
-        for (String value : values) {
-            builder.append("- ").append(value).append("\n");
-        }
+        for (String value : values) builder.append("- ").append(value).append("\n");
+    }
+
+    private void appendDefinitionState(StringBuilder builder, PlanDefinition plan) {
+        appendValue(builder, "Goal", plan.goal());
+        appendValue(builder, "Title", plan.title());
+        appendValue(builder, "Summary", plan.summary());
+        appendList(builder, "Deliverables", plan.deliverables());
+        appendList(builder, "Inputs", plan.inputs().stream().map(this::fieldSummary).toList());
+        appendList(builder, "Outputs", plan.outputs().stream().map(this::fieldSummary).toList());
+        appendList(builder, "Assumptions", plan.assumptions());
+        appendValue(builder, "Notes", plan.notes());
+        appendSteps(builder, plan.steps());
+        appendList(builder, "Validation criteria", plan.validationCriteria());
+        appendList(builder, "Validation feedback", plan.validationFeedback());
     }
 
     private void appendSteps(StringBuilder builder, List<PlanStep> steps) {
-        if (steps == null || steps.isEmpty()) {
-            return;
-        }
+        if (steps == null || steps.isEmpty()) return;
         builder.append("Steps:\n");
-        for (PlanStep step : steps) {
-            builder.append(step.order()).append(". ").append(step.text()).append("\n");
-        }
+        for (PlanStep step : steps) builder.append(step.order()).append(". ").append(step.text()).append("\n");
     }
 
     private void appendMarkdownValue(StringBuilder builder, String label, String value) {
-        if (StringUtils.hasText(value)) {
-            builder.append("## ").append(label).append("\n\n").append(value.trim()).append("\n\n");
-        }
+        if (StringUtils.hasText(value)) builder.append("## ").append(label).append("\n\n").append(value.trim()).append("\n\n");
     }
 
     private void appendMarkdownList(StringBuilder builder, String label, List<String> values) {
-        if (values == null || values.isEmpty()) {
+        if (values == null || values.isEmpty()) return;
+        builder.append("## ").append(label).append("\n\n");
+        for (String value : values) builder.append("- ").append(value).append("\n");
+        builder.append("\n");
+    }
+
+    // ── Workspace / Output / Cleanup helpers ──
+
+    /**
+     * Materialize output values into the run's output directory and persist
+     * artifact metadata. Called during {@link #completeRun}.
+     */
+    private void materializeRunOutputs(PlanRun run, Map<String, Object> outputs, PlanDefinition task) {
+        if (outputArtifactService == null || workspaceDirectoryService == null) {
             return;
         }
-        builder.append("## ").append(label).append("\n\n");
-        for (String value : values) {
-            builder.append("- ").append(value).append("\n");
+        if (outputs.isEmpty()) {
+            return;
         }
-        builder.append("\n");
+        String outputDirPath = run.outputDirectory();
+        if (!StringUtils.hasText(outputDirPath)) {
+            return;
+        }
+        Path outputDir = Path.of(outputDirPath);
+        Map<String, PlanFieldType> outputTypes = outputTypeMap(task.outputs());
+        try {
+            outputArtifactService.materializeAll(
+                run.id(), run.planId(), outputs, outputTypes, outputDir);
+            log.info("Materialized {} output artifacts for run={}", outputs.size(), run.id());
+        } catch (IOException e) {
+            log.error("Failed to materialize outputs for run={}: {}", run.id(), e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Delete the temp workspace directory for a terminal run.
+     * Never deletes the output directory.
+     */
+    private void cleanupTempForRun(PlanRun run) {
+        if (workspaceDirectoryService == null) {
+            return;
+        }
+        try {
+            Path tempDir = workspaceDirectoryService.taskTemp(run.id());
+            workspaceDirectoryService.deleteTempDir(tempDir);
+            log.debug("Cleaned temp dir for run={}", run.id());
+        } catch (Exception e) {
+            log.warn("Failed to clean temp dir for run={}: {}", run.id(), e.getMessage());
+        }
+    }
+
+    private String slugFromTitle(String title) {
+        if (!StringUtils.hasText(title)) {
+            return "run";
+        }
+        String slug = title.toLowerCase()
+            .replaceAll("[^a-z0-9]+", "-")
+            .replaceAll("^-+|-+$", "");
+        if (slug.length() > 48) {
+            slug = slug.substring(0, 48).replaceAll("-$", "");
+        }
+        return slug.isEmpty() ? "run" : slug;
+    }
+
+    private Map<String, PlanFieldType> outputTypeMap(List<PlanFieldDefinition> outputs) {
+        Map<String, PlanFieldType> map = new LinkedHashMap<>();
+        for (PlanFieldDefinition field : outputs) {
+            map.put(field.name(), field.type());
+        }
+        return map;
+    }
+
+    // ── Docker runtime prompt context ──
+
+    /**
+     * Returns Docker runtime context text to inject into the execution prompt.
+     * Explains mounted paths, output directory, and Python/venv practice.
+     */
+    public String dockerRuntimeContext() {
+        return """
+            ## Docker Runtime Environment
+
+            You are executing inside a Docker container. The following directories are mounted:
+
+            - /home/agent — your persistent agent home directory (writable)
+            - /workspace — the current task/workflow workspace (writable, deleted after completion)
+            - /output — the output directory for this run (writable, preserved permanently)
+
+            ### Output Directory
+
+            When completing a task, write or copy all required output files into /output.
+            The server will pick them up and persist them as run output artifacts.
+            Do NOT write deliverable files to /workspace and expect them to survive —
+            they will be deleted after the run completes.
+
+            ### Python and Virtual Environments
+
+            The container includes Python. If your task requires pip packages, create and
+            use a virtual environment to avoid polluting the system Python:
+
+            ```
+            python -m venv /workspace/.venv
+            source /workspace/.venv/bin/activate
+            pip install <packages>
+            ```
+
+            The virtual environment will be cleaned with the workspace after the run.
+            If a package set is needed across runs, coordinate with the user to install
+            it in the agent home directory.
+            """.stripIndent();
+    }
+
+    /**
+     * Returns Docker context appended to execution instructions for a run.
+     */
+    String executionInstructionsWithDocker(PlanRun run) {
+        StringBuilder builder = new StringBuilder(executionInstructions(run));
+        builder.append("\n\n").append(dockerRuntimeContext());
+        return builder.toString().trim();
     }
 }

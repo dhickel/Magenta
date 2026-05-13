@@ -2,9 +2,9 @@ package io.mindspice.magenta2.ai.chat.tool.plan;
 
 import java.util.List;
 
-import io.mindspice.magenta2.ai.chat.plan.ExecutionPlan;
 import io.mindspice.magenta2.ai.chat.plan.PlanCompletionService;
 import io.mindspice.magenta2.ai.chat.model.PlanMode;
+import io.mindspice.magenta2.ai.chat.plan.PlanDefinition;
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
 import io.mindspice.magenta2.ai.chat.plan.PlanToolContext;
 import io.mindspice.magenta2.ai.chat.plan.PlanToolExecutionContext;
@@ -59,7 +59,7 @@ public class PlanSaveTools {
         List<String> validationCriteria
     ) {
         PlanToolContext context = requireMode(PlanMode.PLAN, "plan_update");
-        ExecutionPlan plan = planService.updateDraftPlan(
+        PlanDefinition plan = planService.updateDraftPlan(
             context.conversationId(),
             goal,
             title,
@@ -96,7 +96,7 @@ public class PlanSaveTools {
         String goal
     ) {
         PlanToolContext context = requireMode(PlanMode.PLAN, "plan_set_goal");
-        ExecutionPlan plan = planService.setGoal(context.conversationId(), goal);
+        PlanDefinition plan = planService.setGoal(context.conversationId(), goal);
         return "Set plan goal: " + plan.goal();
     }
 
@@ -109,7 +109,7 @@ public class PlanSaveTools {
         String planningTask
     ) {
         PlanToolContext context = requireMode(PlanMode.PLAN, "plan_set_task");
-        ExecutionPlan plan = planService.setPlanningTask(context.conversationId(), planningTask);
+        PlanDefinition plan = planService.setPlanningTask(context.conversationId(), planningTask);
         return "Set current planning task: " + plan.planningTask();
     }
 
@@ -126,7 +126,7 @@ public class PlanSaveTools {
         String text
     ) {
         PlanToolContext context = requireMode(PlanMode.PLAN, "plan_put_item");
-        ExecutionPlan plan = planService.putItem(context.conversationId(), section, key, text);
+        PlanDefinition plan = planService.putItem(context.conversationId(), section, key, text);
         return "Updated " + section + " " + key + " for plan: " + (plan.title() == null ? "untitled" : plan.title());
     }
 
@@ -151,7 +151,7 @@ public class PlanSaveTools {
     )
     public String readyForApproval() {
         PlanToolContext context = requireMode(PlanMode.PLAN, "plan_ready_for_approval");
-        ExecutionPlan plan = planService.markReadyForApproval(context.conversationId());
+        PlanDefinition plan = planService.markReadyForApproval(context.conversationId());
         return "Plan ready for approval: " + plan.title();
     }
 
@@ -172,7 +172,7 @@ public class PlanSaveTools {
         List<String> artifactPaths
     ) {
         PlanToolContext context = requireMode(PlanMode.EXECUTE_PLAN, "plan_report");
-        ExecutionPlan plan = planService.recordExecutionReport(
+        PlanDefinition plan = planService.recordExecutionReport(
             context.conversationId(),
             summary,
             evidence,

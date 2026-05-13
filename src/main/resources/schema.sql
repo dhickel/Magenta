@@ -44,37 +44,71 @@ create unique index if not exists idx_agent_jobs_conversation_title_active
     where type = 'CONVERSATION_TITLE'
       and status in ('QUEUED', 'RUNNING', 'SUCCEEDED');
 
-create table if not exists ai_chat_plans (
-    conversation_id text primary key,
-    mode text not null,
+-- Unified plan/task definitions.
+-- SESSION_PLAN uses id = conversation_id.
+-- TASK_TEMPLATE uses a UUID id with optional conversation_id for draft tracking.
+-- Steps, inputs, outputs, assumptions, validation criteria, and evidence are
+-- stored as JSON arrays/objects in text columns.
+create table if not exists plan_definitions (
+    id text primary key,
+    kind text not null,
     status text not null,
-    planning_task text,
-    goal text,
-    title text,
+    title text not null,
     summary text,
+    goal text,
     notes text,
-    deliverables_json text,
-    inputs_json text,
-    outputs_json text,
-    assumptions_json text,
-    acceptance_criteria_json text,
-    execution_evidence_json text,
-    validation_feedback_json text,
-    pre_planning_model text,
+    deliverables_json text not null,
+    inputs_json text not null,
+    outputs_json text not null,
+    assumptions_json text not null,
+    steps_json text not null,
+    validation_criteria_json text not null,
+    execution_evidence_json text not null,
+    validation_feedback_json text not null,
+    prompt_profile text,
+    planning_model text,
+    execution_model text,
+    settings_override_json text,
+    planning_task text,
     pending_questions_json text,
     pending_question_index integer not null default 0,
-    plan_start_message_order integer not null,
+    plan_start_message_order integer not null default 0,
+    final_message text,
+    conversation_id text,
     created_at text not null,
     updated_at text not null
 );
 
-create table if not exists ai_chat_plan_steps (
-    conversation_id text not null,
-    step_order integer not null,
-    step_text text not null,
-    primary key (conversation_id, step_order),
-    foreign key (conversation_id) references ai_chat_plans(conversation_id) on delete cascade
+create index if not exists idx_plan_definitions_conversation
+    on plan_definitions (conversation_id)
+    where conversation_id is not null;
+
+-- Execution runs of plan definitions.
+-- Snapshots the full definition at start time so later edits do not mutate
+-- historical run meaning.
+create table if not exists plan_runs (
+    id text primary key,
+    plan_id text not null,
+    status text not null,
+    input_values_json text not null,
+    output_values_json text not null,
+    plan_snapshot_json text not null,
+    workspace_id text,
+    output_directory text,
+    execution_evidence_json text not null,
+    validation_feedback_json text not null,
+    deliverable_evidence_json text not null,
+    final_message text,
+    error_text text,
+    created_at text not null,
+    updated_at text not null,
+    started_at text,
+    completed_at text,
+    foreign key (plan_id) references plan_definitions(id) on delete cascade
 );
+
+create index if not exists idx_plan_runs_plan
+    on plan_runs (plan_id, created_at desc);
 
 -- Immutable append-only event log. Each row is a discrete, known event in the
 -- chat lifecycle, recorded explicitly at the point it occurs. Never deduped, never
@@ -117,95 +151,59 @@ create table if not exists audit_event (
 create unique index if not exists idx_audit_event_conversation
     on audit_event (conversation_id, sequence);
 
-create table if not exists ai_task_definitions (
+-- Workflow definitions with nodes and routes stored as JSON.
+create table if not exists workflow_definitions (
     id text primary key,
     title text not null,
     summary text,
-    goal text,
-    notes text,
-    input_description text,
-    inputs_json text,
-    output_description text,
-    outputs_json text,
-    assumptions_json text,
-    steps_json text,
-    validation_criteria_json text,
+    nodes_json text not null,
+    routes_json text not null default '[]',
     created_at text not null,
     updated_at text not null
 );
 
-create table if not exists ai_task_drafts (
-    conversation_id text primary key,
-    status text not null,
-    planning_task text,
-    title text,
-    summary text,
-    goal text,
-    notes text,
-    input_description text,
-    inputs_json text,
-    output_description text,
-    outputs_json text,
-    assumptions_json text,
-    steps_json text,
-    validation_criteria_json text,
-    pending_questions_json text,
-    pending_question_index integer not null default 0,
-    pre_planning_model text,
-    execution_model text,
-    created_task_id text,
-    created_at text not null,
-    updated_at text not null
-);
-
-create table if not exists ai_task_runs (
-    id text primary key,
-    task_id text not null,
-    status text not null,
-    input_values_json text,
-    output_values_json text,
-    task_snapshot_json text not null,
-    execution_evidence_json text,
-    validation_feedback_json text,
-    final_message text,
-    error_text text,
-    created_at text not null,
-    updated_at text not null,
-    started_at text,
-    completed_at text,
-    foreign key (task_id) references ai_task_definitions(id) on delete cascade
-);
-
-create index if not exists idx_ai_task_runs_task
-    on ai_task_runs (task_id, created_at desc);
-
-create table if not exists ai_workflow_definitions (
-    id text primary key,
-    title text not null,
-    summary text,
-    steps_json text not null,
-    created_at text not null,
-    updated_at text not null
-);
-
-create table if not exists ai_workflow_runs (
+-- Execution runs of workflow definitions. Snapshots the full definition
+-- at start time so later edits do not mutate historical run meaning.
+-- currentNodeIndex points to the active or next node to execute.
+create table if not exists workflow_runs (
     id text primary key,
     workflow_id text not null,
     status text not null,
+    current_node_index integer not null default 0,
+    node_runs_json text not null,
+    workspace_path text,
+    output_dir text,
     workflow_snapshot_json text not null,
-    step_runs_json text,
-    final_outputs_json text,
     final_message text,
     error_text text,
     created_at text not null,
     updated_at text not null,
     started_at text,
     completed_at text,
-    foreign key (workflow_id) references ai_workflow_definitions(id) on delete cascade
+    foreign key (workflow_id) references workflow_definitions(id) on delete cascade
 );
 
-create index if not exists idx_ai_workflow_runs_workflow
-    on ai_workflow_runs (workflow_id, created_at desc);
+create index if not exists idx_workflow_runs_workflow
+    on workflow_runs (workflow_id, created_at desc);
+
+-- Per-node run state. Denormalized from workflow_runs.node_runs_json
+-- for queryability and indexing.
+create table if not exists workflow_node_runs (
+    id text primary key,
+    workflow_run_id text not null,
+    node_key text not null,
+    node_type text not null,
+    node_index integer not null,
+    status text not null,
+    input_values_json text not null,
+    output_values_json text not null,
+    started_at text,
+    completed_at text,
+    foreign key (workflow_run_id) references workflow_runs(id) on delete cascade
+);
+
+create index if not exists idx_workflow_node_runs_run
+    on workflow_node_runs (workflow_run_id, node_index);
 
 -- Orchestration and agent tables (repository-owned bootstrapping with schema.sql as canonical source)
 
@@ -278,18 +276,27 @@ create table if not exists work_assignments (
 create index if not exists idx_work_assignments_queue
     on work_assignments(status, priority, created_at);
 
-create table if not exists agent_inbox_messages (
+-- Unified inbox messages for both users and agents.
+-- to_type: "user" or "agent"
+-- to_id: agent id when to_type=agent, null for user
+-- message_type: "info", "question", "approval", "run_output"
+create table if not exists inbox_messages (
     id text primary key,
-    to_agent_id text not null,
+    to_type text not null,
+    to_id text,
     from_id text,
     message_type text not null,
     body text,
     metadata_json text,
-    read_flag integer not null,
-    handled_flag integer not null,
+    response_json text,
+    responded_at text,
+    handled_at text,
     created_at text not null,
     updated_at text not null
 );
+
+create index if not exists idx_inbox_messages_to
+    on inbox_messages (to_type, to_id, created_at desc);
 
 create table if not exists agent_schedules (
     id text primary key,
@@ -373,3 +380,174 @@ create table if not exists workspace_links (
     updated_at text not null,
     foreign key(workspace_id) references workspaces(id)
 );
+
+-- Managed workspace roots: one row per logical root path, each owned by
+-- a single agent, job, or project. The root_relative_path is resolved
+-- against dataRoot at runtime.
+create table if not exists workspace_roots (
+    id text primary key,
+    owner_type text not null,
+    owner_id text not null,
+    root_relative_path text not null,
+    display_name text not null,
+    metadata_json text,
+    created_at text not null,
+    updated_at text not null
+);
+
+create unique index if not exists idx_workspace_roots_owner
+    on workspace_roots(owner_type, owner_id);
+
+-- Exclusive writable leases on job/project workspaces. Only one active
+-- writable lease per workspace at a time. Extension must verify holder
+-- ownership.
+create table if not exists workspace_leases (
+    id text primary key,
+    workspace_id text not null,
+    holder_type text not null,
+    holder_id text not null,
+    mode text not null,
+    expires_at text,
+    released_at text,
+    created_at text not null,
+    updated_at text not null,
+    foreign key(workspace_id) references workspace_roots(id)
+);
+
+-- At most one active WRITE lease per workspace. Enforced by the database,
+-- not by application-level check-then-insert logic.
+create unique index if not exists idx_workspace_leases_active_write
+    on workspace_leases(workspace_id)
+    where mode = 'WRITE' and released_at is null;
+
+create index if not exists idx_workspace_leases_active_holder
+    on workspace_leases(holder_type, holder_id)
+    where released_at is null;
+
+-- Output artifacts materialized during plan/task runs. Each row records
+-- a single output file written or copied into the run's output directory.
+create table if not exists run_output_artifacts (
+    id text primary key,
+    run_id text not null,
+    plan_id text not null,
+    output_name text not null,
+    artifact_type text not null,
+    file_name text not null,
+    file_path text not null,
+    content_json text,
+    created_at text not null,
+    foreign key(run_id) references plan_runs(id)
+);
+
+create index if not exists idx_run_output_artifacts_run
+    on run_output_artifacts(run_id);
+
+-- ════════════════════════════════════════════════════════════════
+--  Phase 04: Jobs, Projects, Agent Networks
+-- ════════════════════════════════════════════════════════════════
+
+-- Job definitions: coordinate multiple plan or workflow work items.
+-- items_json is a JSON array of JobWorkItem objects.
+create table if not exists job_definitions (
+    id text primary key,
+    owner_agent_id text,
+    project_id text,
+    workspace_id text,
+    status text,
+    title text not null,
+    summary text,
+    items_json text not null,
+    prompt_profile text,
+    model text,
+    settings_override_json text,
+    created_at text not null,
+    updated_at text not null
+);
+
+-- Per-item run state within a job run, denormalized from job_runs.work_item_runs_json
+-- for queryability.
+create table if not exists job_work_items (
+    id text primary key,
+    key text not null,
+    type text not null,
+    plan_id text,
+    workflow_id text,
+    input_bindings_json text not null,
+    item_order integer not null,
+    model_override text,
+    priority integer
+);
+
+-- A single execution run of a job definition.
+-- work_item_runs_json is a JSON array of JobWorkItemRun objects.
+create table if not exists job_runs (
+    id text primary key,
+    job_id text not null,
+    status text not null,
+    work_item_runs_json text not null,
+    workspace_path text,
+    output_dir text,
+    final_message text,
+    error_text text,
+    created_at text not null,
+    updated_at text not null,
+    started_at text,
+    completed_at text,
+    foreign key (job_id) references job_definitions(id) on delete cascade
+);
+
+create index if not exists idx_job_runs_job
+    on job_runs (job_id, created_at desc);
+
+-- Recurrence rules for repeated job scheduling.
+create table if not exists job_recurrences (
+    id text primary key,
+    job_id text not null unique,
+    cron_expression text not null,
+    timezone text not null,
+    next_fire_time text,
+    enabled integer not null default 1,
+    created_at text not null,
+    updated_at text not null,
+    foreign key (job_id) references job_definitions(id) on delete cascade
+);
+
+-- Projects: durable data-space and tracking wrappers.
+create table if not exists projects (
+    id text primary key,
+    name text not null,
+    description text,
+    owner_agent_id text not null,
+    git_repo_url text,
+    prompt_profile text,
+    model text,
+    settings_override_json text,
+    created_at text not null,
+    updated_at text not null
+);
+
+-- Agent membership in projects.
+create table if not exists project_agent_memberships (
+    id text primary key,
+    project_id text not null,
+    agent_id text not null,
+    role text not null default 'member',
+    joined_at text not null,
+    foreign key (project_id) references projects(id) on delete cascade
+);
+
+create unique index if not exists idx_project_membership_unique
+    on project_agent_memberships (project_id, agent_id);
+
+-- Project-scoped events (immutable append-only log).
+create table if not exists project_events (
+    id text primary key,
+    project_id text not null,
+    type text not null,
+    payload_json text,
+    created_at text not null,
+    foreign key (project_id) references projects(id) on delete cascade
+);
+
+create index if not exists idx_project_events_project
+    on project_events (project_id, created_at desc);

@@ -3,14 +3,16 @@ package io.mindspice.magenta2.ai.chat.tool.plan;
 import java.util.List;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mindspice.magenta2.ai.chat.plan.PlanDefinition;
+import io.mindspice.magenta2.ai.chat.plan.PlanRepository;
 import io.mindspice.magenta2.ai.chat.repository.ChatMemoryRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
-import io.mindspice.magenta2.ai.chat.plan.ChatPlanRepository;
 import io.mindspice.magenta2.ai.chat.model.PlanMode;
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
+import io.mindspice.magenta2.ai.chat.plan.PlanStep;
 import io.mindspice.magenta2.ai.chat.plan.PlanToolContext;
 import io.mindspice.magenta2.ai.chat.plan.PlanToolExecutionContext;
 import io.mindspice.magenta2.ai.chat.tool.InteractionQuestionTools;
@@ -42,7 +44,7 @@ class PlanSaveToolsTest {
     void savesPlanOnlyWhenPlanContextIsActive() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         PlanService service = new PlanService(
-            new ChatPlanRepository(jdbcTemplate, new ObjectMapper()),
+            new PlanRepository(jdbcTemplate, new ObjectMapper()),
             new ChatMemoryRepository(jdbcTemplate, new ObjectMapper())
         );
         service.beginPlan("conversation-1");
@@ -64,11 +66,12 @@ class PlanSaveToolsTest {
             PlanToolExecutionContext.clear();
         }
 
-        assertThat(service.activePlan("conversation-1").orElseThrow().title()).isEqualTo("Plan");
-        assertThat(service.activePlan("conversation-1").orElseThrow().goal()).isEqualTo("Clarified goal");
-        assertThat(service.activePlan("conversation-1").orElseThrow().notes()).isEqualTo("Important note");
-        assertThat(service.activePlan("conversation-1").orElseThrow().deliverables()).containsExactly("Deliverable");
-        assertThat(service.activePlan("conversation-1").orElseThrow().acceptanceCriteria()).containsExactly("Show evidence");
+        PlanDefinition plan = service.activePlan("conversation-1").orElseThrow();
+        assertThat(plan.title()).isEqualTo("Plan");
+        assertThat(plan.goal()).isEqualTo("Clarified goal");
+        assertThat(plan.notes()).isEqualTo("Important note");
+        assertThat(plan.deliverables()).containsExactly("Deliverable");
+        assertThat(plan.validationCriteria()).containsExactly("Show evidence");
         assertThatThrownBy(() -> tools.update("Clarified goal", "Plan", null, null, List.of("Deliverable"), List.of("Step"), List.of()))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("plan mode");
@@ -78,7 +81,7 @@ class PlanSaveToolsTest {
     void keyedPlanningToolsMutateSingleItems() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         PlanService service = new PlanService(
-            new ChatPlanRepository(jdbcTemplate, new ObjectMapper()),
+            new PlanRepository(jdbcTemplate, new ObjectMapper()),
             new ChatMemoryRepository(jdbcTemplate, new ObjectMapper())
         );
         service.beginPlan("conversation-1");
@@ -97,26 +100,27 @@ class PlanSaveToolsTest {
             PlanToolExecutionContext.clear();
         }
 
-        var plan = service.activePlan("conversation-1").orElseThrow();
+        PlanDefinition plan = service.activePlan("conversation-1").orElseThrow();
         assertThat(plan.goal()).isEqualTo("Build a robust planner");
         assertThat(plan.planningTask()).isEqualTo("approval_readiness");
         assertThat(plan.deliverables()).containsExactly("Implementation plan");
-        assertThat(plan.steps()).containsExactly(new io.mindspice.magenta2.ai.chat.plan.PlanStep(
+        assertThat(plan.steps()).containsExactly(new PlanStep(
             1,
             "Review current planning state and recent changelogs."
         ));
-        assertThat(plan.acceptanceCriteria()).containsExactly("Planning ends with a question or approval.");
+        assertThat(plan.validationCriteria()).containsExactly("Planning ends with a question or approval.");
     }
 
     @Test
     void reportsOnlyWhileExecutingPlan() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         PlanService service = new PlanService(
-            new ChatPlanRepository(jdbcTemplate, new ObjectMapper()),
+            new PlanRepository(jdbcTemplate, new ObjectMapper()),
             new ChatMemoryRepository(jdbcTemplate, new ObjectMapper())
         );
         service.beginPlan("conversation-1");
-        service.saveDraftPlan("conversation-1", "Goal", "Plan", null, null, List.of("Step"), List.of(), List.of("Validate"));
+        service.saveDraftPlan("conversation-1", "Goal", "Plan", null, null,
+            List.of("Step"), List.of(), List.of("Validate"));
         service.markExecuting("conversation-1");
         PlanSaveTools tools = new PlanSaveTools(service);
 

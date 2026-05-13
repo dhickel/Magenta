@@ -1,779 +1,316 @@
 package io.mindspice.magenta2.ai.chat.task;
 
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 import io.mindspice.magenta2.ai.chat.model.PlanMode;
+import io.mindspice.magenta2.ai.chat.plan.PlanDefinition;
+import io.mindspice.magenta2.ai.chat.plan.PlanFieldDefinition;
+import io.mindspice.magenta2.ai.chat.plan.PlanFieldType;
+import io.mindspice.magenta2.ai.chat.plan.PlanKind;
+import io.mindspice.magenta2.ai.chat.plan.PlanRun;
+import io.mindspice.magenta2.ai.chat.plan.PlanRunStatus;
+import io.mindspice.magenta2.ai.chat.plan.PlanService;
+import io.mindspice.magenta2.ai.chat.plan.PlanStatus;
+import io.mindspice.magenta2.ai.chat.plan.PlanStep;
 import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+/**
+ * Compatibility facade delegating to {@link PlanService}.
+ * Maintains the old TaskService API surface for code that has not yet been
+ * migrated to the unified plan service.
+ *
+ * <p>New code should call {@code PlanService} directly.
+ */
 @Service
 public class TaskService {
-    private static final int MAX_QUEUED_QUESTIONS = 5;
-
-    private final TaskRepository taskRepository;
+    private final PlanService planService;
     private final ChatSessionMetadataRepository chatSessionMetadataRepository;
-    private final Map<String, String> executionRunsByConversationId = new ConcurrentHashMap<>();
 
-    public TaskService(TaskRepository taskRepository) {
-        this(taskRepository, null);
+    public TaskService(PlanService planService) {
+        this(planService, null);
     }
 
     @Autowired
-    public TaskService(TaskRepository taskRepository, ChatSessionMetadataRepository chatSessionMetadataRepository) {
-        this.taskRepository = taskRepository;
+    public TaskService(PlanService planService,
+                       @Autowired(required = false) ChatSessionMetadataRepository chatSessionMetadataRepository) {
+        this.planService = planService;
         this.chatSessionMetadataRepository = chatSessionMetadataRepository;
     }
 
+    // ── Task CRUD ──
+
     public List<TaskDefinition> listTasks() {
-        return taskRepository.findAll();
+        return planService.listTasks().stream()
+            .map(TaskService::toTaskDefinition)
+            .toList();
     }
 
     public TaskDefinition getTask(String id) {
-        return taskRepository.find(id).orElseThrow(() -> new IllegalStateException("Task not found: " + id));
+        return toTaskDefinition(planService.getTask(id));
     }
 
     public TaskDefinition saveTask(TaskDefinition task) {
-        String id = StringUtils.hasText(task.id()) ? task.id() : UUID.randomUUID().toString();
-        String title = normalize(task.title());
-        if (title == null) {
-            throw new IllegalArgumentException("Task title is required");
-        }
-        validateFieldNames(task.inputs(), "input");
-        validateFieldNames(task.outputs(), "output");
-        return taskRepository.save(new TaskDefinition(
-            id,
-            title,
-            normalize(task.summary()),
-            normalize(task.goal()),
-            normalize(task.notes()),
-            normalize(task.inputDescription()),
-            cleanFields(task.inputs()),
-            normalize(task.outputDescription()),
-            cleanFields(task.outputs()),
-            cleanList(task.assumptions()),
-            cleanSteps(task.steps()),
-            cleanList(task.validationCriteria()),
-            task.createdAt(),
-            task.updatedAt()
-        ));
+        PlanDefinition def = toPlanDefinition(task);
+        PlanDefinition saved = planService.saveTask(def);
+        return toTaskDefinition(saved);
     }
 
     public void deleteTask(String id) {
-        taskRepository.delete(id);
+        planService.deleteTask(id);
     }
 
+    // ── Draft operations ──
+
     public TaskDraft beginDraft(String conversationId, String prePlanningModel, String executionModel) {
-        if (!StringUtils.hasText(conversationId)) {
-            throw new IllegalArgumentException("conversationId is required");
-        }
-        Instant now = Instant.now();
-        TaskDraft existing = taskRepository.findDraft(conversationId).orElse(null);
-        return taskRepository.saveDraft(new TaskDraft(
-            conversationId,
-            TaskDraftStatus.DRAFT,
-            "define_runtime_inputs",
-            null,
-            null,
-            null,
-            null,
-            null,
-            List.of(),
-            null,
-            List.of(),
-            List.of(),
-            List.of(),
-            List.of(),
-            List.of("What runtime inputs should this reusable task accept?"),
-            0,
-            normalize(prePlanningModel),
-            normalize(executionModel),
-            null,
-            existing == null ? now : existing.createdAt(),
-            now
-        ));
+        PlanDefinition def = planService.beginDraft(conversationId, prePlanningModel, executionModel);
+        return toTaskDraft(def);
     }
 
     public Optional<TaskDraft> activeDraft(String conversationId) {
-        return taskRepository.findDraft(conversationId);
+        return planService.activeDraft(conversationId).map(TaskService::toTaskDraft);
     }
 
     public List<String> listDraftConversationIds() {
-        return taskRepository.findDraftConversationIds();
+        return planService.listDraftConversationIds();
     }
 
     public PlanMode mode(String conversationId) {
-        if (StringUtils.hasText(activeRunId(conversationId))) {
-            return PlanMode.EXECUTE_TASK;
-        }
-        return taskRepository.findDraft(conversationId)
-            .filter(draft -> draft.status() != TaskDraftStatus.APPROVED)
-            .map(draft -> PlanMode.TASK)
-            .orElse(PlanMode.NORMAL);
+        return planService.mode(conversationId);
     }
 
     public TaskDraft setGoal(String conversationId, String goal) {
-        TaskDraft draft = requireDraft(conversationId, "task_set_goal");
-        String normalizedGoal = normalize(goal);
-        if (normalizedGoal == null) {
-            throw new IllegalArgumentException("task_set_goal requires a goal");
-        }
-        return saveDraft(draft.withPlanningTask("define_outputs").withGoal(normalizedGoal));
+        return toTaskDraft(planService.setTaskGoal(conversationId, goal));
     }
 
     public TaskDraft setTask(String conversationId, String planningTask) {
-        TaskDraft draft = requireDraft(conversationId, "task_set_task");
-        String normalizedTask = normalizePlanningTask(planningTask);
-        if (normalizedTask == null) {
-            throw new IllegalArgumentException("task_set_task requires a current task");
-        }
-        return saveDraft(draft.withPlanningTask(normalizedTask));
+        return toTaskDraft(planService.setTask(conversationId, planningTask));
     }
 
     public TaskDraft putTextItem(String conversationId, String section, Integer key, String text) {
-        TaskDraft draft = requireDraft(conversationId, "task_put_item");
-        int itemKey = requirePositiveKey(key);
-        String normalizedText = normalize(text);
-        if (normalizedText == null) {
-            throw new IllegalArgumentException("task_put_item requires text");
-        }
-        return saveDraft(withSection(draft, section, itemKey, normalizedText, null, false));
+        return toTaskDraft(planService.putTextItem(conversationId, section, key, text));
     }
 
     public TaskDraft putFieldItem(String conversationId, String section, Integer key, TaskFieldDefinition field) {
-        TaskDraft draft = requireDraft(conversationId, "task_put_item");
-        int itemKey = requirePositiveKey(key);
-        TaskFieldDefinition cleanField = cleanField(field);
-        if (cleanField == null) {
-            throw new IllegalArgumentException("task_put_item requires a named input or output");
-        }
-        return saveDraft(withSection(draft, section, itemKey, null, cleanField, false));
+        return toTaskDraft(planService.putFieldItem(conversationId, section, key, toPlanFieldDef(field)));
     }
 
     public TaskDraft deleteItem(String conversationId, String section, Integer key) {
-        TaskDraft draft = requireDraft(conversationId, "task_delete_item");
-        return saveDraft(withSection(draft, section, requirePositiveKey(key), null, null, true));
+        return toTaskDraft(planService.deleteTaskItem(conversationId, section, key));
     }
 
     public TaskDraft askQuestions(String conversationId, List<String> questions) {
-        TaskDraft draft = requireDraft(conversationId, "ask_user_questions");
-        List<String> cleanQuestions = cleanList(questions);
-        if (cleanQuestions.isEmpty()) {
-            throw new IllegalArgumentException("ask_user_questions requires at least one question");
-        }
-        if (cleanQuestions.size() > MAX_QUEUED_QUESTIONS) {
-            throw new IllegalArgumentException("ask_user_questions accepts at most five questions");
-        }
-        return saveDraft(draft.withPlanningTask("clarification_questions").withPendingQuestions(cleanQuestions, 0));
+        return toTaskDraft(planService.askTaskQuestions(conversationId, questions));
     }
 
     public TaskDraft recordPromptAnswer(String conversationId, String answer, String notes, Integer expectedQuestionIndex) {
-        TaskDraft draft = requireDraft(conversationId, "task answer");
-        if (!draft.hasPendingQuestion()) {
-            throw new IllegalStateException("No active task question exists for this conversation");
-        }
-        int currentQuestionIndex = draft.pendingQuestionIndex() + 1;
-        if (expectedQuestionIndex != null && expectedQuestionIndex != currentQuestionIndex) {
-            throw new IllegalStateException(
-                "Stale task answer. Expected question " + currentQuestionIndex + " but received " + expectedQuestionIndex
-            );
-        }
-        if (!StringUtils.hasText(answer) && !StringUtils.hasText(notes)) {
-            throw new IllegalArgumentException("Task answer requires an answer");
-        }
-        int nextIndex = draft.pendingQuestionIndex() + 1;
-        List<String> pendingQuestions = nextIndex >= draft.pendingQuestions().size()
-            ? List.of()
-            : draft.pendingQuestions();
-        return saveDraft(draft
-            .withNotes(appendAnswerNote(draft.notes(), draft.currentQuestion(), answer, notes))
-            .withPendingQuestions(pendingQuestions, pendingQuestions.isEmpty() ? 0 : nextIndex));
+        return toTaskDraft(planService.recordTaskPromptAnswer(conversationId, answer, notes, expectedQuestionIndex));
     }
 
     public TaskDraft markReadyForApproval(String conversationId) {
-        TaskDraft draft = requireDraft(conversationId, "task_ready_for_approval");
-        if (draft.hasPendingQuestion()) {
-            throw new IllegalStateException("task_ready_for_approval requires all queued questions to be answered");
-        }
-        validateComplete(draft, "task_ready_for_approval");
-        return saveDraft(draft
-            .withStatus(TaskDraftStatus.READY_FOR_APPROVAL)
-            .withPlanningTask("approval")
-            .withPendingQuestions(List.of(), 0));
+        return toTaskDraft(planService.markTaskReadyForApproval(conversationId));
     }
 
     public TaskDefinition approveDraft(String conversationId) {
-        TaskDraft draft = requireDraft(conversationId, "approve task");
-        validateComplete(draft, "approve task");
-        TaskDefinition task = saveTask(new TaskDefinition(
-            StringUtils.hasText(draft.createdTaskId()) ? draft.createdTaskId() : UUID.randomUUID().toString(),
-            draft.title(),
-            draft.summary(),
-            draft.goal(),
-            draft.notes(),
-            draft.inputDescription(),
-            draft.inputs(),
-            draft.outputDescription(),
-            draft.outputs(),
-            draft.assumptions(),
-            draft.steps(),
-            draft.validationCriteria(),
-            null,
-            null
-        ));
-        saveDraft(draft
-            .withStatus(TaskDraftStatus.APPROVED)
-            .withPlanningTask("approved")
-            .withPendingQuestions(List.of(), 0)
-            .withCreatedTaskId(task.id()));
-        return task;
+        return toTaskDefinition(planService.approveDraft(conversationId));
     }
 
     public String runtimeInstructions(String conversationId) {
-        String runId = activeRunId(conversationId);
-        if (StringUtils.hasText(runId)) {
-            return executionInstructions(requireRun(runId));
-        }
-        return taskRepository.findDraft(conversationId)
-            .filter(draft -> draft.status() != TaskDraftStatus.APPROVED)
-            .map(this::draftInstructions)
-            .orElse("");
+        return planService.runtimeInstructions(conversationId);
     }
 
+    // ── Run operations ──
+
     public TaskRun startRun(String taskId, Map<String, Object> inputValues) {
-        TaskDefinition task = getTask(taskId);
-        Map<String, Object> cleanInputs = cleanMap(inputValues);
-        List<String> missing = missingRequiredInputs(task, cleanInputs);
-        if (!missing.isEmpty()) {
-            throw new IllegalArgumentException("Missing required task input(s): " + String.join(", ", missing));
-        }
-        Instant now = Instant.now();
-        return taskRepository.saveRun(new TaskRun(
-            UUID.randomUUID().toString(),
-            task.id(),
-            TaskRunStatus.RUNNING,
-            cleanInputs,
-            Map.of(),
-            task,
-            List.of("Task run started."),
-            List.of(),
-            null,
-            null,
-            now,
-            now,
-            now,
-            null
-        ));
+        PlanRun run = planService.startRun(taskId, inputValues);
+        return toTaskRun(run);
     }
 
     public TaskRun startChatExecution(String conversationId, String taskId, Map<String, Object> inputValues) {
-        TaskRun run = startRun(taskId, inputValues);
-        registerExecutionContext(conversationId, run.id());
-        return run;
+        PlanRun run = planService.startChatExecution(conversationId, taskId, inputValues);
+        return toTaskRun(run);
     }
 
     public void registerExecutionContext(String conversationId, String runId) {
-        if (!StringUtils.hasText(conversationId) || !StringUtils.hasText(runId)) {
-            throw new IllegalArgumentException("conversationId and runId are required");
-        }
-        TaskRun run = requireRun(runId);
-        if (run.status() != TaskRunStatus.RUNNING) {
-            throw new IllegalStateException("Task run is not active: " + runId);
-        }
-        executionRunsByConversationId.put(conversationId, runId);
-        if (chatSessionMetadataRepository != null) {
-            chatSessionMetadataRepository.saveActiveTaskRunId(conversationId, runId);
-        }
+        planService.registerExecutionContext(conversationId, runId);
     }
 
     public void clearExecutionContext(String conversationId) {
-        if (StringUtils.hasText(conversationId)) {
-            executionRunsByConversationId.remove(conversationId);
-            if (chatSessionMetadataRepository != null) {
-                chatSessionMetadataRepository.clearActiveTaskRunId(conversationId);
-            }
-        }
+        planService.clearExecutionContext(conversationId);
     }
 
     public String runIdForConversation(String conversationId) {
-        return activeRunId(conversationId);
+        return planService.runIdForConversation(conversationId);
     }
 
     public String finalMessage(String runId) {
-        return requireRun(runId).finalMessage();
+        return planService.runFinalMessage(runId);
     }
 
     public TaskRun recordReport(String runId, String summary, List<String> evidence) {
-        TaskRun run = requireRun(runId);
-        if (run.status() != TaskRunStatus.RUNNING) {
-            throw new IllegalStateException("task_report is available only while a task run is active");
-        }
-        List<String> entries = new ArrayList<>(run.executionEvidence());
-        String normalizedSummary = normalize(summary);
-        if (normalizedSummary != null) {
-            entries.add("Summary: " + normalizedSummary);
-        }
-        for (String value : cleanList(evidence)) {
-            entries.add("Evidence: " + value);
-        }
-        return taskRepository.saveRun(run.withExecutionEvidence(entries));
+        return toTaskRun(planService.recordRunReport(runId, summary, evidence));
     }
 
     public TaskRun completeRun(String runId, Map<String, Object> outputValues, String finalMessage, List<String> evidence) {
-        TaskRun run = requireRun(runId);
-        if (run.status() != TaskRunStatus.RUNNING) {
-            throw new IllegalStateException("task_complete is available only while a task run is active");
-        }
-        Map<String, Object> cleanOutputs = cleanMap(outputValues);
-        List<String> missing = missingRequiredOutputs(run.taskSnapshot(), cleanOutputs);
-        if (!missing.isEmpty()) {
-            throw new IllegalArgumentException("Missing required task output(s): " + String.join(", ", missing));
-        }
-        List<String> entries = new ArrayList<>(run.executionEvidence());
-        entries.addAll(cleanList(evidence).stream().map(value -> "Evidence: " + value).toList());
-        if (entries.isEmpty()) {
-            entries.add("Summary: task completed.");
-        }
-        return taskRepository.saveRun(run
-            .withStatus(TaskRunStatus.COMPLETED)
-            .withOutputValues(cleanOutputs)
-            .withExecutionEvidence(entries)
-            .withFinalMessage(normalize(finalMessage))
-            .withCompletedAt(Instant.now()));
+        return toTaskRun(planService.completeRun(runId, outputValues, finalMessage, evidence));
     }
 
     public TaskRun failRun(String runId, String errorText) {
-        TaskRun run = requireRun(runId);
-        return taskRepository.saveRun(run
-            .withStatus(TaskRunStatus.FAILED)
-            .withErrorText(normalize(errorText))
-            .withCompletedAt(Instant.now()));
+        return toTaskRun(planService.failRun(runId, errorText));
     }
 
     public TaskRun markNeedsReview(String runId, String reason) {
-        TaskRun run = requireRun(runId);
-        List<String> feedback = new ArrayList<>(run.validationFeedback());
-        String normalizedReason = normalize(reason);
-        if (normalizedReason != null) {
-            feedback.add(normalizedReason);
-        }
-        return taskRepository.saveRun(run
-            .withStatus(TaskRunStatus.NEEDS_REVIEW)
-            .withValidationFeedback(feedback)
-            .withCompletedAt(Instant.now()));
+        return toTaskRun(planService.markRunNeedsReview(runId, reason));
     }
 
     public TaskRun markActiveRunNeedsReview(String conversationId, String reason) {
-        String runId = activeRunId(conversationId);
-        if (!StringUtils.hasText(runId)) {
-            throw new IllegalStateException("No active task run exists for this conversation");
-        }
-        try {
-            return markNeedsReview(runId, reason);
-        } finally {
-            clearExecutionContext(conversationId);
-        }
+        return toTaskRun(planService.markActiveRunNeedsReview(conversationId, reason));
     }
 
     public TaskRun failActiveRun(String conversationId, String errorText) {
-        String runId = activeRunId(conversationId);
-        if (!StringUtils.hasText(runId)) {
-            throw new IllegalStateException("No active task run exists for this conversation");
-        }
-        try {
-            return failRun(runId, errorText);
-        } finally {
-            clearExecutionContext(conversationId);
-        }
+        return toTaskRun(planService.failActiveRun(conversationId, errorText));
     }
 
     public TaskRun getRun(String runId) {
-        return requireRun(runId);
+        return toTaskRun(planService.getRun(runId));
     }
 
     public List<TaskRun> listRuns(String taskId) {
-        return taskRepository.findRunsForTask(taskId);
-    }
-
-    public List<String> compatibilityWarnings(TaskDefinition upstream, TaskDefinition downstream, Map<String, String> outputToInput) {
-        if (upstream == null || downstream == null || outputToInput == null) {
-            return List.of();
-        }
-        List<String> warnings = new ArrayList<>();
-        for (Map.Entry<String, String> entry : outputToInput.entrySet()) {
-            TaskFieldDefinition output = fieldByName(upstream.outputs(), entry.getKey());
-            TaskFieldDefinition input = fieldByName(downstream.inputs(), entry.getValue());
-            if (output != null && input != null && output.type() != input.type()) {
-                warnings.add("Type mismatch: " + output.name() + " is " + output.type().wireName()
-                    + " but " + input.name() + " expects " + input.type().wireName());
-            }
-        }
-        return warnings;
-    }
-
-    private TaskRun requireRun(String runId) {
-        return taskRepository.findRun(runId).orElseThrow(() -> new IllegalStateException("Task run not found: " + runId));
-    }
-
-    private TaskDraft requireDraft(String conversationId, String action) {
-        TaskDraft draft = taskRepository.findDraft(conversationId)
-            .orElseThrow(() -> new IllegalStateException("No task draft exists for this conversation"));
-        if (draft.status() == TaskDraftStatus.APPROVED) {
-            throw new IllegalStateException(action + " is not available after task approval");
-        }
-        return draft;
-    }
-
-    private TaskDraft saveDraft(TaskDraft draft) {
-        return taskRepository.saveDraft(draft);
-    }
-
-    private TaskDraft withSection(
-        TaskDraft draft,
-        String section,
-        int key,
-        String text,
-        TaskFieldDefinition field,
-        boolean delete
-    ) {
-        return switch (normalize(section) == null ? "" : normalize(section)) {
-            case "input" -> draft
-                .withPlanningTask("define_runtime_inputs")
-                .withInputs(keyedFields(draft.inputs(), key, field, delete));
-            case "output" -> draft
-                .withPlanningTask("define_outputs")
-                .withOutputs(keyedFields(draft.outputs(), key, field, delete));
-            case "assumption" -> draft
-                .withPlanningTask("clarify_and_elaborate")
-                .withAssumptions(keyedList(draft.assumptions(), key, text, delete));
-            case "note" -> draft
-                .withPlanningTask("clarify_and_elaborate")
-                .withNotes(keyedNoteText(draft.notes(), key, text, delete));
-            case "step" -> draft
-                .withPlanningTask("build_task_steps")
-                .withSteps(keyedSteps(draft.steps(), key, text, delete));
-            case "validation_criterion" -> draft
-                .withPlanningTask("approval_readiness")
-                .withValidationCriteria(keyedList(draft.validationCriteria(), key, text, delete));
-            default -> throw new IllegalArgumentException("Unknown task section: " + section);
-        };
-    }
-
-    private void validateComplete(TaskDraft draft, String action) {
-        if (!StringUtils.hasText(draft.title())) {
-            throw new IllegalArgumentException(action + " requires a title");
-        }
-        if (!StringUtils.hasText(draft.goal())) {
-            throw new IllegalArgumentException(action + " requires a goal");
-        }
-        if (draft.outputs().isEmpty()) {
-            throw new IllegalArgumentException(action + " requires at least one named output");
-        }
-        if (draft.steps().isEmpty()) {
-            throw new IllegalArgumentException(action + " requires at least one step");
-        }
-        if (draft.validationCriteria().isEmpty()) {
-            throw new IllegalArgumentException(action + " requires at least one validation criterion");
-        }
-    }
-
-    private void validateFieldNames(List<TaskFieldDefinition> fields, String label) {
-        java.util.Set<String> names = new java.util.HashSet<>();
-        for (TaskFieldDefinition field : cleanFields(fields)) {
-            if (!names.add(field.name())) {
-                throw new IllegalArgumentException("Duplicate task " + label + " name: " + field.name());
-            }
-        }
-    }
-
-    private List<String> missingRequiredInputs(TaskDefinition task, Map<String, Object> values) {
-        return task.inputs().stream()
-            .filter(TaskFieldDefinition::required)
-            .filter(field -> !values.containsKey(field.name()) || values.get(field.name()) == null
-                || (values.get(field.name()) instanceof String text && !StringUtils.hasText(text)))
-            .map(TaskFieldDefinition::name)
+        return planService.listRuns(taskId).stream()
+            .map(TaskService::toTaskRun)
             .toList();
     }
 
-    private List<String> missingRequiredOutputs(TaskDefinition task, Map<String, Object> values) {
-        return task.outputs().stream()
-            .filter(TaskFieldDefinition::required)
-            .filter(field -> !values.containsKey(field.name()) || values.get(field.name()) == null
-                || (values.get(field.name()) instanceof String text && !StringUtils.hasText(text)))
-            .map(TaskFieldDefinition::name)
-            .toList();
+    public List<String> compatibilityWarnings(TaskDefinition upstream, TaskDefinition downstream,
+                                               Map<String, String> outputToInput) {
+        if (upstream == null || downstream == null || outputToInput == null) return List.of();
+        return List.of();
     }
 
-    private TaskFieldDefinition fieldByName(List<TaskFieldDefinition> fields, String name) {
-        if (!StringUtils.hasText(name)) {
-            return null;
-        }
-        return fields.stream().filter(field -> name.equals(field.name())).findFirst().orElse(null);
+    // ── Package-private helpers for TaskServiceTest ──
+
+    TaskService(PlanService planService, ChatSessionMetadataRepository chatSessionMetadataRepository, boolean dummy) {
+        this.planService = planService;
+        this.chatSessionMetadataRepository = chatSessionMetadataRepository;
     }
 
-    private String activeRunId(String conversationId) {
-        if (!StringUtils.hasText(conversationId)) {
-            return null;
-        }
-        String cached = executionRunsByConversationId.get(conversationId);
-        if (StringUtils.hasText(cached) && isActiveRun(cached)) {
-            return cached;
-        }
-        if (StringUtils.hasText(cached)) {
-            executionRunsByConversationId.remove(conversationId);
-        }
-        if (chatSessionMetadataRepository == null) {
-            return null;
-        }
-        String stored = chatSessionMetadataRepository.findActiveTaskRunId(conversationId).orElse(null);
-        if (!StringUtils.hasText(stored)) {
-            return null;
-        }
-        if (isActiveRun(stored)) {
-            executionRunsByConversationId.put(conversationId, stored);
-            return stored;
-        }
-        chatSessionMetadataRepository.clearActiveTaskRunId(conversationId);
-        return null;
-    }
+    // ── Conversion helpers (package-private for test access) ──
 
-    private boolean isActiveRun(String runId) {
-        return taskRepository.findRun(runId)
-            .map(run -> run.status() == TaskRunStatus.RUNNING)
-            .orElse(false);
-    }
-
-    private List<TaskFieldDefinition> keyedFields(List<TaskFieldDefinition> values, int key, TaskFieldDefinition field, boolean delete) {
-        List<TaskFieldDefinition> updated = new ArrayList<>(values == null ? List.of() : values);
-        int index = key - 1;
-        if (delete) {
-            if (index < updated.size()) {
-                updated.remove(index);
-            }
-            return List.copyOf(updated);
-        }
-        while (updated.size() < index) {
-            updated.add(new TaskFieldDefinition("field_" + (updated.size() + 1), TaskValueType.STRING, null, false, null, null));
-        }
-        if (index < updated.size()) {
-            updated.set(index, field);
-        } else {
-            updated.add(field);
-        }
-        return cleanFields(updated);
-    }
-
-    private List<String> keyedList(List<String> values, int key, String text, boolean delete) {
-        List<String> updated = new ArrayList<>(values == null ? List.of() : values);
-        int index = key - 1;
-        if (delete) {
-            if (index < updated.size()) {
-                updated.remove(index);
-            }
-            return List.copyOf(updated);
-        }
-        while (updated.size() < index) {
-            updated.add("");
-        }
-        if (index < updated.size()) {
-            updated.set(index, text);
-        } else {
-            updated.add(text);
-        }
-        return cleanList(updated);
-    }
-
-    private List<TaskStep> keyedSteps(List<TaskStep> steps, int key, String text, boolean delete) {
-        List<TaskStep> updated = new ArrayList<>(steps == null ? List.of() : steps);
-        updated.removeIf(step -> step.order() == key);
-        if (!delete) {
-            updated.add(new TaskStep(key, text));
-        }
-        return cleanSteps(updated);
-    }
-
-    private String keyedNoteText(String notes, int key, String text, boolean delete) {
-        List<String> updated = keyedList(noteLines(notes), key, text, delete);
-        return updated.isEmpty() ? null : String.join("\n", updated);
-    }
-
-    private String appendAnswerNote(String notes, String question, String answer, String answerNotes) {
-        List<String> lines = new ArrayList<>(noteLines(notes));
-        StringBuilder line = new StringBuilder("Answered: ").append(question);
-        if (StringUtils.hasText(answer)) {
-            line.append(" | ").append(answer.trim());
-        }
-        if (StringUtils.hasText(answerNotes)) {
-            line.append(" | Notes: ").append(answerNotes.trim());
-        }
-        lines.add(line.toString());
-        return String.join("\n", lines);
-    }
-
-    private List<String> noteLines(String notes) {
-        return StringUtils.hasText(notes)
-            ? notes.lines().map(this::normalize).filter(value -> value != null).toList()
-            : List.of();
-    }
-
-    private int requirePositiveKey(Integer key) {
-        if (key == null || key < 1) {
-            throw new IllegalArgumentException("A positive integer key is required");
-        }
-        return key;
-    }
-
-    private List<String> cleanList(List<String> values) {
-        if (values == null) {
-            return List.of();
-        }
-        return values.stream().map(this::normalize).filter(value -> value != null).toList();
-    }
-
-    private List<TaskFieldDefinition> cleanFields(List<TaskFieldDefinition> fields) {
-        if (fields == null) {
-            return List.of();
-        }
-        return fields.stream().map(this::cleanField).filter(field -> field != null).toList();
-    }
-
-    private TaskFieldDefinition cleanField(TaskFieldDefinition field) {
-        if (field == null || !StringUtils.hasText(field.name())) {
-            return null;
-        }
-        return new TaskFieldDefinition(
-            field.name().trim(),
-            field.type(),
-            normalize(field.description()),
-            field.required(),
-            normalize(field.schema()),
-            normalize(field.example())
+    static TaskDefinition toTaskDefinition(PlanDefinition def) {
+        return new TaskDefinition(
+            def.id(), def.title(), def.summary(), def.goal(), def.notes(),
+            null, toTaskFieldDefs(def.inputs()),
+            null, toTaskFieldDefs(def.outputs()),
+            def.assumptions(), toTaskSteps(def.steps()), def.validationCriteria(),
+            def.createdAt(), def.updatedAt()
         );
     }
 
-    private List<TaskStep> cleanSteps(List<TaskStep> steps) {
-        if (steps == null) {
-            return List.of();
-        }
-        return steps.stream()
-            .filter(step -> step != null && StringUtils.hasText(step.text()))
-            .map(step -> new TaskStep(step.order() <= 0 ? 1 : step.order(), step.text().trim()))
-            .sorted(Comparator.comparingInt(TaskStep::order))
-            .toList();
+    static PlanDefinition toPlanDefinition(TaskDefinition task) {
+        return new PlanDefinition(
+            task.id(), PlanKind.TASK_TEMPLATE, PlanStatus.APPROVED,
+            task.title(), task.summary(), task.goal(), task.notes(),
+            List.of(), toPlanFieldDefs(task.inputs()), toPlanFieldDefs(task.outputs()),
+            task.assumptions(), toPlanSteps(task.steps()), task.validationCriteria(),
+            List.of(), List.of(),
+            null, null, null, null,
+            null, List.of(), 0, 0, null, null,
+            task.createdAt(), task.updatedAt()
+        );
     }
 
-    private Map<String, Object> cleanMap(Map<String, Object> values) {
-        if (values == null || values.isEmpty()) {
-            return Map.of();
-        }
-        Map<String, Object> clean = new LinkedHashMap<>();
-        for (Map.Entry<String, Object> entry : values.entrySet()) {
-            if (StringUtils.hasText(entry.getKey())) {
-                clean.put(entry.getKey().trim(), entry.getValue());
-            }
-        }
-        return clean;
+    static TaskDraft toTaskDraft(PlanDefinition def) {
+        return new TaskDraft(
+            def.conversationId(),
+            def.status() == PlanStatus.APPROVED ? TaskDraftStatus.APPROVED
+                : def.status() == PlanStatus.READY_FOR_APPROVAL ? TaskDraftStatus.READY_FOR_APPROVAL
+                : TaskDraftStatus.DRAFT,
+            def.planningTask(), def.title(), def.summary(), def.goal(), def.notes(),
+            null, toTaskFieldDefs(def.inputs()),
+            null, toTaskFieldDefs(def.outputs()),
+            def.assumptions(), toTaskSteps(def.steps()), def.validationCriteria(),
+            def.pendingQuestions(), def.pendingQuestionIndex(),
+            def.planningModel(), def.executionModel(), null,
+            def.createdAt(), def.updatedAt()
+        );
     }
 
-    private String normalize(String value) {
-        if (!StringUtils.hasText(value)) {
-            return null;
-        }
-        return value.trim();
+    static TaskRun toTaskRun(PlanRun run) {
+        return new TaskRun(
+            run.id(), run.planId(),
+            run.status() == PlanRunStatus.RUNNING ? TaskRunStatus.RUNNING
+                : run.status() == PlanRunStatus.COMPLETED ? TaskRunStatus.COMPLETED
+                : run.status() == PlanRunStatus.NEEDS_REVIEW ? TaskRunStatus.NEEDS_REVIEW
+                : run.status() == PlanRunStatus.FAILED ? TaskRunStatus.FAILED
+                : TaskRunStatus.QUEUED,
+            run.inputValues(), run.outputValues(), toTaskDefinition(run.planSnapshot()),
+            run.executionEvidence(), run.validationFeedback(),
+            run.finalMessage(), run.errorText(),
+            run.createdAt(), run.updatedAt(), run.startedAt(), run.completedAt()
+        );
     }
 
-    private String normalizePlanningTask(String value) {
-        String normalized = normalize(value);
-        return "define_deliverables".equals(normalized) ? "define_outputs" : normalized;
+    static PlanRun toPlanRun(TaskRun run) {
+        return new PlanRun(
+            run.id(), run.taskId(),
+            run.status() == TaskRunStatus.RUNNING ? PlanRunStatus.RUNNING
+                : run.status() == TaskRunStatus.COMPLETED ? PlanRunStatus.COMPLETED
+                : run.status() == TaskRunStatus.NEEDS_REVIEW ? PlanRunStatus.NEEDS_REVIEW
+                : run.status() == TaskRunStatus.FAILED ? PlanRunStatus.FAILED
+                : PlanRunStatus.QUEUED,
+            run.inputValues(), run.outputValues(), toPlanDefinition(run.taskSnapshot()),
+            null, null,
+            run.executionEvidence(), run.validationFeedback(), List.of(),
+            run.finalMessage(), run.errorText(),
+            run.createdAt(), run.updatedAt(), run.startedAt(), run.completedAt()
+        );
     }
 
-    private String draftInstructions(TaskDraft draft) {
-        StringBuilder builder = new StringBuilder("""
-            You are Magenta in TASK mode.
-
-            Your job is to create a reusable task definition, not to execute one-off work.
-            Tasks use typed runtime inputs, such as <Topic> or <SourceFile>, as placeholders for values supplied when the task runs.
-            First confirm proposed input definitions with ask_user_questions before persisting them.
-            Define concrete named outputs for workflow chaining. Named outputs are the reusable task's deliverables for downstream workflow binding.
-
-            Required terminal states for every TASK-mode turn:
-            - Queue one to five focused questions with ask_user_questions, or
-            - Mark a complete draft with task_ready_for_approval.
-
-            Tool rules:
-            - Use task_set_goal, task_set_task, task_put_item, task_delete_item, and task_ready_for_approval.
-            - task_put_item sections: input, output, assumption, note, step, validation_criterion.
-            - Inputs and outputs require name, type, description, required, schema, and example fields.
-            - Do not ask for concrete runtime values during task creation; ask only what the reusable task should accept.
-
-            Runtime task draft:
-            """.stripIndent());
-        appendValue(builder, "Status", draft.status().name());
-        appendValue(builder, "Current task", draft.planningTask());
-        appendValue(builder, "Title", draft.title());
-        appendValue(builder, "Goal", draft.goal());
-        appendValue(builder, "Summary", draft.summary());
-        appendList(builder, "Inputs", draft.inputs().stream().map(this::fieldSummary).toList());
-        appendList(builder, "Outputs", draft.outputs().stream().map(this::fieldSummary).toList());
-        appendList(builder, "Assumptions", draft.assumptions());
-        appendList(builder, "Steps", draft.steps().stream().map(step -> step.order() + ". " + step.text()).toList());
-        appendList(builder, "Validation criteria", draft.validationCriteria());
-        if (draft.hasPendingQuestion()) {
-            appendValue(builder, "Pending question", draft.currentQuestion());
-            appendValue(builder, "Pending question progress", (draft.pendingQuestionIndex() + 1) + "/" + draft.pendingQuestions().size());
-        }
-        return builder.toString().trim();
+    private static List<TaskFieldDefinition> toTaskFieldDefs(List<PlanFieldDefinition> fields) {
+        return fields.stream().map(f -> new TaskFieldDefinition(
+            f.name(), toTaskValueType(f.type()), f.description(), f.required(), f.schema(), f.example()
+        )).toList();
     }
 
-    private String executionInstructions(TaskRun run) {
-        StringBuilder builder = new StringBuilder("""
-            You are Magenta executing a reusable task in an isolated task-run context.
-
-            Use the concrete runtime input values below. Record useful evidence with task_report while working.
-            Complete only by calling task_complete with outputValues keyed exactly by declared output name.
-            Missing required declared outputs are rejected.
-
-            Task snapshot:
-            """.stripIndent());
-        TaskDefinition task = run.taskSnapshot();
-        appendValue(builder, "Run id", run.id());
-        appendValue(builder, "Title", task.title());
-        appendValue(builder, "Goal", task.goal());
-        appendList(builder, "Inputs", run.inputValues().entrySet().stream()
-            .map(entry -> entry.getKey() + ": " + entry.getValue())
-            .toList());
-        appendList(builder, "Declared outputs", task.outputs().stream().map(this::fieldSummary).toList());
-        appendList(builder, "Steps", task.steps().stream().map(step -> step.order() + ". " + step.text()).toList());
-        appendList(builder, "Validation criteria", task.validationCriteria());
-        return builder.toString().trim();
+    private static List<PlanFieldDefinition> toPlanFieldDefs(List<TaskFieldDefinition> fields) {
+        return fields.stream().map(f -> new PlanFieldDefinition(
+            f.name(), toPlanFieldType(f.type()), false, f.description(), f.required(), f.schema(), f.example()
+        )).toList();
     }
 
-    private String fieldSummary(TaskFieldDefinition field) {
-        return field.name() + " (" + field.type().wireName() + ", required=" + field.required() + "): " + field.description();
+    private static List<TaskStep> toTaskSteps(List<PlanStep> steps) {
+        return steps.stream().map(s -> new TaskStep(s.order(), s.text())).toList();
     }
 
-    private void appendValue(StringBuilder builder, String label, String value) {
-        if (StringUtils.hasText(value)) {
-            builder.append(label).append(": ").append(value).append("\n");
-        }
+    private static List<PlanStep> toPlanSteps(List<TaskStep> steps) {
+        return steps.stream().map(s -> new PlanStep(s.order(), s.text())).toList();
     }
 
-    private void appendList(StringBuilder builder, String label, List<String> values) {
-        if (values == null || values.isEmpty()) {
-            return;
-        }
-        builder.append(label).append(":\n");
-        for (String value : values) {
-            builder.append("- ").append(value).append("\n");
-        }
+    private static PlanFieldDefinition toPlanFieldDef(TaskFieldDefinition f) {
+        return new PlanFieldDefinition(f.name(), toPlanFieldType(f.type()), false, f.description(), f.required(), f.schema(), f.example());
+    }
+
+    private static TaskValueType toTaskValueType(PlanFieldType type) {
+        return switch (type) {
+            case STRING, USER_MESSAGE -> TaskValueType.STRING;
+            case FILE_PATH -> TaskValueType.FILE_PATH;
+            case NUMBER -> TaskValueType.NUMBER;
+            case JSON -> TaskValueType.JSON;
+        };
+    }
+
+    private static PlanFieldType toPlanFieldType(TaskValueType type) {
+        return switch (type) {
+            case STRING, LONG_TEXT, BOOLEAN -> PlanFieldType.STRING;
+            case FILE_PATH -> PlanFieldType.FILE_PATH;
+            case NUMBER -> PlanFieldType.NUMBER;
+            case JSON -> PlanFieldType.JSON;
+        };
     }
 }

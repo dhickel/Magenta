@@ -1,0 +1,234 @@
+package io.mindspice.magenta2.ai.orchestration.runtime;
+
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+
+/**
+ * Manages projects, agent memberships, and project-network gating.
+ * Every project has exactly one owner agent. Agents in the same project
+ * can message each other through inboxes; agents outside the project
+ * network are blocked from project-scoped messaging.
+ */
+@Service
+public class ProjectService {
+    private static final Logger log = LoggerFactory.getLogger(ProjectService.class);
+
+    private final ProjectRepository projectRepository;
+    private final WorkspaceDirectoryService workspaceDirectoryService;
+
+    public ProjectService(ProjectRepository projectRepository,
+                          WorkspaceDirectoryService workspaceDirectoryService) {
+        this.projectRepository = projectRepository;
+        this.workspaceDirectoryService = workspaceDirectoryService;
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  Project CRUD
+    // ════════════════════════════════════════════════════════════════
+
+    public List<Project> listProjects() {
+        return projectRepository.findAll();
+    }
+
+    public Project getProject(String id) {
+        return projectRepository.findById(id)
+            .orElseThrow(() -> new IllegalArgumentException("Project not found: " + id));
+    }
+
+    public List<Project> listProjectsByOwner(String agentId) {
+        return projectRepository.findByOwnerAgent(agentId);
+    }
+
+    public Project createProject(String name, String description,
+                                  String ownerAgentId, String gitRepoUrl) {
+        if (!StringUtils.hasText(name)) {
+            throw new IllegalArgumentException("Project name is required");
+        }
+        if (!StringUtils.hasText(ownerAgentId)) {
+            throw new IllegalArgumentException("Owner agent ID is required");
+        }
+        String id = UUID.randomUUID().toString();
+        Instant now = Instant.now();
+
+        Project project = new Project(
+            id, name.trim(), normalize(description), ownerAgentId,
+            normalize(gitRepoUrl), null, null, null, now, now
+        );
+        Project saved = projectRepository.save(project);
+
+        // Auto-add owner as first member with "owner" role
+        addAgent(saved.id(), ownerAgentId, "owner", now);
+
+        // Ensure project workspace directory exists
+        try {
+            if (workspaceDirectoryService != null) {
+                Path ws = workspaceDirectoryService.projectWorkspace(id);
+                log.info("Created project workspace: {}", ws);
+            }
+        } catch (Exception e) {
+            log.error("Failed to create project workspace for project={}: {}", id, e.getMessage());
+        }
+
+        log.info("Created project {} owned by agent {}", id, ownerAgentId);
+        return saved;
+    }
+
+    public Project updateProject(String id, String name, String description,
+                                  String gitRepoUrl, String promptProfile,
+                                  String model, String settingsOverrideJson) {
+        Project existing = getProject(id);
+        return projectRepository.save(new Project(
+            id,
+            StringUtils.hasText(name) ? name.trim() : existing.name(),
+            description != null ? normalize(description) : existing.description(),
+            existing.ownerAgentId(),
+            gitRepoUrl != null ? normalize(gitRepoUrl) : existing.gitRepoUrl(),
+            promptProfile != null ? normalize(promptProfile) : existing.promptProfile(),
+            model != null ? normalize(model) : existing.model(),
+            settingsOverrideJson != null ? settingsOverrideJson : existing.settingsOverrideJson(),
+            existing.createdAt(),
+            Instant.now()
+        ));
+    }
+
+    public void deleteProject(String id) {
+        // verify it exists
+        getProject(id);
+        projectRepository.delete(id);
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  Agent Membership
+    // ════════════════════════════════════════════════════════════════
+
+    /**
+     * Add an agent to a project. The owner is added automatically on creation.
+     */
+    public ProjectAgentMembership addAgent(String projectId, String agentId, String role) {
+        return addAgent(projectId, agentId, role, Instant.now());
+    }
+
+    private ProjectAgentMembership addAgent(String projectId, String agentId,
+                                             String role, Instant joinedAt) {
+        getProject(projectId); // validate exists
+        String membershipId = UUID.randomUUID().toString();
+        String effectiveRole = StringUtils.hasText(role) ? role : "member";
+        return projectRepository.saveMembership(new ProjectAgentMembership(
+            membershipId, projectId, agentId, effectiveRole, joinedAt
+        ));
+    }
+
+    public void removeAgent(String projectId, String agentId) {
+        Project project = getProject(projectId);
+        if (project.ownerAgentId().equals(agentId)) {
+            throw new IllegalArgumentException("Cannot remove the project owner agent");
+        }
+        projectRepository.deleteMembership(projectId, agentId);
+    }
+
+    public List<ProjectAgentMembership> listMembers(String projectId) {
+        return projectRepository.findMembershipsByProject(projectId);
+    }
+
+    public List<String> listAgentProjects(String agentId) {
+        return projectRepository.findProjectIdsByAgent(agentId);
+    }
+
+    public boolean isMember(String projectId, String agentId) {
+        return projectRepository.isMember(projectId, agentId);
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  Network gating
+    // ════════════════════════════════════════════════════════════════
+
+    /**
+     * Checks whether two agents share at least one project and thus may
+     * exchange project-scoped messages.
+     */
+    public boolean agentsShareProject(String agentAId, String agentBId) {
+        List<String> projectsA = projectRepository.findProjectIdsByAgent(agentAId);
+        List<String> projectsB = projectRepository.findProjectIdsByAgent(agentBId);
+        return projectsA.stream().anyMatch(projectsB::contains);
+    }
+
+    /**
+     * Validates that sender and recipient share the given project.
+     * Throws if they do not share the project network.
+     */
+    public void requireProjectNetwork(String projectId, String senderAgentId,
+                                       String recipientAgentId) {
+        if (!isMember(projectId, senderAgentId)) {
+            throw new IllegalArgumentException(
+                "Sender agent " + senderAgentId + " is not a member of project " + projectId);
+        }
+        if (!isMember(projectId, recipientAgentId)) {
+            throw new IllegalArgumentException(
+                "Recipient agent " + recipientAgentId + " is not a member of project " + projectId);
+        }
+    }
+
+    /**
+     * Returns true if the given agent may send a project-scoped message
+     * to the given recipient. The agents must share at least one project.
+     */
+    public boolean canMessage(String senderAgentId, String recipientAgentId) {
+        return agentsShareProject(senderAgentId, recipientAgentId);
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  Project Events
+    // ════════════════════════════════════════════════════════════════
+
+    public List<ProjectEvent> listEvents(String projectId) {
+        return projectRepository.findEvents(projectId);
+    }
+
+    public ProjectEvent recordEvent(String projectId, String type, String payloadJson) {
+        getProject(projectId); // validate exists
+        return projectRepository.saveEvent(new ProjectEvent(
+            UUID.randomUUID().toString(), projectId, type,
+            payloadJson, Instant.now()
+        ));
+    }
+
+    public ProjectWorkspaceSummary workspaceSummary(String projectId) {
+        Project project = getProject(projectId);
+        String displayPath = "projects/" + projectId + "/workspace";
+        if (workspaceDirectoryService != null) {
+            Path path = workspaceDirectoryService.projectWorkspace(projectId);
+            displayPath = workspaceDirectoryService.dataRoot()
+                .relativize(path)
+                .toString();
+        }
+        return new ProjectWorkspaceSummary(
+            projectId,
+            project.ownerAgentId(),
+            "PROJECT",
+            displayPath,
+            listMembers(projectId).size()
+        );
+    }
+
+    // ── Helpers ──
+
+    private String normalize(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    public record ProjectWorkspaceSummary(
+        String workspaceId,
+        String ownerAgentId,
+        String rootKind,
+        String displayPath,
+        int linkCount
+    ) {}
+}

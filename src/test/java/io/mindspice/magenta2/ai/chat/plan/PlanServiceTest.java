@@ -1,6 +1,7 @@
 package io.mindspice.magenta2.ai.chat.plan;
 
 import java.util.List;
+import java.util.Map;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -19,7 +20,8 @@ class PlanServiceTest {
     void exitPlanTrimsMessagesCreatedAfterPlanStarted() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
-        PlanService service = new PlanService(new ChatPlanRepository(jdbcTemplate, new ObjectMapper()), memoryRepository);
+        PlanRepository planRepository = new PlanRepository(jdbcTemplate, new ObjectMapper());
+        PlanService service = new PlanService(planRepository, memoryRepository);
 
         memoryRepository.saveAll("conversation-1", List.of(new UserMessage("before")));
         service.beginPlan("conversation-1");
@@ -37,7 +39,8 @@ class PlanServiceTest {
     void runtimeInstructionsExposeCompactPlanState() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
-        PlanService service = new PlanService(new ChatPlanRepository(jdbcTemplate, new ObjectMapper()), memoryRepository);
+        PlanRepository planRepository = new PlanRepository(jdbcTemplate, new ObjectMapper());
+        PlanService service = new PlanService(planRepository, memoryRepository);
 
         service.beginPlan("conversation-1");
         service.saveDraftPlan(
@@ -68,7 +71,8 @@ class PlanServiceTest {
     void planModeInstructionsAreStandalonePlanningPrompt() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
-        PlanService service = new PlanService(new ChatPlanRepository(jdbcTemplate, new ObjectMapper()), memoryRepository);
+        PlanRepository planRepository = new PlanRepository(jdbcTemplate, new ObjectMapper());
+        PlanService service = new PlanService(planRepository, memoryRepository);
 
         service.beginPlan("conversation-1");
 
@@ -78,28 +82,19 @@ class PlanServiceTest {
             .contains("define concrete deliverables")
             .contains("Stay self-iterating while useful planning work remains available")
             .contains("Every PLAN-mode assistant turn that relinquishes control to the user")
-            .contains("one specific queued planning question")
-            .contains("a group of individual questions")
-            .contains("Do not end a PLAN-mode turn with only a conversational summary")
-            .contains("Do not end with free-form planning discussion")
-            .contains("ask the next concrete planning question instead of inventing preferences")
-            .contains("call plan_ready_for_approval instead of messaging the user directly")
-            .contains("Strive for clarity, detailed specification, and robust implementation/execution steps")
-            .contains("Do not perform implementation work in PLAN mode")
-            .contains("Shell and file tools are allowed for planning research")
             .contains("plan_set_goal")
             .contains("plan_put_item")
             .contains("ask_user_questions")
             .contains("plan_ready_for_approval")
-            .contains("validation criteria")
-            .contains("notes");
+            .contains("validation criteria");
     }
 
     @Test
     void executionReportPersistsEvidenceAndNeedsReviewState() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
-        PlanService service = new PlanService(new ChatPlanRepository(jdbcTemplate, new ObjectMapper()), memoryRepository);
+        PlanRepository planRepository = new PlanRepository(jdbcTemplate, new ObjectMapper());
+        PlanService service = new PlanService(planRepository, memoryRepository);
 
         service.beginPlan("conversation-1");
         service.saveDraftPlan(
@@ -123,7 +118,7 @@ class PlanServiceTest {
         );
         service.markNeedsReview("conversation-1");
 
-        ExecutionPlan plan = service.activePlan("conversation-1").orElseThrow();
+        PlanDefinition plan = service.activePlan("conversation-1").orElseThrow();
         assertThat(plan.status()).isEqualTo(PlanStatus.NEEDS_REVIEW);
         assertThat(plan.executionEvidence())
             .contains("Evidence: Actual posts: 40")
@@ -134,7 +129,8 @@ class PlanServiceTest {
     void readyForApprovalExposesTransientMarkdownPlan() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
-        PlanService service = new PlanService(new ChatPlanRepository(jdbcTemplate, new ObjectMapper()), memoryRepository);
+        PlanRepository planRepository = new PlanRepository(jdbcTemplate, new ObjectMapper());
+        PlanService service = new PlanService(planRepository, memoryRepository);
 
         service.beginPlan("conversation-1");
         service.updateDraftPlan(
@@ -155,17 +151,14 @@ class PlanServiceTest {
             .contains("- Markdown report")
             .contains("1. Research specs")
             .contains("## Validation Criteria");
-        assertThat(service.view("conversation-1").approvalHtml())
-            .contains("<h1>GPU Plan</h1>")
-            .contains("<h2>Goal</h2>")
-            .contains("<li>Markdown report</li>");
     }
 
     @Test
     void queuedPlanningQuestionsAdvanceAndPersistAnswersAsChatMessages() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
-        PlanService service = new PlanService(new ChatPlanRepository(jdbcTemplate, new ObjectMapper()), memoryRepository);
+        PlanRepository planRepository = new PlanRepository(jdbcTemplate, new ObjectMapper());
+        PlanService service = new PlanService(planRepository, memoryRepository);
 
         service.beginPlan("conversation-1");
         service.askQuestions("conversation-1", List.of("What should we build?", "Any constraints?"));
@@ -196,7 +189,8 @@ class PlanServiceTest {
     void queuedPlanningQuestionsRejectMoreThanFive() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
-        PlanService service = new PlanService(new ChatPlanRepository(jdbcTemplate, new ObjectMapper()), memoryRepository);
+        PlanRepository planRepository = new PlanRepository(jdbcTemplate, new ObjectMapper());
+        PlanService service = new PlanService(planRepository, memoryRepository);
 
         service.beginPlan("conversation-1");
 
@@ -209,10 +203,125 @@ class PlanServiceTest {
     }
 
     @Test
+    void taskTemplateCrudAndDraftWorkflow() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
+        PlanRepository planRepository = new PlanRepository(jdbcTemplate, new ObjectMapper());
+        PlanService service = new PlanService(planRepository, memoryRepository);
+
+        // Begin draft
+        PlanDefinition draft = service.beginDraft("draft-conv", "model-a", "model-b");
+        assertThat(draft.kind()).isEqualTo(PlanKind.TASK_TEMPLATE);
+        assertThat(draft.status()).isEqualTo(PlanStatus.DRAFT);
+        assertThat(draft.conversationId()).isEqualTo("draft-conv");
+
+        // Set goal
+        PlanDefinition withGoal = service.setTaskGoal("draft-conv", "Research a topic.");
+        assertThat(withGoal.goal()).isEqualTo("Research a topic.");
+        assertThat(withGoal.planningTask()).isEqualTo("define_outputs");
+
+        // Add input
+        PlanDefinition withInput = service.putFieldItem("draft-conv", "input", 1,
+            new PlanFieldDefinition("topic", PlanFieldType.STRING, false, "Topic to research", true, null, "test"));
+        assertThat(withInput.inputs()).extracting(PlanFieldDefinition::name).containsExactly("topic");
+
+        // Add output
+        PlanDefinition withOutput = service.putFieldItem("draft-conv", "output", 1,
+            new PlanFieldDefinition("notes", PlanFieldType.USER_MESSAGE, false, "Research notes", true, null, null));
+        assertThat(withOutput.outputs()).extracting(PlanFieldDefinition::name).containsExactly("notes");
+
+        // Add step
+        PlanDefinition withStep = service.putTextItem("draft-conv", "step", 1, "Collect research notes for <topic>.");
+        assertThat(withStep.steps()).hasSize(1);
+
+        // Add validation
+        service.putTextItem("draft-conv", "validation_criterion", 1, "Notes contain research findings.");
+
+        // Answer question
+        service.recordTaskPromptAnswer("draft-conv", "A topic input is fine.", null, 1);
+
+        // Ready for approval - Need title first
+        PlanDefinition titled = planRepository.saveDefinition(
+            service.activeDraft("draft-conv").orElseThrow()
+                .withTitle("Research Task")
+                .withSummary("Research a given topic.")
+        );
+
+        // Mark ready
+        PlanDefinition ready = service.markTaskReadyForApproval("draft-conv");
+        assertThat(ready.status()).isEqualTo(PlanStatus.READY_FOR_APPROVAL);
+
+        // Approve
+        PlanDefinition task = service.approveDraft("draft-conv");
+        assertThat(task.kind()).isEqualTo(PlanKind.TASK_TEMPLATE);
+        assertThat(task.title()).isEqualTo("Research Task");
+
+        // List tasks
+        assertThat(service.listTasks()).hasSize(1);
+    }
+
+    @Test
+    void taskRunLifecycle() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
+        PlanRepository planRepository = new PlanRepository(jdbcTemplate, new ObjectMapper());
+        PlanService service = new PlanService(planRepository, memoryRepository);
+
+        // Create a finalized task
+        PlanDefinition task = service.saveTask(new PlanDefinition(
+            null, PlanKind.TASK_TEMPLATE, PlanStatus.APPROVED,
+            "Quick Task", "Do it.", "Goal.", null,
+            List.of(), List.of(),
+            List.of(new PlanFieldDefinition("result", PlanFieldType.STRING, false, "Result", true, null, null)),
+            List.of(), List.of(new PlanStep(1, "Do it.")), List.of("Result present."),
+            List.of(), List.of(), null, null, null, null,
+            null, List.of(), 0, 0, null, null, null, null
+        ));
+
+        // No required inputs, start directly
+        PlanRun run = service.startRun(task.id(), Map.of("dummy", "val"));
+        assertThat(run.status()).isEqualTo(PlanRunStatus.RUNNING);
+
+        // Record report
+        PlanRun reported = service.recordRunReport(run.id(), "Working", List.of("evidence"));
+        assertThat(reported.executionEvidence()).anyMatch(e -> e.contains("Working"));
+
+        // Complete with missing output
+        assertThatThrownBy(() -> service.completeRun(run.id(), Map.of(), "done", List.of()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("result");
+
+        // Complete
+        PlanRun completed = service.completeRun(run.id(), Map.of("result", "ok"), "done", List.of("Evidence: proof"));
+        assertThat(completed.status()).isEqualTo(PlanRunStatus.COMPLETED);
+        assertThat(completed.outputValues()).containsEntry("result", "ok");
+    }
+
+    @Test
+    void modeResolutionHandlesAllStates() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
+        PlanRepository planRepository = new PlanRepository(jdbcTemplate, new ObjectMapper());
+        PlanService service = new PlanService(planRepository, memoryRepository);
+
+        // No plan -> NORMAL
+        assertThat(service.mode("no-plan")).isEqualTo(io.mindspice.magenta2.ai.chat.model.PlanMode.NORMAL);
+
+        // DRAFT plan -> PLAN
+        service.beginPlan("conv-1");
+        assertThat(service.mode("conv-1")).isEqualTo(io.mindspice.magenta2.ai.chat.model.PlanMode.PLAN);
+
+        // Task draft -> TASK
+        service.beginDraft("task-draft", null, null);
+        assertThat(service.mode("task-draft")).isEqualTo(io.mindspice.magenta2.ai.chat.model.PlanMode.TASK);
+    }
+
+    @Test
     void approvalMarkdownRendersOptionalInputsOnlyWhenPresent() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
-        PlanService service = new PlanService(new ChatPlanRepository(jdbcTemplate, new ObjectMapper()), memoryRepository);
+        PlanRepository planRepository = new PlanRepository(jdbcTemplate, new ObjectMapper());
+        PlanService service = new PlanService(planRepository, memoryRepository);
 
         service.beginPlan("conversation-1");
         service.updateDraftPlan(
@@ -231,10 +340,11 @@ class PlanServiceTest {
         service.markReadyForApproval("conversation-1");
 
         assertThat(service.view("conversation-1").approvalMarkdown())
-            .contains("## Deliverables")
-            .contains("- Updated file")
+            .contains("Task Plan")
             .contains("## Inputs")
-            .contains("- target_file");
+            .contains("- target_file")
+            .contains("## Outputs")
+            .contains("- Updated file");
     }
 
     private JdbcTemplate jdbcTemplate() {

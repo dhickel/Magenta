@@ -9,7 +9,7 @@ import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-@Service
+@Service("orchestrationInboxService")
 public class InboxService {
     private final OrchestrationRuntimeRepository repository;
     private final AgentProfileService agentProfileService;

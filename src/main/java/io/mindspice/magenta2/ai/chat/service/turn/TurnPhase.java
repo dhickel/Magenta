@@ -9,7 +9,8 @@ package io.mindspice.magenta2.ai.chat.service.turn;
  * PREPARE       -> INVOKE_MODEL
  * INVOKE_MODEL  -> EVALUATE
  * EVALUATE      -> EXECUTE_TOOLS | REPAIR | FINALIZE
- * EXECUTE_TOOLS -> EVALUATE | REPAIR | FINALIZE
+ * EXECUTE_TOOLS -> INVOKE_MODEL (normal round calls model)
+ *                | EVALUATE   (abort or plan/task completion)
  * REPAIR        -> INVOKE_MODEL | FINALIZE | THROW
  * FINALIZE      -> DONE
  * </pre>

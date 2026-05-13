@@ -38,7 +38,7 @@ public class OrchestrationRunnerService {
 
     private final OrchestrationRuntimeRepository repository;
     private final AssignmentService assignmentService;
-    private final OrchestrationJobService jobService;
+    private final JobService jobService;
     private final TaskService taskService;
     private final WorkflowService workflowService;
     private final ChatService chatService;
@@ -57,7 +57,7 @@ public class OrchestrationRunnerService {
     public OrchestrationRunnerService(
         OrchestrationRuntimeRepository repository,
         AssignmentService assignmentService,
-        OrchestrationJobService jobService,
+        JobService jobService,
         TaskService taskService,
         WorkflowService workflowService,
         InboxService inboxService,
@@ -71,7 +71,7 @@ public class OrchestrationRunnerService {
     public OrchestrationRunnerService(
         OrchestrationRuntimeRepository repository,
         AssignmentService assignmentService,
-        OrchestrationJobService jobService,
+        JobService jobService,
         TaskService taskService,
         WorkflowService workflowService,
         ChatService chatService,
@@ -97,7 +97,7 @@ public class OrchestrationRunnerService {
     public OrchestrationRunnerService(
         OrchestrationRuntimeRepository repository,
         AssignmentService assignmentService,
-        OrchestrationJobService jobService,
+        JobService jobService,
         TaskService taskService,
         WorkflowService workflowService,
         ChatService chatService,
@@ -196,7 +196,8 @@ public class OrchestrationRunnerService {
 
     private WorkAssignment runTask(WorkAssignment assignment) {
         String taskId = text(assignment.input().get("taskId"), null);
-        TaskRun taskRun = runTaskThroughModel(taskId, mapValue(assignment.input().get("inputValues")), assignment, null);
+        TaskRun taskRun = runTaskThroughModel(taskId, mapValue(assignment.input().get("inputValues")), assignment,
+            assignmentService.resolveModel(assignment, null));
         Map<String, Object> checkpoint = Map.of("taskRunId", taskRun.id(), "status", taskRun.status().name());
         Map<String, Object> output = Map.of("taskRunId", taskRun.id(), "outputValues", taskRun.outputValues());
         return complete(checkpointed(assignment, assignment.currentItemIndex(), checkpoint, output, evidence(taskRun)), output, evidence(taskRun));
@@ -215,8 +216,8 @@ public class OrchestrationRunnerService {
 
     private WorkAssignment runJob(WorkAssignment assignment) {
         String jobId = StringUtils.hasText(assignment.jobId()) ? assignment.jobId() : text(assignment.input().get("jobId"), null);
-        OrchestrationJob job = jobService.get(jobId);
-        List<OrchestrationJobItem> items = jobService.items(job.id());
+        JobDefinition job = jobService.getDefinition(jobId);
+        List<JobWorkItem> items = job.items();
         Map<String, Object> outputs = new LinkedHashMap<>(assignment.output());
         Map<String, Object> evidence = new LinkedHashMap<>(assignment.evidence());
         int start = Math.max(assignment.currentItemIndex(), integer(assignment.checkpoint().get("nextItemIndex"), 0));
@@ -226,37 +227,24 @@ public class OrchestrationRunnerService {
             if (current.status() == OrchestrationStatus.CANCEL_REQUESTED) {
                 return assignmentService.saveStatus(current, OrchestrationStatus.CANCELLED);
             }
-            OrchestrationJobItem item = items.get(i);
-            if (item.itemType() == AssignmentType.WAIT_FOR_MESSAGE) {
-                Map<String, Object> checkpoint = Map.of(
-                    "jobId", job.id(),
-                    "nextItemIndex", i,
-                    "waitingItemId", item.id(),
-                    "model", assignmentService.resolveModel(current, item)
-                );
-                Map<String, Object> waitingEvidence = new LinkedHashMap<>(evidence);
-                waitingEvidence.put(item.id(), Map.of("itemType", item.itemType().name(), "waitingSince", Instant.now().toString()));
-                return assignmentService.save(assignmentService.copy(
-                    current, OrchestrationStatus.WAITING, i, checkpoint, outputs, waitingEvidence,
-                    null, null, null, null
-                ));
-            }
-            JobItemResult itemResult = runJobItemWithRetry(current, item);
-            outputs.put(item.id(), itemResult.output());
-            evidence.put(item.id(), itemResult.evidence());
-            if (!itemResult.succeeded() && !item.continueOnFailure()) {
+            JobWorkItem item = items.get(i);
+            JobItemResult itemResult = runJobItem(current, assignment, item);
+            outputs.put(item.key(), itemResult.output());
+            evidence.put(item.key(), itemResult.evidence());
+            if (!itemResult.succeeded()) {
+                String errorText = itemResult.errorText();
                 current = checkpointed(current, i + 1, Map.of(
                     "jobId", job.id(),
                     "nextItemIndex", i + 1,
-                    "failedItemId", item.id(),
+                    "failedItemKey", item.key(),
                     "model", assignmentService.resolveModel(current, item)
                 ), outputs, evidence);
-                return fail(current, itemResult.errorText());
+                return fail(current, errorText);
             }
             current = checkpointed(current, i + 1, Map.of(
                 "jobId", job.id(),
                 "nextItemIndex", i + 1,
-                "completedItemId", item.id(),
+                "completedItemKey", item.key(),
                 "model", assignmentService.resolveModel(current, item)
             ), outputs, evidence);
             current = assignmentService.save(current);
@@ -265,75 +253,50 @@ public class OrchestrationRunnerService {
         return complete(current, outputs, evidence);
     }
 
-    private JobItemResult runJobItemWithRetry(WorkAssignment assignment, OrchestrationJobItem item) {
-        int maxAttempts = Math.max(1, item.retryCount() + 1);
-        RuntimeException lastFailure = null;
-        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            try {
-                Object output = runJobItem(assignment, item);
-                return new JobItemResult(true, output, Map.of(
-                    "itemType", item.itemType().name(),
-                    "attempts", attempt,
-                    "completedAt", Instant.now().toString()
-                ), null);
-            } catch (RuntimeException exception) {
-                lastFailure = exception;
-                if (attempt < maxAttempts) {
-                    sleepBeforeRetry();
-                }
-            }
-        }
-        String error = lastFailure == null ? "Job item failed" : lastFailure.getMessage();
-        return new JobItemResult(false, Map.of("failed", true, "error", error), Map.of(
-            "itemType", item.itemType().name(),
-            "attempts", maxAttempts,
-            "failedAt", Instant.now().toString(),
-            "error", error
-        ), error);
-    }
-
-    private void sleepBeforeRetry() {
+    private JobItemResult runJobItem(WorkAssignment assignment, WorkAssignment current, JobWorkItem item) {
         try {
-            Thread.sleep(250);
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Interrupted while retrying job item", exception);
-        }
-    }
-
-    private Object runJobItem(WorkAssignment assignment, OrchestrationJobItem item) {
-        return switch (item.itemType()) {
-            case TASK_RUN -> {
-                TaskRun run = runTaskThroughModel(item.taskId(), mapValue(item.config().get("inputValues")), assignment, item);
-                yield Map.of("taskRunId", run.id(), "outputValues", run.outputValues());
-            }
-            case WORKFLOW_RUN -> {
-                WorkflowRun run = workflowService.runSynchronously(item.workflowId(), assignmentService.resolveModel(assignment, item));
-                if (!run.status().name().equals("COMPLETED")) {
-                    throw new IllegalStateException("Workflow job item failed: " + run.errorText());
+            Object output = switch (item.type()) {
+                case PLAN -> {
+                    if (!StringUtils.hasText(item.planId())) {
+                        throw new IllegalArgumentException("PLAN work item '" + item.key() + "' has no planId");
+                    }
+                    TaskRun run = runTaskThroughModel(item.planId(), item.inputBindings(), assignment,
+                        assignmentService.resolveModel(current, item));
+                    yield Map.of("planRunId", run.id(), "outputValues", run.outputValues());
                 }
-                yield Map.of("workflowRunId", run.id(), "finalOutputs", run.finalOutputs());
-            }
-            case AGENT_MESSAGE -> {
-                String toAgentId = text(item.config().get("toAgentId"), assignment.agentId());
-                InboxMessage message = inboxService.send(toAgentId, new InboxMessage(
-                    null, toAgentId, assignment.agentId(), text(item.config().get("messageType"), "job_message"),
-                    text(item.config().get("body"), ""), mapValue(item.config().get("metadata")),
-                    false, false, null, null
-                ));
-                yield Map.of("messageId", message.id());
-            }
-            case WAIT_FOR_MESSAGE -> throw new IllegalStateException("WAIT_FOR_MESSAGE pauses job execution");
-            case REPORT -> Map.of("message", text(item.config().get("message"), "Report completed."));
-            case JOB_RUN -> throw new IllegalArgumentException("Nested JOB_RUN items are not supported");
-        };
+                case WORKFLOW -> {
+                    if (!StringUtils.hasText(item.workflowId())) {
+                        throw new IllegalArgumentException("WORKFLOW work item '" + item.key() + "' has no workflowId");
+                    }
+                    WorkflowRun run = workflowService.runSynchronously(item.workflowId(),
+                        assignmentService.resolveModel(current, item));
+                    if (!run.status().name().equals("COMPLETED")) {
+                        throw new IllegalStateException("Workflow job item failed: " + run.errorText());
+                    }
+                    yield Map.of("workflowRunId", run.id(), "finalOutputs", run.finalOutputs());
+                }
+            };
+            return new JobItemResult(true, output, Map.of(
+                "itemType", item.type().name(),
+                "itemKey", item.key(),
+                "completedAt", Instant.now().toString()
+            ), null);
+        } catch (RuntimeException exception) {
+            String error = exception.getMessage();
+            return new JobItemResult(false, Map.of("failed", true, "error", error), Map.of(
+                "itemType", item.type().name(),
+                "itemKey", item.key(),
+                "failedAt", Instant.now().toString(),
+                "error", error
+            ), error);
+        }
     }
 
     private TaskRun runTaskThroughModel(
         String taskId,
         Map<String, Object> inputValues,
         WorkAssignment assignment,
-        OrchestrationJobItem item
+        String modelOverride
     ) {
         if (chatService == null) {
             throw new IllegalStateException("Task execution requires model-backed chat execution");
@@ -342,7 +305,7 @@ public class OrchestrationRunnerService {
             taskId,
             inputValues,
             UUID.randomUUID().toString(),
-            assignmentService.resolveModel(assignment, item)
+            modelOverride
         ).run();
         if (run.status() != TaskRunStatus.COMPLETED) {
             throw new IllegalStateException("Task run did not complete: "
