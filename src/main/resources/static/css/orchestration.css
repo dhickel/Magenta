@@ -1211,3 +1211,121 @@
         flex-direction: column;
     }
 }
+
+.graph-composer {
+  display: grid;
+  gap: 1rem;
+}
+
+.graph-composer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.graph-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.graph-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr 320px;
+  gap: 0.8rem;
+}
+
+.graph-palette,
+.graph-side-panel,
+.graph-diagnostics {
+  border: 1px solid var(--orch-border, #c8d0da);
+  border-radius: 10px;
+  padding: 0.75rem;
+  background: #f9fbfd;
+}
+
+.graph-canvas-wrap {
+  border: 1px solid var(--orch-border, #c8d0da);
+  border-radius: 10px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #eef3f7, #f7fafc);
+}
+
+.graph-canvas {
+  position: relative;
+  min-height: 560px;
+}
+
+.graph-edges {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.graph-edge {
+  stroke: #76889b;
+  stroke-width: 2;
+}
+
+.graph-edge-control {
+  stroke-dasharray: 6 4;
+}
+
+.graph-node-card {
+  position: absolute;
+  width: 150px;
+  border: 1px solid #b3c3d2;
+  border-radius: 10px;
+  padding: 0.4rem;
+  background: #ffffff;
+  box-shadow: 0 3px 10px rgba(15, 30, 45, 0.08);
+  cursor: pointer;
+  user-select: none;
+}
+
+.graph-node-card.selected {
+  outline: 2px solid #1f5f8b;
+}
+
+.graph-node-key {
+  font-size: 0.78rem;
+  color: #526171;
+}
+
+.graph-side-panel textarea,
+.graph-side-panel input,
+.graph-palette input,
+.graph-palette select {
+  width: 100%;
+  margin-top: 0.2rem;
+  margin-bottom: 0.55rem;
+}
+
+.graph-palette-buttons,
+.graph-side-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+
+.graph-diag-group.error li {
+  color: #8a1f1f;
+}
+
+.graph-diag-group.warning li {
+  color: #7a5b1f;
+}
+
+.graph-diag-group li.clickable {
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+@media (max-width: 1100px) {
+  .graph-layout {
+    grid-template-columns: 1fr;
+  }
+}

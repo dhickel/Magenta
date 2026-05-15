@@ -1,9 +1,13 @@
 package io.mindspice.magenta2.ai.orchestration.workflow;
 
 import io.mindspice.magenta2.ai.chat.plan.PlanDefinition;
+import io.mindspice.magenta2.ai.chat.plan.PlanFieldDefinition;
+import io.mindspice.magenta2.ai.chat.plan.PlanFieldType;
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
+import io.mindspice.magenta2.ai.chat.plan.PlanStatus;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -13,9 +17,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Validates workflow definitions against graph-structure rules.
- * Checks node uniqueness, route endpoint existence, cycle detection,
- * and required input satisfaction.
+ * Strict workflow v2 compile validation.
  */
 public class WorkflowValidator {
 
@@ -25,9 +27,6 @@ public class WorkflowValidator {
         this.planService = planService;
     }
 
-    /**
-     * Structured validation result.
-     */
     public record ValidationResult(List<String> errors, List<String> warnings) {
         public ValidationResult {
             errors = errors == null ? List.of() : List.copyOf(errors);
@@ -39,265 +38,310 @@ public class WorkflowValidator {
         }
     }
 
-    /**
-     * Validate a workflow definition and return structured errors/warnings.
-     */
     public ValidationResult validate(WorkflowDefinition definition) {
         List<String> errors = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
 
-        // 1. Node key uniqueness
-        validateNodeUniqueness(definition, errors);
-
-        // 2. Route endpoint existence
-        validateRouteEndpoints(definition, errors);
-
-        // 3. Route id uniqueness
-        validateRouteUniqueness(definition, errors);
-
-        // 4. Duplicate route detection
-        validateDuplicateRoutes(definition, errors);
-
-        // 5. Every route has a route type (enforced by record, but double-check)
-        for (WorkflowRoute route : definition.routes()) {
-            if (route.routeType() == null) {
-                errors.add("Route '" + route.id() + "' has no route type");
-            }
+        if (definition.schemaVersion() != WorkflowDefinition.CURRENT_SCHEMA_VERSION) {
+            errors.add("Workflow schemaVersion must be 2 for v2 contract");
+        }
+        if (definition.maxConcurrency() < 1) {
+            errors.add("workflow.maxConcurrency must be >= 1");
         }
 
-        // 4. Type compatibility
-        validateTypeCompatibility(definition, errors, warnings);
+        Map<String, WorkflowNode> nodesByKey = validateNodes(definition, errors);
+        Map<String, PlanDefinition> taskPlans = resolveTaskPlans(definition, errors, warnings);
 
-        // 5. Cycle detection
-        if (!hasCycle(definition)) {
-            // Only check input requirements if graph is acyclic
-            validateInputRequirements(definition, errors, warnings);
-        } else {
-            errors.add("Workflow contains a cycle; graph must be acyclic");
-        }
-
-        // 6. Required task inputs satisfied
-        validateTaskInputSatisfaction(definition, errors, warnings);
+        validateRoutes(definition, nodesByKey, taskPlans, errors, warnings);
+        validateCycles(definition, errors);
+        validateRequiredTaskInputs(definition, taskPlans, errors);
+        validateApprovalGateBranches(definition, nodesByKey, errors);
 
         return new ValidationResult(errors, warnings);
     }
 
-    private void validateNodeUniqueness(WorkflowDefinition def, List<String> errors) {
-        Set<String> seen = new HashSet<>();
-        for (WorkflowNode node : def.nodes()) {
-            if (!seen.add(node.key())) {
+    private Map<String, WorkflowNode> validateNodes(WorkflowDefinition definition, List<String> errors) {
+        Map<String, WorkflowNode> nodesByKey = new LinkedHashMap<>();
+        for (WorkflowNode node : definition.nodes()) {
+            if (nodesByKey.putIfAbsent(node.key(), node) != null) {
                 errors.add("Duplicate node key: '" + node.key() + "'");
             }
+            if (!node.inputBindings().isEmpty()) {
+                errors.add("Node '" + node.key() + "' uses legacy inputBindings; v2 requires explicit routes");
+            }
         }
+        return nodesByKey;
     }
 
-    private void validateRouteEndpoints(WorkflowDefinition def, List<String> errors) {
-        Set<String> nodeKeys = new HashSet<>();
-        for (WorkflowNode node : def.nodes()) {
-            nodeKeys.add(node.key());
-        }
-
-        for (WorkflowRoute route : def.routes()) {
-            if (route.fromNodeKey() != null && !nodeKeys.contains(route.fromNodeKey())) {
-                errors.add("Route '" + route.id() + "': source node '" + route.fromNodeKey() + "' not found");
+    private Map<String, PlanDefinition> resolveTaskPlans(
+        WorkflowDefinition definition,
+        List<String> errors,
+        List<String> warnings
+    ) {
+        Map<String, PlanDefinition> taskPlans = new HashMap<>();
+        for (WorkflowNode node : definition.nodes()) {
+            if (node.type() != WorkflowNodeType.TASK) {
+                continue;
             }
-            if (!nodeKeys.contains(route.toNodeKey())) {
-                errors.add("Route '" + route.id() + "': destination node '" + route.toNodeKey() + "' not found");
+            if (!StringUtils.hasText(node.planId())) {
+                errors.add("TASK node '" + node.key() + "' requires planId");
+                continue;
             }
-        }
-    }
-
-    private void validateRouteUniqueness(WorkflowDefinition def, List<String> errors) {
-        Set<String> seen = new HashSet<>();
-        for (WorkflowRoute route : def.routes()) {
-            if (!seen.add(route.id())) {
-                errors.add("Duplicate route id: '" + route.id() + "'");
-            }
-        }
-    }
-
-    private void validateDuplicateRoutes(WorkflowDefinition def, List<String> errors) {
-        Set<String> seen = new HashSet<>();
-        for (WorkflowRoute route : def.routes()) {
-            String identity = route.fromNodeKey() + "::"
-                + route.fromOutputName() + "::"
-                + route.toNodeKey() + "::"
-                + route.toInputName() + "::"
-                + route.routeType().name();
-            if (!seen.add(identity)) {
-                errors.add("Duplicate route detected: fromNodeKey='" + route.fromNodeKey()
-                    + "', fromOutputName='" + route.fromOutputName()
-                    + "', toNodeKey='" + route.toNodeKey()
-                    + "', toInputName='" + route.toInputName()
-                    + "', routeType=" + route.routeType().name());
-            }
-        }
-    }
-
-    private void validateTypeCompatibility(WorkflowDefinition def, List<String> errors, List<String> warnings) {
-        for (WorkflowRoute route : def.routes()) {
-            if (route.routeType() != WorkflowRouteType.MAP_OUTPUT) continue;
-            if (!StringUtils.hasText(route.fromNodeKey())) continue;
-
-            WorkflowNode sourceNode = def.nodeByKey(route.fromNodeKey());
-            WorkflowNode destNode = def.nodeByKey(route.toNodeKey());
-            if (sourceNode == null || destNode == null) continue;
-
-            // Check plan types if both nodes are TASK nodes
-            if (sourceNode.type() == WorkflowNodeType.TASK && StringUtils.hasText(sourceNode.planId())
-                && destNode.type() == WorkflowNodeType.TASK && StringUtils.hasText(destNode.planId())) {
-                try {
-                    PlanDefinition sourcePlan = planService.getTask(sourceNode.planId());
-                    PlanDefinition destPlan = planService.getTask(destNode.planId());
-
-                    var sourceOutput = sourcePlan.outputs().stream()
-                        .filter(o -> o.name().equals(route.fromOutputName()))
-                        .findFirst().orElse(null);
-                    var destInput = destPlan.inputs().stream()
-                        .filter(i -> i.name().equals(route.toInputName()))
-                        .findFirst().orElse(null);
-
-                    if (sourceOutput != null && destInput != null
-                        && sourceOutput.type() != destInput.type()) {
-                        warnings.add("Type mismatch on route '" + route.id() + "': "
-                            + sourceNode.key() + "." + sourceOutput.name() + " is "
-                            + sourceOutput.type().wireName() + " but "
-                            + destNode.key() + "." + destInput.name() + " expects "
-                            + destInput.type().wireName());
-                    }
-                } catch (Exception e) {
-                    warnings.add("Cannot validate type compatibility for route '" + route.id()
-                        + "': " + e.getMessage());
-                }
-            }
-        }
-    }
-
-    private boolean hasCycle(WorkflowDefinition def) {
-        // Build adjacency list from routes that create dependencies
-        Map<String, List<String>> adjacency = new LinkedHashMap<>();
-        for (WorkflowNode node : def.nodes()) {
-            adjacency.put(node.key(), new ArrayList<>());
-        }
-        for (WorkflowRoute route : def.routes()) {
-            if (route.createsDependency() && route.fromNodeKey() != null) {
-                adjacency.computeIfAbsent(route.fromNodeKey(), k -> new ArrayList<>())
-                    .add(route.toNodeKey());
-            }
-        }
-
-        // DFS with colors: 0=unvisited, 1=visiting, 2=done
-        Map<String, Integer> color = new HashMap<>();
-        for (String nodeKey : adjacency.keySet()) {
-            color.put(nodeKey, 0);
-        }
-
-        for (String nodeKey : adjacency.keySet()) {
-            if (color.get(nodeKey) == 0) {
-                if (dfsVisit(nodeKey, adjacency, color)) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    private boolean dfsVisit(String node, Map<String, List<String>> adjacency, Map<String, Integer> color) {
-        color.put(node, 1);
-        for (String neighbor : adjacency.getOrDefault(node, List.of())) {
-            Integer c = color.get(neighbor);
-            if (c == null) continue;
-            if (c == 1) return true;
-            if (c == 0 && dfsVisit(neighbor, adjacency, color)) return true;
-        }
-        color.put(node, 2);
-        return false;
-    }
-
-    private void validateInputRequirements(WorkflowDefinition def, List<String> errors, List<String> warnings) {
-        Set<String> rootNodes = findRootNodes(def);
-
-        for (WorkflowNode node : def.nodes()) {
-            // Skip non-executable nodes
-            if (node.isMessage()) continue;
-
-            // Root nodes don't need incoming routes
-            if (rootNodes.contains(node.key())) continue;
-
-            // Check if this node has at least one incoming dependency-creating route
-            boolean hasIncoming = def.routes().stream()
-                .anyMatch(r -> r.createsDependency() && r.toNodeKey().equals(node.key()));
-            // Or has literal config input
-            boolean hasLiteralInput = node.config() != null && !node.config().isEmpty();
-
-            if (!hasIncoming && !hasLiteralInput) {
-                if (node.type() == WorkflowNodeType.TASK) {
-                    errors.add("TASK node '" + node.key() + "' has no incoming routes or literal config; "
-                        + "required inputs cannot be satisfied");
-                } else {
-                    warnings.add("Node '" + node.key() + "' has no incoming routes; "
-                        + "it may not receive any input");
-                }
-            }
-        }
-    }
-
-    /**
-     * Find root nodes: nodes with no incoming dependency-creating routes.
-     */
-    private Set<String> findRootNodes(WorkflowDefinition def) {
-        Set<String> hasIncoming = new HashSet<>();
-        for (WorkflowRoute route : def.routes()) {
-            if (route.createsDependency()) {
-                hasIncoming.add(route.toNodeKey());
-            }
-        }
-        Set<String> roots = new HashSet<>();
-        for (WorkflowNode node : def.nodes()) {
-            if (!hasIncoming.contains(node.key())) {
-                roots.add(node.key());
-            }
-        }
-        return roots;
-    }
-
-    private void validateTaskInputSatisfaction(WorkflowDefinition def, List<String> errors, List<String> warnings) {
-        for (WorkflowNode node : def.nodes()) {
-            if (node.type() != WorkflowNodeType.TASK) continue;
-            if (!StringUtils.hasText(node.planId())) continue;
-
             try {
                 PlanDefinition plan = planService.getTask(node.planId());
-                if (plan.inputs() == null || plan.inputs().isEmpty()) continue;
-
-                // Collect incoming mapped inputs from routes
-                Set<String> mappedInputs = new HashSet<>();
-                for (WorkflowRoute route : def.incomingRoutes(node.key())) {
-                    if (route.routeType() == WorkflowRouteType.MAP_OUTPUT
-                        && StringUtils.hasText(route.toInputName())) {
-                        mappedInputs.add(route.toInputName());
-                    }
+                if (plan.status() != PlanStatus.APPROVED) {
+                    errors.add("TASK node '" + node.key() + "' must reference APPROVED task template: " + node.planId());
                 }
-
-                // Also check literal config
-                if (node.config() != null) {
-                    mappedInputs.addAll(node.config().keySet());
-                }
-
-                // Also check deprecated inputBindings for compat
-                for (WorkflowBinding binding : node.inputBindings()) {
-                    mappedInputs.add(binding.inputName());
-                }
-
-                for (var input : plan.inputs()) {
-                    if (input.required() && !mappedInputs.contains(input.name())) {
-                        errors.add("TASK node '" + node.key() + "': required input '"
-                            + input.name() + "' is not satisfied by any route or config");
-                    }
-                }
+                taskPlans.put(node.key(), plan);
             } catch (Exception e) {
-                warnings.add("Cannot validate task inputs for node '" + node.key()
-                    + "': " + e.getMessage());
+                errors.add("TASK node '" + node.key() + "' references unknown task template: " + node.planId());
+                warnings.add("Task template lookup failed for node '" + node.key() + "': " + e.getMessage());
+            }
+        }
+        return taskPlans;
+    }
+
+    private void validateRoutes(
+        WorkflowDefinition definition,
+        Map<String, WorkflowNode> nodesByKey,
+        Map<String, PlanDefinition> taskPlans,
+        List<String> errors,
+        List<String> warnings
+    ) {
+        Set<String> routeIds = new HashSet<>();
+        Set<String> identities = new HashSet<>();
+
+        for (WorkflowRoute route : definition.routes()) {
+            if (!routeIds.add(route.id())) {
+                errors.add("Duplicate route id: '" + route.id() + "'");
+            }
+
+            if (StringUtils.hasText(route.fromNodeKey()) && !nodesByKey.containsKey(route.fromNodeKey())) {
+                errors.add("Route '" + route.id() + "': source node not found: '" + route.fromNodeKey() + "'");
+                continue;
+            }
+            if (!nodesByKey.containsKey(route.toNodeKey())) {
+                errors.add("Route '" + route.id() + "': destination node not found: '" + route.toNodeKey() + "'");
+                continue;
+            }
+
+            String identity = String.join("::",
+                String.valueOf(route.fromNodeKey()),
+                String.valueOf(route.fromOutputName()),
+                String.valueOf(route.toNodeKey()),
+                String.valueOf(route.toInputName()),
+                route.routeType().name(),
+                String.valueOf(route.controlOutcome()));
+            if (!identities.add(identity)) {
+                errors.add("Duplicate route detected for route '" + route.id() + "'");
+            }
+
+            WorkflowNode source = StringUtils.hasText(route.fromNodeKey()) ? nodesByKey.get(route.fromNodeKey()) : null;
+            WorkflowNode target = nodesByKey.get(route.toNodeKey());
+
+            if (route.routeType() == WorkflowRouteType.CONTROL) {
+                validateControlRoute(route, source, errors);
+                continue;
+            }
+
+            if (!StringUtils.hasText(route.fromNodeKey())) {
+                errors.add("Data route '" + route.id() + "' requires fromNodeKey");
+                continue;
+            }
+            if (!StringUtils.hasText(route.sourcePort())) {
+                errors.add("Data route '" + route.id() + "' requires source output port");
+                continue;
+            }
+            if (!StringUtils.hasText(route.targetPort())) {
+                errors.add("Data route '" + route.id() + "' requires target input port");
+                continue;
+            }
+
+            PlanFieldType sourceType = resolveOutputType(source, route.sourcePort(), taskPlans);
+            PlanFieldType targetType = resolveInputType(target, route.targetPort(), taskPlans);
+            boolean strictSource = source != null && (source.type() == WorkflowNodeType.TASK || !source.outputPorts().isEmpty());
+            boolean strictTarget = target != null && (target.type() == WorkflowNodeType.TASK || !target.inputPorts().isEmpty());
+
+            if (sourceType == null && strictSource) {
+                errors.add("Route '" + route.id() + "' references unknown source port '"
+                    + route.sourcePort() + "' on node '" + route.fromNodeKey() + "'");
+            } else if (sourceType == null) {
+                warnings.add("Route '" + route.id() + "' source port '" + route.sourcePort()
+                    + "' on node '" + route.fromNodeKey() + "' is not explicitly typed");
+            }
+            if (targetType == null && strictTarget) {
+                errors.add("Route '" + route.id() + "' references unknown target port '"
+                    + route.targetPort() + "' on node '" + route.toNodeKey() + "'");
+            } else if (targetType == null) {
+                warnings.add("Route '" + route.id() + "' target port '" + route.targetPort()
+                    + "' on node '" + route.toNodeKey() + "' is not explicitly typed");
+            }
+
+            if (sourceType != null && targetType != null && sourceType != targetType) {
+                errors.add("Route '" + route.id() + "' type mismatch: "
+                    + route.fromNodeKey() + "." + route.sourcePort() + " is " + sourceType.wireName()
+                    + " but " + route.toNodeKey() + "." + route.targetPort() + " expects " + targetType.wireName());
+            }
+
+            if (target != null && target.isGate()) {
+                warnings.add("Route '" + route.id() + "' targets a gate node input; only control routes are typically expected for gates");
+            }
+        }
+    }
+
+    private void validateControlRoute(WorkflowRoute route, WorkflowNode source, List<String> errors) {
+        if (!StringUtils.hasText(route.fromNodeKey())) {
+            errors.add("Control route '" + route.id() + "' requires fromNodeKey");
+            return;
+        }
+        if (source == null || !source.isGate()) {
+            errors.add("Control route '" + route.id() + "' must originate from an approval gate node");
+        }
+        if (StringUtils.hasText(route.sourcePort()) || StringUtils.hasText(route.targetPort())) {
+            errors.add("Control route '" + route.id() + "' must not define data ports");
+        }
+        String outcome = route.controlOutcome();
+        if (!WorkflowRoute.OUTCOME_APPROVED.equals(outcome)
+            && !WorkflowRoute.OUTCOME_REJECTED.equals(outcome)) {
+            errors.add("Control route '" + route.id() + "' must define condition APPROVED or REJECTED");
+        }
+    }
+
+    private PlanFieldType resolveOutputType(WorkflowNode node, String portName, Map<String, PlanDefinition> taskPlans) {
+        if (node == null || !StringUtils.hasText(portName)) {
+            return null;
+        }
+        if (node.type() == WorkflowNodeType.TASK) {
+            PlanDefinition plan = taskPlans.get(node.key());
+            if (plan == null) return null;
+            return plan.outputs().stream()
+                .filter(p -> p.name().equals(portName))
+                .map(PlanFieldDefinition::type)
+                .findFirst()
+                .orElse(null);
+        }
+        return node.outputPorts().stream()
+            .filter(p -> p.name().equals(portName))
+            .map(WorkflowPort::type)
+            .findFirst()
+            .orElse(null);
+    }
+
+    private PlanFieldType resolveInputType(WorkflowNode node, String portName, Map<String, PlanDefinition> taskPlans) {
+        if (node == null || !StringUtils.hasText(portName)) {
+            return null;
+        }
+        if (node.type() == WorkflowNodeType.TASK) {
+            PlanDefinition plan = taskPlans.get(node.key());
+            if (plan == null) return null;
+            return plan.inputs().stream()
+                .filter(p -> p.name().equals(portName))
+                .map(PlanFieldDefinition::type)
+                .findFirst()
+                .orElse(null);
+        }
+        return node.inputPorts().stream()
+            .filter(p -> p.name().equals(portName))
+            .map(WorkflowPort::type)
+            .findFirst()
+            .orElse(null);
+    }
+
+    private void validateCycles(WorkflowDefinition definition, List<String> errors) {
+        Map<String, Integer> indegree = new HashMap<>();
+        Map<String, List<String>> adjacency = new HashMap<>();
+        for (WorkflowNode node : definition.nodes()) {
+            indegree.put(node.key(), 0);
+            adjacency.put(node.key(), new ArrayList<>());
+        }
+
+        for (WorkflowRoute route : definition.routes()) {
+            if (!route.createsDependency() || !StringUtils.hasText(route.fromNodeKey())) {
+                continue;
+            }
+            adjacency.computeIfAbsent(route.fromNodeKey(), k -> new ArrayList<>()).add(route.toNodeKey());
+            indegree.compute(route.toNodeKey(), (k, v) -> (v == null ? 0 : v) + 1);
+        }
+
+        ArrayDeque<String> queue = new ArrayDeque<>();
+        indegree.forEach((k, v) -> {
+            if (v == 0) queue.add(k);
+        });
+
+        int visited = 0;
+        while (!queue.isEmpty()) {
+            String node = queue.removeFirst();
+            visited++;
+            for (String next : adjacency.getOrDefault(node, List.of())) {
+                int d = indegree.compute(next, (k, v) -> (v == null ? 0 : v - 1));
+                if (d == 0) queue.add(next);
+            }
+        }
+
+        if (visited != definition.nodes().size()) {
+            errors.add("Workflow contains a cycle; v2 graph must be a DAG");
+        }
+    }
+
+    private void validateRequiredTaskInputs(
+        WorkflowDefinition definition,
+        Map<String, PlanDefinition> taskPlans,
+        List<String> errors
+    ) {
+        for (WorkflowNode node : definition.nodes()) {
+            if (node.type() != WorkflowNodeType.TASK) {
+                continue;
+            }
+            PlanDefinition plan = taskPlans.get(node.key());
+            if (plan == null) {
+                continue;
+            }
+
+            Set<String> satisfied = new HashSet<>();
+            for (WorkflowRoute route : definition.incomingRoutes(node.key())) {
+                if ((route.routeType() == WorkflowRouteType.MAP_OUTPUT
+                    || route.routeType() == WorkflowRouteType.PASS_THROUGH)
+                    && StringUtils.hasText(route.targetPort())) {
+                    satisfied.add(route.targetPort());
+                }
+            }
+            satisfied.addAll(node.config().keySet());
+
+            for (PlanFieldDefinition input : plan.inputs()) {
+                if (input.required() && !satisfied.contains(input.name())) {
+                    errors.add("TASK node '" + node.key() + "': required input '"
+                        + input.name() + "' is not satisfied by incoming routes or config");
+                }
+            }
+        }
+    }
+
+    private void validateApprovalGateBranches(
+        WorkflowDefinition definition,
+        Map<String, WorkflowNode> nodesByKey,
+        List<String> errors
+    ) {
+        for (WorkflowNode node : definition.nodes()) {
+            if (!node.isGate()) {
+                continue;
+            }
+            boolean approved = false;
+            boolean rejected = false;
+            for (WorkflowRoute route : definition.outgoingRoutes(node.key())) {
+                if (route.routeType() != WorkflowRouteType.CONTROL) continue;
+                String outcome = route.controlOutcome();
+                if (WorkflowRoute.OUTCOME_APPROVED.equals(outcome)) {
+                    approved = true;
+                }
+                if (WorkflowRoute.OUTCOME_REJECTED.equals(outcome)) {
+                    rejected = true;
+                }
+            }
+            if (!approved) {
+                errors.add("Gate node '" + node.key() + "' is missing APPROVED control route");
+            }
+            if (!rejected) {
+                errors.add("Gate node '" + node.key() + "' is missing REJECTED control route");
             }
         }
     }

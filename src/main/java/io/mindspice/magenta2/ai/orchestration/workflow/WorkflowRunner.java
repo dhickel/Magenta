@@ -1,15 +1,17 @@
 package io.mindspice.magenta2.ai.orchestration.workflow;
 
 import io.mindspice.magenta2.ai.chat.plan.PlanDefinition;
+import io.mindspice.magenta2.ai.chat.plan.PlanFieldType;
 import io.mindspice.magenta2.ai.chat.plan.PlanRun;
 import io.mindspice.magenta2.ai.chat.plan.PlanRunStatus;
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -17,6 +19,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -24,20 +27,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 
 /**
- * Executes workflow nodes through graph-traversal dependency ordering.
- * Nodes become ready when all their incoming dependency-creating routes
- * have been satisfied.
- *
- * <p>Allocates a shared temp workspace at run start that survives across
- * nodes and is deleted at terminal completion.
- *
- * <p>Thread safety: each run is executed on its own path; the runner
- * uses a single-threaded executor for async execution.
+ * Deterministic workflow v2 runner with parallel fan-out execution.
  */
 @Service
 public class WorkflowRunner {
@@ -51,7 +47,6 @@ public class WorkflowRunner {
     private final WorkflowTaskExecutor workflowTaskExecutor;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
-    /** Callback for TASK node execution via the model. */
     private volatile TaskNodeExecutor taskNodeExecutor;
 
     public WorkflowRunner(WorkflowRepository repository, PlanService planService,
@@ -75,30 +70,15 @@ public class WorkflowRunner {
         this.workflowTaskExecutor = workflowTaskExecutorProvider == null ? null : workflowTaskExecutorProvider.getIfAvailable();
     }
 
-    /**
-     * Register a callback for executing TASK nodes through the chat model.
-     * Called by ChatService during wiring to enable model-backed task execution.
-     */
-    public void setTaskNodeExecutor(TaskNodeExecutor executor) {
-        this.taskNodeExecutor = executor;
-    }
-
-    /**
-     * Functional interface for executing a TASK node through the model.
-     */
     @FunctionalInterface
     public interface TaskNodeExecutor {
         PlanRun execute(String planId, String planRunId, Map<String, Object> inputs, String workspacePath);
     }
 
-    // ════════════════════════════════════════════════════════════════
-    //  Start / Resume
-    // ════════════════════════════════════════════════════════════════
+    public void setTaskNodeExecutor(TaskNodeExecutor executor) {
+        this.taskNodeExecutor = executor;
+    }
 
-    /**
-     * Start a new workflow run. Allocates workspace and initializes node runs.
-     * Returns the run immediately; execution proceeds asynchronously.
-     */
     public WorkflowRun startRun(WorkflowDefinition definition) {
         return startRun(definition, null);
     }
@@ -108,155 +88,85 @@ public class WorkflowRunner {
         Instant now = Instant.now();
 
         Path workspacePath = workspaceDirectoryService.workflowTemp(runId);
-
-        List<WorkflowNodeRun> nodeRuns = new ArrayList<>();
-        for (WorkflowNode node : definition.nodes()) {
-            nodeRuns.add(new WorkflowNodeRun(
+        List<WorkflowNodeRun> nodeRuns = definition.nodes().stream()
+            .map(node -> new WorkflowNodeRun(
                 node.key(), node.type(), WorkflowNodeRunStatus.PENDING,
-                Map.of(), Map.of(), null, null
-            ));
-        }
+                Map.of(), Map.of(), List.of(), null, null
+            ))
+            .toList();
 
-        WorkflowRun run = new WorkflowRun(
-            runId, definition.id(), WorkflowRunStatus.RUNNING, 0,
-            nodeRuns, workspacePath.toString(), null,
-            definition, null, null,
-            now, now, now, null
-        );
+        WorkflowRun run = repository.saveRun(new WorkflowRun(
+            runId,
+            definition.id(),
+            WorkflowRunStatus.RUNNING,
+            0,
+            nodeRuns,
+            workspacePath.toString(),
+            workspacePath.toString(),
+            definition,
+            Map.of(),
+            List.of(),
+            null,
+            null,
+            now,
+            now,
+            now,
+            null
+        ));
 
-        run = repository.saveRun(run);
-        log.info("Workflow run {} started for definition '{}'", runId, definition.title());
-
-        WorkflowRun finalRun = run;
-        executor.submit(() -> {
-            try {
-                executeFromCheckpoint(finalRun, null, modelOverride);
-            } catch (Exception e) {
-                log.error("Workflow run {} failed", runId, e);
-                WorkflowRun current = repository.findRun(runId).orElse(finalRun);
-                repository.saveRun(new WorkflowRun(
-                    current.id(), current.workflowId(), WorkflowRunStatus.FAILED,
-                    current.currentNodeIndex(), current.nodeRuns(),
-                    current.workspacePath(), current.outputDir(),
-                    current.workflowSnapshot(), current.finalMessage(),
-                    e.getMessage(), current.createdAt(), Instant.now(),
-                    current.startedAt(), Instant.now()
-                ));
-                cleanupWorkspace(current);
-            }
-        });
-
+        WorkflowRun initial = run;
+        executor.submit(() -> executeSafely(initial, modelOverride));
         return run;
     }
 
-    /**
-     * Resume a waiting workflow run after an approval response.
-     * Checks the approval message response before allowing the gate to proceed.
-     * If rejected, marks the gate FAILED and the workflow run FAILED.
-     * If no response yet, refuses to resume.
-     */
     public WorkflowRun resumeRun(WorkflowRun run) {
-        log.info("Resuming workflow run {} from waiting state", run.id());
         WorkflowNodeRun waitingNode = findWaitingNode(run);
         if (waitingNode == null) {
             throw new IllegalStateException("No waiting node found in run: " + run.id());
         }
 
-        int nodeIndex = nodeIndex(run, waitingNode.nodeKey());
-        String nodeKey = waitingNode.nodeKey();
-
-        // Retrieve the approval message
         Object messageIdObj = waitingNode.outputValues().get("messageId");
         if (!(messageIdObj instanceof String messageId) || messageId.isBlank()) {
-            throw new IllegalStateException("Waiting node '" + nodeKey
-                + "' has no messageId in output values");
+            throw new IllegalStateException("Waiting node '" + waitingNode.nodeKey() + "' has no messageId");
         }
 
         InboxMessage message = inboxService.findMessageById(messageId)
-            .orElseThrow(() -> new IllegalStateException(
-                "Approval message not found: " + messageId));
+            .orElseThrow(() -> new IllegalStateException("Approval message not found: " + messageId));
 
-        // If no response yet, refuse to resume
         if (!StringUtils.hasText(message.responseJson())) {
             throw new IllegalStateException(
                 "Cannot resume workflow run " + run.id()
-                    + ": approval message " + messageId + " has not been responded to yet");
+                    + ": approval message " + messageId + " has not been responded to yet"
+            );
         }
 
         boolean approved = inboxService.parseApprovalFromResponse(message.responseJson());
+        String outcome = approved ? WorkflowRoute.OUTCOME_APPROVED : WorkflowRoute.OUTCOME_REJECTED;
 
-        if (approved) {
-            // Mark gate as COMPLETED and continue execution
-            List<WorkflowNodeRun> updatedRuns = new ArrayList<>(run.nodeRuns());
-            updatedRuns.set(nodeIndex, new WorkflowNodeRun(
-                waitingNode.nodeKey(), waitingNode.type(), WorkflowNodeRunStatus.COMPLETED,
-                waitingNode.inputValues(), waitingNode.outputValues(),
-                waitingNode.startedAt(), Instant.now()
-            ));
+        List<WorkflowNodeRun> updatedRuns = new ArrayList<>(run.nodeRuns());
+        int index = nodeIndex(run, waitingNode.nodeKey());
+        Map<String, Object> gateOutputs = new LinkedHashMap<>(waitingNode.outputValues());
+        gateOutputs.put("gateOutcome", outcome);
+        gateOutputs.put("approved", approved);
+        updatedRuns.set(index, new WorkflowNodeRun(
+            waitingNode.nodeKey(), waitingNode.type(), WorkflowNodeRunStatus.COMPLETED,
+            waitingNode.inputValues(), gateOutputs, waitingNode.routeContext(),
+            waitingNode.startedAt(), Instant.now()
+        ));
 
-            WorkflowRun resumed = new WorkflowRun(
-                run.id(), run.workflowId(), WorkflowRunStatus.RUNNING,
-                nodeIndex + 1, updatedRuns,
-                run.workspacePath(), run.outputDir(), run.workflowSnapshot(),
-                run.finalMessage(), run.errorText(),
-                run.createdAt(), Instant.now(), run.startedAt(), null
-            );
-            resumed = repository.saveRun(resumed);
+        WorkflowRun resumed = repository.saveRun(new WorkflowRun(
+            run.id(), run.workflowId(), WorkflowRunStatus.RUNNING,
+            Math.max(0, index), updatedRuns,
+            run.workspacePath(), run.outputDir(), run.workflowSnapshot(),
+            run.finalOutputs(), run.artifactIds(),
+            run.finalMessage(), run.errorText(),
+            run.createdAt(), Instant.now(), run.startedAt(), null
+        ));
 
-            // Mark the approval message handled after successful approval
-            inboxService.markHandled(messageId);
-
-            WorkflowRun finalRun = resumed;
-            executor.submit(() -> {
-                try {
-                    executeFromCheckpoint(finalRun, null, null);
-                } catch (Exception e) {
-                    log.error("Workflow run {} failed after resume", finalRun.id(), e);
-                    WorkflowRun current2 = repository.findRun(finalRun.id()).orElse(finalRun);
-                    repository.saveRun(new WorkflowRun(
-                        current2.id(), current2.workflowId(), WorkflowRunStatus.FAILED,
-                        current2.currentNodeIndex(), current2.nodeRuns(),
-                        current2.workspacePath(), current2.outputDir(),
-                        current2.workflowSnapshot(), current2.finalMessage(),
-                        e.getMessage(), current2.createdAt(), Instant.now(),
-                        current2.startedAt(), Instant.now()
-                    ));
-                    cleanupWorkspace(current2);
-                }
-            });
-
-            return resumed;
-        } else {
-            // Rejected — mark gate FAILED and workflow run FAILED
-            String errorMsg = "Approval rejected for gate " + nodeKey;
-            List<WorkflowNodeRun> updatedRuns = new ArrayList<>(run.nodeRuns());
-            updatedRuns.set(nodeIndex, new WorkflowNodeRun(
-                waitingNode.nodeKey(), waitingNode.type(), WorkflowNodeRunStatus.FAILED,
-                waitingNode.inputValues(), waitingNode.outputValues(),
-                waitingNode.startedAt(), Instant.now()
-            ));
-
-            WorkflowRun failed = new WorkflowRun(
-                run.id(), run.workflowId(), WorkflowRunStatus.FAILED,
-                nodeIndex, updatedRuns,
-                run.workspacePath(), run.outputDir(), run.workflowSnapshot(),
-                null, errorMsg,
-                run.createdAt(), Instant.now(), run.startedAt(), Instant.now()
-            );
-            failed = repository.saveRun(failed);
-
-            // Mark the rejection message handled now that terminal state is persisted
-            inboxService.markHandled(messageId);
-
-            log.info("Workflow run {} failed: {}", run.id(), errorMsg);
-            cleanupWorkspace(failed);
-            return failed;
-        }
+        inboxService.markHandled(messageId);
+        executor.submit(() -> executeSafely(resumed, null));
+        return resumed;
     }
-
-    // ════════════════════════════════════════════════════════════════
-    //  Synchronous execution (for tests and simple integrations)
-    // ════════════════════════════════════════════════════════════════
 
     public WorkflowRun runSynchronously(WorkflowDefinition definition) {
         return runSynchronously(definition, null);
@@ -269,353 +179,242 @@ public class WorkflowRunner {
         return repository.findRun(run.id()).orElse(run);
     }
 
-    // ════════════════════════════════════════════════════════════════
-    //  Graph-traversal execution loop
-    // ════════════════════════════════════════════════════════════════
+    private void executeSafely(WorkflowRun run, String modelOverride) {
+        try {
+            executeFromCheckpoint(run, null, modelOverride);
+        } catch (Exception e) {
+            log.error("Workflow run {} failed", run.id(), e);
+            WorkflowRun current = repository.findRun(run.id()).orElse(run);
+            repository.saveRun(new WorkflowRun(
+                current.id(), current.workflowId(), WorkflowRunStatus.FAILED,
+                current.currentNodeIndex(), current.nodeRuns(),
+                current.workspacePath(), current.outputDir(), current.workflowSnapshot(),
+                current.finalOutputs(), current.artifactIds(),
+                current.finalMessage(), e.getMessage(),
+                current.createdAt(), Instant.now(), current.startedAt(), Instant.now()
+            ));
+        }
+    }
 
     private void executeFromCheckpoint(WorkflowRun run, Consumer<String> sseEventCallback, String modelOverride) {
         WorkflowDefinition def = run.workflowSnapshot();
+        Map<String, WorkflowNodeRun> nodeRuns = toNodeRunMap(run.nodeRuns());
         Map<String, Map<String, Object>> outputsByNode = new LinkedHashMap<>();
-        Set<String> completedNodes = new HashSet<>();
+        Map<String, String> gateOutcomeByNode = new HashMap<>();
 
-        // Collect outputs from already-completed nodes
-        for (WorkflowNodeRun nr : run.nodeRuns()) {
+        for (WorkflowNodeRun nr : nodeRuns.values()) {
             if (nr.status() == WorkflowNodeRunStatus.COMPLETED) {
-                completedNodes.add(nr.nodeKey());
-                if (!nr.outputValues().isEmpty()) {
-                    outputsByNode.put(nr.nodeKey(), nr.outputValues());
+                outputsByNode.put(nr.nodeKey(), nr.outputValues());
+                Object outcome = nr.outputValues().get("gateOutcome");
+                if (outcome instanceof String s && !s.isBlank()) {
+                    gateOutcomeByNode.put(nr.nodeKey(), s);
                 }
             }
         }
 
-        // Compute initial ready nodes
-        Set<String> readyNodeKeys = computeReadyNodes(def, completedNodes);
+        while (true) {
+            List<WorkflowNode> ready = computeReadyNodes(def, nodeRuns, gateOutcomeByNode).stream()
+                .map(def::nodeByKey)
+                .filter(java.util.Objects::nonNull)
+                .sorted(Comparator.comparing(WorkflowNode::key))
+                .toList();
 
-        while (!readyNodeKeys.isEmpty()) {
-            // Sequential MVP: pick one ready node at a time
-            // For parallel nodes, we could dispatch all at once (deferred)
-            String nodeKey = readyNodeKeys.iterator().next();
-            WorkflowNode node = def.nodeByKey(nodeKey);
-            if (node == null) continue;
-
-            int nodeIndex = nodeIndex(run, nodeKey);
-            WorkflowNodeRun nodeRun = nodeIndex < run.nodeRuns().size() ? run.nodeRuns().get(nodeIndex) : null;
-            if (nodeRun == null) continue;
-
-            // Skip already-completed
-            if (nodeRun.status() == WorkflowNodeRunStatus.COMPLETED) {
-                completedNodes.add(nodeKey);
-                readyNodeKeys.remove(nodeKey);
-                readyNodeKeys.addAll(computeReadyNodes(def, completedNodes));
-                continue;
-            }
-
-            log.info("Workflow run {} executing node {} (type={})",
-                run.id(), node.key(), node.type().wireName());
-
-            // Update node to RUNNING
-            List<WorkflowNodeRun> updatedRuns = new ArrayList<>(run.nodeRuns());
-            updatedRuns.set(nodeIndex, new WorkflowNodeRun(
-                nodeRun.nodeKey(), nodeRun.type(), WorkflowNodeRunStatus.RUNNING,
-                nodeRun.inputValues(), nodeRun.outputValues(),
-                Instant.now(), null
-            ));
-            run = repository.saveRun(new WorkflowRun(
-                run.id(), run.workflowId(), WorkflowRunStatus.RUNNING, nodeIndex,
-                updatedRuns, run.workspacePath(), run.outputDir(),
-                run.workflowSnapshot(), run.finalMessage(), run.errorText(),
-                run.createdAt(), Instant.now(), run.startedAt(), null
-            ));
-
-            emitSse(sseEventCallback, "progress",
-                Map.of("workflowRunId", run.id(), "nodeIndex", nodeIndex,
-                       "nodeKey", node.key(), "nodeType", node.type().wireName()));
-
-            try {
-                switch (node.type()) {
-                    case TASK -> {
-                        Map<String, Object> inputs = resolveNodeInputs(node, def, outputsByNode);
-                        Map<String, Object> outputs = executeTaskNode(node, inputs, run, modelOverride);
-                        updateNodeRun(run, nodeKey, nodeIndex, WorkflowNodeRunStatus.COMPLETED,
-                            inputs, outputs);
-                        outputsByNode.put(node.key(), outputs);
-                        completedNodes.add(node.key());
-
-                        // Process LOG routes for this node
-                        processLogRoutes(def, node.key(), outputs, run);
-
-                        run = saveRunWithNodeStatus(run, nodeIndex, WorkflowNodeRunStatus.COMPLETED, inputs, outputs);
-                    }
-                    case REPORT -> {
-                        Map<String, Object> inputs = resolveNodeInputs(node, def, outputsByNode);
-                        Map<String, Object> outputs = executeReportNode(node, inputs, run);
-                        updateNodeRun(run, nodeKey, nodeIndex, WorkflowNodeRunStatus.COMPLETED,
-                            inputs, outputs);
-                        outputsByNode.put(node.key(), outputs);
-                        completedNodes.add(node.key());
-                        run = saveRunWithNodeStatus(run, nodeIndex, WorkflowNodeRunStatus.COMPLETED, inputs, outputs);
-                    }
-                    case USER_APPROVAL, AGENT_APPROVAL -> {
-                        Map<String, Object> inputs = resolveNodeInputs(node, def, outputsByNode);
-                        String messageId = executeGateNode(node, run);
-
-                        Map<String, Object> gateOutputs = Map.of("messageId", messageId);
-                        updateNodeRun(run, nodeKey, nodeIndex, WorkflowNodeRunStatus.WAITING, inputs, gateOutputs);
-                        run = saveRunWithNodeStatus(run, nodeIndex, WorkflowNodeRunStatus.WAITING,
-                            inputs, gateOutputs);
-
-                        emitSse(sseEventCallback, "waiting",
-                            Map.of("workflowRunId", run.id(), "nodeIndex", nodeIndex,
-                                   "nodeType", node.type().wireName(), "waitingMessageId", messageId));
-
-                        // Stop execution; waiting for resume
-                        return;
-                    }
-                    case USER_MESSAGE, AGENT_MESSAGE -> {
-                        Map<String, Object> inputs = resolveNodeInputs(node, def, outputsByNode);
-                        executeMessageNode(node, run);
-                        updateNodeRun(run, nodeKey, nodeIndex, WorkflowNodeRunStatus.COMPLETED, inputs, Map.of());
-                        completedNodes.add(node.key());
-                        run = saveRunWithNodeStatus(run, nodeIndex, WorkflowNodeRunStatus.COMPLETED, inputs, Map.of());
-                    }
-                    case DELEGATION -> {
-                        Map<String, Object> inputs = resolveNodeInputs(node, def, outputsByNode);
-                        Map<String, Object> outputs = executeDelegationNode(node, inputs, run);
-                        updateNodeRun(run, nodeKey, nodeIndex, WorkflowNodeRunStatus.COMPLETED, inputs, outputs);
-                        outputsByNode.put(node.key(), outputs);
-                        completedNodes.add(node.key());
-                        run = saveRunWithNodeStatus(run, nodeIndex, WorkflowNodeRunStatus.COMPLETED, inputs, outputs);
-                    }
-                    case VALIDATION -> {
-                        Map<String, Object> inputs = resolveNodeInputs(node, def, outputsByNode);
-                        Map<String, Object> outputs = executeValidationNode(node, inputs);
-                        updateNodeRun(run, nodeKey, nodeIndex, WorkflowNodeRunStatus.COMPLETED, inputs, outputs);
-                        outputsByNode.put(node.key(), outputs);
-                        completedNodes.add(node.key());
-                        run = saveRunWithNodeStatus(run, nodeIndex, WorkflowNodeRunStatus.COMPLETED, inputs, outputs);
-                    }
-                    case COPY -> {
-                        Map<String, Object> inputs = resolveNodeInputs(node, def, outputsByNode);
-                        Map<String, Object> outputs = executeCopyNode(node, inputs);
-                        updateNodeRun(run, nodeKey, nodeIndex, WorkflowNodeRunStatus.COMPLETED, inputs, outputs);
-                        outputsByNode.put(node.key(), outputs);
-                        completedNodes.add(node.key());
-                        run = saveRunWithNodeStatus(run, nodeIndex, WorkflowNodeRunStatus.COMPLETED, inputs, outputs);
-                    }
-                    case LOG -> {
-                        Map<String, Object> inputs = resolveNodeInputs(node, def, outputsByNode);
-                        Map<String, Object> outputs = executeLogNode(node, inputs, run);
-                        updateNodeRun(run, nodeKey, nodeIndex, WorkflowNodeRunStatus.COMPLETED, inputs, outputs);
-                        outputsByNode.put(node.key(), outputs);
-                        completedNodes.add(node.key());
-                        run = saveRunWithNodeStatus(run, nodeIndex, WorkflowNodeRunStatus.COMPLETED, inputs, outputs);
-                    }
+            if (ready.isEmpty()) {
+                if (skipInactiveBranchNodes(def, nodeRuns, gateOutcomeByNode)) {
+                    run = persistState(run, nodeRuns, WorkflowRunStatus.RUNNING, run.finalOutputs(), run.artifactIds(), null, null, false);
+                    continue;
                 }
-            } catch (Exception e) {
-                log.error("Workflow run {} failed at node {}: {}",
-                    run.id(), node.key(), e.getMessage(), e);
-
-                updatedRuns = new ArrayList<>(run.nodeRuns());
-                if (nodeIndex < updatedRuns.size()) {
-                    updatedRuns.set(nodeIndex, new WorkflowNodeRun(
-                        nodeRun.nodeKey(), nodeRun.type(), WorkflowNodeRunStatus.FAILED,
-                        resolveNodeInputs(node, def, outputsByNode), Map.of(),
-                        nodeRun.startedAt(), Instant.now()
-                    ));
+                if (hasWaitingNode(nodeRuns)) {
+                    persistState(run, nodeRuns, WorkflowRunStatus.WAITING, run.finalOutputs(), run.artifactIds(), null, null, false);
+                    return;
                 }
-                run = repository.saveRun(new WorkflowRun(
-                    run.id(), run.workflowId(), WorkflowRunStatus.FAILED, nodeIndex,
-                    updatedRuns, run.workspacePath(), run.outputDir(),
-                    run.workflowSnapshot(), run.finalMessage(), e.getMessage(),
-                    run.createdAt(), Instant.now(), run.startedAt(), Instant.now()
-                ));
-
-                emitSse(sseEventCallback, "failed",
-                    Map.of("workflowRunId", run.id(), "nodeIndex", nodeIndex, "error", e.getMessage()));
-
-                cleanupWorkspace(run);
+                if (allDone(nodeRuns)) {
+                    completeRun(run, def, nodeRuns, outputsByNode);
+                    return;
+                }
+                failRun(run, nodeRuns, "No ready nodes remain but workflow is not complete");
                 return;
             }
 
-            // Compute next ready nodes
-            readyNodeKeys = computeReadyNodes(def, completedNodes);
-        }
+            int maxConcurrency = Math.max(1, def.maxConcurrency());
+            List<WorkflowNode> batch = ready.stream().limit(maxConcurrency).toList();
 
-        // Check if all nodes completed (no remaining executable nodes)
-        boolean allDone = def.nodes().stream()
-            .allMatch(n -> completedNodes.contains(n.key()));
+            for (WorkflowNode node : batch) {
+                WorkflowNodeRun existing = nodeRuns.get(node.key());
+                List<String> routeContext = activeRouteContext(def, node.key(), nodeRuns, gateOutcomeByNode);
+                nodeRuns.put(node.key(), new WorkflowNodeRun(
+                    node.key(), node.type(), WorkflowNodeRunStatus.RUNNING,
+                    existing.inputValues(), existing.outputValues(), routeContext,
+                    Instant.now(), null
+                ));
+            }
+            run = persistState(run, nodeRuns, WorkflowRunStatus.RUNNING, run.finalOutputs(), run.artifactIds(), null, null, false);
+            WorkflowRun runSnapshot = run;
 
-        if (allDone) {
-            run = repository.saveRun(new WorkflowRun(
-                run.id(), run.workflowId(), WorkflowRunStatus.COMPLETED,
-                run.currentNodeIndex(), run.nodeRuns(),
-                run.workspacePath(), run.outputDir(), run.workflowSnapshot(),
-                "Workflow completed: " + run.workflowSnapshot().title(),
-                null,
-                run.createdAt(), Instant.now(), run.startedAt(), Instant.now()
-            ));
-
-            emitSse(sseEventCallback, "completed",
-                Map.of("workflowRunId", run.id(), "title", run.workflowSnapshot().title()));
-
-            cleanupWorkspace(run);
-            log.info("Workflow run {} completed successfully", run.id());
-        }
-    }
-
-    /**
-     * Compute ready nodes: nodes where all incoming dependency-creating
-     * route sources have completed.
-     */
-    private Set<String> computeReadyNodes(WorkflowDefinition def, Set<String> completed) {
-        Set<String> ready = new HashSet<>();
-        for (WorkflowNode node : def.nodes()) {
-            if (completed.contains(node.key())) continue;
-
-            List<WorkflowRoute> incoming = def.incomingRoutes(node.key());
-            // Filter to only dependency-creating routes
-            List<String> requiredSources = incoming.stream()
-                .filter(WorkflowRoute::createsDependency)
-                .map(WorkflowRoute::fromNodeKey)
-                .filter(k -> k != null)
-                .distinct()
+            List<CompletableFuture<NodeExecutionResult>> futures = batch.stream()
+                .map(node -> CompletableFuture.supplyAsync(() -> executeNode(node, def, outputsByNode, runSnapshot, modelOverride), executor))
                 .toList();
 
-            if (requiredSources.isEmpty()) {
-                // Root node: no dependencies
-                ready.add(node.key());
-            } else if (completed.containsAll(requiredSources)) {
-                ready.add(node.key());
-            }
-        }
-        return ready;
-    }
+            List<NodeExecutionResult> results = futures.stream().map(CompletableFuture::join).toList();
+            boolean waiting = false;
+            for (NodeExecutionResult result : results) {
+                WorkflowNode node = def.nodeByKey(result.nodeKey);
+                if (node == null) continue;
 
-    /**
-     * Process LOG routes: materialize outputs but don't create downstream dependencies.
-     */
-    private void processLogRoutes(WorkflowDefinition def, String nodeKey,
-                                   Map<String, Object> outputs, WorkflowRun run) {
-        for (WorkflowRoute route : def.outgoingRoutes(nodeKey)) {
-            if (route.routeType() == WorkflowRouteType.LOG) {
-                try {
-                    Path outputDir = workspaceDirectoryService.workflowTemp(run.id());
-                    Object value = route.fromOutputName() != null
-                        ? outputs.get(route.fromOutputName())
-                        : outputs;
-                    if (value != null) {
-                        outputArtifactService.materialize(
-                            run.id(), "log-" + route.id(), route.fromOutputName(),
-                            io.mindspice.magenta2.ai.chat.plan.PlanFieldType.STRING,
-                            value, outputDir
-                        );
-                    }
-                } catch (Exception e) {
-                    log.warn("LOG route {} failed to materialize: {}", route.id(), e.getMessage());
+                if (result.status == WorkflowNodeRunStatus.FAILED) {
+                    nodeRuns.put(result.nodeKey, new WorkflowNodeRun(
+                        result.nodeKey, node.type(), WorkflowNodeRunStatus.FAILED,
+                        result.inputs, Map.of(), result.routeContext,
+                        nodeRuns.get(result.nodeKey).startedAt(), Instant.now()
+                    ));
+                    failRun(run, nodeRuns, result.errorText);
+                    return;
+                }
+
+                if (result.status == WorkflowNodeRunStatus.WAITING) {
+                    waiting = true;
+                    nodeRuns.put(result.nodeKey, new WorkflowNodeRun(
+                        result.nodeKey, node.type(), WorkflowNodeRunStatus.WAITING,
+                        result.inputs, result.outputs, result.routeContext,
+                        nodeRuns.get(result.nodeKey).startedAt(), null
+                    ));
+                    continue;
+                }
+
+                nodeRuns.put(result.nodeKey, new WorkflowNodeRun(
+                    result.nodeKey, node.type(), WorkflowNodeRunStatus.COMPLETED,
+                    result.inputs, result.outputs, result.routeContext,
+                    nodeRuns.get(result.nodeKey).startedAt(), Instant.now()
+                ));
+                outputsByNode.put(result.nodeKey, result.outputs);
+                Object outcome = result.outputs.get("gateOutcome");
+                if (outcome instanceof String s && !s.isBlank()) {
+                    gateOutcomeByNode.put(result.nodeKey, s);
                 }
             }
+
+            run = persistState(run, nodeRuns,
+                waiting ? WorkflowRunStatus.WAITING : WorkflowRunStatus.RUNNING,
+                run.finalOutputs(), run.artifactIds(), null, null, false);
+            if (waiting) {
+                return;
+            }
         }
     }
 
-    // ════════════════════════════════════════════════════════════════
-    //  Node type executors
-    // ════════════════════════════════════════════════════════════════
+    private NodeExecutionResult executeNode(
+        WorkflowNode node,
+        WorkflowDefinition def,
+        Map<String, Map<String, Object>> outputsByNode,
+        WorkflowRun run,
+        String modelOverride
+    ) {
+        Map<String, Object> inputs = resolveNodeInputs(node, def, outputsByNode);
+        List<String> routeContext = activeRouteContext(def, node.key(), toNodeRunMap(run.nodeRuns()), Map.of());
+        try {
+            return switch (node.type()) {
+                case TASK -> new NodeExecutionResult(node.key(), WorkflowNodeRunStatus.COMPLETED,
+                    inputs, executeTaskNode(node, inputs, run, modelOverride), routeContext, null);
+                case REPORT, FINAL_OUTPUT -> new NodeExecutionResult(node.key(), WorkflowNodeRunStatus.COMPLETED,
+                    inputs, executeFinalOutputNode(node, inputs, run), routeContext, null);
+                case USER_APPROVAL, AGENT_APPROVAL -> {
+                    String messageId = executeGateNode(node, run);
+                    yield new NodeExecutionResult(node.key(), WorkflowNodeRunStatus.WAITING,
+                        inputs, Map.of("messageId", messageId), routeContext, null);
+                }
+                case USER_MESSAGE, AGENT_MESSAGE -> {
+                    executeMessageNode(node, run);
+                    yield new NodeExecutionResult(node.key(), WorkflowNodeRunStatus.COMPLETED,
+                        inputs, Map.of(), routeContext, null);
+                }
+                case DELEGATION -> new NodeExecutionResult(node.key(), WorkflowNodeRunStatus.COMPLETED,
+                    inputs, executeDelegationNode(node, inputs), routeContext, null);
+                case VALIDATION -> new NodeExecutionResult(node.key(), WorkflowNodeRunStatus.COMPLETED,
+                    inputs, executeValidationNode(node, inputs), routeContext, null);
+                case COPY, FAN_OUT -> new NodeExecutionResult(node.key(), WorkflowNodeRunStatus.COMPLETED,
+                    inputs, executeCopyNode(node, inputs), routeContext, null);
+                case LOG -> new NodeExecutionResult(node.key(), WorkflowNodeRunStatus.COMPLETED,
+                    inputs, executeLogNode(node, inputs, run), routeContext, null);
+            };
+        } catch (Exception e) {
+            log.error("Workflow node {} failed", node.key(), e);
+            return new NodeExecutionResult(node.key(), WorkflowNodeRunStatus.FAILED, inputs, Map.of(), routeContext, e.getMessage());
+        }
+    }
 
     private Map<String, Object> executeTaskNode(
-        WorkflowNode node, Map<String, Object> inputs, WorkflowRun run, String modelOverride
+        WorkflowNode node,
+        Map<String, Object> inputs,
+        WorkflowRun run,
+        String modelOverride
     ) {
-        PlanDefinition plan = planService.getTask(node.planId());
-
         if (workflowTaskExecutor != null) {
-            var taskRun = workflowTaskExecutor.execute(
-                node.planId(), inputs, UUID.randomUUID().toString(), modelOverride);
+            var taskRun = workflowTaskExecutor.execute(node.planId(), inputs, UUID.randomUUID().toString(), modelOverride);
             if (!workflowTaskExecutor.succeeded(taskRun.status())) {
-                throw new RuntimeException("Task node '" + node.key()
-                    + "' failed with status " + taskRun.status().name()
-                    + (taskRun.errorText() != null ? ": " + taskRun.errorText() : ""));
+                throw new IllegalStateException("Task node '" + node.key() + "' failed with status " + taskRun.status().name());
             }
             return taskRun.outputValues();
         }
 
         if (taskNodeExecutor == null) {
-            throw new RuntimeException(
-                "Task node execution requires model-backed task execution");
+            throw new IllegalStateException("Task node execution requires model-backed task execution");
         }
 
         String planRunId = UUID.randomUUID().toString();
-        PlanRun planRun = taskNodeExecutor.execute(
-            node.planId(), planRunId, inputs, run.workspacePath());
-
-        if (planRun.status() == PlanRunStatus.FAILED
-            || planRun.status() == PlanRunStatus.NEEDS_REVIEW) {
-            throw new RuntimeException("Task node '" + node.key()
-                + "' failed with status " + planRun.status().name()
-                + (planRun.errorText() != null ? ": " + planRun.errorText() : ""));
+        PlanRun planRun = taskNodeExecutor.execute(node.planId(), planRunId, inputs, run.workspacePath());
+        if (planRun.status() == PlanRunStatus.FAILED || planRun.status() == PlanRunStatus.NEEDS_REVIEW) {
+            throw new IllegalStateException("Task node '" + node.key() + "' failed with status " + planRun.status().name());
         }
-
         return planRun.outputValues();
     }
 
-    private Map<String, Object> executeReportNode(
-        WorkflowNode node, Map<String, Object> inputs, WorkflowRun run
-    ) {
+    private Map<String, Object> executeFinalOutputNode(WorkflowNode node, Map<String, Object> inputs, WorkflowRun run) {
         Map<String, Object> outputs = new LinkedHashMap<>();
-
-        if (StringUtils.hasText(node.planId())) {
-            PlanDefinition plan = planService.getTask(node.planId());
-            try {
-                Path outputDir = workspaceDirectoryService.workflowTemp(run.id());
-                for (var output : plan.outputs()) {
-                    Object value = inputs.get(output.name());
-                    if (value != null) {
-                        outputArtifactService.materialize(
-                            run.id(), plan.id(), output.name(), output.type(),
-                            value, outputDir
-                        );
-                        outputs.put(output.name(), value);
-                    }
-                }
-            } catch (IOException e) {
-                throw new RuntimeException("Failed to materialize report outputs: " + e.getMessage(), e);
-            }
-        }
-
         if (StringUtils.hasText(node.messageTemplate())) {
-            outputs.put("report_text", node.messageTemplate());
+            outputs.put("message", node.messageTemplate());
         }
 
+        // Explicit output selection config: {outputName: sourceInputName}
+        Object select = node.config().get("finalOutputs");
+        if (select instanceof Map<?, ?> map && !map.isEmpty()) {
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                String outputName = String.valueOf(entry.getKey());
+                String inputName = String.valueOf(entry.getValue());
+                if (inputs.containsKey(inputName)) {
+                    outputs.put(outputName, inputs.get(inputName));
+                }
+            }
+        } else {
+            outputs.putAll(inputs);
+        }
         return outputs;
     }
 
     private String executeGateNode(WorkflowNode node, WorkflowRun run) {
         InboxMessageToType toType = node.type() == WorkflowNodeType.USER_APPROVAL
-            ? InboxMessageToType.USER : InboxMessageToType.AGENT;
-
+            ? InboxMessageToType.USER
+            : InboxMessageToType.AGENT;
         String body = StringUtils.hasText(node.messageTemplate())
             ? node.messageTemplate()
-            : "Approval required for workflow step: " + node.key();
-
+            : "Approval required for workflow node: " + node.key();
         InboxMessage message = inboxService.createApprovalMessage(
             toType,
             toType == InboxMessageToType.AGENT ? node.planId() : null,
             null,
             body,
             run.id(),
-            run.currentNodeIndex()
+            nodeIndex(run, node.key())
         );
-
-        log.info("Gate node '{}' created approval message {}", node.key(), message.id());
         return message.id();
     }
 
     private void executeMessageNode(WorkflowNode node, WorkflowRun run) {
         InboxMessageToType toType = node.type() == WorkflowNodeType.USER_MESSAGE
-            ? InboxMessageToType.USER : InboxMessageToType.AGENT;
-
+            ? InboxMessageToType.USER
+            : InboxMessageToType.AGENT;
         String body = StringUtils.hasText(node.messageTemplate())
             ? node.messageTemplate()
-            : "Message from workflow: " + node.key();
-
+            : "Message from workflow node: " + node.key();
         inboxService.createInfoMessage(
             toType,
             toType == InboxMessageToType.AGENT ? node.planId() : null,
@@ -623,29 +422,17 @@ public class WorkflowRunner {
             body,
             toJson(Map.of("workflowRunId", run.id(), "nodeKey", node.key()))
         );
-
-        log.info("Message node '{}' sent to {}", node.key(), toType.wireName());
     }
 
-    private Map<String, Object> executeDelegationNode(
-        WorkflowNode node, Map<String, Object> inputs, WorkflowRun run
-    ) {
-        Map<String, Object> childOutputs = new LinkedHashMap<>();
-
+    private Map<String, Object> executeDelegationNode(WorkflowNode node, Map<String, Object> inputs) {
+        Map<String, Object> outputs = new LinkedHashMap<>();
         if (StringUtils.hasText(node.planId())) {
-            try {
-                PlanRun childRun = planService.startRun(node.planId(), inputs);
-                PlanRun completed = planService.completeRun(
-                    childRun.id(), Map.of(), "Delegated run completed", List.of());
-                childOutputs.put("childRunId", completed.id());
-                childOutputs.put("childStatus", completed.status().name());
-            } catch (Exception e) {
-                throw new RuntimeException("Delegation failed for node '"
-                    + node.key() + "': " + e.getMessage(), e);
-            }
+            PlanRun childRun = planService.startRun(node.planId(), inputs);
+            PlanRun completed = planService.completeRun(childRun.id(), Map.of(), "Delegated run completed", List.of());
+            outputs.put("childRunId", completed.id());
+            outputs.put("childStatus", completed.status().name());
         }
-
-        return childOutputs;
+        return outputs;
     }
 
     private Map<String, Object> executeValidationNode(WorkflowNode node, Map<String, Object> inputs) {
@@ -657,8 +444,8 @@ public class WorkflowRunner {
                     || (inputs.get(name) instanceof String text && !StringUtils.hasText(text)))
                 .toList();
             if (!missing.isEmpty()) {
-                throw new IllegalStateException("Validation node '" + node.key()
-                    + "' missing required value(s): " + String.join(", ", missing));
+                throw new IllegalStateException("Validation node '" + node.key() + "' missing required values: "
+                    + String.join(", ", missing));
             }
         }
         Map<String, Object> outputs = new LinkedHashMap<>(inputs);
@@ -684,94 +471,364 @@ public class WorkflowRunner {
     private Map<String, Object> executeLogNode(WorkflowNode node, Map<String, Object> inputs, WorkflowRun run) {
         try {
             Path outputDir = workspaceDirectoryService.workflowTemp(run.id());
-            for (var entry : inputs.entrySet()) {
+            for (Map.Entry<String, Object> entry : inputs.entrySet()) {
                 outputArtifactService.materialize(
-                    run.id(), node.key(), entry.getKey(),
-                    io.mindspice.magenta2.ai.chat.plan.PlanFieldType.STRING,
-                    entry.getValue(), outputDir
+                    run.id(),
+                    run.workflowId(),
+                    node.key() + "_" + entry.getKey(),
+                    PlanFieldType.STRING,
+                    entry.getValue(),
+                    outputDir
                 );
             }
         } catch (Exception e) {
-            throw new RuntimeException("Failed to materialize log node '" + node.key()
-                + "': " + e.getMessage(), e);
+            throw new IllegalStateException("Failed to materialize log node outputs", e);
         }
         return new LinkedHashMap<>(inputs);
     }
 
-    // ════════════════════════════════════════════════════════════════
-    //  Input resolution (route-aware)
-    // ════════════════════════════════════════════════════════════════
+    private void completeRun(
+        WorkflowRun run,
+        WorkflowDefinition def,
+        Map<String, WorkflowNodeRun> nodeRuns,
+        Map<String, Map<String, Object>> outputsByNode
+    ) {
+        Map<String, Object> finalOutputs = collectFinalOutputs(def, nodeRuns, outputsByNode);
+        List<String> artifactIds = materializeFinalOutputs(run, finalOutputs);
 
-    /**
-     * Resolve a node's inputs from its incoming routes and literal config.
-     * Uses both new routes and legacy bindings.
-     */
+        persistState(run, nodeRuns, WorkflowRunStatus.COMPLETED,
+            finalOutputs, artifactIds,
+            "Workflow completed: " + def.title(),
+            null,
+            true);
+    }
+
+    private Map<String, Object> collectFinalOutputs(
+        WorkflowDefinition def,
+        Map<String, WorkflowNodeRun> nodeRuns,
+        Map<String, Map<String, Object>> outputsByNode
+    ) {
+        Map<String, Object> finalOutputs = new LinkedHashMap<>();
+
+        for (WorkflowNode node : def.nodes()) {
+            if (!node.type().isFinalOutputNode()) {
+                continue;
+            }
+            WorkflowNodeRun run = nodeRuns.get(node.key());
+            if (run != null && run.status() == WorkflowNodeRunStatus.COMPLETED) {
+                finalOutputs.putAll(run.outputValues());
+            }
+        }
+
+        if (finalOutputs.isEmpty()) {
+            for (WorkflowNode node : def.nodes()) {
+                List<WorkflowRoute> outgoingDeps = def.outgoingRoutes(node.key()).stream()
+                    .filter(WorkflowRoute::createsDependency)
+                    .toList();
+                if (!outgoingDeps.isEmpty()) continue;
+                WorkflowNodeRun nr = nodeRuns.get(node.key());
+                if (nr != null && nr.status() == WorkflowNodeRunStatus.COMPLETED) {
+                    finalOutputs.putAll(nr.outputValues());
+                }
+            }
+        }
+
+        return finalOutputs;
+    }
+
+    private List<String> materializeFinalOutputs(WorkflowRun run, Map<String, Object> finalOutputs) {
+        if (finalOutputs.isEmpty()) {
+            return List.of();
+        }
+        Path outputDir = workspaceDirectoryService.workflowTemp(run.id());
+        List<String> artifactIds = new ArrayList<>();
+        for (Map.Entry<String, Object> entry : finalOutputs.entrySet()) {
+            try {
+                PlanFieldType type = inferType(entry.getValue());
+                RunOutputArtifact artifact = outputArtifactService.materialize(
+                    run.id(),
+                    run.workflowId(),
+                    entry.getKey(),
+                    type,
+                    entry.getValue(),
+                    outputDir
+                );
+                artifactIds.add(artifact.id());
+            } catch (IOException e) {
+                throw new IllegalStateException("Failed to materialize final output '" + entry.getKey() + "'", e);
+            }
+        }
+        return artifactIds;
+    }
+
+    private PlanFieldType inferType(Object value) {
+        if (value instanceof Number) {
+            return PlanFieldType.NUMBER;
+        }
+        if (value instanceof Map<?, ?> || value instanceof List<?>) {
+            return PlanFieldType.JSON;
+        }
+        return PlanFieldType.STRING;
+    }
+
+    private void failRun(WorkflowRun run, Map<String, WorkflowNodeRun> nodeRuns, String errorText) {
+        persistState(run, nodeRuns, WorkflowRunStatus.FAILED, run.finalOutputs(), run.artifactIds(), null, errorText, true);
+    }
+
+    private WorkflowRun persistState(
+        WorkflowRun base,
+        Map<String, WorkflowNodeRun> nodeRuns,
+        WorkflowRunStatus status,
+        Map<String, Object> finalOutputs,
+        List<String> artifactIds,
+        String finalMessage,
+        String errorText,
+        boolean terminal
+    ) {
+        List<WorkflowNodeRun> orderedRuns = base.workflowSnapshot().nodes().stream()
+            .map(n -> nodeRuns.getOrDefault(n.key(), new WorkflowNodeRun(
+                n.key(), n.type(), WorkflowNodeRunStatus.PENDING, Map.of(), Map.of(), List.of(), null, null)))
+            .toList();
+
+        WorkflowRun persisted = repository.saveRun(new WorkflowRun(
+            base.id(),
+            base.workflowId(),
+            status,
+            currentNodeIndex(orderedRuns),
+            orderedRuns,
+            base.workspacePath(),
+            base.outputDir(),
+            base.workflowSnapshot(),
+            finalOutputs,
+            artifactIds,
+            finalMessage,
+            errorText,
+            base.createdAt(),
+            Instant.now(),
+            base.startedAt(),
+            terminal ? Instant.now() : null
+        ));
+        return persisted;
+    }
+
+    private int currentNodeIndex(List<WorkflowNodeRun> runs) {
+        for (int i = 0; i < runs.size(); i++) {
+            if (runs.get(i).status() == WorkflowNodeRunStatus.RUNNING
+                || runs.get(i).status() == WorkflowNodeRunStatus.WAITING
+                || runs.get(i).status() == WorkflowNodeRunStatus.PENDING) {
+                return i;
+            }
+        }
+        return runs.isEmpty() ? 0 : runs.size() - 1;
+    }
+
+    private boolean allDone(Map<String, WorkflowNodeRun> nodeRuns) {
+        return nodeRuns.values().stream().allMatch(n ->
+            n.status() == WorkflowNodeRunStatus.COMPLETED || n.status() == WorkflowNodeRunStatus.SKIPPED);
+    }
+
+    private boolean hasWaitingNode(Map<String, WorkflowNodeRun> nodeRuns) {
+        return nodeRuns.values().stream().anyMatch(n -> n.status() == WorkflowNodeRunStatus.WAITING);
+    }
+
+    private boolean skipInactiveBranchNodes(
+        WorkflowDefinition def,
+        Map<String, WorkflowNodeRun> nodeRuns,
+        Map<String, String> gateOutcomeByNode
+    ) {
+        boolean changed = false;
+        Instant now = Instant.now();
+        for (WorkflowNode node : def.nodes()) {
+            WorkflowNodeRun run = nodeRuns.get(node.key());
+            if (run == null || run.status() != WorkflowNodeRunStatus.PENDING) {
+                continue;
+            }
+
+            List<WorkflowRoute> incomingDeps = def.incomingRoutes(node.key()).stream()
+                .filter(WorkflowRoute::createsDependency)
+                .toList();
+            if (incomingDeps.isEmpty()) {
+                continue;
+            }
+
+            List<WorkflowRoute> controlRoutes = incomingDeps.stream()
+                .filter(r -> r.routeType() == WorkflowRouteType.CONTROL)
+                .toList();
+
+            boolean skipForControlMismatch = false;
+            if (!controlRoutes.isEmpty()) {
+                boolean unresolved = false;
+                int activeCount = 0;
+                for (WorkflowRoute route : controlRoutes) {
+                    WorkflowNodeRun sourceRun = nodeRuns.get(route.fromNodeKey());
+                    String outcome = gateOutcomeByNode.get(route.fromNodeKey());
+                    if (sourceRun == null || sourceRun.status() == WorkflowNodeRunStatus.PENDING
+                        || sourceRun.status() == WorkflowNodeRunStatus.RUNNING
+                        || sourceRun.status() == WorkflowNodeRunStatus.WAITING
+                        || outcome == null) {
+                        unresolved = true;
+                        break;
+                    }
+                    if (outcome.equals(route.controlOutcome())) {
+                        activeCount++;
+                    }
+                }
+                skipForControlMismatch = !unresolved && activeCount == 0;
+            }
+
+            boolean skipForSkippedDependency = false;
+            if (!skipForControlMismatch) {
+                boolean allDepsResolved = true;
+                for (WorkflowRoute route : incomingDeps) {
+                    WorkflowNodeRun sourceRun = nodeRuns.get(route.fromNodeKey());
+                    if (sourceRun == null || sourceRun.status() == WorkflowNodeRunStatus.PENDING
+                        || sourceRun.status() == WorkflowNodeRunStatus.RUNNING
+                        || sourceRun.status() == WorkflowNodeRunStatus.WAITING) {
+                        allDepsResolved = false;
+                        break;
+                    }
+                    if (sourceRun.status() == WorkflowNodeRunStatus.SKIPPED) {
+                        skipForSkippedDependency = true;
+                    }
+                }
+                skipForSkippedDependency = allDepsResolved && skipForSkippedDependency;
+            }
+
+            if (skipForControlMismatch || skipForSkippedDependency) {
+                nodeRuns.put(node.key(), new WorkflowNodeRun(
+                    run.nodeKey(), run.type(), WorkflowNodeRunStatus.SKIPPED,
+                    run.inputValues(), run.outputValues(), run.routeContext(),
+                    run.startedAt() == null ? now : run.startedAt(),
+                    now
+                ));
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    private List<String> computeReadyNodes(
+        WorkflowDefinition def,
+        Map<String, WorkflowNodeRun> nodeRuns,
+        Map<String, String> gateOutcomeByNode
+    ) {
+        Set<String> completed = nodeRuns.values().stream()
+            .filter(n -> n.status() == WorkflowNodeRunStatus.COMPLETED)
+            .map(WorkflowNodeRun::nodeKey)
+            .collect(java.util.stream.Collectors.toSet());
+
+        List<String> ready = new ArrayList<>();
+        for (WorkflowNode node : def.nodes()) {
+            WorkflowNodeRun run = nodeRuns.get(node.key());
+            if (run == null || run.status() != WorkflowNodeRunStatus.PENDING) {
+                continue;
+            }
+
+            List<WorkflowRoute> incoming = def.incomingRoutes(node.key()).stream()
+                .filter(WorkflowRoute::createsDependency)
+                .toList();
+            if (incoming.isEmpty()) {
+                ready.add(node.key());
+                continue;
+            }
+
+            boolean hasControl = incoming.stream().anyMatch(r -> r.routeType() == WorkflowRouteType.CONTROL);
+            int activeControl = 0;
+            boolean allSatisfied = true;
+
+            for (WorkflowRoute route : incoming) {
+                if (!StringUtils.hasText(route.fromNodeKey())) {
+                    allSatisfied = false;
+                    break;
+                }
+
+                if (route.routeType() == WorkflowRouteType.CONTROL) {
+                    String outcome = gateOutcomeByNode.get(route.fromNodeKey());
+                    if (outcome == null) {
+                        allSatisfied = false;
+                        break;
+                    }
+                    if (outcome.equals(route.controlOutcome())) {
+                        activeControl++;
+                        if (!completed.contains(route.fromNodeKey())) {
+                            allSatisfied = false;
+                            break;
+                        }
+                    }
+                    continue;
+                }
+
+                if (!completed.contains(route.fromNodeKey())) {
+                    allSatisfied = false;
+                    break;
+                }
+            }
+
+            if (allSatisfied && (!hasControl || activeControl > 0)) {
+                ready.add(node.key());
+            }
+        }
+
+        return ready;
+    }
+
+    private List<String> activeRouteContext(
+        WorkflowDefinition def,
+        String nodeKey,
+        Map<String, WorkflowNodeRun> nodeRuns,
+        Map<String, String> gateOutcomeByNode
+    ) {
+        Set<String> completed = nodeRuns.values().stream()
+            .filter(n -> n.status() == WorkflowNodeRunStatus.COMPLETED)
+            .map(WorkflowNodeRun::nodeKey)
+            .collect(java.util.stream.Collectors.toSet());
+
+        List<String> routes = new ArrayList<>();
+        for (WorkflowRoute route : def.incomingRoutes(nodeKey)) {
+            if (!route.createsDependency() || !StringUtils.hasText(route.fromNodeKey())) continue;
+            if (route.routeType() == WorkflowRouteType.CONTROL) {
+                String outcome = gateOutcomeByNode.get(route.fromNodeKey());
+                if (outcome != null && outcome.equals(route.controlOutcome()) && completed.contains(route.fromNodeKey())) {
+                    routes.add(route.id());
+                }
+            } else if (completed.contains(route.fromNodeKey())) {
+                routes.add(route.id());
+            }
+        }
+        return routes;
+    }
+
     private Map<String, Object> resolveNodeInputs(
         WorkflowNode node,
         WorkflowDefinition def,
         Map<String, Map<String, Object>> outputsByNode
     ) {
         Map<String, Object> values = new LinkedHashMap<>();
-
-        // 1. Apply route-based inputs
         for (WorkflowRoute route : def.incomingRoutes(node.key())) {
-            switch (route.routeType()) {
-                case MAP_OUTPUT -> {
-                    if (route.fromNodeKey() == null) continue;
-                    Map<String, Object> sourceOutputs = outputsByNode.get(route.fromNodeKey());
-                    if (sourceOutputs == null) continue;
-                    String outputName = route.fromOutputName();
-                    if (outputName != null && sourceOutputs.containsKey(outputName)) {
-                        values.put(route.toInputName() != null ? route.toInputName() : outputName,
-                            sourceOutputs.get(outputName));
-                    }
+            if (route.routeType() == WorkflowRouteType.CONTROL || route.routeType() == WorkflowRouteType.LOG) {
+                continue;
+            }
+            if (!StringUtils.hasText(route.fromNodeKey())) {
+                continue;
+            }
+            Map<String, Object> sourceOutputs = outputsByNode.get(route.fromNodeKey());
+            if (sourceOutputs == null) {
+                continue;
+            }
+
+            if (route.routeType() == WorkflowRouteType.MAP_OUTPUT) {
+                if (StringUtils.hasText(route.sourcePort()) && sourceOutputs.containsKey(route.sourcePort())) {
+                    values.put(route.targetPort(), sourceOutputs.get(route.sourcePort()));
                 }
-                case PASS_THROUGH -> {
-                    if (route.fromNodeKey() == null) continue;
-                    Map<String, Object> sourceOutputs = outputsByNode.get(route.fromNodeKey());
-                    if (sourceOutputs == null) continue;
-                    // Forward all source outputs as a single map under the input name
-                    String inputName = StringUtils.hasText(route.toInputName())
-                        ? route.toInputName() : route.fromNodeKey();
-                    values.put(inputName, new LinkedHashMap<>(sourceOutputs));
-                }
-                case CONTROL -> {
-                    // Control routes don't carry data; handled at execution level
-                }
-                case LOG -> {
-                    // LOG routes don't produce inputs; handled separately
+            } else if (route.routeType() == WorkflowRouteType.PASS_THROUGH) {
+                if (StringUtils.hasText(route.sourcePort()) && sourceOutputs.containsKey(route.sourcePort())) {
+                    values.put(route.targetPort(), sourceOutputs.get(route.sourcePort()));
                 }
             }
         }
-
-        // 2. Apply literal config from node
-        if (node.config() != null) {
-            values.putAll(node.config());
-        }
-
-        // 3. Legacy binding resolution fallback
-        if (!node.inputBindings().isEmpty()) {
-            PlanDefinition plan = null;
-            if (StringUtils.hasText(node.planId())) {
-                try { plan = planService.getTask(node.planId()); }
-                catch (Exception ignored) { }
-            }
-
-            Map<String, Object> legacyValues = BindingResolver.resolve(
-                node.inputBindings(),
-                plan != null ? plan.inputs() : List.of(),
-                outputsByNode
-            );
-            // Legacy values overlay route values
-            values.putAll(legacyValues);
-        }
-
+        values.putAll(node.config());
         return values;
     }
-
-    // ════════════════════════════════════════════════════════════════
-    //  Helpers
-    // ════════════════════════════════════════════════════════════════
 
     private int nodeIndex(WorkflowRun run, String nodeKey) {
         for (int i = 0; i < run.nodeRuns().size(); i++) {
@@ -787,66 +844,12 @@ public class WorkflowRunner {
             .orElse(null);
     }
 
-    private void updateNodeRun(WorkflowRun run, String nodeKey, int nodeIndex,
-                                WorkflowNodeRunStatus status,
-                                Map<String, Object> inputs, Map<String, Object> outputs) {
-        // Run state is re-loaded on each loop iteration; in-memory update only for tracking
-    }
-
-    private WorkflowRun saveRunWithNodeStatus(WorkflowRun run, int nodeIndex,
-                                               WorkflowNodeRunStatus status,
-                                               Map<String, Object> inputs,
-                                               Map<String, Object> outputs) {
-        List<WorkflowNodeRun> updatedRuns = new ArrayList<>(run.nodeRuns());
-        if (nodeIndex >= 0 && nodeIndex < updatedRuns.size()) {
-            WorkflowNodeRun existing = updatedRuns.get(nodeIndex);
-            updatedRuns.set(nodeIndex, new WorkflowNodeRun(
-                existing.nodeKey(), existing.type(), status,
-                inputs, outputs,
-                existing.startedAt(),
-                status == WorkflowNodeRunStatus.COMPLETED || status == WorkflowNodeRunStatus.FAILED
-                    ? Instant.now() : null
-            ));
+    private Map<String, WorkflowNodeRun> toNodeRunMap(List<WorkflowNodeRun> nodeRuns) {
+        Map<String, WorkflowNodeRun> map = new LinkedHashMap<>();
+        for (WorkflowNodeRun run : nodeRuns) {
+            map.put(run.nodeKey(), run);
         }
-        return repository.saveRun(new WorkflowRun(
-            run.id(), run.workflowId(),
-            status == WorkflowNodeRunStatus.WAITING ? WorkflowRunStatus.WAITING : WorkflowRunStatus.RUNNING,
-            nodeIndex + 1, updatedRuns,
-            run.workspacePath(), run.outputDir(), run.workflowSnapshot(),
-            run.finalMessage(), run.errorText(),
-            run.createdAt(), Instant.now(), run.startedAt(), null
-        ));
-    }
-
-    private void cleanupWorkspace(WorkflowRun run) {
-        if (!StringUtils.hasText(run.workspacePath())) return;
-        try {
-            Path path = Path.of(run.workspacePath());
-            if (java.nio.file.Files.exists(path)) {
-                try (var files = java.nio.file.Files.walk(path)) {
-                    files.sorted(java.util.Comparator.reverseOrder())
-                        .forEach(p -> {
-                            try { java.nio.file.Files.deleteIfExists(p); }
-                            catch (IOException ignored) { }
-                        });
-                }
-                log.info("Cleaned up workflow temp workspace: {}", run.workspacePath());
-            }
-        } catch (IOException e) {
-            log.warn("Failed to clean up workspace {}: {}", run.workspacePath(), e.getMessage());
-        }
-    }
-
-    private void emitSse(Consumer<String> callback, String event, Map<String, Object> data) {
-        if (callback != null) {
-            try {
-                String json = new com.fasterxml.jackson.databind.ObjectMapper()
-                    .writeValueAsString(Map.of("event", event, "data", data));
-                callback.accept(json);
-            } catch (Exception e) {
-                log.warn("Failed to emit SSE event: {}", e.getMessage());
-            }
-        }
+        return map;
     }
 
     private String toJson(Object value) {
@@ -856,4 +859,13 @@ public class WorkflowRunner {
             return "{}";
         }
     }
+
+    private record NodeExecutionResult(
+        String nodeKey,
+        WorkflowNodeRunStatus status,
+        Map<String, Object> inputs,
+        Map<String, Object> outputs,
+        List<String> routeContext,
+        String errorText
+    ) {}
 }

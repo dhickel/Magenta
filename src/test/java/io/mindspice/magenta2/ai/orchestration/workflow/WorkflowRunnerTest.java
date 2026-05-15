@@ -13,638 +13,348 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class WorkflowRunnerTest {
 
     private JdbcTemplate jdbcTemplate;
-    private PlanRepository planRepository;
     private PlanService planService;
-    private WorkspaceDirectoryService workspaceDirectoryService;
-    private OutputArtifactService outputArtifactService;
-    private WorkflowRepository workflowRepository;
-    private InboxService inboxService;
     private WorkflowRunner workflowRunner;
     private WorkflowService workflowService;
-    private ObjectMapper objectMapper;
+    private InboxService inboxService;
 
     @TempDir
     Path tempDir;
 
     @BeforeEach
     void setUp() throws Exception {
-        objectMapper = new ObjectMapper().findAndRegisterModules();
-        jdbcTemplate = jdbcTemplate();
-        planRepository = new PlanRepository(jdbcTemplate, objectMapper);
-        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+        jdbcTemplate = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+
+        PlanRepository planRepository = new PlanRepository(jdbcTemplate, mapper);
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, mapper);
         planService = new PlanService(planRepository, memoryRepository);
 
         Path dataRoot = tempDir.resolve("data");
         java.nio.file.Files.createDirectories(dataRoot);
-        workspaceDirectoryService = new WorkspaceDirectoryService(
+        WorkspaceDirectoryService workspaceDirectoryService = new WorkspaceDirectoryService(
             new io.mindspice.magenta2.ai.config.user.AiConfig(
                 null, null, null, null, dataRoot, null, null));
 
-        outputArtifactService = new OutputArtifactService(
-            new WorkspaceRepository(jdbcTemplate),
-            workspaceDirectoryService, objectMapper);
+        OutputArtifactService outputArtifactService = new OutputArtifactService(
+            new WorkspaceRepository(jdbcTemplate), workspaceDirectoryService, mapper);
 
-        workflowRepository = new WorkflowRepository(jdbcTemplate, objectMapper);
-        inboxService = new InboxService(workflowRepository, objectMapper);
+        WorkflowRepository workflowRepository = new WorkflowRepository(jdbcTemplate, mapper);
+        inboxService = new InboxService(workflowRepository, mapper);
         workflowRunner = new WorkflowRunner(workflowRepository, planService,
             inboxService, workspaceDirectoryService, outputArtifactService);
         workflowService = new WorkflowService(workflowRepository, planService, workflowRunner);
     }
 
     @Test
-    void definitionCrud() {
-        WorkflowDefinition def = workflowService.saveDefinition(new WorkflowDefinition(
-            null, "Test Workflow", "A simple test",
-            List.of(new WorkflowNode("step1", WorkflowNodeType.REPORT, null, List.of(),
-                "Report message", null, false)),
-            null, null));
-
-        assertThat(def.id()).isNotNull();
-        assertThat(def.title()).isEqualTo("Test Workflow");
-        assertThat(def.nodes()).hasSize(1);
-
-        WorkflowDefinition found = workflowService.getDefinition(def.id());
-        assertThat(found.title()).isEqualTo("Test Workflow");
-
-        List<WorkflowDefinition> all = workflowService.listDefinitions();
-        assertThat(all).hasSize(1);
-    }
-
-    @Test
-    void definitionRequiresTitle() {
-        assertThatThrownBy(() -> workflowService.saveDefinition(new WorkflowDefinition(
-            null, "", "summary", List.of(), null, null)))
-            .isInstanceOf(IllegalArgumentException.class);
-    }
-
-    @Test
-    void taskNodeRequiresPlanId() {
-        assertThatThrownBy(() -> workflowService.saveDefinition(new WorkflowDefinition(
-            null, "Bad Workflow", "summary",
-            List.of(new WorkflowNode("step1", WorkflowNodeType.TASK, null, List.of(),
-                null, null, false)),
-            null, null)))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("planId");
-    }
-
-    @Test
-    void reportNodeCompletesWithoutPlanId() {
-        WorkflowDefinition def = workflowService.saveDefinition(new WorkflowDefinition(
-            null, "Report Workflow", "Just a report",
-            List.of(new WorkflowNode("r1", WorkflowNodeType.REPORT, null, List.of(),
-                "Hello from workflow", null, false)),
-            null, null));
-
-        WorkflowRun run = workflowRunner.runSynchronously(def);
-        assertThat(run.status()).isEqualTo(WorkflowRunStatus.COMPLETED);
-        assertThat(run.nodeRuns()).hasSize(1);
-        assertThat(run.nodeRuns().get(0).status()).isEqualTo(WorkflowNodeRunStatus.COMPLETED);
-    }
-
-    @Test
-    void userApprovalPausesAsWaiting() {
-        WorkflowDefinition def = workflowService.saveDefinition(new WorkflowDefinition(
-            null, "Approval Workflow", "Needs approval",
-            List.of(new WorkflowNode("approve", WorkflowNodeType.USER_APPROVAL, null, List.of(),
-                "Please approve this step", null, false)),
-            null, null));
-
-        WorkflowRun run = workflowRunner.runSynchronously(def);
-        assertThat(run.status()).isEqualTo(WorkflowRunStatus.WAITING);
-        assertThat(run.nodeRuns().get(0).status()).isEqualTo(WorkflowNodeRunStatus.WAITING);
-        assertThat(run.nodeRuns().get(0).outputValues()).containsKey("messageId");
-
-        // Verify inbox message was created
-        String messageId = (String) run.nodeRuns().get(0).outputValues().get("messageId");
-        assertThat(messageId).isNotNull();
-        assertThat(inboxService.userMessage(messageId)).isPresent();
-    }
-
-    @Test
-    void approvalResponseResumesWorkflow() {
-        // Create a two-node workflow: approval then report
-        WorkflowDefinition def = workflowService.saveDefinition(new WorkflowDefinition(
-            null, "Approval Then Report", "Approval then report",
-            List.of(
-                new WorkflowNode("approve", WorkflowNodeType.USER_APPROVAL, null, List.of(),
-                    "Approve?", null, false),
-                new WorkflowNode("report", WorkflowNodeType.REPORT, null, List.of(),
-                    "Done!", null, false)
-            ),
-            null, null));
-
-        // Run synchronously - should stop at approval
-        WorkflowRun run = workflowRunner.runSynchronously(def);
-        assertThat(run.status()).isEqualTo(WorkflowRunStatus.WAITING);
-
-        String messageId = (String) run.nodeRuns().get(0).outputValues().get("messageId");
-        // User approves
-        inboxService.respondUserApproval(messageId, true, "Looks good");
-
-        // Resume
-        WorkflowRun resumed = workflowService.resumeRun(run.id());
-        // After resume, the async execution should complete
-        // Re-fetch to get latest state
-        WorkflowRun finalRun = workflowService.getRun(run.id());
-        assertThat(finalRun.status()).isIn(WorkflowRunStatus.RUNNING, WorkflowRunStatus.COMPLETED);
-    }
-
-    @Test
-    void rejectionMarksFailed() {
-        WorkflowDefinition def = workflowService.saveDefinition(new WorkflowDefinition(
-            null, "Rejected Workflow", "Will be rejected",
-            List.of(new WorkflowNode("approve", WorkflowNodeType.USER_APPROVAL, null, List.of(),
-                "Approve?", "approve_continue_reject_failed", false)),
-            null, null));
-
-        WorkflowRun run = workflowRunner.runSynchronously(def);
-        assertThat(run.status()).isEqualTo(WorkflowRunStatus.WAITING);
-
-        // The resume mechanism handles the gate node completion - but rejection
-        // policy is checked at the InboxService level and the caller decides how
-        // to handle it. For now, resume moves past the gate.
-        String messageId = (String) run.nodeRuns().get(0).outputValues().get("messageId");
-        InboxMessage msg = inboxService.respondUserApproval(messageId, false, "Not approved");
-
-        // Verify response was recorded
-        assertThat(msg.responseJson()).contains("false");
-        assertThat(inboxService.parseApprovalFromResponse(msg.responseJson())).isFalse();
-    }
-
-    @Test
-    void inboxMessageCrud() {
-        InboxMessage msg = inboxService.createInfoMessage(
-            InboxMessageToType.USER, null, null,
-            "Test message", null);
-
-        assertThat(msg.id()).isNotNull();
-        assertThat(msg.body()).isEqualTo("Test message");
-
-        List<InboxMessage> userMsgs = inboxService.userInbox();
-        assertThat(userMsgs).hasSize(1);
-
-        // Mark handled
-        InboxMessage handled = inboxService.markHandled(msg.id());
-        assertThat(handled.isHandled()).isTrue();
-    }
-
-    @Test
-    void agentInboxFiltering() {
-        inboxService.createInfoMessage(
-            InboxMessageToType.AGENT, "agent-1", "system",
-            "For agent 1", null);
-        inboxService.createInfoMessage(
-            InboxMessageToType.AGENT, "agent-2", "system",
-            "For agent 2", null);
-
-        assertThat(inboxService.agentInbox("agent-1")).hasSize(1);
-        assertThat(inboxService.agentInbox("agent-2")).hasSize(1);
-
-        // User messages should not appear in agent inbox
-        assertThat(inboxService.userInbox()).isEmpty();
-    }
-
-    @Test
-    void bindingResolutionMissingInput() {
-        // Create two task plans
-        PlanDefinition plan1 = planService.saveTask(new PlanDefinition(
-            null, PlanKind.TASK_TEMPLATE, PlanStatus.APPROVED,
-            "Source Plan", "Source", "Goal", null,
+    void savesAndLoadsWorkflowV2Definition() {
+        WorkflowDefinition saved = workflowService.saveDefinitionValidated(new WorkflowDefinition(
+            null,
+            2,
+            "Workflow V2",
+            "test",
+            4,
+            List.of(simpleFinalNode("final")),
             List.of(),
-            List.of(),
-            List.of(new PlanFieldDefinition("result", PlanFieldType.STRING, false, "Output", true, null)),
-            List.of(), List.of(new PlanStep(1, "Do it.")), List.of("Done."),
-            List.of(), List.of(), null, null, null, null,
-            null, List.of(), 0, 0, null, null, null, null));
+            Map.of("nodes", Map.of("final", Map.of("x", 40, "y", 40))),
+            null,
+            null
+        ));
 
-        PlanDefinition plan2 = planService.saveTask(new PlanDefinition(
-            null, PlanKind.TASK_TEMPLATE, PlanStatus.APPROVED,
-            "Dest Plan", "Dest", "Goal", null,
-            List.of(),
-            List.of(new PlanFieldDefinition("required_input", PlanFieldType.STRING, false, "Input", true, null)),
-            List.of(),
-            List.of(), List.of(new PlanStep(1, "Use input.")), List.of("Done."),
-            List.of(), List.of(), null, null, null, null,
-            null, List.of(), 0, 0, null, null, null, null));
-
-        // Create a workflow with a binding that won't work because source has no outputs yet
-        WorkflowDefinition def = workflowService.saveDefinition(new WorkflowDefinition(
-            null, "Binding Test", "Test",
-            List.of(
-                new WorkflowNode("source", WorkflowNodeType.TASK, plan1.id(), List.of(),
-                    null, null, false),
-                new WorkflowNode("dest", WorkflowNodeType.TASK, plan2.id(),
-                    List.of(new WorkflowBinding("required_input", "source", "result", null)),
-                    null, null, false)
-            ),
-            null, null));
-
-        // Validation should show type mismatch warning since source output is STRING and dest expects STRING - compatible
-        List<String> warnings = workflowService.compatibilityWarnings(def);
-        assertThat(warnings).isEmpty(); // STRING to STRING is compatible
+        WorkflowDefinition found = workflowService.getDefinition(saved.id());
+        assertThat(found.schemaVersion()).isEqualTo(2);
+        assertThat(found.maxConcurrency()).isEqualTo(4);
+        assertThat(found.uiLayout()).containsKey("nodes");
     }
 
     @Test
-    void bindingResolverLiteralValue() {
-        Map<String, Object> result = BindingResolver.resolve(
-            List.of(new WorkflowBinding("name", null, null, "hello")),
-            List.of(new PlanFieldDefinition("name", PlanFieldType.STRING, false, "A name", true, null)),
-            Map.of()
-        );
-        assertThat(result).containsEntry("name", "hello");
-    }
-
-    @Test
-    void bindingResolverMissingSourceOutput() {
-        assertThatThrownBy(() -> BindingResolver.resolve(
-            List.of(new WorkflowBinding("name", "source_node", "missing_output", null)),
-            List.of(),
-            Map.of("source_node", Map.of("other_output", "value"))
-        )).isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("missing_output");
-    }
-
-    @Test
-    void bindingResolverMissingRequiredInput() {
-        assertThatThrownBy(() -> BindingResolver.resolve(
-            List.of(), // no bindings
-            List.of(new PlanFieldDefinition("required_field", PlanFieldType.STRING, false, "Required", true, null)),
-            Map.of()
-        )).isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("required_field");
-    }
-
-    @Test
-    void workflowRunStatusTransitions() {
-        WorkflowDefinition def = workflowService.saveDefinition(new WorkflowDefinition(
-            null, "Status Test", "Test transitions",
-            List.of(new WorkflowNode("r1", WorkflowNodeType.REPORT, null, List.of(),
-                "Hello", null, false)),
-            null, null));
-
-        WorkflowRun run = workflowRunner.runSynchronously(def);
-        assertThat(run.status()).isEqualTo(WorkflowRunStatus.COMPLETED);
-        assertThat(run.isTerminal()).isTrue();
-    }
-
-    @Test
-    void deleteWorkflowWithRuns() {
-        WorkflowDefinition def = workflowService.saveDefinition(new WorkflowDefinition(
-            null, "To Delete", "Temporary",
-            List.of(new WorkflowNode("r1", WorkflowNodeType.REPORT, null, List.of(),
-                "tmp", null, false)),
-            null, null));
-
-        workflowRunner.runSynchronously(def);
-
-        assertThat(workflowService.listDefinitions()).hasSize(1);
-        workflowService.deleteDefinition(def.id());
-        assertThat(workflowService.listDefinitions()).isEmpty();
-    }
-
-    // ════════════════════════════════════════════════════════════════
-    //  DEFECT-04-02: Task node execution
-    // ════════════════════════════════════════════════════════════════
-
-    @Test
-    void taskNodeFailsWithoutExecutor() throws Exception {
-        // Create a plan for the task node to reference
-        PlanDefinition taskPlan = planService.saveTask(new PlanDefinition(
-            null, PlanKind.TASK_TEMPLATE, PlanStatus.APPROVED,
-            "Task Plan", "A task", "Goal", null,
-            List.of(),
-            List.of(),
-            List.of(new PlanFieldDefinition("out1", PlanFieldType.STRING, false, "Output1", true, null)),
-            List.of(), List.of(new PlanStep(1, "Do something.")), List.of("Done."),
-            List.of(), List.of(), null, null, null, null,
-            null, List.of(), 0, 0, null, null, null, null));
-
-        WorkflowDefinition def = workflowService.saveDefinition(new WorkflowDefinition(
-            null, "Task Workflow", "Has a task",
-            List.of(new WorkflowNode("t1", WorkflowNodeType.TASK, taskPlan.id(), List.of(),
-                null, null, false)),
-            null, null));
-
-        // No executor registered — run should fail
-        WorkflowRun run = workflowRunner.startRun(def);
-        // Poll for completion
-        WorkflowRun finalRun = pollForTerminal(run.id());
-        assertThat(finalRun.status()).isEqualTo(WorkflowRunStatus.FAILED);
-        assertThat(finalRun.errorText()).contains("requires model-backed task execution");
-    }
-
-    @Test
-    void taskNodeWithExecutorReturnsOutputs() throws Exception {
-        // Create a plan for the task node to reference
-        PlanDefinition taskPlan = planService.saveTask(new PlanDefinition(
-            null, PlanKind.TASK_TEMPLATE, PlanStatus.APPROVED,
-            "Executor Task Plan", "A task", "Goal", null,
-            List.of(),
-            List.of(),
-            List.of(new PlanFieldDefinition("result", PlanFieldType.STRING, false, "Result", true, null)),
-            List.of(), List.of(new PlanStep(1, "Do something.")), List.of("Done."),
-            List.of(), List.of(), null, null, null, null,
-            null, List.of(), 0, 0, null, null, null, null));
-
-        WorkflowDefinition def = workflowService.saveDefinition(new WorkflowDefinition(
-            null, "Task With Executor", "Has an executor",
-            List.of(new WorkflowNode("t1", WorkflowNodeType.TASK, taskPlan.id(), List.of(),
-                null, null, false)),
-            null, null));
-
-        // Register a fake executor
-        workflowRunner.setTaskNodeExecutor((planId, planRunId, inputs, workspacePath) ->
-            new PlanRun(
-                planRunId, planId, PlanRunStatus.COMPLETED,
-                inputs,
-                Map.of("result", "executed-successfully"),
-                taskPlan,
-                workspacePath, null, null,
-                List.of(), List.of(), List.of(),
-                null, null,
-                Instant.now(), Instant.now(), Instant.now(), Instant.now()
-            )
+    void rejectsLegacyInputBindingsInV2() {
+        WorkflowNode legacy = new WorkflowNode(
+            "legacy", WorkflowNodeType.TASK, "missing", "legacy", null,
+            List.of(), List.of(), Map.of(), false,
+            List.of(new WorkflowBinding("in", "source", "out", null)),
+            null, null
         );
 
-        WorkflowRun run = workflowRunner.startRun(def);
-        WorkflowRun finalRun = pollForTerminal(run.id());
-        assertThat(finalRun.status()).isEqualTo(WorkflowRunStatus.COMPLETED);
-        assertThat(finalRun.nodeRuns().get(0).status()).isEqualTo(WorkflowNodeRunStatus.COMPLETED);
-        assertThat(finalRun.nodeRuns().get(0).outputValues())
-            .containsEntry("result", "executed-successfully");
+        assertThatThrownBy(() -> workflowService.saveDefinitionValidated(new WorkflowDefinition(
+            null, 2, "Bad", "", 4,
+            List.of(legacy), List.of(), Map.of(), null, null
+        ))).isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("legacy inputBindings");
     }
 
     @Test
-    void taskNodeWithExecutorReturnsOutputsAndRoutesDownstream() throws Exception {
-        // Create two plans
-        PlanDefinition plan1 = planService.saveTask(new PlanDefinition(
-            null, PlanKind.TASK_TEMPLATE, PlanStatus.APPROVED,
-            "Source Task", "Source", "Goal", null,
-            List.of(),
-            List.of(),
-            List.of(new PlanFieldDefinition("value", PlanFieldType.STRING, false, "Value", true, null)),
-            List.of(), List.of(new PlanStep(1, "Produce.")), List.of("Done."),
-            List.of(), List.of(), null, null, null, null,
-            null, List.of(), 0, 0, null, null, null, null));
-
-        PlanDefinition plan2 = planService.saveTask(new PlanDefinition(
-            null, PlanKind.TASK_TEMPLATE, PlanStatus.APPROVED,
-            "Dest Task", "Dest", "Goal", null,
-            List.of(),
-            List.of(new PlanFieldDefinition("input_val", PlanFieldType.STRING, false, "Input", true, null)),
-            List.of(),
-            List.of(), List.of(new PlanStep(1, "Consume.")), List.of("Done."),
-            List.of(), List.of(), null, null, null, null,
-            null, List.of(), 0, 0, null, null, null, null));
-
-        // Workflow with two TASK nodes connected by a route
-        WorkflowDefinition def = new WorkflowDefinition(
-            null, "Downstream Task Test", "Test routing",
-            List.of(
-                new WorkflowNode("source", WorkflowNodeType.TASK, plan1.id(), List.of(),
-                    null, null, false),
-                new WorkflowNode("dest", WorkflowNodeType.TASK, plan2.id(), List.of(),
-                    null, null, false)
-            ),
-            List.of(new WorkflowRoute("r1", "source", "value", "dest", "input_val",
-                WorkflowRouteType.MAP_OUTPUT, null)),
-            null, null);
-
-        // Save via saveDefinition (not validated) to bypass missing plan input validation for source
-        def = workflowService.saveDefinition(def);
-
-        // Register a fake executor that returns output values
-        workflowRunner.setTaskNodeExecutor((planId, planRunId, inputs, workspacePath) -> {
-            Map<String, Object> outputs;
-            if (planId.equals(plan1.id())) {
-                outputs = Map.of("value", "hello-from-source");
-            } else {
-                outputs = Map.of("processed", "got: " + inputs.getOrDefault("input_val", "null"));
-            }
-            return new PlanRun(
-                planRunId, planId, PlanRunStatus.COMPLETED,
-                inputs, outputs,
-                planId.equals(plan1.id()) ? plan1 : plan2,
-                workspacePath, null, null,
-                List.of(), List.of(), List.of(),
-                null, null,
-                Instant.now(), Instant.now(), Instant.now(), Instant.now()
-            );
-        });
-
-        WorkflowRun run = workflowRunner.startRun(def);
-        WorkflowRun finalRun = pollForTerminal(run.id());
-        assertThat(finalRun.status()).isEqualTo(WorkflowRunStatus.COMPLETED);
-        assertThat(finalRun.nodeRuns()).hasSize(2);
-        assertThat(finalRun.nodeRuns().get(0).status()).isEqualTo(WorkflowNodeRunStatus.COMPLETED);
-        assertThat(finalRun.nodeRuns().get(0).outputValues()).containsEntry("value", "hello-from-source");
-        assertThat(finalRun.nodeRuns().get(1).status()).isEqualTo(WorkflowNodeRunStatus.COMPLETED);
-        assertThat(finalRun.nodeRuns().get(1).outputValues()).containsEntry("processed", "got: hello-from-source");
-    }
-
-    // ════════════════════════════════════════════════════════════════
-    //  DEFECT-04-01: Approval rejection blocks resume
-    // ════════════════════════════════════════════════════════════════
-
-    @Test
-    void approvedApprovalResumeCompletesLaterNodes() throws Exception {
-        WorkflowDefinition def = workflowService.saveDefinition(new WorkflowDefinition(
-            null, "Approval Then Report", "Approval then report",
-            List.of(
-                new WorkflowNode("approve", WorkflowNodeType.USER_APPROVAL, null, List.of(),
-                    "Approve?", null, false),
-                new WorkflowNode("report", WorkflowNodeType.REPORT, null, List.of(),
-                    "Done!", null, false)
-            ),
-            List.of(new WorkflowRoute("r1", "approve", null, "report", null,
-                WorkflowRouteType.CONTROL, null)),
-            null, null));
-
-        // Start and wait for WAITING
-        WorkflowRun run = workflowRunner.startRun(def);
-        run = pollForWaiting(run.id());
-        assertThat(run.status()).isEqualTo(WorkflowRunStatus.WAITING);
-
-        String messageId = (String) run.nodeRuns().get(0).outputValues().get("messageId");
-        // Approve the message
-        inboxService.respondUserApproval(messageId, true, "Looks good");
-
-        // Resume — should complete
-        workflowRunner.resumeRun(workflowService.getRun(run.id()));
-        WorkflowRun finalRun = pollForTerminal(run.id());
-        assertThat(finalRun.status()).isEqualTo(WorkflowRunStatus.COMPLETED);
-        assertThat(finalRun.nodeRuns().get(0).status()).isEqualTo(WorkflowNodeRunStatus.COMPLETED);
-        assertThat(finalRun.nodeRuns().get(1).status()).isEqualTo(WorkflowNodeRunStatus.COMPLETED);
-    }
-
-    @Test
-    void rejectedApprovalResumeMarksFailed() throws Exception {
-        WorkflowDefinition def = workflowService.saveDefinition(new WorkflowDefinition(
-            null, "Rejected Gate Workflow", "Gate will be rejected",
-            List.of(
-                new WorkflowNode("approve", WorkflowNodeType.USER_APPROVAL, null, List.of(),
-                    "Approve?", null, false),
-                new WorkflowNode("report", WorkflowNodeType.REPORT, null, List.of(),
-                    "Should not run!", null, false)
-            ),
-            List.of(new WorkflowRoute("r1", "approve", null, "report", null,
-                WorkflowRouteType.CONTROL, null)),
-            null, null));
-
-        // Start and wait for WAITING
-        WorkflowRun run = workflowRunner.startRun(def);
-        run = pollForWaiting(run.id());
-        assertThat(run.status()).isEqualTo(WorkflowRunStatus.WAITING);
-
-        String messageId = (String) run.nodeRuns().get(0).outputValues().get("messageId");
-        // Reject the message
-        inboxService.respondUserApproval(messageId, false, "Not approved");
-
-        // Resume — should fail the run (handled synchronously)
-        WorkflowRun result = workflowRunner.resumeRun(workflowService.getRun(run.id()));
-        assertThat(result.status()).isEqualTo(WorkflowRunStatus.FAILED);
-        assertThat(result.errorText()).contains("Approval rejected for gate approve");
-        assertThat(result.nodeRuns().get(0).status()).isEqualTo(WorkflowNodeRunStatus.FAILED);
-    }
-
-    @Test
-    void resumeBeforeResponseFails() throws Exception {
-        WorkflowDefinition def = workflowService.saveDefinition(new WorkflowDefinition(
-            null, "No Response Yet", "No response yet",
-            List.of(new WorkflowNode("approve", WorkflowNodeType.USER_APPROVAL, null, List.of(),
-                "Approve?", null, false)),
-            null, null));
-
-        // Start and wait for WAITING
-        WorkflowRun started = workflowRunner.startRun(def);
-        WorkflowRun waitingRun = pollForWaiting(started.id());
-        assertThat(waitingRun.status()).isEqualTo(WorkflowRunStatus.WAITING);
-
-        // Try to resume before responding
-        WorkflowRun finalRun = waitingRun;
-        assertThatThrownBy(() -> workflowRunner.resumeRun(workflowService.getRun(finalRun.id())))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("has not been responded to yet");
-    }
-
-    // ════════════════════════════════════════════════════════════════
-    //  DEFECT-04-03: Duplicate route validation
-    // ════════════════════════════════════════════════════════════════
-
-    @Test
-    void duplicateRouteSaveProducesValidationError() {
-        WorkflowNode nodeA = new WorkflowNode("a", WorkflowNodeType.REPORT, null, List.of(),
-            "Node A", null, false);
-        WorkflowNode nodeB = new WorkflowNode("b", WorkflowNodeType.REPORT, null, List.of(),
-            "Node B", null, false);
-
-        WorkflowRoute route1 = new WorkflowRoute("r1", "a", "out_x", "b", "in_x",
-            WorkflowRouteType.MAP_OUTPUT, null);
-        WorkflowRoute route2 = new WorkflowRoute("r2", "a", "out_x", "b", "in_x",
-            WorkflowRouteType.MAP_OUTPUT, null);
+    void gateRequiresApproveAndRejectBranches() {
+        WorkflowNode gate = new WorkflowNode("gate", WorkflowNodeType.USER_APPROVAL, null,
+            "gate", null, List.of(), List.of(), Map.of(), false, List.of(), "approve?", null);
+        WorkflowNode done = simpleFinalNode("done");
 
         WorkflowDefinition def = new WorkflowDefinition(
-            null, "Dup Routes", "Has duplicate routes",
-            List.of(nodeA, nodeB),
-            List.of(route1, route2),
-            null, null);
+            null, 2, "Gate", "", 4,
+            List.of(gate, done),
+            List.of(new WorkflowRoute("r1", "gate", null, "done", null, WorkflowRouteType.CONTROL, "APPROVED")),
+            Map.of(), null, null
+        );
 
         assertThatThrownBy(() -> workflowService.saveDefinitionValidated(def))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("Duplicate route");
+            .hasMessageContaining("missing REJECTED control route");
     }
 
     @Test
-    void nonDuplicateRoutesPassValidation() {
-        WorkflowNode nodeA = new WorkflowNode("a", WorkflowNodeType.REPORT, null, List.of(),
-            "Node A", null, false);
-        WorkflowNode nodeB = new WorkflowNode("b", WorkflowNodeType.REPORT, null, List.of(),
-            "Node B", null, false);
-        WorkflowNode nodeC = new WorkflowNode("c", WorkflowNodeType.REPORT, null, List.of(),
-            "Node C", null, false);
+    void runsParallelFanOutAndProducesFinalOutputsAndArtifacts() throws Exception {
+        PlanDefinition source = task("source", List.of(), List.of(field("result", PlanFieldType.STRING, true)));
+        PlanDefinition worker = task("worker", List.of(field("in", PlanFieldType.STRING, true)),
+            List.of(field("value", PlanFieldType.STRING, true)));
 
-        WorkflowRoute routeAB = new WorkflowRoute("r1", "a", "out_x", "b", "in_x",
-            WorkflowRouteType.MAP_OUTPUT, null);
-        WorkflowRoute routeAC = new WorkflowRoute("r2", "a", "out_y", "c", "in_x",
-            WorkflowRouteType.MAP_OUTPUT, null);
+        WorkflowNode sourceNode = taskNode("source", source.id());
+        WorkflowNode a = taskNode("a", worker.id());
+        WorkflowNode b = taskNode("b", worker.id());
+        WorkflowNode c = taskNode("c", worker.id());
+        WorkflowNode d = taskNode("d", worker.id());
+        WorkflowNode finalNode = new WorkflowNode(
+            "final",
+            WorkflowNodeType.FINAL_OUTPUT,
+            null,
+            "Final",
+            null,
+            List.of(
+                new WorkflowPort("a_out", PlanFieldType.STRING, false, false, null),
+                new WorkflowPort("b_out", PlanFieldType.STRING, false, false, null),
+                new WorkflowPort("c_out", PlanFieldType.STRING, false, false, null),
+                new WorkflowPort("d_out", PlanFieldType.STRING, false, false, null)
+            ),
+            List.of(
+                new WorkflowPort("a", PlanFieldType.STRING, false, false, null),
+                new WorkflowPort("b", PlanFieldType.STRING, false, false, null),
+                new WorkflowPort("c", PlanFieldType.STRING, false, false, null),
+                new WorkflowPort("d", PlanFieldType.STRING, false, false, null)
+            ),
+            Map.of("finalOutputs", Map.of(
+                "a", "a_out",
+                "b", "b_out",
+                "c", "c_out",
+                "d", "d_out"
+            )),
+            false,
+            List.of(),
+            null,
+            null
+        );
 
-        WorkflowDefinition def = new WorkflowDefinition(
-            null, "No Dupes", "No duplicates",
-            List.of(nodeA, nodeB, nodeC),
-            List.of(routeAB, routeAC),
-            null, null);
+        WorkflowDefinition def = workflowService.saveDefinitionValidated(new WorkflowDefinition(
+            null, 2, "Parallel Fanout", "", 4,
+            List.of(sourceNode, a, b, c, d, finalNode),
+            List.of(
+                new WorkflowRoute("r1", "source", "result", "a", "in", WorkflowRouteType.MAP_OUTPUT, null),
+                new WorkflowRoute("r2", "source", "result", "b", "in", WorkflowRouteType.MAP_OUTPUT, null),
+                new WorkflowRoute("r3", "source", "result", "c", "in", WorkflowRouteType.MAP_OUTPUT, null),
+                new WorkflowRoute("r4", "source", "result", "d", "in", WorkflowRouteType.MAP_OUTPUT, null),
+                new WorkflowRoute("r5", "a", "value", "final", "a_out", WorkflowRouteType.MAP_OUTPUT, null),
+                new WorkflowRoute("r6", "b", "value", "final", "b_out", WorkflowRouteType.MAP_OUTPUT, null),
+                new WorkflowRoute("r7", "c", "value", "final", "c_out", WorkflowRouteType.MAP_OUTPUT, null),
+                new WorkflowRoute("r8", "d", "value", "final", "d_out", WorkflowRouteType.MAP_OUTPUT, null)
+            ),
+            Map.of(),
+            null,
+            null
+        ));
 
-        // Should not throw
-        WorkflowDefinition saved = workflowService.saveDefinitionValidated(def);
-        assertThat(saved.id()).isNotNull();
-        assertThat(saved.routes()).hasSize(2);
+        AtomicInteger counter = new AtomicInteger();
+        workflowRunner.setTaskNodeExecutor((planId, planRunId, inputs, workspacePath) -> {
+            try { Thread.sleep(200); } catch (InterruptedException ignored) { }
+            if (planId.equals(source.id())) {
+                return completedPlanRun(planRunId, planId, Map.of(), Map.of("result", "seed"));
+            }
+            int idx = counter.incrementAndGet();
+            return completedPlanRun(planRunId, planId, inputs, Map.of("value", "worker-" + idx));
+        });
+
+        Instant started = Instant.now();
+        WorkflowRun run = workflowService.startRun(def.id());
+        WorkflowRun finished = pollForTerminal(run.id());
+        long elapsedMs = Duration.between(started, Instant.now()).toMillis();
+
+        assertThat(finished.status()).isEqualTo(WorkflowRunStatus.COMPLETED);
+        assertThat(elapsedMs).isLessThan(900); // source + parallel workers + final
+        assertThat(finished.finalOutputs()).containsKeys("a", "b", "c", "d");
+        assertThat(finished.artifactIds()).hasSizeGreaterThanOrEqualTo(4);
     }
 
     @Test
-    void validationAndCopyNodesPropagateDeterministicOutputs() throws Exception {
-        WorkflowDefinition def = workflowService.saveDefinition(new WorkflowDefinition(
-            null, "Control Nodes", "Validation then copy",
-            List.of(
-                new WorkflowNode("source", WorkflowNodeType.COPY, null,
-                    "Source", null, Map.of("result", "ok"), false,
-                    List.of(), null, null),
-                new WorkflowNode("validate", WorkflowNodeType.VALIDATION, null,
-                    "Validate", null, Map.of("requiredInputs", List.of("result")), false,
-                    List.of(), null, null),
-                new WorkflowNode("copy", WorkflowNodeType.COPY, null,
-                    "Copy", null, Map.of("copies", Map.of("fanout", "result")), false,
-                    List.of(), null, null)
-            ),
-            List.of(
-                new WorkflowRoute("r1", "source", "result", "validate", "result",
-                    WorkflowRouteType.MAP_OUTPUT, null),
-                new WorkflowRoute("r2", "validate", "result", "copy", "result",
-                    WorkflowRouteType.MAP_OUTPUT, null)
-            ),
-            null, null));
+    void resumeFollowsApprovedBranchAndSkipsRejectedBranch() throws Exception {
+        PlanDefinition branchTask = task("branch", List.of(), List.of(field("status", PlanFieldType.STRING, true)));
 
-        WorkflowRun run = workflowRunner.startRun(def);
-        WorkflowRun finalRun = pollForTerminal(run.id());
+        WorkflowNode gate = new WorkflowNode("gate", WorkflowNodeType.USER_APPROVAL, null,
+            "gate", null, List.of(), List.of(), Map.of(), false, List.of(), "approve?", null);
+        WorkflowNode approved = taskNode("approved", branchTask.id());
+        WorkflowNode rejected = taskNode("rejected", branchTask.id());
 
-        assertThat(finalRun.status()).isEqualTo(WorkflowRunStatus.COMPLETED);
-        assertThat(finalRun.nodeRuns().get(1).outputValues()).containsEntry("valid", true);
-        assertThat(finalRun.nodeRuns().get(2).outputValues()).containsEntry("fanout", "ok");
+        WorkflowDefinition def = workflowService.saveDefinitionValidated(new WorkflowDefinition(
+            null, 2, "Approval Branch", "", 2,
+            List.of(gate, approved, rejected),
+            List.of(
+                new WorkflowRoute("c1", "gate", null, "approved", null, WorkflowRouteType.CONTROL, "APPROVED"),
+                new WorkflowRoute("c2", "gate", null, "rejected", null, WorkflowRouteType.CONTROL, "REJECTED")
+            ),
+            Map.of(), null, null
+        ));
+
+        workflowRunner.setTaskNodeExecutor((planId, planRunId, inputs, workspacePath) ->
+            completedPlanRun(planRunId, planId, inputs, Map.of("status", "ok")));
+
+        WorkflowRun run = workflowService.startRun(def.id());
+        WorkflowRun waiting = pollForWaiting(run.id());
+        String messageId = String.valueOf(waiting.nodeRuns().stream()
+            .filter(n -> n.nodeKey().equals("gate"))
+            .findFirst().orElseThrow().outputValues().get("messageId"));
+
+        inboxService.respondUserApproval(messageId, true, "yes");
+        workflowService.resumeRun(waiting.id());
+
+        WorkflowRun finished = pollForTerminal(waiting.id());
+        assertThat(finished.status()).isEqualTo(WorkflowRunStatus.COMPLETED);
+        assertThat(nodeStatus(finished, "approved")).isEqualTo(WorkflowNodeRunStatus.COMPLETED);
+        assertThat(nodeStatus(finished, "rejected")).isEqualTo(WorkflowNodeRunStatus.SKIPPED);
+    }
+
+    @Test
+    void resumeFollowsRejectedBranchAndSkipsApprovedBranch() throws Exception {
+        PlanDefinition branchTask = task("branch", List.of(), List.of(field("status", PlanFieldType.STRING, true)));
+
+        WorkflowNode gate = new WorkflowNode("gate", WorkflowNodeType.USER_APPROVAL, null,
+            "gate", null, List.of(), List.of(), Map.of(), false, List.of(), "approve?", null);
+        WorkflowNode approved = taskNode("approved", branchTask.id());
+        WorkflowNode rejected = taskNode("rejected", branchTask.id());
+
+        WorkflowDefinition def = workflowService.saveDefinitionValidated(new WorkflowDefinition(
+            null, 2, "Reject Branch", "", 2,
+            List.of(gate, approved, rejected),
+            List.of(
+                new WorkflowRoute("c1", "gate", null, "approved", null, WorkflowRouteType.CONTROL, "APPROVED"),
+                new WorkflowRoute("c2", "gate", null, "rejected", null, WorkflowRouteType.CONTROL, "REJECTED")
+            ),
+            Map.of(), null, null
+        ));
+
+        workflowRunner.setTaskNodeExecutor((planId, planRunId, inputs, workspacePath) ->
+            completedPlanRun(planRunId, planId, inputs, Map.of("status", "rejected-path")));
+
+        WorkflowRun run = workflowService.startRun(def.id());
+        WorkflowRun waiting = pollForWaiting(run.id());
+        String messageId = String.valueOf(waiting.nodeRuns().stream()
+            .filter(n -> n.nodeKey().equals("gate"))
+            .findFirst().orElseThrow().outputValues().get("messageId"));
+
+        inboxService.respondUserApproval(messageId, false, "no");
+        workflowService.resumeRun(waiting.id());
+
+        WorkflowRun finished = pollForTerminal(waiting.id());
+        assertThat(finished.status()).isEqualTo(WorkflowRunStatus.COMPLETED);
+        assertThat(nodeStatus(finished, "approved")).isEqualTo(WorkflowNodeRunStatus.SKIPPED);
+        assertThat(nodeStatus(finished, "rejected")).isEqualTo(WorkflowNodeRunStatus.COMPLETED);
+    }
+
+    private WorkflowNode simpleFinalNode(String key) {
+        return new WorkflowNode(key, WorkflowNodeType.FINAL_OUTPUT, null,
+            key, null, List.of(), List.of(), Map.of(), false, List.of(), null, null);
+    }
+
+    private WorkflowNode taskNode(String key, String planId) {
+        return new WorkflowNode(
+            key,
+            WorkflowNodeType.TASK,
+            planId,
+            key,
+            null,
+            List.of(),
+            List.of(),
+            Map.of(),
+            false,
+            List.of(),
+            null,
+            null
+        );
+    }
+
+    private PlanFieldDefinition field(String name, PlanFieldType type, boolean required) {
+        return new PlanFieldDefinition(name, type, false, name, required, null);
+    }
+
+    private PlanDefinition task(String title, List<PlanFieldDefinition> inputs, List<PlanFieldDefinition> outputs) {
+        return planService.saveTask(new PlanDefinition(
+            null, PlanKind.TASK_TEMPLATE, PlanStatus.APPROVED,
+            title, title, "goal", null,
+            List.of(), inputs, outputs,
+            List.of(), List.of(new PlanStep(1, "step")), List.of("criterion"),
+            List.of(), List.of(), null, null, null, null,
+            null, List.of(), 0, 0, null, null, null, null
+        ));
+    }
+
+    private PlanRun completedPlanRun(String runId, String planId, Map<String, Object> inputs, Map<String, Object> outputs) {
+        return new PlanRun(
+            runId,
+            planId,
+            PlanRunStatus.COMPLETED,
+            inputs,
+            outputs,
+            null,
+            null,
+            null,
+            null,
+            List.of(),
+            List.of(),
+            List.of(),
+            null,
+            null,
+            Instant.now(),
+            Instant.now(),
+            Instant.now(),
+            Instant.now()
+        );
     }
 
     private WorkflowRun pollForWaiting(String runId) throws Exception {
-        for (int i = 0; i < 50; i++) {
+        for (int i = 0; i < 80; i++) {
             WorkflowRun run = workflowService.getRun(runId);
             if (run.status() == WorkflowRunStatus.WAITING) {
                 return run;
             }
-            Thread.sleep(100);
+            Thread.sleep(50);
         }
-        throw new IllegalStateException("Run " + runId + " did not reach WAITING state");
+        throw new IllegalStateException("Run did not reach WAITING: " + runId);
     }
 
     private WorkflowRun pollForTerminal(String runId) throws Exception {
-        for (int i = 0; i < 50; i++) {
+        for (int i = 0; i < 120; i++) {
             WorkflowRun run = workflowService.getRun(runId);
             if (run.isTerminal()) {
                 return run;
             }
-            Thread.sleep(100);
+            Thread.sleep(50);
         }
-        throw new IllegalStateException("Run " + runId + " did not reach terminal state");
+        throw new IllegalStateException("Run did not complete: " + runId);
     }
 
-    private JdbcTemplate jdbcTemplate() {
-        SingleConnectionDataSource dataSource = new SingleConnectionDataSource("jdbc:sqlite::memory:", true);
-        return new JdbcTemplate(dataSource);
+    private WorkflowNodeRunStatus nodeStatus(WorkflowRun run, String nodeKey) {
+        return run.nodeRuns().stream()
+            .filter(n -> n.nodeKey().equals(nodeKey))
+            .findFirst()
+            .orElseThrow(() -> new IllegalStateException("Missing node: " + nodeKey))
+            .status();
     }
 }

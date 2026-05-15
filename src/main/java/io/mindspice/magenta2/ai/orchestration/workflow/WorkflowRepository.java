@@ -16,11 +16,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Owns persistence for {@link WorkflowDefinition}, {@link WorkflowRun},
- * {@link WorkflowNodeRun}, and {@link InboxMessage}.
- *
- * <p>JSON columns store nested node lists, route lists, bindings, and value maps.
- * Uses Jackson with Java time modules for consistent serialization.
+ * Persistence for workflow definitions, runs, node-runs, and inbox messages.
  */
 @Repository("orchestrationWorkflowRepository")
 public class WorkflowRepository {
@@ -28,6 +24,7 @@ public class WorkflowRepository {
     private static final TypeReference<List<WorkflowRoute>> ROUTE_LIST = new TypeReference<>() { };
     private static final TypeReference<List<WorkflowNodeRun>> NODE_RUN_LIST = new TypeReference<>() { };
     private static final TypeReference<Map<String, Object>> VALUE_MAP = new TypeReference<>() { };
+    private static final TypeReference<List<String>> STRING_LIST = new TypeReference<>() { };
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
@@ -39,31 +36,33 @@ public class WorkflowRepository {
     }
 
     private void ensureTables() {
-        // Tables are created via schema.sql bootstrap.
-        // This is a no-op safety net; idempotent create-if-not-exists.
         jdbcTemplate.execute("""
             create table if not exists workflow_definitions (
                 id text primary key,
+                schema_version integer not null default 2,
                 title text not null,
                 summary text,
+                max_concurrency integer not null default 4,
                 nodes_json text not null,
+                routes_json text not null default '[]',
+                ui_layout_json text not null default '{}',
                 created_at text not null,
                 updated_at text not null
             )
             """);
-        // Phase 04: add graph columns if not present (migration for existing DBs).
-        // Early workflow_definitions tables used steps_json; keep those rows readable
-        // as empty graph drafts instead of failing the whole UI.
-        try {
-            jdbcTemplate.execute("alter table workflow_definitions add column nodes_json text not null default '[]'");
-        } catch (Exception ignored) {
-            // Column already exists
-        }
-        try {
-            jdbcTemplate.execute("alter table workflow_definitions add column routes_json text not null default '[]'");
-        } catch (Exception ignored) {
-            // Column already exists
-        }
+
+        // Migration safety for older definitions table
+        try { jdbcTemplate.execute("alter table workflow_definitions add column schema_version integer not null default 2"); }
+        catch (Exception ignored) { }
+        try { jdbcTemplate.execute("alter table workflow_definitions add column max_concurrency integer not null default 4"); }
+        catch (Exception ignored) { }
+        try { jdbcTemplate.execute("alter table workflow_definitions add column ui_layout_json text not null default '{}' "); }
+        catch (Exception ignored) { }
+        try { jdbcTemplate.execute("alter table workflow_definitions add column nodes_json text not null default '[]'"); }
+        catch (Exception ignored) { }
+        try { jdbcTemplate.execute("alter table workflow_definitions add column routes_json text not null default '[]'"); }
+        catch (Exception ignored) { }
+
         jdbcTemplate.execute("""
             create table if not exists workflow_runs (
                 id text primary key,
@@ -74,6 +73,8 @@ public class WorkflowRepository {
                 workspace_path text,
                 output_dir text,
                 workflow_snapshot_json text not null,
+                final_outputs_json text not null default '{}',
+                artifact_ids_json text not null default '[]',
                 final_message text,
                 error_text text,
                 created_at text not null,
@@ -83,6 +84,11 @@ public class WorkflowRepository {
                 foreign key (workflow_id) references workflow_definitions(id) on delete cascade
             )
             """);
+        try { jdbcTemplate.execute("alter table workflow_runs add column final_outputs_json text not null default '{}'"); }
+        catch (Exception ignored) { }
+        try { jdbcTemplate.execute("alter table workflow_runs add column artifact_ids_json text not null default '[]'"); }
+        catch (Exception ignored) { }
+
         jdbcTemplate.execute("""
             create table if not exists workflow_node_runs (
                 id text primary key,
@@ -94,9 +100,11 @@ public class WorkflowRepository {
                 input_values_json text not null,
                 output_values_json text not null,
                 started_at text,
-                completed_at text
+                completed_at text,
+                foreign key (workflow_run_id) references workflow_runs(id) on delete cascade
             )
             """);
+
         jdbcTemplate.execute("""
             create table if not exists inbox_messages (
                 id text primary key,
@@ -115,14 +123,10 @@ public class WorkflowRepository {
             """);
     }
 
-    // ════════════════════════════════════════════════════════════════
-    //  WorkflowDefinition
-    // ════════════════════════════════════════════════════════════════
-
     public Optional<WorkflowDefinition> findDefinition(String id) {
         if (!StringUtils.hasText(id)) return Optional.empty();
         return jdbcTemplate.query(
-            "select id, title, summary, nodes_json, routes_json, created_at, updated_at from workflow_definitions where id = ?",
+            "select id, schema_version, title, summary, max_concurrency, nodes_json, routes_json, ui_layout_json, created_at, updated_at from workflow_definitions where id = ?",
             rs -> rs.next() ? Optional.of(definitionFromRow(rs)) : Optional.empty(),
             id
         );
@@ -130,7 +134,7 @@ public class WorkflowRepository {
 
     public List<WorkflowDefinition> findAllDefinitions() {
         return jdbcTemplate.query(
-            "select id, title, summary, nodes_json, routes_json, created_at, updated_at from workflow_definitions order by updated_at desc, title asc",
+            "select id, schema_version, title, summary, max_concurrency, nodes_json, routes_json, ui_layout_json, created_at, updated_at from workflow_definitions order by updated_at desc, title asc",
             (rs, rowNum) -> definitionFromRow(rs)
         );
     }
@@ -141,21 +145,29 @@ public class WorkflowRepository {
         Instant updatedAt = Instant.now();
         jdbcTemplate.update(
             """
-                insert into workflow_definitions (id, title, summary, nodes_json, routes_json, created_at, updated_at)
-                values (?, ?, ?, ?, ?, ?, ?)
+                insert into workflow_definitions (
+                    id, schema_version, title, summary, max_concurrency,
+                    nodes_json, routes_json, ui_layout_json,
+                    created_at, updated_at
+                )
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict(id) do update set
+                    schema_version = excluded.schema_version,
                     title = excluded.title,
                     summary = excluded.summary,
+                    max_concurrency = excluded.max_concurrency,
                     nodes_json = excluded.nodes_json,
                     routes_json = excluded.routes_json,
+                    ui_layout_json = excluded.ui_layout_json,
                     updated_at = excluded.updated_at
                 """,
-            definition.id(), definition.title(), definition.summary(),
-            json(definition.nodes()), json(definition.routes()),
-            createdAt.toString(), updatedAt.toString()
+            definition.id(), definition.schemaVersion(), definition.title(), definition.summary(),
+            definition.maxConcurrency(), json(definition.nodes()), json(definition.routes()),
+            json(definition.uiLayout()), createdAt.toString(), updatedAt.toString()
         );
-        return new WorkflowDefinition(definition.id(), definition.title(), definition.summary(),
-            definition.nodes(), definition.routes(), createdAt, updatedAt);
+        return new WorkflowDefinition(definition.id(), definition.schemaVersion(), definition.title(),
+            definition.summary(), definition.maxConcurrency(), definition.nodes(), definition.routes(),
+            definition.uiLayout(), createdAt, updatedAt);
     }
 
     @Transactional
@@ -166,16 +178,13 @@ public class WorkflowRepository {
         }
     }
 
-    // ════════════════════════════════════════════════════════════════
-    //  WorkflowRun
-    // ════════════════════════════════════════════════════════════════
-
     public Optional<WorkflowRun> findRun(String runId) {
         if (!StringUtils.hasText(runId)) return Optional.empty();
         return jdbcTemplate.query(
             """
                 select id, workflow_id, status, current_node_index, node_runs_json,
                        workspace_path, output_dir, workflow_snapshot_json,
+                       final_outputs_json, artifact_ids_json,
                        final_message, error_text,
                        created_at, updated_at, started_at, completed_at
                 from workflow_runs where id = ?
@@ -190,6 +199,7 @@ public class WorkflowRepository {
             """
                 select id, workflow_id, status, current_node_index, node_runs_json,
                        workspace_path, output_dir, workflow_snapshot_json,
+                       final_outputs_json, artifact_ids_json,
                        final_message, error_text,
                        created_at, updated_at, started_at, completed_at
                 from workflow_runs where workflow_id = ? order by created_at desc
@@ -208,9 +218,10 @@ public class WorkflowRepository {
                 insert into workflow_runs (
                     id, workflow_id, status, current_node_index, node_runs_json,
                     workspace_path, output_dir, workflow_snapshot_json,
+                    final_outputs_json, artifact_ids_json,
                     final_message, error_text,
                     created_at, updated_at, started_at, completed_at
-                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict(id) do update set
                     status = excluded.status,
                     current_node_index = excluded.current_node_index,
@@ -218,6 +229,8 @@ public class WorkflowRepository {
                     workspace_path = excluded.workspace_path,
                     output_dir = excluded.output_dir,
                     workflow_snapshot_json = excluded.workflow_snapshot_json,
+                    final_outputs_json = excluded.final_outputs_json,
+                    artifact_ids_json = excluded.artifact_ids_json,
                     final_message = excluded.final_message,
                     error_text = excluded.error_text,
                     updated_at = excluded.updated_at,
@@ -225,24 +238,20 @@ public class WorkflowRepository {
                     completed_at = excluded.completed_at
                 """,
             run.id(), run.workflowId(), run.status().wireName(), run.currentNodeIndex(),
-            json(run.nodeRuns()), run.workspacePath(), run.outputDir(),
-            json(run.workflowSnapshot()), run.finalMessage(), run.errorText(),
+            json(run.nodeRuns()), run.workspacePath(), run.outputDir(), json(run.workflowSnapshot()),
+            json(run.finalOutputs()), json(run.artifactIds()),
+            run.finalMessage(), run.errorText(),
             createdAt.toString(), updatedAt.toString(),
             instant(run.startedAt()), instant(run.completedAt())
         );
-        // Also save individual node runs
         saveNodeRuns(run.id(), run.nodeRuns());
         return new WorkflowRun(run.id(), run.workflowId(), run.status(), run.currentNodeIndex(),
             run.nodeRuns(), run.workspacePath(), run.outputDir(), run.workflowSnapshot(),
-            run.finalMessage(), run.errorText(), createdAt, updatedAt, run.startedAt(), run.completedAt());
+            run.finalOutputs(), run.artifactIds(), run.finalMessage(), run.errorText(),
+            createdAt, updatedAt, run.startedAt(), run.completedAt());
     }
 
-    // ════════════════════════════════════════════════════════════════
-    //  WorkflowNodeRun
-    // ════════════════════════════════════════════════════════════════
-
     private void saveNodeRuns(String workflowRunId, List<WorkflowNodeRun> nodeRuns) {
-        // Delete existing and re-insert
         jdbcTemplate.update("delete from workflow_node_runs where workflow_run_id = ?", workflowRunId);
         for (int i = 0; i < nodeRuns.size(); i++) {
             WorkflowNodeRun nr = nodeRuns.get(i);
@@ -280,10 +289,6 @@ public class WorkflowRepository {
             workflowRunId
         );
     }
-
-    // ════════════════════════════════════════════════════════════════
-    //  InboxMessage
-    // ════════════════════════════════════════════════════════════════
 
     public Optional<InboxMessage> findInboxMessage(String messageId) {
         if (!StringUtils.hasText(messageId)) return Optional.empty();
@@ -361,17 +366,16 @@ public class WorkflowRepository {
             createdAt, updatedAt);
     }
 
-    // ════════════════════════════════════════════════════════════════
-    //  Row mapping helpers
-    // ════════════════════════════════════════════════════════════════
-
     private WorkflowDefinition definitionFromRow(ResultSet rs) throws SQLException {
         return new WorkflowDefinition(
             rs.getString("id"),
+            rs.getInt("schema_version"),
             rs.getString("title"),
             rs.getString("summary"),
+            rs.getInt("max_concurrency"),
             parseNodeList(rs.getString("nodes_json")),
             parseRouteList(rs.getString("routes_json")),
+            parseValueMap(rs.getString("ui_layout_json")),
             parseInstant(rs.getString("created_at")),
             parseInstant(rs.getString("updated_at"))
         );
@@ -387,6 +391,8 @@ public class WorkflowRepository {
             rs.getString("workspace_path"),
             rs.getString("output_dir"),
             parseDefinition(rs.getString("workflow_snapshot_json")),
+            parseValueMap(rs.getString("final_outputs_json")),
+            parseStringList(rs.getString("artifact_ids_json")),
             rs.getString("final_message"),
             rs.getString("error_text"),
             parseInstant(rs.getString("created_at")),
@@ -403,6 +409,7 @@ public class WorkflowRepository {
             WorkflowNodeRunStatus.valueOf(rs.getString("status")),
             parseValueMap(rs.getString("input_values_json")),
             parseValueMap(rs.getString("output_values_json")),
+            List.of(),
             parseInstant(rs.getString("started_at")),
             parseInstant(rs.getString("completed_at"))
         );
@@ -425,12 +432,8 @@ public class WorkflowRepository {
         );
     }
 
-    // ════════════════════════════════════════════════════════════════
-    //  JSON helpers
-    // ════════════════════════════════════════════════════════════════
-
     private String json(Object value) {
-        if (value == null) return "[]";
+        if (value == null) return "null";
         try {
             return objectMapper.writeValueAsString(value);
         } catch (JsonProcessingException e) {
@@ -480,6 +483,15 @@ public class WorkflowRepository {
             return objectMapper.readValue(json, VALUE_MAP);
         } catch (JsonProcessingException e) {
             throw new IllegalArgumentException("Failed to parse value map JSON", e);
+        }
+    }
+
+    private List<String> parseStringList(String json) {
+        if (!StringUtils.hasText(json) || "null".equals(json)) return List.of();
+        try {
+            return objectMapper.readValue(json, STRING_LIST);
+        } catch (JsonProcessingException e) {
+            throw new IllegalArgumentException("Failed to parse string list JSON", e);
         }
     }
 

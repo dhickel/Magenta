@@ -154,10 +154,13 @@ create unique index if not exists idx_audit_event_conversation
 -- Workflow definitions with nodes and routes stored as JSON.
 create table if not exists workflow_definitions (
     id text primary key,
+    schema_version integer not null default 2,
     title text not null,
     summary text,
+    max_concurrency integer not null default 4,
     nodes_json text not null,
     routes_json text not null default '[]',
+    ui_layout_json text not null default '{}',
     created_at text not null,
     updated_at text not null
 );
@@ -174,6 +177,8 @@ create table if not exists workflow_runs (
     workspace_path text,
     output_dir text,
     workflow_snapshot_json text not null,
+    final_outputs_json text not null default '{}',
+    artifact_ids_json text not null default '[]',
     final_message text,
     error_text text,
     created_at text not null,

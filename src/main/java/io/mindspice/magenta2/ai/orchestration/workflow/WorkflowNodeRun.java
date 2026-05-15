@@ -3,18 +3,11 @@ package io.mindspice.magenta2.ai.orchestration.workflow;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 /**
- * Runtime state for one node execution within a workflow run.
- *
- * @param nodeKey      the node key matching the definition
- * @param type         the node type
- * @param status       current execution status
- * @param inputValues  resolved input values for this node
- * @param outputValues output values produced by this node
- * @param startedAt    when node execution started
- * @param completedAt  when node execution completed
+ * Runtime state for one node execution.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record WorkflowNodeRun(
@@ -23,6 +16,7 @@ public record WorkflowNodeRun(
     WorkflowNodeRunStatus status,
     Map<String, Object> inputValues,
     Map<String, Object> outputValues,
+    List<String> routeContext,
     Instant startedAt,
     Instant completedAt
 ) {
@@ -38,5 +32,20 @@ public record WorkflowNodeRun(
         }
         inputValues = inputValues == null ? Map.of() : Map.copyOf(inputValues);
         outputValues = outputValues == null ? Map.of() : Map.copyOf(outputValues);
+        routeContext = routeContext == null ? List.of() : List.copyOf(routeContext);
+    }
+
+    /** Compatibility constructor for older callers. */
+    @Deprecated
+    public WorkflowNodeRun(
+        String nodeKey,
+        WorkflowNodeType type,
+        WorkflowNodeRunStatus status,
+        Map<String, Object> inputValues,
+        Map<String, Object> outputValues,
+        Instant startedAt,
+        Instant completedAt
+    ) {
+        this(nodeKey, type, status, inputValues, outputValues, List.of(), startedAt, completedAt);
     }
 }

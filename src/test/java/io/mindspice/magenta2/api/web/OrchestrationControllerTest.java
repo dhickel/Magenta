@@ -1052,21 +1052,15 @@ class OrchestrationControllerTest {
     }
 
     @Test
-    void workflowJsIsMinimalHtmxFirstSkeleton() throws Exception {
+    void workflowJsProvidesGraphComposerSurface() throws Exception {
         String js = Files.readString(Path.of("src/main/resources/static/js/orchestration/workflows.js"));
 
-        // Stripped of rendering, save, run, node/route CRUD, validation handlers
         assertThat(js).contains("data-orchestration-page='workflows'");
-        assertThat(js).doesNotContain("renderWorkflowEdit");
-        assertThat(js).doesNotContain("readNodes");
-        assertThat(js).doesNotContain("nodeRow");
-        assertThat(js).doesNotContain("save-workflow");
-        assertThat(js).doesNotContain("run-workflow");
-        assertThat(js).doesNotContain("validate-workflow");
-        assertThat(js).doesNotContain("add-workflow-node");
-        assertThat(js).doesNotContain("payload");
-        assertThat(js).doesNotContain("jsonFetch");
-        assertThat(js).doesNotContain("/api/workflows");
+        assertThat(js).contains("Workflow V2 Graph Composer");
+        assertThat(js).contains("graph-canvas");
+        assertThat(js).contains("saveWorkflow");
+        assertThat(js).contains("validateWorkflow");
+        assertThat(js).contains("/api/workflows");
     }
 
     @Test

@@ -7,23 +7,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * A single execution of a workflow definition. Tracks overall status,
- * all node runs, and workspace paths.
- *
- * @param id               unique run identifier
- * @param workflowId       the definition id being executed
- * @param status           overall run status
- * @param currentNodeIndex index of the node currently executing (or next to resume)
- * @param nodeRuns         per-node execution state
- * @param workspacePath    temp workspace path surviving across nodes
- * @param outputDir        output directory for materialized artifacts
- * @param workflowSnapshot snapshot of the definition at start time
- * @param finalMessage     human-readable result message
- * @param errorText        error message for failed runs
- * @param createdAt        creation timestamp
- * @param updatedAt        last-update timestamp
- * @param startedAt        when the run started
- * @param completedAt      when the run reached a terminal state
+ * Runtime state for a workflow v2 execution.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record WorkflowRun(
@@ -35,6 +19,8 @@ public record WorkflowRun(
     String workspacePath,
     String outputDir,
     WorkflowDefinition workflowSnapshot,
+    Map<String, Object> finalOutputs,
+    List<String> artifactIds,
     String finalMessage,
     String errorText,
     Instant createdAt,
@@ -52,8 +38,36 @@ public record WorkflowRun(
         if (status == null) {
             status = WorkflowRunStatus.QUEUED;
         }
-        nodeRuns = nodeRuns == null ? List.of() : List.copyOf(nodeRuns);
         currentNodeIndex = Math.max(0, currentNodeIndex);
+        nodeRuns = nodeRuns == null ? List.of() : List.copyOf(nodeRuns);
+        finalOutputs = finalOutputs == null ? Map.of() : Map.copyOf(finalOutputs);
+        artifactIds = artifactIds == null ? List.of() : List.copyOf(artifactIds);
+    }
+
+    /**
+     * Compatibility constructor for old run rows/callers.
+     */
+    @Deprecated
+    public WorkflowRun(
+        String id,
+        String workflowId,
+        WorkflowRunStatus status,
+        int currentNodeIndex,
+        List<WorkflowNodeRun> nodeRuns,
+        String workspacePath,
+        String outputDir,
+        WorkflowDefinition workflowSnapshot,
+        String finalMessage,
+        String errorText,
+        Instant createdAt,
+        Instant updatedAt,
+        Instant startedAt,
+        Instant completedAt
+    ) {
+        this(id, workflowId, status, currentNodeIndex, nodeRuns,
+            workspacePath, outputDir, workflowSnapshot,
+            Map.of(), List.of(), finalMessage, errorText,
+            createdAt, updatedAt, startedAt, completedAt);
     }
 
     public WorkflowNodeRun currentNodeRun() {

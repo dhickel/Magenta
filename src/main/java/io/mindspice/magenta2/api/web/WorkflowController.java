@@ -45,10 +45,7 @@ public class WorkflowController {
     @PostMapping("/api/workflows")
     public WorkflowDefinition create(@RequestBody WorkflowDefinition definition) {
         try {
-            return workflowService.saveDefinitionValidated(
-                new WorkflowDefinition(UUID.randomUUID().toString(),
-                    definition.title(), definition.summary(),
-                    definition.nodes(), definition.routes(), null, null));
+            return workflowService.saveDefinitionValidated(withId(definition, UUID.randomUUID().toString()));
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
@@ -58,11 +55,7 @@ public class WorkflowController {
     public WorkflowDefinition update(@PathVariable String workflowId,
                                      @RequestBody WorkflowDefinition definition) {
         try {
-            return workflowService.saveDefinitionValidated(
-                new WorkflowDefinition(workflowId,
-                    definition.title(), definition.summary(),
-                    definition.nodes(), definition.routes(),
-                    definition.createdAt(), definition.updatedAt()));
+            return workflowService.saveDefinitionValidated(withId(definition, workflowId));
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
@@ -79,18 +72,13 @@ public class WorkflowController {
 
     @PostMapping("/api/workflows/validate")
     public WorkflowValidator.ValidationResult validateNew(@RequestBody WorkflowDefinition definition) {
-        return workflowService.validateGraph(
-            new WorkflowDefinition(UUID.randomUUID().toString(),
-                definition.title(), definition.summary(),
-                definition.nodes(), definition.routes(), null, null));
+        return workflowService.validateGraph(withId(definition, UUID.randomUUID().toString()));
     }
 
     @PostMapping("/api/workflows/{workflowId}/validate")
     public WorkflowValidator.ValidationResult validate(@PathVariable String workflowId,
                                   @RequestBody WorkflowDefinition definition) {
-        return workflowService.validateGraph(
-            new WorkflowDefinition(workflowId, definition.title(), definition.summary(),
-                definition.nodes(), definition.routes(), null, null));
+        return workflowService.validateGraph(withId(definition, workflowId));
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -244,5 +232,20 @@ public class WorkflowController {
         } catch (Exception ignored) {
             return "";
         }
+    }
+
+    private WorkflowDefinition withId(WorkflowDefinition definition, String id) {
+        return new WorkflowDefinition(
+            id,
+            definition.schemaVersion(),
+            definition.title(),
+            definition.summary(),
+            definition.maxConcurrency(),
+            definition.nodes(),
+            definition.routes(),
+            definition.uiLayout(),
+            definition.createdAt(),
+            definition.updatedAt()
+        );
     }
 }
