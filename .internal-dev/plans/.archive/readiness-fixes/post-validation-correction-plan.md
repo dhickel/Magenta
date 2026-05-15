@@ -172,7 +172,6 @@ public class ScheduleService {
     @Transactional
     public void pollDueSchedules() {
         if (!schedulesEnabled) {
-            return;
         }
         // existing due processing
     }
@@ -203,7 +202,6 @@ public class OrchestrationEventService {
                 event.id(), event.eventType(), event.sourceType(), event.sourceId(),
                 event.payload(), event.createdAt(), Instant.now()
             ));
-            return;
         }
         // existing reaction handling
     }

@@ -1,8 +1,12 @@
 package io.mindspice.magenta2.api.web;
 
 import java.util.List;
+import java.util.Locale;
 
+import io.mindspice.magenta2.ai.orchestration.workspaces.Workspace;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLease;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLink;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceOwnerType;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -23,6 +27,33 @@ public class WorkspaceController {
 
     public WorkspaceController(WorkspaceService workspaceService) {
         this.workspaceService = workspaceService;
+    }
+
+    @GetMapping
+    public List<Workspace> list(
+        @org.springframework.web.bind.annotation.RequestParam(required = false) String ownerType,
+        @org.springframework.web.bind.annotation.RequestParam(required = false) String ownerId,
+        @org.springframework.web.bind.annotation.RequestParam(defaultValue = "50") int limit
+    ) {
+        return workspaceService.list(parseOwnerType(ownerType), ownerId, limit);
+    }
+
+    @GetMapping("/{workspaceId}")
+    public Workspace get(@PathVariable String workspaceId) {
+        try {
+            return workspaceService.get(workspaceId);
+        } catch (IllegalStateException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage());
+        }
+    }
+
+    @GetMapping("/{workspaceId}/leases")
+    public List<WorkspaceLease> activeLeases(@PathVariable String workspaceId) {
+        try {
+            return workspaceService.activeLeases(workspaceId);
+        } catch (IllegalStateException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage());
+        }
     }
 
     @GetMapping("/{workspaceId}/links")
@@ -51,6 +82,17 @@ public class WorkspaceController {
             workspaceService.deleteLink(workspaceId, linkId);
         } catch (IllegalStateException exception) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage());
+        }
+    }
+
+    private WorkspaceOwnerType parseOwnerType(String ownerType) {
+        if (ownerType == null || ownerType.isBlank()) {
+            return null;
+        }
+        try {
+            return WorkspaceOwnerType.valueOf(ownerType.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid ownerType: " + ownerType);
         }
     }
 }

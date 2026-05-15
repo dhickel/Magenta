@@ -26,6 +26,7 @@ import io.mindspice.simplypages.modules.ChatModule;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 import jakarta.servlet.http.HttpServletResponse;
@@ -46,6 +47,7 @@ public class FrontendController {
     public FrontendController(ChatService chatService) {
         this.chatService = chatService;
         this.topNavBar = TopNavBuilder.create()
+            .withHtmxNavigation(false)
             .addPrimaryLink("Home", "/")
             .addPrimaryLink("Chat", "/chat")
             .addPrimaryLink("Dashboard", "/dashboard")
@@ -93,12 +95,17 @@ public class FrontendController {
     @ResponseBody
     public String chat(
         @RequestHeader(value = "HX-Request", required = false) String hxRequest,
+        @RequestParam(value = "conversationId", required = false) String conversationId,
+        @RequestParam(value = "startPlanning", required = false) String startPlanning,
+        @RequestParam(value = "continuePlanId", required = false) String continuePlanId,
         HttpServletResponse response
     ) {
         Component chatContent = new Div()
             .withId("chat-page")
             .withAttribute("data-chat-root", "true")
-            .withAttribute("data-active-conversation-id", "")
+            .withAttribute("data-active-conversation-id", conversationId == null ? "" : conversationId)
+            .withAttribute("data-start-planning", "true".equalsIgnoreCase(startPlanning) ? "true" : "false")
+            .withAttribute("data-continue-plan-id", continuePlanId == null ? "" : continuePlanId)
             .withClass("chat-page")
             .withChild(new Div().withClass("chat-layout")
                 .withChild(sessionSidebar())

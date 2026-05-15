@@ -13,8 +13,10 @@ import org.springframework.util.StringUtils;
 @ConfigurationProperties(prefix = "magenta.docker")
 public class DockerRuntimeConfig {
     private String host;
-    private String agentImage = "python:3.11-slim";
+    private String agentImage = "python:3.11";
     private long execTimeoutSeconds = 600;
+    private long agentIdleTtlSeconds = 1800;
+    private boolean keepContainersOnShutdown = false;
     private boolean selinuxRelabel = true;
 
     public String getDockerHost() {
@@ -47,6 +49,14 @@ public class DockerRuntimeConfig {
         return execTimeoutSeconds;
     }
 
+    public long getAgentIdleTtlSeconds() {
+        return agentIdleTtlSeconds;
+    }
+
+    public boolean isKeepContainersOnShutdown() {
+        return keepContainersOnShutdown;
+    }
+
     // ── Setters for @ConfigurationProperties ──
 
     public void setHost(String host) {
@@ -59,6 +69,14 @@ public class DockerRuntimeConfig {
 
     public void setExecTimeoutSeconds(long execTimeoutSeconds) {
         this.execTimeoutSeconds = execTimeoutSeconds;
+    }
+
+    public void setAgentIdleTtlSeconds(long agentIdleTtlSeconds) {
+        this.agentIdleTtlSeconds = agentIdleTtlSeconds;
+    }
+
+    public void setKeepContainersOnShutdown(boolean keepContainersOnShutdown) {
+        this.keepContainersOnShutdown = keepContainersOnShutdown;
     }
 
     public boolean isSelinuxRelabel() {

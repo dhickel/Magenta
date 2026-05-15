@@ -43,6 +43,16 @@ public class WorkspaceDirectoryService {
         return ensureDir(confined("agents/" + agentId + "/home"));
     }
 
+    public Path agentWorkspaceRoot(String agentId) {
+        requireId(agentId, "agentId");
+        return ensureDir(confined("agents/" + agentId));
+    }
+
+    public Path agentOutputRoot(String agentId) {
+        requireId(agentId, "agentId");
+        return ensureDir(confined("agents/" + agentId + "/outputs"));
+    }
+
     /**
      * Output directory for an agent's run. Never deleted after terminal state.
      * Layout: data/agents/{agentId}/outputs/{slug}-{runId}/
@@ -63,6 +73,15 @@ public class WorkspaceDirectoryService {
     public Path taskTemp(String runId) {
         requireId(runId, "runId");
         return ensureDir(confined("runtime/task-runs/" + runId));
+    }
+
+    /**
+     * Returns the path for a task temp directory without creating it.
+     * Use for cleanup or path computation when the directory may not exist.
+     */
+    public String taskTempPath(String runId) {
+        requireId(runId, "runId");
+        return confined("runtime/task-runs/" + runId).toString();
     }
 
     /**

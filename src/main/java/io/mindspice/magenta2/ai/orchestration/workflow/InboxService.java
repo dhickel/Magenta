@@ -187,6 +187,13 @@ public class InboxService {
     }
 
     /**
+     * Load a message by ID regardless of recipient type (user or agent).
+     */
+    public Optional<InboxMessage> findMessageById(String messageId) {
+        return repository.findInboxMessage(messageId);
+    }
+
+    /**
      * Extract the "approved" field from a response JSON string.
      * Returns false if parsing fails or the field is absent.
      */

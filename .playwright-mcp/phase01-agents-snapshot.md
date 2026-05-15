@@ -1,0 +1,74 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e5]:
+      - heading "Magenta Operations" [level=1] [ref=e6]
+      - paragraph [ref=e7]: Orchestration dashboard
+    - navigation [ref=e9]:
+      - link "Chat" [ref=e11] [cursor=pointer]:
+        - /url: /chat
+  - generic [ref=e12]:
+    - complementary [ref=e13]:
+      - button "Toggle sidebar" [ref=e14] [cursor=pointer]: ☰
+      - navigation [ref=e15]:
+        - generic [ref=e16]: Orchestration
+        - link "Dashboard" [ref=e17] [cursor=pointer]:
+          - /url: /dashboard
+        - link "Plans" [ref=e18] [cursor=pointer]:
+          - /url: /plans
+        - link "Workflows" [ref=e19] [cursor=pointer]:
+          - /url: /workflows
+        - link "Jobs" [ref=e20] [cursor=pointer]:
+          - /url: /jobs
+        - link "Projects" [ref=e21] [cursor=pointer]:
+          - /url: /projects
+        - generic [ref=e22]: Communication
+        - link "Inbox" [ref=e23] [cursor=pointer]:
+          - /url: /inbox
+        - link "Agents" [ref=e24] [cursor=pointer]:
+          - /url: /agents
+        - generic [ref=e25]: Tools
+        - link "Outputs" [ref=e26] [cursor=pointer]:
+          - /url: /outputs
+        - link "Settings" [ref=e27] [cursor=pointer]:
+          - /url: /settings
+    - main [ref=e28]:
+      - generic [ref=e30]:
+        - heading "Agents" [level=1] [ref=e31]
+        - paragraph [ref=e32]: Manage agent profiles, queues, inboxes, assignments, and workspace.
+        - generic [ref=e33]:
+          - generic [ref=e34]:
+            - generic [ref=e35]:
+              - button "Create Agent" [ref=e36] [cursor=pointer]
+              - button "Reload" [ref=e37] [cursor=pointer]
+            - searchbox "Filter agents" [ref=e38]
+            - table [ref=e44]:
+              - rowgroup [ref=e45]:
+                - row "Name Status Docker Model Queue Inbox Actions" [ref=e46]:
+                  - columnheader "Name" [ref=e47]
+                  - columnheader "Status" [ref=e48]
+                  - columnheader "Docker" [ref=e49]
+                  - columnheader "Model" [ref=e50]
+                  - columnheader "Queue" [ref=e51]
+                  - columnheader "Inbox" [ref=e52]
+                  - columnheader "Actions" [ref=e53]
+              - rowgroup [ref=e54]:
+                - row "magenta ACTIVE STOPPED local-qwen 0 0 Wake Sleep Restart Refresh Disable Delete" [ref=e55]:
+                  - cell "magenta" [ref=e56]:
+                    - link "magenta" [ref=e57] [cursor=pointer]:
+                      - /url: /agents/b23e5184-6bfd-44dd-b76a-4cc886aaf141
+                  - cell "ACTIVE" [ref=e58]:
+                    - generic [ref=e59]: ACTIVE
+                  - cell "STOPPED" [ref=e60]:
+                    - generic [ref=e61]: STOPPED
+                  - cell "local-qwen" [ref=e62]
+                  - cell "0" [ref=e63]
+                  - cell "0" [ref=e64]
+                  - cell "Wake Sleep Restart Refresh Disable Delete" [ref=e65]:
+                    - generic [ref=e66]:
+                      - button "Wake" [ref=e67] [cursor=pointer]
+                      - button "Sleep" [ref=e68] [cursor=pointer]
+                      - button "Restart" [ref=e69] [cursor=pointer]
+                      - button "Refresh" [ref=e70] [cursor=pointer]
+                      - button "Disable" [ref=e71] [cursor=pointer]
+                      - button "Delete" [ref=e72] [cursor=pointer]
+          - generic [ref=e43]: Select an agent from the list or create a new one.

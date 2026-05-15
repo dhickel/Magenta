@@ -5,7 +5,7 @@ This package owns filesystem workspace management including agent homes, job/pro
 ### Responsibilities
 - Manage all workspace directories confined under the configured `dataRoot`.
 - Provide typed directory paths: agentHome, taskTemp, workflowTemp, jobWorkspace, projectWorkspace, agentOutput, jobOutput.
-- Enforce exclusive writable leases on job/project workspaces.
+- Enforce exclusive writable leases on job/project workspaces and reconcile expired leases before they block reacquisition.
 - Materialize run output artifacts into output directories and persist metadata.
 - Clean up temp directories on terminal run states; never delete output directories.
 

@@ -51,7 +51,14 @@ public class WorkflowRepository {
                 updated_at text not null
             )
             """);
-        // Phase 04: add routes_json column if not present (migration for existing DBs)
+        // Phase 04: add graph columns if not present (migration for existing DBs).
+        // Early workflow_definitions tables used steps_json; keep those rows readable
+        // as empty graph drafts instead of failing the whole UI.
+        try {
+            jdbcTemplate.execute("alter table workflow_definitions add column nodes_json text not null default '[]'");
+        } catch (Exception ignored) {
+            // Column already exists
+        }
         try {
             jdbcTemplate.execute("alter table workflow_definitions add column routes_json text not null default '[]'");
         } catch (Exception ignored) {

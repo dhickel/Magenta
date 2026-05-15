@@ -17,6 +17,7 @@ import io.mindspice.magenta2.ai.chat.plan.PlanService;
 import io.mindspice.magenta2.ai.chat.plan.PlanStatus;
 import io.mindspice.magenta2.ai.chat.plan.PlanStep;
 import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -134,6 +135,12 @@ public class TaskService {
 
     public TaskRun startChatExecution(String conversationId, String taskId, Map<String, Object> inputValues) {
         PlanRun run = planService.startChatExecution(conversationId, taskId, inputValues);
+        return toTaskRun(run);
+    }
+
+    public TaskRun startChatExecution(String conversationId, String taskId, Map<String, Object> inputValues,
+                                      OrchestrationTaskContext context) {
+        PlanRun run = planService.startChatExecution(conversationId, taskId, inputValues, context);
         return toTaskRun(run);
     }
 
@@ -265,7 +272,7 @@ public class TaskService {
                 : run.status() == TaskRunStatus.FAILED ? PlanRunStatus.FAILED
                 : PlanRunStatus.QUEUED,
             run.inputValues(), run.outputValues(), toPlanDefinition(run.taskSnapshot()),
-            null, null,
+            null, null, null,
             run.executionEvidence(), run.validationFeedback(), List.of(),
             run.finalMessage(), run.errorText(),
             run.createdAt(), run.updatedAt(), run.startedAt(), run.completedAt()
@@ -274,13 +281,13 @@ public class TaskService {
 
     private static List<TaskFieldDefinition> toTaskFieldDefs(List<PlanFieldDefinition> fields) {
         return fields.stream().map(f -> new TaskFieldDefinition(
-            f.name(), toTaskValueType(f.type()), f.description(), f.required(), f.schema(), f.example()
+            f.name(), toTaskValueType(f.type()), f.description(), f.required(), f.schema()
         )).toList();
     }
 
     private static List<PlanFieldDefinition> toPlanFieldDefs(List<TaskFieldDefinition> fields) {
         return fields.stream().map(f -> new PlanFieldDefinition(
-            f.name(), toPlanFieldType(f.type()), false, f.description(), f.required(), f.schema(), f.example()
+            f.name(), toPlanFieldType(f.type()), false, f.description(), f.required(), f.schema()
         )).toList();
     }
 
@@ -293,7 +300,7 @@ public class TaskService {
     }
 
     private static PlanFieldDefinition toPlanFieldDef(TaskFieldDefinition f) {
-        return new PlanFieldDefinition(f.name(), toPlanFieldType(f.type()), false, f.description(), f.required(), f.schema(), f.example());
+        return new PlanFieldDefinition(f.name(), toPlanFieldType(f.type()), false, f.description(), f.required(), f.schema());
     }
 
     private static TaskValueType toTaskValueType(PlanFieldType type) {

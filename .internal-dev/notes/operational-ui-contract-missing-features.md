@@ -459,3 +459,24 @@ Subagents A and C should be aware of these findings. F-BLOCKER-07 is the same ro
 - **Recommended owner/next action:** Subagent A or the orchestrator should update these tests to pass the new `PlanService` and `WorkflowService` arguments to `JobService` constructor calls.
 - **Severity:** alpha blocker (blocks full test suite run)
 
+---
+
+## Workflow Canonicalization Follow-up — 2026-05-14
+
+### WF-NOTE-01: Workflow builder is still a structured form/tree editor, not a drag canvas
+
+- **Surface:** Workflows
+- **Missing behavior:** The workflow editor now uses saved canonical workflow definitions, schema-aware task input/output selectors, validation gating before submit, and high-priority agent assignment submission. It does not implement drag-canvas editing.
+- **User impact:** Users can build and submit route-connected workflows without raw JSON, but visual canvas manipulation remains unavailable.
+- **Evidence:** `OrchestrationController` workflow editor endpoints render HTMX CRUD fragments and schema-derived selectors; `.internal-dev/notes/alpha-deferred-targets.md` records drag-canvas editing as deferred.
+- **Recommended owner/next action:** Add drag-canvas editing later as a visual layer over the existing saved nodes/routes schema.
+- **Severity:** post-alpha deferred
+
+### WF-NOTE-02: Conditional routing and cyclic retry loops remain deferred
+
+- **Surface:** Workflow runtime
+- **Missing behavior:** Route records include `condition`, but the runner does not evaluate conditions. Cycles remain invalid and bounded retry loops are not implemented.
+- **User impact:** Alpha workflows are acyclic and deterministic. Users cannot yet model looped retry/validator feedback workflows.
+- **Evidence:** `WorkflowValidator` rejects dependency cycles; `.internal-dev/notes/alpha-deferred-targets.md` records cyclic workflows, retry loops, conditional routing, and richer validator feedback loops as deferred.
+- **Recommended owner/next action:** Add explicit bounded retry and condition semantics only after cancellation, resume, and output contracts are stable.
+- **Severity:** post-alpha deferred

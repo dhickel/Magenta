@@ -33,9 +33,10 @@ record WorkflowRoute(
     String id,              // unique route ID (e.g. "route_1")
     String fromNodeKey,     // source node key
     String fromOutputName,  // output name on source node (null for PASS_THROUGH/CONTROL)
-    WorkflowRouteType type,  // route type
     String toNodeKey,       // target node key (can be same as source for LOG)
-    String toInputName      // input name on target node (null for PASS_THROUGH/CONTROL/LOG)
+    String toInputName,     // input name on target node (null for PASS_THROUGH/CONTROL/LOG)
+    WorkflowRouteType routeType,
+    String condition        // reserved for future conditional routing
 )
 ```
 
@@ -44,17 +45,29 @@ record WorkflowRoute(
 ```java
 record WorkflowNode(
     String key,              // unique node key (e.g. "node_1")
-    String label,            // human-readable label
     WorkflowNodeType type,   // TASK, GATE, APPROVAL
     String planId,           // referenced plan (for TASK nodes)
+    String label,            // human-readable label
     String inputName,        // input name mapping
-    Map<String,Object> inputBindings,  // legacy input bindings
-    String messageTemplate,  // message template text
-    ResumePolicy resumePolicy,
+    Map<String,Object> config,
     boolean parallel,        // allow parallel execution with siblings
-    Map<String,String> config // node-level configuration
+    List<WorkflowBinding> inputBindings,  // legacy input bindings
+    String messageTemplate,  // message template text
+    String resumePolicy
 )
 ```
+
+## Production canonicalization update
+
+As of the workflow canonicalization remediation, production callers import `io.mindspice.magenta2.ai.orchestration.workflow.WorkflowService`. The older `io.mindspice.magenta2.ai.chat.workflow` classes are deprecated and are no longer Spring beans, so runtime assignments, job workflow items, and workflow stream helpers should not depend on `ai_workflow_definitions` or `ai_workflow_runs`.
+
+Task nodes execute through `WorkflowTaskExecutor`, which calls `ChatService.executeTaskBlocking(...)`. Workflow task outputs must come from persisted `TaskRun.outputValues()` keyed by declared output names; assistant text and default output maps are not valid workflow outputs.
+
+The runner now has deterministic control-node handling for:
+
+- `VALIDATION`: checks configured required values and emits `valid=true` when satisfied.
+- `COPY`: copies/fans out selected input values through node config.
+- `LOG`: materializes incoming values as output artifacts/evidence.
 
 ## Graph traversal
 
@@ -104,5 +117,4 @@ The route model intentionally keeps the data shape small so workflow definitions
 
 - Should conditional routing (expression evaluation) be added for GATE nodes?
 - Should parallel fan-out execution be implemented for ready nodes?
-- Should the route editor provide a plan output dropdown instead of free-text `fromOutputName`?
 - Should the compatibility importer be removed once all legacy workflows are migrated?

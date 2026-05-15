@@ -305,9 +305,7 @@ public class ToolTranscriptService {
         }
         JsonNode root = jsonNode(resultText);
         if (root != null) {
-            if (root.path("timedOut").asBoolean(false)) {
-                return true;
-            }
+            return root.path("timedOut").asBoolean(false);
         }
         return false;
     }

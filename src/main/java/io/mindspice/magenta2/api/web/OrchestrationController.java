@@ -1,26 +1,42 @@
 package io.mindspice.magenta2.api.web;
 
+import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.chat.plan.PlanDefinition;
 import io.mindspice.magenta2.ai.chat.plan.PlanFieldDefinition;
 import io.mindspice.magenta2.ai.chat.plan.PlanFieldType;
 import io.mindspice.magenta2.ai.chat.plan.PlanKind;
+import io.mindspice.magenta2.ai.chat.plan.PlanRun;
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
 import io.mindspice.magenta2.ai.chat.plan.PlanStatus;
 import io.mindspice.magenta2.ai.chat.plan.PlanStep;
 import io.mindspice.magenta2.ai.chat.plan.WorkTypeProfile;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
+import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileStatus;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
+import io.mindspice.magenta2.ai.orchestration.docker.AgentContainerHandle;
+import io.mindspice.magenta2.ai.orchestration.docker.AgentContainerRuntimeService;
+import io.mindspice.magenta2.ai.orchestration.docker.AgentContainerStatus;
+import io.mindspice.magenta2.ai.orchestration.runtime.AgentEventReaction;
+import io.mindspice.magenta2.ai.orchestration.runtime.AgentSchedule;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentRequest;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentType;
+import io.mindspice.magenta2.ai.orchestration.runtime.EventReactionService;
+import io.mindspice.magenta2.ai.orchestration.runtime.EventType;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobDefinition;
+import io.mindspice.magenta2.ai.orchestration.runtime.JobRecurrence;
+import io.mindspice.magenta2.ai.orchestration.runtime.JobRun;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobService;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobWorkItem;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobWorkItemType;
@@ -28,6 +44,8 @@ import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationStatus;
 import io.mindspice.magenta2.ai.orchestration.runtime.Project;
 import io.mindspice.magenta2.ai.orchestration.runtime.ProjectAgentMembership;
 import io.mindspice.magenta2.ai.orchestration.runtime.ProjectService;
+import io.mindspice.magenta2.ai.orchestration.runtime.ReactionActionType;
+import io.mindspice.magenta2.ai.orchestration.runtime.ScheduleService;
 import io.mindspice.magenta2.ai.orchestration.runtime.WorkAssignment;
 import io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettings;
 import io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettingsService;
@@ -38,10 +56,16 @@ import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowNode;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowNodeType;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowRoute;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowRouteType;
+import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowRun;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowService;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowValidator;
+import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactQuery;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact;
+import io.mindspice.magenta2.ai.orchestration.workspaces.Workspace;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLease;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLink;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceService;
 import io.mindspice.simplypages.builders.BannerBuilder;
 import io.mindspice.simplypages.builders.ShellBuilder;
 import io.mindspice.simplypages.builders.ShellTemplate;
@@ -59,6 +83,7 @@ import io.mindspice.simplypages.components.forms.TextInput;
 import io.mindspice.simplypages.components.navigation.SideNav;
 import io.mindspice.simplypages.core.Component;
 import io.mindspice.simplypages.core.HtmlTag;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -77,11 +102,13 @@ public class OrchestrationController {
     private static final String DASHBOARD_CSS = "/css/orchestration.css?v=6";
     private static final String DASHBOARD_JS = "/js/orchestration/dashboard.js?v=5";
     private static final String AGENTS_JS = "/js/orchestration/agents.js?v=1";
+    private static final String AGENT_CHAT_JS = "/js/orchestration/agent-chat.js?v=1";
     private static final String PLANS_JS = "/js/orchestration/plans.js?v=2";
     private static final String WORKFLOWS_JS = "/js/orchestration/workflows.js?v=2";
     private static final String PROJECTS_JS = "/js/orchestration/projects.js?v=3";
     private static final String INBOX_JS = "/js/orchestration/inbox.js?v=1";
     private static final String OUTPUTS_JS = "/js/orchestration/outputs.js?v=1";
+    private static final ObjectMapper JSON = new ObjectMapper().findAndRegisterModules();
 
     private final ChatService chatService;
     private final ShellTemplate dashboardShell;
@@ -94,17 +121,23 @@ public class OrchestrationController {
     private final io.mindspice.magenta2.ai.orchestration.runtime.InboxService runtimeInboxService;
     private final OutputArtifactService outputArtifactService;
     private final RuntimeSettingsService runtimeSettingsService;
+    private final WorkspaceService workspaceService;
 
     // ── Plan editor services ──
     private final PlanService planService;
     private final AssignmentService assignmentService;
+    private final ScheduleService scheduleService;
+    private final EventReactionService eventReactionService;
 
     // ── Workflow editor services ──
     private final WorkflowService workflowService;
 
     // ── Runtime services ──
+    private final org.springframework.beans.factory.ObjectProvider<AgentContainerRuntimeService> containerRuntimeService;
     private final org.springframework.beans.factory.ObjectProvider<io.mindspice.magenta2.ai.orchestration.docker.DockerRuntimeClient> dockerClient;
     private final org.springframework.beans.factory.ObjectProvider<io.mindspice.magenta2.ai.orchestration.docker.DockerRuntimeConfig> dockerConfig;
+    private final boolean schedulesEnabled;
+    private final boolean reactionsEnabled;
 
     public OrchestrationController(ChatService chatService,
                                    ProjectService projectService,
@@ -114,11 +147,17 @@ public class OrchestrationController {
                                    io.mindspice.magenta2.ai.orchestration.runtime.InboxService runtimeInboxService,
                                    OutputArtifactService outputArtifactService,
                                    RuntimeSettingsService runtimeSettingsService,
+                                   WorkspaceService workspaceService,
                                    PlanService planService,
                                    AssignmentService assignmentService,
+                                   ScheduleService scheduleService,
+                                   EventReactionService eventReactionService,
                                    WorkflowService workflowService,
+                                   org.springframework.beans.factory.ObjectProvider<AgentContainerRuntimeService> containerRuntimeService,
                                    org.springframework.beans.factory.ObjectProvider<io.mindspice.magenta2.ai.orchestration.docker.DockerRuntimeClient> dockerClient,
-                                   org.springframework.beans.factory.ObjectProvider<io.mindspice.magenta2.ai.orchestration.docker.DockerRuntimeConfig> dockerConfig) {
+                                   org.springframework.beans.factory.ObjectProvider<io.mindspice.magenta2.ai.orchestration.docker.DockerRuntimeConfig> dockerConfig,
+                                   @Value("${magenta.features.schedules-enabled:false}") boolean schedulesEnabled,
+                                   @Value("${magenta.features.reactions-enabled:false}") boolean reactionsEnabled) {
         this.chatService = chatService;
         this.projectService = projectService;
         this.jobService = jobService;
@@ -127,16 +166,22 @@ public class OrchestrationController {
         this.runtimeInboxService = runtimeInboxService;
         this.outputArtifactService = outputArtifactService;
         this.runtimeSettingsService = runtimeSettingsService;
+        this.workspaceService = workspaceService;
         this.planService = planService;
         this.assignmentService = assignmentService;
+        this.scheduleService = scheduleService;
+        this.eventReactionService = eventReactionService;
         this.workflowService = workflowService;
+        this.containerRuntimeService = containerRuntimeService;
         this.dockerClient = dockerClient;
         this.dockerConfig = dockerConfig;
-        this.dashboardShell = createDashboardShell();
+        this.schedulesEnabled = schedulesEnabled;
+        this.reactionsEnabled = reactionsEnabled;
+        this.dashboardShell = createDashboardShell(null);
     }
 
-    private ShellTemplate createDashboardShell() {
-        SideNav sideNav = buildSideNav();
+    private ShellTemplate createDashboardShell(String activePath) {
+        SideNav sideNav = buildSideNav(activePath);
 
         return ShellBuilder.create()
             .withPageTitle("Magenta Dashboard")
@@ -147,31 +192,40 @@ public class OrchestrationController {
                 .withSubtitle("Orchestration dashboard")
                 .build())
             .withTopNav(TopNavBuilder.create()
+                .withHtmxNavigation(false)
                 .addPrimaryLink("Chat", "/chat")
                 .build())
             .withSideNav(sideNav, true)
             .buildTemplate();
     }
 
-    private SideNav buildSideNav() {
+    private SideNav buildSideNav(String activePath) {
         SideNav nav = SideNav.create();
         nav.addSection("Orchestration");
-        nav.addItem("Dashboard", "/dashboard", false);
-        nav.addItem("Plans", "/plans", false);
-        nav.addItem("Workflows", "/workflows", false);
-        nav.addItem("Jobs", "/jobs", false);
-        nav.addItem("Projects", "/projects", false);
+        nav.addItem("Dashboard", "/dashboard", isActivePath(activePath, "/dashboard"));
+        nav.addItem("Plans", "/plans", isActivePath(activePath, "/plans"));
+        nav.addItem("Workflows", "/workflows", isActivePath(activePath, "/workflows"));
+        nav.addItem("Jobs", "/jobs", isActivePath(activePath, "/jobs"));
+        nav.addItem("Projects", "/projects", isActivePath(activePath, "/projects"));
         nav.addSection("Communication");
-        nav.addItem("Inbox", "/inbox", false);
-        nav.addItem("Agents", "/agents", false);
+        nav.addItem("Inbox", "/inbox", isActivePath(activePath, "/inbox"));
+        nav.addItem("Agents", "/agents", isActivePath(activePath, "/agents"));
         nav.addSection("Tools");
-        nav.addItem("Outputs", "/outputs", false);
-        nav.addItem("Settings", "/settings", false);
+        nav.addItem("Outputs", "/outputs", isActivePath(activePath, "/outputs"));
+        nav.addItem("Settings", "/settings", isActivePath(activePath, "/settings"));
         return nav;
+    }
+
+    private boolean isActivePath(String activePath, String navPath) {
+        return activePath != null && (activePath.equals(navPath) || activePath.startsWith(navPath + "/"));
     }
 
     private String renderPage(Component content) {
         return dashboardShell.renderWithContent(content);
+    }
+
+    private String renderPage(Component content, String activePath) {
+        return createDashboardShell(activePath).renderWithContent(content);
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -191,18 +245,21 @@ public class OrchestrationController {
             .withChild(dashboardStatusStrip())
             .withChild(dashboardMainLayout())
             .withChild(moduleScript(DASHBOARD_JS));
-        return renderPage(body);
+        return renderPage(body, "/dashboard");
     }
 
     private Component dashboardChatBand() {
         return new Div().withClass("dashboard-chat-band")
-            .withChild(new Div().withClass("dashboard-chat-band-inner")
-                .withChild(new HtmlTag("span").withClass("dashboard-chat-label")
-                    .withInnerText("System chat"))
-                .withChild(TextInput.create("dashboard-chat-input")
-                    .withId("dashboard-chat-input")
-                    .withPlaceholder("System-level chat coming in a future update"))
-                .withChild(Button.create("Send").withAttribute("disabled", "")));
+            .withChild(new HtmlTag("details").withClass("dashboard-system-chat-accordion")
+                .withChild(new HtmlTag("summary")
+                    .withClass("dashboard-chat-label")
+                    .withInnerText("System Chat"))
+                .withChild(new Div().withClass("dashboard-chat-band-inner")
+                    .withChild(new Paragraph("Use the existing chat flow for system-level planning and operations."))
+                    .withChild(new HtmlTag("a")
+                        .withAttribute("href", "/chat")
+                        .withClass("orch-primary")
+                        .withInnerText("Open Chat View"))));
     }
 
     private Component dashboardStatusStrip() {
@@ -215,13 +272,6 @@ public class OrchestrationController {
             .hxSwap("innerHTML")
             .withChild(statsStripPlaceholder()));
 
-        // Freshness ticker – updated by JS (plan explicitly allows lightweight JS ticker)
-        container.withChild(new Div().withClass("dashboard-stat dashboard-stat-freshness")
-            .withChild(new HtmlTag("span").withClass("dashboard-stat-value")
-                .withId("stat-freshness").withInnerText("loading"))
-            .withChild(new HtmlTag("span").withClass("dashboard-stat-label")
-                .withInnerText("Data freshness")));
-
         return container;
     }
 
@@ -229,7 +279,7 @@ public class OrchestrationController {
         return new Div().withClass("dashboard-status-strip")
             .withChild(dashboardStat("stat-running", "Running", "—"))
             .withChild(dashboardStat("stat-pending", "Pending", "—"))
-            .withChild(dashboardStat("stat-waiting", "Waiting Approval", "—"))
+            .withChild(dashboardStat("stat-messages", "Messages", "—"))
             .withChild(dashboardStat("stat-failed", "Failed", "—"))
             .withChild(dashboardStat("stat-agents", "Active Agents", "—"));
     }
@@ -257,7 +307,7 @@ public class OrchestrationController {
                 .withChild(dashboardHxSideSection("Recent Outputs", "side-outputs",
                     "/outputs", "/dashboard/_side-outputs"))
                 .withChild(dashboardHxSideSection("Recent Events", "side-events",
-                    null, null)));
+                    "/agents", "/dashboard/_side-events")));
     }
 
     private Component dashboardHxSection(String title, String sectionId, String hxEndpoint) {
@@ -305,8 +355,7 @@ public class OrchestrationController {
     public String dashboardStats() {
         List<JobDefinition> jobs = jobService.listDefinitions();
         List<AgentProfile> agents = agentProfileService.list();
-        long waitingApprovals = inboxService.userInbox().stream()
-            .filter(m -> m.respondedAt() == null).count();
+        long messages = inboxService.userInbox().size();
 
         Map<String, Long> jobsByStatus = jobs.stream()
             .collect(Collectors.groupingBy(
@@ -323,7 +372,7 @@ public class OrchestrationController {
         return new Div().withClass("dashboard-status-strip")
             .withChild(dashboardStat("stat-running", "Running", String.valueOf(runningJobs)))
             .withChild(dashboardStat("stat-pending", "Pending", String.valueOf(pendingJobs)))
-            .withChild(dashboardStat("stat-waiting", "Waiting Approval", String.valueOf(waitingApprovals)))
+            .withChild(dashboardStat("stat-messages", "Messages", String.valueOf(messages)))
             .withChild(dashboardStat("stat-failed", "Failed", String.valueOf(failedItems)))
             .withChild(dashboardStat("stat-agents", "Active Agents", String.valueOf(activeAgents)))
             .render();
@@ -422,14 +471,13 @@ public class OrchestrationController {
     @GetMapping("/dashboard/_side-inbox")
     @ResponseBody
     public String dashboardSideInbox() {
-        long waitingApprovals = inboxService.userInbox().stream()
-            .filter(m -> m.respondedAt() == null).count();
+        long messages = inboxService.userInbox().size();
 
         return new Div().withClass("dashboard-side-stat")
             .withChild(new HtmlTag("span").withClass("dashboard-side-value")
-                .withInnerText(String.valueOf(waitingApprovals)))
+                .withInnerText(String.valueOf(messages)))
             .withChild(new HtmlTag("span").withClass("dashboard-side-label")
-                .withInnerText("waiting approvals"))
+                .withInnerText(messages == 1 ? "message" : "messages"))
             .render();
     }
 
@@ -454,6 +502,51 @@ public class OrchestrationController {
         return list.render();
     }
 
+    @GetMapping("/dashboard/_side-events")
+    @ResponseBody
+    public String dashboardSideEvents() {
+        record EventRow(Instant at, String label, String meta) {}
+        List<EventRow> rows = new ArrayList<>();
+
+        for (JobDefinition job : jobService.listDefinitions()) {
+            rows.add(new EventRow(job.updatedAt(), "Job " + nn(job.status()),
+                (job.title() != null ? job.title() : job.id())));
+        }
+        for (AgentProfile agent : agentProfileService.list()) {
+            rows.add(new EventRow(agent.updatedAt(), "Agent " + nn(agent.status() != null ? agent.status().name() : ""),
+                agent.name() != null ? agent.name() : agent.id()));
+        }
+        for (InboxMessage message : inboxService.userInbox()) {
+            String state = message.respondedAt() != null ? "responded" : "pending";
+            rows.add(new EventRow(message.createdAt(), "Inbox " + state,
+                message.fromId() != null ? message.fromId() : "system"));
+        }
+
+        rows = rows.stream()
+            .sorted((a, b) -> {
+                Instant ai = a.at() != null ? a.at() : Instant.EPOCH;
+                Instant bi = b.at() != null ? b.at() : Instant.EPOCH;
+                return bi.compareTo(ai);
+            })
+            .limit(8)
+            .toList();
+
+        if (rows.isEmpty()) {
+            return new Div().withClass("dashboard-empty").withInnerText("No recent events").render();
+        }
+
+        Div list = new Div().withClass("dashboard-side-list");
+        for (EventRow row : rows) {
+            list.withChild(new Div().withClass("dashboard-side-item")
+                .withChild(new HtmlTag("span").withClass("dashboard-side-item-name")
+                    .withInnerText(row.label()))
+                .withChild(new HtmlTag("span").withClass("dashboard-side-item-meta")
+                    .withInnerText((row.meta() != null ? row.meta() + " · " : "")
+                        + (row.at() != null ? formatSince(row.at()) : "unknown"))));
+        }
+        return list.render();
+    }
+
     // ════════════════════════════════════════════════════════════════
     //  Plans / Task Editor (HTMX-first)
     // ════════════════════════════════════════════════════════════════
@@ -471,9 +564,14 @@ public class OrchestrationController {
                     .withChild(new Div().withClass("browser-sidebar-header")
                         .withChild(Button.create("New Plan")
                             .withClass("orch-primary")
-                            .hxGet("/plans/_editor/_new")
+                            .withAttribute("hx-post", "/plans/_editor/_draft")
                             .hxTarget("#plan-editor-container")
-                            .hxSwap("innerHTML")))
+                            .hxSwap("innerHTML"))
+                        .withChild(Button.create("New Plan Chat")
+                            .withAttribute("type", "button")
+                            .withAttribute("onclick", "window.location.href='/chat?startPlanning=true'")
+                            .withClass("orch-primary")
+                            .withInnerText("New Plan Chat")))
                     .withChild(TextInput.search("planFilter")
                         .withId("plan-filter")
                         .withPlaceholder("Filter plans")
@@ -492,7 +590,7 @@ public class OrchestrationController {
                     .withChild(new Div().withId("plan-editor-container")
                         .withChild(planEditorEmptyState()))))
             .withChild(moduleScript(PLANS_JS));
-        return renderPage(body);
+        return renderPage(body, "/plans");
     }
 
     private Component planEditorEmptyState() {
@@ -540,6 +638,33 @@ public class OrchestrationController {
         return planEditorFragment(null).render();
     }
 
+    @PostMapping("/plans/_editor/_draft")
+    @ResponseBody
+    public String createDraftPlanEditor() {
+        PlanDefinition created = planService.saveTask(new PlanDefinition(
+            null, PlanKind.TASK_TEMPLATE, PlanStatus.DRAFT,
+            "Untitled Plan",
+            null,
+            null,
+            null,
+            List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+            List.of(), List.of(),
+            WorkTypeProfile.CODING_CENTRIC.name(),
+            null,
+            null,
+            null,
+            null,
+            List.of(),
+            0,
+            0,
+            null,
+            null,
+            null,
+            null
+        ));
+        return planEditorFragment(created).render();
+    }
+
     @GetMapping("/plans/_editor/{planId}")
     @ResponseBody
     public String planEditor(@PathVariable String planId) {
@@ -575,7 +700,15 @@ public class OrchestrationController {
             resolveWorktype(params),
             nn(params.get("planningModel")),
             nn(params.get("executionModel")),
-            null, null, List.of(), 0, 0, null, null, null, null
+            nn(params.get("settingsOverrideJson")),
+            nn(params.get("planningTask")),
+            List.of(),
+            0,
+            0,
+            nn(params.get("finalMessage")),
+            null,
+            null,
+            null
         ));
         return planEditorFragment(created).render();
     }
@@ -602,9 +735,12 @@ public class OrchestrationController {
                 params.containsKey("workTypeProfile") ? resolveWorktype(params) : current.promptProfile(),
                 params.containsKey("planningModel") ? nn(params.get("planningModel")) : current.planningModel(),
                 params.containsKey("executionModel") ? nn(params.get("executionModel")) : current.executionModel(),
-                current.settingsOverrideJson(),
-                current.planningTask(), current.pendingQuestions(), current.pendingQuestionIndex(),
-                current.planStartMessageOrder(), current.finalMessage(), current.conversationId(),
+                params.containsKey("settingsOverrideJson") ? nn(params.get("settingsOverrideJson")) : current.settingsOverrideJson(),
+                params.containsKey("planningTask") ? nn(params.get("planningTask")) : current.planningTask(),
+                current.pendingQuestions(), current.pendingQuestionIndex(),
+                current.planStartMessageOrder(),
+                params.containsKey("finalMessage") ? nn(params.get("finalMessage")) : current.finalMessage(),
+                current.conversationId(),
                 current.createdAt(), current.updatedAt()
             );
             planService.saveTask(updated);
@@ -620,8 +756,7 @@ public class OrchestrationController {
     @ResponseBody
     public String finalizePlanEditor(@PathVariable String planId) {
         try {
-            PlanDefinition existing = planService.getTask(planId);
-            planService.saveTask(existing);
+            planService.finalizeTask(planId);
             return planEditorFragment(planService.getTask(planId)).render();
         } catch (Exception e) {
             return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
@@ -673,7 +808,7 @@ public class OrchestrationController {
             PlanDefinition current = planService.getTask(planId);
             List<PlanFieldDefinition> fields = new ArrayList<>(isInput ? current.inputs() : current.outputs());
             fields.add(new PlanFieldDefinition("field_" + (fields.size() + 1), PlanFieldType.STRING,
-                false, null, false, null, null));
+                false, null, false, null));
             PlanDefinition updated = isInput
                 ? new PlanDefinition(planId, current.kind(), current.status(),
                     current.title(), current.summary(), current.goal(), current.notes(),
@@ -733,7 +868,7 @@ public class OrchestrationController {
 
             PlanFieldDefinition existing = fields.get(index);
             String name = params.getOrDefault(kind + "Name" + index, existing.name());
-            String typeStr = params.getOrDefault(kind + "Type" + index, existing.type().name());
+            String typeStr = params.getOrDefault(kind + "Type" + index, existing.type().wireName());
             boolean required = params.containsKey(kind + "Required" + index);
             boolean array = params.containsKey(kind + "Array" + index);
             String desc = params.getOrDefault(kind + "Desc" + index, existing.description());
@@ -741,7 +876,7 @@ public class OrchestrationController {
 
             PlanFieldType type;
             try {
-                type = PlanFieldType.valueOf(typeStr);
+                type = PlanFieldType.fromWireName(typeStr);
             } catch (IllegalArgumentException e) {
                 type = existing.type();
             }
@@ -752,7 +887,7 @@ public class OrchestrationController {
 
             fields.set(index, new PlanFieldDefinition(
                 name.trim(), type, array, nn(desc), required,
-                nn(schema), existing.example()));
+                nn(schema)));
 
             PlanDefinition updated = isInput
                 ? new PlanDefinition(planId, current.kind(), current.status(),
@@ -847,6 +982,18 @@ public class OrchestrationController {
         return removeListItem(planId, index, "steps");
     }
 
+    @PostMapping("/plans/_editor/{planId}/steps/{index}/move-up")
+    @ResponseBody
+    public String moveStepUp(@PathVariable String planId, @PathVariable int index) {
+        return moveStep(planId, index, -1);
+    }
+
+    @PostMapping("/plans/_editor/{planId}/steps/{index}/move-down")
+    @ResponseBody
+    public String moveStepDown(@PathVariable String planId, @PathVariable int index) {
+        return moveStep(planId, index, 1);
+    }
+
     @PostMapping("/plans/_editor/{planId}/validation")
     @ResponseBody
     public String addValidationCriterion(@PathVariable String planId) {
@@ -865,10 +1012,88 @@ public class OrchestrationController {
         return addListItem(planId, "assumptions");
     }
 
+    @PutMapping("/plans/_editor/{planId}/deliverables")
+    @ResponseBody
+    public String updateDeliverable(@PathVariable String planId, @RequestParam Map<String, String> params) {
+        return updateListItem(planId, "deliverables", params);
+    }
+
+    @PutMapping("/plans/_editor/{planId}/steps")
+    @ResponseBody
+    public String updateStep(@PathVariable String planId, @RequestParam Map<String, String> params) {
+        return updateListItem(planId, "steps", params);
+    }
+
+    @PutMapping("/plans/_editor/{planId}/validation")
+    @ResponseBody
+    public String updateValidationCriterion(@PathVariable String planId, @RequestParam Map<String, String> params) {
+        return updateListItem(planId, "validation", params);
+    }
+
+    @PutMapping("/plans/_editor/{planId}/assumptions")
+    @ResponseBody
+    public String updateAssumption(@PathVariable String planId, @RequestParam Map<String, String> params) {
+        return updateListItem(planId, "assumptions", params);
+    }
+
     @DeleteMapping("/plans/_editor/{planId}/assumptions/{index}")
     @ResponseBody
     public String removeAssumption(@PathVariable String planId, @PathVariable int index) {
         return removeListItem(planId, index, "assumptions");
+    }
+
+    @PostMapping("/plans/_editor/{planId}/evidence")
+    @ResponseBody
+    public String addExecutionEvidence(@PathVariable String planId) {
+        return addListItem(planId, "evidence");
+    }
+
+    @PutMapping("/plans/_editor/{planId}/evidence")
+    @ResponseBody
+    public String updateExecutionEvidence(@PathVariable String planId, @RequestParam Map<String, String> params) {
+        return updateListItem(planId, "evidence", params);
+    }
+
+    @DeleteMapping("/plans/_editor/{planId}/evidence/{index}")
+    @ResponseBody
+    public String removeExecutionEvidence(@PathVariable String planId, @PathVariable int index) {
+        return removeListItem(planId, index, "evidence");
+    }
+
+    @PostMapping("/plans/_editor/{planId}/feedback")
+    @ResponseBody
+    public String addValidationFeedback(@PathVariable String planId) {
+        return addListItem(planId, "feedback");
+    }
+
+    @PutMapping("/plans/_editor/{planId}/feedback")
+    @ResponseBody
+    public String updateValidationFeedback(@PathVariable String planId, @RequestParam Map<String, String> params) {
+        return updateListItem(planId, "feedback", params);
+    }
+
+    @DeleteMapping("/plans/_editor/{planId}/feedback/{index}")
+    @ResponseBody
+    public String removeValidationFeedback(@PathVariable String planId, @PathVariable int index) {
+        return removeListItem(planId, index, "feedback");
+    }
+
+    @PostMapping("/plans/_editor/{planId}/questions")
+    @ResponseBody
+    public String addPendingQuestion(@PathVariable String planId) {
+        return addListItem(planId, "questions");
+    }
+
+    @PutMapping("/plans/_editor/{planId}/questions")
+    @ResponseBody
+    public String updatePendingQuestion(@PathVariable String planId, @RequestParam Map<String, String> params) {
+        return updateListItem(planId, "questions", params);
+    }
+
+    @DeleteMapping("/plans/_editor/{planId}/questions/{index}")
+    @ResponseBody
+    public String removePendingQuestion(@PathVariable String planId, @PathVariable int index) {
+        return removeListItem(planId, index, "questions");
     }
 
     private String addListItem(String planId, String section) {
@@ -877,7 +1102,7 @@ public class OrchestrationController {
             PlanDefinition updated = switch (section) {
                 case "deliverables" -> {
                     List<String> items = new ArrayList<>(current.deliverables());
-                    items.add("");
+                    items.add("New deliverable");
                     yield new PlanDefinition(planId, current.kind(), current.status(),
                         current.title(), current.summary(), current.goal(), current.notes(),
                         items, current.inputs(), current.outputs(),
@@ -891,7 +1116,7 @@ public class OrchestrationController {
                 }
                 case "steps" -> {
                     List<PlanStep> items = new ArrayList<>(current.steps());
-                    items.add(new PlanStep(items.size() + 1, ""));
+                    items.add(new PlanStep(items.size() + 1, "New step"));
                     yield new PlanDefinition(planId, current.kind(), current.status(),
                         current.title(), current.summary(), current.goal(), current.notes(),
                         current.deliverables(), current.inputs(), current.outputs(),
@@ -905,7 +1130,7 @@ public class OrchestrationController {
                 }
                 case "validation" -> {
                     List<String> items = new ArrayList<>(current.validationCriteria());
-                    items.add("");
+                    items.add("New criterion");
                     yield new PlanDefinition(planId, current.kind(), current.status(),
                         current.title(), current.summary(), current.goal(), current.notes(),
                         current.deliverables(), current.inputs(), current.outputs(),
@@ -919,17 +1144,17 @@ public class OrchestrationController {
                 }
                 case "assumptions" -> {
                     List<String> items = new ArrayList<>(current.assumptions());
-                    items.add("");
-                    yield new PlanDefinition(planId, current.kind(), current.status(),
-                        current.title(), current.summary(), current.goal(), current.notes(),
-                        current.deliverables(), current.inputs(), current.outputs(),
-                        items, current.steps(), current.validationCriteria(),
-                        current.executionEvidence(), current.validationFeedback(),
-                        current.promptProfile(), current.planningModel(), current.executionModel(),
-                        current.settingsOverrideJson(),
-                        current.planningTask(), current.pendingQuestions(), current.pendingQuestionIndex(),
-                        current.planStartMessageOrder(), current.finalMessage(), current.conversationId(),
-                        current.createdAt(), current.updatedAt());
+                    items.add("New assumption");
+                    yield withStringList(current, planId, section, items);
+                }
+                case "evidence", "feedback", "questions" -> {
+                    List<String> items = new ArrayList<>(stringList(current, section));
+                    items.add(switch (section) {
+                        case "evidence" -> "New evidence";
+                        case "feedback" -> "New feedback";
+                        default -> "New question";
+                    });
+                    yield withStringList(current, planId, section, items);
                 }
                 default -> throw new IllegalArgumentException("Unknown section: " + section);
             };
@@ -994,16 +1219,12 @@ public class OrchestrationController {
                 case "assumptions" -> {
                     List<String> items = new ArrayList<>(current.assumptions());
                     if (index >= 0 && index < items.size()) items.remove(index);
-                    yield new PlanDefinition(planId, current.kind(), current.status(),
-                        current.title(), current.summary(), current.goal(), current.notes(),
-                        current.deliverables(), current.inputs(), current.outputs(),
-                        items, current.steps(), current.validationCriteria(),
-                        current.executionEvidence(), current.validationFeedback(),
-                        current.promptProfile(), current.planningModel(), current.executionModel(),
-                        current.settingsOverrideJson(),
-                        current.planningTask(), current.pendingQuestions(), current.pendingQuestionIndex(),
-                        current.planStartMessageOrder(), current.finalMessage(), current.conversationId(),
-                        current.createdAt(), current.updatedAt());
+                    yield withStringList(current, planId, section, items);
+                }
+                case "evidence", "feedback", "questions" -> {
+                    List<String> items = new ArrayList<>(stringList(current, section));
+                    if (index >= 0 && index < items.size()) items.remove(index);
+                    yield withStringList(current, planId, section, items);
                 }
                 default -> throw new IllegalArgumentException("Unknown section: " + section);
             };
@@ -1012,6 +1233,225 @@ public class OrchestrationController {
         } catch (Exception e) {
             return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
         }
+    }
+
+    private String updateListItem(String planId, String section, Map<String, String> params) {
+        try {
+            int index = parseListIndex(section, params);
+            if (index < 0) {
+                return new Div().withClass("orch-status")
+                    .withInnerText("Error: Cannot determine list item index.").render();
+            }
+            String value = nn(params.get(section + "Value" + index));
+            PlanDefinition current = planService.getTask(planId);
+            PlanDefinition updated = switch (section) {
+                case "deliverables" -> withDeliverableValue(current, planId, index, value);
+                case "validation" -> withValidationValue(current, planId, index, value);
+                case "assumptions" -> withAssumptionValue(current, planId, index, value);
+                case "steps" -> withStepValue(current, planId, index, value);
+                case "evidence", "feedback", "questions" -> {
+                    List<String> items = new ArrayList<>(stringList(current, section));
+                    if (index >= 0 && index < items.size()) {
+                        items.set(index, value);
+                    }
+                    yield withStringList(current, planId, section, items);
+                }
+                default -> throw new IllegalArgumentException("Unknown section: " + section);
+            };
+            planService.saveTask(updated);
+            return listSectionHtml(planService.getTask(planId), section).render();
+        } catch (Exception e) {
+            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+        }
+    }
+
+    private int parseListIndex(String section, Map<String, String> params) {
+        String prefix = section + "Value";
+        for (String key : params.keySet()) {
+            if (key.startsWith(prefix)) {
+                String number = key.substring(prefix.length()).replaceAll("[^0-9]", "");
+                if (!number.isBlank()) {
+                    return Integer.parseInt(number);
+                }
+            }
+        }
+        return -1;
+    }
+
+    private List<String> stringList(PlanDefinition current, String section) {
+        return switch (section) {
+            case "deliverables" -> current.deliverables();
+            case "validation" -> current.validationCriteria();
+            case "assumptions" -> current.assumptions();
+            case "evidence" -> current.executionEvidence();
+            case "feedback" -> current.validationFeedback();
+            case "questions" -> current.pendingQuestions();
+            default -> throw new IllegalArgumentException("Unknown string-list section: " + section);
+        };
+    }
+
+    private PlanDefinition withStringList(PlanDefinition current, String planId, String section, List<String> items) {
+        return switch (section) {
+            case "deliverables" -> new PlanDefinition(planId, current.kind(), current.status(),
+                current.title(), current.summary(), current.goal(), current.notes(),
+                items, current.inputs(), current.outputs(),
+                current.assumptions(), current.steps(), current.validationCriteria(),
+                current.executionEvidence(), current.validationFeedback(),
+                current.promptProfile(), current.planningModel(), current.executionModel(),
+                current.settingsOverrideJson(),
+                current.planningTask(), current.pendingQuestions(), current.pendingQuestionIndex(),
+                current.planStartMessageOrder(), current.finalMessage(), current.conversationId(),
+                current.createdAt(), current.updatedAt());
+            case "validation" -> new PlanDefinition(planId, current.kind(), current.status(),
+                current.title(), current.summary(), current.goal(), current.notes(),
+                current.deliverables(), current.inputs(), current.outputs(),
+                current.assumptions(), current.steps(), items,
+                current.executionEvidence(), current.validationFeedback(),
+                current.promptProfile(), current.planningModel(), current.executionModel(),
+                current.settingsOverrideJson(),
+                current.planningTask(), current.pendingQuestions(), current.pendingQuestionIndex(),
+                current.planStartMessageOrder(), current.finalMessage(), current.conversationId(),
+                current.createdAt(), current.updatedAt());
+            case "assumptions" -> new PlanDefinition(planId, current.kind(), current.status(),
+                current.title(), current.summary(), current.goal(), current.notes(),
+                current.deliverables(), current.inputs(), current.outputs(),
+                items, current.steps(), current.validationCriteria(),
+                current.executionEvidence(), current.validationFeedback(),
+                current.promptProfile(), current.planningModel(), current.executionModel(),
+                current.settingsOverrideJson(),
+                current.planningTask(), current.pendingQuestions(), current.pendingQuestionIndex(),
+                current.planStartMessageOrder(), current.finalMessage(), current.conversationId(),
+                current.createdAt(), current.updatedAt());
+            case "evidence" -> new PlanDefinition(planId, current.kind(), current.status(),
+                current.title(), current.summary(), current.goal(), current.notes(),
+                current.deliverables(), current.inputs(), current.outputs(),
+                current.assumptions(), current.steps(), current.validationCriteria(),
+                items, current.validationFeedback(),
+                current.promptProfile(), current.planningModel(), current.executionModel(),
+                current.settingsOverrideJson(),
+                current.planningTask(), current.pendingQuestions(), current.pendingQuestionIndex(),
+                current.planStartMessageOrder(), current.finalMessage(), current.conversationId(),
+                current.createdAt(), current.updatedAt());
+            case "feedback" -> new PlanDefinition(planId, current.kind(), current.status(),
+                current.title(), current.summary(), current.goal(), current.notes(),
+                current.deliverables(), current.inputs(), current.outputs(),
+                current.assumptions(), current.steps(), current.validationCriteria(),
+                current.executionEvidence(), items,
+                current.promptProfile(), current.planningModel(), current.executionModel(),
+                current.settingsOverrideJson(),
+                current.planningTask(), current.pendingQuestions(), current.pendingQuestionIndex(),
+                current.planStartMessageOrder(), current.finalMessage(), current.conversationId(),
+                current.createdAt(), current.updatedAt());
+            case "questions" -> new PlanDefinition(planId, current.kind(), current.status(),
+                current.title(), current.summary(), current.goal(), current.notes(),
+                current.deliverables(), current.inputs(), current.outputs(),
+                current.assumptions(), current.steps(), current.validationCriteria(),
+                current.executionEvidence(), current.validationFeedback(),
+                current.promptProfile(), current.planningModel(), current.executionModel(),
+                current.settingsOverrideJson(),
+                current.planningTask(), items, Math.min(current.pendingQuestionIndex(), Math.max(0, items.size() - 1)),
+                current.planStartMessageOrder(), current.finalMessage(), current.conversationId(),
+                current.createdAt(), current.updatedAt());
+            default -> throw new IllegalArgumentException("Unknown section: " + section);
+        };
+    }
+
+    private PlanDefinition withDeliverableValue(PlanDefinition current, String planId, int index, String value) {
+        List<String> items = new ArrayList<>(current.deliverables());
+        if (index < 0 || index >= items.size()) return current;
+        items.set(index, value);
+        return new PlanDefinition(planId, current.kind(), current.status(),
+            current.title(), current.summary(), current.goal(), current.notes(),
+            items, current.inputs(), current.outputs(),
+            current.assumptions(), current.steps(), current.validationCriteria(),
+            current.executionEvidence(), current.validationFeedback(),
+            current.promptProfile(), current.planningModel(), current.executionModel(),
+            current.settingsOverrideJson(),
+            current.planningTask(), current.pendingQuestions(), current.pendingQuestionIndex(),
+            current.planStartMessageOrder(), current.finalMessage(), current.conversationId(),
+            current.createdAt(), current.updatedAt());
+    }
+
+    private PlanDefinition withValidationValue(PlanDefinition current, String planId, int index, String value) {
+        List<String> items = new ArrayList<>(current.validationCriteria());
+        if (index < 0 || index >= items.size()) return current;
+        items.set(index, value);
+        return new PlanDefinition(planId, current.kind(), current.status(),
+            current.title(), current.summary(), current.goal(), current.notes(),
+            current.deliverables(), current.inputs(), current.outputs(),
+            current.assumptions(), current.steps(), items,
+            current.executionEvidence(), current.validationFeedback(),
+            current.promptProfile(), current.planningModel(), current.executionModel(),
+            current.settingsOverrideJson(),
+            current.planningTask(), current.pendingQuestions(), current.pendingQuestionIndex(),
+            current.planStartMessageOrder(), current.finalMessage(), current.conversationId(),
+            current.createdAt(), current.updatedAt());
+    }
+
+    private PlanDefinition withAssumptionValue(PlanDefinition current, String planId, int index, String value) {
+        List<String> items = new ArrayList<>(current.assumptions());
+        if (index < 0 || index >= items.size()) return current;
+        items.set(index, value);
+        return new PlanDefinition(planId, current.kind(), current.status(),
+            current.title(), current.summary(), current.goal(), current.notes(),
+            current.deliverables(), current.inputs(), current.outputs(),
+            items, current.steps(), current.validationCriteria(),
+            current.executionEvidence(), current.validationFeedback(),
+            current.promptProfile(), current.planningModel(), current.executionModel(),
+            current.settingsOverrideJson(),
+            current.planningTask(), current.pendingQuestions(), current.pendingQuestionIndex(),
+            current.planStartMessageOrder(), current.finalMessage(), current.conversationId(),
+            current.createdAt(), current.updatedAt());
+    }
+
+    private PlanDefinition withStepValue(PlanDefinition current, String planId, int index, String value) {
+        List<PlanStep> items = new ArrayList<>(current.steps());
+        if (index < 0 || index >= items.size()) return current;
+        items.set(index, new PlanStep(items.get(index).order(), value));
+        return new PlanDefinition(planId, current.kind(), current.status(),
+            current.title(), current.summary(), current.goal(), current.notes(),
+            current.deliverables(), current.inputs(), current.outputs(),
+            current.assumptions(), items, current.validationCriteria(),
+            current.executionEvidence(), current.validationFeedback(),
+            current.promptProfile(), current.planningModel(), current.executionModel(),
+            current.settingsOverrideJson(),
+            current.planningTask(), current.pendingQuestions(), current.pendingQuestionIndex(),
+            current.planStartMessageOrder(), current.finalMessage(), current.conversationId(),
+            current.createdAt(), current.updatedAt());
+    }
+
+    private String moveStep(String planId, int index, int direction) {
+        try {
+            PlanDefinition current = planService.getTask(planId);
+            List<PlanStep> items = new ArrayList<>(current.steps());
+            int target = index + direction;
+            if (index < 0 || index >= items.size() || target < 0 || target >= items.size()) {
+                return planStepsSection(current).render();
+            }
+            Collections.swap(items, index, target);
+            PlanDefinition updated = new PlanDefinition(planId, current.kind(), current.status(),
+                current.title(), current.summary(), current.goal(), current.notes(),
+                current.deliverables(), current.inputs(), current.outputs(),
+                current.assumptions(), renumberSteps(items), current.validationCriteria(),
+                current.executionEvidence(), current.validationFeedback(),
+                current.promptProfile(), current.planningModel(), current.executionModel(),
+                current.settingsOverrideJson(),
+                current.planningTask(), current.pendingQuestions(), current.pendingQuestionIndex(),
+                current.planStartMessageOrder(), current.finalMessage(), current.conversationId(),
+                current.createdAt(), current.updatedAt());
+            planService.saveTask(updated);
+            return planStepsSection(planService.getTask(planId)).render();
+        } catch (Exception e) {
+            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+        }
+    }
+
+    private List<PlanStep> renumberSteps(List<PlanStep> steps) {
+        List<PlanStep> reordered = new ArrayList<>();
+        for (int i = 0; i < steps.size(); i++) {
+            reordered.add(new PlanStep(i + 1, steps.get(i).text()));
+        }
+        return reordered;
     }
 
     // ── Submit to agent ──
@@ -1038,14 +1478,15 @@ public class OrchestrationController {
             if (agentId == null || agentId.isBlank()) {
                 return new Div().withClass("orch-status").withInnerText("No active agents available. Create an agent first.").render();
             }
-            int priority = 0;
-            try { priority = Integer.parseInt(params.getOrDefault("priority", "0")); } catch (NumberFormatException ignored) {}
+            int priority = 9;
+            try { priority = Integer.parseInt(params.getOrDefault("priority", "9")); } catch (NumberFormatException ignored) {}
+            Map<String, Object> inputValues = parsePlanInputValues(plan, params);
             WorkAssignment assignment = assignmentService.create(new AssignmentRequest(
                 agentId, null, null, AssignmentType.TASK_RUN,
                 priority,
                 nn(params.get("modelOverride")),
                 nn(params.get("workspaceId")),
-                Map.of("taskId", planId)
+                Map.of("taskId", planId, "inputValues", inputValues)
             ));
             return submitResultFragment(assignment, plan).render();
         } catch (Exception e) {
@@ -1230,10 +1671,10 @@ public class OrchestrationController {
         // Worktype, Planning Model, Execution Model
         String currentWorktype = plan != null ? plan.promptProfile() : null;
         Div modelGrid = new Div().withClass("orch-form-grid");
-        modelGrid.withChild(label("Worktype", worktypeSelect(currentWorktype)));
-        modelGrid.withChild(label("Planning Model", modelSelect("planningModel")
+        modelGrid.withChild(label("Manager Type", worktypeSelect(currentWorktype)));
+        modelGrid.withChild(label("Planning Model", modelSelectWithCurrent("planningModel", isNew ? null : plan.planningModel(), chatService.availableModels())
             .withId("plan-planning-model")));
-        modelGrid.withChild(label("Execution Model", modelSelect("executionModel")
+        modelGrid.withChild(label("Execution Model", modelSelectWithCurrent("executionModel", isNew ? null : plan.executionModel(), chatService.availableModels())
             .withId("plan-execution-model")));
         form.withChild(modelGrid);
 
@@ -1248,7 +1689,23 @@ public class OrchestrationController {
                     .withChild(label("Status", new HtmlTag("span")
                         .withInnerText(plan.status() != null ? plan.status().name() : "UNKNOWN")))
                     .withChild(label("ID", new HtmlTag("code")
-                        .withInnerText(plan.id())))));
+                        .withInnerText(nn(plan.id()))))
+                    .withChild(label("Conversation", new HtmlTag("code")
+                        .withInnerText(nn(plan.conversationId()))))
+                    .withChild(label("Plan Start Message Order", new HtmlTag("span")
+                        .withInnerText(String.valueOf(plan.planStartMessageOrder()))))
+                    .withChild(label("Pending Question Index", new HtmlTag("span")
+                        .withInnerText(String.valueOf(plan.pendingQuestionIndex())))))
+                .withChild(new Div().withClass("orch-form-stack")
+                    .withChild(label("Planning Task", TextArea.create("planningTask")
+                        .withRows(2)
+                        .withValue(nn(plan.planningTask()))))
+                    .withChild(label("Final Message", TextArea.create("finalMessage")
+                        .withRows(3)
+                        .withValue(nn(plan.finalMessage()))))
+                    .withChild(label("Settings Override JSON", TextArea.create("settingsOverrideJson")
+                        .withRows(4)
+                        .withValue(nn(plan.settingsOverrideJson()))))));
             form.withChild(advanced);
         }
 
@@ -1266,9 +1723,8 @@ public class OrchestrationController {
                 .withAttribute("hx-target", "#plan-submit-container")
                 .withAttribute("hx-swap", "innerHTML"));
             actions.withChild(Button.create("Continue in Chat")
-                .withAttribute("hx-get", "/plans/_editor/" + planId + "/chat-prompt-fragment")
-                .withAttribute("hx-target", "#plan-chat-prompt-container")
-                .withAttribute("hx-swap", "innerHTML"));
+                .withAttribute("type", "button")
+                .withAttribute("onclick", "window.location.href='/chat?continuePlanId=" + escapeAttr(planId) + "'"));
         }
         form.withChild(actions);
         container.withChild(form);
@@ -1276,11 +1732,34 @@ public class OrchestrationController {
         if (!isNew) {
             // Submit form container
             container.withChild(new Div().withId("plan-submit-container"));
-            // Chat prompt container
-            container.withChild(new Div().withId("plan-chat-prompt-container"));
+            container.withChild(sectionHeader("Recent Runs", "Latest saved plan/task executions."));
+            container.withChild(new Div().withId("plan-runs-container")
+                .hxGet("/plans/_runs/" + planId)
+                .hxTrigger("load")
+                .hxSwap("innerHTML")
+                .withChild(loadingPlaceholder()));
         }
 
         return container;
+    }
+
+    @GetMapping("/plans/_runs/{planId}")
+    @ResponseBody
+    public String planRunsFragment(@PathVariable String planId) {
+        List<PlanRun> runs = planService.listRuns(planId);
+        if (runs.isEmpty()) {
+            return new Div().withClass("dashboard-empty").withInnerText("No runs yet.").render();
+        }
+        Table table = Table.create().withHeaders("Run", "Status", "Started", "Completed").withClass("dashboard-table");
+        for (PlanRun run : runs) {
+            table.addRow(
+                new HtmlTag("code").withInnerText(run.id()),
+                statusBadgeHtml(run.status() != null ? run.status().name() : "—"),
+                new HtmlTag("span").withInnerText(run.startedAt() != null ? formatSince(run.startedAt()) : "—"),
+                new HtmlTag("span").withInnerText(run.completedAt() != null ? formatSince(run.completedAt()) : "—")
+            );
+        }
+        return table.render();
     }
 
     // ── Section renderers ──
@@ -1377,6 +1856,9 @@ public class OrchestrationController {
             case "steps" -> planStepsSection(plan);
             case "validation" -> planValidationSection(plan);
             case "assumptions" -> planAssumptionsSection(plan);
+            case "evidence" -> listSection("evidence", plan.executionEvidence().stream().map(Item::new).toList(), plan.id());
+            case "feedback" -> listSection("feedback", plan.validationFeedback().stream().map(Item::new).toList(), plan.id());
+            case "questions" -> listSection("questions", plan.pendingQuestions().stream().map(Item::new).toList(), plan.id());
             default -> new Div().withInnerText("Unknown section: " + section);
         };
     }
@@ -1396,8 +1878,34 @@ public class OrchestrationController {
             Div row = new Div().withClass("field-row");
             String placeholder = section.equals("steps") ? "Step text" : "Item text";
             row.withChild(TextInput.create("")
+                .withAttribute("name", section + "Value" + i)
                 .withAttribute("placeholder", section.equals("steps") ? (item.order() + ". " + placeholder) : placeholder)
-                .withAttribute("value", item.text() != null ? item.text() : ""));
+                .withAttribute("value", item.text() != null ? item.text() : "")
+                .withAttribute("hx-trigger", "change")
+                .withAttribute("hx-put", "/plans/_editor/" + planId + "/" + section)
+                .withAttribute("hx-target", "#plan-" + section + "-section")
+                .withAttribute("hx-swap", "innerHTML")
+                .withAttribute("hx-include", "closest .field-row"));
+            if (section.equals("steps")) {
+                row.withChild(new HtmlTag("button")
+                    .withClass("remove-field")
+                    .withAttribute("type", "button")
+                    .withAttribute("aria-label", "Move step up")
+                    .withAttribute("hx-post", "/plans/_editor/" + planId + "/steps/" + i + "/move-up")
+                    .withAttribute("hx-target", "#plan-steps-section")
+                    .withAttribute("hx-swap", "innerHTML")
+                    .withAttribute(i == 0 ? "disabled" : "data-no-attr", i == 0 ? "disabled" : "")
+                    .withInnerText("up"));
+                row.withChild(new HtmlTag("button")
+                    .withClass("remove-field")
+                    .withAttribute("type", "button")
+                    .withAttribute("aria-label", "Move step down")
+                    .withAttribute("hx-post", "/plans/_editor/" + planId + "/steps/" + i + "/move-down")
+                    .withAttribute("hx-target", "#plan-steps-section")
+                    .withAttribute("hx-swap", "innerHTML")
+                    .withAttribute(i == items.size() - 1 ? "disabled" : "data-no-attr", i == items.size() - 1 ? "disabled" : "")
+                    .withInnerText("down"));
+            }
             row.withChild(new HtmlTag("button")
                 .withClass("remove-field")
                 .withAttribute("type", "button")
@@ -1439,22 +1947,30 @@ public class OrchestrationController {
         }
         form.withChild(new Div().withClass("orch-form-stack")
             .withChild(label("Agent", agentSelect))
-            .withChild(label("Model Override", TextInput.create("modelOverride")
-                .withPlaceholder("optional")))
+            .withChild(label("Model Override", modelSelectWithCurrent(
+                "modelOverride", null, chatService.availableModels())))
             .withChild(label("Priority", TextInput.number("priority")
-                .withValue("0").withMin("0").withMax("100")))
+                .withValue("9").withMin("0").withMax("100")))
             .withChild(label("Workspace ID", TextInput.create("workspaceId")
                 .withPlaceholder("optional"))));
 
-        // Generated input form from required inputs
+        // Generated input form from declared inputs
         if (!plan.inputs().isEmpty()) {
             Div inputsDiv = new Div().withClass("orch-form-stack");
-            inputsDiv.withChild(new HtmlTag("h4").withInnerText("Required Inputs"));
+            inputsDiv.withChild(new HtmlTag("h4").withInnerText("Runtime Inputs"));
             for (PlanFieldDefinition input : plan.inputs()) {
-                if (input.required()) {
-                    inputsDiv.withChild(label(input.name() + " (" + input.type().wireName() + ")",
-                        TextInput.create("input_" + input.name())
-                            .withPlaceholder(input.description() != null ? input.description() : input.type().wireName())));
+                String labelText = input.name() + " (" + input.type().wireName()
+                    + (input.array() ? "[]" : "") + (input.required() ? ", required" : ", optional") + ")";
+                String placeholder = input.description() != null ? input.description() : input.type().wireName();
+                String fieldName = "input_" + input.name();
+                if (input.type() == PlanFieldType.JSON || input.array() || input.type() == PlanFieldType.USER_MESSAGE) {
+                    inputsDiv.withChild(label(labelText,
+                        TextArea.create(fieldName)
+                            .withRows(input.array() ? 3 : 2)
+                            .withPlaceholder(placeholder)));
+                } else {
+                    inputsDiv.withChild(label(labelText,
+                        TextInput.create(fieldName).withPlaceholder(placeholder)));
                 }
             }
             form.withChild(inputsDiv);
@@ -1486,6 +2002,17 @@ public class OrchestrationController {
         return WorkTypeProfile.fromString(wt).name();
     }
 
+    private Select agentSelect(String name, String currentValue) {
+        Select select = Select.create(name);
+        select.addOption("", "Select agent", !StringUtils.hasText(currentValue));
+        for (AgentProfile agent : agentProfileService.list()) {
+            String id = agent.id();
+            String label = StringUtils.hasText(agent.name()) ? agent.name() + " (" + id + ")" : id;
+            select.addOption(id, label, id.equals(currentValue));
+        }
+        return select;
+    }
+
     private Select fieldTypeSelect(String name, PlanFieldType current) {
         String cw = current != null ? current.wireName() : "string";
         Select select = Select.create(name);
@@ -1512,7 +2039,7 @@ public class OrchestrationController {
                     .withChild(new Div().withClass("browser-sidebar-header")
                         .withChild(Button.create("New Workflow")
                             .withClass("orch-primary")
-                            .hxGet("/workflows/_editor/_new")
+                            .hxPost("/workflows/_editor/_draft")
                             .hxTarget("#workflow-editor-container")
                             .hxSwap("innerHTML")))
                     .withChild(TextInput.search("workflowFilter")
@@ -1528,12 +2055,12 @@ public class OrchestrationController {
                         .hxGet("/workflows/_list")
                         .hxTrigger("load")
                         .hxSwap("innerHTML")
-                        .withChild(loadingPlaceholder())))
+                        .withChild(workflowListContent(null))))
                 .withChild(new Div().withClass("browser-detail")
                     .withChild(new Div().withId("workflow-editor-container")
                         .withChild(workflowEditorEmptyState()))))
             .withChild(moduleScript(WORKFLOWS_JS));
-        return renderPage(body);
+        return renderPage(body, "/workflows");
     }
 
     private Component workflowEditorEmptyState() {
@@ -1547,6 +2074,10 @@ public class OrchestrationController {
     @GetMapping("/workflows/_list")
     @ResponseBody
     public String workflowListFragment(@RequestParam(value = "workflowFilter", required = false) String filter) {
+        return workflowListContent(filter).render();
+    }
+
+    private Component workflowListContent(String filter) {
         List<WorkflowDefinition> workflows = workflowService.listDefinitions();
         if (filter != null && !filter.isBlank()) {
             String f = filter.toLowerCase();
@@ -1555,7 +2086,7 @@ public class OrchestrationController {
                 .toList();
         }
         if (workflows.isEmpty()) {
-            return new Div().withClass("tool-item").withInnerText("No workflows.").render();
+            return new Div().withClass("tool-item").withInnerText("No workflows.");
         }
         Div list = new Div();
         for (var wf : workflows) {
@@ -1569,7 +2100,7 @@ public class OrchestrationController {
                 .withChild(new HtmlTag("span").withInnerText(
                     wf.nodes().size() + " nodes, " + wf.routes().size() + " routes")));
         }
-        return list.render();
+        return list;
     }
 
     // ── Workflow editor HTMX partials ──
@@ -1578,6 +2109,20 @@ public class OrchestrationController {
     @ResponseBody
     public String newWorkflowEditor() {
         return workflowEditorFragment(null).render();
+    }
+
+    @PostMapping("/workflows/_editor/_draft")
+    @ResponseBody
+    public String createWorkflowDraftEditor() {
+        WorkflowDefinition created = workflowService.saveDefinitionValidated(new WorkflowDefinition(
+            null,
+            "Untitled Workflow",
+            "",
+            List.of(),
+            List.of(),
+            null,
+            null));
+        return workflowEditorFragment(created).render();
     }
 
     @GetMapping("/workflows/_editor/{workflowId}")
@@ -1729,6 +2274,21 @@ public class OrchestrationController {
         }
     }
 
+    @GetMapping("/workflows/_editor/{workflowId}/nodes/{nodeKey}/panel")
+    @ResponseBody
+    public String workflowNodePanel(@PathVariable String workflowId, @PathVariable String nodeKey) {
+        try {
+            WorkflowDefinition wf = workflowService.getDefinition(workflowId);
+            WorkflowNode node = wf.nodes().stream()
+                .filter(candidate -> candidate.key().equals(nodeKey))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Node not found: " + nodeKey));
+            return workflowSelectedNodePanel(wf, node).render();
+        } catch (Exception e) {
+            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+        }
+    }
+
     // ── Route CRUD endpoints ──
 
     @PostMapping("/workflows/_editor/{workflowId}/routes")
@@ -1818,6 +2378,10 @@ public class OrchestrationController {
     public String workflowSubmitToAgent(@PathVariable String workflowId, @RequestParam Map<String, String> params) {
         try {
             WorkflowDefinition wf = workflowService.getDefinition(workflowId);
+            WorkflowValidator.ValidationResult validation = workflowService.validateGraph(wf);
+            if (!validation.valid()) {
+                return workflowEditorValidationError(String.join("; ", validation.errors())).render();
+            }
             String agentId = params.get("agentId");
             if (agentId == null || agentId.isBlank()) {
                 agentId = agentProfileService.list().stream()
@@ -1888,6 +2452,8 @@ public class OrchestrationController {
             form.withChild(new Div().withId("workflow-nodes-section")
                 .withChild(workflowNodesSection(wf)));
             form.withChild(addNodeForm(wfId));
+            form.withChild(new Div().withId("workflow-node-panel")
+                .withChild(new Div().withClass("dashboard-empty").withInnerText("Select a node to inspect adapters, routes, inputs, and outputs.")));
 
             // Routes section
             form.withChild(sectionHeader("Routes", "Connect node outputs to node inputs."));
@@ -1925,9 +2491,48 @@ public class OrchestrationController {
 
         if (!isNew) {
             container.withChild(new Div().withId("workflow-submit-container"));
+            container.withChild(sectionHeader("Recent Runs", "Workflow execution history and approval-waiting states."));
+            container.withChild(new Div().withId("workflow-runs-container")
+                .hxGet("/workflows/_runs/" + wf.id())
+                .hxTrigger("load")
+                .hxSwap("innerHTML")
+                .withChild(loadingPlaceholder()));
         }
 
         return container;
+    }
+
+    @GetMapping("/workflows/_runs/{workflowId}")
+    @ResponseBody
+    public String workflowRunsFragment(@PathVariable String workflowId) {
+        List<WorkflowRun> runs = workflowService.listRuns(workflowId);
+        if (runs.isEmpty()) {
+            return new Div().withClass("dashboard-empty").withInnerText("No runs yet.").render();
+        }
+        Table table = Table.create().withHeaders("Run", "Status", "Current Node", "Started", "Action").withClass("dashboard-table");
+        for (WorkflowRun run : runs) {
+            Component action = run.status() != null && "WAITING".equals(run.status().name())
+                ? Button.create("Resume")
+                    .withAttribute("hx-post", "/workflows/_runs/" + run.id() + "/resume")
+                    .withAttribute("hx-target", "#workflow-runs-container")
+                    .withAttribute("hx-swap", "innerHTML")
+                : new HtmlTag("span").withInnerText("—");
+            table.addRow(
+                new HtmlTag("code").withInnerText(run.id()),
+                statusBadgeHtml(run.status() != null ? run.status().name() : "—"),
+                new HtmlTag("span").withInnerText(String.valueOf(run.currentNodeIndex())),
+                new HtmlTag("span").withInnerText(run.startedAt() != null ? formatSince(run.startedAt()) : "—"),
+                action
+            );
+        }
+        return table.render();
+    }
+
+    @PostMapping("/workflows/_runs/{runId}/resume")
+    @ResponseBody
+    public String resumeWorkflowRun(@PathVariable String runId) {
+        WorkflowRun run = workflowService.resumeRun(runId);
+        return workflowRunsFragment(run.workflowId());
     }
 
     private Component addNodeForm(String wfId) {
@@ -1969,7 +2574,7 @@ public class OrchestrationController {
             }
             form.withChild(fromSelect);
 
-            form.withChild(TextInput.create("fromOutputName").withPlaceholder("output name"));
+            form.withChild(workflowOutputSelect(wf, "fromOutputName"));
             form.withChild(routeTypeSelect());
 
             // To node select
@@ -1980,7 +2585,7 @@ public class OrchestrationController {
             }
             form.withChild(toSelect);
 
-            form.withChild(TextInput.create("toInputName").withPlaceholder("input name"));
+            form.withChild(workflowInputSelect(wf, "toInputName"));
 
             form.withChild(Button.create("Add Route")
                 .hxPost("/workflows/_editor/" + wfId + "/routes")
@@ -2001,16 +2606,61 @@ public class OrchestrationController {
         return select;
     }
 
+    private Select workflowOutputSelect(WorkflowDefinition wf, String name) {
+        Select select = Select.create(name);
+        select.addOption("", "-- output --", true);
+        for (WorkflowNode node : wf.nodes()) {
+            if (node.type() == WorkflowNodeType.TASK && StringUtils.hasText(node.planId())) {
+                try {
+                    PlanDefinition task = planService.getTask(node.planId());
+                    for (PlanFieldDefinition output : task.outputs()) {
+                        select.addOption(output.name(),
+                            node.displayLabel() + "." + output.name() + " (" + output.type().wireName() + ")",
+                            false);
+                    }
+                } catch (Exception ignored) {
+                    // Invalid task references are reported by validation.
+                }
+            } else {
+                select.addOption("valid", node.displayLabel() + ".valid", false);
+                select.addOption("messageId", node.displayLabel() + ".messageId", false);
+            }
+        }
+        return select;
+    }
+
+    private Select workflowInputSelect(WorkflowDefinition wf, String name) {
+        Select select = Select.create(name);
+        select.addOption("", "-- input --", true);
+        for (WorkflowNode node : wf.nodes()) {
+            if (node.type() == WorkflowNodeType.TASK && StringUtils.hasText(node.planId())) {
+                try {
+                    PlanDefinition task = planService.getTask(node.planId());
+                    for (PlanFieldDefinition input : task.inputs()) {
+                        select.addOption(input.name(),
+                            node.displayLabel() + "." + input.name()
+                                + (input.required() ? " required" : " optional")
+                                + " (" + input.type().wireName() + ")",
+                            false);
+                    }
+                } catch (Exception ignored) {
+                    // Invalid task references are reported by validation.
+                }
+            }
+        }
+        return select;
+    }
+
     private Component workflowNodesSection(WorkflowDefinition wf) {
         Div container = new Div().withClass("field-list");
         if (wf.nodes().isEmpty()) {
             container.withChild(new Div().withClass("dashboard-empty").withInnerText("No nodes. Add a node above."));
             return container;
         }
+        List<PlanDefinition> tasks = planService.listTasks();
         for (var node : wf.nodes()) {
             Div row = new Div().withClass("field-row workflow-node-row");
-            // Inline editable fields with auto-save on change
-            row.withChild(TextInput.create("label_" + node.key())
+            row.withChild(TextInput.create("label")
                 .withAttribute("value", node.displayLabel())
                 .withAttribute("placeholder", "label")
                 .withAttribute("hx-put", "/workflows/_editor/" + wf.id() + "/nodes/" + node.key())
@@ -2019,17 +2669,58 @@ public class OrchestrationController {
                 .withAttribute("hx-target", "#workflow-nodes-section")
                 .withAttribute("hx-swap", "innerHTML"));
 
-            row.withChild(nodeTypeBadge(node.type()));
-            row.withChild(new HtmlTag("code")
-                .withInnerText(node.key()));
-
-            if (node.planId() != null && !node.planId().isBlank()) {
-                row.withChild(new HtmlTag("span").withClass("orch-chip")
-                    .withInnerText("plan:" + truncateId(node.planId())));
+            Select nodeType = Select.create("nodeType");
+            for (WorkflowNodeType value : WorkflowNodeType.values()) {
+                nodeType.addOption(value.wireName(), value.wireName(), value == node.type());
             }
+            nodeType.withAttribute("hx-put", "/workflows/_editor/" + wf.id() + "/nodes/" + node.key())
+                .withAttribute("hx-trigger", "change")
+                .withAttribute("hx-include", "closest .workflow-node-row")
+                .withAttribute("hx-target", "#workflow-nodes-section")
+                .withAttribute("hx-swap", "innerHTML");
+            row.withChild(nodeType);
+
+            Select planSelect = Select.create("planId");
+            planSelect.addOption("", "-- plan --", !StringUtils.hasText(node.planId()));
+            for (PlanDefinition task : tasks) {
+                boolean selected = StringUtils.hasText(node.planId()) && node.planId().equals(task.id());
+                planSelect.addOption(task.id(), task.title() != null ? task.title() : task.id(), selected);
+            }
+            planSelect.withAttribute("hx-put", "/workflows/_editor/" + wf.id() + "/nodes/" + node.key())
+                .withAttribute("hx-trigger", "change")
+                .withAttribute("hx-include", "closest .workflow-node-row")
+                .withAttribute("hx-target", "#workflow-nodes-section")
+                .withAttribute("hx-swap", "innerHTML");
+            row.withChild(planSelect);
+
+            row.withChild(TextInput.create("messageTemplate")
+                .withAttribute("value", nn(node.messageTemplate()))
+                .withAttribute("placeholder", "message template")
+                .withAttribute("hx-put", "/workflows/_editor/" + wf.id() + "/nodes/" + node.key())
+                .withAttribute("hx-trigger", "change")
+                .withAttribute("hx-include", "closest .workflow-node-row")
+                .withAttribute("hx-target", "#workflow-nodes-section")
+                .withAttribute("hx-swap", "innerHTML"));
+
+            row.withChild(TextInput.create("resumePolicy")
+                .withAttribute("value", nn(node.resumePolicy()))
+                .withAttribute("placeholder", "resume policy")
+                .withAttribute("hx-put", "/workflows/_editor/" + wf.id() + "/nodes/" + node.key())
+                .withAttribute("hx-trigger", "change")
+                .withAttribute("hx-include", "closest .workflow-node-row")
+                .withAttribute("hx-target", "#workflow-nodes-section")
+                .withAttribute("hx-swap", "innerHTML"));
+
+            row.withChild(new HtmlTag("code").withInnerText(node.key()));
 
             String outCount = String.valueOf(wf.outgoingRoutes(node.key()).size());
             row.withChild(new HtmlTag("span").withClass("orch-meta").withInnerText(outCount + " out"));
+            row.withChild(workflowNodeSchemaSummary(node));
+            row.withChild(Button.create("Select")
+                .withAttribute("type", "button")
+                .withAttribute("hx-get", "/workflows/_editor/" + wf.id() + "/nodes/" + node.key() + "/panel")
+                .withAttribute("hx-target", "#workflow-node-panel")
+                .withAttribute("hx-swap", "innerHTML"));
 
             row.withChild(new HtmlTag("button")
                 .withClass("remove-field")
@@ -2044,28 +2735,54 @@ public class OrchestrationController {
         return container;
     }
 
+    private Component workflowNodeSchemaSummary(WorkflowNode node) {
+        Div summary = new Div().withClass("orch-meta");
+        if (node.type() == WorkflowNodeType.TASK && StringUtils.hasText(node.planId())) {
+            try {
+                PlanDefinition task = planService.getTask(node.planId());
+                String inputs = task.inputs().stream()
+                    .map(input -> input.name() + (input.required() ? "*" : ""))
+                    .collect(Collectors.joining(", "));
+                String outputs = task.outputs().stream()
+                    .map(PlanFieldDefinition::name)
+                    .collect(Collectors.joining(", "));
+                summary.withInnerText("in: " + (inputs.isBlank() ? "none" : inputs)
+                    + " | out: " + (outputs.isBlank() ? "none" : outputs));
+                return summary;
+            } catch (Exception e) {
+                summary.withInnerText("schema unavailable");
+                return summary;
+            }
+        }
+        summary.withInnerText(node.type().wireName());
+        return summary;
+    }
+
     private Component workflowRoutesSection(WorkflowDefinition wf) {
         Div container = new Div().withClass("field-list");
         if (wf.routes().isEmpty()) {
             container.withChild(new Div().withClass("dashboard-empty").withInnerText("No routes. Routes connect node outputs to downstream node inputs."));
             return container;
         }
+        container.withChild(new Div().withClass("field-row workflow-route-header")
+            .withChild(new HtmlTag("strong").withInnerText("Route ID"))
+            .withChild(new HtmlTag("strong").withInnerText("Adapter/Route Type"))
+            .withChild(new HtmlTag("strong").withInnerText("Source Node"))
+            .withChild(new HtmlTag("strong").withInnerText("Source Output"))
+            .withChild(new HtmlTag("strong").withInnerText("Destination Node"))
+            .withChild(new HtmlTag("strong").withInnerText("Destination Input"))
+            .withChild(new HtmlTag("strong").withInnerText("Condition"))
+            .withChild(new HtmlTag("strong").withInnerText("Actions")));
         for (var route : wf.routes()) {
             Div row = new Div().withClass("field-row");
 
-            String fromDesc = route.fromNodeKey() != null
-                ? route.fromNodeKey() + (route.fromOutputName() != null && !route.fromOutputName().isBlank()
-                    ? "." + route.fromOutputName() : "")
-                : "(root)";
-            String toDesc = route.toNodeKey()
-                + (route.toInputName() != null && !route.toInputName().isBlank()
-                    ? "." + route.toInputName() : "");
-
             row.withChild(new HtmlTag("code").withInnerText(route.id()));
             row.withChild(routeTypeBadge(route.routeType()));
-            row.withChild(new HtmlTag("span").withInnerText(fromDesc));
-            row.withChild(new HtmlTag("span").withInnerText("→"));
-            row.withChild(new HtmlTag("span").withInnerText(toDesc));
+            row.withChild(new HtmlTag("span").withInnerText(route.fromNodeKey() != null ? route.fromNodeKey() : "(root)"));
+            row.withChild(new HtmlTag("span").withInnerText(nn(route.fromOutputName())));
+            row.withChild(new HtmlTag("span").withInnerText(route.toNodeKey()));
+            row.withChild(new HtmlTag("span").withInnerText(nn(route.toInputName())));
+            row.withChild(new HtmlTag("span").withInnerText(nn(route.condition())));
 
             row.withChild(new HtmlTag("button")
                 .withClass("remove-field")
@@ -2076,6 +2793,48 @@ public class OrchestrationController {
                 .withInnerText("x"));
 
             container.withChild(row);
+        }
+        return container;
+    }
+
+    private Component workflowSelectedNodePanel(WorkflowDefinition wf, WorkflowNode node) {
+        Div panel = new Div().withClass("orch-panel workflow-node-panel");
+        panel.withChild(Header.H3("Selected Node: " + node.displayLabel()));
+        panel.withChild(new Div().withClass("orch-form-grid")
+            .withChild(label("Key", new HtmlTag("code").withInnerText(node.key())))
+            .withChild(label("Type", nodeTypeBadge(node.type())))
+            .withChild(label("Plan", new HtmlTag("span").withInnerText(nn(node.planId()))))
+            .withChild(label("Input Name", new HtmlTag("span").withInnerText(nn(node.inputName())))));
+
+        Div adapters = new Div().withClass("orch-form-stack");
+        adapters.withChild(new HtmlTag("h4").withInnerText("Adapter Chain"));
+        adapters.withChild(new Paragraph(switch (node.type()) {
+            case LOG -> "Logging adapter: consumes routed values and materializes evidence/log output.";
+            case COPY -> "Fan-out adapter: copy/pass-through routes can send one output to multiple receivers.";
+            case REPORT -> "Report adapter: materializes declared outputs as report artifacts.";
+            default -> "Use LOG, COPY, REPORT, MAP_OUTPUT, PASS_THROUGH, and LOG routes to build adapter chains.";
+        }));
+        panel.withChild(adapters);
+
+        panel.withChild(routeSummary("Incoming Routes", wf.incomingRoutes(node.key())));
+        panel.withChild(routeSummary("Outgoing Routes", wf.outgoingRoutes(node.key())));
+        panel.withChild(workflowNodeSchemaSummary(node));
+        return panel;
+    }
+
+    private Component routeSummary(String title, List<WorkflowRoute> routes) {
+        Div container = new Div().withClass("orch-form-stack");
+        container.withChild(new HtmlTag("h4").withInnerText(title));
+        if (routes.isEmpty()) {
+            container.withChild(new Div().withClass("dashboard-empty").withInnerText("None"));
+            return container;
+        }
+        for (WorkflowRoute route : routes) {
+            container.withChild(new Div().withClass("orch-meta")
+                .withInnerText(route.id() + ": "
+                    + nn(route.fromNodeKey()) + "." + nn(route.fromOutputName())
+                    + " -> " + nn(route.toNodeKey()) + "." + nn(route.toInputName())
+                    + " [" + route.routeType().wireName() + "]"));
         }
         return container;
     }
@@ -2103,6 +2862,13 @@ public class OrchestrationController {
 
         Div panel = new Div().withClass("orch-panel");
         panel.withChild(Header.H2("Submit to Agent"));
+        WorkflowValidator.ValidationResult workflowValidation = workflowService.validateGraph(wf);
+        if (!workflowValidation.valid()) {
+            panel.withChild(new Div().withClass("orch-status orch-status-error")
+                .withInnerText("Fix validation errors before submitting: "
+                    + String.join("; ", workflowValidation.errors())));
+            return panel;
+        }
 
         Form form = Form.create()
             .withHxPost("/workflows/_submit/" + workflowId)
@@ -2121,10 +2887,10 @@ public class OrchestrationController {
         }
         form.withChild(new Div().withClass("orch-form-stack")
             .withChild(label("Agent", agentSelect))
-            .withChild(label("Model Override", TextInput.create("modelOverride")
-                .withPlaceholder("optional")))
+            .withChild(label("Model Override", modelSelectWithCurrent(
+                "modelOverride", null, chatService.availableModels())))
             .withChild(label("Priority", TextInput.number("priority")
-                .withValue("0").withMin("0").withMax("100")))
+                .withValue("9").withMin("0").withMax("100")))
             .withChild(label("Workspace ID", TextInput.create("workspaceId")
                 .withPlaceholder("optional"))));
 
@@ -2195,7 +2961,41 @@ public class OrchestrationController {
                     .withChild(new Div().withId("job-editor-container")
                         .withChild(jobEditorEmptyState()))))
             .withChild(moduleScript(DASHBOARD_JS));
-        return renderPage(body);
+        return renderPage(body, "/jobs");
+    }
+
+    @GetMapping("/jobs/{jobId}")
+    @ResponseBody
+    public String jobDetail(@PathVariable String jobId) {
+        Component body = new Div()
+            .withId("jobs-page")
+            .withAttribute("data-orchestration-page", "jobs")
+            .withChild(Header.H1("Jobs"))
+            .withChild(new Paragraph("Ordered orchestration items coordinating plans and workflows with agent submission."))
+            .withChild(new Div().withClass("browser-layout browser-layout-wide")
+                .withChild(new Div().withClass("browser-sidebar")
+                    .withChild(new Div().withClass("browser-sidebar-header")
+                        .withChild(Button.create("New Job")
+                            .withClass("orch-primary")
+                            .hxGet("/jobs/_editor/_new")
+                            .hxTarget("#job-editor-container")
+                            .hxSwap("innerHTML")))
+                    .withChild(jobsAgentFilter())
+                    .withChild(new Div().withId("job-list")
+                        .hxGet("/jobs/_list")
+                        .hxTrigger("load")
+                        .hxInclude("#jobs-agent-select")
+                        .hxSwap("innerHTML")
+                        .withClass("entity-list")
+                        .withChild(loadingPlaceholder())))
+                .withChild(new Div().withClass("browser-detail")
+                    .withChild(new Div().withId("job-editor-container")
+                        .hxGet("/jobs/_editor/" + escapeAttr(jobId))
+                        .hxTrigger("load")
+                        .hxSwap("innerHTML")
+                        .withChild(loadingPlaceholder()))))
+            .withChild(moduleScript(DASHBOARD_JS));
+        return renderPage(body, "/jobs/" + jobId);
     }
 
     private Component jobEditorEmptyState() {
@@ -2389,6 +3189,55 @@ public class OrchestrationController {
         }
     }
 
+    @GetMapping("/jobs/_editor/_plan-inputs")
+    @ResponseBody
+    public String jobPlanInputsGuidance(@RequestParam(value = "planId", required = false) String planId) {
+        if (!StringUtils.hasText(planId)) {
+            return new Div().withId("plan-inputs-guidance")
+                .withClass("orch-meta")
+                .render();
+        }
+        try {
+            PlanDefinition plan = planService.getTask(planId);
+            List<PlanFieldDefinition> required = plan.inputs().stream()
+                .filter(PlanFieldDefinition::required)
+                .toList();
+            if (required.isEmpty()) {
+                return new Div().withId("plan-inputs-guidance")
+                    .withClass("orch-meta")
+                    .withInnerText("Plan has no required inputs.")
+                    .render();
+            }
+            Div guidance = new Div().withId("plan-inputs-guidance").withClass("orch-meta");
+            guidance.withChild(new HtmlTag("strong").withInnerText("Required bindings for " + plan.title() + ":"));
+            for (PlanFieldDefinition input : required) {
+                String desc = input.name() + " (" + input.type().wireName() + ")";
+                if (StringUtils.hasText(input.description())) {
+                    desc += " — " + input.description();
+                }
+                guidance.withChild(new HtmlTag("span").withInnerText(desc));
+            }
+            guidance.withChild(new HtmlTag("code").withInnerText(
+                "Example bindingsJson: " + buildBindingExample(required)));
+            return guidance.render();
+        } catch (Exception e) {
+            return new Div().withId("plan-inputs-guidance")
+                .withClass("orch-meta orch-error")
+                .withInnerText("Plan not found: " + planId)
+                .render();
+        }
+    }
+
+    private String buildBindingExample(List<PlanFieldDefinition> inputs) {
+        StringBuilder sb = new StringBuilder("{");
+        for (int i = 0; i < inputs.size(); i++) {
+            if (i > 0) sb.append(", ");
+            sb.append("\"").append(inputs.get(i).name()).append("\": \"...\"");
+        }
+        sb.append("}");
+        return sb.toString();
+    }
+
     private JobWorkItem jobItemFromParams(Map<String, String> params, int fallbackOrder) {
         String typeStr = params.getOrDefault("itemType", "PLAN").toUpperCase();
         JobWorkItemType type;
@@ -2397,12 +3246,36 @@ public class OrchestrationController {
         } catch (IllegalArgumentException e) {
             type = JobWorkItemType.PLAN;
         }
+        String planId = type == JobWorkItemType.PLAN ? nn(params.get("planId")) : null;
+        Map<String, Object> bindings = parseJsonMap(params.get("bindingsJson"));
+
+        // Validate required bindings if plan has required inputs
+        if (StringUtils.hasText(planId)) {
+            try {
+                PlanDefinition plan = planService.getTask(planId);
+                List<PlanFieldDefinition> required = plan.inputs().stream()
+                    .filter(PlanFieldDefinition::required)
+                    .toList();
+                List<String> missing = required.stream()
+                    .filter(f -> !bindings.containsKey(f.name()) || bindings.get(f.name()) == null
+                        || (bindings.get(f.name()) instanceof String s && !StringUtils.hasText(s)))
+                    .map(PlanFieldDefinition::name)
+                    .toList();
+                if (!missing.isEmpty()) {
+                    throw new IllegalArgumentException(
+                        "Missing required bindings for plan '" + plan.title() + "': " + String.join(", ", missing));
+                }
+            } catch (IllegalStateException e) {
+                throw new IllegalArgumentException("Plan not found: " + planId);
+            }
+        }
+
         return new JobWorkItem(
             nn(params.get("key")),
             type,
-            type == JobWorkItemType.PLAN ? nn(params.get("planId")) : null,
+            planId,
             type == JobWorkItemType.WORKFLOW ? nn(params.get("workflowId")) : null,
-            Map.of(), // inputBindings - deferred for future
+            bindings,
             fallbackOrder,
             nn(params.get("modelOverride")),
             parseIntOrNull(params.get("priority"))
@@ -2516,10 +3389,7 @@ public class OrchestrationController {
     @ResponseBody
     public String jobOutputsFragment(@PathVariable String jobId) {
         try {
-            List<RunOutputArtifact> artifacts = new ArrayList<>();
-            for (String runId : jobService.outputRunIds(jobId)) {
-                artifacts.addAll(outputArtifactService.artifactsForRun(runId));
-            }
+            List<RunOutputArtifact> artifacts = queryOutputs(null, jobId, null, null, null, 40);
             if (artifacts.isEmpty()) {
                 return new Div().withClass("dashboard-empty")
                     .withInnerText("No outputs.").render();
@@ -2567,9 +3437,8 @@ public class OrchestrationController {
             .withChild(label("Summary", TextArea.create("summary")
                 .withId("job-summary").withRows(3)
                 .withValue(isNew ? "" : nn(job.summary()))))
-            .withChild(label("Owner Agent ID", TextInput.create("ownerAgentId")
-                .withId("job-owner-agent")
-                .withValue(isNew ? "" : nn(job.ownerAgentId()))))
+            .withChild(label("Owner Agent", agentSelect("ownerAgentId",
+                isNew ? "" : nn(job.ownerAgentId())).withId("job-owner-agent")))
             .withChild(label("Project ID", TextInput.create("projectId")
                 .withId("job-project")
                 .withValue(isNew ? "" : nn(job.projectId()))))
@@ -2580,7 +3449,7 @@ public class OrchestrationController {
         // Worktype, Model
         String currentWorktype = job != null ? job.promptProfile() : null;
         form.withChild(new Div().withClass("orch-form-grid")
-            .withChild(label("Worktype", worktypeSelect(currentWorktype)))
+            .withChild(label("Manager Type", worktypeSelect(currentWorktype)))
             .withChild(label("Default Model", modelSelect("model")
                 .withId("job-model"))));
 
@@ -2611,19 +3480,32 @@ public class OrchestrationController {
                 .withAttribute("hx-swap", "innerHTML")
                 .withAttribute("hx-include", "#job-items-new-form"));
 
+            // Plan input guidance (populated when planId is entered)
+            form.withChild(new Div().withId("plan-inputs-guidance").withClass("orch-meta"));
+
             // Inline add-item form
             form.withChild(new Div().withId("job-items-new-form").withClass("field-row")
                 .withChild(TextInput.create("key").withAttribute("placeholder", "item key")
                     .withAttribute("style", "max-width:100px"))
                 .withChild(jobItemTypeSelect("itemType"))
                 .withChild(TextInput.create("planId").withAttribute("placeholder", "plan ID")
-                    .withAttribute("style", "max-width:120px"))
+                    .withAttribute("style", "max-width:120px")
+                    .withAttribute("hx-get", "/jobs/_editor/_plan-inputs")
+                    .withAttribute("hx-trigger", "change delay:500ms")
+                    .withAttribute("hx-target", "#plan-inputs-guidance")
+                    .withAttribute("hx-swap", "innerHTML")
+                    .withAttribute("hx-include", "this"))
                 .withChild(TextInput.create("workflowId").withAttribute("placeholder", "workflow ID")
                     .withAttribute("style", "max-width:120px"))
+                .withChild(TextInput.create("bindingsJson").withAttribute("placeholder", "bindings JSON")
+                    .withAttribute("style", "min-width:200px;max-width:240px"))
                 .withChild(TextInput.create("modelOverride").withAttribute("placeholder", "model")
                     .withAttribute("style", "max-width:80px"))
                 .withChild(TextInput.number("priority").withAttribute("placeholder", "pri")
                     .withAttribute("value", "0").withAttribute("style", "max-width:50px;min-width:50px")));
+
+            form.withChild(sectionHeader("Recurrence", "Optional cron schedule for this job."));
+            form.withChild(jobRecurrenceSection(jobId));
         }
 
         // Action buttons
@@ -2631,6 +3513,11 @@ public class OrchestrationController {
         actions.withChild(Button.create("Save").withClass("orch-primary")
             .withAttribute("type", "submit"));
         if (!isNew) {
+            actions.withChild(Button.create("Start Run")
+                .withClass("orch-primary")
+                .withAttribute("hx-post", "/jobs/_runs/" + jobId + "/start")
+                .withAttribute("hx-target", "#job-runs-panel")
+                .withAttribute("hx-swap", "innerHTML"));
             actions.withChild(Button.create("Submit to Agent")
                 .withClass("orch-primary")
                 .withAttribute("hx-get", "/jobs/_submit-form/" + jobId)
@@ -2652,6 +3539,13 @@ public class OrchestrationController {
             // Side panels: events and outputs
             container.withChild(new Div().withClass("entity-detail-side")
                 .withChild(new Div().withClass("orch-panel")
+                    .withChild(Header.H3("Runs"))
+                    .withChild(new Div().withId("job-runs-panel")
+                        .hxGet("/jobs/_runs/" + jobId)
+                        .hxTrigger("load")
+                        .hxSwap("innerHTML")
+                        .withChild(loadingPlaceholder())))
+                .withChild(new Div().withClass("orch-panel")
                     .withChild(Header.H3("Recent Outputs"))
                     .withChild(new Div().withId("job-outputs-panel")
                         .hxGet("/jobs/_detail/" + jobId + "/outputs")
@@ -2668,6 +3562,79 @@ public class OrchestrationController {
         }
 
         return container;
+    }
+
+    private Component jobRecurrenceSection(String jobId) {
+        JobRecurrence recurrence;
+        try {
+            recurrence = jobService.getRecurrence(jobId).orElse(null);
+        } catch (Exception ignored) {
+            recurrence = null;
+        }
+        Form form = Form.create()
+            .withHxPost("/jobs/_recurrence/" + jobId)
+            .withHxTarget("#job-editor-container")
+            .withHxSwap("innerHTML");
+        form.withChild(new Div().withClass("orch-form-grid")
+            .withChild(label("Cron Expression", TextInput.create("cronExpression")
+                .withValue(recurrence != null ? nn(recurrence.cronExpression()) : "")))
+            .withChild(label("Timezone", TextInput.create("timezone")
+                .withValue(recurrence != null ? nn(recurrence.timezone()) : "UTC")))
+            .withChild(label("Next Fire Time", TextInput.create("nextFireTime")
+                .withValue(recurrence != null && recurrence.nextFireTime() != null ? recurrence.nextFireTime().toString() : ""))));
+        form.withChild(Button.create("Save Recurrence").withAttribute("type", "submit"));
+        return form;
+    }
+
+    @PostMapping("/jobs/_recurrence/{jobId}")
+    @ResponseBody
+    public String saveJobRecurrence(@PathVariable String jobId, @RequestParam Map<String, String> params) {
+        jobService.setRecurrence(
+            jobId,
+            required(params.get("cronExpression"), "cronExpression is required"),
+            params.getOrDefault("timezone", "UTC"),
+            StringUtils.hasText(params.get("nextFireTime")) ? Instant.parse(params.get("nextFireTime")) : null
+        );
+        return jobEditorFragment(jobService.getDefinition(jobId)).render();
+    }
+
+    @GetMapping("/jobs/_runs/{jobId}")
+    @ResponseBody
+    public String jobRunsFragment(@PathVariable String jobId) {
+        List<JobRun> runs = jobService.listRuns(jobId);
+        if (runs.isEmpty()) {
+            return new Div().withClass("dashboard-empty").withInnerText("No runs yet.").render();
+        }
+        Table table = Table.create().withHeaders("Run", "Status", "Created", "Action").withClass("dashboard-table");
+        for (JobRun run : runs) {
+            Component action = run.status() != null && !run.status().isTerminal()
+                ? Button.create("Cancel")
+                    .withAttribute("hx-post", "/jobs/_runs/" + run.id() + "/cancel")
+                    .withAttribute("hx-target", "#job-runs-panel")
+                    .withAttribute("hx-swap", "innerHTML")
+                : new HtmlTag("span").withInnerText("—");
+            table.addRow(
+                new HtmlTag("code").withInnerText(run.id()),
+                statusBadgeHtml(run.status() != null ? run.status().name() : "—"),
+                new HtmlTag("span").withInnerText(run.createdAt() != null ? formatSince(run.createdAt()) : "—"),
+                action
+            );
+        }
+        return table.render();
+    }
+
+    @PostMapping("/jobs/_runs/{jobId}/start")
+    @ResponseBody
+    public String startJobRun(@PathVariable String jobId) {
+        jobService.startRun(jobId);
+        return jobRunsFragment(jobId);
+    }
+
+    @PostMapping("/jobs/_runs/{runId}/cancel")
+    @ResponseBody
+    public String cancelJobRun(@PathVariable String runId) {
+        JobRun run = jobService.cancelRun(runId);
+        return jobRunsFragment(run.jobId());
     }
 
     private Component jobItemsSection(JobDefinition job) {
@@ -2721,6 +3688,80 @@ public class OrchestrationController {
         }
     }
 
+    private Map<String, Object> parsePlanInputValues(PlanDefinition plan, Map<String, String> params) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        for (PlanFieldDefinition input : plan.inputs()) {
+            String raw = params.get("input_" + input.name());
+            if (!StringUtils.hasText(raw)) {
+                continue;
+            }
+            values.put(input.name(), coercePlanInput(input, raw));
+        }
+        return values;
+    }
+
+    private Object coercePlanInput(PlanFieldDefinition field, String raw) {
+        String trimmed = raw == null ? "" : raw.trim();
+        if (!field.array()) {
+            return coerceScalar(field.type(), trimmed);
+        }
+        if (field.type() == PlanFieldType.JSON) {
+            try {
+                Object parsed = JSON.readValue(trimmed, Object.class);
+                if (parsed instanceof List<?> list) {
+                    return list;
+                }
+            } catch (Exception ignored) {
+                // fall through to token split
+            }
+        }
+        String[] parts = trimmed.split("\\r?\\n|\\s*,\\s*");
+        List<Object> result = new ArrayList<>();
+        for (String part : parts) {
+            if (!StringUtils.hasText(part)) {
+                continue;
+            }
+            result.add(coerceScalar(field.type(), part.trim()));
+        }
+        return result;
+    }
+
+    private Object coerceScalar(PlanFieldType type, String value) {
+        return switch (type) {
+            case NUMBER -> {
+                try {
+                    yield value.contains(".") ? Double.parseDouble(value) : Long.parseLong(value);
+                } catch (NumberFormatException ignored) {
+                    yield value;
+                }
+            }
+            case JSON -> {
+                try {
+                    yield JSON.readValue(value, Object.class);
+                } catch (Exception ignored) {
+                    yield value;
+                }
+            }
+            case STRING, USER_MESSAGE, FILE_PATH -> value;
+        };
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> parseJsonMap(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return Map.of();
+        }
+        try {
+            Object parsed = JSON.readValue(raw, Object.class);
+            if (parsed instanceof Map<?, ?> map) {
+                return (Map<String, Object>) map;
+            }
+        } catch (Exception ignored) {
+            // return empty map below
+        }
+        return Map.of();
+    }
+
     // ════════════════════════════════════════════════════════════════
     //  Projects (HTMX-first)
     // ════════════════════════════════════════════════════════════════
@@ -2751,7 +3792,7 @@ public class OrchestrationController {
                     .withChild(new Div().withId("project-editor-container")
                         .withChild(projectEditorEmptyState()))))
             .withChild(moduleScript(PROJECTS_JS));
-        return renderPage(body);
+        return renderPage(body, "/projects");
     }
 
     private Component projectEditorEmptyState() {
@@ -2934,14 +3975,7 @@ public class OrchestrationController {
     @ResponseBody
     public String projectOutputsFragment(@PathVariable String projectId) {
         try {
-            // Find jobs for this project, then their output run ids
-            List<JobDefinition> jobs = jobService.listDefinitions(null, projectId, null);
-            List<RunOutputArtifact> artifacts = new ArrayList<>();
-            for (var job : jobs) {
-                for (String runId : jobService.outputRunIds(job.id())) {
-                    artifacts.addAll(outputArtifactService.artifactsForRun(runId));
-                }
-            }
+            List<RunOutputArtifact> artifacts = queryOutputs(null, null, projectId, null, null, 40);
             if (artifacts.isEmpty()) {
                 return new Div().withClass("dashboard-empty")
                     .withInnerText("No recent outputs.").render();
@@ -2988,16 +4022,15 @@ public class OrchestrationController {
             .withChild(label("Description", TextArea.create("description")
                 .withId("project-description").withRows(3)
                 .withValue(isNew ? "" : nn(project.description()))))
-            .withChild(label("Owner Agent ID", TextInput.create("ownerAgentId")
-                .withId("project-owner-agent")
-                .withValue(isNew ? "" : nn(project.ownerAgentId()))))
+            .withChild(label("Owner Agent", agentSelect("ownerAgentId",
+                isNew ? "" : nn(project.ownerAgentId())).withId("project-owner-agent")))
             .withChild(label("Git Repo URL", TextInput.create("gitRepoUrl")
                 .withId("project-git-url")
                 .withValue(isNew ? "" : nn(project.gitRepoUrl())))));
 
         String currentWorktype = project != null ? project.promptProfile() : null;
         form.withChild(new Div().withClass("orch-form-grid")
-            .withChild(label("Worktype", worktypeSelect(currentWorktype)))
+            .withChild(label("Manager Type", worktypeSelect(currentWorktype)))
             .withChild(label("Default Model", modelSelect("model")
                 .withId("project-model"))));
 
@@ -3016,12 +4049,32 @@ public class OrchestrationController {
                         .withChild(new HtmlTag("span").withInnerText(
                             "Path: " + (ws.displayPath() != null ? ws.displayPath() : "—")))
                         .withChild(new HtmlTag("span").withInnerText(
-                            "Members: " + ws.linkCount()))));
+                            "Members: " + ws.linkCount()))
+                        .withChild(new HtmlTag("span").withInnerText(
+                            "Lease: " + (ws.leaseId() != null ? ws.leaseId() : "—")))
+                        .withChild(new HtmlTag("span").withInnerText(
+                            "Mounted Agent: " + (ws.mountedAgentId() != null ? ws.mountedAgentId() : "—")))
+                        .withChild(new HtmlTag("span").withInnerText(
+                            "Release Requested: " + ws.releaseRequested()))));
+                if (ws.leaseId() != null && !ws.releaseRequested()) {
+                    form.withChild(Button.create("Release workspace after current turn")
+                        .withAttribute("type", "button")
+                        .withAttribute("hx-post", "/projects/_detail/" + projectId + "/workspace/release")
+                        .withAttribute("hx-target", "#project-editor-container")
+                        .withAttribute("hx-swap", "innerHTML"));
+                }
             } catch (Exception e) {
                 form.withChild(new Div().withId("project-workspace-section")
                     .withChild(new Div().withClass("dashboard-empty")
                         .withInnerText("Workspace: " + e.getMessage())));
             }
+
+            form.withChild(sectionHeader("Project Network", "Owner and linked agents around this project."));
+            form.withChild(new Div().withId("project-network-section")
+                .hxGet("/projects/_detail/" + projectId + "/network")
+                .hxTrigger("load")
+                .hxSwap("innerHTML")
+                .withChild(loadingPlaceholder()));
 
             // Agent memberships
             form.withChild(sectionHeader("Agents", "Members assigned to this project."));
@@ -3076,6 +4129,28 @@ public class OrchestrationController {
         return container;
     }
 
+    @GetMapping("/projects/_detail/{projectId}/network")
+    @ResponseBody
+    public String projectNetworkFragment(@PathVariable String projectId) {
+        Project project = projectService.getProject(projectId);
+        List<ProjectAgentMembership> members = projectService.listMembers(projectId);
+        Div panel = new Div().withClass("orch-meta");
+        panel.withChild(new HtmlTag("span").withInnerText("Owner: " + nn(project.ownerAgentId())));
+        panel.withChild(new HtmlTag("span").withInnerText("Members: " + members.size()));
+        for (ProjectAgentMembership member : members) {
+            panel.withChild(new HtmlTag("span").withInnerText(
+                nn(member.agentId()) + " (" + nn(member.role()) + ")"));
+        }
+        return panel.render();
+    }
+
+    @PostMapping("/projects/_detail/{projectId}/workspace/release")
+    @ResponseBody
+    public String requestProjectWorkspaceRelease(@PathVariable String projectId) {
+        projectService.requestWorkspaceRelease(projectId);
+        return projectEditor(projectId);
+    }
+
     // Deprecated: old project detail page, redirects to /projects
     // Kept for backward compatibility with existing links
     @GetMapping("/projects/{projectId}")
@@ -3108,7 +4183,7 @@ public class OrchestrationController {
                         .hxSwap("innerHTML")
                         .withChild(loadingPlaceholder()))))
             .withChild(moduleScript(PROJECTS_JS));
-        return renderPage(body);
+        return renderPage(body, "/projects/" + projectId);
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -3127,18 +4202,138 @@ public class OrchestrationController {
                 .withChild(new Div().withClass("inbox-main")
                     .withChild(new Div().withClass("orch-panel")
                         .withChild(Header.H2("User Inbox"))
-                        .withChild(new Div().withId("user-inbox-messages").withClass("inbox-message-list")))
+                        .withChild(new Div().withId("user-inbox-messages").withClass("inbox-message-list")
+                            .withAttribute("hx-get", "/inbox/_user")
+                            .withAttribute("hx-trigger", "load")
+                            .withAttribute("hx-swap", "innerHTML")
+                            .withChild(loadingPlaceholder())))
                     .withChild(new Div().withClass("orch-panel")
                         .withChild(Header.H2("Agent Inbox"))
                         .withChild(new Div().withId("inbox-agent-selector").withClass("entity-toolbar")
-                            .withChild(Select.create("inboxAgentId").withId("inbox-agent-select")))
-                        .withChild(new Div().withId("agent-inbox-messages").withClass("inbox-message-list"))))
-                .withChild(new Div().withClass("inbox-side")
-                    .withChild(new Div().withClass("orch-panel")
-                        .withChild(Header.H2("Run State"))
-                        .withChild(new Div().withId("inbox-run-state")))))
-            .withChild(moduleScript(INBOX_JS));
-        return renderPage(body);
+                            .withAttribute("hx-get", "/inbox/_agent-selector")
+                            .withAttribute("hx-trigger", "load")
+                            .withAttribute("hx-swap", "innerHTML")
+                            .withChild(loadingPlaceholder()))
+                        .withChild(new Div().withId("agent-inbox-messages").withClass("inbox-message-list")
+                            .withAttribute("hx-get", "/inbox/_agent")
+                            .withAttribute("hx-trigger", "load")
+                            .withAttribute("hx-swap", "innerHTML")
+                            .withChild(loadingPlaceholder())))));
+        return renderPage(body, "/inbox");
+    }
+
+    @GetMapping("/inbox/_agent-selector")
+    @ResponseBody
+    public String inboxAgentSelector() {
+        Select select = Select.create("agentId").withId("inbox-agent-select");
+        select.addOption("", "-- select agent --", true);
+        for (AgentProfile agent : agentProfileService.list()) {
+            select.addOption(agent.id(), agent.name() != null ? agent.name() : agent.id(), false);
+        }
+        select.withAttribute("hx-get", "/inbox/_agent")
+            .withAttribute("hx-trigger", "change")
+            .withAttribute("hx-target", "#agent-inbox-messages")
+            .withAttribute("hx-swap", "innerHTML")
+            .withAttribute("hx-include", "#inbox-agent-select");
+        return select.render();
+    }
+
+    @GetMapping("/inbox/_user")
+    @ResponseBody
+    public String userInboxFragment() {
+        List<InboxMessage> messages = inboxService.userInbox();
+        if (messages.isEmpty()) {
+            return new Div().withClass("dashboard-empty").withInnerText("No user messages.").render();
+        }
+        Table table = Table.create().withClass("dashboard-table")
+            .withHeaders("Type", "From", "Body", "State", "Actions");
+        for (InboxMessage message : messages) {
+            boolean responded = message.respondedAt() != null;
+            table.addRow(
+                new HtmlTag("span").withInnerText(message.messageType().wireName()),
+                new HtmlTag("span").withInnerText(message.fromId() != null ? message.fromId() : "system"),
+                new HtmlTag("span").withInnerText(message.body() != null ? message.body() : ""),
+                statusBadgeHtml(responded ? "responded" : "pending"),
+                responded
+                    ? new HtmlTag("span").withInnerText("—")
+                    : new Div().withClass("orch-actions")
+                        .withChild(Button.create("Approve")
+                            .withClass("orch-primary")
+                            .withAttribute("hx-post", "/inbox/_user/" + escapeAttr(message.id()) + "/approve")
+                            .withAttribute("hx-target", "#user-inbox-messages")
+                            .withAttribute("hx-swap", "innerHTML"))
+                        .withChild(Button.create("Reject")
+                            .withAttribute("hx-post", "/inbox/_user/" + escapeAttr(message.id()) + "/reject")
+                            .withAttribute("hx-target", "#user-inbox-messages")
+                            .withAttribute("hx-swap", "innerHTML"))
+            );
+        }
+        return table.render();
+    }
+
+    @PostMapping("/inbox/_user/{messageId}/approve")
+    @ResponseBody
+    public String approveUserInboxMessage(@PathVariable String messageId) {
+        inboxService.respondUserApproval(messageId, true, null);
+        return userInboxFragment();
+    }
+
+    @PostMapping("/inbox/_user/{messageId}/reject")
+    @ResponseBody
+    public String rejectUserInboxMessage(@PathVariable String messageId) {
+        inboxService.respondUserApproval(messageId, false, null);
+        return userInboxFragment();
+    }
+
+    @GetMapping("/inbox/_agent")
+    @ResponseBody
+    public String agentInboxFragment(@RequestParam(value = "agentId", required = false) String agentId) {
+        if (!StringUtils.hasText(agentId)) {
+            return new Div().withClass("dashboard-empty").withInnerText("Select an agent.").render();
+        }
+        List<io.mindspice.magenta2.ai.orchestration.runtime.InboxMessage> messages = runtimeInboxService.messages(agentId);
+        if (messages.isEmpty()) {
+            return new Div().withClass("dashboard-empty").withInnerText("No agent messages.").render();
+        }
+        Table table = Table.create().withClass("dashboard-table")
+            .withHeaders("Type", "From", "Body", "State", "Actions");
+        for (io.mindspice.magenta2.ai.orchestration.runtime.InboxMessage message : messages) {
+            table.addRow(
+                new HtmlTag("span").withInnerText(message.messageType() != null ? message.messageType() : "message"),
+                new HtmlTag("span").withInnerText(message.fromId() != null ? message.fromId() : "system"),
+                new HtmlTag("span").withInnerText(message.body() != null ? message.body() : ""),
+                statusBadgeHtml(message.handled() ? "handled" : message.read() ? "read" : "unread"),
+                message.handled()
+                    ? new HtmlTag("span").withInnerText("—")
+                    : new Div().withClass("orch-actions")
+                        .withChild(Button.create("Read")
+                            .withAttribute("hx-post", "/inbox/_agent/" + escapeAttr(agentId) + "/" + escapeAttr(message.id()) + "/read")
+                            .withAttribute("hx-target", "#agent-inbox-messages")
+                            .withAttribute("hx-swap", "innerHTML")
+                            .withAttribute("hx-include", "#inbox-agent-select"))
+                        .withChild(Button.create("Handled")
+                            .withClass("orch-primary")
+                            .withAttribute("hx-post", "/inbox/_agent/" + escapeAttr(agentId) + "/" + escapeAttr(message.id()) + "/handled")
+                            .withAttribute("hx-target", "#agent-inbox-messages")
+                            .withAttribute("hx-swap", "innerHTML")
+                            .withAttribute("hx-include", "#inbox-agent-select"))
+            );
+        }
+        return table.render();
+    }
+
+    @PostMapping("/inbox/_agent/{agentId}/{messageId}/read")
+    @ResponseBody
+    public String markAgentInboxRead(@PathVariable String agentId, @PathVariable String messageId) {
+        runtimeInboxService.markRead(messageId);
+        return agentInboxFragment(agentId);
+    }
+
+    @PostMapping("/inbox/_agent/{agentId}/{messageId}/handled")
+    @ResponseBody
+    public String markAgentInboxHandled(@PathVariable String agentId, @PathVariable String messageId) {
+        runtimeInboxService.markHandled(messageId);
+        return agentInboxFragment(agentId);
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -3152,21 +4347,169 @@ public class OrchestrationController {
             .withId("outputs-page")
             .withAttribute("data-orchestration-page", "outputs")
             .withChild(Header.H1("Outputs"))
-            .withChild(new Paragraph("Browse materialized output artifacts by agent, job, project, run ID, and artifact type."))
-            .withChild(new Div().withClass("outputs-toolbar")
-                .withChild(Select.create("outputAgentId").withId("outputs-agent-select"))
-                .withChild(Select.create("outputJobId").withId("outputs-job-select"))
-                .withChild(Select.create("outputProjectId").withId("outputs-project-select"))
-                .withChild(TextInput.create("runId").withId("outputs-run-id").withPlaceholder("run ID"))
-                .withChild(Select.create("outputArtifactType").withId("outputs-type-select")
-                    .addOption("all", "All types", true)
-                    .addOption("file", "Files", false)
-                    .addOption("message", "Messages", false)
-                    .addOption("evidence", "Evidence", false))
-                .withChild(Button.create("Browse").withClass("orch-primary").withAttribute("data-action", "browse-outputs")))
-            .withChild(new Div().withId("outputs-list").withClass("outputs-grid"))
-            .withChild(moduleScript(OUTPUTS_JS));
-        return renderPage(body);
+            .withChild(new Paragraph("Browse materialized output artifacts by agent, job, project, run ID, and artifact type. Click View to read text content inline, or Download for binary files."))
+            .withChild(outputsFilterPanel())
+            .withChild(new Div().withId("outputs-list").withClass("outputs-grid")
+                .withAttribute("hx-get", "/outputs/_list")
+                .withAttribute("hx-trigger", "load")
+                .withAttribute("hx-swap", "innerHTML")
+                .withChild(loadingPlaceholder()))
+            .withChild(new Div().withId("outputs-content-pane").withClass("outputs-content-pane"));
+        return renderPage(body, "/outputs");
+    }
+
+    @GetMapping("/outputs/_list")
+    @ResponseBody
+    public String outputsListFragment(
+        @RequestParam(value = "agentId", required = false) String agentId,
+        @RequestParam(value = "jobId", required = false) String jobId,
+        @RequestParam(value = "projectId", required = false) String projectId,
+        @RequestParam(value = "runId", required = false) String runId,
+        @RequestParam(value = "type", required = false) String type
+    ) {
+        List<RunOutputArtifact> artifacts = queryOutputs(agentId, jobId, projectId, runId, type, 100);
+        if (artifacts.isEmpty()) {
+            return new Div().withClass("dashboard-empty").withInnerText("No outputs found.").render();
+        }
+        Table table = Table.create().withClass("dashboard-table")
+            .withHeaders("Output", "Type", "Run", "Plan", "Created", "");
+        for (RunOutputArtifact artifact : artifacts) {
+            boolean canView = "text".equals(artifact.artifactType())
+                || "json".equals(artifact.artifactType())
+                || "user_message".equals(artifact.artifactType());
+            table.addRow(
+                new HtmlTag("span").withInnerText(artifact.outputName() != null ? artifact.outputName() : "output"),
+                new HtmlTag("span").withInnerText(artifact.artifactType() != null ? artifact.artifactType() : "—"),
+                new HtmlTag("span").withInnerText(artifact.runId() != null ? artifact.runId() : "—"),
+                new HtmlTag("span").withInnerText(artifact.planId() != null ? artifact.planId() : "—"),
+                new HtmlTag("span").withInnerText(artifact.createdAt() != null ? formatSince(artifact.createdAt()) : "—"),
+                canView
+                    ? new HtmlTag("a")
+                        .withClass("orch-primary")
+                        .withAttribute("href", "#")
+                        .withAttribute("hx-get", "/outputs/_content/" + artifact.id())
+                        .withAttribute("hx-target", "#outputs-content-pane")
+                        .withAttribute("hx-swap", "innerHTML")
+                        .withInnerText("View")
+                    : new HtmlTag("a")
+                        .withClass("orch-primary")
+                        .withAttribute("href", "/api/outputs/" + artifact.id() + "/download")
+                        .withInnerText("Download")
+            );
+        }
+        return table.render();
+    }
+
+    @GetMapping("/outputs/_content/{artifactId}")
+    @ResponseBody
+    public String outputsContentFragment(@PathVariable String artifactId) {
+        try {
+            RunOutputArtifact artifact = outputArtifactService.getArtifact(artifactId);
+            String content;
+            try {
+                content = outputArtifactService.loadContent(artifactId, 5 * 1024 * 1024);
+            } catch (IOException e) {
+                return new Div().withClass("orch-status orch-status-error")
+                    .withInnerText("Failed to read artifact: " + e.getMessage()).render();
+            }
+            Div panel = new Div().withClass("output-content-fragment");
+            panel.withChild(Header.H2(artifact.outputName() != null ? artifact.outputName() : "Output"));
+            panel.withChild(new Div().withClass("orch-meta")
+                .withChild(new HtmlTag("span").withInnerText("Type: " + nn(artifact.artifactType())))
+                .withChild(new HtmlTag("span").withInnerText("File: " + nn(artifact.fileName())))
+                .withChild(new HtmlTag("span").withInnerText("Created: " + (artifact.createdAt() != null ? formatSince(artifact.createdAt()) : "—"))));
+            panel.withChild(new HtmlTag("a")
+                .withAttribute("href", "/api/outputs/" + artifactId + "/download")
+                .withClass("orch-primary")
+                .withInnerText("Download"));
+            String safeContent = escapeAttr(content);
+            panel.withChild(new HtmlTag("pre").withClass("output-content-body").withInnerText(safeContent));
+            return panel.render();
+        } catch (IllegalArgumentException e) {
+            return new Div().withClass("orch-status orch-status-error")
+                .withInnerText("Error: " + e.getMessage()).render();
+        }
+    }
+
+    private Component outputsFilterPanel() {
+        Form form = Form.create();
+        form.withId("outputs-filter-form");
+        form.withAttribute("hx-get", "/outputs/_list");
+        form.withAttribute("hx-target", "#outputs-list");
+        form.withAttribute("hx-swap", "innerHTML");
+
+        Select agent = Select.create("agentId");
+        agent.addOption("", "All agents", true);
+        for (AgentProfile profile : agentProfileService.list()) {
+            agent.addOption(profile.id(), profile.name() != null ? profile.name() : profile.id(), false);
+        }
+        Select job = Select.create("jobId");
+        job.addOption("", "All jobs", true);
+        for (JobDefinition definition : jobService.listDefinitions()) {
+            job.addOption(definition.id(), definition.title() != null ? definition.title() : definition.id(), false);
+        }
+        Select project = Select.create("projectId");
+        project.addOption("", "All projects", true);
+        for (Project value : projectService.listProjects()) {
+            project.addOption(value.id(), value.name() != null ? value.name() : value.id(), false);
+        }
+        Select type = Select.create("type");
+        type.addOption("", "All types", true);
+        type.addOption("file_path", "file_path", false);
+        type.addOption("user_message", "user_message", false);
+        type.addOption("json", "json", false);
+        type.addOption("text", "text", false);
+
+        Div toolbar = new Div().withClass("outputs-toolbar")
+            .withChild(agent)
+            .withChild(job)
+            .withChild(project)
+            .withChild(TextInput.create("runId").withPlaceholder("run ID"))
+            .withChild(type)
+            .withChild(Button.create("Browse").withClass("orch-primary").withAttribute("type", "submit"));
+        form.withChild(toolbar);
+        return form;
+    }
+
+    private List<RunOutputArtifact> queryOutputs(String agentId, String jobId, String projectId, String runId, String type, int limit) {
+        OutputArtifactQuery query = OutputArtifactQuery.of(
+            agentId,
+            jobId,
+            projectId,
+            null,
+            runId,
+            null,
+            type,
+            limit
+        );
+        List<RunOutputArtifact> direct = outputArtifactService.query(query);
+        if (!direct.isEmpty() || StringUtils.hasText(runId)) {
+            return direct;
+        }
+        if (StringUtils.hasText(jobId)) {
+            try {
+                return artifactsForJobs(List.of(jobService.getDefinition(jobId)), type, limit);
+            } catch (Exception ignored) {
+                return List.of();
+            }
+        }
+        if (StringUtils.hasText(agentId) || StringUtils.hasText(projectId)) {
+            return artifactsForJobs(jobService.listDefinitions(agentId, projectId, null), type, limit);
+        }
+        return direct;
+    }
+
+    private List<RunOutputArtifact> artifactsForJobs(List<JobDefinition> jobs, String type, int limit) {
+        List<RunOutputArtifact> artifacts = new ArrayList<>();
+        for (JobDefinition job : jobs) {
+            for (String run : jobService.outputRunIds(job.id())) {
+                artifacts.addAll(outputArtifactService.query(run, null, type, limit));
+                if (artifacts.size() >= limit) {
+                    return artifacts.subList(0, limit);
+                }
+            }
+        }
+        return artifacts;
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -3209,7 +4552,7 @@ public class OrchestrationController {
                     .withChild(new Div().withId("agent-detail-container")
                         .withChild(agentDetailEmptyState()))))
             .withChild(moduleScript(AGENTS_JS));
-        return renderPage(body);
+        return renderPage(body, "/agents");
     }
 
     private Component agentDetailEmptyState() {
@@ -3237,13 +4580,14 @@ public class OrchestrationController {
         }
 
         Table table = Table.create()
-            .withHeaders("Name", "Status", "Model", "Queue", "Inbox", "Jobs")
+            .withHeaders("Name", "Status", "Docker", "Model", "Queue", "Inbox", "Actions")
             .withClass("dashboard-table");
         table.withId("agents-list-table");
 
         for (var a : agents) {
             int queueCount = countAssignments(a.id());
             int inboxCount = countInboxMessages(a.id());
+            AgentContainerHandle dockerState = agentContainerStatus(a);
             table.addRow(
                 new HtmlTag("a")
                     .withAttribute("href", "/agents/" + escapeAttr(a.id()))
@@ -3252,11 +4596,12 @@ public class OrchestrationController {
                     .withAttribute("hx-swap", "innerHTML")
                     .withInnerText(a.name() != null ? a.name() : a.id()),
                 statusBadgeHtml(a.status() != null ? a.status().name() : "UNKNOWN"),
+                statusBadgeHtml(dockerState.status().name()),
                 new HtmlTag("span").withInnerText(
                     a.defaultModel() != null ? a.defaultModel() : "unset"),
                 new HtmlTag("span").withInnerText(String.valueOf(queueCount)),
                 new HtmlTag("span").withInnerText(String.valueOf(inboxCount)),
-                new HtmlTag("span").withInnerText("—")
+                agentRowActions(a)
             );
         }
         return table.render();
@@ -3276,6 +4621,47 @@ public class OrchestrationController {
         } catch (Exception e) {
             return 0;
         }
+    }
+
+    private AgentContainerHandle agentContainerStatus(AgentProfile agent) {
+        AgentContainerRuntimeService runtime = containerRuntimeService.getIfAvailable();
+        if (runtime == null) {
+            return new AgentContainerHandle(
+                agent.id(), null, "n/a", AgentContainerStatus.UNAVAILABLE, "n/a", "n/a",
+                null, Instant.now(), List.of(), Map.of(), "Docker runtime disabled"
+            );
+        }
+        return runtime.statusFor(agent.id(), agent.status() == AgentProfileStatus.ACTIVE);
+    }
+
+    private Component agentRowActions(AgentProfile agent) {
+        Div actions = new Div().withClass("orch-actions");
+        actions.withChild(Button.create("Wake")
+            .withAttribute("hx-post", "/agents/_docker/" + escapeAttr(agent.id()) + "/start?view=list")
+            .withAttribute("hx-target", "#agent-list")
+            .withAttribute("hx-swap", "innerHTML"));
+        actions.withChild(Button.create("Sleep")
+            .withAttribute("hx-post", "/agents/_docker/" + escapeAttr(agent.id()) + "/stop?view=list")
+            .withAttribute("hx-target", "#agent-list")
+            .withAttribute("hx-swap", "innerHTML"));
+        actions.withChild(Button.create("Restart")
+            .withAttribute("hx-post", "/agents/_docker/" + escapeAttr(agent.id()) + "/restart?view=list")
+            .withAttribute("hx-target", "#agent-list")
+            .withAttribute("hx-swap", "innerHTML"));
+        actions.withChild(Button.create("Refresh")
+            .withAttribute("hx-get", "/agents/_docker/" + escapeAttr(agent.id()) + "/status-row?view=list")
+            .withAttribute("hx-target", "#agent-list")
+            .withAttribute("hx-swap", "innerHTML"));
+        actions.withChild(Button.create(agent.status() == AgentProfileStatus.ACTIVE ? "Disable" : "Enable")
+            .withAttribute("hx-post", "/agents/_lifecycle/" + escapeAttr(agent.id())
+                + (agent.status() == AgentProfileStatus.ACTIVE ? "/disable" : "/enable") + "?view=list")
+            .withAttribute("hx-target", "#agent-list")
+            .withAttribute("hx-swap", "innerHTML"));
+        actions.withChild(Button.create("Delete")
+            .withAttribute("hx-get", "/agents/_lifecycle/" + escapeAttr(agent.id()) + "/delete-confirm")
+            .withAttribute("hx-target", "#agent-detail-container")
+            .withAttribute("hx-swap", "innerHTML"));
+        return actions;
     }
 
     // ── Create agent HTMX action ──
@@ -3312,17 +4698,19 @@ public class OrchestrationController {
                 .withChild(new Paragraph("Agent " + escapeAttr(agentId) + " does not exist."))
                 .withChild(new HtmlTag("a").withAttribute("href", "/agents")
                     .withInnerText("Back to agents"));
-            return renderPage(body);
+            return renderPage(body, "/agents");
         }
 
         Component body = new Div()
             .withId("agents-page")
             .withAttribute("data-orchestration-page", "agents")
+            .withAttribute("data-agent-id", agent.id())
             .withChild(Header.H1("Agent: " + (agent.name() != null ? agent.name() : agent.id())))
             .withChild(new Paragraph("Profile, queue, inbox, workspace, and history."))
             .withChild(agentDetailLayout(agent))
-            .withChild(moduleScript(AGENTS_JS));
-        return renderPage(body);
+            .withChild(moduleScript(AGENTS_JS))
+            .withChild(moduleScript(AGENT_CHAT_JS));
+        return renderPage(body, "/agents/" + agentId);
     }
 
     // ── Agent detail HTMX partial ──
@@ -3343,27 +4731,24 @@ public class OrchestrationController {
     private Component agentDetailLayout(AgentProfile agent) {
         return new Div().withClass("entity-detail-layout")
             .withChild(new Div().withClass("entity-detail-main")
-                .withChild(tabNav("dashboard", "queue", "inbox", "jobs", "workspace", "outputs", "history"))
+                .withChild(new HtmlTag("details").withClass("agent-chat-accordion")
+                    .withChild(new HtmlTag("summary").withInnerText("Chat with Agent"))
+                    .withChild(new Div()
+                        .withAttribute("data-agent-chat-panel", "")
+                        .withAttribute("data-agent-id", agent.id())
+                        .withAttribute("data-page-context", "agent detail")))
+                .withChild(tabNav(agent.id(), "dashboard", "profile", "queue", "inbox", "jobs", "schedules", "reactions", "workspace", "outputs", "exec", "history", "submit", "docker", "chat"))
+                .withChild(new Div().withClass("agent-profile-loader-marker")
+                    .withAttribute("hidden", "hidden")
+                    .withAttribute("hx-get", "/agents/_editor/" + escapeAttr(agent.id())))
+                .withChild(new Div().withClass("agent-submit-loader-marker")
+                    .withAttribute("hidden", "hidden")
+                    .withAttribute("hx-get", "/agents/_submit-form/" + escapeAttr(agent.id())))
                 .withChild(new Div().withId("agent-tab-panel").withClass("orch-panel")
                     .withAttribute("hx-get", "/agents/_detail/" + escapeAttr(agent.id()) + "/dashboard")
                     .withAttribute("hx-trigger", "load")
                     .withAttribute("hx-swap", "innerHTML")
-                    .withChild(loadingPlaceholder())))
-            .withChild(new Div().withClass("entity-detail-side")
-                .withChild(new Div().withClass("orch-panel")
-                    .withChild(Header.H2("Profile"))
-                    .withChild(new Div().withId("agent-editor-container")
-                        .withAttribute("hx-get", "/agents/_editor/" + escapeAttr(agent.id()))
-                        .withAttribute("hx-trigger", "load")
-                        .withAttribute("hx-swap", "innerHTML")
-                        .withChild(loadingPlaceholder())))
-                .withChild(new Div().withClass("orch-panel")
-                    .withChild(Header.H2("Submit Work"))
-                    .withChild(new Div().withId("agent-submit-container")
-                        .withAttribute("hx-get", "/agents/_submit-form/" + escapeAttr(agent.id()))
-                        .withAttribute("hx-trigger", "load")
-                        .withAttribute("hx-swap", "innerHTML")
-                        .withChild(loadingPlaceholder()))));
+                    .withChild(loadingPlaceholder())));
     }
 
     // ── Agent detail tab partials ──
@@ -3421,12 +4806,41 @@ public class OrchestrationController {
             .withAttribute("hx-swap", "innerHTML")
             .withChild(new Div().withClass("dashboard-empty").withInnerText("Loading Docker status...")));
 
-        // Quick chat button
         panel.withChild(new Div().withClass("orch-actions")
-            .withChild(new HtmlTag("a")
-                .withAttribute("href", "/chat?agent=" + escapeAttr(agentId))
+            .withChild(Button.create("Wake")
+                .withAttribute("hx-post", "/agents/_docker/" + escapeAttr(agentId) + "/start")
+                .withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId))
+                .withAttribute("hx-swap", "innerHTML"))
+            .withChild(Button.create("Sleep")
+                .withAttribute("hx-post", "/agents/_docker/" + escapeAttr(agentId) + "/stop")
+                .withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId))
+                .withAttribute("hx-swap", "innerHTML"))
+            .withChild(Button.create("Restart")
+                .withAttribute("hx-post", "/agents/_docker/" + escapeAttr(agentId) + "/restart")
+                .withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId))
+                .withAttribute("hx-swap", "innerHTML"))
+            .withChild(Button.create("Refresh")
+                .withAttribute("hx-get", "/agents/_detail/" + escapeAttr(agentId) + "/docker-status")
+                .withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId))
+                .withAttribute("hx-swap", "innerHTML"))
+            .withChild(Button.create(agent.status() == AgentProfileStatus.ACTIVE ? "Disable Agent" : "Enable Agent")
+                .withAttribute("hx-post", "/agents/_lifecycle/" + escapeAttr(agentId)
+                    + (agent.status() == AgentProfileStatus.ACTIVE ? "/disable" : "/enable"))
+                .withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId))
+                .withAttribute("hx-swap", "innerHTML"))
+            .withChild(Button.create("Delete / Archive")
+                .withAttribute("hx-get", "/agents/_lifecycle/" + escapeAttr(agentId) + "/delete-confirm")
+                .withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId))
+                .withAttribute("hx-swap", "innerHTML")));
+
+        // Quick chat action routed through the agent chat tab.
+        panel.withChild(new Div().withClass("orch-actions")
+            .withChild(Button.create("Open Agent Chat")
                 .withClass("orch-primary")
-                .withInnerText("Chat with Agent")));
+                .withAttribute("data-tab", "chat")
+                .withAttribute("hx-get", "/agents/_detail/" + escapeAttr(agentId) + "/chat")
+                .withAttribute("hx-target", "#agent-tab-panel")
+                .withAttribute("hx-swap", "innerHTML")));
 
         return panel.render();
     }
@@ -3464,6 +4878,40 @@ public class OrchestrationController {
     public String agentQueueTab(@PathVariable String agentId) {
         List<WorkAssignment> assignments = assignmentService.assignments(agentId);
         return renderAssignmentList(agentId, "Queue", assignments);
+    }
+
+    @GetMapping("/agents/_detail/{agentId}/profile")
+    @ResponseBody
+    public String agentProfileTab(@PathVariable String agentId) {
+        Div panel = new Div();
+        panel.withChild(Header.H2("Profile"));
+        panel.withChild(new Div().withId("agent-editor-container")
+            .withAttribute("hx-get", "/agents/_editor/" + escapeAttr(agentId))
+            .withAttribute("hx-trigger", "load")
+            .withAttribute("hx-swap", "innerHTML")
+            .withChild(loadingPlaceholder()));
+        return panel.render();
+    }
+
+    @PostMapping("/agents/_detail/{agentId}/queue/{assignmentId}/cancel")
+    @ResponseBody
+    public String cancelAgentAssignment(@PathVariable String agentId, @PathVariable String assignmentId) {
+        assignmentService.cancel(assignmentId);
+        return agentQueueTab(agentId);
+    }
+
+    @PostMapping("/agents/_detail/{agentId}/queue/{assignmentId}/pause")
+    @ResponseBody
+    public String pauseAgentAssignment(@PathVariable String agentId, @PathVariable String assignmentId) {
+        assignmentService.pause(assignmentId);
+        return agentQueueTab(agentId);
+    }
+
+    @PostMapping("/agents/_detail/{agentId}/queue/{assignmentId}/resume")
+    @ResponseBody
+    public String resumeAgentAssignment(@PathVariable String agentId, @PathVariable String assignmentId) {
+        assignmentService.resume(assignmentId);
+        return agentQueueTab(agentId);
     }
 
     @GetMapping("/agents/_detail/{agentId}/inbox")
@@ -3529,6 +4977,531 @@ public class OrchestrationController {
         return panel.render();
     }
 
+    @GetMapping("/agents/_detail/{agentId}/schedules")
+    @ResponseBody
+    public String agentSchedulesTab(@PathVariable String agentId) {
+        return schedulesPanel(agentId, null).render();
+    }
+
+    @PostMapping("/agents/_detail/{agentId}/schedules")
+    @ResponseBody
+    public String createAgentSchedule(@PathVariable String agentId, @RequestParam Map<String, String> params) {
+        if (!schedulesEnabled) {
+            return schedulesPanel(agentId, "Schedules are disabled.").render();
+        }
+        try {
+            scheduleService.save(agentId, buildSchedule(agentId, null, null, params));
+            return schedulesPanel(agentId, null).render();
+        } catch (Exception exception) {
+            return schedulesPanel(agentId, exception.getMessage()).render();
+        }
+    }
+
+    @PutMapping("/agents/_detail/{agentId}/schedules/{scheduleId}")
+    @ResponseBody
+    public String updateAgentSchedule(
+        @PathVariable String agentId,
+        @PathVariable String scheduleId,
+        @RequestParam Map<String, String> params
+    ) {
+        if (!schedulesEnabled) {
+            return schedulesPanel(agentId, "Schedules are disabled.").render();
+        }
+        try {
+            AgentSchedule existing = scheduleService.schedule(agentId, scheduleId);
+            scheduleService.save(agentId, buildSchedule(agentId, scheduleId, existing, params));
+            return schedulesPanel(agentId, null).render();
+        } catch (Exception exception) {
+            return schedulesPanel(agentId, exception.getMessage()).render();
+        }
+    }
+
+    @PostMapping("/agents/_detail/{agentId}/schedules/{scheduleId}/toggle")
+    @ResponseBody
+    public String toggleAgentSchedule(@PathVariable String agentId, @PathVariable String scheduleId) {
+        if (!schedulesEnabled) {
+            return schedulesPanel(agentId, "Schedules are disabled.").render();
+        }
+        try {
+            scheduleService.toggle(agentId, scheduleId);
+            return schedulesPanel(agentId, null).render();
+        } catch (Exception exception) {
+            return schedulesPanel(agentId, exception.getMessage()).render();
+        }
+    }
+
+    @DeleteMapping("/agents/_detail/{agentId}/schedules/{scheduleId}")
+    @ResponseBody
+    public String deleteAgentSchedule(@PathVariable String agentId, @PathVariable String scheduleId) {
+        if (!schedulesEnabled) {
+            return schedulesPanel(agentId, "Schedules are disabled.").render();
+        }
+        try {
+            scheduleService.delete(agentId, scheduleId);
+            return schedulesPanel(agentId, null).render();
+        } catch (Exception exception) {
+            return schedulesPanel(agentId, exception.getMessage()).render();
+        }
+    }
+
+    @GetMapping("/agents/_detail/{agentId}/reactions")
+    @ResponseBody
+    public String agentReactionsTab(@PathVariable String agentId) {
+        return reactionsPanel(agentId, null).render();
+    }
+
+    @PostMapping("/agents/_detail/{agentId}/reactions")
+    @ResponseBody
+    public String createAgentReaction(@PathVariable String agentId, @RequestParam Map<String, String> params) {
+        if (!reactionsEnabled) {
+            return reactionsPanel(agentId, "Event reactions are disabled.").render();
+        }
+        try {
+            eventReactionService.save(agentId, buildReaction(agentId, null, null, params));
+            return reactionsPanel(agentId, null).render();
+        } catch (Exception exception) {
+            return reactionsPanel(agentId, exception.getMessage()).render();
+        }
+    }
+
+    @PutMapping("/agents/_detail/{agentId}/reactions/{reactionId}")
+    @ResponseBody
+    public String updateAgentReaction(
+        @PathVariable String agentId,
+        @PathVariable String reactionId,
+        @RequestParam Map<String, String> params
+    ) {
+        if (!reactionsEnabled) {
+            return reactionsPanel(agentId, "Event reactions are disabled.").render();
+        }
+        try {
+            AgentEventReaction existing = eventReactionService.reaction(agentId, reactionId);
+            eventReactionService.save(agentId, buildReaction(agentId, reactionId, existing, params));
+            return reactionsPanel(agentId, null).render();
+        } catch (Exception exception) {
+            return reactionsPanel(agentId, exception.getMessage()).render();
+        }
+    }
+
+    @PostMapping("/agents/_detail/{agentId}/reactions/{reactionId}/toggle")
+    @ResponseBody
+    public String toggleAgentReaction(@PathVariable String agentId, @PathVariable String reactionId) {
+        if (!reactionsEnabled) {
+            return reactionsPanel(agentId, "Event reactions are disabled.").render();
+        }
+        try {
+            eventReactionService.toggle(agentId, reactionId);
+            return reactionsPanel(agentId, null).render();
+        } catch (Exception exception) {
+            return reactionsPanel(agentId, exception.getMessage()).render();
+        }
+    }
+
+    @DeleteMapping("/agents/_detail/{agentId}/reactions/{reactionId}")
+    @ResponseBody
+    public String deleteAgentReaction(@PathVariable String agentId, @PathVariable String reactionId) {
+        if (!reactionsEnabled) {
+            return reactionsPanel(agentId, "Event reactions are disabled.").render();
+        }
+        try {
+            eventReactionService.delete(agentId, reactionId);
+            return reactionsPanel(agentId, null).render();
+        } catch (Exception exception) {
+            return reactionsPanel(agentId, exception.getMessage()).render();
+        }
+    }
+
+    private Component schedulesPanel(String agentId, String errorMessage) {
+        Div panel = new Div();
+        panel.withChild(Header.H2("Schedules"));
+        if (!schedulesEnabled) {
+            panel.withChild(featureDisabledState("Schedules are disabled.", "magenta.features.schedules-enabled=true"));
+            return panel;
+        }
+        if (StringUtils.hasText(errorMessage)) {
+            panel.withChild(new Div().withClass("orch-error").withInnerText(errorMessage));
+        }
+        panel.withChild(new Div().withClass("orch-panel")
+            .withChild(Header.H3("Create Schedule"))
+            .withChild(scheduleForm(agentId, null)));
+
+        List<AgentSchedule> schedules = scheduleService.schedules(agentId);
+        if (schedules.isEmpty()) {
+            panel.withChild(new Div().withClass("dashboard-empty").withInnerText("No schedules configured."));
+            return panel;
+        }
+
+        for (AgentSchedule schedule : schedules) {
+            String assignmentType = templateString(schedule.assignmentTemplate(), "assignmentType", AssignmentType.JOB_RUN.name());
+            Div item = new Div().withClass("orch-panel");
+            item.withChild(new Div().withClass("orch-meta")
+                .withChild(new HtmlTag("span").withInnerText("Cron: " + nn(schedule.cronExpression())))
+                .withChild(new HtmlTag("span").withInnerText("Timezone: " + nn(schedule.timezone())))
+                .withChild(new HtmlTag("span").withInnerText("Next Run: " + (schedule.nextRunAt() != null ? schedule.nextRunAt().toString() : "—")))
+                .withChild(new HtmlTag("span").withInnerText("Job: " + nn(schedule.jobId())))
+                .withChild(new HtmlTag("span").withInnerText("Enabled: " + schedule.enabled()))
+                .withChild(new HtmlTag("span").withInnerText("Assignment Type: " + assignmentType)));
+            item.withChild(scheduleForm(agentId, schedule));
+            panel.withChild(item);
+        }
+        return panel;
+    }
+
+    private Component reactionsPanel(String agentId, String errorMessage) {
+        Div panel = new Div();
+        panel.withChild(Header.H2("Event Reactions"));
+        if (!reactionsEnabled) {
+            panel.withChild(featureDisabledState("Event reactions are disabled.", "magenta.features.reactions-enabled=true"));
+            return panel;
+        }
+        if (StringUtils.hasText(errorMessage)) {
+            panel.withChild(new Div().withClass("orch-error").withInnerText(errorMessage));
+        }
+        panel.withChild(new Div().withClass("orch-panel")
+            .withChild(Header.H3("Create Reaction"))
+            .withChild(reactionForm(agentId, null)));
+
+        List<AgentEventReaction> reactions = eventReactionService.reactions(agentId);
+        if (reactions.isEmpty()) {
+            panel.withChild(new Div().withClass("dashboard-empty").withInnerText("No event reactions configured."));
+            return panel;
+        }
+
+        for (AgentEventReaction reaction : reactions) {
+            String assignmentType = templateString(reaction.assignmentTemplate(), "assignmentType", AssignmentType.JOB_RUN.name());
+            Div item = new Div().withClass("orch-panel");
+            item.withChild(new Div().withClass("orch-meta")
+                .withChild(new HtmlTag("span").withInnerText("Event Type: " + reaction.eventType().name()))
+                .withChild(new HtmlTag("span").withInnerText("Filter: " + summarizeJson(reaction.filter())))
+                .withChild(new HtmlTag("span").withInnerText("Action: " + reaction.actionType().name()))
+                .withChild(new HtmlTag("span").withInnerText("Enabled: " + reaction.enabled()))
+                .withChild(new HtmlTag("span").withInnerText("Assignment Type: " + assignmentType)));
+            item.withChild(reactionForm(agentId, reaction));
+            panel.withChild(item);
+        }
+        return panel;
+    }
+
+    private Component scheduleForm(String agentId, AgentSchedule schedule) {
+        boolean edit = schedule != null;
+        String url = edit
+            ? "/agents/_detail/" + escapeAttr(agentId) + "/schedules/" + escapeAttr(schedule.id())
+            : "/agents/_detail/" + escapeAttr(agentId) + "/schedules";
+
+        Map<String, Object> template = schedule == null || schedule.assignmentTemplate() == null
+            ? Map.of() : schedule.assignmentTemplate();
+        String assignmentType = templateString(template, "assignmentType", AssignmentType.JOB_RUN.name());
+        int priority = templateInt(template, "priority", 0);
+        String modelOverride = templateString(template, "modelOverride", "");
+        String workspaceId = templateString(template, "workspaceId", "");
+        String inputJson = toJsonText(templateInput(template));
+        boolean enabled = schedule == null || schedule.enabled();
+
+        Form form = Form.create();
+        if (edit) {
+            form.withHxPut(url);
+        } else {
+            form.withHxPost(url);
+        }
+        form.withHxTarget("#agent-tab-panel");
+        form.withHxSwap("innerHTML");
+
+        Div grid = new Div().withClass("orch-form-grid");
+        grid.withChild(label("Job ID", TextInput.create("jobId").withValue(schedule != null ? nn(schedule.jobId()) : "")));
+        grid.withChild(label("Cron Expression", TextInput.create("cronExpression").withValue(schedule != null ? nn(schedule.cronExpression()) : "")));
+        grid.withChild(label("Timezone", TextInput.create("timezone").withValue(schedule != null ? nn(schedule.timezone()) : "UTC")));
+        grid.withChild(label("Assignment Type", assignmentTypeSelect("assignmentType", assignmentType)));
+        grid.withChild(label("Priority", TextInput.number("priority").withMin("0").withMax("9").withValue(String.valueOf(priority))));
+        grid.withChild(label("Model Override", TextInput.create("modelOverride").withValue(modelOverride)));
+        grid.withChild(label("Workspace ID", TextInput.create("workspaceId").withValue(workspaceId)));
+        grid.withChild(label("Enabled", Select.create("enabled")
+            .addOption("true", "Enabled", enabled)
+            .addOption("false", "Disabled", !enabled)));
+        form.withChild(grid);
+        form.withChild(label("Input JSON", TextArea.create("inputJson").withInnerText(inputJson)));
+
+        Div actions = new Div().withClass("orch-actions");
+        actions.withChild(Button.create(edit ? "Save Schedule" : "Create Schedule")
+            .withClass("orch-primary")
+            .withAttribute("type", "submit"));
+
+        if (edit) {
+            actions.withChild(Button.create(schedule.enabled() ? "Disable" : "Enable")
+                .withAttribute("type", "button")
+                .withAttribute("hx-post", "/agents/_detail/" + escapeAttr(agentId) + "/schedules/" + escapeAttr(schedule.id()) + "/toggle")
+                .withAttribute("hx-target", "#agent-tab-panel")
+                .withAttribute("hx-swap", "innerHTML"));
+            actions.withChild(Button.create("Delete")
+                .withAttribute("type", "button")
+                .withAttribute("hx-delete", "/agents/_detail/" + escapeAttr(agentId) + "/schedules/" + escapeAttr(schedule.id()))
+                .withAttribute("hx-confirm", "Delete this schedule?")
+                .withAttribute("hx-target", "#agent-tab-panel")
+                .withAttribute("hx-swap", "innerHTML"));
+        }
+        form.withChild(actions);
+        return form;
+    }
+
+    private Component reactionForm(String agentId, AgentEventReaction reaction) {
+        boolean edit = reaction != null;
+        String url = edit
+            ? "/agents/_detail/" + escapeAttr(agentId) + "/reactions/" + escapeAttr(reaction.id())
+            : "/agents/_detail/" + escapeAttr(agentId) + "/reactions";
+
+        Map<String, Object> template = reaction == null || reaction.assignmentTemplate() == null
+            ? Map.of() : reaction.assignmentTemplate();
+        String assignmentType = templateString(template, "assignmentType", AssignmentType.JOB_RUN.name());
+        int priority = templateInt(template, "priority", 0);
+        String modelOverride = templateString(template, "modelOverride", "");
+        String workspaceId = templateString(template, "workspaceId", "");
+        String inputJson = toJsonText(templateInput(template));
+        boolean enabled = reaction == null || reaction.enabled();
+        String filterJson = toJsonText(reaction == null ? Map.of() : reaction.filter());
+
+        Form form = Form.create();
+        if (edit) {
+            form.withHxPut(url);
+        } else {
+            form.withHxPost(url);
+        }
+        form.withHxTarget("#agent-tab-panel");
+        form.withHxSwap("innerHTML");
+
+        Div grid = new Div().withClass("orch-form-grid");
+        grid.withChild(label("Event Type", eventTypeSelect("eventType", reaction == null ? EventType.MANUAL_USER_EVENT.name() : reaction.eventType().name())));
+        grid.withChild(label("Assignment Type", assignmentTypeSelect("assignmentType", assignmentType)));
+        grid.withChild(label("Priority", TextInput.number("priority").withMin("0").withMax("9").withValue(String.valueOf(priority))));
+        grid.withChild(label("Model Override", TextInput.create("modelOverride").withValue(modelOverride)));
+        grid.withChild(label("Workspace ID", TextInput.create("workspaceId").withValue(workspaceId)));
+        grid.withChild(label("Enabled", Select.create("enabled")
+            .addOption("true", "Enabled", enabled)
+            .addOption("false", "Disabled", !enabled)));
+        form.withChild(grid);
+        form.withChild(label("Filter JSON", TextArea.create("filterJson").withInnerText(filterJson)));
+        form.withChild(label("Input JSON", TextArea.create("inputJson").withInnerText(inputJson)));
+
+        Div actions = new Div().withClass("orch-actions");
+        actions.withChild(Button.create(edit ? "Save Reaction" : "Create Reaction")
+            .withClass("orch-primary")
+            .withAttribute("type", "submit"));
+
+        if (edit) {
+            actions.withChild(Button.create(reaction.enabled() ? "Disable" : "Enable")
+                .withAttribute("type", "button")
+                .withAttribute("hx-post", "/agents/_detail/" + escapeAttr(agentId) + "/reactions/" + escapeAttr(reaction.id()) + "/toggle")
+                .withAttribute("hx-target", "#agent-tab-panel")
+                .withAttribute("hx-swap", "innerHTML"));
+            actions.withChild(Button.create("Delete")
+                .withAttribute("type", "button")
+                .withAttribute("hx-delete", "/agents/_detail/" + escapeAttr(agentId) + "/reactions/" + escapeAttr(reaction.id()))
+                .withAttribute("hx-confirm", "Delete this reaction?")
+                .withAttribute("hx-target", "#agent-tab-panel")
+                .withAttribute("hx-swap", "innerHTML"));
+        }
+        form.withChild(actions);
+        return form;
+    }
+
+    private AgentSchedule buildSchedule(String agentId, String scheduleId, AgentSchedule existing, Map<String, String> params) {
+        Map<String, Object> assignmentTemplate = assignmentTemplate(
+            agentId,
+            normalize(params.get("jobId")),
+            params.get("assignmentType"),
+            params.get("priority"),
+            params.get("modelOverride"),
+            params.get("workspaceId"),
+            params.get("inputJson")
+        );
+        return new AgentSchedule(
+            scheduleId,
+            agentId,
+            normalize(params.get("jobId")),
+            assignmentTemplate,
+            required(params.get("cronExpression"), "cronExpression is required"),
+            params.getOrDefault("timezone", "UTC"),
+            Boolean.parseBoolean(params.getOrDefault("enabled", "true")),
+            null,
+            existing == null ? null : existing.createdAt(),
+            existing == null ? null : existing.updatedAt()
+        );
+    }
+
+    private AgentEventReaction buildReaction(
+        String agentId,
+        String reactionId,
+        AgentEventReaction existing,
+        Map<String, String> params
+    ) {
+        Map<String, Object> assignmentTemplate = assignmentTemplate(
+            agentId,
+            normalize(params.get("jobId")),
+            params.get("assignmentType"),
+            params.get("priority"),
+            params.get("modelOverride"),
+            params.get("workspaceId"),
+            params.get("inputJson")
+        );
+        return new AgentEventReaction(
+            reactionId,
+            agentId,
+            parseEventType(params.get("eventType")),
+            parseJsonMap(params.get("filterJson"), "filterJson"),
+            ReactionActionType.ENQUEUE_ASSIGNMENT,
+            assignmentTemplate,
+            Boolean.parseBoolean(params.getOrDefault("enabled", "true")),
+            existing == null ? null : existing.createdAt(),
+            existing == null ? null : existing.updatedAt()
+        );
+    }
+
+    private Map<String, Object> assignmentTemplate(
+        String agentId,
+        String jobId,
+        String assignmentType,
+        String priority,
+        String modelOverride,
+        String workspaceId,
+        String inputJson
+    ) {
+        Map<String, Object> template = new LinkedHashMap<>();
+        template.put("agentId", agentId);
+        template.put("jobId", jobId);
+        template.put("assignmentType", parseAssignmentType(assignmentType).name());
+        template.put("priority", parsePriority(priority));
+        template.put("modelOverride", normalize(modelOverride));
+        template.put("workspaceId", normalize(workspaceId));
+        template.put("input", parseJsonMap(inputJson, "inputJson"));
+        return template;
+    }
+
+    private Component featureDisabledState(String message, String flag) {
+        return new Div().withClass("dashboard-empty")
+            .withChild(new HtmlTag("strong").withInnerText(message))
+            .withChild(new HtmlTag("br"))
+            .withChild(new HtmlTag("span").withInnerText("Enable with " + flag + "."));
+    }
+
+    private Select assignmentTypeSelect(String name, String selected) {
+        Select select = Select.create(name);
+        for (AssignmentType type : AssignmentType.values()) {
+            select.addOption(type.name(), type.name(), type.name().equals(selected));
+        }
+        return select;
+    }
+
+    private Select eventTypeSelect(String name, String selected) {
+        Select select = Select.create(name);
+        for (EventType type : EventType.values()) {
+            select.addOption(type.name(), type.name(), type.name().equals(selected));
+        }
+        return select;
+    }
+
+    private Map<String, Object> parseJsonMap(String json, String fieldName) {
+        if (!StringUtils.hasText(json)) {
+            return Map.of();
+        }
+        try {
+            Object parsed = JSON.readValue(json, Object.class);
+            if (!(parsed instanceof Map<?, ?> map)) {
+                throw new IllegalArgumentException(fieldName + " must be a JSON object");
+            }
+            Map<String, Object> value = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                value.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+            return value;
+        } catch (JsonProcessingException exception) {
+            throw new IllegalArgumentException("Invalid JSON for " + fieldName);
+        }
+    }
+
+    private EventType parseEventType(String value) {
+        try {
+            return EventType.valueOf(required(value, "eventType is required").trim().toUpperCase());
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("invalid eventType");
+        }
+    }
+
+    private AssignmentType parseAssignmentType(String value) {
+        try {
+            return AssignmentType.valueOf((value == null || value.isBlank() ? AssignmentType.JOB_RUN.name() : value.trim().toUpperCase()));
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("invalid assignmentType");
+        }
+    }
+
+    private int parsePriority(String value) {
+        if (!StringUtils.hasText(value)) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException("priority must be a number");
+        }
+    }
+
+    private Map<String, Object> templateInput(Map<String, Object> template) {
+        Object input = template.get("input");
+        if (!(input instanceof Map<?, ?> map)) {
+            return Map.of();
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            result.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        return result;
+    }
+
+    private String templateString(Map<String, Object> template, String key, String fallback) {
+        Object value = template == null ? null : template.get(key);
+        return value == null ? fallback : value.toString();
+    }
+
+    private int templateInt(Map<String, Object> template, String key, int fallback) {
+        Object value = template == null ? null : template.get(key);
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value instanceof String string && StringUtils.hasText(string)) {
+            try {
+                return Integer.parseInt(string.trim());
+            } catch (NumberFormatException ignored) {
+                return fallback;
+            }
+        }
+        return fallback;
+    }
+
+    private String toJsonText(Object value) {
+        try {
+            return JSON.writerWithDefaultPrettyPrinter().writeValueAsString(value == null ? Map.of() : value);
+        } catch (JsonProcessingException exception) {
+            return "{}";
+        }
+    }
+
+    private String summarizeJson(Map<String, Object> value) {
+        if (value == null || value.isEmpty()) {
+            return "{}";
+        }
+        String json = toJsonText(value).replace('\n', ' ');
+        return json.length() <= 80 ? json : json.substring(0, 77) + "...";
+    }
+
+    private String required(String value, String message) {
+        if (!StringUtils.hasText(value)) {
+            throw new IllegalArgumentException(message);
+        }
+        return value.trim();
+    }
+
+    private String normalize(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
     @GetMapping("/agents/_detail/{agentId}/workspace")
     @ResponseBody
     public String agentWorkspaceTab(@PathVariable String agentId) {
@@ -3536,15 +5509,76 @@ public class OrchestrationController {
         Div panel = new Div();
         panel.withChild(Header.H2("Workspace"));
 
+        Workspace workspace = workspaceService.agentWorkspace(agent.id(), agent.name());
+        List<WorkspaceLink> links = workspaceService.links(workspace.id());
+        List<WorkspaceLease> activeLeases = workspaceService.activeLeases(workspace.id());
+        String outputHint = workspaceOutputHint(workspace);
+
         panel.withChild(new Div().withClass("orch-meta")
             .withChild(new HtmlTag("span").withInnerText("Agent: " + (agent.name() != null ? agent.name() : agentId)))
-            .withChild(new HtmlTag("span").withInnerText("Agent ID: " + agent.id())));
+            .withChild(new HtmlTag("span").withInnerText("Agent ID: " + agent.id()))
+            .withChild(new HtmlTag("span").withInnerText("Workspace ID: " + workspace.id()))
+            .withChild(new HtmlTag("span").withInnerText("Owner: "
+                + (workspace.ownerType() != null ? workspace.ownerType().name() : "—")
+                + ":" + nn(workspace.ownerId())))
+            .withChild(new HtmlTag("span").withInnerText("Display Name: " + nn(workspace.displayName())))
+            .withChild(new HtmlTag("span").withInnerText("Root Relative Path: " + nn(workspace.rootRelativePath())))
+            .withChild(new HtmlTag("span").withInnerText("Output Directory Hint: " + outputHint))
+            .withChild(new HtmlTag("span").withInnerText("Metadata: " + nn(workspace.metadataJson())))
+            .withChild(new HtmlTag("span").withInnerText("Updated: "
+                + (workspace.updatedAt() != null ? formatSince(workspace.updatedAt()) : "—"))));
 
-        panel.withChild(new Div().withClass("dashboard-empty")
-            .withInnerText("Workspace details available via the API.")
-            .withChild(new HtmlTag("br"))
-            .withChild(new HtmlTag("code").withInnerText("GET /api/agents/" + agentId + "/workspace")));
+        panel.withChild(Header.H3("Active Leases"));
+        if (activeLeases.isEmpty()) {
+            panel.withChild(new Div().withClass("dashboard-empty")
+                .withInnerText("No active leases."));
+        } else {
+            Table leasesTable = Table.create()
+                .withHeaders("Holder", "Mode", "Expires", "Created")
+                .withClass("dashboard-table");
+            for (WorkspaceLease lease : activeLeases) {
+                leasesTable.addRow(
+                    new HtmlTag("span").withInnerText(nn(lease.holderType()) + ":" + nn(lease.holderId())),
+                    new HtmlTag("span").withInnerText(lease.mode() != null ? lease.mode().name() : "—"),
+                    new HtmlTag("span").withInnerText(lease.expiresAt() != null ? lease.expiresAt().toString() : "—"),
+                    new HtmlTag("span").withInnerText(lease.createdAt() != null ? formatSince(lease.createdAt()) : "—")
+                );
+            }
+            panel.withChild(leasesTable);
+        }
+
+        panel.withChild(Header.H3("Workspace Links"));
+        if (links.isEmpty()) {
+            panel.withChild(new Div().withClass("dashboard-empty")
+                .withInnerText("No workspace links configured."));
+            return panel.render();
+        }
+
+        Table table = Table.create()
+            .withHeaders("Label", "Type", "Target", "Access")
+            .withClass("dashboard-table");
+        for (WorkspaceLink link : links) {
+            String access = (link.readable() ? "r" : "-") + (link.writable() ? "w" : "-");
+            table.addRow(
+                new HtmlTag("span").withInnerText(link.label() != null ? link.label() : "link"),
+                new HtmlTag("span").withInnerText(link.linkType() != null ? link.linkType().name() : "PATH"),
+                new HtmlTag("code").withInnerText(link.target() != null ? link.target() : "—"),
+                new HtmlTag("span").withInnerText(access)
+            );
+        }
+        panel.withChild(table);
         return panel.render();
+    }
+
+    private String workspaceOutputHint(Workspace workspace) {
+        if (workspace == null || workspace.ownerType() == null || !StringUtils.hasText(workspace.ownerId())) {
+            return "—";
+        }
+        return switch (workspace.ownerType()) {
+            case AGENT -> "agents/" + workspace.ownerId() + "/outputs";
+            case JOB -> "jobs/" + workspace.ownerId() + "/outputs";
+            case PROJECT -> "projects/" + workspace.ownerId() + "/workspace";
+        };
     }
 
     @GetMapping("/agents/_detail/{agentId}/outputs")
@@ -3553,10 +5587,7 @@ public class OrchestrationController {
         Div panel = new Div();
         panel.withChild(Header.H2("Recent Outputs"));
 
-        // Agent-specific outputs are tracked through job/assignment/run relationships.
-        // Show the global recent outputs list; agent filtering will improve when RunOutputArtifact
-        // carries agent identity metadata.
-        List<RunOutputArtifact> outputs = outputArtifactService.query(null, null, null, 20);
+        List<RunOutputArtifact> outputs = queryOutputs(agentId, null, null, null, null, 20);
         if (outputs.isEmpty()) {
             panel.withChild(new Div().withClass("dashboard-empty").withInnerText("No recent outputs."));
             return panel.render();
@@ -3578,20 +5609,145 @@ public class OrchestrationController {
         return panel.render();
     }
 
+    @GetMapping("/agents/_detail/{agentId}/exec")
+    @ResponseBody
+    public String agentExecTab(@PathVariable String agentId) {
+        Div panel = new Div();
+        panel.withChild(Header.H2("Container Exec"));
+        panel.withChild(new Paragraph("Run a bounded shell command inside this agent container."));
+        Form form = Form.create()
+            .withHxPost("/agents/_detail/" + agentId + "/exec")
+            .withHxTarget("#agent-exec-result")
+            .withHxSwap("innerHTML");
+        form.withChild(label("Command", TextInput.create("command").withPlaceholder("pwd")));
+        form.withChild(label("Working Directory", TextInput.create("workingDirectory").withValue("/workspace")));
+        form.withChild(Button.create("Run").withClass("orch-primary").withAttribute("type", "submit"));
+        panel.withChild(form);
+        panel.withChild(new Div().withId("agent-exec-result"));
+        return panel.render();
+    }
+
+    @PostMapping("/agents/_detail/{agentId}/exec")
+    @ResponseBody
+    public String execInAgent(@PathVariable String agentId, @RequestParam Map<String, String> params) {
+        AgentProfile agent = agentProfileService.get(agentId);
+        AgentContainerRuntimeService runtime = containerRuntimeService.getIfAvailable();
+        if (runtime == null) {
+            return new Div().withClass("orch-error").withInnerText("Docker runtime is disabled.").render();
+        }
+        try {
+            var result = runtime.execInAgent(agentId, agent.name(), required(params.get("command"), "command is required"),
+                params.getOrDefault("workingDirectory", "/workspace"));
+            return new Div().withClass("orch-panel")
+                .withChild(new Div().withClass("orch-meta")
+                    .withChild(new HtmlTag("span").withInnerText("Exit: " + result.exitCode())))
+                .withChild(new HtmlTag("pre").withInnerText(nn(result.stdout())))
+                .withChild(new HtmlTag("pre").withInnerText(nn(result.stderr())))
+                .render();
+        } catch (Exception exception) {
+            return new Div().withClass("orch-error").withInnerText("Error: " + exception.getMessage()).render();
+        }
+    }
+
     @GetMapping("/agents/_detail/{agentId}/history")
     @ResponseBody
     public String agentHistoryTab(@PathVariable String agentId) {
         Div panel = new Div();
         panel.withChild(Header.H2("History"));
-        panel.withChild(new Div().withClass("dashboard-empty")
-            .withInnerText("Run history appears as assignments and job events are persisted."));
-        panel.withChild(new HtmlTag("br"));
-        panel.withChild(new HtmlTag("a")
-            .withAttribute("href", "/agents/_detail/" + agentId + "/queue")
-            .withAttribute("hx-get", "/agents/_detail/" + agentId + "/queue")
-            .withAttribute("hx-target", "#agent-tab-panel")
+
+        List<WorkAssignment> assignments = assignmentService.assignments(agentId);
+        if (assignments.isEmpty()) {
+            panel.withChild(new Div().withClass("dashboard-empty")
+                .withInnerText("No assignment history for this agent."));
+            return panel.render();
+        }
+
+        // Show terminal assignments (COMPLETED, FAILED, CANCELLED) in chronological order
+        List<WorkAssignment> history = assignments.stream()
+            .filter(a -> a.status() != null && a.status().isTerminal())
+            .sorted(java.util.Comparator.comparing(
+                a -> a.completedAt() != null ? a.completedAt() : a.createdAt(),
+                java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())))
+            .toList();
+
+        if (history.isEmpty()) {
+            panel.withChild(new Div().withClass("dashboard-empty")
+                .withInnerText("No completed assignments yet. Active items appear in the Queue tab."));
+            return panel.render();
+        }
+
+        Table table = Table.create()
+            .withHeaders("Type", "Status", "Priority", "Job", "Run", "Completed")
+            .withClass("dashboard-table");
+        for (WorkAssignment a : history) {
+            table.addRow(
+                new HtmlTag("span").withInnerText(a.assignmentType() != null ? a.assignmentType().name() : "—"),
+                statusBadgeHtml(a.status() != null ? a.status().name() : "unknown"),
+                new HtmlTag("span").withInnerText(String.valueOf(a.priority())),
+                new HtmlTag("span").withInnerText(a.jobId() != null ? a.jobId() : "—"),
+                new HtmlTag("span").withInnerText(
+                    a.output().containsKey("taskRunId") ? String.valueOf(a.output().get("taskRunId"))
+                    : a.output().containsKey("workflowRunId") ? String.valueOf(a.output().get("workflowRunId"))
+                    : a.output().containsKey("jobId") ? "job:" + a.output().get("jobId")
+                    : "—"),
+                new HtmlTag("span").withInnerText(a.completedAt() != null ? formatSince(a.completedAt()) : "—")
+            );
+        }
+        panel.withChild(table);
+
+        return panel.render();
+    }
+
+    // ── Agent chat tab ──
+
+    @GetMapping("/agents/_detail/{agentId}/chat")
+    @ResponseBody
+    public String agentChatTab(@PathVariable String agentId) {
+        return new Div().withClass("agent-chat-tab")
+            .withChild(Header.H2("Chat"))
+            .withChild(new Div()
+                .withAttribute("data-agent-chat-panel", "")
+                .withAttribute("data-agent-id", agentId)
+                .withAttribute("data-page-context", "agent detail"))
+            .render();
+    }
+
+    @GetMapping("/agents/_detail/{agentId}/submit")
+    @ResponseBody
+    public String agentSubmitTab(@PathVariable String agentId) {
+        Div panel = new Div();
+        panel.withChild(Header.H2("Submit Work"));
+        panel.withChild(new Div().withId("agent-submit-container")
+            .withAttribute("hx-get", "/agents/_submit-form/" + escapeAttr(agentId))
+            .withAttribute("hx-trigger", "load")
             .withAttribute("hx-swap", "innerHTML")
-            .withInnerText("View assignments queue"));
+            .withChild(loadingPlaceholder()));
+        return panel.render();
+    }
+
+    @GetMapping("/agents/_detail/{agentId}/docker")
+    @ResponseBody
+    public String agentDockerTab(@PathVariable String agentId) {
+        Div panel = new Div();
+        panel.withChild(Header.H2("Docker Runtime"));
+        panel.withChild(new Div().withId("agent-docker-status-" + agentId)
+            .withAttribute("hx-get", "/agents/_detail/" + escapeAttr(agentId) + "/docker-status")
+            .withAttribute("hx-trigger", "load")
+            .withAttribute("hx-swap", "innerHTML")
+            .withChild(loadingPlaceholder()));
+        panel.withChild(new Div().withClass("orch-actions")
+            .withChild(Button.create("Wake")
+                .withAttribute("hx-post", "/agents/_docker/" + escapeAttr(agentId) + "/start")
+                .withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId))
+                .withAttribute("hx-swap", "innerHTML"))
+            .withChild(Button.create("Sleep")
+                .withAttribute("hx-post", "/agents/_docker/" + escapeAttr(agentId) + "/stop")
+                .withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId))
+                .withAttribute("hx-swap", "innerHTML"))
+            .withChild(Button.create("Restart")
+                .withAttribute("hx-post", "/agents/_docker/" + escapeAttr(agentId) + "/restart")
+                .withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId))
+                .withAttribute("hx-swap", "innerHTML")));
         return panel.render();
     }
 
@@ -3605,15 +5761,35 @@ public class OrchestrationController {
         }
 
         Table table = Table.create()
-            .withHeaders("Type", "Status", "Priority", "Job", "Created")
+            .withHeaders("Type", "Status", "Priority", "Job", "Created", "Actions")
             .withClass("dashboard-table");
         for (var a : assignments) {
+            Div actions = new Div().withClass("orch-actions");
+            if (a.status() == OrchestrationStatus.QUEUED || a.status() == OrchestrationStatus.RUNNING) {
+                actions.withChild(Button.create("Pause")
+                    .withAttribute("hx-post", "/agents/_detail/" + agentId + "/queue/" + a.id() + "/pause")
+                    .withAttribute("hx-target", "#agent-tab-panel")
+                    .withAttribute("hx-swap", "innerHTML"));
+            }
+            if (a.status() == OrchestrationStatus.WAITING || a.status() == OrchestrationStatus.PAUSED) {
+                actions.withChild(Button.create("Resume")
+                    .withAttribute("hx-post", "/agents/_detail/" + agentId + "/queue/" + a.id() + "/resume")
+                    .withAttribute("hx-target", "#agent-tab-panel")
+                    .withAttribute("hx-swap", "innerHTML"));
+            }
+            if (a.status() != null && !a.status().isTerminal()) {
+                actions.withChild(Button.create("Cancel")
+                    .withAttribute("hx-post", "/agents/_detail/" + agentId + "/queue/" + a.id() + "/cancel")
+                    .withAttribute("hx-target", "#agent-tab-panel")
+                    .withAttribute("hx-swap", "innerHTML"));
+            }
             table.addRow(
                 new HtmlTag("span").withInnerText(a.assignmentType() != null ? a.assignmentType().name() : "—"),
                 statusBadgeHtml(a.status() != null ? a.status().name() : "unknown"),
                 new HtmlTag("span").withInnerText(String.valueOf(a.priority())),
                 new HtmlTag("span").withInnerText(a.jobId() != null ? a.jobId() : "—"),
-                new HtmlTag("span").withInnerText(a.createdAt() != null ? formatSince(a.createdAt()) : "—")
+                new HtmlTag("span").withInnerText(a.createdAt() != null ? formatSince(a.createdAt()) : "—"),
+                actions
             );
         }
         panel.withChild(table);
@@ -3624,33 +5800,171 @@ public class OrchestrationController {
     @GetMapping("/agents/_detail/{agentId}/docker-status")
     @ResponseBody
     public String agentDockerStatusTab(@PathVariable String agentId) {
-        io.mindspice.magenta2.ai.orchestration.docker.DockerRuntimeClient client = dockerClient.getIfAvailable();
-        io.mindspice.magenta2.ai.orchestration.docker.DockerRuntimeConfig config = dockerConfig.getIfAvailable();
-
+        AgentProfile agent = agentProfileService.get(agentId);
+        AgentContainerRuntimeService runtime = containerRuntimeService.getIfAvailable();
         Div panel = new Div().withClass("docker-status-fragment");
-
-        if (client == null) {
-            panel.withChild(new HtmlTag("span").withClass("orch-status")
-                .withInnerText("Docker runtime is disabled (magenta.docker.enabled=false)."));
+        if (runtime == null) {
+            panel.withChild(statusBadgeHtml("DISABLED"));
+            panel.withChild(new HtmlTag("span").withInnerText(" Docker runtime is disabled."));
             return panel.render();
         }
-
-        boolean reachable = client.ping();
-        if (!reachable) {
-            String error = client.getDaemonError() != null ? client.getDaemonError() : "daemon unreachable";
-            panel.withChild(new HtmlTag("span").withClass("orch-status orch-status-error")
-                .withInnerText("Docker daemon unreachable: " + error));
-            return panel.render();
+        AgentContainerHandle status = runtime.statusFor(agentId, agent.status() == AgentProfileStatus.ACTIVE);
+        panel.withChild(statusBadgeHtml(status.status().name()));
+        panel.withChild(new HtmlTag("span").withInnerText(" " + nn(status.message())));
+        panel.withChild(new HtmlTag("div").withClass("orch-meta")
+            .withChild(new HtmlTag("span").withInnerText("Container: " + nn(status.containerId())))
+            .withChild(new HtmlTag("span").withInnerText("Name: " + nn(status.containerName())))
+            .withChild(new HtmlTag("span").withInnerText("Image: " + nn(status.image())))
+            .withChild(new HtmlTag("span").withInnerText("Host: " + nn(status.dockerHost())))
+            .withChild(new HtmlTag("span").withInnerText(
+                "Started: " + (status.startedAt() == null ? "—" : formatSince(status.startedAt()))))
+            .withChild(new HtmlTag("span").withInnerText(
+                "Last Used: " + (status.lastUsedAt() == null ? "—" : formatSince(status.lastUsedAt())))));
+        if (status.mounts() != null && !status.mounts().isEmpty()) {
+            Div mounts = new Div().withClass("orch-meta");
+            mounts.withChild(new HtmlTag("span").withInnerText("Mounts:"));
+            for (String mount : status.mounts()) {
+                mounts.withChild(new HtmlTag("code").withInnerText(mount));
+            }
+            panel.withChild(mounts);
         }
-
-        String health = client.healthCheck();
-        boolean healthy = health != null && health.contains("ready");
-        panel.withChild(new HtmlTag("span").withClass(healthy ? "orch-status" : "orch-status-error")
-            .withInnerText("Docker: " + (healthy ? "Ready — " : "") + health));
-        panel.withChild(new HtmlTag("br"));
-        panel.withChild(new HtmlTag("small").withInnerText(
-            "Host: " + client.getDockerHost() + " | Image: " + client.getAgentImage()));
         return panel.render();
+    }
+
+    @GetMapping("/agents/_docker/{agentId}/docker-status")
+    @ResponseBody
+    public String agentDockerStatusCompat(@PathVariable String agentId) {
+        return agentDockerStatusTab(agentId);
+    }
+
+    @PostMapping("/agents/_docker/{agentId}/start")
+    @ResponseBody
+    public String startAgentContainer(
+        @PathVariable String agentId,
+        @RequestParam(value = "view", required = false) String view
+    ) {
+        AgentProfile profile = agentProfileService.get(agentId);
+        AgentContainerRuntimeService runtime = containerRuntimeService.getIfAvailable();
+        if (runtime != null) {
+            runtime.startAgentContainer(agentId, profile.name());
+        }
+        return "list".equalsIgnoreCase(view) ? agentList(null) : agentDockerStatusTab(agentId);
+    }
+
+    @PostMapping("/agents/_docker/{agentId}/stop")
+    @ResponseBody
+    public String stopAgentContainer(
+        @PathVariable String agentId,
+        @RequestParam(value = "view", required = false) String view
+    ) {
+        AgentContainerRuntimeService runtime = containerRuntimeService.getIfAvailable();
+        if (runtime != null) {
+            runtime.stopAgentContainer(agentId, false);
+        }
+        return "list".equalsIgnoreCase(view) ? agentList(null) : agentDockerStatusTab(agentId);
+    }
+
+    @PostMapping("/agents/_docker/{agentId}/restart")
+    @ResponseBody
+    public String restartAgentContainer(
+        @PathVariable String agentId,
+        @RequestParam(value = "view", required = false) String view
+    ) {
+        AgentProfile profile = agentProfileService.get(agentId);
+        AgentContainerRuntimeService runtime = containerRuntimeService.getIfAvailable();
+        if (runtime != null) {
+            runtime.restartAgentContainer(agentId, profile.name());
+        }
+        return "list".equalsIgnoreCase(view) ? agentList(null) : agentDockerStatusTab(agentId);
+    }
+
+    @GetMapping("/agents/_docker/{agentId}/status-row")
+    @ResponseBody
+    public String refreshAgentDockerStatusRow(
+        @PathVariable String agentId,
+        @RequestParam(value = "view", required = false) String view
+    ) {
+        return "list".equalsIgnoreCase(view) ? agentList(null) : agentDockerStatusTab(agentId);
+    }
+
+    @PostMapping("/agents/_lifecycle/{agentId}/enable")
+    @ResponseBody
+    public String enableAgentLifecycle(
+        @PathVariable String agentId,
+        @RequestParam(value = "view", required = false) String view
+    ) {
+        agentProfileService.enable(agentId, true);
+        return "list".equalsIgnoreCase(view) ? agentList(null) : agentDockerStatusTab(agentId);
+    }
+
+    @PostMapping("/agents/_lifecycle/{agentId}/disable")
+    @ResponseBody
+    public String disableAgentLifecycle(
+        @PathVariable String agentId,
+        @RequestParam(value = "view", required = false) String view
+    ) {
+        agentProfileService.disable(agentId);
+        return "list".equalsIgnoreCase(view) ? agentList(null) : agentDockerStatusTab(agentId);
+    }
+
+    @GetMapping("/agents/_lifecycle/{agentId}/delete-confirm")
+    @ResponseBody
+    public String deleteAgentLifecycleConfirm(@PathVariable String agentId) {
+        AgentProfile agent = agentProfileService.get(agentId);
+        Div panel = new Div().withClass("orch-panel")
+            .withChild(Header.H3("Delete Agent: " + nn(agent.name())))
+            .withChild(new Paragraph("Choose an explicit lifecycle action. No data is removed by default."));
+        panel.withChild(new Div().withClass("orch-actions")
+            .withChild(Button.create("Disable Only")
+                .withAttribute("hx-post", "/agents/_lifecycle/" + escapeAttr(agentId) + "/disable")
+                .withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId))
+                .withAttribute("hx-swap", "innerHTML"))
+            .withChild(Button.create("Archive + Disable")
+                .withAttribute("hx-post", "/agents/_lifecycle/" + escapeAttr(agentId) + "/archive-and-disable")
+                .withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId))
+                .withAttribute("hx-swap", "innerHTML")));
+
+        Form hardDeleteForm = Form.create();
+        hardDeleteForm.withHxPost("/agents/_lifecycle/" + escapeAttr(agentId) + "/hard-delete");
+        hardDeleteForm.withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId));
+        hardDeleteForm.withAttribute("hx-swap", "innerHTML");
+        hardDeleteForm.withChild(new HtmlTag("label").withInnerText("Type DELETE " + agentId + " to hard-delete"));
+        hardDeleteForm.withChild(TextInput.create("confirmationText")
+            .withPlaceholder("DELETE " + agentId));
+        hardDeleteForm.withChild(Button.create("Hard Delete").withClass("orch-danger"));
+        panel.withChild(hardDeleteForm);
+        return panel.render();
+    }
+
+    @PostMapping("/agents/_lifecycle/{agentId}/archive-and-disable")
+    @ResponseBody
+    public String archiveAndDisableAgentLifecycle(@PathVariable String agentId) {
+        try {
+            agentProfileService.archiveAndDisable(agentId);
+            return agentDockerStatusTab(agentId);
+        } catch (Exception exception) {
+            return new Div().withClass("orch-error").withInnerText("Error: " + exception.getMessage()).render();
+        }
+    }
+
+    @PostMapping("/agents/_lifecycle/{agentId}/hard-delete")
+    @ResponseBody
+    public String hardDeleteAgentLifecycle(
+        @PathVariable String agentId,
+        @RequestParam("confirmationText") String confirmationText
+    ) {
+        try {
+            agentProfileService.hardDelete(agentId, confirmationText);
+            return new Div().withClass("orch-status")
+                .withInnerText("Agent deleted. Refreshing agent list...")
+                .withAttribute("hx-get", "/agents/_list")
+                .withAttribute("hx-trigger", "load")
+                .withAttribute("hx-target", "#agent-list")
+                .withAttribute("hx-swap", "innerHTML")
+                .render();
+        } catch (Exception exception) {
+            return new Div().withClass("orch-error").withInnerText("Error: " + exception.getMessage()).render();
+        }
     }
 
     // ── Agent profile editor HTMX partials ──
@@ -3791,8 +6105,8 @@ public class OrchestrationController {
         grid.withChild(label("Status", Select.create("status")
             .addOption("ACTIVE", "Active", "ACTIVE".equals(agent.status() != null ? agent.status().name() : ""))
             .addOption("DISABLED", "Disabled", "DISABLED".equals(agent.status() != null ? agent.status().name() : ""))));
-        grid.withChild(label("Default Model", TextInput.create("defaultModel")
-            .withValue(nn(agent.defaultModel()))));
+        grid.withChild(label("Default Model", modelSelectWithCurrent(
+            "defaultModel", agent.defaultModel(), chatService.availableModels())));
         grid.withChild(label("Direct Line", Select.create("directLineEnabled")
             .addOption("true", "Enabled", agent.directLineEnabled())
             .addOption("false", "Disabled", !agent.directLineEnabled())));
@@ -3904,8 +6218,8 @@ public class OrchestrationController {
         form.withChild(label("Priority (0-9)", TextInput.number("priority")
             .withMin("0").withMax("9").withValue("0")));
 
-        form.withChild(label("Model Override", TextInput.create("modelOverride")
-            .withPlaceholder("Optional; leave blank for default")));
+        form.withChild(label("Model Override", modelSelectWithCurrent(
+            "modelOverride", null, chatService.availableModels())));
 
         form.withChild(new Div().withClass("orch-actions")
             .withChild(Button.create("Submit").withClass("orch-primary").withAttribute("type", "submit")));
@@ -3988,15 +6302,45 @@ public class OrchestrationController {
             .withAttribute("data-orchestration-page", "settings")
             .withChild(Header.H1("Settings"))
             .withChild(new Paragraph("Runtime defaults, model routing, and context controls."))
-            .withChild(settingsForm(s))
-            .withChild(moduleScript(DASHBOARD_JS));
-        return renderPage(body);
+            .withChild(settingsForm(s));
+        return renderPage(body, "/settings");
+    }
+
+    @PutMapping("/settings")
+    @ResponseBody
+    public String saveSettings(@RequestParam Map<String, String> params) {
+        try {
+            RuntimeSettings current = runtimeSettingsService.get();
+            RuntimeSettings updated = runtimeSettingsService.save(new RuntimeSettings(
+                nn(params.getOrDefault("defaultAgentId", current.defaultAgentId())),
+                nn(params.getOrDefault("defaultAgentName", current.defaultAgentName())),
+                nn(params.getOrDefault("defaultModel", current.defaultModel())),
+                nn(params.getOrDefault("planningModel", current.planningModel())),
+                nn(params.getOrDefault("summaryModel", current.summaryModel())),
+                nn(params.getOrDefault("compactionModel", current.compactionModel())),
+                parseIntOrNull(params.getOrDefault("contextBufferPercent", String.valueOf(current.contextBufferPercent()))),
+                nn(params.getOrDefault("systemChatModel", current.systemChatModel())),
+                nn(params.getOrDefault("systemChatPrompt", current.systemChatPrompt())),
+                nn(params.getOrDefault("systemChatApprovedTools", current.systemChatApprovedTools())),
+                parseIntOrNull(params.getOrDefault("systemChatContextLimit", String.valueOf(current.systemChatContextLimit()))),
+                "true".equalsIgnoreCase(params.getOrDefault("systemChatEnabled",
+                    current.systemChatEnabled() == null || current.systemChatEnabled() ? "true" : "false"))
+            ));
+            return settingsForm(updated).render();
+        } catch (Exception e) {
+            return new Div().withClass("orch-status orch-status-error").withInnerText("Error: " + e.getMessage()).render();
+        }
     }
 
     private Component settingsForm(RuntimeSettings s) {
-        Div container = new Div();
+        Form form = Form.create();
+        form.withHxPut("/settings");
+        form.withHxTarget("#settings-form-container");
+        form.withHxSwap("innerHTML");
 
-        container.withChild(new Div().withClass("orch-layout")
+        List<String> models = new ArrayList<>(chatService.availableModels());
+
+        form.withChild(new Div().withClass("orch-layout")
             .withChild(new Div().withClass("orch-panel")
                 .withChild(Header.H2("Model Routing"))
                 .withChild(new Div().withClass("orch-form-grid")
@@ -4006,31 +6350,49 @@ public class OrchestrationController {
                     .withChild(label("Default Agent Name", TextInput.create("defaultAgentName")
                         .withId("settings-default-agent-name")
                         .withValue(nn(s.defaultAgentName()))))
-                    .withChild(label("Default Model", Select.create("defaultModel")
-                        .withId("settings-default-model")
-                        .addOption(nn(s.defaultModel()), nn(s.defaultModel()), true)))
-                    .withChild(label("Planning Model", Select.create("planningModel")
-                        .withId("settings-planning-model")
-                        .addOption(nn(s.planningModel()), nn(s.planningModel()), true)))
-                    .withChild(label("Summary Model", Select.create("summaryModel")
-                        .withId("settings-summary-model")
-                        .addOption(nn(s.summaryModel()), nn(s.summaryModel()), true)))
-                    .withChild(label("Compaction Model", Select.create("compactionModel")
-                        .withId("settings-compaction-model")
-                        .addOption(nn(s.compactionModel()), nn(s.compactionModel()), true)))
+                    .withChild(label("Default Model", modelSelectWithCurrent("defaultModel", s.defaultModel(), models)
+                        .withId("settings-default-model")))
+                    .withChild(label("Planning Model", modelSelectWithCurrent("planningModel", s.planningModel(), models)
+                        .withId("settings-planning-model")))
+                    .withChild(label("Summary Model", modelSelectWithCurrent("summaryModel", s.summaryModel(), models)
+                        .withId("settings-summary-model")))
+                    .withChild(label("Compaction Model", modelSelectWithCurrent("compactionModel", s.compactionModel(), models)
+                        .withId("settings-compaction-model")))
                     .withChild(label("Context Buffer %", TextInput.number("contextBufferPercent")
                         .withId("settings-context-buffer")
-                        .withMin("0").withMax("90")
+                        .withMin("1").withMax("50")
                         .withValue(String.valueOf(s.contextBufferPercent())))))
-                .withChild(new Div().withId("settings-status").withClass("orch-status")))
+                .withChild(new Div().withClass("orch-status").withInnerText("Use Save to persist changes.")))
+            .withChild(new Div().withClass("orch-panel")
+                .withChild(Header.H2("System Chat"))
+                .withChild(new Paragraph("Bounded dashboard chat profile. The chat view remains the canonical conversation surface."))
+                .withChild(new Div().withClass("orch-form-grid")
+                    .withChild(label("Enabled", Select.create("systemChatEnabled")
+                        .withId("settings-system-chat-enabled")
+                        .addOption("true", "Enabled", s.systemChatEnabled() == null || s.systemChatEnabled())
+                        .addOption("false", "Disabled", s.systemChatEnabled() != null && !s.systemChatEnabled())))
+                    .withChild(label("Model", modelSelectWithCurrent("systemChatModel", s.systemChatModel(), models)
+                        .withId("settings-system-chat-model")))
+                    .withChild(label("Context Limit %", TextInput.number("systemChatContextLimit")
+                        .withId("settings-system-chat-context-limit")
+                        .withMin("1").withMax("100")
+                        .withValue(s.systemChatContextLimit() == null ? "" : String.valueOf(s.systemChatContextLimit()))))
+                    .withChild(label("Approved Tools", TextInput.create("systemChatApprovedTools")
+                        .withId("settings-system-chat-tools")
+                        .withValue(nn(s.systemChatApprovedTools()))
+                        .withPlaceholder("tool1, tool2, *"))))
+                .withChild(label("System Prompt", TextArea.create("systemChatPrompt")
+                    .withId("settings-system-chat-prompt")
+                    .withRows(6)
+                    .withValue(nn(s.systemChatPrompt())))))
             .withChild(new Div().withClass("orch-panel")
                 .withChild(Header.H2("Available Models"))
-                .withChild(new Div().withId("settings-model-list").withClass("orch-chip-list"))));
+                .withChild(modelChipList(models))));
 
-        container.withChild(Button.create("Save").withClass("orch-primary")
-            .withAttribute("data-action", "save-settings"));
+        form.withChild(Button.create("Save").withClass("orch-primary")
+            .withAttribute("type", "submit"));
 
-        return container;
+        return new Div().withId("settings-form-container").withChild(form);
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -4051,21 +6413,59 @@ public class OrchestrationController {
     }
 
     private Select modelSelect(String name) {
-        return Select.create(name).addOption("", "Default", true);
+        Select select = Select.create(name).addOption("", "Default", true);
+        for (var opt : chatService.availableModelOptions()) {
+            select.addOption(opt.key(), opt.label(), false);
+        }
+        return select;
+    }
+
+    private Select modelSelectWithCurrent(String name, String current, List<String> models) {
+        Select select = Select.create(name);
+        select.addOption("", "Default", !StringUtils.hasText(current));
+        List<io.mindspice.magenta2.ai.chat.service.ChatService.ModelOption> options = chatService.availableModelOptions();
+
+        // If current model is not in available options, include it with a warning
+        boolean currentFound = StringUtils.hasText(current)
+            && options.stream().anyMatch(opt -> opt.key().equals(current));
+        if (StringUtils.hasText(current) && !currentFound) {
+            select.addOption(current, current + " (missing)", true);
+        }
+
+        for (var opt : options) {
+            select.addOption(opt.key(), opt.label(), opt.key().equals(current));
+        }
+        return select;
+    }
+
+    private Component modelChipList(List<String> models) {
+        Div chips = new Div().withClass("orch-chip-list");
+        if (models.isEmpty()) {
+            chips.withChild(new Div().withClass("dashboard-empty").withInnerText("No models detected."));
+            return chips;
+        }
+        for (String model : models) {
+            chips.withChild(new HtmlTag("span").withClass("orch-chip").withInnerText(model));
+        }
+        return chips;
     }
 
     private Component label(String text, Component input) {
         return new HtmlTag("label").withChild(new TextNode(text)).withChild(input);
     }
 
-    private Component tabNav(String... names) {
+    private Component tabNav(String agentId, String... names) {
         HtmlTag nav = new HtmlTag("nav").withClass("orch-tabs").withAttribute("aria-label", "Detail views");
         for (String name : names) {
             Button button = Button.create(capitalize(name));
-            button.withAttribute("data-tab", name);
             if ("dashboard".equals(name)) {
                 button.withClass("active");
             }
+            button.withAttribute("data-tab", name)
+                .withAttribute("data-tab-button", "true")
+                .withAttribute("hx-get", "/agents/_detail/" + escapeAttr(agentId) + "/" + name)
+                .withAttribute("hx-target", "#agent-tab-panel")
+                .withAttribute("hx-swap", "innerHTML");
             nav.withChild(button);
         }
         return nav;

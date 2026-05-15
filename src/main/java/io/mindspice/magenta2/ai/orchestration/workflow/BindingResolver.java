@@ -133,7 +133,6 @@ public class BindingResolver {
         if (destination == PlanFieldType.STRING) return true; // Strings accept anything
         if (destination == PlanFieldType.FILE_PATH && source == PlanFieldType.STRING) return true;
         if (destination == PlanFieldType.JSON && source == PlanFieldType.STRING) return true;
-        if (destination == PlanFieldType.USER_MESSAGE && source == PlanFieldType.STRING) return true;
-        return false;
+        return destination == PlanFieldType.USER_MESSAGE && source == PlanFieldType.STRING;
     }
 }

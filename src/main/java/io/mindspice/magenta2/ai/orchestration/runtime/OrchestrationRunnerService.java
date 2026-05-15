@@ -16,13 +16,27 @@ import io.mindspice.magenta2.ai.chat.task.TaskRun;
 import io.mindspice.magenta2.ai.chat.task.TaskRunStatus;
 import io.mindspice.magenta2.ai.chat.task.TaskService;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
-import io.mindspice.magenta2.ai.chat.workflow.WorkflowRun;
-import io.mindspice.magenta2.ai.chat.workflow.WorkflowService;
 import io.mindspice.magenta2.ai.execution.MagentaWorkExecutor;
+import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
+import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
+import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileStatus;
+import io.mindspice.magenta2.ai.orchestration.docker.AgentContainerRuntimeService;
+import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowNodeRun;
+import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowRun;
+import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowRunStatus;
+import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactContext;
+import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.Workspace;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLease;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLeaseService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -44,6 +58,13 @@ public class OrchestrationRunnerService {
     private final ChatService chatService;
     private final InboxService inboxService;
     private final OrchestrationEventService eventService;
+    private final OutputArtifactService outputArtifactService;
+    private final ProjectService projectService;
+    private final WorkspaceService workspaceService;
+    private final WorkspaceLeaseService workspaceLeaseService;
+    private final WorkspaceDirectoryService workspaceDirectoryService;
+    private final AgentProfileService agentProfileService;
+    private final ObjectProvider<AgentContainerRuntimeService> containerRuntimeService;
     private final MagentaWorkExecutor executor;
     private final Duration leaseDuration;
     private final Duration heartbeatInterval;
@@ -64,7 +85,11 @@ public class OrchestrationRunnerService {
         OrchestrationEventService eventService,
         MagentaWorkExecutor executor
     ) {
-        this(repository, assignmentService, jobService, taskService, workflowService, null, inboxService, eventService, executor);
+        this(
+            repository, assignmentService, jobService, taskService, workflowService, null, inboxService,
+            eventService, null, null, null, null, null, null, null, executor,
+            DEFAULT_LEASE_DURATION.toSeconds(), DEFAULT_HEARTBEAT_INTERVAL.toSeconds()
+        );
     }
 
     @Autowired
@@ -77,6 +102,13 @@ public class OrchestrationRunnerService {
         ChatService chatService,
         InboxService inboxService,
         OrchestrationEventService eventService,
+        @Autowired(required = false) AgentProfileService agentProfileService,
+        @Autowired(required = false) ObjectProvider<AgentContainerRuntimeService> containerRuntimeService,
+        @Autowired(required = false) OutputArtifactService outputArtifactService,
+        @Autowired(required = false) ProjectService projectService,
+        @Autowired(required = false) WorkspaceService workspaceService,
+        @Autowired(required = false) WorkspaceLeaseService workspaceLeaseService,
+        @Autowired(required = false) WorkspaceDirectoryService workspaceDirectoryService,
         MagentaWorkExecutor executor,
         @Value("${magenta.orchestration.lease-seconds:300}") long leaseSeconds,
         @Value("${magenta.orchestration.heartbeat-seconds:60}") long heartbeatSeconds
@@ -89,6 +121,13 @@ public class OrchestrationRunnerService {
         this.chatService = chatService;
         this.inboxService = inboxService;
         this.eventService = eventService;
+        this.agentProfileService = agentProfileService;
+        this.containerRuntimeService = containerRuntimeService;
+        this.outputArtifactService = outputArtifactService;
+        this.projectService = projectService;
+        this.workspaceService = workspaceService;
+        this.workspaceLeaseService = workspaceLeaseService;
+        this.workspaceDirectoryService = workspaceDirectoryService;
         this.executor = executor;
         this.leaseDuration = secondsOrDefault(leaseSeconds, DEFAULT_LEASE_DURATION);
         this.heartbeatInterval = secondsOrDefault(heartbeatSeconds, DEFAULT_HEARTBEAT_INTERVAL);
@@ -107,7 +146,8 @@ public class OrchestrationRunnerService {
     ) {
         this(
             repository, assignmentService, jobService, taskService, workflowService, chatService, inboxService,
-            eventService, executor, DEFAULT_LEASE_DURATION.toSeconds(), DEFAULT_HEARTBEAT_INTERVAL.toSeconds()
+            eventService, null, null, null, null, null, null, null, executor,
+            DEFAULT_LEASE_DURATION.toSeconds(), DEFAULT_HEARTBEAT_INTERVAL.toSeconds()
         );
     }
 
@@ -161,7 +201,82 @@ public class OrchestrationRunnerService {
 
     private WorkAssignment executeWithLease(WorkAssignment leased) {
         ScheduledFuture<?> heartbeat = startLeaseHeartbeat(leased.id());
+        AgentContainerRuntimeService runtime = containerRuntimeService == null ? null : containerRuntimeService.getIfAvailable();
+        AgentProfile profile = null;
+        if (agentProfileService != null) {
+            profile = agentProfileService.get(leased.agentId());
+            if (profile.status() == AgentProfileStatus.DISABLED) {
+                heartbeat.cancel(false);
+                return fail(assignmentService.get(leased.id()),
+                    "Agent " + leased.agentId() + " is disabled and cannot execute assignments.");
+            }
+        }
+        // Build orchestration task context for the execution
+        String projectId = resolveProjectId(leased);
+        WorkspaceLease projectLease = null;
+        Workspace projectWorkspace = null;
+        if (StringUtils.hasText(projectId)) {
+            if (projectService == null || workspaceService == null || workspaceLeaseService == null
+                || workspaceDirectoryService == null) {
+                heartbeat.cancel(false);
+                return fail(assignmentService.get(leased.id()), "Project workspace lease management is unavailable.");
+            }
+            if (!projectService.isMember(projectId, leased.agentId())) {
+                heartbeat.cancel(false);
+                return fail(assignmentService.get(leased.id()),
+                    "Agent " + leased.agentId() + " is not a member of project " + projectId);
+            }
+            projectWorkspace = workspaceService.projectWorkspace(projectId, projectService.getProject(projectId).name());
+            try {
+                projectLease = workspaceLeaseService.acquireWritable(
+                    projectWorkspace.id(), "ASSIGNMENT", leased.id(), leaseDuration
+                );
+            } catch (IllegalStateException conflict) {
+                Map<String, Object> checkpoint = new LinkedHashMap<>(leased.checkpoint());
+                checkpoint.put("workspaceBlocker", conflict.getMessage());
+                checkpoint.put("projectId", projectId);
+                checkpoint.put("projectWorkspaceId", projectWorkspace.id());
+                heartbeat.cancel(false);
+                return assignmentService.save(assignmentService.copy(
+                    leased, OrchestrationStatus.WAITING, leased.currentItemIndex(), checkpoint,
+                    leased.output(), leased.evidence(), conflict.getMessage(), null, null, null
+                ));
+            }
+        }
+        final WorkspaceLease acquiredProjectLease = projectLease;
+        ScheduledFuture<?> projectHeartbeat = acquiredProjectLease == null ? null : heartbeatExecutor.scheduleAtFixedRate(
+            () -> workspaceLeaseService.extendLease(acquiredProjectLease.id(), leased.id(), leaseDuration),
+            Math.max(1, heartbeatInterval.toMillis()),
+            Math.max(1, heartbeatInterval.toMillis()),
+            TimeUnit.MILLISECONDS
+        );
+        if (runtime != null) {
+            if (projectWorkspace != null) {
+                runtime.ensureProjectMount(
+                    leased.agentId(),
+                    profile == null ? leased.agentId() : profile.name(),
+                    projectId,
+                    workspaceDirectoryService.projectWorkspace(projectId)
+                );
+            } else {
+                runtime.ensureAgentContainer(leased.agentId(), profile == null ? leased.agentId() : profile.name());
+            }
+            runtime.markAgentBusy(leased.agentId());
+        }
+        OrchestrationTaskContext taskContext = new OrchestrationTaskContext(
+            leased.agentId(),
+            profile != null ? profile.name() : null,
+            leased.jobId(),
+            projectId,
+            leased.workspaceId(),
+            leased.assignmentType().name(),
+            null, // hostWorkspacePath — resolved by PlanService during startRun
+            null, // hostOutputPath — resolved by PlanService during startRun
+            null  // containerOutputPath — resolved by PlanService during startRun
+        );
+
         try {
+            OrchestrationTaskContextHolder.set(taskContext);
             return switch (leased.assignmentType()) {
                 case TASK_RUN -> runTask(leased);
                 case WORKFLOW_RUN -> runWorkflow(leased);
@@ -175,8 +290,38 @@ public class OrchestrationRunnerService {
         } catch (RuntimeException exception) {
             return fail(assignmentService.get(leased.id()), exception.getMessage());
         } finally {
+            OrchestrationTaskContextHolder.clear();
+            if (runtime != null) {
+                runtime.markAgentIdle(leased.agentId());
+                if (projectLease != null) {
+                    runtime.removeProjectMount(
+                        leased.agentId(), profile == null ? leased.agentId() : profile.name(), projectId
+                    );
+                }
+            }
+            if (projectLease != null) {
+                workspaceLeaseService.release(projectLease.id(), leased.id());
+            }
             heartbeat.cancel(false);
+            if (projectHeartbeat != null) {
+                projectHeartbeat.cancel(false);
+            }
         }
+    }
+
+    private String resolveProjectId(WorkAssignment assignment) {
+        String jobId = assignment.jobId();
+        if (!StringUtils.hasText(jobId)) {
+            jobId = text(assignment.input().get("jobId"), null);
+        }
+        if (StringUtils.hasText(jobId)) {
+            try {
+                return jobService.getDefinition(jobId).projectId();
+            } catch (RuntimeException ignored) {
+                // project may not exist
+            }
+        }
+        return null;
     }
 
     @PreDestroy
@@ -198,6 +343,7 @@ public class OrchestrationRunnerService {
         String taskId = text(assignment.input().get("taskId"), null);
         TaskRun taskRun = runTaskThroughModel(taskId, mapValue(assignment.input().get("inputValues")), assignment,
             assignmentService.resolveModel(assignment, null));
+        backfillTaskRunAttribution(taskRun.id(), assignment, assignment.assignmentType().name());
         Map<String, Object> checkpoint = Map.of("taskRunId", taskRun.id(), "status", taskRun.status().name());
         Map<String, Object> output = Map.of("taskRunId", taskRun.id(), "outputValues", taskRun.outputValues());
         return complete(checkpointed(assignment, assignment.currentItemIndex(), checkpoint, output, evidence(taskRun)), output, evidence(taskRun));
@@ -206,9 +352,10 @@ public class OrchestrationRunnerService {
     private WorkAssignment runWorkflow(WorkAssignment assignment) {
         String workflowId = text(assignment.input().get("workflowId"), null);
         WorkflowRun workflowRun = workflowService.runSynchronously(workflowId, assignmentService.resolveModel(assignment, null));
+        backfillWorkflowRunAttribution(workflowRun, assignment, "WORKFLOW_RUN");
         Map<String, Object> checkpoint = Map.of("workflowRunId", workflowRun.id(), "status", workflowRun.status().name());
-        Map<String, Object> output = Map.of("workflowRunId", workflowRun.id(), "finalOutputs", workflowRun.finalOutputs());
-        if (workflowRun.status().name().equals("COMPLETED")) {
+        Map<String, Object> output = Map.of("workflowRunId", workflowRun.id(), "finalOutputs", finalOutputs(workflowRun));
+        if (workflowRun.status() == WorkflowRunStatus.COMPLETED) {
             return complete(checkpointed(assignment, assignment.currentItemIndex(), checkpoint, output, output), output, output);
         }
         return fail(checkpointed(assignment, assignment.currentItemIndex(), checkpoint, output, output), workflowRun.errorText());
@@ -217,6 +364,8 @@ public class OrchestrationRunnerService {
     private WorkAssignment runJob(WorkAssignment assignment) {
         String jobId = StringUtils.hasText(assignment.jobId()) ? assignment.jobId() : text(assignment.input().get("jobId"), null);
         JobDefinition job = jobService.getDefinition(jobId);
+        jobService.updateDefinitionStatus(job.id(), "RUNNING");
+        JobRun jobRun = jobService.markRunning(jobService.startRun(job.id()).id());
         List<JobWorkItem> items = job.items();
         Map<String, Object> outputs = new LinkedHashMap<>(assignment.output());
         Map<String, Object> evidence = new LinkedHashMap<>(assignment.evidence());
@@ -225,13 +374,24 @@ public class OrchestrationRunnerService {
         for (int i = start; i < items.size(); i++) {
             current = assignmentService.get(current.id());
             if (current.status() == OrchestrationStatus.CANCEL_REQUESTED) {
+                jobService.updateDefinitionStatus(job.id(), "CANCELLED");
                 return assignmentService.saveStatus(current, OrchestrationStatus.CANCELLED);
             }
             JobWorkItem item = items.get(i);
+            jobRun = jobService.updateWorkItemRun(jobRun.id(), item.key(), "RUNNING", null, Map.of(), null);
             JobItemResult itemResult = runJobItem(current, assignment, item);
             outputs.put(item.key(), itemResult.output());
             evidence.put(item.key(), itemResult.evidence());
             if (!itemResult.succeeded()) {
+                jobService.updateWorkItemRun(
+                    jobRun.id(),
+                    item.key(),
+                    "FAILED",
+                    itemResult.childRunId(),
+                    mapValue(itemResult.output()),
+                    itemResult.errorText()
+                );
+                jobService.updateDefinitionStatus(job.id(), "FAILED");
                 String errorText = itemResult.errorText();
                 current = checkpointed(current, i + 1, Map.of(
                     "jobId", job.id(),
@@ -241,6 +401,14 @@ public class OrchestrationRunnerService {
                 ), outputs, evidence);
                 return fail(current, errorText);
             }
+            jobRun = jobService.updateWorkItemRun(
+                jobRun.id(),
+                item.key(),
+                "COMPLETED",
+                itemResult.childRunId(),
+                mapValue(itemResult.output()),
+                null
+            );
             current = checkpointed(current, i + 1, Map.of(
                 "jobId", job.id(),
                 "nextItemIndex", i + 1,
@@ -249,20 +417,22 @@ public class OrchestrationRunnerService {
             ), outputs, evidence);
             current = assignmentService.save(current);
         }
+        jobService.updateDefinitionStatus(job.id(), "COMPLETED");
         eventService.publish(EventType.JOB_STATUS_CHANGED, "JOB", job.id(), Map.of("jobId", job.id(), "status", "COMPLETED"));
         return complete(current, outputs, evidence);
     }
 
     private JobItemResult runJobItem(WorkAssignment assignment, WorkAssignment current, JobWorkItem item) {
         try {
-            Object output = switch (item.type()) {
+            JobItemOutput output = switch (item.type()) {
                 case PLAN -> {
                     if (!StringUtils.hasText(item.planId())) {
                         throw new IllegalArgumentException("PLAN work item '" + item.key() + "' has no planId");
                     }
                     TaskRun run = runTaskThroughModel(item.planId(), item.inputBindings(), assignment,
                         assignmentService.resolveModel(current, item));
-                    yield Map.of("planRunId", run.id(), "outputValues", run.outputValues());
+                    backfillTaskRunAttribution(run.id(), assignment, "JOB_PLAN_ITEM");
+                    yield new JobItemOutput(run.id(), Map.of("planRunId", run.id(), "outputValues", run.outputValues()));
                 }
                 case WORKFLOW -> {
                     if (!StringUtils.hasText(item.workflowId())) {
@@ -270,17 +440,18 @@ public class OrchestrationRunnerService {
                     }
                     WorkflowRun run = workflowService.runSynchronously(item.workflowId(),
                         assignmentService.resolveModel(current, item));
-                    if (!run.status().name().equals("COMPLETED")) {
+                    if (run.status() != WorkflowRunStatus.COMPLETED) {
                         throw new IllegalStateException("Workflow job item failed: " + run.errorText());
                     }
-                    yield Map.of("workflowRunId", run.id(), "finalOutputs", run.finalOutputs());
+                    backfillWorkflowRunAttribution(run, assignment, "JOB_WORKFLOW_ITEM");
+                    yield new JobItemOutput(run.id(), Map.of("workflowRunId", run.id(), "finalOutputs", finalOutputs(run)));
                 }
             };
-            return new JobItemResult(true, output, Map.of(
+            return new JobItemResult(true, output.payload(), Map.of(
                 "itemType", item.type().name(),
                 "itemKey", item.key(),
                 "completedAt", Instant.now().toString()
-            ), null);
+            ), null, output.runId());
         } catch (RuntimeException exception) {
             String error = exception.getMessage();
             return new JobItemResult(false, Map.of("failed", true, "error", error), Map.of(
@@ -288,7 +459,7 @@ public class OrchestrationRunnerService {
                 "itemKey", item.key(),
                 "failedAt", Instant.now().toString(),
                 "error", error
-            ), error);
+            ), error, null);
         }
     }
 
@@ -379,6 +550,62 @@ public class OrchestrationRunnerService {
         return seconds > 0 ? Duration.ofSeconds(seconds) : fallback;
     }
 
-    private record JobItemResult(boolean succeeded, Object output, Map<String, Object> evidence, String errorText) {
+    private void backfillTaskRunAttribution(String taskRunId, WorkAssignment assignment, String runType) {
+        if (outputArtifactService == null || !StringUtils.hasText(taskRunId)) {
+            return;
+        }
+        outputArtifactService.backfillAttribution(taskRunId, outputContextFor(assignment, runType));
+    }
+
+    private void backfillWorkflowRunAttribution(WorkflowRun workflowRun, WorkAssignment assignment, String runType) {
+        if (outputArtifactService == null || workflowRun == null || workflowRun.nodeRuns().isEmpty()) {
+            return;
+        }
+        OutputArtifactContext context = outputContextFor(assignment, runType);
+        for (WorkflowNodeRun nodeRun : workflowRun.nodeRuns()) {
+            Object taskRunId = nodeRun.outputValues().get("taskRunId");
+            if (taskRunId instanceof String id && StringUtils.hasText(id)) {
+                outputArtifactService.backfillAttribution(id, context);
+            }
+        }
+    }
+
+    private Map<String, Object> finalOutputs(WorkflowRun workflowRun) {
+        Map<String, Object> outputs = new LinkedHashMap<>();
+        for (WorkflowNodeRun nodeRun : workflowRun.nodeRuns()) {
+            if (nodeRun.outputValues().isEmpty()) {
+                continue;
+            }
+            outputs.put(nodeRun.nodeKey(), nodeRun.outputValues());
+        }
+        return outputs;
+    }
+
+    private OutputArtifactContext outputContextFor(WorkAssignment assignment, String runType) {
+        String projectId = null;
+        String jobId = assignment.jobId();
+        if (!StringUtils.hasText(jobId)) {
+            jobId = text(assignment.input().get("jobId"), null);
+        }
+        if (StringUtils.hasText(jobId)) {
+            try {
+                projectId = jobService.getDefinition(jobId).projectId();
+            } catch (RuntimeException ignored) {
+                projectId = null;
+            }
+        }
+        return new OutputArtifactContext(
+            assignment.agentId(),
+            jobId,
+            projectId,
+            assignment.workspaceId(),
+            runType
+        );
+    }
+
+    private record JobItemResult(boolean succeeded, Object output, Map<String, Object> evidence, String errorText, String childRunId) {
+    }
+
+    private record JobItemOutput(String runId, Map<String, Object> payload) {
     }
 }

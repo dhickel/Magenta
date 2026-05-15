@@ -38,7 +38,7 @@ class GlobalExceptionHandlerTest {
 
         @SuppressWarnings("unchecked")
         ResponseEntity<Map<String, Object>> response =
-            (ResponseEntity<Map<String, Object>>) (ResponseEntity<?>) handler.handleValidationExceptions(exception);
+                handler.handleValidationExceptions(exception);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody()).isNotNull();
@@ -53,7 +53,7 @@ class GlobalExceptionHandlerTest {
 
         @SuppressWarnings("unchecked")
         ResponseEntity<Map<String, Object>> response =
-            (ResponseEntity<Map<String, Object>>) (ResponseEntity<?>) handler.handleConstraintViolation(exception);
+                handler.handleConstraintViolation(exception);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody()).isNotNull();
@@ -67,7 +67,7 @@ class GlobalExceptionHandlerTest {
 
         @SuppressWarnings("unchecked")
         ResponseEntity<Map<String, Object>> response =
-            (ResponseEntity<Map<String, Object>>) (ResponseEntity<?>) handler.handleBindException(exception);
+                handler.handleBindException(exception);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody()).isNotNull();
@@ -81,7 +81,7 @@ class GlobalExceptionHandlerTest {
 
         @SuppressWarnings("unchecked")
         ResponseEntity<Map<String, Object>> response =
-            (ResponseEntity<Map<String, Object>>) (ResponseEntity<?>) handler.handleHttpMessageNotReadable(exception);
+                handler.handleHttpMessageNotReadable(exception);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody()).isNotNull();
@@ -94,7 +94,7 @@ class GlobalExceptionHandlerTest {
 
         @SuppressWarnings("unchecked")
         ResponseEntity<Map<String, Object>> response =
-            (ResponseEntity<Map<String, Object>>) (ResponseEntity<?>) handler.handleIllegalArgument(exception);
+                handler.handleIllegalArgument(exception);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody()).isNotNull();
@@ -107,7 +107,7 @@ class GlobalExceptionHandlerTest {
 
         @SuppressWarnings("unchecked")
         ResponseEntity<Map<String, Object>> response =
-            (ResponseEntity<Map<String, Object>>) (ResponseEntity<?>) handler.handleIllegalState(exception);
+                handler.handleIllegalState(exception);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(response.getBody()).isNotNull();
@@ -120,7 +120,7 @@ class GlobalExceptionHandlerTest {
 
         @SuppressWarnings("unchecked")
         ResponseEntity<Map<String, Object>> response =
-            (ResponseEntity<Map<String, Object>>) (ResponseEntity<?>) handler.handleResponseStatus(exception);
+                handler.handleResponseStatus(exception);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(response.getBody()).isNotNull();

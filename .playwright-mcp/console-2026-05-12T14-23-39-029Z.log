@@ -1,0 +1,2 @@
+[   82600ms] [ERROR] Failed to load resource: the server responded with a status of 400 () @ http://localhost:18080/api/projects:0
+[   82665ms] [ERROR] Failed to load resource: the server responded with a status of 400 () @ http://localhost:18080/api/jobs/8817e8a2-ab08-462d-ac95-941e0cb10711/items:0

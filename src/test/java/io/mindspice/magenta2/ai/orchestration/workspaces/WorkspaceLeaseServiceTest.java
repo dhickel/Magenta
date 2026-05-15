@@ -242,6 +242,40 @@ class WorkspaceLeaseServiceTest {
         assertThatThrownBy(() ->
             leaseService.acquireWritable("nonexistent", "TASK_RUN", "run-1", Duration.ofMinutes(5))
         ).isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("Workspace root not found");
+            .hasMessageContaining("Workspace not found");
+    }
+
+    @Test
+    void expiredWritableLeaseIsReconciledBeforeReacquire() {
+        repository.saveLease(new WorkspaceLease(
+            "expired",
+            workspaceId,
+            "ASSIGNMENT",
+            "old-run",
+            LeaseMode.WRITE,
+            Instant.now().minusSeconds(1),
+            false,
+            null,
+            Instant.now().minusSeconds(60),
+            Instant.now().minusSeconds(60)
+        ));
+
+        WorkspaceLease fresh = leaseService.acquireWritable(
+            workspaceId, "ASSIGNMENT", "new-run", Duration.ofMinutes(5));
+
+        assertThat(fresh.holderId()).isEqualTo("new-run");
+        assertThat(repository.findLeaseById("expired").orElseThrow().releasedAt()).isNotNull();
+    }
+
+    @Test
+    void gracefulReleaseMarksActiveLeaseWithoutDroppingIt() {
+        WorkspaceLease lease = leaseService.acquireWritable(
+            workspaceId, "ASSIGNMENT", "run-1", Duration.ofMinutes(5));
+
+        WorkspaceLease requested = leaseService.requestGracefulRelease(workspaceId);
+
+        assertThat(requested.id()).isEqualTo(lease.id());
+        assertThat(requested.releaseRequested()).isTrue();
+        assertThat(requested.releasedAt()).isNull();
     }
 }

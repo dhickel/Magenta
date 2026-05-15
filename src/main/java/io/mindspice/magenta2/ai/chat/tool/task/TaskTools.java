@@ -54,9 +54,7 @@ public class TaskTools {
         @ToolParam(required = false, description = "Whether this input/output is required.")
         Boolean required,
         @ToolParam(required = false, description = "Optional loose schema hint.")
-        String schema,
-        @ToolParam(required = false, description = "Optional example value.")
-        String example
+        String schema
     ) {
         PlanToolContext context = requireMode(PlanMode.TASK, "task_put_item");
         TaskDraft draft;
@@ -70,8 +68,7 @@ public class TaskTools {
                     TaskValueType.fromWireName(type),
                     description,
                     Boolean.TRUE.equals(required),
-                    schema,
-                    example
+                    schema
                 )
             );
         } else {

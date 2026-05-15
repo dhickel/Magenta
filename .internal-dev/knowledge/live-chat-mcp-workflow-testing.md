@@ -111,6 +111,118 @@ Recommended MCP test shape:
 
 Keep long-running plan execution tests separate from fast smoke and mutation tests. If a Playwright MCP call times out, immediately run a small follow-up probe that lists sessions and histories. A timeout does not prove the server stopped; it may still complete and persist state after the MCP call returns an error.
 
+# Operational UI Browser Validation Checklist
+
+This checklist covers every browser interaction that must be validated through Playwright MCP before the alpha sign-off (Phase 5). Each item should be verified with the browser open at `http://localhost:18080` using an isolated SQLite database.
+
+## Smoke and basic page load
+
+- Open `/dashboard` and verify page title, sidebar navigation, top banner, and dashboard stats strip.
+- Open `/agents` and verify agent list table, filter input, Create/Reload buttons.
+- Open `/agents/{agentId}` and verify agent detail page loads with tabs (dashboard, queue, inbox, jobs, schedules, reactions, workspace, outputs, history, chat), profile editor side panel, and submit work form.
+- Open `/plans`, `/workflows`, `/jobs`, `/projects`, `/settings`, `/outputs`, `/inbox` and verify each page renders its shell, header, and primary HTMX containers.
+- Capture console messages and network requests for every page load. Separate expected noise (400 responses from intentional negative tests, webjar warnings) from unexpected errors.
+
+## HTMX click and swap checks
+
+- On `/agents`, type in the agent filter and verify the list filters via HTMX partial without full page reload.
+- On `/agents/{agentId}`, click each tab (dashboard, queue, inbox, jobs, schedules, reactions, workspace, outputs, history, chat) and verify content loads via `hx-get` into `#agent-tab-panel`.
+- On `/agents/{agentId}`, click Wake/Sleep/Restart/Refresh/Enable/Disable buttons and verify the action completes and the list refreshes.
+- On `/plans`, click Create and verify the editor loads via HTMX. Edit fields, save, and verify persistence.
+- On `/workflows`, verify the node editor loads and node/route changes persist.
+- On `/jobs`, verify job list loads, job editor opens, and job items can be added/removed.
+- On `/projects`, verify project list, detail view, and agent membership management.
+
+## Agent chat open/send/receive
+
+- Open `/agents/{agentId}`, click the Chat tab. Verify the agent chat panel appears (fixed position, bottom-right).
+- Verify the panel renders with header "Agent Chat", a toggle button, message area, and input form.
+- Send a message through the chat panel and verify:
+  - The message appears in the panel as a user message.
+  - An SSE `start` event is received with `agentId` and `agentName`.
+  - An SSE `done` event is received with `message` containing the assistant response.
+  - The response is rendered in the panel.
+  - No `chunk` events are assumed (agent chat SSE contract is `start`/`done`/`error`).
+- Send a blank message and verify an error state is displayed.
+- Close the panel (toggle button) and verify it collapses without removing chat history.
+- Re-open the panel and verify it expands.
+- Switch to another tab (e.g., dashboard) and back to chat. Verify the chat panel reinitializes.
+
+## Workflow run SSE
+
+- On `/workflows`, create or select a workflow, submit it for execution.
+- Verify the run SSE stream emits `started` with a run ID.
+- Verify the stream emits progress/status events.
+- After the stream completes, verify the run appears in agent history with terminal status.
+
+## Output view clicks
+
+- On `/agents/{agentId}`, click the Outputs tab and verify output artifacts are listed.
+- Click an output artifact and verify content loads (text view or download link).
+- On `/outputs`, verify the global output listing shows artifacts with attribution (agent, job, project, run type).
+
+## Plan editor persistence
+
+- On `/plans`, create a new plan, edit title, goal, steps, and field definitions.
+- Save the plan and reload the page. Verify all fields persist.
+- Change work type profile, model selection, and verify they persist after save.
+
+## Model dropdown save
+
+- On `/agents/{agentId}`, edit the agent profile in the side panel.
+- Change the default model dropdown and save.
+- Reload the page and verify the model selection persisted.
+- Verify the model dropdown shows available models from the AI config.
+
+## Mobile sidebar toggle
+
+- Resize the browser viewport to mobile width (under 900px).
+- Verify the sidebar collapses or toggles correctly.
+- Verify content is still navigable and readable at narrow widths.
+
+## Console and network capture
+
+- After running the full checklist, capture final console messages with `browser_console_messages`.
+- Capture network requests with `browser_network_requests`.
+- Verify no unexpected 500 errors or JavaScript exceptions (excluding known webjar noise).
+
+# MCP Recovery Steps
+
+If Playwright MCP disconnects or is blocked by a profile lock, use these recovery steps:
+
+1. **Profile lock**: If MCP fails with a profile lock error (e.g., `mcp-chrome-4e05678` or similar under `~/.cache/ms-playwright/mcp-chrome-*`):
+   - Kill any lingering Chromium processes: `pkill -f "chrome.*mcp-chrome"` or `pkill -f "chromium.*mcp-chrome"`.
+   - Remove the locked profile directory: `rm -rf ~/.cache/ms-playwright/mcp-chrome-*`.
+   - Restart the MCP session (restart Codex or the Playwright MCP server process).
+
+2. **Disconnected session**: If MCP tools return timeout or connection errors mid-campaign:
+   - Run a small follow-up probe that fetches a simple page (e.g., `GET /dashboard`) to determine if the MCP server or the Magenta app is down.
+   - If the Magenta app is still running, restart only the MCP server.
+   - If the app is down, restart it with the same isolated SQLite database to preserve state.
+
+3. **MCP timeout during long-running tests**: If a long-running test (plan execution, workflow run) times out:
+   - Do not assume failure. Immediately run a follow-up probe: load agent history or run status to inspect persisted state.
+   - A timeout means the MCP call exceeded its limit, not that the server failed. The operation may have completed and persisted state after the timeout.
+
+4. **Isolated Chromium DevTools Protocol fallback**: If MCP cannot be recovered after profile cleanup and restart, use the CDP fallback documented in the 2026-05-08 third-pass validation:
+   - Launch Chromium with `--remote-debugging-port=9222 --user-data-dir=/tmp/magenta-cdp-profile`.
+   - Connect via CDP WebSocket and run the same browser probes.
+   - For SSE lifecycle tests, read incrementally from `response.body.getReader()` and return as soon as the target event arrives.
+   - Document this as a fallback and record it in the validation evidence.
+
+5. **Explicit blocker recording**: If MCP remains unavailable after all recovery steps, record the blocker with:
+   - The exact error message or disconnection symptom.
+   - The recovery steps attempted.
+   - A statement that alpha validation is blocked unless the user explicitly approves a fallback validation path.
+
+**Critical**: MCP failure blocks alpha validation unless the user explicitly approves a fallback. Curl-only validation can support diagnosis but cannot sign off user-facing browser flows (HTMX swaps, SSE in the browser, visual layout, console errors).
+
+- A 2026-05-13 Phase 5 final validation pass confirmed the MCP browser on `http://localhost:18080` with zero console errors across dashboard, agents, agent detail, plans, outputs, and settings pages. The previous `mcp-chrome-*` profile lock issue did not recur. The app must be started on a port listed in the MCP server's `--allowed-origins` (currently 8080 and 18080). Port 18081 will fail with `ERR_BLOCKED_BY_CLIENT`.
+- A 2026-05-13 Phase 5 operational UI overall check found that the settings page model dropdowns correctly use canonical aliases in the format `canonical-key (raw-name)` — for example `local-qwen (qwen3.6:35b)`. This matches the Phase 3 fix for model alias/raw-name confusion.
+- A 2026-05-13 Phase 5 chat validation found that the `/api/chat/commands` endpoint only supports `/new` and `/plan` command roots. The `/switch`, `/clear`, `/exit-plan`, and `/exec-plan` commands documented in earlier validation are no longer present. Session switching is now handled through the browser-side HTMX client, not the commands API. Session mutation uses `PATCH /api/chat/{conversationId}/title`, `PATCH /api/chat/{conversationId}/favorite`, and `PATCH /api/chat/{conversationId}/archive` (not POST or PUT).
+- A 2026-05-13 Phase 5 plan mode test confirmed that `/plan` enters PLANNING mode with `clarification_questions`, and answering via `POST /api/chat/{conversationId}/plan/answers` advances the draft. The plan service produces `DRAFT` -> `READY_FOR_APPROVAL` -> `APPROVED` state transitions.
+- A 2026-05-13 Phase 5 output validation confirmed that `GET /outputs/_content/{artifactId}` and `GET /api/outputs/{artifactId}/download` work correctly for viewing and downloading output content (DEFECT-07-01 fixed). The outputs page lists artifacts with agent/plan/run attribution and provides View and Download buttons.
+
 # Open Questions
 
 - Should the project include a reusable Playwright MCP smoke-test snippet for SSE parsing and workflow assertions?
@@ -119,3 +231,4 @@ Keep long-running plan execution tests separate from fast smoke and mutation tes
 - Are there other Spring AI tool argument shapes, beyond scalar-to-list, that should be coercion-tested with live models?
 - Should plan execution stream timeouts and client disconnects always move saved plans to `NEEDS_REVIEW`?
 - Should interrupt acceptance imply stronger cancellation semantics, or is best-effort interruption sufficient for the current chat workflow?
+- Should the `ai_workflow_definitions` table name in `ai.chat.workflow.WorkflowRepository` be reconciled with the `workflow_definitions` table in the schema, or should the legacy chat workflow code be removed? (Discovered during Phase 5 validation — OrchestrationRunnerService imports the wrong WorkflowService.)

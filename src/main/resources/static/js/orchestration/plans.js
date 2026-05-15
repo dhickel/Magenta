@@ -6,7 +6,7 @@
 // (keyboard shortcuts, drag-and-drop reorder) that are impractical in pure HTMX.
 document.addEventListener("DOMContentLoaded", () => {
     const page = document.querySelector("[data-orchestration-page='plans']");
-    if (!page) return;
+    if (!page)
     // All plan editing is handled via HTMX endpoints.
     // No JS-based rendering, save, or run handlers.
 });

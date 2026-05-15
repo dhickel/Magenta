@@ -351,7 +351,12 @@ create table if not exists runtime_settings (
     planning_model text,
     summary_model text,
     compaction_model text,
-    context_buffer_percent integer
+    context_buffer_percent integer,
+    system_chat_model text,
+    system_chat_prompt text,
+    system_chat_approved_tools text,
+    system_chat_context_limit integer,
+    system_chat_enabled integer
 );
 
 create table if not exists workspaces (
@@ -408,6 +413,7 @@ create table if not exists workspace_leases (
     holder_id text not null,
     mode text not null,
     expires_at text,
+    release_requested integer not null default 0,
     released_at text,
     created_at text not null,
     updated_at text not null,

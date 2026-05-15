@@ -14,6 +14,7 @@ import io.mindspice.magenta2.ai.chat.model.ChatResponse;
 import io.mindspice.magenta2.ai.chat.model.ChatSession;
 import io.mindspice.magenta2.ai.chat.model.ChatSessions;
 import io.mindspice.magenta2.ai.chat.model.ChatPlanState;
+import io.mindspice.magenta2.ai.chat.plan.PlanDefinition;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.chat.service.ResolvedChatRequest;
 import io.mindspice.magenta2.ai.chat.service.StoredContextUsage;
@@ -50,6 +51,10 @@ public class ChatController {
     private final ActiveTurnRegistry activeTurnRegistry;
     private final AuditService auditService;
     private final long planExecutionStreamTimeoutMillis;
+
+    public record PlanStartRequest(String conversationId, String model, String planningModel) { }
+    public record SaveTaskRequest(String title) { }
+    public record SaveTaskResponse(String taskId, String taskTitle, ChatPlanState planState) { }
 
     public ChatController(ChatService chatService) {
         this(chatService, new ActiveTurnRegistry());
@@ -418,10 +423,17 @@ public class ChatController {
     }
 
     @PatchMapping("/{conversationId}/plan/save-task")
-    public ChatPlanState savePlanAsTask(@PathVariable String conversationId) {
+    public SaveTaskResponse savePlanAsTask(
+        @PathVariable String conversationId,
+        @RequestBody(required = false) SaveTaskRequest request
+    ) {
         requireValidUuid(conversationId);
         try {
-            return chatService.savePlanAsTask(conversationId);
+            PlanDefinition savedTask = chatService.savePlanAsTask(
+                conversationId,
+                request == null ? null : request.title()
+            );
+            return new SaveTaskResponse(savedTask.id(), savedTask.title(), chatService.planState(conversationId));
         } catch (IllegalArgumentException | IllegalStateException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
@@ -431,6 +443,37 @@ public class ChatController {
     public ChatResponse.CmdResponse executePlan(@PathVariable String conversationId) {
         requireValidUuid(conversationId);
         return handleExecPlan(conversationId);
+    }
+
+    @PostMapping("/plans/{planId}/continue")
+    public ChatResponse.CmdResponse continuePlanDefinition(
+        @PathVariable String planId,
+        @RequestBody(required = false) PlanStartRequest request
+    ) {
+        String conversationId = normalize(request == null ? null : request.conversationId());
+        if (conversationId == null) {
+            conversationId = chatService.newConversationId();
+        }
+        ChatResponse.MsgResponse response = chatService.beginPlanFromDefinition(
+            conversationId,
+            planId,
+            request == null ? null : request.model(),
+            request == null ? null : request.planningModel()
+        );
+        List<String> conversationIds = new ArrayList<>(chatService.listConversationIds());
+        if (!conversationIds.contains(conversationId)) {
+            conversationIds.add(0, conversationId);
+        }
+        return new ChatResponse.CmdResponse(
+            conversationId,
+            response.model(),
+            response.response(),
+            List.copyOf(conversationIds),
+            chatService.history(conversationId),
+            response.contextUsage(),
+            chatService.planState(conversationId),
+            response.toolActivities()
+        );
     }
 
     @DeleteMapping("/{conversationId}/plan")

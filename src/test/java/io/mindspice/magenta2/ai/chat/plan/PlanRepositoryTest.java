@@ -32,8 +32,8 @@ class PlanRepositoryTest {
     void savesAndFindsTaskTemplate() {
         PlanRepository repository = new PlanRepository(jdbcTemplate(), new ObjectMapper());
         PlanDefinition def = taskTemplate("task-1", "Research Task", List.of(
-            new PlanFieldDefinition("topic", PlanFieldType.STRING, false, "Topic", true, null, null),
-            new PlanFieldDefinition("notes", PlanFieldType.STRING, false, "Notes", true, null, null)
+            new PlanFieldDefinition("topic", PlanFieldType.STRING, false, "Topic", true, null),
+            new PlanFieldDefinition("notes", PlanFieldType.STRING, false, "Notes", true, null)
         ));
         repository.saveDefinition(def);
 
@@ -63,7 +63,7 @@ class PlanRepositoryTest {
         PlanRun run = new PlanRun(
             "run-1", "task-3", PlanRunStatus.RUNNING,
             Map.of("topic", "test"), Map.of(), def,
-            null, null,
+            null, null, null,
             List.of("Started"), List.of(), List.of(),
             null, null,
             Instant.now(), Instant.now(), Instant.now(), null
@@ -83,11 +83,11 @@ class PlanRepositoryTest {
         repository.saveDefinition(def);
 
         repository.saveRun(new PlanRun("run-a", "task-4", PlanRunStatus.COMPLETED,
-            Map.of(), Map.of(), def, null, null,
+            Map.of(), Map.of(), def, null, null, null,
             List.of(), List.of(), List.of(), null, null,
             Instant.now(), Instant.now(), null, Instant.now()));
         repository.saveRun(new PlanRun("run-b", "task-4", PlanRunStatus.FAILED,
-            Map.of(), Map.of(), def, null, null,
+            Map.of(), Map.of(), def, null, null, null,
             List.of(), List.of(), List.of(), null, "error",
             Instant.now(), Instant.now(), null, Instant.now()));
 
@@ -101,7 +101,7 @@ class PlanRepositoryTest {
         PlanDefinition def = taskTemplate("task-5", "Delete Test", List.of());
         repository.saveDefinition(def);
         repository.saveRun(new PlanRun("run-x", "task-5", PlanRunStatus.RUNNING,
-            Map.of(), Map.of(), def, null, null,
+            Map.of(), Map.of(), def, null, null, null,
             List.of(), List.of(), List.of(), null, null,
             Instant.now(), Instant.now(), Instant.now(), null));
 
@@ -160,12 +160,12 @@ class PlanRepositoryTest {
 
     private PlanDefinition taskTemplate(String id, String title, List<PlanFieldDefinition> extraInputs) {
         List<PlanFieldDefinition> inputs = new java.util.ArrayList<>(extraInputs);
-        inputs.add(new PlanFieldDefinition("output_file", PlanFieldType.FILE_PATH, false, "Output", true, null, null));
+        inputs.add(new PlanFieldDefinition("output_file", PlanFieldType.FILE_PATH, false, "Output", true, null));
         return new PlanDefinition(
             id, PlanKind.TASK_TEMPLATE, PlanStatus.APPROVED,
             title, "A reusable task", "Do something useful.", null,
             List.of("result"), inputs,
-            List.of(new PlanFieldDefinition("report", PlanFieldType.USER_MESSAGE, false, "Report", true, null, null)),
+            List.of(new PlanFieldDefinition("report", PlanFieldType.USER_MESSAGE, false, "Report", true, null)),
             List.of("Assumption"),
             List.of(new PlanStep(1, "First step.")),
             List.of("Report is valid."),

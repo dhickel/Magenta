@@ -218,6 +218,7 @@ public class PlanRepository {
             """
                 select id, plan_id, status, input_values_json, output_values_json,
                        plan_snapshot_json, workspace_id, output_directory,
+                       temp_workspace_path,
                        execution_evidence_json, validation_feedback_json,
                        deliverable_evidence_json, final_message, error_text,
                        created_at, updated_at, started_at, completed_at
@@ -234,6 +235,7 @@ public class PlanRepository {
             """
                 select id, plan_id, status, input_values_json, output_values_json,
                        plan_snapshot_json, workspace_id, output_directory,
+                       temp_workspace_path,
                        execution_evidence_json, validation_feedback_json,
                        deliverable_evidence_json, final_message, error_text,
                        created_at, updated_at, started_at, completed_at
@@ -255,11 +257,12 @@ public class PlanRepository {
                 insert into plan_runs (
                     id, plan_id, status, input_values_json, output_values_json,
                     plan_snapshot_json, workspace_id, output_directory,
+                    temp_workspace_path,
                     execution_evidence_json, validation_feedback_json,
                     deliverable_evidence_json, final_message, error_text,
                     created_at, updated_at, started_at, completed_at
                 )
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict(id) do update set
                     status = excluded.status,
                     input_values_json = excluded.input_values_json,
@@ -267,6 +270,7 @@ public class PlanRepository {
                     plan_snapshot_json = excluded.plan_snapshot_json,
                     workspace_id = excluded.workspace_id,
                     output_directory = excluded.output_directory,
+                    temp_workspace_path = excluded.temp_workspace_path,
                     execution_evidence_json = excluded.execution_evidence_json,
                     validation_feedback_json = excluded.validation_feedback_json,
                     deliverable_evidence_json = excluded.deliverable_evidence_json,
@@ -284,6 +288,7 @@ public class PlanRepository {
             json(run.planSnapshot()),
             run.workspaceId(),
             run.outputDirectory(),
+            run.tempWorkspacePath(),
             json(run.executionEvidence()),
             json(run.validationFeedback()),
             json(run.deliverableEvidence()),
@@ -297,6 +302,7 @@ public class PlanRepository {
         return new PlanRun(
             run.id(), run.planId(), run.status(), run.inputValues(), run.outputValues(),
             run.planSnapshot(), run.workspaceId(), run.outputDirectory(),
+            run.tempWorkspacePath(),
             run.executionEvidence(), run.validationFeedback(), run.deliverableEvidence(),
             run.finalMessage(), run.errorText(), createdAt, updatedAt,
             run.startedAt(), run.completedAt()
@@ -347,6 +353,7 @@ public class PlanRepository {
             readRequired(rs.getString("plan_snapshot_json"), PlanDefinition.class),
             rs.getString("workspace_id"),
             rs.getString("output_directory"),
+            rs.getString("temp_workspace_path"),
             read(rs.getString("execution_evidence_json"), STRING_LIST, List.of()),
             read(rs.getString("validation_feedback_json"), STRING_LIST, List.of()),
             read(rs.getString("deliverable_evidence_json"), STRING_LIST, List.of()),
@@ -409,6 +416,22 @@ public class PlanRepository {
         return StringUtils.hasText(value) ? Instant.parse(value) : null;
     }
 
+    // ── Schema helpers ──
+
+    private void addColumnIfMissing(String table, String column, String ddl) {
+        if (!table.matches("[a-zA-Z0-9_]+") || !column.matches("[a-zA-Z0-9_]+")) {
+            throw new IllegalArgumentException("Unsupported table/column identifier");
+        }
+        Integer count = jdbcTemplate.queryForObject(
+            "select count(*) from pragma_table_info('" + table + "') where name = ?",
+            Integer.class,
+            column
+        );
+        if (count != null && count == 0) {
+            jdbcTemplate.execute(ddl);
+        }
+    }
+
     // ── Schema bootstrapping ──
 
     private void ensureTables() {
@@ -453,6 +476,7 @@ public class PlanRepository {
                 plan_snapshot_json text not null,
                 workspace_id text,
                 output_directory text,
+                temp_workspace_path text,
                 execution_evidence_json text not null,
                 validation_feedback_json text not null,
                 deliverable_evidence_json text not null,
@@ -465,5 +489,7 @@ public class PlanRepository {
                 foreign key (plan_id) references plan_definitions(id) on delete cascade
             )
             """);
+        addColumnIfMissing("plan_runs", "temp_workspace_path",
+            "alter table plan_runs add column temp_workspace_path text");
     }
 }

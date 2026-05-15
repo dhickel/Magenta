@@ -18,6 +18,10 @@ import java.util.concurrent.TimeoutException;
 
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
+import io.mindspice.magenta2.ai.orchestration.docker.AgentContainerRuntimeService;
+import io.mindspice.magenta2.ai.orchestration.docker.AgentExecResult;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
 import io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettingsService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -33,9 +37,12 @@ public class AgentShellToolService {
     private final Path root;
     private final Set<String> allowedCommands;
     private final boolean allowAllCommands;
+    private final AgentContainerRuntimeService containerRuntimeService;
 
     @Autowired
-    public AgentShellToolService(AiConfig aiConfig, @Autowired(required = false) RuntimeSettingsService runtimeSettingsService) throws IOException {
+    public AgentShellToolService(AiConfig aiConfig,
+                                  @Autowired(required = false) RuntimeSettingsService runtimeSettingsService,
+                                  @Autowired(required = false) AgentContainerRuntimeService containerRuntimeService) throws IOException {
         if (aiConfig == null || aiConfig.dataRoot() == null) {
             throw new IllegalArgumentException("AI config dataRoot is required for shell tools");
         }
@@ -51,10 +58,11 @@ public class AgentShellToolService {
         this.allowedCommands = commands == null
             ? Set.of()
             : commands.stream().filter(StringUtils::hasText).collect(java.util.stream.Collectors.toUnmodifiableSet());
+        this.containerRuntimeService = containerRuntimeService;
     }
 
     public AgentShellToolService(AiConfig aiConfig) throws IOException {
-        this(aiConfig, null);
+        this(aiConfig, null, null);
     }
 
     AgentShellToolService(Path root, List<String> allowedCommands) throws IOException {
@@ -64,6 +72,18 @@ public class AgentShellToolService {
         this.allowedCommands = commands.stream()
             .filter(StringUtils::hasText)
             .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        this.containerRuntimeService = null;
+    }
+
+    AgentShellToolService(Path root, List<String> allowedCommands,
+                          AgentContainerRuntimeService containerRuntimeService) throws IOException {
+        this.root = root.toRealPath();
+        List<String> commands = allowedCommands == null ? List.of() : allowedCommands;
+        this.allowAllCommands = commands.contains(WILDCARD);
+        this.allowedCommands = commands.stream()
+            .filter(StringUtils::hasText)
+            .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        this.containerRuntimeService = containerRuntimeService;
     }
 
     public ShellExecResult exec(String command, String workingDirectory, Integer timeoutSeconds)
@@ -73,6 +93,66 @@ public class AgentShellToolService {
         if (!allowAllCommands && !allowedCommands.contains(executable)) {
             throw new IllegalArgumentException("shell command is not allowed: " + executable);
         }
+
+        // Check orchestration task context: if an agentId is present, route
+        // execution into the agent's managed Docker container.
+        OrchestrationTaskContext taskContext = OrchestrationTaskContextHolder.current();
+        if (taskContext != null && taskContext.hasAgentContext()) {
+            if (containerRuntimeService == null) {
+                throw new IllegalStateException(
+                    "Task requires containerized execution for agent " + taskContext.agentId()
+                        + " but container runtime is not available. Docker must be enabled and configured.");
+            }
+            return execInContainer(command, executable, commandLine, workingDirectory, timeoutSeconds, taskContext);
+        }
+
+        // No orchestration context — use host shell execution
+        return execOnHost(command, executable, commandLine, workingDirectory, timeoutSeconds);
+    }
+
+    /**
+     * Execute a command inside the managed Docker container for the current
+     * orchestration task context. Container working directory defaults to
+     * {@code /home/agent}. Container output path is {@code /output}; leased
+     * project roots appear below {@code /projects/{projectId}}.
+     */
+    private ShellExecResult execInContainer(String command, String executable,
+                                             List<String> commandLine,
+                                             String workingDirectory, Integer timeoutSeconds,
+                                             OrchestrationTaskContext taskContext) {
+        int timeout = clamp(timeoutSeconds, DEFAULT_TIMEOUT_SECONDS, 1, MAX_TIMEOUT_SECONDS);
+        String containerWorkDir = resolveContainerWorkingDirectory(workingDirectory);
+        AgentExecResult result = containerRuntimeService.execInAgent(
+            taskContext.agentId(),
+            taskContext.agentName(),
+            command,
+            containerWorkDir,
+            timeout
+        );
+
+        return new ShellExecResult(
+            executable,
+            command,
+            List.copyOf(commandLine.subList(1, commandLine.size())),
+            containerWorkDir,
+            result.exitCode(),
+            result.stdout(),
+            result.stderr(),
+            result.timedOut(),
+            false,
+            "docker",
+            result.containerId()
+        );
+    }
+
+    /**
+     * Execute a command on the host filesystem. Only available when no
+     * orchestration task context is active.
+     */
+    private ShellExecResult execOnHost(String command, String executable,
+                                        List<String> commandLine,
+                                        String workingDirectory, Integer timeoutSeconds)
+        throws IOException, InterruptedException {
         Path workingDir = resolveWorkingDirectory(workingDirectory);
         int timeout = clamp(timeoutSeconds, DEFAULT_TIMEOUT_SECONDS, 1, MAX_TIMEOUT_SECONDS);
 
@@ -124,7 +204,8 @@ public class AgentShellToolService {
             out.text(),
             err.text(),
             !completed,
-            out.truncated() || err.truncated()
+            out.truncated() || err.truncated(),
+            "host"
         );
     }
 
@@ -249,6 +330,30 @@ public class AgentShellToolService {
         return real;
     }
 
+    private String resolveContainerWorkingDirectory(String workingDirectory) {
+        if (!StringUtils.hasText(workingDirectory) || ".".equals(workingDirectory)) {
+            return "/home/agent";
+        }
+        String normalized = workingDirectory.trim().replace('\\', '/');
+        if (!normalized.startsWith("/")) {
+            normalized = "/home/agent/" + normalized;
+        }
+        Path path = Path.of(normalized).normalize();
+        String resolved = path.toString();
+        if (!isAllowedContainerWorkingDirectory(resolved)) {
+            throw new IllegalArgumentException(
+                "container workingDirectory must be /home/agent, /projects, /workspace, /output, or a subpath");
+        }
+        return resolved;
+    }
+
+    private boolean isAllowedContainerWorkingDirectory(String path) {
+        return path.equals("/workspace") || path.startsWith("/workspace/")
+            || path.equals("/home/agent") || path.startsWith("/home/agent/")
+            || path.equals("/projects") || path.startsWith("/projects/")
+            || path.equals("/output") || path.startsWith("/output/");
+    }
+
     private int clamp(Integer value, int defaultValue, int min, int max) {
         int actual = value == null ? defaultValue : value;
         return Math.min(max, Math.max(min, actual));
@@ -271,7 +376,23 @@ public class AgentShellToolService {
         String stdout,
         String stderr,
         boolean timedOut,
-        boolean truncated
+        boolean truncated,
+        String executionType,
+        String containerId
     ) {
+        public ShellExecResult(String command, String commandLine, List<String> args,
+                               String workingDirectory, Integer exitCode, String stdout,
+                               String stderr, boolean timedOut, boolean truncated) {
+            this(command, commandLine, args, workingDirectory, exitCode, stdout, stderr,
+                timedOut, truncated, "host", null);
+        }
+
+        public ShellExecResult(String command, String commandLine, List<String> args,
+                               String workingDirectory, Integer exitCode, String stdout,
+                               String stderr, boolean timedOut, boolean truncated,
+                               String executionType) {
+            this(command, commandLine, args, workingDirectory, exitCode, stdout, stderr,
+                timedOut, truncated, executionType, null);
+        }
     }
 }

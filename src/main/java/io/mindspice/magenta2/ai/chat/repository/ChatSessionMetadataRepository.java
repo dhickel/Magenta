@@ -82,7 +82,7 @@ public class ChatSessionMetadataRepository {
                 """,
             rs -> {
                 if (!rs.next()) {
-                    return Optional.<String>empty();
+                    return Optional.empty();
                 }
                 String model = rs.getString("model");
                 return StringUtils.hasText(model) ? Optional.of(model) : Optional.empty();
@@ -121,7 +121,7 @@ public class ChatSessionMetadataRepository {
                 """,
             rs -> {
                 if (!rs.next()) {
-                    return Optional.<String>empty();
+                    return Optional.empty();
                 }
                 String runId = rs.getString("active_task_run_id");
                 return StringUtils.hasText(runId) ? Optional.of(runId) : Optional.empty();
@@ -175,7 +175,7 @@ public class ChatSessionMetadataRepository {
                 """,
             rs -> {
                 if (!rs.next()) {
-                    return Optional.<String>empty();
+                    return Optional.empty();
                 }
                 String model = rs.getString("planning_model");
                 return StringUtils.hasText(model) ? Optional.of(model) : Optional.empty();
@@ -196,7 +196,7 @@ public class ChatSessionMetadataRepository {
                 """,
             rs -> {
                 if (!rs.next()) {
-                    return Optional.<String>empty();
+                    return Optional.empty();
                 }
                 String title = rs.getString("title");
                 return StringUtils.hasText(title) ? Optional.of(title) : Optional.empty();
@@ -225,7 +225,7 @@ public class ChatSessionMetadataRepository {
                 """,
             rs -> {
                 if (!rs.next()) {
-                    return Optional.<String>empty();
+                    return Optional.empty();
                 }
                 String updatedAt = rs.getString("updated_at");
                 return StringUtils.hasText(updatedAt) ? Optional.of(updatedAt) : Optional.empty();

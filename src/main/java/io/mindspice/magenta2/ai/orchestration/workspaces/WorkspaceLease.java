@@ -14,6 +14,7 @@ public record WorkspaceLease(
     String holderId,
     LeaseMode mode,
     Instant expiresAt,
+    boolean releaseRequested,
     Instant releasedAt,
     Instant createdAt,
     Instant updatedAt
@@ -28,11 +29,16 @@ public record WorkspaceLease(
 
     public WorkspaceLease withReleased() {
         return new WorkspaceLease(id, workspaceId, holderType, holderId, mode,
-            expiresAt, Instant.now(), createdAt, Instant.now());
+            expiresAt, releaseRequested, Instant.now(), createdAt, Instant.now());
     }
 
     public WorkspaceLease withExtended(Instant newExpiresAt) {
         return new WorkspaceLease(id, workspaceId, holderType, holderId, mode,
-            newExpiresAt, releasedAt, createdAt, Instant.now());
+            newExpiresAt, releaseRequested, releasedAt, createdAt, Instant.now());
+    }
+
+    public WorkspaceLease withReleaseRequested() {
+        return new WorkspaceLease(id, workspaceId, holderType, holderId, mode,
+            expiresAt, true, releasedAt, createdAt, Instant.now());
     }
 }

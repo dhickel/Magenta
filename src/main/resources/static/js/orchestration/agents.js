@@ -1,9 +1,24 @@
-// Minimal skeleton — agent list, detail, editor, and submit flows are HTMX-driven.
-// Kept as page-level dispatch anchor; add JS only when HTMX is materially more complex.
-
+// HTMX handles all agent CRUD, tab loading, editor saves, and submit-to-agent.
+// JS is used only for tab active-state affordance.
 document.addEventListener("DOMContentLoaded", () => {
     const page = document.querySelector("[data-orchestration-page='agents']");
     if (!page) return;
-    // HTMX handles all agent CRUD, tab loading, editor saves, and submit-to-agent.
-    // No JS listeners needed at this time.
+
+    const tabButtons = () => Array.from(document.querySelectorAll("[data-tab-button='true']"));
+    const setActive = (tabName) => {
+        tabButtons().forEach((btn) => {
+            if (btn.dataset.tab === tabName) {
+                btn.classList.add("active");
+            } else {
+                btn.classList.remove("active");
+            }
+        });
+    };
+
+    setActive("dashboard");
+    document.body.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-tab-button='true']");
+        if (!button) return;
+        setActive(button.dataset.tab || "");
+    });
 });

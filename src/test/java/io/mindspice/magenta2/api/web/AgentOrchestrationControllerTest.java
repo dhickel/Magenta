@@ -457,4 +457,210 @@ class AgentOrchestrationControllerTest {
                 assertThat(exception.getReason()).contains("Event reactions are not available");
             });
     }
+
+    @Test
+    void schedulesLifecycleSupportsUpdateAndDeleteWhenEnabled() {
+        StubScheduleService scheduleService = new StubScheduleService();
+        AgentOrchestrationController controller = newController(
+            null, null, scheduleService, null, new StubAgentProfileService(), null
+        );
+        setFeatureFlag(controller, "schedulesEnabled", true);
+
+        AgentSchedule created = controller.schedule("agent-1",
+            new AgentSchedule(null, "agent-1", "job-1", Map.of("assignmentType", "JOB_RUN"),
+                "0 * * * * *", "UTC", true, null, null, null));
+
+        AgentSchedule updated = controller.updateSchedule("agent-1", created.id(),
+            new AgentSchedule(created.id(), "agent-1", "job-2", Map.of("assignmentType", "TASK_RUN"),
+                "0 */5 * * * *", "UTC", false, null, null, null));
+
+        assertThat(updated.jobId()).isEqualTo("job-2");
+        assertThat(updated.cronExpression()).isEqualTo("0 */5 * * * *");
+        assertThat(updated.enabled()).isFalse();
+
+        controller.deleteSchedule("agent-1", created.id());
+        assertThat(scheduleService.schedules("agent-1")).isEmpty();
+    }
+
+    @Test
+    void schedulesDeleteIsScopedByAgentWhenEnabled() {
+        StubScheduleService scheduleService = new StubScheduleService();
+        AgentOrchestrationController controller = newController(
+            null, null, scheduleService, null, new StubAgentProfileService(), null
+        );
+        setFeatureFlag(controller, "schedulesEnabled", true);
+
+        AgentSchedule created = controller.schedule("agent-1",
+            new AgentSchedule(null, "agent-1", "job-1", Map.of("assignmentType", "JOB_RUN"),
+                "0 * * * * *", "UTC", true, null, null, null));
+
+        assertThatThrownBy(() -> controller.deleteSchedule("agent-2", created.id()))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+                assertThat(exception.getReason()).contains("schedule not found");
+            });
+        assertThat(scheduleService.schedules("agent-1")).hasSize(1);
+    }
+
+    @Test
+    void reactionsLifecycleSupportsUpdateAndDeleteWhenEnabled() {
+        StubReactionService reactionService = new StubReactionService();
+        AgentOrchestrationController controller = newController(
+            null, null, null, reactionService, new StubAgentProfileService(), null
+        );
+        setFeatureFlag(controller, "reactionsEnabled", true);
+
+        AgentEventReaction created = controller.reaction("agent-1",
+            new AgentEventReaction(null, "agent-1", EventType.JOB_STATUS_CHANGED,
+                Map.of("status", "QUEUED"), ReactionActionType.ENQUEUE_ASSIGNMENT,
+                Map.of("assignmentType", "JOB_RUN"), true, null, null));
+
+        AgentEventReaction updated = controller.updateReaction("agent-1", created.id(),
+            new AgentEventReaction(created.id(), "agent-1", EventType.MANUAL_USER_EVENT,
+                Map.of("source", "ops"), ReactionActionType.ENQUEUE_ASSIGNMENT,
+                Map.of("assignmentType", "TASK_RUN"), false, null, null));
+
+        assertThat(updated.eventType()).isEqualTo(EventType.MANUAL_USER_EVENT);
+        assertThat(updated.enabled()).isFalse();
+
+        controller.deleteReaction("agent-1", created.id());
+        assertThat(reactionService.reactions("agent-1")).isEmpty();
+    }
+
+    @Test
+    void reactionsDeleteIsScopedByAgentWhenEnabled() {
+        StubReactionService reactionService = new StubReactionService();
+        AgentOrchestrationController controller = newController(
+            null, null, null, reactionService, new StubAgentProfileService(), null
+        );
+        setFeatureFlag(controller, "reactionsEnabled", true);
+
+        AgentEventReaction created = controller.reaction("agent-1",
+            new AgentEventReaction(null, "agent-1", EventType.JOB_STATUS_CHANGED,
+                Map.of("status", "QUEUED"), ReactionActionType.ENQUEUE_ASSIGNMENT,
+                Map.of("assignmentType", "JOB_RUN"), true, null, null));
+
+        assertThatThrownBy(() -> controller.deleteReaction("agent-2", created.id()))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+                assertThat(exception.getReason()).contains("reaction not found");
+            });
+        assertThat(reactionService.reactions("agent-1")).hasSize(1);
+    }
+
+    private static void setFeatureFlag(AgentOrchestrationController controller, String fieldName, boolean value) {
+        try {
+            java.lang.reflect.Field field = AgentOrchestrationController.class.getDeclaredField(fieldName);
+            field.setAccessible(true);
+            field.setBoolean(controller, value);
+        } catch (ReflectiveOperationException exception) {
+            throw new RuntimeException("Failed to set feature flag for test", exception);
+        }
+    }
+
+    private static class StubScheduleService extends ScheduleService {
+        private final Map<String, List<AgentSchedule>> byAgent = new java.util.HashMap<>();
+
+        StubScheduleService() {
+            super(null, null, null, null, true);
+        }
+
+        @Override
+        public List<AgentSchedule> schedules(String agentId) {
+            return byAgent.getOrDefault(agentId, List.of());
+        }
+
+        @Override
+        public AgentSchedule schedule(String agentId, String scheduleId) {
+            return schedules(agentId).stream()
+                .filter(schedule -> scheduleId.equals(schedule.id()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("schedule not found"));
+        }
+
+        @Override
+        public AgentSchedule save(String agentId, AgentSchedule schedule) {
+            if (!org.springframework.scheduling.support.CronExpression.isValidExpression(schedule.cronExpression())) {
+                throw new IllegalArgumentException("invalid cronExpression");
+            }
+            List<AgentSchedule> current = new ArrayList<>(schedules(agentId));
+            AgentSchedule saved = new AgentSchedule(
+                schedule.id() == null || schedule.id().isBlank() ? "sched-" + (current.size() + 1) : schedule.id(),
+                agentId,
+                schedule.jobId(),
+                schedule.assignmentTemplate(),
+                schedule.cronExpression(),
+                schedule.timezone(),
+                schedule.enabled(),
+                Instant.now().plusSeconds(60),
+                schedule.createdAt() == null ? Instant.now() : schedule.createdAt(),
+                Instant.now()
+            );
+            current.removeIf(existing -> existing.id().equals(saved.id()));
+            current.add(saved);
+            byAgent.put(agentId, current);
+            return saved;
+        }
+
+        @Override
+        public void delete(String agentId, String scheduleId) {
+            List<AgentSchedule> current = new ArrayList<>(schedules(agentId));
+            boolean removed = current.removeIf(schedule -> schedule.id().equals(scheduleId));
+            if (!removed) {
+                throw new IllegalStateException("schedule not found");
+            }
+            byAgent.put(agentId, current);
+        }
+    }
+
+    private static class StubReactionService extends EventReactionService {
+        private final Map<String, List<AgentEventReaction>> byAgent = new java.util.HashMap<>();
+
+        StubReactionService() {
+            super(null, null);
+        }
+
+        @Override
+        public List<AgentEventReaction> reactions(String agentId) {
+            return byAgent.getOrDefault(agentId, List.of());
+        }
+
+        @Override
+        public AgentEventReaction reaction(String agentId, String reactionId) {
+            return reactions(agentId).stream()
+                .filter(reaction -> reactionId.equals(reaction.id()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("reaction not found"));
+        }
+
+        @Override
+        public AgentEventReaction save(String agentId, AgentEventReaction reaction) {
+            List<AgentEventReaction> current = new ArrayList<>(reactions(agentId));
+            AgentEventReaction saved = new AgentEventReaction(
+                reaction.id() == null || reaction.id().isBlank() ? "reaction-" + (current.size() + 1) : reaction.id(),
+                agentId,
+                reaction.eventType(),
+                reaction.filter(),
+                ReactionActionType.ENQUEUE_ASSIGNMENT,
+                reaction.assignmentTemplate(),
+                reaction.enabled(),
+                reaction.createdAt() == null ? Instant.now() : reaction.createdAt(),
+                Instant.now()
+            );
+            current.removeIf(existing -> existing.id().equals(saved.id()));
+            current.add(saved);
+            byAgent.put(agentId, current);
+            return saved;
+        }
+
+        @Override
+        public void delete(String agentId, String reactionId) {
+            List<AgentEventReaction> current = new ArrayList<>(reactions(agentId));
+            boolean removed = current.removeIf(reaction -> reaction.id().equals(reactionId));
+            if (!removed) {
+                throw new IllegalStateException("reaction not found");
+            }
+            byAgent.put(agentId, current);
+        }
+    }
 }

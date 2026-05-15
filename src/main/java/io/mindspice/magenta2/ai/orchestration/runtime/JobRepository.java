@@ -9,6 +9,7 @@ import java.util.Optional;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -104,9 +105,26 @@ public class JobRepository {
 
     public void deleteDefinition(String id) {
         if (StringUtils.hasText(id)) {
+            jdbcTemplate.update("delete from job_recurrences where job_id = ?", id);
             jdbcTemplate.update("delete from job_runs where job_id = ?", id);
             jdbcTemplate.update("delete from job_definitions where id = ?", id);
         }
+    }
+
+    @Transactional
+    public void purgeDefinitionsOwnedByAgent(String agentId) {
+        if (!StringUtils.hasText(agentId)) {
+            return;
+        }
+        jdbcTemplate.update(
+            "delete from job_recurrences where job_id in (select id from job_definitions where owner_agent_id = ?)",
+            agentId
+        );
+        jdbcTemplate.update(
+            "delete from job_runs where job_id in (select id from job_definitions where owner_agent_id = ?)",
+            agentId
+        );
+        jdbcTemplate.update("delete from job_definitions where owner_agent_id = ?", agentId);
     }
 
     // ── JobRun ──

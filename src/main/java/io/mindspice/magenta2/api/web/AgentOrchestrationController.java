@@ -22,11 +22,13 @@ import io.mindspice.magenta2.ai.orchestration.runtime.InboxService;
 import io.mindspice.magenta2.ai.orchestration.runtime.ScheduleService;
 import io.mindspice.magenta2.ai.orchestration.runtime.WorkAssignment;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -160,6 +162,46 @@ public class AgentOrchestrationController {
         }
     }
 
+    @PutMapping("/schedules/{scheduleId}")
+    public AgentSchedule updateSchedule(
+        @PathVariable String agentId,
+        @PathVariable String scheduleId,
+        @Valid @RequestBody AgentSchedule schedule
+    ) {
+        if (!schedulesEnabled) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Schedules are not available");
+        }
+        try {
+            AgentSchedule existing = scheduleService.schedule(agentId, scheduleId);
+            return scheduleService.save(agentId, new AgentSchedule(
+                scheduleId,
+                agentId,
+                schedule.jobId(),
+                schedule.assignmentTemplate(),
+                schedule.cronExpression(),
+                schedule.timezone(),
+                schedule.enabled(),
+                null,
+                existing.createdAt(),
+                existing.updatedAt()
+            ));
+        } catch (IllegalArgumentException | IllegalStateException | java.time.DateTimeException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
+    }
+
+    @DeleteMapping("/schedules/{scheduleId}")
+    public void deleteSchedule(@PathVariable String agentId, @PathVariable String scheduleId) {
+        if (!schedulesEnabled) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Schedules are not available");
+        }
+        try {
+            scheduleService.delete(agentId, scheduleId);
+        } catch (IllegalStateException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage());
+        }
+    }
+
     @GetMapping("/event-reactions")
     public List<AgentEventReaction> reactions(@PathVariable String agentId) {
         if (!reactionsEnabled) {
@@ -177,6 +219,45 @@ public class AgentOrchestrationController {
             return reactionService.save(agentId, reaction);
         } catch (IllegalArgumentException | IllegalStateException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
+    }
+
+    @PutMapping("/event-reactions/{reactionId}")
+    public AgentEventReaction updateReaction(
+        @PathVariable String agentId,
+        @PathVariable String reactionId,
+        @Valid @RequestBody AgentEventReaction reaction
+    ) {
+        if (!reactionsEnabled) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Event reactions are not available");
+        }
+        try {
+            AgentEventReaction existing = reactionService.reaction(agentId, reactionId);
+            return reactionService.save(agentId, new AgentEventReaction(
+                reactionId,
+                agentId,
+                reaction.eventType(),
+                reaction.filter(),
+                reaction.actionType(),
+                reaction.assignmentTemplate(),
+                reaction.enabled(),
+                existing.createdAt(),
+                existing.updatedAt()
+            ));
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
+    }
+
+    @DeleteMapping("/event-reactions/{reactionId}")
+    public void deleteReaction(@PathVariable String agentId, @PathVariable String reactionId) {
+        if (!reactionsEnabled) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Event reactions are not available");
+        }
+        try {
+            reactionService.delete(agentId, reactionId);
+        } catch (IllegalStateException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage());
         }
     }
 

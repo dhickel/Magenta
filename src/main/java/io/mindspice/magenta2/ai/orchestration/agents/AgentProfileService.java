@@ -5,6 +5,14 @@ import java.util.UUID;
 
 import io.mindspice.magenta2.ai.chat.tool.ChatToolRegistry;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
+import io.mindspice.magenta2.ai.orchestration.docker.AgentContainerRuntimeService;
+import io.mindspice.magenta2.ai.orchestration.runtime.JobRepository;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationRuntimeRepository;
+import io.mindspice.magenta2.ai.orchestration.runtime.ProjectRepository;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceOwnerType;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceRepository;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
@@ -15,15 +23,57 @@ public class AgentProfileService {
     private final AgentProfileRepository repository;
     private final AiConfig aiConfig;
     private final ObjectProvider<ChatToolRegistry> chatToolRegistry;
+    private final ObjectProvider<AgentContainerRuntimeService> containerRuntimeService;
+    private final ObjectProvider<WorkspaceService> workspaceService;
+    private final ObjectProvider<WorkspaceDirectoryService> workspaceDirectoryService;
+    private final ObjectProvider<WorkspaceRepository> workspaceRepository;
+    private final ObjectProvider<OrchestrationRuntimeRepository> orchestrationRuntimeRepository;
+    private final ObjectProvider<JobRepository> jobRepository;
+    private final ObjectProvider<ProjectRepository> projectRepository;
 
+    // Compatibility constructor for tests that instantiate the service directly.
     public AgentProfileService(
         AgentProfileRepository repository,
         AiConfig aiConfig,
-        @Autowired(required = false) ObjectProvider<ChatToolRegistry> chatToolRegistry
+        ObjectProvider<ChatToolRegistry> chatToolRegistry
+    ) {
+        this(
+            repository,
+            aiConfig,
+            chatToolRegistry,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+        );
+    }
+
+    @Autowired
+    public AgentProfileService(
+        AgentProfileRepository repository,
+        AiConfig aiConfig,
+        @Autowired(required = false) ObjectProvider<ChatToolRegistry> chatToolRegistry,
+        @Autowired(required = false) ObjectProvider<AgentContainerRuntimeService> containerRuntimeService,
+        @Autowired(required = false) ObjectProvider<WorkspaceService> workspaceService,
+        @Autowired(required = false) ObjectProvider<WorkspaceDirectoryService> workspaceDirectoryService,
+        @Autowired(required = false) ObjectProvider<WorkspaceRepository> workspaceRepository,
+        @Autowired(required = false) ObjectProvider<OrchestrationRuntimeRepository> orchestrationRuntimeRepository,
+        @Autowired(required = false) ObjectProvider<JobRepository> jobRepository,
+        @Autowired(required = false) ObjectProvider<ProjectRepository> projectRepository
     ) {
         this.repository = repository;
         this.aiConfig = aiConfig;
         this.chatToolRegistry = chatToolRegistry;
+        this.containerRuntimeService = containerRuntimeService;
+        this.workspaceService = workspaceService;
+        this.workspaceDirectoryService = workspaceDirectoryService;
+        this.workspaceRepository = workspaceRepository;
+        this.orchestrationRuntimeRepository = orchestrationRuntimeRepository;
+        this.jobRepository = jobRepository;
+        this.projectRepository = projectRepository;
     }
 
     public List<AgentProfile> list() {
@@ -44,7 +94,7 @@ public class AgentProfileService {
 
     public AgentProfile create(AgentProfile profile) {
         String id = StringUtils.hasText(profile.id()) ? profile.id() : UUID.randomUUID().toString();
-        return save(new AgentProfile(
+        AgentProfile created = save(new AgentProfile(
             id,
             profile.name(),
             profile.status() == null ? AgentProfileStatus.ACTIVE : profile.status(),
@@ -56,11 +106,13 @@ public class AgentProfileService {
             null,
             null
         ));
+        ensureAgentDurableStorage(created.id(), created.name());
+        return created;
     }
 
     public AgentProfile update(String id, AgentProfile profile) {
         AgentProfile current = get(id);
-        return save(new AgentProfile(
+        AgentProfile updated = save(new AgentProfile(
             id,
             profile.name(),
             profile.status() == null ? current.status() : profile.status(),
@@ -72,28 +124,40 @@ public class AgentProfileService {
             current.createdAt(),
             current.updatedAt()
         ));
+        ensureAgentDurableStorage(updated.id(), updated.name());
+        if (updated.status() == AgentProfileStatus.DISABLED) {
+            stopContainer(updated.id());
+        }
+        return updated;
     }
 
-    public AgentProfile clone(String id) {
-        AgentProfile source = get(id);
-        String cloneName = uniqueCloneName(source.name());
-        return save(new AgentProfile(
-            UUID.randomUUID().toString(),
-            cloneName,
-            AgentProfileStatus.ACTIVE,
-            source.defaultModel(),
-            source.systemPrompt(),
-            source.approvedTools(),
-            source.allowedShellCommands(),
-            source.directLineEnabled(),
-            null,
-            null
-        ));
-    }
-
-    public void deleteOrDisable(String id) {
+    public AgentProfile enable(String id, boolean wakeContainer) {
         AgentProfile profile = get(id);
-        repository.save(new AgentProfile(
+        AgentProfile enabled = save(new AgentProfile(
+            profile.id(),
+            profile.name(),
+            AgentProfileStatus.ACTIVE,
+            profile.defaultModel(),
+            profile.systemPrompt(),
+            profile.approvedTools(),
+            profile.allowedShellCommands(),
+            profile.directLineEnabled(),
+            profile.createdAt(),
+            profile.updatedAt()
+        ));
+        ensureAgentDurableStorage(enabled.id(), enabled.name());
+        if (wakeContainer) {
+            AgentContainerRuntimeService runtime = containerRuntime();
+            if (runtime != null) {
+                runtime.ensureAgentContainer(enabled.id(), enabled.name());
+            }
+        }
+        return enabled;
+    }
+
+    public AgentProfile disable(String id) {
+        AgentProfile profile = get(id);
+        AgentProfile disabled = save(new AgentProfile(
             profile.id(),
             profile.name(),
             AgentProfileStatus.DISABLED,
@@ -105,6 +169,59 @@ public class AgentProfileService {
             profile.createdAt(),
             profile.updatedAt()
         ));
+        stopContainer(id);
+        return disabled;
+    }
+
+    public AgentProfile archiveAndDisable(String id) {
+        AgentProfile disabled = disable(id);
+        AgentContainerRuntimeService runtime = containerRuntime();
+        if (runtime != null) {
+            runtime.removeAgentContainer(id);
+        }
+        WorkspaceService ws = workspaceService();
+        if (ws != null) {
+            ws.archiveAgentWorkspaceData(id);
+        }
+        return disabled;
+    }
+
+    public void hardDelete(String id, String confirmationText) {
+        if (!("DELETE " + id).equals(confirmationText)) {
+            throw new IllegalArgumentException("confirmation text must exactly match: DELETE " + id);
+        }
+        get(id);
+        OrchestrationRuntimeRepository runtimeRepository = orchestrationRuntimeRepository();
+        if (runtimeRepository != null) {
+            runtimeRepository.purgeAgentOwnedReferences(id);
+        }
+        JobRepository jobRepository = jobRepository();
+        if (jobRepository != null) {
+            jobRepository.purgeDefinitionsOwnedByAgent(id);
+        }
+        ProjectRepository projectRepository = projectRepository();
+        if (projectRepository != null) {
+            projectRepository.purgeAgentReferences(id);
+        }
+        AgentContainerRuntimeService runtime = containerRuntime();
+        if (runtime != null) {
+            runtime.removeAgentContainer(id);
+        }
+        WorkspaceRepository wsRepository = workspaceRepository();
+        if (wsRepository != null) {
+            wsRepository.findByOwner(WorkspaceOwnerType.AGENT, id)
+                .ifPresent(workspace -> wsRepository.releaseLeasesByWorkspaceId(workspace.id()));
+            wsRepository.deleteByOwner(WorkspaceOwnerType.AGENT, id);
+        }
+        WorkspaceService ws = workspaceService();
+        if (ws != null) {
+            ws.deleteAgentWorkspaceData(id);
+        }
+        repository.delete(id);
+    }
+
+    public void deleteOrDisable(String id) {
+        disable(id);
     }
 
     public List<String> allowedShellCommands(String defaultAgentId, String defaultAgentName) {
@@ -168,12 +285,51 @@ public class AgentProfileService {
         }
     }
 
-    private String uniqueCloneName(String baseName) {
-        String candidate = baseName + " copy";
-        int suffix = 2;
-        while (repository.findByName(candidate).isPresent()) {
-            candidate = baseName + " copy " + suffix++;
+    private void ensureAgentDurableStorage(String agentId, String agentName) {
+        WorkspaceService ws = workspaceService();
+        if (ws != null) {
+            ws.agentWorkspace(agentId, agentName);
         }
-        return candidate;
+        WorkspaceDirectoryService dir = workspaceDirectoryService();
+        if (dir != null) {
+            dir.agentHome(agentId);
+            dir.agentWorkspaceRoot(agentId);
+            dir.agentOutputRoot(agentId);
+        }
+    }
+
+    private void stopContainer(String agentId) {
+        AgentContainerRuntimeService runtime = containerRuntime();
+        if (runtime != null) {
+            runtime.stopAgentContainer(agentId, false);
+        }
+    }
+
+    private AgentContainerRuntimeService containerRuntime() {
+        return containerRuntimeService == null ? null : containerRuntimeService.getIfAvailable();
+    }
+
+    private WorkspaceService workspaceService() {
+        return workspaceService == null ? null : workspaceService.getIfAvailable();
+    }
+
+    private WorkspaceDirectoryService workspaceDirectoryService() {
+        return workspaceDirectoryService == null ? null : workspaceDirectoryService.getIfAvailable();
+    }
+
+    private WorkspaceRepository workspaceRepository() {
+        return workspaceRepository == null ? null : workspaceRepository.getIfAvailable();
+    }
+
+    private OrchestrationRuntimeRepository orchestrationRuntimeRepository() {
+        return orchestrationRuntimeRepository == null ? null : orchestrationRuntimeRepository.getIfAvailable();
+    }
+
+    private JobRepository jobRepository() {
+        return jobRepository == null ? null : jobRepository.getIfAvailable();
+    }
+
+    private ProjectRepository projectRepository() {
+        return projectRepository == null ? null : projectRepository.getIfAvailable();
     }
 }

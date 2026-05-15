@@ -1,0 +1,56 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e5]:
+      - heading "Magenta Portal" [level=1] [ref=e6]
+      - paragraph [ref=e7]: Operational assistant console
+    - navigation [ref=e9]:
+      - generic [ref=e10]:
+        - link "Home" [ref=e11] [cursor=pointer]:
+          - /url: /
+        - link "Chat" [ref=e12] [cursor=pointer]:
+          - /url: /chat
+        - link "Dashboard" [ref=e13] [cursor=pointer]:
+          - /url: /dashboard
+  - main [ref=e15]:
+    - generic [ref=e18]:
+      - generic [ref=e20]:
+        - heading "Magenta Portal" [level=1] [ref=e21]
+        - paragraph [ref=e22]: Chat, plan, delegate, and monitor operational assistant work.
+      - generic [ref=e23]:
+        - generic [ref=e25]:
+          - generic [ref=e26]: Chat
+          - generic [ref=e28]:
+            - paragraph [ref=e29]: Continue an assistant conversation with session management.
+            - link "Open" [ref=e30] [cursor=pointer]:
+              - /url: /chat
+        - generic [ref=e32]:
+          - generic [ref=e33]: Dashboard
+          - generic [ref=e35]:
+            - paragraph [ref=e36]: Full-screen orchestration dashboard for plans, workflows, jobs, and agents.
+            - link "Open" [ref=e37] [cursor=pointer]:
+              - /url: /dashboard
+        - generic [ref=e39]:
+          - generic [ref=e40]: Plans & Tasks
+          - generic [ref=e42]:
+            - paragraph [ref=e43]: Build and run unified plan/task definitions.
+            - link "Open" [ref=e44] [cursor=pointer]:
+              - /url: /plans
+      - generic [ref=e45]:
+        - generic [ref=e47]:
+          - generic [ref=e48]: Workflows
+          - generic [ref=e50]:
+            - paragraph [ref=e51]: Compose tasks into ordered workflows with gates and approvals.
+            - link "Open" [ref=e52] [cursor=pointer]:
+              - /url: /workflows
+        - generic [ref=e54]:
+          - generic [ref=e55]: Jobs
+          - generic [ref=e57]:
+            - paragraph [ref=e58]: Inspect orchestration jobs and run history.
+            - link "Open" [ref=e59] [cursor=pointer]:
+              - /url: /jobs
+        - generic [ref=e61]:
+          - generic [ref=e62]: Inbox
+          - generic [ref=e64]:
+            - paragraph [ref=e65]: User and agent inboxes with approval controls.
+            - link "Open" [ref=e66] [cursor=pointer]:
+              - /url: /inbox

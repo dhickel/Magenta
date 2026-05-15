@@ -73,15 +73,6 @@ public class AgentProfileController {
         }
     }
 
-    @PostMapping("/{agentId}/clone")
-    public AgentProfile clone(@PathVariable String agentId) {
-        try {
-            return agentProfileService.clone(agentId);
-        } catch (IllegalStateException exception) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage());
-        }
-    }
-
     @GetMapping("/{agentId}/workspace")
     public Workspace workspace(@PathVariable String agentId) {
         AgentProfile profile = get(agentId);

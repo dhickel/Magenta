@@ -13,8 +13,10 @@ class DockerRuntimeClientTest {
     void configDefaults_matchExpectedValues() {
         DockerRuntimeConfig config = new DockerRuntimeConfig();
         // Defaults before property injection
-        assertThat(config.getAgentImage()).isEqualTo("python:3.11-slim");
+        assertThat(config.getAgentImage()).isEqualTo("python:3.11");
         assertThat(config.getExecTimeoutSeconds()).isEqualTo(600);
+        assertThat(config.getAgentIdleTtlSeconds()).isEqualTo(1800);
+        assertThat(config.isKeepContainersOnShutdown()).isFalse();
         assertThat(config.isSelinuxRelabel()).isTrue();
     }
 
@@ -23,11 +25,15 @@ class DockerRuntimeClientTest {
         DockerRuntimeConfig config = new DockerRuntimeConfig();
         config.setAgentImage("alpine:latest");
         config.setExecTimeoutSeconds(120);
+        config.setAgentIdleTtlSeconds(90);
+        config.setKeepContainersOnShutdown(true);
         config.setSelinuxRelabel(false);
         config.setHost("unix:///custom/socket");
 
         assertThat(config.getAgentImage()).isEqualTo("alpine:latest");
         assertThat(config.getExecTimeoutSeconds()).isEqualTo(120);
+        assertThat(config.getAgentIdleTtlSeconds()).isEqualTo(90);
+        assertThat(config.isKeepContainersOnShutdown()).isTrue();
         assertThat(config.isSelinuxRelabel()).isFalse();
         // host property is reflected when DOCKER_HOST is unset
         assertThat(config.getDockerHost()).isEqualTo("unix:///custom/socket");

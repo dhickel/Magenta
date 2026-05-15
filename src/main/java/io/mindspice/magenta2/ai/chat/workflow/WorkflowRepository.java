@@ -9,11 +9,15 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-@Repository
+/**
+ * Legacy repository for the retired ai_workflow_* tables. It is intentionally
+ * not a Spring bean; production workflow persistence uses workflow_definitions
+ * and workflow_runs in the orchestration workflow package.
+ */
+@Deprecated(forRemoval = true)
 public class WorkflowRepository {
     private static final TypeReference<List<WorkflowStep>> STEP_LIST = new TypeReference<>() { };
     private static final TypeReference<List<WorkflowStepRun>> STEP_RUN_LIST = new TypeReference<>() { };

@@ -21,6 +21,12 @@ public enum WorkflowNodeType {
     AGENT_MESSAGE("agent_message"),
     /** Start child plan/workflow runs and gather outputs. */
     DELEGATION("delegation"),
+    /** Validate incoming values against configured criteria and stop on failure. */
+    VALIDATION("validation"),
+    /** Copy or fan out incoming values to downstream routes. */
+    COPY("copy"),
+    /** Materialize incoming values as run evidence without changing them. */
+    LOG("log"),
     /** Materialize declared report/message outputs via OutputArtifactService. */
     REPORT("report");
 

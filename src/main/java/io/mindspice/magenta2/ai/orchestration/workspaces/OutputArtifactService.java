@@ -56,6 +56,13 @@ public class OutputArtifactService {
     public RunOutputArtifact materialize(String runId, String planId,
                                           String outputName, PlanFieldType outputType,
                                           Object value, Path outputDir) throws IOException {
+        return materialize(runId, planId, outputName, outputType, value, outputDir, OutputArtifactContext.EMPTY);
+    }
+
+    public RunOutputArtifact materialize(String runId, String planId,
+                                         String outputName, PlanFieldType outputType,
+                                         Object value, Path outputDir,
+                                         OutputArtifactContext context) throws IOException {
         requireId(runId, "runId");
         requireId(planId, "planId");
         requireId(outputName, "outputName");
@@ -69,10 +76,10 @@ public class OutputArtifactService {
         Files.createDirectories(outputDir);
 
         return switch (outputType) {
-            case FILE_PATH -> materializeFilePath(runId, planId, outputName, value, outputDir);
-            case USER_MESSAGE -> materializeUserMessage(runId, planId, outputName, value, outputDir);
-            case JSON -> materializeJson(runId, planId, outputName, value, outputDir);
-            case STRING, NUMBER -> materializeText(runId, planId, outputName, value, outputDir);
+            case FILE_PATH -> materializeFilePath(runId, planId, outputName, value, outputDir, context);
+            case USER_MESSAGE -> materializeUserMessage(runId, planId, outputName, value, outputDir, context);
+            case JSON -> materializeJson(runId, planId, outputName, value, outputDir, context);
+            case STRING, NUMBER -> materializeText(runId, planId, outputName, value, outputDir, context);
         };
     }
 
@@ -86,11 +93,19 @@ public class OutputArtifactService {
                                                    Map<String, Object> outputValues,
                                                    Map<String, PlanFieldType> outputTypes,
                                                    Path outputDir) throws IOException {
+        return materializeAll(runId, planId, outputValues, outputTypes, outputDir, OutputArtifactContext.EMPTY);
+    }
+
+    public List<RunOutputArtifact> materializeAll(String runId, String planId,
+                                                  Map<String, Object> outputValues,
+                                                  Map<String, PlanFieldType> outputTypes,
+                                                  Path outputDir,
+                                                  OutputArtifactContext context) throws IOException {
         List<RunOutputArtifact> artifacts = new java.util.ArrayList<>();
         for (Map.Entry<String, Object> entry : outputValues.entrySet()) {
             String name = entry.getKey();
             PlanFieldType type = outputTypes.getOrDefault(name, PlanFieldType.STRING);
-            artifacts.add(materialize(runId, planId, name, type, entry.getValue(), outputDir));
+            artifacts.add(materialize(runId, planId, name, type, entry.getValue(), outputDir, context));
         }
         return artifacts;
     }
@@ -104,43 +119,223 @@ public class OutputArtifactService {
     }
 
     public List<RunOutputArtifact> query(String runId, String planId, String artifactType, Integer limit) {
-        int effectiveLimit = limit == null ? 50 : limit;
-        return repository.findArtifacts(runId, planId, artifactType, effectiveLimit);
+        return query(OutputArtifactQuery.of(
+            null, null, null, null, runId, planId, artifactType, limit
+        ));
+    }
+
+    public List<RunOutputArtifact> query(OutputArtifactQuery query) {
+        return repository.findArtifacts(query == null
+            ? OutputArtifactQuery.of(null, null, null, null, null, null, null, 50)
+            : query
+        );
+    }
+
+    public int backfillAttribution(String runId, OutputArtifactContext context) {
+        return repository.backfillArtifactAttribution(runId, context);
+    }
+
+    /**
+     * Returns the configured data root path for path confinement checks.
+     */
+    public java.nio.file.Path dataRoot() {
+        return directoryService.dataRoot();
+    }
+
+    /**
+     * Retrieve artifact metadata by ID.
+     */
+    public RunOutputArtifact getArtifact(String artifactId) {
+        return repository.findArtifactById(artifactId)
+            .orElseThrow(() -> new IllegalArgumentException("Output artifact not found: " + artifactId));
+    }
+
+    /**
+     * Load artifact content from the filesystem. Validates path confinement
+     * and rejects missing, directory, non-data-root, and too-large files.
+     *
+     * @param artifactId the artifact id
+     * @param maxBytes   maximum file size in bytes (10 MB default)
+     * @return the file content as a UTF-8 string
+     */
+    public String loadContent(String artifactId, long maxBytes) throws IOException {
+        RunOutputArtifact artifact = getArtifact(artifactId);
+        String filePath = artifact.filePath();
+        if (!StringUtils.hasText(filePath)) {
+            throw new IllegalArgumentException("Artifact has no file path: " + artifactId);
+        }
+        Path path = Path.of(filePath).normalize().toRealPath();
+
+        // Confinement: must be under data root
+        Path dataRoot = directoryService.dataRoot();
+        if (!path.startsWith(dataRoot)) {
+            throw new IllegalArgumentException("Artifact path escapes data root: " + filePath);
+        }
+
+        if (Files.isDirectory(path)) {
+            throw new IllegalArgumentException("Artifact is a directory, not a file: " + filePath);
+        }
+
+        if (!Files.isRegularFile(path)) {
+            throw new IllegalArgumentException("Artifact file does not exist: " + filePath);
+        }
+
+        long size = Files.size(path);
+        if (size > maxBytes) {
+            throw new IllegalArgumentException(
+                "Artifact file too large: " + size + " bytes (max " + maxBytes + ")");
+        }
+
+        return Files.readString(path);
+    }
+
+    /**
+     * Scan the output directory for files not already registered as artifacts
+     * for this run and register them as discovered artifacts.
+     * Non-recursive: only scans files directly in the output directory.
+     *
+     * @return number of newly registered artifacts
+     */
+    public int discoverLooseArtifacts(String runId, String planId, Path outputDir,
+                                       OutputArtifactContext context) throws IOException {
+        if (!Files.isDirectory(outputDir)) {
+            return 0;
+        }
+        java.util.Set<String> registered = repository.findArtifactsByRunId(runId).stream()
+            .map(RunOutputArtifact::fileName)
+            .collect(java.util.stream.Collectors.toSet());
+
+        int count = 0;
+        try (var stream = Files.list(outputDir)) {
+            for (Path file : stream.filter(Files::isRegularFile).toList()) {
+                String fileName = file.getFileName().toString();
+                if (registered.contains(fileName)) {
+                    continue;
+                }
+                // Register the file directly as a discovered artifact
+                String artifactType = inferArtifactType(fileName);
+                saveArtifact(runId, planId, "discovered_" + sanitizeOutputName(fileName),
+                    artifactType, fileName, file.toString(), null, context);
+                count++;
+                registered.add(fileName);
+            }
+        }
+        return count;
+    }
+
+    private String inferArtifactType(String fileName) {
+        String lower = fileName.toLowerCase();
+        if (lower.endsWith(".md")) return "user_message";
+        if (lower.endsWith(".json")) return "json";
+        if (lower.endsWith(".txt")) return "text";
+        if (lower.endsWith(".csv")) return "text";
+        if (lower.endsWith(".log")) return "text";
+        return "file_path";
+    }
+
+    private String sanitizeOutputName(String fileName) {
+        // Remove extension for the output name
+        int dot = fileName.lastIndexOf('.');
+        String base = dot > 0 ? fileName.substring(0, dot) : fileName;
+        return base.replaceAll("[^a-zA-Z0-9_.-]", "_").replaceAll("_+", "_");
     }
 
     // ── Type-specific materialization ──
 
     private RunOutputArtifact materializeFilePath(String runId, String planId,
                                                     String outputName, Object value,
-                                                    Path outputDir) throws IOException {
-        String sourcePathStr = value.toString();
-        Path sourcePath = directoryService.resolveInputPath(
-            outputDir.getParent().toString(), sourcePathStr);
-        String fileName = sourcePath.getFileName().toString();
-        Path destPath = outputDir.resolve(sanitize(outputName) + "_" + fileName);
+                                                    Path outputDir,
+                                                    OutputArtifactContext context) throws IOException {
+        String sourcePathStr = value.toString().trim();
+        Path sourcePath;
 
-        Files.copy(sourcePath, destPath, StandardCopyOption.REPLACE_EXISTING);
+        // Handle container /output/ paths from Docker-backed runs:
+        // /output/<run-dir>/<file> and /output/<file> map to the host output directory for this run.
+        if (sourcePathStr.startsWith("/output/") || sourcePathStr.equals("/output")) {
+            String relativeFile = sourcePathStr.equals("/output") ? "" :
+                sourcePathStr.substring("/output/".length());
+            sourcePath = resolveRunOutputPath(outputDir, relativeFile, sourcePathStr);
+        }
+        // Handle bare filenames from model output: resolve relative to output directory
+        else if (!sourcePathStr.contains("/") && !sourcePathStr.contains("\\")) {
+            sourcePath = outputDir.resolve(sourcePathStr).normalize();
+        }
+        // Handle relative paths from workspace: resolve relative to output directory
+        else if (!Path.of(sourcePathStr).isAbsolute()) {
+            sourcePath = resolveRunOutputPath(outputDir, sourcePathStr, sourcePathStr);
+        } else {
+            // Absolute host paths: reject unless under data root
+            Path absolute = Path.of(sourcePathStr).normalize();
+            if (!absolute.startsWith(directoryService.dataRoot())) {
+                throw new IllegalArgumentException(
+                    "Absolute file_path output escapes data root: " + sourcePathStr);
+            }
+            sourcePath = absolute;
+        }
+
+        if (!Files.exists(sourcePath)) {
+            throw new IllegalArgumentException(
+                "Source file for output '" + outputName + "' does not exist: " + sourcePath);
+        }
+
+        String fileName = sourcePath.getFileName().toString();
+        // Use actual filename; add output name prefix only for collision avoidance
+        Path destPath = outputDir.resolve(fileName);
+        boolean sourceEqualsDest = sourcePath.normalize().equals(destPath.normalize());
+        if (!sourceEqualsDest && Files.exists(destPath)) {
+            destPath = outputDir.resolve(sanitize(outputName) + "_" + fileName);
+        }
+
+        if (!sourceEqualsDest) {
+            Files.copy(sourcePath, destPath, StandardCopyOption.REPLACE_EXISTING);
+        }
 
         return saveArtifact(runId, planId, outputName, "file_path",
             destPath.getFileName().toString(),
-            destPath.toString(), null);
+            destPath.toString(), null, context);
+    }
+
+    private Path resolveRunOutputPath(Path outputDir, String relativePath, String displayPath) {
+        Path normalizedOutputDir = outputDir.toAbsolutePath().normalize();
+        if (!StringUtils.hasText(relativePath)) {
+            return normalizedOutputDir;
+        }
+        String cleaned = relativePath.replace('\\', '/');
+        if (cleaned.startsWith("/") || cleaned.contains("//")) {
+            throw new IllegalArgumentException("Output path escapes output directory: " + displayPath);
+        }
+        Path relative = Path.of(cleaned).normalize();
+        if (relative.isAbsolute() || relative.startsWith("..")) {
+            throw new IllegalArgumentException("Output path escapes output directory: " + displayPath);
+        }
+        if (outputDir.getFileName() != null && relative.getNameCount() > 1
+            && outputDir.getFileName().toString().equals(relative.getName(0).toString())) {
+            relative = relative.subpath(1, relative.getNameCount());
+        }
+        Path resolved = normalizedOutputDir.resolve(relative).normalize();
+        if (!resolved.startsWith(normalizedOutputDir)) {
+            throw new IllegalArgumentException("Output path escapes output directory: " + displayPath);
+        }
+        return resolved;
     }
 
     private RunOutputArtifact materializeUserMessage(String runId, String planId,
                                                        String outputName, Object value,
-                                                       Path outputDir) throws IOException {
+                                                       Path outputDir,
+                                                       OutputArtifactContext context) throws IOException {
         String fileName = sanitize(outputName) + ".md";
         Path filePath = outputDir.resolve(fileName);
         String content = value.toString();
         Files.writeString(filePath, content);
 
         return saveArtifact(runId, planId, outputName, "user_message",
-            fileName, filePath.toString(), null);
+            fileName, filePath.toString(), null, context);
     }
 
     private RunOutputArtifact materializeJson(String runId, String planId,
                                                 String outputName, Object value,
-                                                Path outputDir) throws IOException {
+                                                Path outputDir,
+                                                OutputArtifactContext context) throws IOException {
         String fileName = sanitize(outputName) + ".json";
         Path filePath = outputDir.resolve(fileName);
         String jsonContent;
@@ -156,19 +351,20 @@ public class OutputArtifactService {
         Files.writeString(filePath, jsonContent);
 
         return saveArtifact(runId, planId, outputName, "json",
-            fileName, filePath.toString(), jsonContent);
+            fileName, filePath.toString(), jsonContent, context);
     }
 
     private RunOutputArtifact materializeText(String runId, String planId,
                                                 String outputName, Object value,
-                                                Path outputDir) throws IOException {
+                                                Path outputDir,
+                                                OutputArtifactContext context) throws IOException {
         String fileName = sanitize(outputName) + ".txt";
         Path filePath = outputDir.resolve(fileName);
         String content = value.toString();
         Files.writeString(filePath, content);
 
         return saveArtifact(runId, planId, outputName, "text",
-            fileName, filePath.toString(), null);
+            fileName, filePath.toString(), null, context);
     }
 
     // ── Helpers ──
@@ -176,11 +372,18 @@ public class OutputArtifactService {
     private RunOutputArtifact saveArtifact(String runId, String planId,
                                             String outputName, String artifactType,
                                             String fileName, String filePath,
-                                            String contentJson) {
+                                            String contentJson,
+                                            OutputArtifactContext context) {
+        OutputArtifactContext resolvedContext = context == null ? OutputArtifactContext.EMPTY : context;
         return repository.saveArtifact(new RunOutputArtifact(
             UUID.randomUUID().toString(),
             runId,
             planId,
+            resolvedContext.agentId(),
+            resolvedContext.jobId(),
+            resolvedContext.projectId(),
+            resolvedContext.workspaceId(),
+            resolvedContext.runType(),
             outputName,
             artifactType,
             fileName,

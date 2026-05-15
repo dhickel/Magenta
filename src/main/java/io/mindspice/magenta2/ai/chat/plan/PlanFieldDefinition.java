@@ -9,8 +9,7 @@ public record PlanFieldDefinition(
     boolean array,
     String description,
     boolean required,
-    String schema,
-    String example
+    String schema
 ) {
     public PlanFieldDefinition {
         type = type == null ? PlanFieldType.STRING : type;

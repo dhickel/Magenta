@@ -22,6 +22,16 @@ public class EventReactionService {
         return repository.findReactionsForAgent(agentId);
     }
 
+    public AgentEventReaction reaction(String agentId, String reactionId) {
+        agentProfileService.get(agentId);
+        AgentEventReaction reaction = repository.findReaction(reactionId)
+            .orElseThrow(() -> new IllegalStateException("reaction not found"));
+        if (!agentId.equals(reaction.agentId())) {
+            throw new IllegalStateException("reaction not found");
+        }
+        return reaction;
+    }
+
     public AgentEventReaction save(String agentId, AgentEventReaction reaction) {
         agentProfileService.get(agentId);
         if (reaction.eventType() == null) {
@@ -44,5 +54,27 @@ public class EventReactionService {
             reaction.createdAt(),
             reaction.updatedAt()
         ));
+    }
+
+    public AgentEventReaction toggle(String agentId, String reactionId) {
+        AgentEventReaction current = reaction(agentId, reactionId);
+        return save(agentId, new AgentEventReaction(
+            current.id(),
+            current.agentId(),
+            current.eventType(),
+            current.filter(),
+            current.actionType(),
+            current.assignmentTemplate(),
+            !current.enabled(),
+            current.createdAt(),
+            current.updatedAt()
+        ));
+    }
+
+    public void delete(String agentId, String reactionId) {
+        agentProfileService.get(agentId);
+        if (!repository.deleteReactionForAgent(agentId, reactionId)) {
+            throw new IllegalStateException("reaction not found");
+        }
     }
 }

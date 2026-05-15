@@ -17,6 +17,7 @@ public record PlanRun(
     PlanDefinition planSnapshot,
     String workspaceId,
     String outputDirectory,
+    String tempWorkspacePath,
     List<String> executionEvidence,
     List<String> validationFeedback,
     List<String> deliverableEvidence,
@@ -39,63 +40,72 @@ public record PlanRun(
 
     public PlanRun withStatus(PlanRunStatus newStatus) {
         return new PlanRun(id, planId, newStatus, inputValues, outputValues, planSnapshot,
-            workspaceId, outputDirectory, executionEvidence, validationFeedback,
+            workspaceId, outputDirectory, tempWorkspacePath,
+            executionEvidence, validationFeedback,
             deliverableEvidence, finalMessage, errorText,
             createdAt, Instant.now(), startedAt, completedAt);
     }
 
     public PlanRun withOutputValues(Map<String, Object> newOutputValues) {
         return new PlanRun(id, planId, status, inputValues, newOutputValues, planSnapshot,
-            workspaceId, outputDirectory, executionEvidence, validationFeedback,
+            workspaceId, outputDirectory, tempWorkspacePath,
+            executionEvidence, validationFeedback,
             deliverableEvidence, finalMessage, errorText,
             createdAt, Instant.now(), startedAt, completedAt);
     }
 
     public PlanRun withExecutionEvidence(List<String> newEvidence) {
         return new PlanRun(id, planId, status, inputValues, outputValues, planSnapshot,
-            workspaceId, outputDirectory, newEvidence, validationFeedback,
+            workspaceId, outputDirectory, tempWorkspacePath,
+            newEvidence, validationFeedback,
             deliverableEvidence, finalMessage, errorText,
             createdAt, Instant.now(), startedAt, completedAt);
     }
 
     public PlanRun withValidationFeedback(List<String> newFeedback) {
         return new PlanRun(id, planId, status, inputValues, outputValues, planSnapshot,
-            workspaceId, outputDirectory, executionEvidence, newFeedback,
+            workspaceId, outputDirectory, tempWorkspacePath,
+            executionEvidence, newFeedback,
             deliverableEvidence, finalMessage, errorText,
             createdAt, Instant.now(), startedAt, completedAt);
     }
 
     public PlanRun withFinalMessage(String newFinalMessage) {
         return new PlanRun(id, planId, status, inputValues, outputValues, planSnapshot,
-            workspaceId, outputDirectory, executionEvidence, validationFeedback,
+            workspaceId, outputDirectory, tempWorkspacePath,
+            executionEvidence, validationFeedback,
             deliverableEvidence, newFinalMessage, errorText,
             createdAt, Instant.now(), startedAt, completedAt);
     }
 
     public PlanRun withErrorText(String newErrorText) {
         return new PlanRun(id, planId, status, inputValues, outputValues, planSnapshot,
-            workspaceId, outputDirectory, executionEvidence, validationFeedback,
+            workspaceId, outputDirectory, tempWorkspacePath,
+            executionEvidence, validationFeedback,
             deliverableEvidence, finalMessage, newErrorText,
             createdAt, Instant.now(), startedAt, completedAt);
     }
 
     public PlanRun withStartedAt(Instant newStartedAt) {
         return new PlanRun(id, planId, status, inputValues, outputValues, planSnapshot,
-            workspaceId, outputDirectory, executionEvidence, validationFeedback,
+            workspaceId, outputDirectory, tempWorkspacePath,
+            executionEvidence, validationFeedback,
             deliverableEvidence, finalMessage, errorText,
             createdAt, Instant.now(), newStartedAt, completedAt);
     }
 
     public PlanRun withCompletedAt(Instant newCompletedAt) {
         return new PlanRun(id, planId, status, inputValues, outputValues, planSnapshot,
-            workspaceId, outputDirectory, executionEvidence, validationFeedback,
+            workspaceId, outputDirectory, tempWorkspacePath,
+            executionEvidence, validationFeedback,
             deliverableEvidence, finalMessage, errorText,
             createdAt, Instant.now(), startedAt, newCompletedAt);
     }
 
     public PlanRun withDeliverableEvidence(List<String> newDeliverableEvidence) {
         return new PlanRun(id, planId, status, inputValues, outputValues, planSnapshot,
-            workspaceId, outputDirectory, executionEvidence, validationFeedback,
+            workspaceId, outputDirectory, tempWorkspacePath,
+            executionEvidence, validationFeedback,
             newDeliverableEvidence, finalMessage, errorText,
             createdAt, Instant.now(), startedAt, completedAt);
     }

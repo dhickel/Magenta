@@ -8,6 +8,7 @@ import java.util.Optional;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -87,6 +88,23 @@ public class ProjectRepository {
             jdbcTemplate.update("delete from project_agent_memberships where project_id = ?", id);
             jdbcTemplate.update("delete from projects where id = ?", id);
         }
+    }
+
+    @Transactional
+    public void purgeAgentReferences(String agentId) {
+        if (!StringUtils.hasText(agentId)) {
+            return;
+        }
+        jdbcTemplate.update("delete from project_agent_memberships where agent_id = ?", agentId);
+        jdbcTemplate.update(
+            "delete from project_events where project_id in (select id from projects where owner_agent_id = ?)",
+            agentId
+        );
+        jdbcTemplate.update(
+            "delete from project_agent_memberships where project_id in (select id from projects where owner_agent_id = ?)",
+            agentId
+        );
+        jdbcTemplate.update("delete from projects where owner_agent_id = ?", agentId);
     }
 
     // ── ProjectAgentMembership ──

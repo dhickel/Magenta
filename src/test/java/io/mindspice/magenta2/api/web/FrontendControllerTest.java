@@ -25,6 +25,8 @@ class FrontendControllerTest {
         assertThat(html).contains("/chat");
         assertThat(html).contains("/dashboard");
         assertThat(html).contains("/webjars/htmx.org/dist/htmx.min.js");
+        assertThat(html).doesNotContain("hx-get=\"/chat\"");
+        assertThat(html).doesNotContain("hx-get=\"/dashboard\"");
         assertThat(html).doesNotContain("<style>");
     }
 
@@ -32,7 +34,7 @@ class FrontendControllerTest {
     void chatPageRendersSimplyPagesChatShell() {
         FrontendController controller = new FrontendController(stubChatService());
 
-        String html = controller.chat(null, null);
+        String html = controller.chat(null, null, null, null, null);
 
         assertThat(html).contains("/css/magenta.css?v=2");
         assertThat(html).contains("id=\"chat-token-usage\"");
@@ -56,7 +58,7 @@ class FrontendControllerTest {
     @Test
     void chatPageIsolatesFromOrchestrationScripts() {
         FrontendController controller = new FrontendController(stubChatService());
-        String html = controller.chat(null, null);
+        String html = controller.chat(null, null, null, null, null);
 
         // Chat page must NOT load orchestration dashboard scripts
         assertThat(html).doesNotContain("/js/orchestration/dashboard.js");

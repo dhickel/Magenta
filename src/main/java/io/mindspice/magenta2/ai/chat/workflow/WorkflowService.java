@@ -14,10 +14,14 @@ import io.mindspice.magenta2.ai.chat.task.TaskRunStatus;
 import io.mindspice.magenta2.ai.chat.task.TaskService;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-@Service
+/**
+ * Legacy linear workflow implementation retained for historical tests and
+ * migration reference only. Production workflow execution is owned by
+ * {@code io.mindspice.magenta2.ai.orchestration.workflow.WorkflowService}.
+ */
+@Deprecated(forRemoval = true)
 public class WorkflowService {
     private final WorkflowRepository workflowRepository;
     private final TaskService taskService;

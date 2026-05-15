@@ -135,6 +135,18 @@ public class ProjectController {
         }
     }
 
+    @PostMapping("/api/projects/{projectId}/workspace/release")
+    public ProjectService.ProjectWorkspaceSummary requestWorkspaceRelease(@PathVariable String projectId) {
+        try {
+            projectService.requestWorkspaceRelease(projectId);
+            return projectService.workspaceSummary(projectId);
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+        } catch (IllegalStateException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+        }
+    }
+
     // ── DTOs ──
 
     public record CreateProjectRequest(

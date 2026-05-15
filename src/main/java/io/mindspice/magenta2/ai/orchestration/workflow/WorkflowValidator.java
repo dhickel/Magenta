@@ -52,7 +52,13 @@ public class WorkflowValidator {
         // 2. Route endpoint existence
         validateRouteEndpoints(definition, errors);
 
-        // 3. Every route has a route type (enforced by record, but double-check)
+        // 3. Route id uniqueness
+        validateRouteUniqueness(definition, errors);
+
+        // 4. Duplicate route detection
+        validateDuplicateRoutes(definition, errors);
+
+        // 5. Every route has a route type (enforced by record, but double-check)
         for (WorkflowRoute route : definition.routes()) {
             if (route.routeType() == null) {
                 errors.add("Route '" + route.id() + "' has no route type");
@@ -97,6 +103,33 @@ public class WorkflowValidator {
             }
             if (!nodeKeys.contains(route.toNodeKey())) {
                 errors.add("Route '" + route.id() + "': destination node '" + route.toNodeKey() + "' not found");
+            }
+        }
+    }
+
+    private void validateRouteUniqueness(WorkflowDefinition def, List<String> errors) {
+        Set<String> seen = new HashSet<>();
+        for (WorkflowRoute route : def.routes()) {
+            if (!seen.add(route.id())) {
+                errors.add("Duplicate route id: '" + route.id() + "'");
+            }
+        }
+    }
+
+    private void validateDuplicateRoutes(WorkflowDefinition def, List<String> errors) {
+        Set<String> seen = new HashSet<>();
+        for (WorkflowRoute route : def.routes()) {
+            String identity = route.fromNodeKey() + "::"
+                + route.fromOutputName() + "::"
+                + route.toNodeKey() + "::"
+                + route.toInputName() + "::"
+                + route.routeType().name();
+            if (!seen.add(identity)) {
+                errors.add("Duplicate route detected: fromNodeKey='" + route.fromNodeKey()
+                    + "', fromOutputName='" + route.fromOutputName()
+                    + "', toNodeKey='" + route.toNodeKey()
+                    + "', toInputName='" + route.toInputName()
+                    + "', routeType=" + route.routeType().name());
             }
         }
     }

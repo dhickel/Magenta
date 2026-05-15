@@ -40,7 +40,10 @@ public class AssignmentService {
         if (!StringUtils.hasText(request.agentId())) {
             throw new IllegalArgumentException("agentId is required");
         }
-        agentProfileService.get(request.agentId());
+        AgentProfile agent = agentProfileService.get(request.agentId());
+        if (agent.status() == io.mindspice.magenta2.ai.orchestration.agents.AgentProfileStatus.DISABLED) {
+            throw new IllegalStateException("Agent is disabled and cannot accept new assignments: " + request.agentId());
+        }
         if (StringUtils.hasText(request.jobId())) {
             jobService.getDefinition(request.jobId());
         }

@@ -52,6 +52,10 @@ public class WorkflowService {
             .orElseThrow(() -> new IllegalArgumentException("Workflow not found: " + id));
     }
 
+    public WorkflowDefinition getWorkflow(String id) {
+        return getDefinition(id);
+    }
+
     public Optional<WorkflowDefinition> findDefinition(String id) {
         return repository.findDefinition(id);
     }
@@ -281,8 +285,12 @@ public class WorkflowService {
     // ════════════════════════════════════════════════════════════════
 
     public WorkflowRun startRun(String workflowId) {
+        return startRun(workflowId, null);
+    }
+
+    public WorkflowRun startRun(String workflowId, String modelOverride) {
         WorkflowDefinition definition = getDefinition(workflowId);
-        return workflowRunner.startRun(definition);
+        return workflowRunner.startRun(definition, modelOverride);
     }
 
     public WorkflowRun getRun(String runId) {
@@ -309,7 +317,11 @@ public class WorkflowService {
      * Execute a workflow synchronously (used by tests and simple integrations).
      */
     public WorkflowRun runSynchronously(String workflowId) {
+        return runSynchronously(workflowId, null);
+    }
+
+    public WorkflowRun runSynchronously(String workflowId, String modelOverride) {
         WorkflowDefinition definition = getDefinition(workflowId);
-        return workflowRunner.runSynchronously(definition);
+        return workflowRunner.runSynchronously(definition, modelOverride);
     }
 }

@@ -51,6 +51,16 @@ public class ScheduleService {
         return repository.findSchedulesForAgent(agentId);
     }
 
+    public AgentSchedule schedule(String agentId, String scheduleId) {
+        agentProfileService.get(agentId);
+        AgentSchedule schedule = repository.findSchedule(scheduleId)
+            .orElseThrow(() -> new IllegalStateException("schedule not found"));
+        if (!agentId.equals(schedule.agentId())) {
+            throw new IllegalStateException("schedule not found");
+        }
+        return schedule;
+    }
+
     public AgentSchedule save(String agentId, AgentSchedule schedule) {
         agentProfileService.get(agentId);
         ZoneId zoneId = zone(schedule.timezone());
@@ -70,6 +80,29 @@ public class ScheduleService {
             schedule.createdAt(),
             schedule.updatedAt()
         ));
+    }
+
+    public AgentSchedule toggle(String agentId, String scheduleId) {
+        AgentSchedule current = schedule(agentId, scheduleId);
+        return save(agentId, new AgentSchedule(
+            current.id(),
+            current.agentId(),
+            current.jobId(),
+            current.assignmentTemplate(),
+            current.cronExpression(),
+            current.timezone(),
+            !current.enabled(),
+            null,
+            current.createdAt(),
+            current.updatedAt()
+        ));
+    }
+
+    public void delete(String agentId, String scheduleId) {
+        agentProfileService.get(agentId);
+        if (!repository.deleteScheduleForAgent(agentId, scheduleId)) {
+            throw new IllegalStateException("schedule not found");
+        }
     }
 
     @Scheduled(fixedDelayString = "${magenta.orchestration.scheduler-delay-ms:10000}")

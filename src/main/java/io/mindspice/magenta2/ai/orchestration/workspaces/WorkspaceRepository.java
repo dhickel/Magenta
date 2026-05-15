@@ -3,6 +3,7 @@ package io.mindspice.magenta2.ai.orchestration.workspaces;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -39,6 +40,22 @@ public class WorkspaceRepository {
         );
     }
 
+    public List<Workspace> findAll(WorkspaceOwnerType ownerType, String ownerId, int limit) {
+        StringBuilder sql = new StringBuilder("select * from workspaces where 1 = 1");
+        List<Object> args = new ArrayList<>();
+        if (ownerType != null) {
+            sql.append(" and owner_type = ?");
+            args.add(ownerType.name());
+        }
+        if (StringUtils.hasText(ownerId)) {
+            sql.append(" and owner_id = ?");
+            args.add(ownerId.trim());
+        }
+        sql.append(" order by updated_at desc limit ?");
+        args.add(limit);
+        return jdbcTemplate.query(sql.toString(), (rs, rowNum) -> toWorkspace(rs), args.toArray());
+    }
+
     public Workspace save(Workspace workspace) {
         Instant now = Instant.now();
         Instant createdAt = workspace.createdAt() == null ? now : workspace.createdAt();
@@ -68,6 +85,30 @@ public class WorkspaceRepository {
             updatedAt.toString()
         );
         return findById(workspace.id()).orElseThrow();
+    }
+
+    public void deleteByOwner(WorkspaceOwnerType ownerType, String ownerId) {
+        if (ownerType == null || !StringUtils.hasText(ownerId)) {
+            return;
+        }
+        List<String> workspaceIds = jdbcTemplate.query(
+            "select id from workspaces where owner_type = ? and owner_id = ?",
+            (rs, rowNum) -> rs.getString("id"),
+            ownerType.name(),
+            ownerId
+        );
+        if (workspaceIds.isEmpty()) {
+            return;
+        }
+        for (String workspaceId : workspaceIds) {
+            jdbcTemplate.update("delete from workspace_links where workspace_id = ?", workspaceId);
+        }
+        jdbcTemplate.update(
+            "delete from run_output_artifacts where workspace_id in (select id from workspaces where owner_type = ? and owner_id = ?)",
+            ownerType.name(),
+            ownerId
+        );
+        jdbcTemplate.update("delete from workspaces where owner_type = ? and owner_id = ?", ownerType.name(), ownerId);
     }
 
     public List<WorkspaceLink> links(String workspaceId) {
@@ -121,57 +162,43 @@ public class WorkspaceRepository {
         jdbcTemplate.update("delete from workspace_links where workspace_id = ? and id = ?", workspaceId, linkId);
     }
 
-    // ── WorkspaceRoot ──
+    // ── WorkspaceRoot — deprecated, delegates to workspaces ──
 
+    /**
+     * @deprecated Use {@link #findById(String)} instead.
+     */
+    @Deprecated
     public Optional<WorkspaceRoot> findRootById(String id) {
-        if (!StringUtils.hasText(id)) {
-            return Optional.empty();
-        }
-        return jdbcTemplate.query(
-            "select * from workspace_roots where id = ?",
-            rs -> rs.next() ? Optional.of(toRoot(rs)) : Optional.empty(),
-            id
-        );
+        return findById(id).map(this::toRootFromWorkspace);
     }
 
+    /**
+     * @deprecated Use {@link #findByOwner(WorkspaceOwnerType, String)} instead.
+     */
+    @Deprecated
     public Optional<WorkspaceRoot> findRootByOwner(WorkspaceOwnerType ownerType, String ownerId) {
-        return jdbcTemplate.query(
-            "select * from workspace_roots where owner_type = ? and owner_id = ? order by created_at limit 1",
-            rs -> rs.next() ? Optional.of(toRoot(rs)) : Optional.empty(),
-            ownerType.name(),
-            ownerId
-        );
+        return findByOwner(ownerType, ownerId).map(this::toRootFromWorkspace);
     }
 
+    /**
+     * @deprecated Use {@link #save(Workspace)} instead.
+     */
+    @Deprecated
     public WorkspaceRoot saveRoot(WorkspaceRoot root) {
-        Instant now = Instant.now();
-        Instant createdAt = root.createdAt() == null ? now : root.createdAt();
-        Instant updatedAt = now;
-        jdbcTemplate.update(
-            """
-                insert into workspace_roots (
-                    id, owner_type, owner_id, root_relative_path, display_name,
-                    metadata_json, created_at, updated_at
-                )
-                values (?, ?, ?, ?, ?, ?, ?, ?)
-                on conflict(id) do update set
-                    owner_type = excluded.owner_type,
-                    owner_id = excluded.owner_id,
-                    root_relative_path = excluded.root_relative_path,
-                    display_name = excluded.display_name,
-                    metadata_json = excluded.metadata_json,
-                    updated_at = excluded.updated_at
-                """,
-            root.id(),
-            root.ownerType().name(),
-            root.ownerId(),
-            root.rootRelativePath(),
-            root.displayName(),
-            root.metadataJson(),
-            createdAt.toString(),
-            updatedAt.toString()
+        Workspace saved = save(new Workspace(
+            root.id(), root.ownerType(), root.ownerId(),
+            root.rootRelativePath(), root.displayName(),
+            root.metadataJson(), root.createdAt(), root.updatedAt()
+        ));
+        return toRootFromWorkspace(saved);
+    }
+
+    private WorkspaceRoot toRootFromWorkspace(Workspace workspace) {
+        return new WorkspaceRoot(
+            workspace.id(), workspace.ownerType(), workspace.ownerId(),
+            workspace.rootRelativePath(), workspace.displayName(),
+            workspace.metadataJson(), workspace.createdAt(), workspace.updatedAt()
         );
-        return findRootById(root.id()).orElseThrow();
     }
 
     // ── WorkspaceLease ──
@@ -212,6 +239,18 @@ public class WorkspaceRepository {
         );
     }
 
+    public List<WorkspaceLease> findActiveLeases(String workspaceId) {
+        return jdbcTemplate.query(
+            """
+                select * from workspace_leases
+                where workspace_id = ? and released_at is null
+                order by created_at desc
+                """,
+            (rs, rowNum) -> toLease(rs),
+            workspaceId
+        );
+    }
+
     public WorkspaceLease saveLease(WorkspaceLease lease) {
         Instant now = Instant.now();
         Instant createdAt = lease.createdAt() == null ? now : lease.createdAt();
@@ -220,15 +259,16 @@ public class WorkspaceRepository {
             """
                 insert into workspace_leases (
                     id, workspace_id, holder_type, holder_id, mode,
-                    expires_at, released_at, created_at, updated_at
+                    expires_at, release_requested, released_at, created_at, updated_at
                 )
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict(id) do update set
                     workspace_id = excluded.workspace_id,
                     holder_type = excluded.holder_type,
                     holder_id = excluded.holder_id,
                     mode = excluded.mode,
                     expires_at = excluded.expires_at,
+                    release_requested = excluded.release_requested,
                     released_at = excluded.released_at,
                     updated_at = excluded.updated_at
                 """,
@@ -238,6 +278,7 @@ public class WorkspaceRepository {
             lease.holderId(),
             lease.mode().name(),
             lease.expiresAt() != null ? lease.expiresAt().toString() : null,
+            lease.releaseRequested() ? 1 : 0,
             lease.releasedAt() != null ? lease.releasedAt().toString() : null,
             createdAt.toString(),
             updatedAt.toString()
@@ -262,9 +303,9 @@ public class WorkspaceRepository {
             """
                 insert into workspace_leases (
                     id, workspace_id, holder_type, holder_id, mode,
-                    expires_at, released_at, created_at, updated_at
+                    expires_at, release_requested, released_at, created_at, updated_at
                 )
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict(workspace_id) where mode = 'WRITE' and released_at is null
                 do nothing
                 """,
@@ -274,6 +315,7 @@ public class WorkspaceRepository {
             lease.holderId(),
             lease.mode().name(),
             lease.expiresAt() != null ? lease.expiresAt().toString() : null,
+            lease.releaseRequested() ? 1 : 0,
             lease.releasedAt() != null ? lease.releasedAt().toString() : null,
             createdAt.toString(),
             updatedAt.toString()
@@ -293,6 +335,30 @@ public class WorkspaceRepository {
         );
     }
 
+    public void releaseLeasesByWorkspaceId(String workspaceId) {
+        if (!StringUtils.hasText(workspaceId)) {
+            return;
+        }
+        Instant now = Instant.now();
+        jdbcTemplate.update(
+            "update workspace_leases set released_at = ?, updated_at = ? where workspace_id = ? and released_at is null",
+            now.toString(),
+            now.toString(),
+            workspaceId
+        );
+    }
+
+    public int releaseExpiredLeases(Instant now) {
+        return jdbcTemplate.update(
+            """
+                update workspace_leases
+                set released_at = ?, updated_at = ?
+                where released_at is null and expires_at is not null and expires_at <= ?
+                """,
+            now.toString(), now.toString(), now.toString()
+        );
+    }
+
     // ── RunOutputArtifact ──
 
     public RunOutputArtifact saveArtifact(RunOutputArtifact artifact) {
@@ -301,11 +367,17 @@ public class WorkspaceRepository {
         jdbcTemplate.update(
             """
                 insert into run_output_artifacts (
-                    id, run_id, plan_id, output_name, artifact_type,
+                    id, run_id, plan_id, agent_id, job_id, project_id, workspace_id, run_type,
+                    output_name, artifact_type,
                     file_name, file_path, content_json, created_at
                 )
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict(id) do update set
+                    agent_id = excluded.agent_id,
+                    job_id = excluded.job_id,
+                    project_id = excluded.project_id,
+                    workspace_id = excluded.workspace_id,
+                    run_type = excluded.run_type,
                     output_name = excluded.output_name,
                     artifact_type = excluded.artifact_type,
                     file_name = excluded.file_name,
@@ -315,6 +387,11 @@ public class WorkspaceRepository {
             artifact.id(),
             artifact.runId(),
             artifact.planId(),
+            artifact.agentId(),
+            artifact.jobId(),
+            artifact.projectId(),
+            artifact.workspaceId(),
+            artifact.runType(),
             artifact.outputName(),
             artifact.artifactType(),
             artifact.fileName(),
@@ -333,6 +410,15 @@ public class WorkspaceRepository {
         );
     }
 
+    public Optional<RunOutputArtifact> findArtifactById(String artifactId) {
+        if (!StringUtils.hasText(artifactId)) return Optional.empty();
+        return jdbcTemplate.query(
+            "select * from run_output_artifacts where id = ?",
+            rs -> rs.next() ? Optional.of(toArtifact(rs)) : Optional.empty(),
+            artifactId
+        );
+    }
+
     public List<RunOutputArtifact> findArtifactsByPlanId(String planId) {
         return jdbcTemplate.query(
             "select * from run_output_artifacts where plan_id = ? order by created_at desc",
@@ -342,23 +428,72 @@ public class WorkspaceRepository {
     }
 
     public List<RunOutputArtifact> findArtifacts(String runId, String planId, String artifactType, int limit) {
+        return findArtifacts(OutputArtifactQuery.of(
+            null, null, null, null, runId, planId, artifactType, limit
+        ));
+    }
+
+    public List<RunOutputArtifact> findArtifacts(OutputArtifactQuery query) {
+        OutputArtifactQuery effectiveQuery = query == null
+            ? OutputArtifactQuery.of(null, null, null, null, null, null, null, 50)
+            : query;
         StringBuilder sql = new StringBuilder("select * from run_output_artifacts where 1 = 1");
-        List<Object> args = new java.util.ArrayList<>();
-        if (StringUtils.hasText(runId)) {
+        List<Object> args = new ArrayList<>();
+        if (StringUtils.hasText(effectiveQuery.agentId())) {
+            sql.append(" and agent_id = ?");
+            args.add(effectiveQuery.agentId());
+        }
+        if (StringUtils.hasText(effectiveQuery.jobId())) {
+            sql.append(" and job_id = ?");
+            args.add(effectiveQuery.jobId());
+        }
+        if (StringUtils.hasText(effectiveQuery.projectId())) {
+            sql.append(" and project_id = ?");
+            args.add(effectiveQuery.projectId());
+        }
+        if (StringUtils.hasText(effectiveQuery.workspaceId())) {
+            sql.append(" and workspace_id = ?");
+            args.add(effectiveQuery.workspaceId());
+        }
+        if (StringUtils.hasText(effectiveQuery.runId())) {
             sql.append(" and run_id = ?");
-            args.add(runId);
+            args.add(effectiveQuery.runId());
         }
-        if (StringUtils.hasText(planId)) {
+        if (StringUtils.hasText(effectiveQuery.planId())) {
             sql.append(" and plan_id = ?");
-            args.add(planId);
+            args.add(effectiveQuery.planId());
         }
-        if (StringUtils.hasText(artifactType)) {
+        if (StringUtils.hasText(effectiveQuery.artifactType())) {
             sql.append(" and artifact_type = ?");
-            args.add(artifactType);
+            args.add(effectiveQuery.artifactType());
         }
         sql.append(" order by created_at desc limit ?");
-        args.add(Math.max(1, Math.min(limit, 200)));
+        args.add(effectiveQuery.limit());
         return jdbcTemplate.query(sql.toString(), (rs, rowNum) -> toArtifact(rs), args.toArray());
+    }
+
+    public int backfillArtifactAttribution(String runId, OutputArtifactContext context) {
+        if (!StringUtils.hasText(runId) || context == null || context.isEmpty()) {
+            return 0;
+        }
+        return jdbcTemplate.update(
+            """
+                update run_output_artifacts
+                set
+                    agent_id = coalesce(agent_id, ?),
+                    job_id = coalesce(job_id, ?),
+                    project_id = coalesce(project_id, ?),
+                    workspace_id = coalesce(workspace_id, ?),
+                    run_type = coalesce(run_type, ?)
+                where run_id = ?
+                """,
+            context.agentId(),
+            context.jobId(),
+            context.projectId(),
+            context.workspaceId(),
+            context.runType(),
+            runId
+        );
     }
 
     private Workspace toWorkspace(ResultSet rs) throws SQLException {
@@ -413,6 +548,7 @@ public class WorkspaceRepository {
             rs.getString("holder_id"),
             LeaseMode.valueOf(rs.getString("mode")),
             instant(rs.getString("expires_at")),
+            rs.getInt("release_requested") != 0,
             instant(rs.getString("released_at")),
             instant(rs.getString("created_at")),
             instant(rs.getString("updated_at"))
@@ -424,6 +560,11 @@ public class WorkspaceRepository {
             rs.getString("id"),
             rs.getString("run_id"),
             rs.getString("plan_id"),
+            rs.getString("agent_id"),
+            rs.getString("job_id"),
+            rs.getString("project_id"),
+            rs.getString("workspace_id"),
+            rs.getString("run_type"),
             rs.getString("output_name"),
             rs.getString("artifact_type"),
             rs.getString("file_name"),
@@ -464,22 +605,11 @@ public class WorkspaceRepository {
                 foreign key(workspace_id) references workspaces(id)
             )
             """);
-        jdbcTemplate.execute("""
-            create table if not exists workspace_roots (
-                id text primary key,
-                owner_type text not null,
-                owner_id text not null,
-                root_relative_path text not null,
-                display_name text not null,
-                metadata_json text,
-                created_at text not null,
-                updated_at text not null
-            )
-            """);
-        jdbcTemplate.execute("""
-            create unique index if not exists idx_workspace_roots_owner
-                on workspace_roots(owner_type, owner_id)
-            """);
+
+        // Migrate: workspace_roots was a duplicate of workspaces.
+        // Copy any data from workspace_roots into workspaces, then drop workspace_roots.
+        migrateWorkspaceRootsToWorkspaces();
+
         jdbcTemplate.execute("""
             create table if not exists workspace_leases (
                 id text primary key,
@@ -488,10 +618,11 @@ public class WorkspaceRepository {
                 holder_id text not null,
                 mode text not null,
                 expires_at text,
+                release_requested integer not null default 0,
                 released_at text,
                 created_at text not null,
                 updated_at text not null,
-                foreign key(workspace_id) references workspace_roots(id)
+                foreign key(workspace_id) references workspaces(id)
             )
             """);
         jdbcTemplate.execute("""
@@ -509,6 +640,11 @@ public class WorkspaceRepository {
                 id text primary key,
                 run_id text not null,
                 plan_id text not null,
+                agent_id text,
+                job_id text,
+                project_id text,
+                workspace_id text,
+                run_type text,
                 output_name text not null,
                 artifact_type text not null,
                 file_name text not null,
@@ -522,5 +658,80 @@ public class WorkspaceRepository {
             create index if not exists idx_run_output_artifacts_run
                 on run_output_artifacts(run_id)
             """);
+        addColumnIfMissing("run_output_artifacts", "agent_id", "alter table run_output_artifacts add column agent_id text");
+        addColumnIfMissing("run_output_artifacts", "job_id", "alter table run_output_artifacts add column job_id text");
+        addColumnIfMissing("run_output_artifacts", "project_id", "alter table run_output_artifacts add column project_id text");
+        addColumnIfMissing("workspace_leases", "release_requested",
+            "alter table workspace_leases add column release_requested integer not null default 0");
+        addColumnIfMissing("run_output_artifacts", "workspace_id", "alter table run_output_artifacts add column workspace_id text");
+        addColumnIfMissing("run_output_artifacts", "run_type", "alter table run_output_artifacts add column run_type text");
+        jdbcTemplate.execute("""
+            create index if not exists idx_run_output_artifacts_agent
+                on run_output_artifacts(agent_id)
+            """);
+        jdbcTemplate.execute("""
+            create index if not exists idx_run_output_artifacts_job
+                on run_output_artifacts(job_id)
+            """);
+        jdbcTemplate.execute("""
+            create index if not exists idx_run_output_artifacts_project
+                on run_output_artifacts(project_id)
+            """);
+        jdbcTemplate.execute("""
+            create index if not exists idx_run_output_artifacts_workspace
+                on run_output_artifacts(workspace_id)
+            """);
+    }
+
+    /**
+     * Migrate data from the deprecated {@code workspace_roots} table into
+     * {@code workspaces}, then drop the old table. Also fixes the
+     * {@code workspace_leases} foreign key to reference {@code workspaces(id)}
+     * instead of {@code workspace_roots(id)}.
+     *
+     * <p>Safe to call after {@code workspaces} has been created. Handles the
+     * case where {@code workspace_roots} does not exist.
+     */
+    private void migrateWorkspaceRootsToWorkspaces() {
+        // Check if workspace_roots exists
+        Integer count = jdbcTemplate.queryForObject(
+            "select count(*) from sqlite_master where type = 'table' and name = 'workspace_roots'",
+            Integer.class
+        );
+        if (count == null || count == 0) {
+            return; // Already migrated or never existed
+        }
+
+        // Copy any roots data into workspaces (skip duplicates via ON CONFLICT)
+        jdbcTemplate.update("""
+            insert or ignore into workspaces (id, owner_type, owner_id, root_relative_path,
+                display_name, metadata_json, created_at, updated_at)
+            select id, owner_type, owner_id, root_relative_path,
+                display_name, metadata_json, created_at, updated_at
+            from workspace_roots
+            """);
+
+        // Recreate workspace_leases with correct FK referencing workspaces.
+        // SQLite does not support ALTER TABLE to change FKs, so we must
+        // recreate. Existing lease data is ephemeral and can be safely lost
+        // during startup (leases are re-acquired by the runner on poll).
+        jdbcTemplate.execute("drop table if exists workspace_leases");
+
+        // Drop the legacy table
+        jdbcTemplate.execute("drop table if exists workspace_roots");
+    }
+
+    private void addColumnIfMissing(String table, String column, String ddl) {
+        if (!table.matches("[a-zA-Z0-9_]+") || !column.matches("[a-zA-Z0-9_]+")) {
+            throw new IllegalArgumentException("Unsupported table/column identifier");
+        }
+        Integer count = jdbcTemplate.queryForObject(
+            "select count(*) from pragma_table_info('" + table + "') where name = ?",
+            Integer.class,
+            column
+        );
+        if (count != null && count == 0) {
+            jdbcTemplate.execute(ddl);
+        }
     }
 }

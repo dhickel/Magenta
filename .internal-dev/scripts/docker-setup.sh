@@ -17,7 +17,7 @@
 #   chmod +x .internal-dev/scripts/docker-setup.sh
 #   ./.internal-dev/scripts/docker-setup.sh              # install if needed + verify
 #   ./.internal-dev/scripts/docker-setup.sh --verify-only # verify only, no install
-#   ./.internal-dev/scripts/docker-setup.sh --image python:3.12-slim  # custom agent image
+#   ./.internal-dev/scripts/docker-setup.sh --image python:3.12  # custom agent image
 
 set -euo pipefail
 
@@ -27,7 +27,7 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-AGENT_IMAGE="${MAGENTA_AGENT_IMAGE:-python:3.11-slim}"
+AGENT_IMAGE="${MAGENTA_AGENT_IMAGE:-python:3.11}"
 VERIFY_ONLY=false
 FAILURES=0
 
@@ -37,7 +37,7 @@ Usage: $0 [OPTIONS]
 
 Options:
   --verify-only       Only verify existing setup, do not install
-  --image <image>     Agent image to pull (default: python:3.11-slim)
+  --image <image>     Agent image to pull (default: python:3.11)
   --help              Show this message
 
 Environment:

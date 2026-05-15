@@ -7,6 +7,11 @@
     let editingSessionId = null;
     let latestSessions = [];
     const selectedSessionIds = new Set();
+    let lastPlanState = null;
+    const savedTaskByConversation = new Map();
+    let showAgentSendChooser = false;
+    let sendAgentsLoading = false;
+    let assignableAgents = [];
 
     function byId(id) {
         return document.getElementById(id);
@@ -38,6 +43,7 @@
     function setActiveConversationId(conversationId, title) {
         const displayValue = conversationId || '';
         root().setAttribute('data-active-conversation-id', displayValue);
+        clearAgentSendChooser();
         const activeEl = byId('chat-active-session');
         if (activeEl) {
             activeEl.textContent = title || conversationId || 'New chat';
@@ -82,6 +88,7 @@
     }
 
     function updatePlanStatus(planState) {
+        lastPlanState = planState || null;
         const statusEl = byId('chat-plan-status');
         const titleEl = byId('chat-plan-title');
         const hintEl = byId('chat-plan-hint');
@@ -90,6 +97,14 @@
             return;
         }
         const mode = planState && planState.mode ? String(planState.mode) : 'NORMAL';
+        const status = planState && planState.status ? String(planState.status) : '';
+        const conversationId = activeConversationId();
+        if (status !== 'APPROVED' && status !== 'SAVED_TASK') {
+            clearAgentSendChooser();
+            if (conversationId) {
+                savedTaskByConversation.delete(conversationId);
+            }
+        }
         if (mode === 'NORMAL' && !(planState && planState.title)) {
             statusEl.classList.remove('active');
             titleEl.textContent = '';
@@ -100,11 +115,11 @@
             return;
         }
         const title = planState && planState.title ? String(planState.title) : (planState && planState.goal ? String(planState.goal) : 'Draft plan');
-        const status = planState && planState.status ? String(planState.status).toLowerCase() : 'active';
-        titleEl.textContent = mode === 'PLAN' ? 'Plan mode: ' + title : 'Plan: ' + title + ' (' + status + ')';
+        const statusLabel = status ? status.toLowerCase() : 'active';
+        titleEl.textContent = mode === 'PLAN' ? 'Plan mode: ' + title : 'Plan: ' + title + ' (' + statusLabel + ')';
         hintEl.textContent = mode === 'PLAN'
             ? 'Use the planning panel'
-            : (status === 'needs_review' ? 'Review execution evidence before trusting completion' : 'Saved execution plan');
+            : (statusLabel === 'needs_review' ? 'Review execution evidence before trusting completion' : 'Saved execution plan');
         const evidence = Array.isArray(planState && planState.executionEvidence) ? planState.executionEvidence : [];
         const validationFeedback = Array.isArray(planState && planState.validationFeedback) ? planState.validationFeedback : [];
         const evidenceItems = evidence.concat(validationFeedback);
@@ -152,7 +167,7 @@
         }
         const mode = planState && planState.mode ? String(planState.mode) : 'NORMAL';
         const status = planState && planState.status ? String(planState.status) : '';
-        if (mode !== 'PLAN' && status !== 'APPROVED') {
+        if (mode !== 'PLAN' && status !== 'APPROVED' && status !== 'SAVED_TASK') {
             panel.classList.remove('active');
             panel.innerHTML = '';
             return;
@@ -177,10 +192,16 @@
                 + '<div class="planning-panel-title">Plan ready for approval</div>'
                 + planningActions('<button type="button" data-plan-action="approve">Approve plan</button><button type="button" data-plan-action="continue">Continue planning</button>')
                 + '</div>';
-        } else if (status === 'APPROVED') {
+        } else if (status === 'APPROVED' || status === 'SAVED_TASK') {
+            const saveButtonLabel = status === 'SAVED_TASK' ? 'Save another copy' : 'Save to plans';
             body = '<div class="planning-panel-body">'
-                + '<div class="planning-panel-title">Approved plan</div>'
-                + planningActions('<button type="button" data-plan-action="execute">Execute now</button><button type="button" data-plan-action="save-task">Save as task</button>')
+                + '<div class="planning-panel-title">' + (status === 'SAVED_TASK' ? 'Plan saved' : 'Approved plan') + '</div>'
+                + planningActions(
+                    '<button type="button" data-plan-action="execute">Execute now</button>'
+                    + '<button type="button" data-plan-action="save-task">' + saveButtonLabel + '</button>'
+                    + '<button type="button" data-plan-action="send-agent">Send to agent</button>'
+                )
+                + renderSendAgentChooser()
                 + '</div>';
         } else {
             body = '<div class="planning-panel-body">'
@@ -205,6 +226,35 @@
         return '<div class="planning-actions">'
             + primaryButtons
             + '<button type="button" data-plan-action="cancel">Cancel planning</button>'
+            + '</div>';
+    }
+
+    function renderSendAgentChooser() {
+        if (!showAgentSendChooser) {
+            return '';
+        }
+        if (sendAgentsLoading) {
+            return '<div class="planning-agent-send"><div class="planning-panel-progress">Loading agents...</div></div>';
+        }
+        if (!assignableAgents.length) {
+            return '<div class="planning-agent-send">'
+                + '<div class="planning-panel-progress">No active agents available.</div>'
+                + '<button type="button" data-plan-action="send-agent-cancel">Close</button>'
+                + '</div>';
+        }
+        const options = assignableAgents.map(function(agent, index) {
+            const selected = index === 0 ? ' selected' : '';
+            const name = agent && agent.name ? String(agent.name) : String(agent && agent.id ? agent.id : 'agent');
+            const id = agent && agent.id ? String(agent.id) : '';
+            return '<option value="' + escapeHtml(id) + '"' + selected + '>' + escapeHtml(name) + '</option>';
+        }).join('');
+        return '<div class="planning-agent-send">'
+            + '<label for="chat-plan-agent-select">Agent</label>'
+            + '<select id="chat-plan-agent-select">' + options + '</select>'
+            + '<div class="planning-actions">'
+            + '<button type="button" data-plan-action="send-agent-confirm">Queue plan</button>'
+            + '<button type="button" data-plan-action="send-agent-cancel">Cancel</button>'
+            + '</div>'
             + '</div>';
     }
 
@@ -953,12 +1003,42 @@
                 body: JSON.stringify(payload)
             });
 
-            setActiveConversationId(data.conversationId);
-            syncModelSelection(data.model);
-            renderHistory(data.history || []);
-            renderSessions(data.sessions || data.conversationIds || []);
-            updateContextUsage(data.contextUsage);
-            updatePlanStatus(data.planState);
+            applyCommandResponse(data);
+            setStatus();
+        } finally {
+            removeTransientAssistantMessage(transientEl);
+            requestInFlight = false;
+            setFormDisabled(false);
+        }
+    }
+
+    function applyCommandResponse(data) {
+        setActiveConversationId(data.conversationId);
+        syncModelSelection(data.model);
+        renderHistory(data.history || []);
+        renderSessions(data.sessions || data.conversationIds || []);
+        updateContextUsage(data.contextUsage);
+        updatePlanStatus(data.planState);
+    }
+
+    async function beginPlanFromDefinition(planId) {
+        if (!planId || requestInFlight) {
+            return;
+        }
+        requestInFlight = true;
+        setFormDisabled(true);
+        const transientEl = appendTransientAssistantMessage('Loading plan into planning chat...');
+        try {
+            const data = await getJson('/api/chat/plans/' + encodeURIComponent(planId) + '/continue', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    conversationId: activeConversationId(),
+                    model: selectedModel(),
+                    planningModel: selectedPlanningModel()
+                })
+            });
+            applyCommandResponse(data);
             setStatus();
         } finally {
             removeTransientAssistantMessage(transientEl);
@@ -1080,6 +1160,151 @@
         }
     }
 
+    function defaultTaskTitle() {
+        const planTitle = lastPlanState && lastPlanState.title ? String(lastPlanState.title).trim() : '';
+        if (planTitle) {
+            return planTitle;
+        }
+        return 'Untitled Task';
+    }
+
+    function clearAgentSendChooser() {
+        showAgentSendChooser = false;
+        sendAgentsLoading = false;
+        assignableAgents = [];
+    }
+
+    function savedTaskForConversation(conversationId) {
+        if (!conversationId) {
+            return null;
+        }
+        return savedTaskByConversation.get(conversationId) || null;
+    }
+
+    function rememberSavedTask(conversationId, taskId, taskTitle) {
+        if (!conversationId || !taskId) {
+            return;
+        }
+        savedTaskByConversation.set(conversationId, {
+            taskId: String(taskId),
+            taskTitle: taskTitle ? String(taskTitle) : defaultTaskTitle()
+        });
+    }
+
+    function promptForTaskTitle() {
+        const title = window.prompt('Name this plan for your plans dashboard:', defaultTaskTitle());
+        if (title === null) {
+            return null;
+        }
+        const normalized = String(title).trim();
+        if (!normalized) {
+            throw new Error('Task name is required');
+        }
+        return normalized;
+    }
+
+    async function savePlanAsTaskWithTitle(taskTitle) {
+        const conversationId = activeConversationId();
+        if (!conversationId || requestInFlight) {
+            return null;
+        }
+        requestInFlight = true;
+        setFormDisabled(true);
+        try {
+            const response = await getJson('/api/chat/' + encodeURIComponent(conversationId) + '/plan/save-task', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: taskTitle })
+            });
+            if (!response || !response.taskId) {
+                throw new Error('Plan was not saved');
+            }
+            rememberSavedTask(conversationId, response.taskId, response.taskTitle);
+            updatePlanStatus(response.planState);
+            await loadHistory(conversationId);
+            await loadSessions();
+            setStatus();
+            return savedTaskForConversation(conversationId);
+        } finally {
+            requestInFlight = false;
+            setFormDisabled(false);
+        }
+    }
+
+    async function ensureSavedTask(forceRename) {
+        const conversationId = activeConversationId();
+        if (!conversationId) {
+            return null;
+        }
+        const existing = savedTaskForConversation(conversationId);
+        const currentStatus = lastPlanState && lastPlanState.status ? String(lastPlanState.status) : '';
+        if (existing && !forceRename && currentStatus === 'SAVED_TASK') {
+            return existing;
+        }
+        const title = promptForTaskTitle();
+        if (!title) {
+            return null;
+        }
+        return savePlanAsTaskWithTitle(title);
+    }
+
+    async function loadAssignableAgents() {
+        const agents = await getJson('/api/agents');
+        return (Array.isArray(agents) ? agents : []).filter(function(agent) {
+            const status = agent && agent.status ? String(agent.status).toUpperCase() : '';
+            return status !== 'DISABLED';
+        });
+    }
+
+    async function openSendAgentChooser() {
+        const savedTask = await ensureSavedTask(false);
+        if (!savedTask) {
+            return;
+        }
+        showAgentSendChooser = true;
+        sendAgentsLoading = true;
+        assignableAgents = [];
+        renderPlanningPanel(lastPlanState);
+        try {
+            assignableAgents = await loadAssignableAgents();
+        } finally {
+            sendAgentsLoading = false;
+            renderPlanningPanel(lastPlanState);
+        }
+    }
+
+    async function confirmSendToAgent() {
+        const conversationId = activeConversationId();
+        if (!conversationId || requestInFlight) {
+            return;
+        }
+        const savedTask = await ensureSavedTask(false);
+        if (!savedTask) {
+            return;
+        }
+        const agentSelect = byId('chat-plan-agent-select');
+        const agentId = agentSelect && agentSelect.value ? String(agentSelect.value) : null;
+        if (!agentId) {
+            throw new Error('Select an agent');
+        }
+
+        requestInFlight = true;
+        setFormDisabled(true);
+        try {
+            await getJson('/api/plans/' + encodeURIComponent(savedTask.taskId) + '/submit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ agentId: agentId })
+            });
+            clearAgentSendChooser();
+            renderPlanningPanel(lastPlanState);
+            setStatus();
+        } finally {
+            requestInFlight = false;
+            setFormDisabled(false);
+        }
+    }
+
     async function runPlanningAction(action) {
         const conversationId = activeConversationId();
         if (!conversationId || requestInFlight) {
@@ -1093,9 +1318,26 @@
             await executePlanStream();
             return;
         }
+        if (action === 'save-task') {
+            await ensureSavedTask(true);
+            return;
+        }
+        if (action === 'send-agent') {
+            await openSendAgentChooser();
+            return;
+        }
+        if (action === 'send-agent-cancel') {
+            clearAgentSendChooser();
+            renderPlanningPanel(lastPlanState);
+            return;
+        }
+        if (action === 'send-agent-confirm') {
+            await confirmSendToAgent();
+            return;
+        }
         const endpoint = action === 'approve'
             ? '/plan/approve'
-            : (action === 'save-task' ? '/plan/save-task' : (action === 'continue' ? '/plan/continue' : null));
+            : (action === 'continue' ? '/plan/continue' : null);
         if (!endpoint) {
             return;
         }
@@ -1450,6 +1692,12 @@
         try {
             await loadHistory(activeConversationId());
             await loadSessions();
+            const continuePlanId = root().getAttribute('data-continue-plan-id');
+            if (continuePlanId) {
+                await beginPlanFromDefinition(continuePlanId);
+            } else if (root().getAttribute('data-start-planning') === 'true') {
+                await sendCommand('/plan');
+            }
         } catch (error) {
             setError(error.message);
         }

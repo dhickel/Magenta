@@ -1,6 +1,7 @@
 package io.mindspice.magenta2.ai.chat.plan;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -16,6 +17,9 @@ import io.mindspice.magenta2.ai.chat.model.ChatPlanState;
 import io.mindspice.magenta2.ai.chat.model.PlanMode;
 import io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer;
 import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
+import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactContext;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
 import org.slf4j.Logger;
@@ -178,6 +182,52 @@ public class PlanService {
         return beginPlan(conversationId, null, null);
     }
 
+    public PlanDefinition beginPlanFromDefinition(
+        String conversationId,
+        PlanDefinition source,
+        String prePlanningModel,
+        String executionModel
+    ) {
+        if (!StringUtils.hasText(conversationId)) {
+            throw new IllegalArgumentException("conversationId is required");
+        }
+        if (source == null) {
+            throw new IllegalArgumentException("source plan is required");
+        }
+        int startOrder = chatMemoryRepository.findByConversationId(conversationId).size();
+        Instant now = Instant.now();
+        PlanDefinition existing = planRepository.findDefinition(conversationId).orElse(null);
+        return planRepository.saveDefinition(new PlanDefinition(
+            conversationId,
+            PlanKind.SESSION_PLAN,
+            PlanStatus.DRAFT,
+            StringUtils.hasText(source.title()) ? source.title() : "Untitled Plan",
+            source.summary(),
+            source.goal(),
+            source.notes(),
+            source.deliverables(),
+            source.inputs(),
+            source.outputs(),
+            source.assumptions(),
+            source.steps(),
+            source.validationCriteria(),
+            List.of(),
+            List.of(),
+            source.promptProfile(),
+            normalize(prePlanningModel),
+            normalize(executionModel),
+            source.settingsOverrideJson(),
+            StringUtils.hasText(source.planningTask()) ? source.planningTask() : "clarify_and_elaborate",
+            List.of(),
+            0,
+            startOrder,
+            null,
+            null,
+            existing == null ? now : existing.createdAt(),
+            now
+        ));
+    }
+
     public Optional<PlanDefinition> activePlan(String conversationId) {
         return planRepository.findDefinition(conversationId);
     }
@@ -289,11 +339,54 @@ public class PlanService {
     }
 
     public PlanDefinition saveAsTask(String conversationId) {
+        return saveAsTask(conversationId, null);
+    }
+
+    public PlanDefinition saveAsTask(String conversationId, String taskTitle) {
         PlanDefinition plan = requirePlanConversation(conversationId, "save as task");
         validateComplete(plan, "save as task");
-        return planRepository.saveDefinition(plan
+        String resolvedTitle = normalize(taskTitle);
+        if (resolvedTitle == null) {
+            resolvedTitle = normalize(plan.title());
+        }
+        if (resolvedTitle == null) {
+            resolvedTitle = "Untitled Task";
+        }
+
+        PlanDefinition savedTask = saveTask(new PlanDefinition(
+            UUID.randomUUID().toString(),
+            PlanKind.TASK_TEMPLATE,
+            PlanStatus.APPROVED,
+            resolvedTitle,
+            plan.summary(),
+            plan.goal(),
+            plan.notes(),
+            plan.deliverables(),
+            plan.inputs(),
+            plan.outputs(),
+            plan.assumptions(),
+            plan.steps(),
+            plan.validationCriteria(),
+            List.of(),
+            List.of(),
+            plan.promptProfile(),
+            plan.planningModel(),
+            plan.executionModel(),
+            plan.settingsOverrideJson(),
+            null,
+            List.of(),
+            0,
+            0,
+            null,
+            null,
+            null,
+            null
+        ));
+
+        planRepository.saveDefinition(plan
             .withStatus(PlanStatus.SAVED_TASK)
             .withPendingQuestions(List.of(), 0));
+        return savedTask;
     }
 
     public PlanDefinition markExecuting(String conversationId) {
@@ -474,10 +567,15 @@ public class PlanService {
         }
         validateFieldNames(task.inputs(), "input");
         validateFieldNames(task.outputs(), "output");
+        // Preserve DRAFT and READY_FOR_APPROVAL status; otherwise default to APPROVED
+        PlanStatus resolvedStatus = task.status() == PlanStatus.DRAFT
+            || task.status() == PlanStatus.READY_FOR_APPROVAL
+            ? task.status()
+            : PlanStatus.APPROVED;
         return planRepository.saveDefinition(new PlanDefinition(
             id,
             PlanKind.TASK_TEMPLATE,
-            PlanStatus.APPROVED,
+            resolvedStatus,
             title,
             normalize(task.summary()),
             normalize(task.goal()),
@@ -503,6 +601,23 @@ public class PlanService {
             task.createdAt(),
             task.updatedAt()
         ));
+    }
+
+    /**
+     * Finalize a task template: validate completeness and set status to APPROVED.
+     * Only DRAFT and READY_FOR_APPROVAL tasks can be finalized.
+     * Already approved tasks are returned unchanged.
+     */
+    public PlanDefinition finalizeTask(String taskId) {
+        PlanDefinition existing = getTask(taskId);
+        if (existing.status() == PlanStatus.APPROVED) {
+            return existing;
+        }
+        if (existing.status() != PlanStatus.DRAFT && existing.status() != PlanStatus.READY_FOR_APPROVAL) {
+            throw new IllegalStateException(
+                "Only DRAFT or READY_FOR_APPROVAL tasks can be finalized. Current status: " + existing.status());
+        }
+        return saveTask(existing.withStatus(PlanStatus.APPROVED));
     }
 
     public void deleteTask(String id) {
@@ -669,6 +784,16 @@ public class PlanService {
     // ════════════════════════════════════════════════════════════════
 
     public PlanRun startRun(String planId, Map<String, Object> inputValues) {
+        return startRun(planId, inputValues, null);
+    }
+
+    /**
+     * Start a plan run with optional orchestration context. When context contains
+     * an agentId, output directories are allocated under the agent's output root
+     * instead of the system default.
+     */
+    public PlanRun startRun(String planId, Map<String, Object> inputValues,
+                             OrchestrationTaskContext context) {
         PlanDefinition definition = planRepository.findDefinition(planId)
             .orElseThrow(() -> new IllegalStateException("Plan/task not found: " + planId));
         Map<String, Object> cleanInputs = cleanMap(inputValues);
@@ -678,6 +803,7 @@ public class PlanService {
         }
         Instant now = Instant.now();
         String runId = UUID.randomUUID().toString();
+        OrchestrationTaskContext effectiveContext = context;
 
         // Allocate workspace directories
         String tempWorkspacePath = null;
@@ -685,18 +811,21 @@ public class PlanService {
         if (workspaceDirectoryService != null) {
             try {
                 Path tempDir = workspaceDirectoryService.taskTemp(runId);
-                tempWorkspacePath = tempDir.toString();
+                tempWorkspacePath = tempDir.toRealPath().toString();
                 String slug = slugFromTitle(definition.title());
-                Path outputDir;
-                if (definition.kind() == PlanKind.TASK_TEMPLATE) {
-                    // TASK_TEMPLATE outputs go under agent or generic path
-                    outputDir = workspaceDirectoryService.agentOutput("system", slug, runId);
-                } else {
-                    // SESSION_PLAN outputs go under agent or generic path
-                    outputDir = workspaceDirectoryService.agentOutput("system", slug, runId);
+                String agentId = context != null && context.hasAgentContext() ? context.agentId() : "system";
+                Path outputDir = workspaceDirectoryService.agentOutput(agentId, slug, runId);
+                Path realOutputDir = outputDir.toRealPath();
+                outputDirectoryPath = realOutputDir.toString();
+                String containerOutputPath = containerOutputPath(realOutputDir);
+                effectiveContext = context == null
+                    ? null
+                    : context.withPaths(tempWorkspacePath, outputDirectoryPath, containerOutputPath);
+                if (effectiveContext != null && OrchestrationTaskContextHolder.current() != null) {
+                    OrchestrationTaskContextHolder.set(effectiveContext);
                 }
-                outputDirectoryPath = outputDir.toString();
-                log.info("Allocated temp={} output={} for run={}", tempWorkspacePath, outputDirectoryPath, runId);
+                log.info("Allocated temp={} output={} containerOutput={} agent={} for run={}",
+                    tempWorkspacePath, outputDirectoryPath, containerOutputPath, agentId, runId);
             } catch (Exception e) {
                 log.error("Failed to allocate workspace directories for run={}: {}", runId, e.getMessage());
                 // Continue without workspace dirs — execution will fail at Docker level
@@ -712,6 +841,7 @@ public class PlanService {
             definition,
             null,
             outputDirectoryPath,
+            tempWorkspacePath,
             List.of(definition.kind() == PlanKind.TASK_TEMPLATE ? "Task run started." : "Plan execution started."),
             List.of(),
             List.of(),
@@ -726,6 +856,13 @@ public class PlanService {
 
     public PlanRun startChatExecution(String conversationId, String planId, Map<String, Object> inputValues) {
         PlanRun run = startRun(planId, inputValues);
+        registerExecutionContext(conversationId, run.id());
+        return run;
+    }
+
+    public PlanRun startChatExecution(String conversationId, String planId, Map<String, Object> inputValues,
+                                      OrchestrationTaskContext context) {
+        PlanRun run = startRun(planId, inputValues, context);
         registerExecutionContext(conversationId, run.id());
         return run;
     }
@@ -796,6 +933,9 @@ public class PlanService {
 
         // Materialize outputs to the output directory
         materializeRunOutputs(run, cleanOutputs, task);
+
+        // Discover any loose artifacts in the output directory
+        discoverLooseArtifactsForRun(run, task);
 
         List<String> entries = new ArrayList<>(run.executionEvidence());
         entries.addAll(cleanList(evidence).stream().map(value -> "Evidence: " + value).toList());
@@ -1081,7 +1221,7 @@ Approved plan:
             Tool rules:
             - Use task_set_goal, task_set_task, task_put_item, task_delete_item, and task_ready_for_approval.
             - task_put_item sections: input, output, assumption, note, step, validation_criterion.
-            - Inputs and outputs require name, type, description, required, schema, and example fields.
+            - Inputs and outputs require name, type, description, required, and schema fields.
             - Do not ask for concrete runtime values during task creation; ask only what the reusable task should accept.
 
             Runtime task draft:
@@ -1123,7 +1263,7 @@ Approved plan:
         appendList(builder, "Declared outputs", task.outputs().stream().map(this::fieldSummary).toList());
         appendList(builder, "Steps", task.steps().stream().map(step -> step.order() + ". " + step.text()).toList());
         appendList(builder, "Validation criteria", task.validationCriteria());
-        builder.append("\n\n").append(dockerRuntimeContext());
+        builder.append("\n\n").append(dockerRuntimeContext(run));
         return builder.toString().trim();
     }
 
@@ -1357,7 +1497,7 @@ Approved plan:
             return List.copyOf(updated);
         }
         while (updated.size() < index) {
-            updated.add(new PlanFieldDefinition("field_" + (updated.size() + 1), PlanFieldType.STRING, false, null, false, null, null));
+            updated.add(new PlanFieldDefinition("field_" + (updated.size() + 1), PlanFieldType.STRING, false, null, false, null));
         }
         if (index < updated.size()) updated.set(index, field);
         else updated.add(field);
@@ -1456,7 +1596,7 @@ Approved plan:
         if (field == null || !StringUtils.hasText(field.name())) return null;
         return new PlanFieldDefinition(field.name().trim(), field.type(), field.array(),
             normalize(field.description()), field.required(),
-            normalize(field.schema()), normalize(field.example()));
+            normalize(field.schema()));
     }
 
     private List<PlanStep> cleanSteps(List<PlanStep> steps) {
@@ -1517,7 +1657,7 @@ Approved plan:
     private List<PlanFieldDefinition> textFieldList(List<String> names) {
         if (names == null) return List.of();
         return names.stream()
-            .map(name -> new PlanFieldDefinition(name.trim(), PlanFieldType.STRING, false, null, false, null, null))
+            .map(name -> new PlanFieldDefinition(name.trim(), PlanFieldType.STRING, false, null, false, null))
             .toList();
     }
 
@@ -1586,6 +1726,54 @@ Approved plan:
      * Materialize output values into the run's output directory and persist
      * artifact metadata. Called during {@link #completeRun}.
      */
+    /**
+     * Scan the output directory for files not already registered as artifacts
+     * and register them as discovered artifacts.
+     */
+    private void discoverLooseArtifactsForRun(PlanRun run, PlanDefinition task) {
+        if (outputArtifactService == null) {
+            return;
+        }
+        String outputDirPath = run.outputDirectory();
+        if (!StringUtils.hasText(outputDirPath)) {
+            return;
+        }
+        Path outputDir = Path.of(outputDirPath);
+        if (!Files.isDirectory(outputDir)) {
+            return;
+        }
+        try {
+            OutputArtifactContext context = outputArtifactContext(run, task);
+            int discovered = outputArtifactService.discoverLooseArtifacts(
+                run.id(), run.planId(), outputDir, context);
+            if (discovered > 0) {
+                log.info("Discovered {} loose artifacts for run={}", discovered, run.id());
+            }
+        } catch (IOException e) {
+            log.warn("Failed to scan for loose artifacts for run={}: {}", run.id(), e.getMessage());
+        }
+    }
+
+    /**
+     * Resolve the agent ID from the output directory path, or return null.
+     */
+    private String resolveOutputAgentId(PlanRun run) {
+        String outputDir = run.outputDirectory();
+        if (!StringUtils.hasText(outputDir)) {
+            return null;
+        }
+        // Output dir pattern: data/agents/{agentId}/outputs/{slug}-{runId}
+        Path outputPath = Path.of(outputDir);
+        if (outputPath.getNameCount() >= 4
+            && "agents".equals(outputPath.getName(outputPath.getNameCount() - 4).toString())) {
+            String agentId = outputPath.getName(outputPath.getNameCount() - 3).toString();
+            if (!"system".equals(agentId)) {
+                return agentId;
+            }
+        }
+        return null;
+    }
+
     private void materializeRunOutputs(PlanRun run, Map<String, Object> outputs, PlanDefinition task) {
         if (outputArtifactService == null || workspaceDirectoryService == null) {
             return;
@@ -1601,27 +1789,55 @@ Approved plan:
         Map<String, PlanFieldType> outputTypes = outputTypeMap(task.outputs());
         try {
             outputArtifactService.materializeAll(
-                run.id(), run.planId(), outputs, outputTypes, outputDir);
+                run.id(), run.planId(), outputs, outputTypes, outputDir, outputArtifactContext(run, task));
             log.info("Materialized {} output artifacts for run={}", outputs.size(), run.id());
         } catch (IOException e) {
             log.error("Failed to materialize outputs for run={}: {}", run.id(), e.getMessage(), e);
         }
     }
 
+    private OutputArtifactContext outputArtifactContext(PlanRun run, PlanDefinition task) {
+        OrchestrationTaskContext taskContext = OrchestrationTaskContextHolder.current();
+        if (taskContext != null && taskContext.hasContext()) {
+            return new OutputArtifactContext(
+                taskContext.agentId(),
+                taskContext.jobId(),
+                taskContext.projectId(),
+                taskContext.workspaceId(),
+                StringUtils.hasText(taskContext.runType())
+                    ? taskContext.runType()
+                    : (task.kind() == PlanKind.TASK_TEMPLATE ? "TASK_RUN" : "PLAN_RUN")
+            );
+        }
+        String agentId = resolveOutputAgentId(run);
+        return new OutputArtifactContext(
+            agentId, null, null, null,
+            task.kind() == PlanKind.TASK_TEMPLATE ? "TASK_RUN" : "PLAN_RUN"
+        );
+    }
+
     /**
      * Delete the temp workspace directory for a terminal run.
-     * Never deletes the output directory.
+     * Uses the stored temp path from the run record to avoid recreating
+     * the directory during cleanup. Never deletes the output directory.
      */
     private void cleanupTempForRun(PlanRun run) {
         if (workspaceDirectoryService == null) {
             return;
         }
+        String tempPath = run.tempWorkspacePath();
+        if (!StringUtils.hasText(tempPath)) {
+            // Fallback for runs created before tempWorkspacePath was stored
+            tempPath = workspaceDirectoryService.taskTempPath(run.id());
+        }
+        if (!StringUtils.hasText(tempPath)) {
+            return;
+        }
         try {
-            Path tempDir = workspaceDirectoryService.taskTemp(run.id());
-            workspaceDirectoryService.deleteTempDir(tempDir);
-            log.debug("Cleaned temp dir for run={}", run.id());
+            workspaceDirectoryService.deleteTempDir(Path.of(tempPath));
+            log.debug("Cleaned temp dir for run={} path={}", run.id(), tempPath);
         } catch (Exception e) {
-            log.warn("Failed to clean temp dir for run={}: {}", run.id(), e.getMessage());
+            log.warn("Failed to clean temp dir for run={} path={}: {}", run.id(), tempPath, e.getMessage());
         }
     }
 
@@ -1636,6 +1852,20 @@ Approved plan:
             slug = slug.substring(0, 48).replaceAll("-$", "");
         }
         return slug.isEmpty() ? "run" : slug;
+    }
+
+    private String containerOutputPath(Path outputDir) {
+        if (outputDir == null || outputDir.getFileName() == null) {
+            return "/output";
+        }
+        return "/output/" + outputDir.getFileName();
+    }
+
+    private String containerOutputPath(PlanRun run) {
+        if (run == null || !StringUtils.hasText(run.outputDirectory())) {
+            return "/output";
+        }
+        return containerOutputPath(Path.of(run.outputDirectory()));
     }
 
     private Map<String, PlanFieldType> outputTypeMap(List<PlanFieldDefinition> outputs) {
@@ -1660,12 +1890,13 @@ Approved plan:
 
             - /home/agent — your persistent agent home directory (writable)
             - /workspace — the current task/workflow workspace (writable, deleted after completion)
-            - /output — the output directory for this run (writable, preserved permanently)
+            - /output — the agent output root (writable, preserved permanently)
 
             ### Output Directory
 
-            When completing a task, write or copy all required output files into /output.
-            The server will pick them up and persist them as run output artifacts.
+            When completing a task, write or copy all required output files into the run-specific
+            output directory named by the execution prompt. Do not write deliverable files directly
+            to /output unless the run-specific output directory is unavailable.
             Do NOT write deliverable files to /workspace and expect them to survive —
             they will be deleted after the run completes.
 
@@ -1686,12 +1917,21 @@ Approved plan:
             """.stripIndent();
     }
 
+    public String dockerRuntimeContext(PlanRun run) {
+        String runOutputPath = containerOutputPath(run);
+        return dockerRuntimeContext() + "\n\n" + """
+            ### Current Run Output Path
+
+            For this run, write deliverable files to %s.
+            When reporting file_path outputs, use either %s/<file> or the bare filename for files
+            written directly in that directory.
+            """.formatted(runOutputPath, runOutputPath).stripIndent();
+    }
+
     /**
      * Returns Docker context appended to execution instructions for a run.
      */
     String executionInstructionsWithDocker(PlanRun run) {
-        StringBuilder builder = new StringBuilder(executionInstructions(run));
-        builder.append("\n\n").append(dockerRuntimeContext());
-        return builder.toString().trim();
+        return executionInstructions(run);
     }
 }

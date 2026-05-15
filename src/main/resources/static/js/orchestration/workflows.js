@@ -6,7 +6,9 @@
 // (keyboard shortcuts, drag-and-drop reorder) that are impractical in pure HTMX.
 document.addEventListener("DOMContentLoaded", () => {
     const page = document.querySelector("[data-orchestration-page='workflows']");
-    if (!page) return;
+    if (!page) {
+        return;
+    }
     // All workflow editing is handled via HTMX endpoints.
     // No JS-based rendering, save, run, or validation handlers.
 });

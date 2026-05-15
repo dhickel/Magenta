@@ -210,13 +210,14 @@ public class OrchestrationRuntimeRepository {
         return jdbcTemplate.query(
             """
                 select * from work_assignments
-                where status in (?, ?)
+                where status in (?, ?, ?)
                 order by priority desc, created_at asc
                 limit ?
                 """,
             (rs, rowNum) -> toAssignment(rs),
             OrchestrationStatus.QUEUED.name(),
             OrchestrationStatus.INTERRUPTED.name(),
+            OrchestrationStatus.WAITING.name(),
             limit
         );
     }
@@ -252,10 +253,11 @@ public class OrchestrationRuntimeRepository {
             """
                 update work_assignments
                 set status = ?, lease_owner = ?, lease_expires_at = ?, started_at = coalesce(started_at, ?), updated_at = ?
-                where id = ? and status in (?, ?) and (lease_expires_at is null or lease_expires_at <= ?)
+                where id = ? and status in (?, ?, ?) and (lease_expires_at is null or lease_expires_at <= ?)
                 """,
             OrchestrationStatus.RUNNING.name(), leaseOwner, leaseExpiresAt.toString(), now.toString(), now.toString(),
-            assignmentId, OrchestrationStatus.QUEUED.name(), OrchestrationStatus.INTERRUPTED.name(), now.toString()
+            assignmentId, OrchestrationStatus.QUEUED.name(), OrchestrationStatus.INTERRUPTED.name(),
+            OrchestrationStatus.WAITING.name(), now.toString()
         );
         return updated == 0 ? Optional.empty() : findAssignment(assignmentId);
     }
@@ -387,6 +389,24 @@ public class OrchestrationRuntimeRepository {
         );
     }
 
+    @Transactional
+    public boolean deleteScheduleForAgent(String agentId, String scheduleId) {
+        jdbcTemplate.update(
+            """
+                delete from schedule_firings
+                where schedule_id in (
+                    select id from agent_schedules where id = ? and agent_id = ?
+                )
+                """,
+            scheduleId, agentId
+        );
+        int deleted = jdbcTemplate.update(
+            "delete from agent_schedules where id = ? and agent_id = ?",
+            scheduleId, agentId
+        );
+        return deleted == 1;
+    }
+
     public boolean createScheduleFiring(String id, String scheduleId, Instant dueAt, String assignmentId) {
         Instant now = Instant.now();
         int inserted = jdbcTemplate.update(
@@ -452,6 +472,14 @@ public class OrchestrationRuntimeRepository {
         );
     }
 
+    public boolean deleteReactionForAgent(String agentId, String reactionId) {
+        int deleted = jdbcTemplate.update(
+            "delete from agent_event_reactions where id = ? and agent_id = ?",
+            reactionId, agentId
+        );
+        return deleted == 1;
+    }
+
     public OrchestrationEvent saveEvent(OrchestrationEvent event) {
         Instant createdAt = event.createdAt() == null ? Instant.now() : event.createdAt();
         jdbcTemplate.update(
@@ -484,6 +512,39 @@ public class OrchestrationRuntimeRepository {
             sourceType,
             sourceId
         );
+    }
+
+    @Transactional
+    public void purgeAgentOwnedReferences(String agentId) {
+        if (!StringUtils.hasText(agentId)) {
+            return;
+        }
+        jdbcTemplate.update(
+            "delete from schedule_firings where schedule_id in (select id from agent_schedules where agent_id = ?)",
+            agentId
+        );
+        jdbcTemplate.update("delete from agent_schedules where agent_id = ?", agentId);
+        jdbcTemplate.update("delete from agent_event_reactions where agent_id = ?", agentId);
+        jdbcTemplate.update(
+            "delete from agent_inbox_messages where to_agent_id = ? or from_id = ?",
+            agentId,
+            agentId
+        );
+        jdbcTemplate.update(
+            "delete from orchestration_events where source_type = ? and source_id = ?",
+            "agent",
+            agentId
+        );
+        jdbcTemplate.update(
+            "delete from work_assignments where job_id in (select id from orchestration_jobs where owner_agent_id = ?)",
+            agentId
+        );
+        jdbcTemplate.update("delete from work_assignments where agent_id = ?", agentId);
+        jdbcTemplate.update(
+            "delete from orchestration_job_items where job_id in (select id from orchestration_jobs where owner_agent_id = ?)",
+            agentId
+        );
+        jdbcTemplate.update("delete from orchestration_jobs where owner_agent_id = ?", agentId);
     }
 
     private OrchestrationJob toJob(ResultSet rs) throws SQLException {

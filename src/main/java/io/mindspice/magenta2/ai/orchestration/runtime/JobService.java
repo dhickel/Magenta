@@ -10,7 +10,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
-import io.mindspice.magenta2.ai.chat.workflow.WorkflowService;
+import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -127,6 +127,20 @@ public class JobService {
             throw new IllegalArgumentException("Work item not found: " + itemKey);
         }
         saveDefinition(withItems(definition, items));
+    }
+
+    /**
+     * Update a job definition's status. Used by the runner to synchronize
+     * definition status with run lifecycle.
+     */
+    public void updateDefinitionStatus(String jobId, String status) {
+        JobDefinition def = getDefinition(jobId);
+        saveDefinition(new JobDefinition(
+            def.id(), def.ownerAgentId(), def.projectId(), def.workspaceId(),
+            status, def.title(), def.summary(), def.items(),
+            def.promptProfile(), def.model(), def.settingsOverrideJson(),
+            def.createdAt(), def.updatedAt()
+        ));
     }
 
     public void deleteDefinition(String id) {

@@ -34,6 +34,7 @@ The frontend makes use of SimplyPages, SimplyPages is our on self maintained fro
 - A simple opinioned grid based layout
 - A default/exam chat implementation
 - A default forum implementation
+- A template system for dynamic data in reuseable containers without rerendering everything
 - Demos showing how to use components and do advanced operations
 
 You can gain alot about the frontend library from the demos, complex views like the forum and and editing menus give examples on how to do modal outputs and node/card rendering
@@ -98,3 +99,6 @@ If you find a bug pull the recent version of the library and directly implement 
 - For live chat, browser, SSE, agent/model routing, planning, interruption, chat switching, or concurrent-interaction validation, use the Playwright MCP workflow documented in `.internal-dev/knowledge/live-chat-mcp-workflow-testing.md`. Read that file before running this class of test, follow its MCP-first approach, and update it when you discover better methods, new gotchas, or changed endpoint behavior.
 - During UI validation and review, verify JavaScript usage is explicitly justified as the path of least resistance and that HTMX was used for standard CRUD/interaction flows.
 - If startup cannot be run because required local services or secrets are unavailable, report that explicitly with the blocking dependency.
+- Do not defer or work around alpha-blocking infrastructure dependencies (for example Docker/Podman daemon-backed execution validation) by treating unit-only coverage as completion.
+- If a blocking dependency prevents real execution validation, stop and consult the user immediately before proceeding; do not shoehorn substitute validation paths as a sign-off.
+- Any deferred blocker must be explicitly user-approved and recorded as a blocked state, not marked as functionally complete.

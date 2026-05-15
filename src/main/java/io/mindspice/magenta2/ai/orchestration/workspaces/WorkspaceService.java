@@ -3,6 +3,9 @@ package io.mindspice.magenta2.ai.orchestration.workspaces;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -12,6 +15,10 @@ import org.springframework.util.StringUtils;
 
 @Service
 public class WorkspaceService {
+    private static final int DEFAULT_LIST_LIMIT = 50;
+    private static final int MIN_LIST_LIMIT = 1;
+    private static final int MAX_LIST_LIMIT = 200;
+
     private final WorkspaceRepository repository;
     private final Path dataRoot;
 
@@ -27,6 +34,11 @@ public class WorkspaceService {
         return repository.findById(id).orElseThrow(() -> new IllegalStateException("Workspace not found: " + id));
     }
 
+    public List<Workspace> list(WorkspaceOwnerType ownerType, String ownerId, int limit) {
+        int boundedLimit = boundListLimit(limit);
+        return repository.findAll(ownerType, ownerId, boundedLimit);
+    }
+
     public Workspace agentWorkspace(String agentId, String displayName) {
         return repository.findByOwner(WorkspaceOwnerType.AGENT, agentId)
             .orElseGet(() -> createWorkspace(WorkspaceOwnerType.AGENT, agentId, "agents/" + agentId, displayName));
@@ -37,6 +49,13 @@ public class WorkspaceService {
             .orElseGet(() -> createWorkspace(WorkspaceOwnerType.JOB, jobId, "jobs/" + jobId, displayName));
     }
 
+    public Workspace projectWorkspace(String projectId, String displayName) {
+        return repository.findByOwner(WorkspaceOwnerType.PROJECT, projectId)
+            .orElseGet(() -> createWorkspace(
+                WorkspaceOwnerType.PROJECT, projectId, "projects/" + projectId + "/workspace", displayName
+            ));
+    }
+
     public Path assignmentPath(String agentId, String assignmentId) {
         return confined("agents/" + agentId + "/work/" + assignmentId);
     }
@@ -44,6 +63,11 @@ public class WorkspaceService {
     public List<WorkspaceLink> links(String workspaceId) {
         get(workspaceId);
         return repository.links(workspaceId);
+    }
+
+    public List<WorkspaceLease> activeLeases(String workspaceId) {
+        get(workspaceId);
+        return repository.findActiveLeases(workspaceId);
     }
 
     public WorkspaceLink addLink(String workspaceId, WorkspaceLink link) {
@@ -69,6 +93,49 @@ public class WorkspaceService {
     public void deleteLink(String workspaceId, String linkId) {
         get(workspaceId);
         repository.deleteLink(workspaceId, linkId);
+    }
+
+    public Path archiveAgentWorkspaceData(String agentId) {
+        if (!StringUtils.hasText(agentId)) {
+            throw new IllegalArgumentException("agentId is required");
+        }
+        Path source = confined("agents/" + agentId);
+        if (!Files.exists(source)) {
+            return source;
+        }
+        Path archiveRoot = confined("agents/.archive");
+        try {
+            Files.createDirectories(archiveRoot);
+            String stamp = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").format(
+                java.time.ZonedDateTime.ofInstant(Instant.now(), java.time.ZoneOffset.UTC));
+            Path target = archiveRoot.resolve(agentId + "-" + stamp).normalize();
+            Files.move(source, target);
+            return target;
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to archive agent workspace data for " + agentId, exception);
+        }
+    }
+
+    public void deleteAgentWorkspaceData(String agentId) {
+        if (!StringUtils.hasText(agentId)) {
+            throw new IllegalArgumentException("agentId is required");
+        }
+        Path source = confined("agents/" + agentId);
+        if (!Files.exists(source)) {
+            return;
+        }
+        try (var stream = Files.walk(source)) {
+            stream.sorted(Comparator.reverseOrder())
+                .forEach(path -> {
+                    try {
+                        Files.deleteIfExists(path);
+                    } catch (IOException ignored) {
+                        // best effort
+                    }
+                });
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to delete agent workspace data for " + agentId, exception);
+        }
     }
 
     private Workspace createWorkspace(
@@ -122,5 +189,12 @@ public class WorkspaceService {
             throw new IllegalArgumentException("workspace path escapes data root");
         }
         return resolved;
+    }
+
+    private int boundListLimit(int limit) {
+        if (limit <= 0) {
+            return DEFAULT_LIST_LIMIT;
+        }
+        return Math.max(MIN_LIST_LIMIT, Math.min(MAX_LIST_LIMIT, limit));
     }
 }

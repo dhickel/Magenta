@@ -10,5 +10,9 @@ public enum OrchestrationStatus {
     CANCELLED,
     FAILED,
     COMPLETED,
-    NEEDS_REVIEW
+    NEEDS_REVIEW;
+
+    public boolean isTerminal() {
+        return this == CANCELLED || this == FAILED || this == COMPLETED || this == NEEDS_REVIEW;
+    }
 }

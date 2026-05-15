@@ -135,7 +135,7 @@ public class DockerRuntimeClient {
         try {
             client.inspectImageCmd(config.getAgentImage()).exec();
             imageAvailable = true;
-            return "Docker daemon reachable, agent image verified.";
+            return "Docker runtime ready: daemon reachable and agent image verified.";
         } catch (Exception e) {
             imageAvailable = false;
             return "Docker daemon reachable but agent image not found: " + e.getMessage();
@@ -149,9 +149,11 @@ public class DockerRuntimeClient {
         try {
             client.pingCmd().exec();
             daemonAvailable = true;
+            daemonError = null;
             return true;
         } catch (Exception e) {
             daemonAvailable = false;
+            daemonError = "Docker daemon unreachable at " + dockerHost + ": " + e.getMessage();
             return false;
         }
     }
@@ -381,5 +383,13 @@ public class DockerRuntimeClient {
 
     public String getDockerHost() {
         return dockerHost;
+    }
+
+    public boolean isImageAvailable() {
+        return imageAvailable;
+    }
+
+    DockerClient dockerClient() {
+        return client;
     }
 }

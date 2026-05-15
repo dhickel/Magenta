@@ -286,7 +286,7 @@ class ChatControllerTest {
 
     @Test
     void savePlanAsTaskRejectsInvalidUuid() {
-        assertThatThrownBy(() -> chatController.savePlanAsTask("not-a-uuid"))
+        assertThatThrownBy(() -> chatController.savePlanAsTask("not-a-uuid", null))
             .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
                 assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
                 assertThat(exception.getReason()).contains("invalid UUID");

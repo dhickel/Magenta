@@ -6,9 +6,13 @@ import java.util.List;
 import java.util.UUID;
 
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLease;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLeaseService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
 
 /**
@@ -23,11 +27,26 @@ public class ProjectService {
 
     private final ProjectRepository projectRepository;
     private final WorkspaceDirectoryService workspaceDirectoryService;
+    private final WorkspaceService workspaceService;
+    private final WorkspaceLeaseService workspaceLeaseService;
+    private final OrchestrationRuntimeRepository runtimeRepository;
 
     public ProjectService(ProjectRepository projectRepository,
                           WorkspaceDirectoryService workspaceDirectoryService) {
+        this(projectRepository, workspaceDirectoryService, null, null, null);
+    }
+
+    @Autowired
+    public ProjectService(ProjectRepository projectRepository,
+                          WorkspaceDirectoryService workspaceDirectoryService,
+                          WorkspaceService workspaceService,
+                          WorkspaceLeaseService workspaceLeaseService,
+                          OrchestrationRuntimeRepository runtimeRepository) {
         this.projectRepository = projectRepository;
         this.workspaceDirectoryService = workspaceDirectoryService;
+        this.workspaceService = workspaceService;
+        this.workspaceLeaseService = workspaceLeaseService;
+        this.runtimeRepository = runtimeRepository;
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -72,6 +91,9 @@ public class ProjectService {
             if (workspaceDirectoryService != null) {
                 Path ws = workspaceDirectoryService.projectWorkspace(id);
                 log.info("Created project workspace: {}", ws);
+            }
+            if (workspaceService != null) {
+                workspaceService.projectWorkspace(id, name.trim());
             }
         } catch (Exception e) {
             log.error("Failed to create project workspace for project={}: {}", id, e.getMessage());
@@ -209,13 +231,31 @@ public class ProjectService {
                 .relativize(path)
                 .toString();
         }
+        var workspace = workspaceService == null ? null : workspaceService.projectWorkspace(projectId, project.name());
+        WorkspaceLease activeLease = workspace == null || workspaceLeaseService == null
+            ? null : workspaceLeaseService.activeWritableLease(workspace.id()).orElse(null);
+        WorkAssignment holder = activeLease == null || runtimeRepository == null
+            ? null : runtimeRepository.findAssignment(activeLease.holderId()).orElse(null);
         return new ProjectWorkspaceSummary(
-            projectId,
+            workspace == null ? projectId : workspace.id(),
             project.ownerAgentId(),
             "PROJECT",
             displayPath,
-            listMembers(projectId).size()
+            listMembers(projectId).size(),
+            activeLease == null ? null : activeLease.id(),
+            activeLease == null ? null : activeLease.holderId(),
+            holder == null ? null : holder.agentId(),
+            activeLease != null && activeLease.releaseRequested()
         );
+    }
+
+    public WorkspaceLease requestWorkspaceRelease(String projectId) {
+        Project project = getProject(projectId);
+        if (workspaceService == null || workspaceLeaseService == null) {
+            throw new IllegalStateException("Project workspace lease management is unavailable");
+        }
+        var workspace = workspaceService.projectWorkspace(projectId, project.name());
+        return workspaceLeaseService.requestGracefulRelease(workspace.id());
     }
 
     // ── Helpers ──
@@ -229,6 +269,10 @@ public class ProjectService {
         String ownerAgentId,
         String rootKind,
         String displayPath,
-        int linkCount
+        int linkCount,
+        String leaseId,
+        String leaseHolderAssignmentId,
+        String mountedAgentId,
+        boolean releaseRequested
     ) {}
 }

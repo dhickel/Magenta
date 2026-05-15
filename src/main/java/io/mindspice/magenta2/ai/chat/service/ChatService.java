@@ -58,6 +58,8 @@ import io.mindspice.magenta2.ai.execution.ActiveTurnPhase;
 import io.mindspice.magenta2.ai.execution.ActiveTurnRegistry.ActiveTurn;
 import io.mindspice.magenta2.ai.execution.ConversationTurnCoordinator;
 import io.mindspice.magenta2.ai.execution.MagentaWorkRequest;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
 import io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettingsService;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.ChatClientResponse;
@@ -104,6 +106,7 @@ public class ChatService {
         If you cannot complete the task, call task_report with the evidence gathered and explain the missing output, then continue until task_complete succeeds or Magenta marks the run for review.
         """.trim();
     private static final String BEGIN_PLAN_MESSAGE = "The user is ready to plan. Begin the structured planning workflow by asking the user about their goal.";
+    private static final String CONTINUE_PLAN_MESSAGE = "The user opened an existing plan in planning chat. Review the loaded structured state and ask the next focused question needed to improve or complete the plan.";
 
     private final ChatMemory chatMemory;
     private final ChatMemoryRepository chatMemoryRepository;
@@ -462,6 +465,30 @@ public class ChatService {
         return chat(requestResolver.resolve(conversationId, BEGIN_PLAN_MESSAGE, executionModel, null).withoutTitleJob());
     }
 
+    public ChatResponse.MsgResponse beginPlanFromDefinition(
+        String conversationId,
+        String planId,
+        String selectedModel,
+        String planningModel
+    ) {
+        requirePlanService();
+        if (!StringUtils.hasText(planId)) {
+            throw new IllegalArgumentException("planId is required");
+        }
+        String prePlanningModel = StringUtils.hasText(selectedModel)
+            ? selectedModel
+            : storedConversationModel(conversationId);
+        if (!StringUtils.hasText(prePlanningModel)) {
+            prePlanningModel = defaultModel();
+        }
+        String executionModel = StringUtils.hasText(planningModel)
+            ? planningModel
+            : resolvedPlanningModel(conversationId);
+        PlanDefinition source = planService.getTask(planId);
+        planService.beginPlanFromDefinition(conversationId, source, prePlanningModel, executionModel);
+        return chat(requestResolver.resolve(conversationId, CONTINUE_PLAN_MESSAGE, executionModel, null).withoutTitleJob());
+    }
+
     public void exitPlan(String conversationId) {
         requirePlanService();
         String prePlanningModel = planService.prePlanningModel(conversationId);
@@ -510,14 +537,18 @@ public class ChatService {
         return planState(conversationId);
     }
 
-    public ChatPlanState savePlanAsTask(String conversationId) {
+    public PlanDefinition savePlanAsTask(String conversationId) {
+        return savePlanAsTask(conversationId, null);
+    }
+
+    public PlanDefinition savePlanAsTask(String conversationId, String taskTitle) {
         requirePlanService();
         String prePlanningModel = planService.prePlanningModel(conversationId);
-        planService.saveAsTask(conversationId);
+        PlanDefinition savedTask = planService.saveAsTask(conversationId, taskTitle);
         if (StringUtils.hasText(prePlanningModel)) {
             chatSessionMetadataRepository.saveModel(conversationId, prePlanningModel);
         }
-        return planState(conversationId);
+        return savedTask;
     }
 
     public ChatResponse.MsgResponse executeSavedPlan(String conversationId, boolean clearContext) {
@@ -630,7 +661,7 @@ public class ChatService {
     public Flux<TaskExecutionEvent> streamTaskExecution(String taskId, Map<String, Object> inputValues, String conversationId, String modelOverride) {
         requireTaskService();
         ResolvedTaskExecution execution = resolveTaskExecution(taskId, inputValues, conversationId, modelOverride);
-        return Flux.<TaskExecutionEvent>create(sink -> {
+        return Flux.create(sink -> {
             sink.next(TaskExecutionEvent.started(execution.conversationId(), execution.runId()));
             try {
                 ChatMessage finalMessage = toolChatMessageWithRetry(
@@ -676,7 +707,13 @@ public class ChatService {
         if (contextUsageTracker != null) {
             contextUsageTracker.clear(resolvedConversationId);
         }
-        TaskRun run = taskService.startChatExecution(resolvedConversationId, taskId, inputValues == null ? Map.of() : inputValues);
+        OrchestrationTaskContext orchestrationContext = OrchestrationTaskContextHolder.current();
+        TaskRun run = taskService.startChatExecution(
+            resolvedConversationId,
+            taskId,
+            inputValues == null ? Map.of() : inputValues,
+            orchestrationContext
+        );
         ResolvedChatRequest request = requestResolver.resolve(resolvedConversationId, EXECUTE_TASK_MESSAGE, model, null).withoutTitleJob();
         return new ResolvedTaskExecution(resolvedConversationId, run.id(), request);
     }
@@ -922,6 +959,23 @@ public class ChatService {
             .map(config -> config.remoteModelName())
             .filter(StringUtils::hasText)
             .distinct()
+            .toList();
+    }
+
+    /**
+     * Returns model options as (key, label) pairs where key is the configured
+     * model alias and label is the remote model name for display.
+     * The key is validated by {@code RuntimeSettingsService} as the canonical model reference.
+     */
+    public record ModelOption(String key, String label) {}
+
+    public List<ModelOption> availableModelOptions() {
+        return aiConfig.models().entrySet().stream()
+            .filter(entry -> StringUtils.hasText(entry.getValue().remoteModelName()))
+            .map(entry -> new ModelOption(
+                entry.getKey(),
+                entry.getKey() + " (" + entry.getValue().remoteModelName() + ")"))
+            .sorted(java.util.Comparator.comparing(ModelOption::label))
             .toList();
     }
 
@@ -1600,7 +1654,7 @@ public class ChatService {
         org.springframework.ai.chat.messages.AssistantMessage output = generation.getOutput();
         if (output != null && output.getMetadata() != null) {
             String reasoning = stringValue(output.getMetadata().get("reasoningContent"));
-            if (reasoning != null) return reasoning;
+            return reasoning;
         }
         return null;
     }
@@ -1746,10 +1800,7 @@ public class ChatService {
         if (unwrapped instanceof ResourceAccessException) {
             return true;
         }
-        if (unwrapped instanceof IOException) {
-            return true;
-        }
-        return false;
+        return unwrapped instanceof IOException;
     }
 
     private ChatMessage toolChatMessageWithRetry(

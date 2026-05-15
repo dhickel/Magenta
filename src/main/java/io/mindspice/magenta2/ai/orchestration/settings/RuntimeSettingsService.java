@@ -31,7 +31,12 @@ public class RuntimeSettingsService {
             aiConfig.resolvedPlanningModelKey(),
             aiConfig.resolvedSummeryModelKey(),
             aiConfig.resolvedCompactionModelKey(),
-            aiConfig.resolvedContextBufferPercent()
+            aiConfig.resolvedContextBufferPercent(),
+            aiConfig.resolvedDefaultModelKey(),
+            null,
+            null,
+            aiConfig.resolvedContextBufferPercent(),
+            true
         ));
     }
 
@@ -40,9 +45,14 @@ public class RuntimeSettingsService {
         validateModel(settings.planningModel(), "planningModel");
         validateModel(settings.summaryModel(), "summaryModel");
         validateModel(settings.compactionModel(), "compactionModel");
+        validateModel(settings.systemChatModel(), "systemChatModel");
         Integer buffer = settings.contextBufferPercent();
         if (buffer != null && (buffer < 1 || buffer > 50)) {
             throw new IllegalArgumentException("contextBufferPercent must be between 1 and 50");
+        }
+        Integer systemChatLimit = settings.systemChatContextLimit();
+        if (systemChatLimit != null && (systemChatLimit < 1 || systemChatLimit > 100)) {
+            throw new IllegalArgumentException("systemChatContextLimit must be between 1 and 100");
         }
         if (StringUtils.hasText(settings.defaultAgentId())) {
             agentProfileService.get(settings.defaultAgentId());
@@ -98,6 +108,44 @@ public class RuntimeSettingsService {
                 ? null
                 : aiConfig.agents().get(agentName).systemPrompt();
         }
+    }
+
+    public String systemChatModel() {
+        RuntimeSettings settings = get();
+        String key = StringUtils.hasText(settings.systemChatModel())
+            ? settings.systemChatModel()
+            : settings.defaultModel();
+        return remoteModelName(StringUtils.hasText(key) ? key : aiConfig.resolvedDefaultModelKey());
+    }
+
+    public String systemChatPrompt() {
+        RuntimeSettings settings = get();
+        if (StringUtils.hasText(settings.systemChatPrompt())) {
+            return settings.systemChatPrompt();
+        }
+        return defaultSystemPrompt();
+    }
+
+    public java.util.List<String> systemChatApprovedTools() {
+        RuntimeSettings settings = get();
+        if (StringUtils.hasText(settings.systemChatApprovedTools())) {
+            return java.util.Arrays.stream(settings.systemChatApprovedTools().split(","))
+                .map(String::trim)
+                .filter(value -> !value.isEmpty())
+                .toList();
+        }
+        return approvedTools();
+    }
+
+    public int systemChatContextLimit() {
+        RuntimeSettings settings = get();
+        Integer limit = settings.systemChatContextLimit();
+        return limit == null ? contextBufferPercent() : limit;
+    }
+
+    public boolean systemChatEnabled() {
+        Boolean enabled = get().systemChatEnabled();
+        return enabled == null || enabled;
     }
 
     public java.util.List<String> approvedTools() {

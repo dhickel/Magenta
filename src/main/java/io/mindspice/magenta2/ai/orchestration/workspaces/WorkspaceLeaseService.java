@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.Optional;
 
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -42,10 +43,11 @@ public class WorkspaceLeaseService {
         requireId(holderType, "holderType");
         requireId(holderId, "holderId");
         Duration effectiveDuration = duration == null ? Duration.ofHours(1) : duration;
+        reconcileExpiredLeases();
 
-        // Verify workspace root exists
-        repository.findRootById(workspaceId)
-            .orElseThrow(() -> new IllegalArgumentException("Workspace root not found: " + workspaceId));
+        // Verify workspace exists
+        repository.findById(workspaceId)
+            .orElseThrow(() -> new IllegalArgumentException("Workspace not found: " + workspaceId));
 
         Instant now = Instant.now();
         WorkspaceLease lease = new WorkspaceLease(
@@ -55,6 +57,7 @@ public class WorkspaceLeaseService {
             holderId,
             LeaseMode.WRITE,
             now.plus(effectiveDuration),
+            false,
             null,
             now,
             now
@@ -86,8 +89,8 @@ public class WorkspaceLeaseService {
         requireId(holderId, "holderId");
         Duration effectiveDuration = duration == null ? Duration.ofHours(1) : duration;
 
-        repository.findRootById(workspaceId)
-            .orElseThrow(() -> new IllegalArgumentException("Workspace root not found: " + workspaceId));
+        repository.findById(workspaceId)
+            .orElseThrow(() -> new IllegalArgumentException("Workspace not found: " + workspaceId));
 
         Instant now = Instant.now();
         return repository.saveLease(new WorkspaceLease(
@@ -97,6 +100,7 @@ public class WorkspaceLeaseService {
             holderId,
             LeaseMode.READ,
             now.plus(effectiveDuration),
+            false,
             null,
             now,
             now
@@ -154,6 +158,20 @@ public class WorkspaceLeaseService {
         }
     }
 
+    public WorkspaceLease requestGracefulRelease(String workspaceId) {
+        reconcileExpiredLeases();
+        WorkspaceLease lease = repository.findActiveWritableLease(workspaceId)
+            .orElseThrow(() -> new IllegalStateException("No active writable lease for workspace: " + workspaceId));
+        if (lease.releaseRequested()) {
+            return lease;
+        }
+        return repository.saveLease(lease.withReleaseRequested());
+    }
+
+    public int reconcileExpiredLeases() {
+        return repository.releaseExpiredLeases(Instant.now());
+    }
+
     /**
      * Check if a holder has an active writable lease on a workspace.
      */
@@ -161,6 +179,11 @@ public class WorkspaceLeaseService {
         return repository.findActiveWritableLease(workspaceId)
             .map(lease -> lease.isActive() && lease.holderId().equals(holderId))
             .orElse(false);
+    }
+
+    public Optional<WorkspaceLease> activeWritableLease(String workspaceId) {
+        reconcileExpiredLeases();
+        return repository.findActiveWritableLease(workspaceId);
     }
 
     public WorkspaceLease getLease(String leaseId) {
