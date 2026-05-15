@@ -24,9 +24,9 @@ import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileStatus;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
-import io.mindspice.magenta2.ai.orchestration.docker.AgentContainerHandle;
-import io.mindspice.magenta2.ai.orchestration.docker.AgentContainerRuntimeService;
-import io.mindspice.magenta2.ai.orchestration.docker.AgentContainerStatus;
+import io.mindspice.magenta2.ai.chat.tool.shell.AgentShellToolService;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
 import io.mindspice.magenta2.ai.orchestration.runtime.AgentEventReaction;
 import io.mindspice.magenta2.ai.orchestration.runtime.AgentSchedule;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentRequest;
@@ -133,9 +133,7 @@ public class OrchestrationController {
     private final WorkflowService workflowService;
 
     // ── Runtime services ──
-    private final org.springframework.beans.factory.ObjectProvider<AgentContainerRuntimeService> containerRuntimeService;
-    private final org.springframework.beans.factory.ObjectProvider<io.mindspice.magenta2.ai.orchestration.docker.DockerRuntimeClient> dockerClient;
-    private final org.springframework.beans.factory.ObjectProvider<io.mindspice.magenta2.ai.orchestration.docker.DockerRuntimeConfig> dockerConfig;
+    private final org.springframework.beans.factory.ObjectProvider<AgentShellToolService> execShellServiceRef;
     private final boolean schedulesEnabled;
     private final boolean reactionsEnabled;
 
@@ -153,9 +151,7 @@ public class OrchestrationController {
                                    ScheduleService scheduleService,
                                    EventReactionService eventReactionService,
                                    WorkflowService workflowService,
-                                   org.springframework.beans.factory.ObjectProvider<AgentContainerRuntimeService> containerRuntimeService,
-                                   org.springframework.beans.factory.ObjectProvider<io.mindspice.magenta2.ai.orchestration.docker.DockerRuntimeClient> dockerClient,
-                                   org.springframework.beans.factory.ObjectProvider<io.mindspice.magenta2.ai.orchestration.docker.DockerRuntimeConfig> dockerConfig,
+                                   org.springframework.beans.factory.ObjectProvider<AgentShellToolService> execShellServiceRef,
                                    @Value("${magenta.features.schedules-enabled:false}") boolean schedulesEnabled,
                                    @Value("${magenta.features.reactions-enabled:false}") boolean reactionsEnabled) {
         this.chatService = chatService;
@@ -172,9 +168,7 @@ public class OrchestrationController {
         this.scheduleService = scheduleService;
         this.eventReactionService = eventReactionService;
         this.workflowService = workflowService;
-        this.containerRuntimeService = containerRuntimeService;
-        this.dockerClient = dockerClient;
-        this.dockerConfig = dockerConfig;
+        this.execShellServiceRef = execShellServiceRef;
         this.schedulesEnabled = schedulesEnabled;
         this.reactionsEnabled = reactionsEnabled;
         this.dashboardShell = createDashboardShell(null);
@@ -4580,14 +4574,14 @@ public class OrchestrationController {
         }
 
         Table table = Table.create()
-            .withHeaders("Name", "Status", "Docker", "Model", "Queue", "Inbox", "Actions")
+            .withHeaders("Name", "Status", "Workspace", "Model", "Queue", "Inbox", "Actions")
             .withClass("dashboard-table");
         table.withId("agents-list-table");
 
         for (var a : agents) {
             int queueCount = countAssignments(a.id());
             int inboxCount = countInboxMessages(a.id());
-            AgentContainerHandle dockerState = agentContainerStatus(a);
+            String workspaceHealth = agentWorkspaceHealth(a);
             table.addRow(
                 new HtmlTag("a")
                     .withAttribute("href", "/agents/" + escapeAttr(a.id()))
@@ -4596,7 +4590,7 @@ public class OrchestrationController {
                     .withAttribute("hx-swap", "innerHTML")
                     .withInnerText(a.name() != null ? a.name() : a.id()),
                 statusBadgeHtml(a.status() != null ? a.status().name() : "UNKNOWN"),
-                statusBadgeHtml(dockerState.status().name()),
+                statusBadgeHtml(workspaceHealth),
                 new HtmlTag("span").withInnerText(
                     a.defaultModel() != null ? a.defaultModel() : "unset"),
                 new HtmlTag("span").withInnerText(String.valueOf(queueCount)),
@@ -4623,33 +4617,19 @@ public class OrchestrationController {
         }
     }
 
-    private AgentContainerHandle agentContainerStatus(AgentProfile agent) {
-        AgentContainerRuntimeService runtime = containerRuntimeService.getIfAvailable();
-        if (runtime == null) {
-            return new AgentContainerHandle(
-                agent.id(), null, "n/a", AgentContainerStatus.UNAVAILABLE, "n/a", "n/a",
-                null, Instant.now(), List.of(), Map.of(), "Docker runtime disabled"
-            );
+    private String agentWorkspaceHealth(AgentProfile agent) {
+        try {
+            workspaceService.agentWorkspace(agent.id(), null);
+            return "READY";
+        } catch (Exception e) {
+            return "PENDING";
         }
-        return runtime.statusFor(agent.id(), agent.status() == AgentProfileStatus.ACTIVE);
     }
 
     private Component agentRowActions(AgentProfile agent) {
         Div actions = new Div().withClass("orch-actions");
-        actions.withChild(Button.create("Wake")
-            .withAttribute("hx-post", "/agents/_docker/" + escapeAttr(agent.id()) + "/start?view=list")
-            .withAttribute("hx-target", "#agent-list")
-            .withAttribute("hx-swap", "innerHTML"));
-        actions.withChild(Button.create("Sleep")
-            .withAttribute("hx-post", "/agents/_docker/" + escapeAttr(agent.id()) + "/stop?view=list")
-            .withAttribute("hx-target", "#agent-list")
-            .withAttribute("hx-swap", "innerHTML"));
-        actions.withChild(Button.create("Restart")
-            .withAttribute("hx-post", "/agents/_docker/" + escapeAttr(agent.id()) + "/restart?view=list")
-            .withAttribute("hx-target", "#agent-list")
-            .withAttribute("hx-swap", "innerHTML"));
         actions.withChild(Button.create("Refresh")
-            .withAttribute("hx-get", "/agents/_docker/" + escapeAttr(agent.id()) + "/status-row?view=list")
+            .withAttribute("hx-get", "/agents/_list")
             .withAttribute("hx-target", "#agent-list")
             .withAttribute("hx-swap", "innerHTML"));
         actions.withChild(Button.create(agent.status() == AgentProfileStatus.ACTIVE ? "Disable" : "Enable")
@@ -4737,7 +4717,7 @@ public class OrchestrationController {
                         .withAttribute("data-agent-chat-panel", "")
                         .withAttribute("data-agent-id", agent.id())
                         .withAttribute("data-page-context", "agent detail")))
-                .withChild(tabNav(agent.id(), "dashboard", "profile", "queue", "inbox", "jobs", "schedules", "reactions", "workspace", "outputs", "exec", "history", "submit", "docker", "chat"))
+                .withChild(tabNav(agent.id(), "dashboard", "profile", "queue", "inbox", "jobs", "schedules", "reactions", "workspace", "outputs", "exec", "history", "submit", "chat"))
                 .withChild(new Div().withClass("agent-profile-loader-marker")
                     .withAttribute("hidden", "hidden")
                     .withAttribute("hx-get", "/agents/_editor/" + escapeAttr(agent.id())))
@@ -4799,34 +4779,20 @@ public class OrchestrationController {
             panel.withChild(running);
         }
 
-        // Docker status
-        panel.withChild(new Div().withId("agent-docker-status-" + agentId)
-            .withAttribute("hx-get", "/agents/_detail/" + agentId + "/docker-status")
-            .withAttribute("hx-trigger", "load")
-            .withAttribute("hx-swap", "innerHTML")
-            .withChild(new Div().withClass("dashboard-empty").withInnerText("Loading Docker status...")));
+        // Workspace status
+        String health = agentWorkspaceHealth(agent);
+        panel.withChild(new Div().withClass("orch-meta")
+            .withChild(new HtmlTag("span").withInnerText("Workspace: " + health)));
 
         panel.withChild(new Div().withClass("orch-actions")
-            .withChild(Button.create("Wake")
-                .withAttribute("hx-post", "/agents/_docker/" + escapeAttr(agentId) + "/start")
-                .withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId))
-                .withAttribute("hx-swap", "innerHTML"))
-            .withChild(Button.create("Sleep")
-                .withAttribute("hx-post", "/agents/_docker/" + escapeAttr(agentId) + "/stop")
-                .withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId))
-                .withAttribute("hx-swap", "innerHTML"))
-            .withChild(Button.create("Restart")
-                .withAttribute("hx-post", "/agents/_docker/" + escapeAttr(agentId) + "/restart")
-                .withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId))
-                .withAttribute("hx-swap", "innerHTML"))
             .withChild(Button.create("Refresh")
-                .withAttribute("hx-get", "/agents/_detail/" + escapeAttr(agentId) + "/docker-status")
-                .withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId))
+                .withAttribute("hx-get", "/agents/_detail/" + escapeAttr(agentId) + "/dashboard")
+                .withAttribute("hx-target", "#agent-tab-panel")
                 .withAttribute("hx-swap", "innerHTML"))
             .withChild(Button.create(agent.status() == AgentProfileStatus.ACTIVE ? "Disable Agent" : "Enable Agent")
                 .withAttribute("hx-post", "/agents/_lifecycle/" + escapeAttr(agentId)
                     + (agent.status() == AgentProfileStatus.ACTIVE ? "/disable" : "/enable"))
-                .withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId))
+                .withAttribute("hx-target", "#agent-tab-panel")
                 .withAttribute("hx-swap", "innerHTML"))
             .withChild(Button.create("Delete / Archive")
                 .withAttribute("hx-get", "/agents/_lifecycle/" + escapeAttr(agentId) + "/delete-confirm")
@@ -5575,7 +5541,7 @@ public class OrchestrationController {
             return "—";
         }
         return switch (workspace.ownerType()) {
-            case AGENT -> "agents/" + workspace.ownerId() + "/outputs";
+            case AGENT -> "agents/" + workspace.ownerId() + "/workspace/outputs";
             case JOB -> "jobs/" + workspace.ownerId() + "/outputs";
             case PROJECT -> "projects/" + workspace.ownerId() + "/workspace";
         };
@@ -5613,14 +5579,14 @@ public class OrchestrationController {
     @ResponseBody
     public String agentExecTab(@PathVariable String agentId) {
         Div panel = new Div();
-        panel.withChild(Header.H2("Container Exec"));
-        panel.withChild(new Paragraph("Run a bounded shell command inside this agent container."));
+        panel.withChild(Header.H2("Shell Exec"));
+        panel.withChild(new Paragraph("Run a bounded shell command in this agent workspace."));
         Form form = Form.create()
             .withHxPost("/agents/_detail/" + agentId + "/exec")
             .withHxTarget("#agent-exec-result")
             .withHxSwap("innerHTML");
         form.withChild(label("Command", TextInput.create("command").withPlaceholder("pwd")));
-        form.withChild(label("Working Directory", TextInput.create("workingDirectory").withValue("/workspace")));
+        form.withChild(label("Working Directory", TextInput.create("workingDirectory").withValue("workspace")));
         form.withChild(Button.create("Run").withClass("orch-primary").withAttribute("type", "submit"));
         panel.withChild(form);
         panel.withChild(new Div().withId("agent-exec-result"));
@@ -5631,22 +5597,34 @@ public class OrchestrationController {
     @ResponseBody
     public String execInAgent(@PathVariable String agentId, @RequestParam Map<String, String> params) {
         AgentProfile agent = agentProfileService.get(agentId);
-        AgentContainerRuntimeService runtime = containerRuntimeService.getIfAvailable();
-        if (runtime == null) {
-            return new Div().withClass("orch-error").withInnerText("Docker runtime is disabled.").render();
-        }
         try {
-            var result = runtime.execInAgent(agentId, agent.name(), required(params.get("command"), "command is required"),
-                params.getOrDefault("workingDirectory", "/workspace"));
-            return new Div().withClass("orch-panel")
-                .withChild(new Div().withClass("orch-meta")
-                    .withChild(new HtmlTag("span").withInnerText("Exit: " + result.exitCode())))
-                .withChild(new HtmlTag("pre").withInnerText(nn(result.stdout())))
-                .withChild(new HtmlTag("pre").withInnerText(nn(result.stderr())))
-                .render();
+            AgentShellToolService shellService = execShellService();
+            if (shellService == null) {
+                return new Div().withClass("orch-error").withInnerText("Shell execution service is unavailable.").render();
+            }
+            OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
+                agentId, agent.name(), null, null, null, null, null, null));
+            try {
+                var result = shellService.exec(
+                    required(params.get("command"), "command is required"),
+                    params.getOrDefault("workingDirectory", "workspace"),
+                    null);
+                return new Div().withClass("orch-panel")
+                    .withChild(new Div().withClass("orch-meta")
+                        .withChild(new HtmlTag("span").withInnerText("Exit: " + (result.exitCode() != null ? result.exitCode() : "timeout"))))
+                    .withChild(new HtmlTag("pre").withInnerText(nn(result.stdout())))
+                    .withChild(new HtmlTag("pre").withInnerText(nn(result.stderr())))
+                    .render();
+            } finally {
+                OrchestrationTaskContextHolder.clear();
+            }
         } catch (Exception exception) {
             return new Div().withClass("orch-error").withInnerText("Error: " + exception.getMessage()).render();
         }
+    }
+
+    private AgentShellToolService execShellService() {
+        return execShellServiceRef == null ? null : execShellServiceRef.getIfAvailable();
     }
 
     @GetMapping("/agents/_detail/{agentId}/history")
@@ -5725,32 +5703,6 @@ public class OrchestrationController {
         return panel.render();
     }
 
-    @GetMapping("/agents/_detail/{agentId}/docker")
-    @ResponseBody
-    public String agentDockerTab(@PathVariable String agentId) {
-        Div panel = new Div();
-        panel.withChild(Header.H2("Docker Runtime"));
-        panel.withChild(new Div().withId("agent-docker-status-" + agentId)
-            .withAttribute("hx-get", "/agents/_detail/" + escapeAttr(agentId) + "/docker-status")
-            .withAttribute("hx-trigger", "load")
-            .withAttribute("hx-swap", "innerHTML")
-            .withChild(loadingPlaceholder()));
-        panel.withChild(new Div().withClass("orch-actions")
-            .withChild(Button.create("Wake")
-                .withAttribute("hx-post", "/agents/_docker/" + escapeAttr(agentId) + "/start")
-                .withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId))
-                .withAttribute("hx-swap", "innerHTML"))
-            .withChild(Button.create("Sleep")
-                .withAttribute("hx-post", "/agents/_docker/" + escapeAttr(agentId) + "/stop")
-                .withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId))
-                .withAttribute("hx-swap", "innerHTML"))
-            .withChild(Button.create("Restart")
-                .withAttribute("hx-post", "/agents/_docker/" + escapeAttr(agentId) + "/restart")
-                .withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId))
-                .withAttribute("hx-swap", "innerHTML")));
-        return panel.render();
-    }
-
     private String renderAssignmentList(String agentId, String title, List<WorkAssignment> assignments) {
         Div panel = new Div();
         panel.withChild(Header.H2(title));
@@ -5797,96 +5749,6 @@ public class OrchestrationController {
         return panel.render();
     }
 
-    @GetMapping("/agents/_detail/{agentId}/docker-status")
-    @ResponseBody
-    public String agentDockerStatusTab(@PathVariable String agentId) {
-        AgentProfile agent = agentProfileService.get(agentId);
-        AgentContainerRuntimeService runtime = containerRuntimeService.getIfAvailable();
-        Div panel = new Div().withClass("docker-status-fragment");
-        if (runtime == null) {
-            panel.withChild(statusBadgeHtml("DISABLED"));
-            panel.withChild(new HtmlTag("span").withInnerText(" Docker runtime is disabled."));
-            return panel.render();
-        }
-        AgentContainerHandle status = runtime.statusFor(agentId, agent.status() == AgentProfileStatus.ACTIVE);
-        panel.withChild(statusBadgeHtml(status.status().name()));
-        panel.withChild(new HtmlTag("span").withInnerText(" " + nn(status.message())));
-        panel.withChild(new HtmlTag("div").withClass("orch-meta")
-            .withChild(new HtmlTag("span").withInnerText("Container: " + nn(status.containerId())))
-            .withChild(new HtmlTag("span").withInnerText("Name: " + nn(status.containerName())))
-            .withChild(new HtmlTag("span").withInnerText("Image: " + nn(status.image())))
-            .withChild(new HtmlTag("span").withInnerText("Host: " + nn(status.dockerHost())))
-            .withChild(new HtmlTag("span").withInnerText(
-                "Started: " + (status.startedAt() == null ? "—" : formatSince(status.startedAt()))))
-            .withChild(new HtmlTag("span").withInnerText(
-                "Last Used: " + (status.lastUsedAt() == null ? "—" : formatSince(status.lastUsedAt())))));
-        if (status.mounts() != null && !status.mounts().isEmpty()) {
-            Div mounts = new Div().withClass("orch-meta");
-            mounts.withChild(new HtmlTag("span").withInnerText("Mounts:"));
-            for (String mount : status.mounts()) {
-                mounts.withChild(new HtmlTag("code").withInnerText(mount));
-            }
-            panel.withChild(mounts);
-        }
-        return panel.render();
-    }
-
-    @GetMapping("/agents/_docker/{agentId}/docker-status")
-    @ResponseBody
-    public String agentDockerStatusCompat(@PathVariable String agentId) {
-        return agentDockerStatusTab(agentId);
-    }
-
-    @PostMapping("/agents/_docker/{agentId}/start")
-    @ResponseBody
-    public String startAgentContainer(
-        @PathVariable String agentId,
-        @RequestParam(value = "view", required = false) String view
-    ) {
-        AgentProfile profile = agentProfileService.get(agentId);
-        AgentContainerRuntimeService runtime = containerRuntimeService.getIfAvailable();
-        if (runtime != null) {
-            runtime.startAgentContainer(agentId, profile.name());
-        }
-        return "list".equalsIgnoreCase(view) ? agentList(null) : agentDockerStatusTab(agentId);
-    }
-
-    @PostMapping("/agents/_docker/{agentId}/stop")
-    @ResponseBody
-    public String stopAgentContainer(
-        @PathVariable String agentId,
-        @RequestParam(value = "view", required = false) String view
-    ) {
-        AgentContainerRuntimeService runtime = containerRuntimeService.getIfAvailable();
-        if (runtime != null) {
-            runtime.stopAgentContainer(agentId, false);
-        }
-        return "list".equalsIgnoreCase(view) ? agentList(null) : agentDockerStatusTab(agentId);
-    }
-
-    @PostMapping("/agents/_docker/{agentId}/restart")
-    @ResponseBody
-    public String restartAgentContainer(
-        @PathVariable String agentId,
-        @RequestParam(value = "view", required = false) String view
-    ) {
-        AgentProfile profile = agentProfileService.get(agentId);
-        AgentContainerRuntimeService runtime = containerRuntimeService.getIfAvailable();
-        if (runtime != null) {
-            runtime.restartAgentContainer(agentId, profile.name());
-        }
-        return "list".equalsIgnoreCase(view) ? agentList(null) : agentDockerStatusTab(agentId);
-    }
-
-    @GetMapping("/agents/_docker/{agentId}/status-row")
-    @ResponseBody
-    public String refreshAgentDockerStatusRow(
-        @PathVariable String agentId,
-        @RequestParam(value = "view", required = false) String view
-    ) {
-        return "list".equalsIgnoreCase(view) ? agentList(null) : agentDockerStatusTab(agentId);
-    }
-
     @PostMapping("/agents/_lifecycle/{agentId}/enable")
     @ResponseBody
     public String enableAgentLifecycle(
@@ -5894,7 +5756,7 @@ public class OrchestrationController {
         @RequestParam(value = "view", required = false) String view
     ) {
         agentProfileService.enable(agentId, true);
-        return "list".equalsIgnoreCase(view) ? agentList(null) : agentDockerStatusTab(agentId);
+        return "list".equalsIgnoreCase(view) ? agentList(null) : agentDetailFragment(agentId);
     }
 
     @PostMapping("/agents/_lifecycle/{agentId}/disable")
@@ -5904,7 +5766,7 @@ public class OrchestrationController {
         @RequestParam(value = "view", required = false) String view
     ) {
         agentProfileService.disable(agentId);
-        return "list".equalsIgnoreCase(view) ? agentList(null) : agentDockerStatusTab(agentId);
+        return "list".equalsIgnoreCase(view) ? agentList(null) : agentDetailFragment(agentId);
     }
 
     @GetMapping("/agents/_lifecycle/{agentId}/delete-confirm")
@@ -5941,7 +5803,7 @@ public class OrchestrationController {
     public String archiveAndDisableAgentLifecycle(@PathVariable String agentId) {
         try {
             agentProfileService.archiveAndDisable(agentId);
-            return agentDockerStatusTab(agentId);
+            return agentDetailFragment(agentId);
         } catch (Exception exception) {
             return new Div().withClass("orch-error").withInnerText("Error: " + exception.getMessage()).render();
         }

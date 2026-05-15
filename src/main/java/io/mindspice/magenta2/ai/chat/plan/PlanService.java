@@ -817,15 +817,14 @@ public class PlanService {
                 Path outputDir = workspaceDirectoryService.agentOutput(agentId, slug, runId);
                 Path realOutputDir = outputDir.toRealPath();
                 outputDirectoryPath = realOutputDir.toString();
-                String containerOutputPath = containerOutputPath(realOutputDir);
                 effectiveContext = context == null
                     ? null
-                    : context.withPaths(tempWorkspacePath, outputDirectoryPath, containerOutputPath);
+                    : context.withPaths(tempWorkspacePath, outputDirectoryPath);
                 if (effectiveContext != null && OrchestrationTaskContextHolder.current() != null) {
                     OrchestrationTaskContextHolder.set(effectiveContext);
                 }
-                log.info("Allocated temp={} output={} containerOutput={} agent={} for run={}",
-                    tempWorkspacePath, outputDirectoryPath, containerOutputPath, agentId, runId);
+                log.info("Allocated temp={} output={} agent={} for run={}",
+                    tempWorkspacePath, outputDirectoryPath, agentId, runId);
             } catch (Exception e) {
                 log.error("Failed to allocate workspace directories for run={}: {}", runId, e.getMessage());
                 // Continue without workspace dirs — execution will fail at Docker level
@@ -1201,7 +1200,7 @@ Approved plan:
 
 """).append(approvalMarkdown(plan)).append("\n\n");
         appendList(builder, "Prior validation feedback to address", plan.validationFeedback());
-        builder.append("\n\n").append(dockerRuntimeContext());
+        builder.append("\n\n").append(workspaceRuntimeContext());
         return builder.toString().trim();
     }
 
@@ -1263,7 +1262,7 @@ Approved plan:
         appendList(builder, "Declared outputs", task.outputs().stream().map(this::fieldSummary).toList());
         appendList(builder, "Steps", task.steps().stream().map(step -> step.order() + ". " + step.text()).toList());
         appendList(builder, "Validation criteria", task.validationCriteria());
-        builder.append("\n\n").append(dockerRuntimeContext(run));
+        builder.append("\n\n").append(workspaceRuntimeContext(run));
         return builder.toString().trim();
     }
 
@@ -1854,20 +1853,6 @@ Approved plan:
         return slug.isEmpty() ? "run" : slug;
     }
 
-    private String containerOutputPath(Path outputDir) {
-        if (outputDir == null || outputDir.getFileName() == null) {
-            return "/output";
-        }
-        return "/output/" + outputDir.getFileName();
-    }
-
-    private String containerOutputPath(PlanRun run) {
-        if (run == null || !StringUtils.hasText(run.outputDirectory())) {
-            return "/output";
-        }
-        return containerOutputPath(Path.of(run.outputDirectory()));
-    }
-
     private Map<String, PlanFieldType> outputTypeMap(List<PlanFieldDefinition> outputs) {
         Map<String, PlanFieldType> map = new LinkedHashMap<>();
         for (PlanFieldDefinition field : outputs) {
@@ -1876,62 +1861,60 @@ Approved plan:
         return map;
     }
 
-    // ── Docker runtime prompt context ──
+    // ── Workspace runtime prompt context ──
 
     /**
-     * Returns Docker runtime context text to inject into the execution prompt.
-     * Explains mounted paths, output directory, and Python/venv practice.
+     * Returns filesystem workspace context text to inject into the execution prompt.
+     * Explains the workspace directory layout and output behavior.
      */
-    public String dockerRuntimeContext() {
+    public String workspaceRuntimeContext() {
         return """
-            ## Docker Runtime Environment
+            ## Filesystem Workspace Environment
 
-            You are executing inside a Docker container. The following directories are mounted:
+            You are executing on the host filesystem inside the agent workspace.
+            The following directories are available:
 
-            - /home/agent — your persistent agent home directory (writable)
-            - /workspace — the current task/workflow workspace (writable, deleted after completion)
-            - /output — the agent output root (writable, preserved permanently)
+            - workspace/ — your agent execution root (writable, persistent)
+            - workspace/outputs/ — the agent output root (writable, preserved permanently)
+            - workspace/scratch/ — agent-private temporary working space (writable)
+            - workspace/projects/ — linked project workspaces when a project lease is active
 
             ### Output Directory
 
             When completing a task, write or copy all required output files into the run-specific
             output directory named by the execution prompt. Do not write deliverable files directly
-            to /output unless the run-specific output directory is unavailable.
-            Do NOT write deliverable files to /workspace and expect them to survive —
-            they will be deleted after the run completes.
+            to workspace/outputs unless the run-specific output directory is unavailable.
 
             ### Python and Virtual Environments
 
-            The container includes Python. If your task requires pip packages, create and
-            use a virtual environment to avoid polluting the system Python:
+            If your task requires pip packages, create and use a virtual environment:
 
             ```
-            python -m venv /workspace/.venv
-            source /workspace/.venv/bin/activate
+            python -m venv scratch/.venv
+            source scratch/.venv/bin/activate
             pip install <packages>
             ```
 
-            The virtual environment will be cleaned with the workspace after the run.
-            If a package set is needed across runs, coordinate with the user to install
-            it in the agent home directory.
+            The virtual environment will persist in scratch until cleaned.
             """.stripIndent();
     }
 
-    public String dockerRuntimeContext(PlanRun run) {
-        String runOutputPath = containerOutputPath(run);
-        return dockerRuntimeContext() + "\n\n" + """
+    public String workspaceRuntimeContext(PlanRun run) {
+        String runOutputPath = run != null && StringUtils.hasText(run.outputDirectory())
+            ? run.outputDirectory() : "workspace/outputs";
+        return workspaceRuntimeContext() + "\n\n" + """
             ### Current Run Output Path
 
-            For this run, write deliverable files to %s.
-            When reporting file_path outputs, use either %s/<file> or the bare filename for files
-            written directly in that directory.
-            """.formatted(runOutputPath, runOutputPath).stripIndent();
+            For this run, write deliverable files to the run-specific output directory.
+            When reporting file_path outputs, use either the output directory/<file> or
+            the bare filename for files written directly in that directory.
+            """.stripIndent();
     }
 
     /**
-     * Returns Docker context appended to execution instructions for a run.
+     * Returns execution instructions appended to the workspace context for a run.
      */
-    String executionInstructionsWithDocker(PlanRun run) {
+    String executionInstructionsWithWorkspace(PlanRun run) {
         return executionInstructions(run);
     }
 }

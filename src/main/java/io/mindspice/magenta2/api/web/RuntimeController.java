@@ -2,9 +2,7 @@ package io.mindspice.magenta2.api.web;
 
 import java.time.Instant;
 
-import io.mindspice.magenta2.ai.orchestration.docker.DockerRuntimeClient;
-import io.mindspice.magenta2.ai.orchestration.docker.DockerRuntimeConfig;
-import io.mindspice.magenta2.ai.orchestration.docker.DockerStatusResponse;
+import io.mindspice.magenta2.ai.orchestration.workspaces.AgentWorkspaceStatusService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -13,44 +11,32 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/runtime")
 public class RuntimeController {
-    private final ObjectProvider<DockerRuntimeClient> dockerClient;
-    private final ObjectProvider<DockerRuntimeConfig> dockerConfig;
+    private final ObjectProvider<AgentWorkspaceStatusService> workspaceStatusService;
 
     public RuntimeController(
-        ObjectProvider<DockerRuntimeClient> dockerClient,
-        ObjectProvider<DockerRuntimeConfig> dockerConfig
+        ObjectProvider<AgentWorkspaceStatusService> workspaceStatusService
     ) {
-        this.dockerClient = dockerClient;
-        this.dockerConfig = dockerConfig;
+        this.workspaceStatusService = workspaceStatusService;
     }
 
-    @GetMapping("/docker/status")
-    public DockerStatusResponse dockerStatus() {
-        DockerRuntimeClient client = dockerClient.getIfAvailable();
-        DockerRuntimeConfig config = dockerConfig.getIfAvailable();
-
-        if (client == null) {
-            return new DockerStatusResponse(
-                false, false, config != null ? config.getDockerHost() : "n/a",
-                config != null ? config.getAgentImage() : "n/a",
-                "Docker runtime is disabled (magenta.docker.enabled=false).",
-                Instant.now()
-            );
-        }
-
-        // Live check: ping updates the daemonAvailable flag.
-        boolean reachable = client.ping();
-        String message;
-        if (!reachable) {
-            message = client.getDaemonError() != null
-                ? client.getDaemonError()
-                : "Docker daemon unreachable at " + client.getDockerHost();
-        } else {
-            message = client.healthCheck();
-        }
-        return new DockerStatusResponse(
-            true, reachable, client.getDockerHost(), client.getAgentImage(),
-            message, Instant.now()
+    /**
+     * Returns a summary of the workspace runtime. Replaces the removed
+     * Docker status endpoint. If no agent context is specified, returns
+     * a simple availability signal.
+     */
+    @GetMapping("/status")
+    public RuntimeStatus runtimeStatus() {
+        boolean available = workspaceStatusService.getIfAvailable() != null;
+        return new RuntimeStatus(
+            available,
+            available ? "Filesystem workspace runtime available" : "Workspace service unavailable",
+            Instant.now()
         );
     }
+
+    public record RuntimeStatus(
+        boolean available,
+        String message,
+        Instant checkedAt
+    ) {}
 }

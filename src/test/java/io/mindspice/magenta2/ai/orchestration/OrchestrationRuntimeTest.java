@@ -114,7 +114,7 @@ class OrchestrationRuntimeTest {
         assertThat(Files.isDirectory(tempDir.resolve("agents/agent-1"))).isTrue();
         assertThat(link.label()).isEqualTo("notes");
         assertThatThrownBy(() -> service.addLink(workspace.id(), new WorkspaceLink(
-            null, workspace.id(), "bad", WorkspaceLinkType.PATH, "../../../escape", true, false, null, null
+            null, workspace.id(), "bad", WorkspaceLinkType.PATH, "../../../../escape", true, false, null, null
         ))).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("escapes data root");
     }
 
@@ -203,7 +203,6 @@ class OrchestrationRuntimeTest {
         AgentProfileService service = new AgentProfileService(
             agentRepository,
             aiConfig,
-            null,
             null,
             provider(WorkspaceService.class, workspaceService),
             null,
@@ -396,7 +395,7 @@ class OrchestrationRuntimeTest {
         // Verify OrchestrationTaskContext can be set and cleared without leaking
         OrchestrationTaskContext ctx = new OrchestrationTaskContext(
             agent.id(), agent.name(), "job-ctx-1", null, "ws-ctx-1",
-            "TASK_RUN", "/tmp/ws", "/tmp/out", "/output/run");
+            "TASK_RUN", "/tmp/ws", "/tmp/out");
 
         assertThat(ctx.hasAgentContext()).isTrue();
         assertThat(ctx.hasContext()).isTrue();
@@ -407,7 +406,6 @@ class OrchestrationRuntimeTest {
         assertThat(ctx.runType()).isEqualTo("TASK_RUN");
         assertThat(ctx.hostWorkspacePath()).isEqualTo("/tmp/ws");
         assertThat(ctx.hostOutputPath()).isEqualTo("/tmp/out");
-        assertThat(ctx.containerOutputPath()).isEqualTo("/output/run");
 
         // Set and clear via holder
         OrchestrationTaskContextHolder.set(ctx);
@@ -419,7 +417,7 @@ class OrchestrationRuntimeTest {
     @Test
     void orchestrationTaskContextHolderIsThreadLocal() throws Exception {
         OrchestrationTaskContext mainCtx = new OrchestrationTaskContext(
-            "main-agent", "Main", null, null, null, "TASK_RUN", null, null, null);
+            "main-agent", "Main", null, null, null, "TASK_RUN", null, null);
 
         OrchestrationTaskContextHolder.set(mainCtx);
 

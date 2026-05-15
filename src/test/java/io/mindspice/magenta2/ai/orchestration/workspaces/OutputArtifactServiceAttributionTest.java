@@ -53,15 +53,16 @@ class OutputArtifactServiceAttributionTest {
     }
 
     // ════════════════════════════════════════════════════════════════
-    //  Phase 2: Container path resolution
+    //  Phase 03: Filesystem path resolution (Docker /output/ removed)
     // ════════════════════════════════════════════════════════════════
 
     @Test
-    void containerOutputPathResolvesToRunOutputDirectory() throws Exception {
+    void dataRootScopedFilePathResolvesToRunOutputDirectory() throws Exception {
         JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        Path dataRoot = Files.createDirectories(tempDir.resolve("root"));
         WorkspaceRepository repository = new WorkspaceRepository(jdbc);
         WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
-            new AiConfig(null, null, null, null, Files.createDirectories(tempDir.resolve("root")), null, null)
+            new AiConfig(null, null, null, null, dataRoot, null, null)
         );
         OutputArtifactService service = new OutputArtifactService(
             repository,
@@ -69,17 +70,17 @@ class OutputArtifactServiceAttributionTest {
             new ObjectMapper().findAndRegisterModules()
         );
 
-        Path outputDir = Files.createDirectories(tempDir.resolve("outputs"));
-        // Create a file at the output dir as if the container wrote it to /output/
+        // Output dir must be under dataRoot for absolute path resolution
+        Path outputDir = Files.createDirectories(dataRoot.resolve("outputs"));
         Files.writeString(outputDir.resolve("container-result.txt"), "container output");
 
-        // Materialize with /output/container-result.txt as the value
+        // Materialize with absolute path under data root
         RunOutputArtifact artifact = service.materialize(
             "run-1",
             "plan-1",
             "result",
             PlanFieldType.FILE_PATH,
-            "/output/container-result.txt",
+            outputDir.resolve("container-result.txt").toString(),
             outputDir,
             OutputArtifactContext.EMPTY
         );
@@ -87,16 +88,15 @@ class OutputArtifactServiceAttributionTest {
         assertThat(artifact.fileName()).isEqualTo("container-result.txt");
         assertThat(artifact.artifactType()).isEqualTo("file_path");
         assertThat(Files.exists(Path.of(artifact.filePath()))).isTrue();
-        // When source == dest (file already in output dir), filename is preserved
-        assertThat(artifact.filePath()).contains("container-result.txt");
     }
 
     @Test
-    void runScopedContainerOutputPathStripsRunDirectoryPrefix() throws Exception {
+    void relativePathResolvesRelativeToOutputDirectory() throws Exception {
         JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        Path dataRoot = Files.createDirectories(tempDir.resolve("root-run-scoped"));
         WorkspaceRepository repository = new WorkspaceRepository(jdbc);
         WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
-            new AiConfig(null, null, null, null, Files.createDirectories(tempDir.resolve("root-run-scoped")), null, null)
+            new AiConfig(null, null, null, null, dataRoot, null, null)
         );
         OutputArtifactService service = new OutputArtifactService(
             repository,
@@ -107,12 +107,13 @@ class OutputArtifactServiceAttributionTest {
         Path outputDir = Files.createDirectories(tempDir.resolve("my-task-run-123"));
         Files.writeString(outputDir.resolve("result.json"), "{\"ok\":true}");
 
+        // Materialize with bare filename relative to output dir
         RunOutputArtifact artifact = service.materialize(
             "run-123",
             "plan-123",
             "result",
             PlanFieldType.FILE_PATH,
-            "/output/my-task-run-123/result.json",
+            "result.json",
             outputDir,
             OutputArtifactContext.EMPTY
         );
@@ -153,7 +154,7 @@ class OutputArtifactServiceAttributionTest {
     }
 
     @Test
-    void rejectsContainerOutputPathEscape() throws Exception {
+    void rejectsAbsoluteFilePathOutsideDataRoot() throws Exception {
         JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
         WorkspaceRepository repository = new WorkspaceRepository(jdbc);
         WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
@@ -173,12 +174,12 @@ class OutputArtifactServiceAttributionTest {
                 "plan-3",
                 "bad",
                 PlanFieldType.FILE_PATH,
-                "/output/../../../etc/passwd",
+                "/etc/passwd",
                 outputDir,
                 OutputArtifactContext.EMPTY
             )
         ).isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("escapes output directory");
+            .hasMessageContaining("escapes data root");
     }
 
     @Test

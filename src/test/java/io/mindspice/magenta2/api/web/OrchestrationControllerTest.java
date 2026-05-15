@@ -88,8 +88,6 @@ class OrchestrationControllerTest {
             reactionService,
             new StubWorkflowService(),
             emptyProvider(),
-            emptyProvider(),
-            emptyProvider(),
             schedulesEnabled,
             reactionsEnabled
         );
@@ -550,9 +548,7 @@ class OrchestrationControllerTest {
         assertThat(html).contains("dashboard-table");
         assertThat(html).contains("Test Agent");
         assertThat(html).contains("ACTIVE");
-        assertThat(html).contains("Wake");
-        assertThat(html).contains("Sleep");
-        assertThat(html).contains("Restart");
+        assertThat(html).contains("Refresh");
         assertThat(html).contains("/agents/_lifecycle/agent-1/disable?view=list");
     }
 
@@ -568,10 +564,9 @@ class OrchestrationControllerTest {
         assertThat(html).contains("Inbox");
         assertThat(html).contains("Jobs");
 
-        // Docker status section loaded via HTMX
-        assertThat(html).contains("agent-docker-status-agent-1");
-        assertThat(html).contains("hx-get=\"/agents/_detail/agent-1/docker-status\"");
-        assertThat(html).contains("/agents/_docker/agent-1/start");
+        // Workspace status section
+        assertThat(html).contains("Workspace:");
+        assertThat(html).contains("Refresh");
         assertThat(html).contains("Delete / Archive");
     }
 
@@ -635,8 +630,8 @@ class OrchestrationControllerTest {
         assertThat(html).contains("Workspace ID:");
         assertThat(html).contains("Owner: AGENT:agent-1");
         assertThat(html).contains("Display Name: Test Agent");
-        assertThat(html).contains("Root Relative Path: agents/agent-1");
-        assertThat(html).contains("Output Directory Hint: agents/agent-1/outputs");
+        assertThat(html).contains("Root Relative Path: agents/agent-1/workspace");
+        assertThat(html).contains("Output Directory Hint: agents/agent-1/workspace/outputs");
         assertThat(html).contains("Active Leases");
         assertThat(html).contains("TASK_RUN:run-1");
         assertThat(html).contains("Workspace Links");
@@ -1366,8 +1361,6 @@ class OrchestrationControllerTest {
             new StubEventReactionService(),
             new StubWorkflowService(),
             emptyProvider(),
-            emptyProvider(),
-            emptyProvider(),
             true,
             true
         );
@@ -1390,8 +1383,6 @@ class OrchestrationControllerTest {
             new StubEventReactionService(),
             new StubWorkflowService(),
             emptyProvider(),
-            emptyProvider(),
-            emptyProvider(),
             true,
             true
         );
@@ -1413,8 +1404,6 @@ class OrchestrationControllerTest {
             new StubScheduleService(),
             new StubEventReactionService(),
             new StubWorkflowService(),
-            emptyProvider(),
-            emptyProvider(),
             emptyProvider(),
             schedulesEnabled,
             reactionsEnabled

@@ -16,8 +16,10 @@ import org.springframework.util.StringUtils;
  *
  * <h3>Layout</h3>
  * <ul>
- *   <li>Agent home: {@code data/agents/{agentId}/home}</li>
- *   <li>Agent outputs: {@code data/agents/{agentId}/outputs/{slug}-{runId}/}</li>
+ *   <li>Agent workspace: {@code data/agents/{agentId}/workspace}</li>
+ *   <li>Agent outputs: {@code data/agents/{agentId}/workspace/outputs/{slug}-{runId}/}</li>
+ *   <li>Agent project links: {@code data/agents/{agentId}/workspace/projects/{projectId}}</li>
+ *   <li>Agent scratch: {@code data/agents/{agentId}/workspace/scratch}</li>
  *   <li>Task temp: {@code data/runtime/task-runs/{runId}}</li>
  *   <li>Workflow temp: {@code data/runtime/workflow-runs/{runId}}</li>
  *   <li>Job workspace: {@code data/jobs/{jobId}/workspace}</li>
@@ -38,6 +40,22 @@ public class WorkspaceDirectoryService {
 
     // ── Agent ──
 
+    /**
+     * Agent execution root: {@code agents/<id>/workspace}.
+     * Does not auto-migrate legacy directories; call
+     * {@link #migrateLegacyAgentDirs(String)} explicitly after Docker
+     * dependencies are removed.
+     */
+    public Path agentWorkspace(String agentId) {
+        requireId(agentId, "agentId");
+        return ensureDir(confined("agents/" + agentId + "/workspace"));
+    }
+
+    /**
+     * @deprecated Replaced by {@link #agentWorkspace(String)}. Retained only
+     * for Docker package backward compatibility during phased migration.
+     */
+    @Deprecated
     public Path agentHome(String agentId) {
         requireId(agentId, "agentId");
         return ensureDir(confined("agents/" + agentId + "/home"));
@@ -48,6 +66,26 @@ public class WorkspaceDirectoryService {
         return ensureDir(confined("agents/" + agentId));
     }
 
+    public Path agentWorkspaceOutputs(String agentId) {
+        requireId(agentId, "agentId");
+        return ensureDir(confined("agents/" + agentId + "/workspace/outputs"));
+    }
+
+    public Path agentProjectLinks(String agentId) {
+        requireId(agentId, "agentId");
+        return ensureDir(confined("agents/" + agentId + "/workspace/projects"));
+    }
+
+    public Path agentScratch(String agentId) {
+        requireId(agentId, "agentId");
+        return ensureDir(confined("agents/" + agentId + "/workspace/scratch"));
+    }
+
+    /**
+     * @deprecated Replaced by {@link #agentWorkspaceOutputs(String)}.
+     * Retained only for Docker package backward compatibility.
+     */
+    @Deprecated
     public Path agentOutputRoot(String agentId) {
         requireId(agentId, "agentId");
         return ensureDir(confined("agents/" + agentId + "/outputs"));
@@ -55,13 +93,44 @@ public class WorkspaceDirectoryService {
 
     /**
      * Output directory for an agent's run. Never deleted after terminal state.
-     * Layout: data/agents/{agentId}/outputs/{slug}-{runId}/
+     * Layout: data/agents/{agentId}/workspace/outputs/{slug}-{runId}/
      */
     public Path agentOutput(String agentId, String planSlug, String runId) {
         requireId(agentId, "agentId");
         requireId(runId, "runId");
         String slug = StringUtils.hasText(planSlug) ? sanitize(planSlug) : "run";
-        return ensureDir(confined("agents/" + agentId + "/outputs/" + slug + "-" + runId));
+        return ensureDir(confined("agents/" + agentId + "/workspace/outputs/" + slug + "-" + runId));
+    }
+
+    /**
+     * Migrates legacy {@code agents/<id>/home} and {@code agents/<id>/outputs}
+     * into the workspace tree. Safe to call repeatedly — only performs work
+     * when legacy directories exist and their workspace counterparts do not.
+     * Call after Docker execution dependencies on the old paths are removed.
+     */
+    public void migrateLegacyAgentDirs(String agentId) {
+        Path workspaceDir = confined("agents/" + agentId + "/workspace");
+        if (Files.exists(workspaceDir)) {
+            return; // already migrated
+        }
+        Path legacyHome = confined("agents/" + agentId + "/home");
+        Path legacyOutputs = confined("agents/" + agentId + "/outputs");
+        try {
+            if (Files.isDirectory(legacyHome)) {
+                Files.createDirectories(workspaceDir.getParent());
+                Files.move(legacyHome, workspaceDir);
+            }
+            if (Files.isDirectory(legacyOutputs)) {
+                Path wsOutputs = workspaceDir.resolve("outputs");
+                if (!Files.exists(wsOutputs)) {
+                    Files.createDirectories(wsOutputs.getParent());
+                    Files.move(legacyOutputs, wsOutputs);
+                }
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException(
+                "Failed to migrate legacy agent directories for " + agentId, e);
+        }
     }
 
     // ── Task / Workflow temp ──

@@ -5,12 +5,11 @@ import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
 
-import io.mindspice.magenta2.ai.orchestration.docker.AgentContainerRuntimeService;
-import io.mindspice.magenta2.ai.orchestration.docker.AgentExecResult;
+import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -166,98 +165,165 @@ class AgentShellToolServiceTest {
 
         assertThat(result.exitCode()).isNull();
         assertThat(result.timedOut()).isTrue();
-        // Regression: verify the method returns within bounded time
-        // (1s timeout + 1s destroy wait + 1s capture drain = ~3s max)
     }
 
     // ════════════════════════════════════════════════════════════════
-    //  Phase 2: Container routing with orchestration context
+    //  Phase 02: Workspace-backed host execution
     // ════════════════════════════════════════════════════════════════
-
-    @Test
-    void routesToContainerWhenOrchestrationContextHasAgentId() throws Exception {
-        AtomicReference<String> capturedAgentId = new AtomicReference<>();
-        AtomicReference<String> capturedCommand = new AtomicReference<>();
-        AtomicReference<Integer> capturedTimeout = new AtomicReference<>();
-
-        // Fake container runtime that records calls without needing Docker
-        AgentContainerRuntimeService fakeRuntime = new AgentContainerRuntimeService(null, null, null, null) {
-            @Override
-            public AgentExecResult execInAgent(String agentId, String agentName, String command, String workingDirectory,
-                                               int timeoutSeconds) {
-                capturedAgentId.set(agentId);
-                capturedCommand.set(command);
-                capturedTimeout.set(timeoutSeconds);
-                return new AgentExecResult(0, "container-output", "", false, "fake-container-id");
-            }
-        };
-
-        AgentShellToolService service = new AgentShellToolService(tempDir, List.of("*"), fakeRuntime);
-
-        // Set orchestration context with agent
-        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
-            "agent-1", "TestAgent", "job-1", "project-1", "ws-1",
-            "TASK_RUN", "/tmp/ws", "/tmp/out", "/output/run"));
-
-        try {
-            AgentShellToolService.ShellExecResult result = service.exec("printf hello", ".", 5);
-
-            assertThat(capturedAgentId.get()).isEqualTo("agent-1");
-            assertThat(capturedCommand.get()).isEqualTo("printf hello");
-            assertThat(capturedTimeout.get()).isEqualTo(5);
-            assertThat(result.executionType()).isEqualTo("docker");
-            assertThat(result.containerId()).isEqualTo("fake-container-id");
-            assertThat(result.stdout()).isEqualTo("container-output");
-            assertThat(result.exitCode()).isZero();
-        } finally {
-            OrchestrationTaskContextHolder.clear();
-        }
-    }
-
-    @Test
-    void failsWhenDockerRequiredButRuntimeUnavailable() throws IOException {
-        // Create shell service WITHOUT container runtime
-        AgentShellToolService service = new AgentShellToolService(tempDir, List.of("*"));
-
-        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
-            "agent-1", "TestAgent", null, null, null, "TASK_RUN", null, null, null));
-
-        try {
-            assertThatThrownBy(() -> service.exec("printf hello", ".", 5))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("container runtime is not available");
-        } finally {
-            OrchestrationTaskContextHolder.clear();
-        }
-    }
-
-    @Test
-    void rejectsHostAbsolutePathForContainerWorkingDirectory() throws Exception {
-        AgentContainerRuntimeService fakeRuntime = new AgentContainerRuntimeService(null, null, null, null) {
-            @Override
-            public AgentExecResult execInAgent(String agentId, String agentName, String command, String workingDirectory,
-                                               int timeoutSeconds) {
-                return new AgentExecResult(0, "", "", false, "fake-container-id");
-            }
-        };
-        AgentShellToolService service = new AgentShellToolService(tempDir, List.of("*"), fakeRuntime);
-        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
-            "agent-1", "TestAgent", null, null, null, "TASK_RUN", null, null, null));
-
-        assertThatThrownBy(() -> service.exec("printf hello", "/home/hickelpickle/work", 5))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("container workingDirectory");
-    }
 
     @Test
     void hostExecutionWhenNoOrchestrationContext() throws Exception {
         AgentShellToolService service = new AgentShellToolService(tempDir, List.of("printf"));
 
-        // No context set — should use host execution
         AgentShellToolService.ShellExecResult result = service.exec("printf host-test", ".", 5);
 
-        assertThat(result.executionType()).isEqualTo("host");
+        assertThat(result.executionType()).isEqualTo("bash");
         assertThat(result.exitCode()).isZero();
         assertThat(result.stdout()).isEqualTo("host-test");
+    }
+
+    @Test
+    void executesInAgentWorkspaceWhenOrchestrationContextHasAgentId() throws Exception {
+        // Create agent workspace dir structure inside tempDir
+        Path agentWs = Files.createDirectories(tempDir.resolve("agents/agent-1/workspace"));
+        Files.createDirectories(tempDir.resolve("agents/agent-1/workspace/outputs"));
+        Files.createDirectories(tempDir.resolve("agents/agent-1/workspace/scratch"));
+
+        AiConfig aiConfig = new AiConfig(null, null, null, null, null, null, tempDir, null, null, null);
+        WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(aiConfig);
+        AgentShellToolService service = new AgentShellToolService(tempDir, List.of("pwd"), dirService);
+
+        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
+            "agent-1", "TestAgent", null, null, null, "TASK_RUN", null, null));
+
+        try {
+            AgentShellToolService.ShellExecResult result = service.exec("pwd", "", 5);
+
+            assertThat(result.executionType()).isEqualTo("bash");
+            assertThat(result.exitCode()).isZero();
+            assertThat(result.stdout().trim()).endsWith("agents/agent-1/workspace");
+            assertThat(result.workingDirectory()).isEqualTo("workspace");
+        } finally {
+            OrchestrationTaskContextHolder.clear();
+        }
+    }
+
+    @Test
+    void resolvesWorkspaceAliasInAgentContext() throws Exception {
+        Files.createDirectories(tempDir.resolve("agents/agent-1/workspace"));
+        Files.createDirectories(tempDir.resolve("agents/agent-1/workspace/outputs"));
+
+        AiConfig aiConfig = new AiConfig(null, null, null, null, null, null, tempDir, null, null, null);
+        WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(aiConfig);
+        AgentShellToolService service = new AgentShellToolService(tempDir, List.of("pwd"), dirService);
+
+        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
+            "agent-1", "TestAgent", null, null, null, "TASK_RUN", null, null));
+
+        try {
+            AgentShellToolService.ShellExecResult result = service.exec("pwd", "workspace", 5);
+
+            assertThat(result.exitCode()).isZero();
+            assertThat(result.stdout().trim()).endsWith("agents/agent-1/workspace");
+            assertThat(result.workingDirectory()).isEqualTo("workspace");
+        } finally {
+            OrchestrationTaskContextHolder.clear();
+        }
+    }
+
+    @Test
+    void resolvesOutputsAliasInAgentContext() throws Exception {
+        Path agentWs = Files.createDirectories(tempDir.resolve("agents/agent-1/workspace"));
+        Path outputsDir = Files.createDirectories(tempDir.resolve("agents/agent-1/workspace/outputs"));
+
+        AiConfig aiConfig = new AiConfig(null, null, null, null, null, null, tempDir, null, null, null);
+        WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(aiConfig);
+        AgentShellToolService service = new AgentShellToolService(tempDir, List.of("pwd"), dirService);
+
+        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
+            "agent-1", "TestAgent", null, null, null, "TASK_RUN", null, null));
+
+        try {
+            AgentShellToolService.ShellExecResult result = service.exec("pwd", "outputs", 5);
+
+            assertThat(result.exitCode()).isZero();
+            assertThat(result.stdout().trim()).endsWith("agents/agent-1/workspace/outputs");
+        } finally {
+            OrchestrationTaskContextHolder.clear();
+        }
+    }
+
+    @Test
+    void resolvesScratchAliasInAgentContext() throws Exception {
+        Files.createDirectories(tempDir.resolve("agents/agent-1/workspace"));
+        Files.createDirectories(tempDir.resolve("agents/agent-1/workspace/scratch"));
+
+        AiConfig aiConfig = new AiConfig(null, null, null, null, null, null, tempDir, null, null, null);
+        WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(aiConfig);
+        AgentShellToolService service = new AgentShellToolService(tempDir, List.of("pwd"), dirService);
+
+        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
+            "agent-1", "TestAgent", null, null, null, "TASK_RUN", null, null));
+
+        try {
+            AgentShellToolService.ShellExecResult result = service.exec("pwd", "scratch", 5);
+
+            assertThat(result.exitCode()).isZero();
+            assertThat(result.stdout().trim()).endsWith("agents/agent-1/workspace/scratch");
+        } finally {
+            OrchestrationTaskContextHolder.clear();
+        }
+    }
+
+    @Test
+    void rejectsAbsoluteWorkingDirectoryInAgentContext() throws Exception {
+        Files.createDirectories(tempDir.resolve("agents/agent-1/workspace"));
+
+        AiConfig aiConfig = new AiConfig(null, null, null, null, null, null, tempDir, null, null, null);
+        WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(aiConfig);
+        AgentShellToolService service = new AgentShellToolService(tempDir, List.of("pwd"), dirService);
+
+        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
+            "agent-1", "TestAgent", null, null, null, "TASK_RUN", null, null));
+
+        try {
+            assertThatThrownBy(() -> service.exec("pwd", "/etc", 5))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Absolute working directory not allowed in agent context");
+        } finally {
+            OrchestrationTaskContextHolder.clear();
+        }
+    }
+
+    @Test
+    void rejectsTraversalPathInAgentContext() throws Exception {
+        Files.createDirectories(tempDir.resolve("agents/agent-1/workspace"));
+
+        AiConfig aiConfig = new AiConfig(null, null, null, null, null, null, tempDir, null, null, null);
+        WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(aiConfig);
+        AgentShellToolService service = new AgentShellToolService(tempDir, List.of("pwd"), dirService);
+
+        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
+            "agent-1", "TestAgent", null, null, null, "TASK_RUN", null, null));
+
+        try {
+            assertThatThrownBy(() -> service.exec("pwd", "..", 5))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("escapes agent workspace");
+        } finally {
+            OrchestrationTaskContextHolder.clear();
+        }
+    }
+
+    @Test
+    void provenanceNoLongerMentionsDocker() throws Exception {
+        AgentShellToolService service = new AgentShellToolService(tempDir, List.of("printf"));
+
+        AgentShellToolService.ShellExecResult result = service.exec("printf clean", ".", 5);
+
+        assertThat(result.executionType()).isEqualTo("bash");
+        // ShellExecResult no longer has containerId
+        assertThat(result.exitCode()).isZero();
+        assertThat(result.stdout()).isEqualTo("clean");
     }
 }

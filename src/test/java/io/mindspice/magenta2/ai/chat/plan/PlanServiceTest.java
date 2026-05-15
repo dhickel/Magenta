@@ -421,11 +421,11 @@ class PlanServiceTest {
         // Start run with agent context
         PlanRun run = service.startRun(task.id(), Map.of("result", "ok"),
             new OrchestrationTaskContext("agent-1", "TestAgent", "job-1", null, "ws-1",
-                "TASK_RUN", null, null, null));
+                "TASK_RUN", null, null));
 
         assertThat(run.outputDirectory())
             .isNotNull()
-            .contains("agents/agent-1/outputs/");
+            .contains("agents/agent-1/workspace/outputs/");
         assertThat(Files.isDirectory(Path.of(run.outputDirectory()))).isTrue();
         // Verify it's NOT under system
         assertThat(run.outputDirectory()).doesNotContain("agents/system");
@@ -463,19 +463,15 @@ class PlanServiceTest {
 
         OrchestrationTaskContext context = new OrchestrationTaskContext(
             "agent-1", "TestAgent", "job-1", "project-1", "ws-1",
-            "TASK_RUN", null, null, null);
+            "TASK_RUN", null, null);
         OrchestrationTaskContextHolder.set(context);
         try {
             PlanRun run = service.startChatExecution("conversation-1", task.id(), Map.of(), context);
             OrchestrationTaskContext updated = OrchestrationTaskContextHolder.current();
 
-            assertThat(run.outputDirectory()).contains("agents/agent-1/outputs/");
+            assertThat(run.outputDirectory()).contains("agents/agent-1/workspace/outputs/");
             assertThat(updated.hostWorkspacePath()).isEqualTo(run.tempWorkspacePath());
             assertThat(updated.hostOutputPath()).isEqualTo(run.outputDirectory());
-            assertThat(updated.containerOutputPath())
-                .isEqualTo("/output/" + Path.of(run.outputDirectory()).getFileName());
-            assertThat(service.runtimeInstructions("conversation-1"))
-                .contains("write deliverable files to " + updated.containerOutputPath());
         } finally {
             OrchestrationTaskContextHolder.clear();
         }
@@ -512,7 +508,7 @@ class PlanServiceTest {
 
         assertThat(run.outputDirectory())
             .isNotNull()
-            .contains("agents/system/outputs/");
+            .contains("agents/system/workspace/outputs/");
         assertThat(Files.isDirectory(Path.of(run.outputDirectory()))).isTrue();
     }
 

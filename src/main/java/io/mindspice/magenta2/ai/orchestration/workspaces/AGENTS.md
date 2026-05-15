@@ -1,13 +1,20 @@
 ## Workspace Package
 
-This package owns filesystem workspace management including agent homes, job/project persistent workspaces, temp task/workflow directories, output directories, and workspace leases.
+This package owns filesystem workspace management including agent workspace roots, job/project persistent workspaces, temp task/workflow directories, output directories, and workspace leases.
 
 ### Responsibilities
 - Manage all workspace directories confined under the configured `dataRoot`.
-- Provide typed directory paths: agentHome, taskTemp, workflowTemp, jobWorkspace, projectWorkspace, agentOutput, jobOutput.
+- Provide typed directory paths: agentWorkspace, agentWorkspaceOutputs, agentProjectLinks, agentScratch, taskTemp, workflowTemp, jobWorkspace, projectWorkspace, agentOutput, jobOutput.
 - Enforce exclusive writable leases on job/project workspaces and reconcile expired leases before they block reacquisition.
 - Materialize run output artifacts into output directories and persist metadata.
 - Clean up temp directories on terminal run states; never delete output directories.
+
+### Layout
+- Agent workspace root: `agents/<id>/workspace/`
+- Agent outputs: `agents/<id>/workspace/outputs/<slug>-<runId>/`
+- Agent project links: `agents/<id>/workspace/projects/<projectId>`
+- Agent scratch: `agents/<id>/workspace/scratch/`
+- Legacy `agents/<id>/home` and `agents/<id>/outputs` are deprecated and will be migrated into workspace/ during the Docker removal phases.
 
 ### Services
 - `WorkspaceDirectoryService` — filesystem path management and directory creation.

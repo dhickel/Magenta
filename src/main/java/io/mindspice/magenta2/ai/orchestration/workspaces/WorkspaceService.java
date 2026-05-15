@@ -41,7 +41,7 @@ public class WorkspaceService {
 
     public Workspace agentWorkspace(String agentId, String displayName) {
         return repository.findByOwner(WorkspaceOwnerType.AGENT, agentId)
-            .orElseGet(() -> createWorkspace(WorkspaceOwnerType.AGENT, agentId, "agents/" + agentId, displayName));
+            .orElseGet(() -> createWorkspace(WorkspaceOwnerType.AGENT, agentId, "agents/" + agentId + "/workspace", displayName));
     }
 
     public Workspace jobWorkspace(String jobId, String displayName) {

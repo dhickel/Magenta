@@ -18,11 +18,10 @@ import java.util.concurrent.TimeoutException;
 
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
-import io.mindspice.magenta2.ai.orchestration.docker.AgentContainerRuntimeService;
-import io.mindspice.magenta2.ai.orchestration.docker.AgentExecResult;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
 import io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettingsService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -37,12 +36,12 @@ public class AgentShellToolService {
     private final Path root;
     private final Set<String> allowedCommands;
     private final boolean allowAllCommands;
-    private final AgentContainerRuntimeService containerRuntimeService;
+    private final WorkspaceDirectoryService workspaceDirectoryService;
 
     @Autowired
     public AgentShellToolService(AiConfig aiConfig,
                                   @Autowired(required = false) RuntimeSettingsService runtimeSettingsService,
-                                  @Autowired(required = false) AgentContainerRuntimeService containerRuntimeService) throws IOException {
+                                  @Autowired(required = false) WorkspaceDirectoryService workspaceDirectoryService) throws IOException {
         if (aiConfig == null || aiConfig.dataRoot() == null) {
             throw new IllegalArgumentException("AI config dataRoot is required for shell tools");
         }
@@ -58,7 +57,7 @@ public class AgentShellToolService {
         this.allowedCommands = commands == null
             ? Set.of()
             : commands.stream().filter(StringUtils::hasText).collect(java.util.stream.Collectors.toUnmodifiableSet());
-        this.containerRuntimeService = containerRuntimeService;
+        this.workspaceDirectoryService = workspaceDirectoryService;
     }
 
     public AgentShellToolService(AiConfig aiConfig) throws IOException {
@@ -72,18 +71,18 @@ public class AgentShellToolService {
         this.allowedCommands = commands.stream()
             .filter(StringUtils::hasText)
             .collect(java.util.stream.Collectors.toUnmodifiableSet());
-        this.containerRuntimeService = null;
+        this.workspaceDirectoryService = null;
     }
 
     AgentShellToolService(Path root, List<String> allowedCommands,
-                          AgentContainerRuntimeService containerRuntimeService) throws IOException {
+                          WorkspaceDirectoryService workspaceDirectoryService) throws IOException {
         this.root = root.toRealPath();
         List<String> commands = allowedCommands == null ? List.of() : allowedCommands;
         this.allowAllCommands = commands.contains(WILDCARD);
         this.allowedCommands = commands.stream()
             .filter(StringUtils::hasText)
             .collect(java.util.stream.Collectors.toUnmodifiableSet());
-        this.containerRuntimeService = containerRuntimeService;
+        this.workspaceDirectoryService = workspaceDirectoryService;
     }
 
     public ShellExecResult exec(String command, String workingDirectory, Integer timeoutSeconds)
@@ -94,66 +93,86 @@ public class AgentShellToolService {
             throw new IllegalArgumentException("shell command is not allowed: " + executable);
         }
 
-        // Check orchestration task context: if an agentId is present, route
-        // execution into the agent's managed Docker container.
         OrchestrationTaskContext taskContext = OrchestrationTaskContextHolder.current();
+        Path workingDir;
+        String displayPath;
+
         if (taskContext != null && taskContext.hasAgentContext()) {
-            if (containerRuntimeService == null) {
-                throw new IllegalStateException(
-                    "Task requires containerized execution for agent " + taskContext.agentId()
-                        + " but container runtime is not available. Docker must be enabled and configured.");
-            }
-            return execInContainer(command, executable, commandLine, workingDirectory, timeoutSeconds, taskContext);
+            workingDir = resolveAgentWorkingDirectory(taskContext, workingDirectory);
+            displayPath = agentDisplayPath(taskContext.agentId(), workingDir);
+        } else {
+            workingDir = resolveWorkingDirectory(workingDirectory);
+            displayPath = displayPath(workingDir);
         }
 
-        // No orchestration context — use host shell execution
-        return execOnHost(command, executable, commandLine, workingDirectory, timeoutSeconds);
+        return execOnHost(command, executable, commandLine, workingDir, displayPath, timeoutSeconds);
     }
 
     /**
-     * Execute a command inside the managed Docker container for the current
-     * orchestration task context. Container working directory defaults to
-     * {@code /home/agent}. Container output path is {@code /output}; leased
-     * project roots appear below {@code /projects/{projectId}}.
+     * Resolve a working directory for agent-scoped shell execution using
+     * workspace aliases. The agent workspace root is {@code agents/<id>/workspace}.
+     *
+     * <p>Supported aliases:
+     * <ul>
+     *   <li>blank / "." → agent workspace root</li>
+     *   <li>"workspace" → agent workspace root</li>
+     *   <li>"outputs" → workspace/outputs</li>
+     *   <li>"scratch" → workspace/scratch</li>
+     *   <li>"projects/&lt;id&gt;/..." → workspace/projects/&lt;id&gt;/...</li>
+     * </ul>
+     *
+     * Absolute paths and paths that escape the agent workspace are rejected.
      */
-    private ShellExecResult execInContainer(String command, String executable,
-                                             List<String> commandLine,
-                                             String workingDirectory, Integer timeoutSeconds,
-                                             OrchestrationTaskContext taskContext) {
-        int timeout = clamp(timeoutSeconds, DEFAULT_TIMEOUT_SECONDS, 1, MAX_TIMEOUT_SECONDS);
-        String containerWorkDir = resolveContainerWorkingDirectory(workingDirectory);
-        AgentExecResult result = containerRuntimeService.execInAgent(
-            taskContext.agentId(),
-            taskContext.agentName(),
-            command,
-            containerWorkDir,
-            timeout
-        );
-
-        return new ShellExecResult(
-            executable,
-            command,
-            List.copyOf(commandLine.subList(1, commandLine.size())),
-            containerWorkDir,
-            result.exitCode(),
-            result.stdout(),
-            result.stderr(),
-            result.timedOut(),
-            false,
-            "docker",
-            result.containerId()
-        );
+    private Path resolveAgentWorkingDirectory(OrchestrationTaskContext ctx, String workingDirectory) throws IOException {
+        if (workspaceDirectoryService == null) {
+            throw new IllegalStateException("Workspace directory service is not available");
+        }
+        Path workspaceRoot = workspaceDirectoryService.agentWorkspace(ctx.agentId());
+        if (!Files.isDirectory(workspaceRoot, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IllegalStateException("Agent workspace does not exist: " + workspaceRoot);
+        }
+        String requested = StringUtils.hasText(workingDirectory) ? workingDirectory.trim() : "";
+        if (requested.isEmpty() || ".".equals(requested)) {
+            return workspaceRoot;
+        }
+        String normalized = requested.replace('\\', '/');
+        if ("workspace".equals(normalized)) {
+            return workspaceRoot;
+        }
+        if (normalized.startsWith("workspace/")) {
+            normalized = normalized.substring("workspace/".length());
+            if (normalized.isEmpty()) {
+                return workspaceRoot;
+            }
+        }
+        if (normalized.startsWith("/")) {
+            throw new IllegalArgumentException(
+                "Absolute working directory not allowed in agent context: " + workingDirectory);
+        }
+        if (normalized.contains("//") || normalized.contains("..")) {
+            throw new IllegalArgumentException(
+                "Working directory escapes agent workspace: " + workingDirectory);
+        }
+        Path resolved = workspaceRoot.resolve(normalized).normalize();
+        if (!resolved.startsWith(workspaceRoot)) {
+            throw new IllegalArgumentException(
+                "Working directory escapes agent workspace: " + workingDirectory);
+        }
+        if (!Files.isDirectory(resolved, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IllegalArgumentException(
+                "Working directory is not a directory: " + workingDirectory);
+        }
+        return resolved;
     }
 
     /**
-     * Execute a command on the host filesystem. Only available when no
-     * orchestration task context is active.
+     * Execute a command on the host filesystem using ProcessBuilder/Bash.
      */
     private ShellExecResult execOnHost(String command, String executable,
                                         List<String> commandLine,
-                                        String workingDirectory, Integer timeoutSeconds)
+                                        Path workingDir, String displayPath,
+                                        Integer timeoutSeconds)
         throws IOException, InterruptedException {
-        Path workingDir = resolveWorkingDirectory(workingDirectory);
         int timeout = clamp(timeoutSeconds, DEFAULT_TIMEOUT_SECONDS, 1, MAX_TIMEOUT_SECONDS);
 
         Process process = new ProcessBuilder(commandLine)
@@ -181,10 +200,8 @@ public class AgentShellToolService {
                 }
             }
         } finally {
-            // Bound and cancel capture futures on ALL terminal paths
             out = drainCaptureFuture(stdoutCapture);
             err = drainCaptureFuture(stderrCapture);
-            // Safety net: ensure process is dead on all paths
             if (process.isAlive()) {
                 process.destroyForcibly();
             }
@@ -199,13 +216,13 @@ public class AgentShellToolService {
             executable,
             command,
             List.copyOf(commandLine.subList(1, commandLine.size())),
-            displayPath(workingDir),
+            displayPath,
             completed ? process.exitValue() : null,
             out.text(),
             err.text(),
             !completed,
             out.truncated() || err.truncated(),
-            "host"
+            "bash"
         );
     }
 
@@ -330,30 +347,6 @@ public class AgentShellToolService {
         return real;
     }
 
-    private String resolveContainerWorkingDirectory(String workingDirectory) {
-        if (!StringUtils.hasText(workingDirectory) || ".".equals(workingDirectory)) {
-            return "/home/agent";
-        }
-        String normalized = workingDirectory.trim().replace('\\', '/');
-        if (!normalized.startsWith("/")) {
-            normalized = "/home/agent/" + normalized;
-        }
-        Path path = Path.of(normalized).normalize();
-        String resolved = path.toString();
-        if (!isAllowedContainerWorkingDirectory(resolved)) {
-            throw new IllegalArgumentException(
-                "container workingDirectory must be /home/agent, /projects, /workspace, /output, or a subpath");
-        }
-        return resolved;
-    }
-
-    private boolean isAllowedContainerWorkingDirectory(String path) {
-        return path.equals("/workspace") || path.startsWith("/workspace/")
-            || path.equals("/home/agent") || path.startsWith("/home/agent/")
-            || path.equals("/projects") || path.startsWith("/projects/")
-            || path.equals("/output") || path.startsWith("/output/");
-    }
-
     private int clamp(Integer value, int defaultValue, int min, int max) {
         int actual = value == null ? defaultValue : value;
         return Math.min(max, Math.max(min, actual));
@@ -362,6 +355,13 @@ public class AgentShellToolService {
     private String displayPath(Path path) {
         Path relative = root.relativize(path.toAbsolutePath().normalize());
         return relative.toString().isEmpty() ? "." : relative.toString();
+    }
+
+    private String agentDisplayPath(String agentId, Path path) {
+        Path workspaceRoot = workspaceDirectoryService.agentWorkspace(agentId);
+        Path relative = workspaceRoot.relativize(path.toAbsolutePath().normalize());
+        String rel = relative.toString();
+        return rel.isEmpty() ? "workspace" : rel;
     }
 
     private record CapturedOutput(String text, boolean truncated) {
@@ -377,22 +377,13 @@ public class AgentShellToolService {
         String stderr,
         boolean timedOut,
         boolean truncated,
-        String executionType,
-        String containerId
+        String executionType
     ) {
         public ShellExecResult(String command, String commandLine, List<String> args,
                                String workingDirectory, Integer exitCode, String stdout,
                                String stderr, boolean timedOut, boolean truncated) {
             this(command, commandLine, args, workingDirectory, exitCode, stdout, stderr,
-                timedOut, truncated, "host", null);
-        }
-
-        public ShellExecResult(String command, String commandLine, List<String> args,
-                               String workingDirectory, Integer exitCode, String stdout,
-                               String stderr, boolean timedOut, boolean truncated,
-                               String executionType) {
-            this(command, commandLine, args, workingDirectory, exitCode, stdout, stderr,
-                timedOut, truncated, executionType, null);
+                timedOut, truncated, "bash");
         }
     }
 }

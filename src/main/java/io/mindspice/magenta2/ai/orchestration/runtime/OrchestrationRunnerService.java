@@ -20,7 +20,7 @@ import io.mindspice.magenta2.ai.execution.MagentaWorkExecutor;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileStatus;
-import io.mindspice.magenta2.ai.orchestration.docker.AgentContainerRuntimeService;
+
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowNodeRun;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowRun;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowRunStatus;
@@ -64,7 +64,7 @@ public class OrchestrationRunnerService {
     private final WorkspaceLeaseService workspaceLeaseService;
     private final WorkspaceDirectoryService workspaceDirectoryService;
     private final AgentProfileService agentProfileService;
-    private final ObjectProvider<AgentContainerRuntimeService> containerRuntimeService;
+
     private final MagentaWorkExecutor executor;
     private final Duration leaseDuration;
     private final Duration heartbeatInterval;
@@ -87,7 +87,7 @@ public class OrchestrationRunnerService {
     ) {
         this(
             repository, assignmentService, jobService, taskService, workflowService, null, inboxService,
-            eventService, null, null, null, null, null, null, null, executor,
+            eventService, null, null, null, null, null, null, executor,
             DEFAULT_LEASE_DURATION.toSeconds(), DEFAULT_HEARTBEAT_INTERVAL.toSeconds()
         );
     }
@@ -103,7 +103,6 @@ public class OrchestrationRunnerService {
         InboxService inboxService,
         OrchestrationEventService eventService,
         @Autowired(required = false) AgentProfileService agentProfileService,
-        @Autowired(required = false) ObjectProvider<AgentContainerRuntimeService> containerRuntimeService,
         @Autowired(required = false) OutputArtifactService outputArtifactService,
         @Autowired(required = false) ProjectService projectService,
         @Autowired(required = false) WorkspaceService workspaceService,
@@ -122,7 +121,6 @@ public class OrchestrationRunnerService {
         this.inboxService = inboxService;
         this.eventService = eventService;
         this.agentProfileService = agentProfileService;
-        this.containerRuntimeService = containerRuntimeService;
         this.outputArtifactService = outputArtifactService;
         this.projectService = projectService;
         this.workspaceService = workspaceService;
@@ -146,7 +144,7 @@ public class OrchestrationRunnerService {
     ) {
         this(
             repository, assignmentService, jobService, taskService, workflowService, chatService, inboxService,
-            eventService, null, null, null, null, null, null, null, executor,
+            eventService, null, null, null, null, null, null, executor,
             DEFAULT_LEASE_DURATION.toSeconds(), DEFAULT_HEARTBEAT_INTERVAL.toSeconds()
         );
     }
@@ -201,7 +199,6 @@ public class OrchestrationRunnerService {
 
     private WorkAssignment executeWithLease(WorkAssignment leased) {
         ScheduledFuture<?> heartbeat = startLeaseHeartbeat(leased.id());
-        AgentContainerRuntimeService runtime = containerRuntimeService == null ? null : containerRuntimeService.getIfAvailable();
         AgentProfile profile = null;
         if (agentProfileService != null) {
             profile = agentProfileService.get(leased.agentId());
@@ -250,19 +247,6 @@ public class OrchestrationRunnerService {
             Math.max(1, heartbeatInterval.toMillis()),
             TimeUnit.MILLISECONDS
         );
-        if (runtime != null) {
-            if (projectWorkspace != null) {
-                runtime.ensureProjectMount(
-                    leased.agentId(),
-                    profile == null ? leased.agentId() : profile.name(),
-                    projectId,
-                    workspaceDirectoryService.projectWorkspace(projectId)
-                );
-            } else {
-                runtime.ensureAgentContainer(leased.agentId(), profile == null ? leased.agentId() : profile.name());
-            }
-            runtime.markAgentBusy(leased.agentId());
-        }
         OrchestrationTaskContext taskContext = new OrchestrationTaskContext(
             leased.agentId(),
             profile != null ? profile.name() : null,
@@ -271,8 +255,7 @@ public class OrchestrationRunnerService {
             leased.workspaceId(),
             leased.assignmentType().name(),
             null, // hostWorkspacePath — resolved by PlanService during startRun
-            null, // hostOutputPath — resolved by PlanService during startRun
-            null  // containerOutputPath — resolved by PlanService during startRun
+            null  // hostOutputPath — resolved by PlanService during startRun
         );
 
         try {
@@ -291,14 +274,6 @@ public class OrchestrationRunnerService {
             return fail(assignmentService.get(leased.id()), exception.getMessage());
         } finally {
             OrchestrationTaskContextHolder.clear();
-            if (runtime != null) {
-                runtime.markAgentIdle(leased.agentId());
-                if (projectLease != null) {
-                    runtime.removeProjectMount(
-                        leased.agentId(), profile == null ? leased.agentId() : profile.name(), projectId
-                    );
-                }
-            }
             if (projectLease != null) {
                 workspaceLeaseService.release(projectLease.id(), leased.id());
             }

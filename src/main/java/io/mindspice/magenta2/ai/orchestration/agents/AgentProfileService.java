@@ -5,7 +5,6 @@ import java.util.UUID;
 
 import io.mindspice.magenta2.ai.chat.tool.ChatToolRegistry;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
-import io.mindspice.magenta2.ai.orchestration.docker.AgentContainerRuntimeService;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobRepository;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationRuntimeRepository;
 import io.mindspice.magenta2.ai.orchestration.runtime.ProjectRepository;
@@ -23,7 +22,6 @@ public class AgentProfileService {
     private final AgentProfileRepository repository;
     private final AiConfig aiConfig;
     private final ObjectProvider<ChatToolRegistry> chatToolRegistry;
-    private final ObjectProvider<AgentContainerRuntimeService> containerRuntimeService;
     private final ObjectProvider<WorkspaceService> workspaceService;
     private final ObjectProvider<WorkspaceDirectoryService> workspaceDirectoryService;
     private final ObjectProvider<WorkspaceRepository> workspaceRepository;
@@ -46,7 +44,6 @@ public class AgentProfileService {
             null,
             null,
             null,
-            null,
             null
         );
     }
@@ -56,7 +53,6 @@ public class AgentProfileService {
         AgentProfileRepository repository,
         AiConfig aiConfig,
         @Autowired(required = false) ObjectProvider<ChatToolRegistry> chatToolRegistry,
-        @Autowired(required = false) ObjectProvider<AgentContainerRuntimeService> containerRuntimeService,
         @Autowired(required = false) ObjectProvider<WorkspaceService> workspaceService,
         @Autowired(required = false) ObjectProvider<WorkspaceDirectoryService> workspaceDirectoryService,
         @Autowired(required = false) ObjectProvider<WorkspaceRepository> workspaceRepository,
@@ -67,7 +63,6 @@ public class AgentProfileService {
         this.repository = repository;
         this.aiConfig = aiConfig;
         this.chatToolRegistry = chatToolRegistry;
-        this.containerRuntimeService = containerRuntimeService;
         this.workspaceService = workspaceService;
         this.workspaceDirectoryService = workspaceDirectoryService;
         this.workspaceRepository = workspaceRepository;
@@ -125,9 +120,6 @@ public class AgentProfileService {
             current.updatedAt()
         ));
         ensureAgentDurableStorage(updated.id(), updated.name());
-        if (updated.status() == AgentProfileStatus.DISABLED) {
-            stopContainer(updated.id());
-        }
         return updated;
     }
 
@@ -146,12 +138,6 @@ public class AgentProfileService {
             profile.updatedAt()
         ));
         ensureAgentDurableStorage(enabled.id(), enabled.name());
-        if (wakeContainer) {
-            AgentContainerRuntimeService runtime = containerRuntime();
-            if (runtime != null) {
-                runtime.ensureAgentContainer(enabled.id(), enabled.name());
-            }
-        }
         return enabled;
     }
 
@@ -169,16 +155,11 @@ public class AgentProfileService {
             profile.createdAt(),
             profile.updatedAt()
         ));
-        stopContainer(id);
         return disabled;
     }
 
     public AgentProfile archiveAndDisable(String id) {
         AgentProfile disabled = disable(id);
-        AgentContainerRuntimeService runtime = containerRuntime();
-        if (runtime != null) {
-            runtime.removeAgentContainer(id);
-        }
         WorkspaceService ws = workspaceService();
         if (ws != null) {
             ws.archiveAgentWorkspaceData(id);
@@ -202,10 +183,6 @@ public class AgentProfileService {
         ProjectRepository projectRepository = projectRepository();
         if (projectRepository != null) {
             projectRepository.purgeAgentReferences(id);
-        }
-        AgentContainerRuntimeService runtime = containerRuntime();
-        if (runtime != null) {
-            runtime.removeAgentContainer(id);
         }
         WorkspaceRepository wsRepository = workspaceRepository();
         if (wsRepository != null) {
@@ -292,21 +269,10 @@ public class AgentProfileService {
         }
         WorkspaceDirectoryService dir = workspaceDirectoryService();
         if (dir != null) {
-            dir.agentHome(agentId);
             dir.agentWorkspaceRoot(agentId);
-            dir.agentOutputRoot(agentId);
+            dir.agentWorkspace(agentId);
+            dir.agentWorkspaceOutputs(agentId);
         }
-    }
-
-    private void stopContainer(String agentId) {
-        AgentContainerRuntimeService runtime = containerRuntime();
-        if (runtime != null) {
-            runtime.stopAgentContainer(agentId, false);
-        }
-    }
-
-    private AgentContainerRuntimeService containerRuntime() {
-        return containerRuntimeService == null ? null : containerRuntimeService.getIfAvailable();
     }
 
     private WorkspaceService workspaceService() {

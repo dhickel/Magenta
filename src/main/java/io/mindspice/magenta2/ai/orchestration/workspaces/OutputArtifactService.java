@@ -249,15 +249,8 @@ public class OutputArtifactService {
         String sourcePathStr = value.toString().trim();
         Path sourcePath;
 
-        // Handle container /output/ paths from Docker-backed runs:
-        // /output/<run-dir>/<file> and /output/<file> map to the host output directory for this run.
-        if (sourcePathStr.startsWith("/output/") || sourcePathStr.equals("/output")) {
-            String relativeFile = sourcePathStr.equals("/output") ? "" :
-                sourcePathStr.substring("/output/".length());
-            sourcePath = resolveRunOutputPath(outputDir, relativeFile, sourcePathStr);
-        }
         // Handle bare filenames from model output: resolve relative to output directory
-        else if (!sourcePathStr.contains("/") && !sourcePathStr.contains("\\")) {
+        if (!sourcePathStr.contains("/") && !sourcePathStr.contains("\\")) {
             sourcePath = outputDir.resolve(sourcePathStr).normalize();
         }
         // Handle relative paths from workspace: resolve relative to output directory

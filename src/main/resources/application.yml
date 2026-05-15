@@ -13,18 +13,9 @@ magenta:
     execution-stream-timeout-seconds: 0
   ai:
     openai-compatible-read-timeout-seconds: 360
-  docker:
-    # Enabled by default for alpha runtime validation against Podman/Docker.
-    enabled: true
-    # host: unix:///run/user/1000/podman/podman.sock
-    # DOCKER_HOST env var takes precedence over host property.
-    # Default detection order: $DOCKER_HOST, property, $XDG_RUNTIME_DIR/podman/podman.sock,
-    #   /run/user/$UID/podman/podman.sock, /var/run/docker.sock
-    agent-image: python:3.11
-    exec-timeout-seconds: 600
-    agent-idle-ttl-seconds: 1800
-    keep-containers-on-shutdown: false
-    selinux-relabel: true
+  # Docker runtime removed in favor of filesystem-backed workspaces.
+  # docker.enabled defaults to false; the Docker services are conditionally
+  # disabled and will be deleted in a follow-on phase.
 
 spring:
   web:
