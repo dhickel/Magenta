@@ -156,7 +156,7 @@ class OrchestrationControllerTest {
 
         // Title is "Plans" (not "Plans & Tasks")
         assertThat(html).contains("Plans");
-        assertThat(html).contains("/js/orchestration/plans.js?v=2");
+        assertThat(html).contains("/js/orchestration/plans.js?v=3");
 
         // HTMX containers for plan list
         assertThat(html).contains("hx-get=\"/plans/_list\"");
@@ -1231,6 +1231,8 @@ class OrchestrationControllerTest {
         String html = controllerWithPlanService(stubPlanService).planEditor("plan-list-text");
 
         assertThat(html).contains("<textarea");
+        assertThat(html).contains("data-autosize=\"true\"");
+        assertThat(html).contains("plan-autosize-textarea");
         assertThat(html).contains(">Visible deliverable</textarea>");
         assertThat(html).contains(">Visible step</textarea>");
         assertThat(html).contains(">Visible validation</textarea>");

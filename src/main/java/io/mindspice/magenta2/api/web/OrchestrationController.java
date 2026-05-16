@@ -106,7 +106,7 @@ public class OrchestrationController {
     private static final String DASHBOARD_JS = "/js/orchestration/dashboard.js?v=5";
     private static final String AGENTS_JS = "/js/orchestration/agents.js?v=1";
     private static final String AGENT_CHAT_JS = "/js/orchestration/agent-chat.js?v=2";
-    private static final String PLANS_JS = "/js/orchestration/plans.js?v=2";
+    private static final String PLANS_JS = "/js/orchestration/plans.js?v=3";
     private static final String WORKFLOWS_JS = "/js/orchestration/workflows.js?v=2";
     private static final String PROJECTS_JS = "/js/orchestration/projects.js?v=3";
     private static final String INBOX_JS = "/js/orchestration/inbox.js?v=1";
@@ -1636,15 +1636,12 @@ public class OrchestrationController {
             .withChild(label("Title", TextInput.create("title")
                 .withId("plan-title")
                 .withValue(isNew ? "" : nn(plan.title()))))
-            .withChild(label("Summary", TextArea.create("summary")
-                .withId("plan-summary").withRows(2)
-                .withValue(isNew ? "" : nn(plan.summary()))))
-            .withChild(label("Goal", TextArea.create("goal")
-                .withId("plan-goal").withRows(3)
-                .withValue(isNew ? "" : nn(plan.goal()))))
-            .withChild(label("Notes", TextArea.create("notes")
-                .withId("plan-notes").withRows(2)
-                .withValue(isNew ? "" : nn(plan.notes())))));
+            .withChild(label("Summary", autosizingTextArea("summary", isNew ? "" : nn(plan.summary()), 2, 14)
+                .withId("plan-summary")))
+            .withChild(label("Goal", autosizingTextArea("goal", isNew ? "" : nn(plan.goal()), 3, 18)
+                .withId("plan-goal")))
+            .withChild(label("Notes", autosizingTextArea("notes", isNew ? "" : nn(plan.notes()), 2, 18)
+                .withId("plan-notes"))));
 
         if (!isNew) {
             // Deliverables (ordered list editor)
@@ -1743,15 +1740,9 @@ public class OrchestrationController {
                     .withChild(label("Pending Question Index", new HtmlTag("span")
                         .withInnerText(String.valueOf(plan.pendingQuestionIndex())))))
                 .withChild(new Div().withClass("orch-form-stack")
-                    .withChild(label("Planning Task", TextArea.create("planningTask")
-                        .withRows(2)
-                        .withValue(nn(plan.planningTask()))))
-                    .withChild(label("Final Message", TextArea.create("finalMessage")
-                        .withRows(3)
-                        .withValue(nn(plan.finalMessage()))))
-                    .withChild(label("Settings Override JSON", TextArea.create("settingsOverrideJson")
-                        .withRows(4)
-                        .withValue(nn(plan.settingsOverrideJson()))))));
+                    .withChild(label("Planning Task", autosizingTextArea("planningTask", nn(plan.planningTask()), 2, 18)))
+                    .withChild(label("Final Message", autosizingTextArea("finalMessage", nn(plan.finalMessage()), 3, 18)))
+                    .withChild(label("Settings Override JSON", autosizingTextArea("settingsOverrideJson", nn(plan.settingsOverrideJson()), 4, 20)))));
             form.withChild(advanced);
         }
 
@@ -1823,6 +1814,28 @@ public class OrchestrationController {
 
     // ── Section renderers ──
 
+
+    private TextArea autosizingTextArea(String name, String value, int minRows, int maxRows) {
+        String safeValue = value != null ? value : "";
+        TextArea textArea = TextArea.create(name)
+            .withClass("plan-autosize-textarea")
+            .withRows(textAreaRows(safeValue, minRows, maxRows))
+            .withValue(safeValue);
+        textArea.withAttribute("data-autosize", "true");
+        return textArea;
+    }
+
+    private int textAreaRows(String value, int minRows, int maxRows) {
+        if (!StringUtils.hasText(value)) {
+            return minRows;
+        }
+        int rows = 0;
+        for (String line : value.split("\\R", -1)) {
+            rows += Math.max(1, (line.length() + 87) / 88);
+        }
+        return Math.max(minRows, Math.min(maxRows, rows));
+    }
+
     private Component planInputsSection(PlanDefinition plan) {
         return fieldListSection("inputs", plan.inputs(), plan.id());
     }
@@ -1871,15 +1884,13 @@ public class OrchestrationController {
                 .withAttribute(field.array() ? "checked" : "data-no-attr", field.array() ? "checked" : ""))
             .withChild(new TextNode(" array")));
 
-        row.withChild(TextArea.create("").withAttribute("name", kind + "Desc" + index)
-            .withAttribute("placeholder", "description")
-            .withAttribute("rows", "2")
-            .withAttribute("value", field.description() != null ? field.description() : ""));
+        String description = field.description() != null ? field.description() : "";
+        row.withChild(autosizingTextArea(kind + "Desc" + index, description, 2, 10)
+            .withAttribute("placeholder", "description"));
 
-        row.withChild(TextArea.create("").withAttribute("name", kind + "Schema" + index)
-            .withAttribute("placeholder", "schema (JSON)")
-            .withAttribute("rows", "2")
-            .withAttribute("value", field.schema() != null ? field.schema() : ""));
+        String schema = field.schema() != null ? field.schema() : "";
+        row.withChild(autosizingTextArea(kind + "Schema" + index, schema, 2, 12)
+            .withAttribute("placeholder", "schema (JSON)"));
 
         row.withChild(new HtmlTag("button")
             .withClass("remove-field")
@@ -1936,10 +1947,9 @@ public class OrchestrationController {
             Item item = items.get(i);
             Div row = new Div().withClass("field-row");
             String placeholder = section.equals("steps") ? "Step text" : "Item text";
-            row.withChild(TextArea.create(section + "Value" + i)
+            String text = item.text() != null ? item.text() : "";
+            row.withChild(autosizingTextArea(section + "Value" + i, text, 2, 24)
                 .withPlaceholder(section.equals("steps") ? (item.order() + ". " + placeholder) : placeholder)
-                .withRows(2)
-                .withValue(item.text() != null ? item.text() : "")
                 .withAttribute("hx-trigger", "change")
                 .withAttribute("hx-put", "/plans/_editor/" + planId + "/" + section)
                 .withAttribute("hx-target", "#plan-" + section + "-section")
