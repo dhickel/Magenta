@@ -21,6 +21,7 @@ import io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettingsRepository
 import io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettingsService;
 import io.mindspice.magenta2.ai.orchestration.runtime.AgentEventReaction;
 import io.mindspice.magenta2.ai.orchestration.runtime.AgentSchedule;
+import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentType;
 import io.mindspice.magenta2.ai.orchestration.runtime.EventType;
 import io.mindspice.magenta2.ai.orchestration.runtime.InboxMessage;
@@ -434,6 +435,58 @@ class OrchestrationRuntimeTest {
         assertThat(OrchestrationTaskContextHolder.current()).isEqualTo(mainCtx); // main still has it
 
         OrchestrationTaskContextHolder.clear();
+    }
+
+    @Test
+    void assignmentHeartbeatDoesNotAdvanceProgress() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, new ObjectMapper());
+        Instant oldProgress = Instant.now().minusSeconds(1200);
+        WorkAssignment saved = repository.saveAssignment(new WorkAssignment(
+            "assignment-progress", "agent-1", null, null, AssignmentType.REPORT, 1,
+            OrchestrationStatus.RUNNING, null, null, 0,
+            Map.of("phase", "blocking-call"), Map.of(), Map.of(), Map.of(),
+            null, "owner-1", Instant.now().plusSeconds(300),
+            null, null, Instant.now().minusSeconds(1300), null, oldProgress, oldProgress
+        ));
+
+        repository.extendRunningLease(saved.id(), "owner-1", Instant.now().plusSeconds(300));
+        WorkAssignment updated = repository.findAssignment(saved.id()).orElseThrow();
+
+        assertThat(updated.lastProgressAt()).isEqualTo(saved.lastProgressAt());
+        assertThat(updated.lastHeartbeatAt()).isAfter(saved.lastHeartbeatAt());
+    }
+
+    @Test
+    void forceInterruptedAssignmentRejectsLateLeasedCompletion() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, new ObjectMapper());
+        WorkAssignment running = repository.saveAssignment(new WorkAssignment(
+            "assignment-interrupt", "agent-1", null, null, AssignmentType.REPORT, 1,
+            OrchestrationStatus.RUNNING, null, null, 0,
+            Map.of(), Map.of(), Map.of(), Map.of(),
+            null, "owner-1", Instant.now().plusSeconds(300),
+            null, null, Instant.now(), null
+        ));
+        AssignmentService assignmentService = new AssignmentService(repository, null, null, null);
+
+        WorkAssignment interrupted = assignmentService.forceInterrupt(running.id(), "blocked model call");
+        WorkAssignment lateCompletion = new WorkAssignment(
+            interrupted.id(), interrupted.agentId(), interrupted.jobId(), interrupted.jobItemId(),
+            interrupted.assignmentType(), interrupted.priority(), OrchestrationStatus.COMPLETED,
+            interrupted.modelOverride(), interrupted.workspaceId(), interrupted.currentItemIndex(),
+            interrupted.checkpoint(), interrupted.input(), Map.of("message", "late"), interrupted.evidence(),
+            null, null, null, interrupted.createdAt(), interrupted.updatedAt(), interrupted.startedAt(),
+            Instant.now(), interrupted.lastProgressAt(), interrupted.lastHeartbeatAt()
+        );
+
+        assertThat(repository.saveAssignmentIfLeaseOwner(lateCompletion, "owner-1")).isEmpty();
+        WorkAssignment result = repository.findAssignment(interrupted.id()).orElseThrow();
+
+        assertThat(result.status()).isEqualTo(OrchestrationStatus.INTERRUPTED);
+        assertThat(result.leaseOwner()).isNull();
+        assertThat(result.leaseExpiresAt()).isNull();
+        assertThat(result.errorText()).contains("blocked model call");
     }
 
     private JdbcTemplate jdbcTemplate() {

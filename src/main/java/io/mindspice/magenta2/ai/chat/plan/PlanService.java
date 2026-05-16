@@ -1056,7 +1056,7 @@ public class PlanService {
         }
         String approvalMarkdown = def.status() == PlanStatus.READY_FOR_APPROVAL ? approvalMarkdown(def) : null;
         return new ChatPlanState(
-            def.kind() == PlanKind.TASK_TEMPLATE ? "TASK" : "PLAN",
+            mode(conversationId).name(),
             def.status().name(),
             def.planningTask(),
             def.title(),

@@ -272,6 +272,8 @@ create table if not exists work_assignments (
     error_text text,
     lease_owner text,
     lease_expires_at text,
+    last_progress_at text,
+    last_heartbeat_at text,
     created_at text not null,
     updated_at text not null,
     started_at text,

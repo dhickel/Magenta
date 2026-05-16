@@ -6,6 +6,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
@@ -73,6 +75,7 @@ public class OrchestrationRunnerService {
         thread.setDaemon(true);
         return thread;
     });
+    private final Map<String, CompletableFuture<?>> activeAssignmentFutures = new ConcurrentHashMap<>();
     private final String leaseOwner = UUID.randomUUID().toString();
 
     public OrchestrationRunnerService(
@@ -129,6 +132,7 @@ public class OrchestrationRunnerService {
         this.executor = executor;
         this.leaseDuration = secondsOrDefault(leaseSeconds, DEFAULT_LEASE_DURATION);
         this.heartbeatInterval = secondsOrDefault(heartbeatSeconds, DEFAULT_HEARTBEAT_INTERVAL);
+        this.assignmentService.registerLocalInterruptHandler(this::cancelLocalAssignment);
     }
 
     public OrchestrationRunnerService(
@@ -159,11 +163,13 @@ public class OrchestrationRunnerService {
             }
             WorkAssignment assignment = leased.get();
             try {
-                executor.submitBackground(assignment.id(), assignment.priority(),
+                CompletableFuture<?> future = executor.submitBackground(assignment.id(), assignment.priority(),
                     "orchestration assignment " + assignment.id(), () -> {
                     executeWithLease(assignment);
                     return null;
                 });
+                activeAssignmentFutures.put(assignment.id(), future);
+                future.whenComplete((ignored, error) -> activeAssignmentFutures.remove(assignment.id(), future));
             } catch (RejectedExecutionException e) {
                 repository.revertToQueued(assignment.id(), leaseOwner);
             }
@@ -299,6 +305,13 @@ public class OrchestrationRunnerService {
         return null;
     }
 
+    private void cancelLocalAssignment(String assignmentId) {
+        CompletableFuture<?> future = activeAssignmentFutures.remove(assignmentId);
+        if (future != null) {
+            future.cancel(true);
+        }
+    }
+
     @PreDestroy
     void shutdownHeartbeatExecutor() {
         heartbeatExecutor.shutdownNow();
@@ -348,6 +361,9 @@ public class OrchestrationRunnerService {
         WorkAssignment current = assignment;
         for (int i = start; i < items.size(); i++) {
             current = assignmentService.get(current.id());
+            if (current.status() == OrchestrationStatus.INTERRUPTED) {
+                return current;
+            }
             if (current.status() == OrchestrationStatus.CANCEL_REQUESTED) {
                 jobService.updateDefinitionStatus(job.id(), "CANCELLED");
                 return assignmentService.saveStatus(current, OrchestrationStatus.CANCELLED);
@@ -370,6 +386,7 @@ public class OrchestrationRunnerService {
                 String errorText = itemResult.errorText();
                 current = checkpointed(current, i + 1, Map.of(
                     "jobId", job.id(),
+                    "jobRunId", jobRun.id(),
                     "nextItemIndex", i + 1,
                     "failedItemKey", item.key(),
                     "model", assignmentService.resolveModel(current, item)
@@ -386,11 +403,12 @@ public class OrchestrationRunnerService {
             );
             current = checkpointed(current, i + 1, Map.of(
                 "jobId", job.id(),
+                "jobRunId", jobRun.id(),
                 "nextItemIndex", i + 1,
                 "completedItemKey", item.key(),
                 "model", assignmentService.resolveModel(current, item)
             ), outputs, evidence);
-            current = assignmentService.save(current);
+            current = assignmentService.saveIfLeaseOwner(current, leaseOwner);
         }
         jobService.updateDefinitionStatus(job.id(), "COMPLETED");
         eventService.publish(EventType.JOB_STATUS_CHANGED, "JOB", job.id(), Map.of("jobId", job.id(), "status", "COMPLETED"));
@@ -484,17 +502,17 @@ public class OrchestrationRunnerService {
     }
 
     private WorkAssignment complete(WorkAssignment assignment, Map<String, Object> output, Map<String, Object> evidence) {
-        return assignmentService.save(assignmentService.copy(
+        return assignmentService.saveIfLeaseOwner(assignmentService.copy(
             assignment, OrchestrationStatus.COMPLETED, assignment.currentItemIndex(), assignment.checkpoint(), output,
             evidence, null, null, null, Instant.now()
-        ));
+        ), leaseOwner);
     }
 
     private WorkAssignment fail(WorkAssignment assignment, String errorText) {
-        return assignmentService.save(assignmentService.copy(
+        return assignmentService.saveIfLeaseOwner(assignmentService.copy(
             assignment, OrchestrationStatus.FAILED, assignment.currentItemIndex(), assignment.checkpoint(),
             assignment.output(), assignment.evidence(), errorText, null, null, Instant.now()
-        ));
+        ), leaseOwner);
     }
 
     private Map<String, Object> evidence(TaskRun taskRun) {

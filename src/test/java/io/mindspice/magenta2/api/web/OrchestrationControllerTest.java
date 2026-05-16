@@ -21,6 +21,8 @@ import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileStatus;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentRequest;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService;
+import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService.AssignmentDiagnostics;
+import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService.LinkedRunStatus;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentType;
 import io.mindspice.magenta2.ai.orchestration.runtime.AgentEventReaction;
 import io.mindspice.magenta2.ai.orchestration.runtime.AgentSchedule;
@@ -1278,6 +1280,50 @@ class OrchestrationControllerTest {
     }
 
     @Test
+    void agentQueueShowsStuckDiagnosticsAndForceInterruptControls() {
+        StubAssignmentService stubAsgn = new StubAssignmentService();
+        WorkAssignment running = new WorkAssignment(
+            "asgn-stuck", "agent-1", null, null,
+            AssignmentType.TASK_RUN, 9, OrchestrationStatus.RUNNING,
+            null, null, 0, Map.of("taskRunId", "run-1"),
+            Map.of("taskId", "task-1"), Map.of(), Map.of(), null,
+            "owner-1", Instant.now().plusSeconds(300),
+            Instant.now().minusSeconds(1200), Instant.now(), Instant.now().minusSeconds(1200),
+            null, Instant.now().minusSeconds(1200), Instant.now().minusSeconds(30)
+        );
+        stubAsgn.setAssignments(List.of(running));
+
+        String html = controllerWithAssignmentService(stubAsgn).agentQueueTab("agent-1");
+
+        assertThat(html).contains("suspected stuck");
+        assertThat(html).contains("/agents/_detail/agent-1/queue/asgn-stuck/diagnostics");
+        assertThat(html).contains("Force Interrupt");
+    }
+
+    @Test
+    void assignmentDiagnosticsPanelShowsAuditAndForceInterruptForm() {
+        StubAssignmentService stubAsgn = new StubAssignmentService();
+        WorkAssignment running = new WorkAssignment(
+            "asgn-diag", "agent-1", null, null,
+            AssignmentType.TASK_RUN, 9, OrchestrationStatus.RUNNING,
+            null, null, 0, Map.of("taskRunId", "run-1"),
+            Map.of("taskId", "task-1"), Map.of(), Map.of(), null,
+            "owner-1", Instant.now().plusSeconds(300),
+            Instant.now().minusSeconds(1200), Instant.now(), Instant.now().minusSeconds(1200),
+            null, Instant.now().minusSeconds(1200), Instant.now().minusSeconds(30)
+        );
+        stubAsgn.setAssignments(List.of(running));
+
+        String html = controllerWithAssignmentService(stubAsgn)
+            .assignmentDiagnosticsFragment("agent-1", "asgn-diag");
+
+        assertThat(html).contains("Assignment Diagnostics");
+        assertThat(html).contains("Suspected stuck");
+        assertThat(html).contains("Build Commit");
+        assertThat(html).contains("/agents/_detail/agent-1/queue/asgn-diag/force-interrupt");
+    }
+
+    @Test
     void outputContentFragmentRendersTextContent() {
         // DEFECT-07-01: Output content fragment renders text
         // StubOutputArtifactService is used; verify the fragment loads
@@ -1588,6 +1634,43 @@ class OrchestrationControllerTest {
         }
 
         @Override public java.util.List<WorkAssignment> assignments(String agentId) { return storedAssignments; }
+
+        @Override public WorkAssignment get(String assignmentId) {
+            return storedAssignments.stream()
+                .filter(assignment -> assignment.id().equals(assignmentId))
+                .findFirst()
+                .orElseThrow();
+        }
+
+        @Override public AssignmentDiagnostics diagnostics(String assignmentId) {
+            WorkAssignment assignment = get(assignmentId);
+            return new AssignmentDiagnostics(
+                assignment,
+                assignment.lastProgressAt(),
+                assignment.lastHeartbeatAt(),
+                java.time.Duration.between(assignment.lastProgressAt(), Instant.now()),
+                java.time.Duration.between(assignment.lastHeartbeatAt(), Instant.now()),
+                true,
+                List.of(new LinkedRunStatus("TASK_RUN", "run-1", "task-1", "RUNNING", null)),
+                List.of(),
+                "conversation-1",
+                "unknown"
+            );
+        }
+
+        @Override public WorkAssignment forceInterrupt(String assignmentId, String reason) {
+            WorkAssignment assignment = get(assignmentId);
+            WorkAssignment interrupted = new WorkAssignment(
+                assignment.id(), assignment.agentId(), assignment.jobId(), assignment.jobItemId(),
+                assignment.assignmentType(), assignment.priority(), OrchestrationStatus.INTERRUPTED,
+                assignment.modelOverride(), assignment.workspaceId(), assignment.currentItemIndex(),
+                assignment.checkpoint(), assignment.input(), assignment.output(), assignment.evidence(),
+                "Force interrupted: " + reason, null, null, assignment.createdAt(), assignment.updatedAt(),
+                assignment.startedAt(), assignment.completedAt(), assignment.lastProgressAt(), assignment.lastHeartbeatAt()
+            );
+            storedAssignments = List.of(interrupted);
+            return interrupted;
+        }
     }
 
     private static class StubScheduleService extends ScheduleService {

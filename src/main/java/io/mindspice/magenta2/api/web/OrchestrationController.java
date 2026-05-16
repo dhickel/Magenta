@@ -1,6 +1,7 @@
 package io.mindspice.magenta2.api.web;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -31,6 +32,7 @@ import io.mindspice.magenta2.ai.orchestration.runtime.AgentEventReaction;
 import io.mindspice.magenta2.ai.orchestration.runtime.AgentSchedule;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentRequest;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService;
+import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService.AssignmentDiagnostics;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentType;
 import io.mindspice.magenta2.ai.orchestration.runtime.EventReactionService;
 import io.mindspice.magenta2.ai.orchestration.runtime.EventType;
@@ -4880,6 +4882,23 @@ public class OrchestrationController {
         return agentQueueTab(agentId);
     }
 
+    @GetMapping("/agents/_detail/{agentId}/queue/{assignmentId}/diagnostics")
+    @ResponseBody
+    public String assignmentDiagnosticsFragment(@PathVariable String agentId, @PathVariable String assignmentId) {
+        return assignmentDiagnosticsPanel(agentId, assignmentService.diagnostics(assignmentId)).render();
+    }
+
+    @PostMapping("/agents/_detail/{agentId}/queue/{assignmentId}/force-interrupt")
+    @ResponseBody
+    public String forceInterruptAgentAssignment(
+        @PathVariable String agentId,
+        @PathVariable String assignmentId,
+        @RequestParam(value = "reason", required = false) String reason
+    ) {
+        assignmentService.forceInterrupt(assignmentId, reason);
+        return agentQueueTab(agentId);
+    }
+
     @GetMapping("/agents/_detail/{agentId}/inbox")
     @ResponseBody
     public String agentInboxTab(@PathVariable String agentId) {
@@ -5713,7 +5732,7 @@ public class OrchestrationController {
         }
 
         Table table = Table.create()
-            .withHeaders("Type", "Status", "Priority", "Job", "Created", "Actions")
+            .withHeaders("Type", "Status", "Priority", "Progress", "Lease", "Job", "Created", "Actions")
             .withClass("dashboard-table");
         for (var a : assignments) {
             Div actions = new Div().withClass("orch-actions");
@@ -5735,18 +5754,100 @@ public class OrchestrationController {
                     .withAttribute("hx-target", "#agent-tab-panel")
                     .withAttribute("hx-swap", "innerHTML"));
             }
+            actions.withChild(Button.create("Diagnostics")
+                .withAttribute("hx-get", "/agents/_detail/" + agentId + "/queue/" + a.id() + "/diagnostics")
+                .withAttribute("hx-target", "#assignment-diagnostics-panel")
+                .withAttribute("hx-swap", "innerHTML"));
+            if (a.status() == OrchestrationStatus.RUNNING) {
+                actions.withChild(Button.create("Force Interrupt")
+                    .withClass("orch-danger")
+                    .withAttribute("hx-get", "/agents/_detail/" + agentId + "/queue/" + a.id() + "/diagnostics")
+                    .withAttribute("hx-target", "#assignment-diagnostics-panel")
+                    .withAttribute("hx-swap", "innerHTML"));
+            }
+            Component status = statusBadgeHtml(a.status() != null ? a.status().name() : "unknown");
+            if (isSuspectedStuck(a)) {
+                status = new Div()
+                    .withChild(status)
+                    .withChild(new HtmlTag("span").withClass("orch-status-chip disabled").withInnerText("suspected stuck"));
+            }
             table.addRow(
                 new HtmlTag("span").withInnerText(a.assignmentType() != null ? a.assignmentType().name() : "—"),
-                statusBadgeHtml(a.status() != null ? a.status().name() : "unknown"),
+                status,
                 new HtmlTag("span").withInnerText(String.valueOf(a.priority())),
+                new HtmlTag("span").withInnerText(a.lastProgressAt() != null ? formatSince(a.lastProgressAt()) : "—"),
+                new HtmlTag("span").withInnerText(a.leaseExpiresAt() != null ? "expires " + formatSinceFuture(a.leaseExpiresAt()) : "—"),
                 new HtmlTag("span").withInnerText(a.jobId() != null ? a.jobId() : "—"),
                 new HtmlTag("span").withInnerText(a.createdAt() != null ? formatSince(a.createdAt()) : "—"),
                 actions
             );
         }
         panel.withChild(table);
+        panel.withChild(new Div().withId("assignment-diagnostics-panel"));
 
         return panel.render();
+    }
+
+    private Component assignmentDiagnosticsPanel(String agentId, AssignmentDiagnostics diagnostics) {
+        WorkAssignment a = diagnostics.assignment();
+        Div panel = new Div().withClass("orch-panel assignment-diagnostics");
+        panel.withChild(Header.H3("Assignment Diagnostics"));
+        Div meta = new Div().withClass("orch-form-grid");
+        meta.withChild(agentMetaItem("Assignment", a.id()));
+        meta.withChild(agentMetaItem("Status", a.status() != null ? a.status().name() : "unknown"));
+        meta.withChild(agentMetaItem("Last Progress", diagnostics.lastProgressAt() != null ? formatSince(diagnostics.lastProgressAt()) : "—"));
+        meta.withChild(agentMetaItem("Last Heartbeat", diagnostics.lastHeartbeatAt() != null ? formatSince(diagnostics.lastHeartbeatAt()) : "—"));
+        meta.withChild(agentMetaItem("Progress Age", formatDuration(diagnostics.progressAge())));
+        meta.withChild(agentMetaItem("Heartbeat Age", formatDuration(diagnostics.heartbeatAge())));
+        meta.withChild(agentMetaItem("Lease Owner", a.leaseOwner() != null ? a.leaseOwner() : "—"));
+        meta.withChild(agentMetaItem("Lease Expiry", a.leaseExpiresAt() != null ? formatSinceFuture(a.leaseExpiresAt()) : "—"));
+        meta.withChild(agentMetaItem("Conversation", diagnostics.conversationId() != null ? diagnostics.conversationId() : "—"));
+        meta.withChild(agentMetaItem("Build Commit", diagnostics.buildCommit()));
+        panel.withChild(meta);
+        if (diagnostics.suspectedStuck()) {
+            panel.withChild(new Div().withClass("orch-error")
+                .withInnerText("Suspected stuck: heartbeat is recent but progress has not changed for at least 15 minutes."));
+        }
+        if (a.status() == OrchestrationStatus.RUNNING) {
+            Form form = Form.create();
+            form.withHxPost("/agents/_detail/" + escapeAttr(agentId) + "/queue/" + escapeAttr(a.id()) + "/force-interrupt");
+            form.withAttribute("hx-target", "#agent-tab-panel");
+            form.withAttribute("hx-swap", "innerHTML");
+            form.withClass("orch-form-inline");
+            form.withChild(TextInput.create("reason").withPlaceholder("Operator reason"));
+            form.withChild(Button.create("Force Interrupt")
+                .withAttribute("type", "submit")
+                .withClass("orch-danger"));
+            panel.withChild(form);
+        }
+        if (!diagnostics.linkedRuns().isEmpty()) {
+            Table linked = Table.create().withHeaders("Run Type", "Run ID", "Parent", "Status", "Error").withClass("dashboard-table");
+            for (var run : diagnostics.linkedRuns()) {
+                linked.addRow(
+                    new HtmlTag("span").withInnerText(run.type()),
+                    new HtmlTag("span").withInnerText(run.id()),
+                    new HtmlTag("span").withInnerText(run.parentId() != null ? run.parentId() : "—"),
+                    statusBadgeHtml(run.status()),
+                    new HtmlTag("span").withInnerText(run.errorText() != null ? run.errorText() : "—")
+                );
+            }
+            panel.withChild(Header.H3("Linked Runs"));
+            panel.withChild(linked);
+        }
+        if (!diagnostics.auditEvents().isEmpty()) {
+            Table audit = Table.create().withHeaders("Seq", "Type", "Model", "Message").withClass("dashboard-table");
+            for (var event : diagnostics.auditEvents()) {
+                audit.addRow(
+                    new HtmlTag("span").withInnerText(String.valueOf(event.sequence())),
+                    new HtmlTag("span").withInnerText(event.eventType()),
+                    new HtmlTag("span").withInnerText(event.model() != null ? event.model() : "—"),
+                    new HtmlTag("span").withInnerText(firstNonBlank(event.messageText(), event.resultSummary(), event.errorType(), "—"))
+                );
+            }
+            panel.withChild(Header.H3("Recent Audit Events"));
+            panel.withChild(audit);
+        }
+        return panel;
     }
 
     @PostMapping("/agents/_lifecycle/{agentId}/enable")
@@ -6375,5 +6476,53 @@ public class OrchestrationController {
         long hours = minutes / 60;
         if (hours < 24) return hours + "h ago";
         return (hours / 24) + "d ago";
+    }
+
+    private String formatSinceFuture(Instant instant) {
+        if (instant == null) return "—";
+        long seconds = (instant.toEpochMilli() - Instant.now().toEpochMilli()) / 1000;
+        if (seconds < 0) return formatSince(instant);
+        if (seconds < 60) return "in " + seconds + "s";
+        long minutes = seconds / 60;
+        if (minutes < 60) return "in " + minutes + "m";
+        long hours = minutes / 60;
+        if (hours < 24) return "in " + hours + "h";
+        return "in " + (hours / 24) + "d";
+    }
+
+    private boolean isSuspectedStuck(WorkAssignment assignment) {
+        if (assignment == null || assignment.status() != OrchestrationStatus.RUNNING) {
+            return false;
+        }
+        Instant progressAt = assignment.lastProgressAt() != null ? assignment.lastProgressAt() : assignment.updatedAt();
+        Instant heartbeatAt = assignment.lastHeartbeatAt() != null ? assignment.lastHeartbeatAt() : assignment.updatedAt();
+        if (progressAt == null || heartbeatAt == null) {
+            return false;
+        }
+        Duration progressAge = Duration.between(progressAt, Instant.now());
+        Duration heartbeatAge = Duration.between(heartbeatAt, Instant.now());
+        return progressAge.compareTo(Duration.ofMinutes(15)) >= 0
+            && heartbeatAge.compareTo(Duration.ofMinutes(5)) < 0;
+    }
+
+    private String formatDuration(Duration duration) {
+        if (duration == null) return "—";
+        long seconds = Math.max(0, duration.toSeconds());
+        if (seconds < 60) return seconds + "s";
+        long minutes = seconds / 60;
+        if (minutes < 60) return minutes + "m";
+        long hours = minutes / 60;
+        if (hours < 24) return hours + "h";
+        return (hours / 24) + "d";
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) return "";
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return "";
     }
 }

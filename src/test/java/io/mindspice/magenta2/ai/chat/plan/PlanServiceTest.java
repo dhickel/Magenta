@@ -355,6 +355,31 @@ class PlanServiceTest {
     }
 
     @Test
+    void completedPlanViewUsesNormalModeSoPlanningPanelCanClear() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
+        PlanRepository planRepository = new PlanRepository(jdbcTemplate, new ObjectMapper());
+        PlanService service = new PlanService(planRepository, memoryRepository);
+
+        service.beginPlan("conversation-1");
+        service.updateDraftPlan(
+            "conversation-1",
+            "Research breeding stock",
+            "Breeding Stock Research",
+            "Research candidate strains.",
+            null,
+            List.of("Research files"),
+            List.of("Write strain notes"),
+            List.of("Files exist")
+        );
+        service.markExecuting("conversation-1");
+        service.markCompleted("conversation-1", "Done.");
+
+        assertThat(service.view("conversation-1").status()).isEqualTo("COMPLETED");
+        assertThat(service.view("conversation-1").mode()).isEqualTo("NORMAL");
+    }
+
+    @Test
     void approvalMarkdownRendersOptionalInputsOnlyWhenPresent() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());

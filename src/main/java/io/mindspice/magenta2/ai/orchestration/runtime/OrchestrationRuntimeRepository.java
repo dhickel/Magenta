@@ -125,14 +125,20 @@ public class OrchestrationRuntimeRepository {
         Instant now = Instant.now();
         Instant createdAt = assignment.createdAt() == null ? now : assignment.createdAt();
         Instant updatedAt = now;
+        Optional<WorkAssignment> existing = findAssignment(assignment.id());
+        Instant lastProgressAt = progressTimestamp(existing.orElse(null), assignment, now, createdAt);
+        Instant lastHeartbeatAt = assignment.lastHeartbeatAt() != null
+            ? assignment.lastHeartbeatAt()
+            : existing.map(WorkAssignment::lastHeartbeatAt).orElse(null);
         jdbcTemplate.update(
             """
                 insert into work_assignments (
                     id, agent_id, job_id, job_item_id, assignment_type, priority, status, model_override,
                     workspace_id, current_item_index, checkpoint_json, input_json, output_json, evidence_json,
-                    error_text, lease_owner, lease_expires_at, created_at, updated_at, started_at, completed_at
+                    error_text, lease_owner, lease_expires_at, last_progress_at, last_heartbeat_at,
+                    created_at, updated_at, started_at, completed_at
                 )
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict(id) do update set
                     agent_id = excluded.agent_id,
                     job_id = excluded.job_id,
@@ -150,6 +156,8 @@ public class OrchestrationRuntimeRepository {
                     error_text = excluded.error_text,
                     lease_owner = excluded.lease_owner,
                     lease_expires_at = excluded.lease_expires_at,
+                    last_progress_at = excluded.last_progress_at,
+                    last_heartbeat_at = excluded.last_heartbeat_at,
                     updated_at = excluded.updated_at,
                     started_at = excluded.started_at,
                     completed_at = excluded.completed_at
@@ -159,10 +167,63 @@ public class OrchestrationRuntimeRepository {
             assignment.modelOverride(), assignment.workspaceId(), assignment.currentItemIndex(),
             jsonOrNull(assignment.checkpoint()), jsonOrNull(assignment.input()), jsonOrNull(assignment.output()),
             jsonOrNull(assignment.evidence()), assignment.errorText(), assignment.leaseOwner(),
-            instant(assignment.leaseExpiresAt()), createdAt.toString(), updatedAt.toString(),
+            instant(assignment.leaseExpiresAt()), instant(lastProgressAt), instant(lastHeartbeatAt),
+            createdAt.toString(), updatedAt.toString(),
             instant(assignment.startedAt()), instant(assignment.completedAt())
         );
         return findAssignment(assignment.id()).orElseThrow();
+    }
+
+    public Optional<WorkAssignment> saveAssignmentIfLeaseOwner(WorkAssignment assignment, String leaseOwner) {
+        if (!StringUtils.hasText(assignment.id()) || !StringUtils.hasText(leaseOwner)) {
+            return Optional.empty();
+        }
+        Optional<WorkAssignment> current = findAssignment(assignment.id());
+        if (current.isEmpty()
+            || current.get().status() != OrchestrationStatus.RUNNING
+            || !leaseOwner.equals(current.get().leaseOwner())) {
+            return Optional.empty();
+        }
+        Instant now = Instant.now();
+        Instant lastProgressAt = progressTimestamp(current.get(), assignment, now, current.get().createdAt());
+        Instant lastHeartbeatAt = assignment.lastHeartbeatAt() != null
+            ? assignment.lastHeartbeatAt()
+            : current.get().lastHeartbeatAt();
+        int updated = jdbcTemplate.update(
+            """
+                update work_assignments set
+                    agent_id = ?,
+                    job_id = ?,
+                    job_item_id = ?,
+                    assignment_type = ?,
+                    priority = ?,
+                    status = ?,
+                    model_override = ?,
+                    workspace_id = ?,
+                    current_item_index = ?,
+                    checkpoint_json = ?,
+                    input_json = ?,
+                    output_json = ?,
+                    evidence_json = ?,
+                    error_text = ?,
+                    lease_owner = ?,
+                    lease_expires_at = ?,
+                    last_progress_at = ?,
+                    last_heartbeat_at = ?,
+                    updated_at = ?,
+                    started_at = ?,
+                    completed_at = ?
+                where id = ? and status = ? and lease_owner = ?
+                """,
+            assignment.agentId(), assignment.jobId(), assignment.jobItemId(), assignment.assignmentType().name(),
+            assignment.priority(), assignment.status().name(), assignment.modelOverride(), assignment.workspaceId(),
+            assignment.currentItemIndex(), jsonOrNull(assignment.checkpoint()), jsonOrNull(assignment.input()),
+            jsonOrNull(assignment.output()), jsonOrNull(assignment.evidence()), assignment.errorText(),
+            assignment.leaseOwner(), instant(assignment.leaseExpiresAt()), instant(lastProgressAt),
+            instant(lastHeartbeatAt), now.toString(), instant(assignment.startedAt()),
+            instant(assignment.completedAt()), assignment.id(), OrchestrationStatus.RUNNING.name(), leaseOwner
+        );
+        return updated == 1 ? findAssignment(assignment.id()) : Optional.empty();
     }
 
     public Optional<WorkAssignment> findAssignment(String id) {
@@ -252,10 +313,15 @@ public class OrchestrationRuntimeRepository {
         int updated = jdbcTemplate.update(
             """
                 update work_assignments
-                set status = ?, lease_owner = ?, lease_expires_at = ?, started_at = coalesce(started_at, ?), updated_at = ?
+                set status = ?, lease_owner = ?, lease_expires_at = ?,
+                    started_at = coalesce(started_at, ?),
+                    last_progress_at = coalesce(last_progress_at, ?),
+                    last_heartbeat_at = ?,
+                    updated_at = ?
                 where id = ? and status in (?, ?, ?) and (lease_expires_at is null or lease_expires_at <= ?)
                 """,
-            OrchestrationStatus.RUNNING.name(), leaseOwner, leaseExpiresAt.toString(), now.toString(), now.toString(),
+            OrchestrationStatus.RUNNING.name(), leaseOwner, leaseExpiresAt.toString(),
+            now.toString(), now.toString(), now.toString(), now.toString(),
             assignmentId, OrchestrationStatus.QUEUED.name(), OrchestrationStatus.INTERRUPTED.name(),
             OrchestrationStatus.WAITING.name(), now.toString()
         );
@@ -266,10 +332,11 @@ public class OrchestrationRuntimeRepository {
         return jdbcTemplate.update(
             """
                 update work_assignments
-                set status = ?, lease_owner = null, lease_expires_at = null, updated_at = ?
+                set status = ?, lease_owner = null, lease_expires_at = null, last_progress_at = ?, updated_at = ?
                 where status = ? and lease_expires_at is not null and lease_expires_at <= ?
                 """,
-            OrchestrationStatus.INTERRUPTED.name(), now.toString(), OrchestrationStatus.RUNNING.name(), now.toString()
+            OrchestrationStatus.INTERRUPTED.name(), now.toString(), now.toString(),
+            OrchestrationStatus.RUNNING.name(), now.toString()
         );
     }
 
@@ -291,11 +358,27 @@ public class OrchestrationRuntimeRepository {
         return jdbcTemplate.update(
             """
                 update work_assignments
-                set lease_expires_at = ?, updated_at = ?
+                set lease_expires_at = ?, last_heartbeat_at = ?, updated_at = ?
                 where id = ? and status = ? and lease_owner = ?
                 """,
-            leaseExpiresAt.toString(), now.toString(), assignmentId, OrchestrationStatus.RUNNING.name(), leaseOwner
+            leaseExpiresAt.toString(), now.toString(), now.toString(),
+            assignmentId, OrchestrationStatus.RUNNING.name(), leaseOwner
         );
+    }
+
+    public boolean forceInterruptAssignment(String assignmentId, String reason) {
+        Instant now = Instant.now();
+        int updated = jdbcTemplate.update(
+            """
+                update work_assignments
+                set status = ?, lease_owner = null, lease_expires_at = null,
+                    error_text = ?, last_progress_at = ?, updated_at = ?
+                where id = ? and status in (?, ?)
+                """,
+            OrchestrationStatus.INTERRUPTED.name(), reason, now.toString(), now.toString(),
+            assignmentId, OrchestrationStatus.RUNNING.name(), OrchestrationStatus.CANCEL_REQUESTED.name()
+        );
+        return updated == 1;
     }
 
     public InboxMessage saveInboxMessage(InboxMessage message) {
@@ -575,7 +658,8 @@ public class OrchestrationRuntimeRepository {
             map(rs.getString("input_json")), map(rs.getString("output_json")), map(rs.getString("evidence_json")),
             rs.getString("error_text"), rs.getString("lease_owner"), instantValue(rs.getString("lease_expires_at")),
             instantValue(rs.getString("created_at")), instantValue(rs.getString("updated_at")),
-            instantValue(rs.getString("started_at")), instantValue(rs.getString("completed_at"))
+            instantValue(rs.getString("started_at")), instantValue(rs.getString("completed_at")),
+            instantValue(rs.getString("last_progress_at")), instantValue(rs.getString("last_heartbeat_at"))
         );
     }
 
@@ -708,12 +792,26 @@ public class OrchestrationRuntimeRepository {
                 error_text text,
                 lease_owner text,
                 lease_expires_at text,
+                last_progress_at text,
+                last_heartbeat_at text,
                 created_at text not null,
                 updated_at text not null,
                 started_at text,
                 completed_at text
             )
             """);
+        java.util.List<String> assignmentColumns = jdbcTemplate.queryForList(
+            "select name from pragma_table_info('work_assignments')",
+            String.class
+        );
+        if (!assignmentColumns.contains("last_progress_at")) {
+            jdbcTemplate.execute("alter table work_assignments add column last_progress_at text");
+            jdbcTemplate.execute("update work_assignments set last_progress_at = coalesce(started_at, updated_at, created_at)");
+        }
+        if (!assignmentColumns.contains("last_heartbeat_at")) {
+            jdbcTemplate.execute("alter table work_assignments add column last_heartbeat_at text");
+            jdbcTemplate.execute("update work_assignments set last_heartbeat_at = updated_at where status = 'RUNNING'");
+        }
         jdbcTemplate.execute("""
             create index if not exists idx_work_assignments_queue
                 on work_assignments(status, priority, created_at)
@@ -781,5 +879,25 @@ public class OrchestrationRuntimeRepository {
                 handled_at text
             )
             """);
+    }
+
+    private Instant progressTimestamp(WorkAssignment existing, WorkAssignment assignment, Instant now, Instant createdAt) {
+        if (existing == null) {
+            return assignment.lastProgressAt() != null ? assignment.lastProgressAt() : createdAt;
+        }
+        if (progressChanged(existing, assignment)) {
+            return now;
+        }
+        return assignment.lastProgressAt() != null ? assignment.lastProgressAt() : existing.lastProgressAt();
+    }
+
+    private boolean progressChanged(WorkAssignment existing, WorkAssignment assignment) {
+        return existing.status() != assignment.status()
+            || existing.currentItemIndex() != assignment.currentItemIndex()
+            || !existing.checkpoint().equals(assignment.checkpoint())
+            || !existing.output().equals(assignment.output())
+            || !existing.evidence().equals(assignment.evidence())
+            || !java.util.Objects.equals(existing.errorText(), assignment.errorText())
+            || !java.util.Objects.equals(existing.completedAt(), assignment.completedAt());
     }
 }
