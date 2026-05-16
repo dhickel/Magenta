@@ -102,10 +102,10 @@ import jakarta.servlet.http.HttpServletResponse;
 
 @Controller
 public class OrchestrationController {
-    private static final String DASHBOARD_CSS = "/css/orchestration.css?v=6";
+    private static final String DASHBOARD_CSS = "/css/orchestration.css?v=7";
     private static final String DASHBOARD_JS = "/js/orchestration/dashboard.js?v=5";
     private static final String AGENTS_JS = "/js/orchestration/agents.js?v=1";
-    private static final String AGENT_CHAT_JS = "/js/orchestration/agent-chat.js?v=1";
+    private static final String AGENT_CHAT_JS = "/js/orchestration/agent-chat.js?v=2";
     private static final String PLANS_JS = "/js/orchestration/plans.js?v=2";
     private static final String WORKFLOWS_JS = "/js/orchestration/workflows.js?v=2";
     private static final String PROJECTS_JS = "/js/orchestration/projects.js?v=3";
@@ -4785,7 +4785,24 @@ public class OrchestrationController {
                         .withAttribute("hx-get", "/agents/_detail/" + escapeAttr(agent.id()) + "/dashboard")
                         .withAttribute("hx-trigger", "load")
                         .withAttribute("hx-swap", "innerHTML")
-                        .withChild(loadingPlaceholder()))));
+                        .withChild(loadingPlaceholder())))
+                .withChild(agentEventLogPanel()));
+    }
+
+    private Component agentEventLogPanel() {
+        Div panel = new Div().withClass("entity-detail-side agent-event-log");
+        panel.withChild(Header.H2("Event Log"));
+        panel.withChild(new Div().withClass("agent-event-log-list")
+            .withChild(agentEventLogItem("Now", "Agent dashboard loaded"))
+            .withChild(agentEventLogItem("Queue", "1 assignment waiting"))
+            .withChild(agentEventLogItem("Workspace", "Workspace ready")));
+        return panel;
+    }
+
+    private Component agentEventLogItem(String label, String message) {
+        return new Div().withClass("agent-event-log-item")
+            .withChild(new HtmlTag("span").withClass("agent-event-log-label").withInnerText(label))
+            .withChild(new HtmlTag("span").withClass("agent-event-log-message").withInnerText(message));
     }
 
     // ── Agent detail tab partials ──

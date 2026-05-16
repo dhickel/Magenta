@@ -81,6 +81,8 @@ const executablePath = process.env.MAGENTA_VALIDATION_CHROMIUM
     assert.equal(await page.locator(".agent-chat-accordion[open]").count(), 0);
     await page.click(".agent-chat-accordion > summary");
     assert.equal(await page.locator(".agent-chat-accordion[open]").count(), 1);
+    assert.ok(await page.locator("#agent-chat-panel").evaluate(node => node.getBoundingClientRect().height > 250));
+    assert.equal(await page.locator(".agent-event-log").count(), 1);
     await page.click("[data-tab=workspace]");
     await page.waitForTimeout(250);
     assert.match(await page.locator("#agent-tab-panel").innerText(), /rootRelativePath/);

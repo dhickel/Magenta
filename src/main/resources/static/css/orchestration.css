@@ -205,6 +205,49 @@
     color: #4c5a6b;
 }
 
+/* Agent chat accordion - full-width collapsible card styled like chat window */
+.agent-chat-accordion {
+    width: 100%;
+    border: 1px solid #d9e0ea;
+    border-radius: 8px;
+    background: #ffffff;
+    margin-bottom: 1rem;
+}
+
+.agent-chat-accordion > summary {
+    padding: 0.65rem 0.9rem;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #202936;
+    background: #f7f8fa;
+    border-radius: 8px;
+    list-style: none;
+}
+
+.agent-chat-accordion > summary::-webkit-details-marker {
+    display: none;
+}
+
+.agent-chat-accordion > summary::marker {
+    content: "";
+}
+
+.agent-chat-accordion[open] > summary {
+    border-bottom: 1px solid #d9e0ea;
+    border-radius: 8px 8px 0 0;
+}
+
+.agent-chat-accordion .agent-chat-panel {
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+.agent-chat-accordion[open] [data-agent-chat-panel] {
+    display: block;
+}
+
 .agent-chat-panel {
     width: 100%;
     border: 1px solid #cbd6e2;
@@ -812,6 +855,44 @@
     gap: 1rem;
 }
 
+.agent-event-log {
+    border: 1px solid #d9e0ea;
+    border-radius: 8px;
+    background: #ffffff;
+    padding: 1rem;
+}
+
+.agent-event-log h2 {
+    margin: 0;
+}
+
+.agent-event-log-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+}
+
+.agent-event-log-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    border-top: 1px solid #e3e9f1;
+    padding-top: 0.7rem;
+}
+
+.agent-event-log-label {
+    color: #6b7889;
+    font-size: 0.72rem;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+
+.agent-event-log-message {
+    color: #202936;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
 .entity-title h2 {
     margin: 0 0 0.25rem;
 }
@@ -1342,6 +1423,14 @@
    ═══════════════════════════════════════════════════════ */
 
 @media (max-width: 900px) {
+    .entity-detail-layout {
+        display: block;
+    }
+
+    .agent-event-log {
+        margin-top: 1rem;
+    }
+
     .agent-dashboard-counters {
         flex-direction: column;
     }

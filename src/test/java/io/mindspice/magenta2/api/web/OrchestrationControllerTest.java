@@ -138,7 +138,7 @@ class OrchestrationControllerTest {
     void dashboardRendersFullShellWithSidebar() {
         String html = controller().dashboard(null, null);
 
-        assertThat(html).contains("/css/orchestration.css?v=6");
+        assertThat(html).contains("/css/orchestration.css?v=7");
         assertThat(html).contains("Magenta Operations");
         assertThat(html).contains("Dashboard");
         assertThat(html).contains("/dashboard");
@@ -536,7 +536,10 @@ class OrchestrationControllerTest {
         assertThat(html).contains("data-agent-id=\"agent-1\"");
         assertThat(html).contains("agent-chat-accordion");
         assertThat(html).contains("Chat with Agent");
-        assertThat(html).contains("/js/orchestration/agent-chat.js?v=1");
+        assertThat(html).contains("/css/orchestration.css?v=7");
+        assertThat(html).contains("/js/orchestration/agent-chat.js?v=2");
+        assertThat(html).contains("agent-event-log");
+        assertThat(html).contains("Event Log");
 
         // No old JS-dependent markers
         assertThat(html).doesNotContain("agent-assignment-form");
@@ -969,7 +972,7 @@ class OrchestrationControllerTest {
         for (String html : pages) {
             assertThat(html).contains("main-sidebar");
             assertThat(html).contains("sidenav");
-            assertThat(html).contains("/css/orchestration.css?v=6");
+            assertThat(html).contains("/css/orchestration.css?v=7");
             assertThat(html).doesNotContain("/js/chat-client.js");
         }
     }
