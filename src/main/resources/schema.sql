@@ -18,6 +18,8 @@ create table if not exists ai_chat_session_metadata (
     planning_model text,
     favorite integer not null default 0,
     archived integer not null default 0,
+    origin text,
+    agent_id text,
     updated_at text
 );
 

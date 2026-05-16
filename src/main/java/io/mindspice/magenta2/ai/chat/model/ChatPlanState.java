@@ -24,7 +24,9 @@ public record ChatPlanState(
     int promptQuestionIndex,
     int promptQuestionCount,
     String approvalMarkdown,
-    String approvalHtml
+    String approvalHtml,
+    String documentMarkdown,
+    String documentHtml
 ) {
     public ChatPlanState(
         String mode,
@@ -59,6 +61,8 @@ public record ChatPlanState(
             0,
             0,
             null,
+            null,
+            null,
             null
         );
     }
@@ -85,6 +89,8 @@ public record ChatPlanState(
             List.of(),
             0,
             0,
+            null,
+            null,
             null,
             null
         );

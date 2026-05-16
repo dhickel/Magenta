@@ -1718,12 +1718,25 @@ public class OrchestrationController {
                 .withAttribute("hx-get", "/plans/_submit-form/" + planId)
                 .withAttribute("hx-target", "#plan-submit-container")
                 .withAttribute("hx-swap", "innerHTML"));
-            actions.withChild(Button.create("Continue in Chat")
-                .withAttribute("type", "button")
-                .withAttribute("onclick", "window.location.href='/chat?continuePlanId=" + escapeAttr(planId) + "'"));
         }
         form.withChild(actions);
         container.withChild(form);
+        if (!isNew) {
+            container.withChild(new Div().withClass("plan-continue-row")
+                .withChild(new HtmlTag("details")
+                    .withChild(new HtmlTag("summary").withInnerText("Continue in Chat"))
+                    .withChild(new HtmlTag("a")
+                        .withAttribute("href", "/chat?continuePlanId=" + escapeAttr(planId))
+                        .withClass("visually-hidden")
+                        .withInnerText("Continue in chat without extra instruction"))
+                    .withChild(Form.create().withAttribute("method", "get").withAttribute("action", "/chat")
+                        .withChild(new HtmlTag("input", true).withAttribute("type", "hidden")
+                            .withAttribute("name", "continuePlanId").withAttribute("value", planId))
+                        .withChild(label("Optional instruction", TextArea.create("continuePlanMessage")
+                            .withRows(2)
+                            .withPlaceholder("What should the planning chat revisit or change?")))
+                        .withChild(Button.create("Open planning chat").withAttribute("type", "submit")))));
+        }
 
         if (!isNew) {
             // Submit form container
@@ -1891,7 +1904,7 @@ public class OrchestrationController {
                     .withAttribute("hx-target", "#plan-steps-section")
                     .withAttribute("hx-swap", "innerHTML")
                     .withAttribute(i == 0 ? "disabled" : "data-no-attr", i == 0 ? "disabled" : "")
-                    .withInnerText("up"));
+                    .withInnerText("↑"));
                 row.withChild(new HtmlTag("button")
                     .withClass("remove-field")
                     .withAttribute("type", "button")
@@ -1900,7 +1913,7 @@ public class OrchestrationController {
                     .withAttribute("hx-target", "#plan-steps-section")
                     .withAttribute("hx-swap", "innerHTML")
                     .withAttribute(i == items.size() - 1 ? "disabled" : "data-no-attr", i == items.size() - 1 ? "disabled" : "")
-                    .withInnerText("down"));
+                    .withInnerText("↓"));
             }
             row.withChild(new HtmlTag("button")
                 .withClass("remove-field")
@@ -4575,32 +4588,29 @@ public class OrchestrationController {
                 .render();
         }
 
-        Table table = Table.create()
-            .withHeaders("Name", "Status", "Workspace", "Model", "Queue", "Inbox", "Actions")
-            .withClass("dashboard-table");
-        table.withId("agents-list-table");
-
+        Div cards = new Div().withId("agents-list-table").withClass("agent-card-list");
         for (var a : agents) {
             int queueCount = countAssignments(a.id());
             int inboxCount = countInboxMessages(a.id());
             String workspaceHealth = agentWorkspaceHealth(a);
-            table.addRow(
-                new HtmlTag("a")
+            cards.withChild(new Div().withClass("agent-card")
+                .withChild(new HtmlTag("a")
                     .withAttribute("href", "/agents/" + escapeAttr(a.id()))
                     .withAttribute("hx-get", "/agents/_detail/" + escapeAttr(a.id()))
                     .withAttribute("hx-target", "#agent-detail-container")
                     .withAttribute("hx-swap", "innerHTML")
-                    .withInnerText(a.name() != null ? a.name() : a.id()),
-                statusBadgeHtml(a.status() != null ? a.status().name() : "UNKNOWN"),
-                statusBadgeHtml(workspaceHealth),
-                new HtmlTag("span").withInnerText(
-                    a.defaultModel() != null ? a.defaultModel() : "unset"),
-                new HtmlTag("span").withInnerText(String.valueOf(queueCount)),
-                new HtmlTag("span").withInnerText(String.valueOf(inboxCount)),
-                agentRowActions(a)
-            );
+                    .withClass("agent-card-name")
+                    .withInnerText(a.name() != null ? a.name() : a.id()))
+                .withChild(new Div().withClass("agent-card-meta")
+                    .withChild(statusBadgeHtml(a.status() != null ? a.status().name() : "UNKNOWN"))
+                    .withChild(statusBadgeHtml(workspaceHealth))
+                    .withChild(new HtmlTag("span").withInnerText("Q " + queueCount))
+                    .withChild(new HtmlTag("span").withInnerText("Inbox " + inboxCount)))
+                .withChild(new Div().withClass("agent-card-model")
+                    .withInnerText(a.defaultModel() != null ? a.defaultModel() : "unset"))
+                .withChild(agentRowActions(a)));
         }
-        return table.render();
+        return cards.render();
     }
 
     private int countAssignments(String agentId) {
@@ -4713,13 +4723,13 @@ public class OrchestrationController {
     private Component agentDetailLayout(AgentProfile agent) {
         return new Div().withClass("entity-detail-layout")
             .withChild(new Div().withClass("entity-detail-main")
-                .withChild(new HtmlTag("details").withClass("agent-chat-accordion")
+                .withChild(new HtmlTag("details").withClass("agent-chat-accordion").withAttribute("open", "open")
                     .withChild(new HtmlTag("summary").withInnerText("Chat with Agent"))
                     .withChild(new Div()
                         .withAttribute("data-agent-chat-panel", "")
                         .withAttribute("data-agent-id", agent.id())
                         .withAttribute("data-page-context", "agent detail")))
-                .withChild(tabNav(agent.id(), "dashboard", "profile", "queue", "inbox", "jobs", "schedules", "reactions", "workspace", "outputs", "exec", "history", "submit", "chat"))
+                .withChild(tabNav(agent.id(), "dashboard", "profile", "queue", "inbox", "jobs", "schedules", "reactions", "workspace", "outputs", "exec", "history", "submit"))
                 .withChild(new Div().withClass("agent-profile-loader-marker")
                     .withAttribute("hidden", "hidden")
                     .withAttribute("hx-get", "/agents/_editor/" + escapeAttr(agent.id())))
@@ -5692,20 +5702,31 @@ public class OrchestrationController {
         }
         panel.withChild(table);
 
+        List<io.mindspice.magenta2.ai.chat.model.ChatSession> agentChats = chatService.listAgentSessions(agentId);
+        panel.withChild(Header.H2("Agent Chats"));
+        if (agentChats.isEmpty()) {
+            panel.withChild(new Div().withClass("dashboard-empty")
+                .withInnerText("No saved agent conversations yet."));
+        } else {
+            Div chats = new Div().withClass("agent-chat-history-list");
+            for (var session : agentChats) {
+                chats.withChild(new Div().withClass("agent-chat-history-item")
+                    .withChild(new HtmlTag("strong").withInnerText(
+                        session.title() != null ? session.title() : session.conversationId()))
+                    .withChild(new HtmlTag("code").withInnerText(session.conversationId())));
+            }
+            panel.withChild(chats);
+        }
+
         return panel.render();
     }
 
-    // ── Agent chat tab ──
-
-    @GetMapping("/agents/_detail/{agentId}/chat")
-    @ResponseBody
-    public String agentChatTab(@PathVariable String agentId) {
-        return new Div().withClass("agent-chat-tab")
-            .withChild(Header.H2("Chat"))
-            .withChild(new Div()
-                .withAttribute("data-agent-chat-panel", "")
-                .withAttribute("data-agent-id", agentId)
-                .withAttribute("data-page-context", "agent detail"))
+    // Compatibility only: chat now lives in the always-available accordion above the tabs.
+    public String agentChatTab(String agentId) {
+        return new Div()
+            .withAttribute("data-agent-chat-panel", "")
+            .withAttribute("data-agent-id", agentId)
+            .withAttribute("data-page-context", "agent detail")
             .render();
     }
 

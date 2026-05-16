@@ -502,6 +502,22 @@ body {
     display: block;
 }
 
+#chat-plan-document[hidden] {
+    display: none;
+}
+
+#chat-plan-document {
+    margin-top: 0.55rem;
+}
+
+#chat-plan-document-body {
+    margin-top: 0.55rem;
+}
+
+#chat-plan-evidence {
+    margin-top: 0.55rem;
+}
+
 #chat-history {
     display: flex;
     flex-direction: column;

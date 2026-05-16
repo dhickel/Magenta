@@ -543,11 +543,11 @@ class OrchestrationControllerTest {
     }
 
     @Test
-    void agentListFragmentRendersTable() {
+    void agentListFragmentRendersCompactCards() {
         String html = controller().agentList(null);
 
         assertThat(html).contains("agents-list-table");
-        assertThat(html).contains("dashboard-table");
+        assertThat(html).contains("agent-card-list");
         assertThat(html).contains("Test Agent");
         assertThat(html).contains("ACTIVE");
         assertThat(html).contains("Refresh");
@@ -582,9 +582,9 @@ class OrchestrationControllerTest {
     }
 
     @Test
-    void agentChatTabHtmxRouteMatchesTabNav() {
+    void agentChatTabRemovedFromTabNav() {
         String html = controller().agentDetail("agent-1");
-        assertThat(html).contains("hx-get=\"/agents/_detail/agent-1/chat\"");
+        assertThat(html).doesNotContain("hx-get=\"/agents/_detail/agent-1/chat\"");
     }
 
     @Test

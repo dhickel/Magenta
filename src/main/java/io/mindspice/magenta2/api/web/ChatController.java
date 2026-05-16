@@ -52,7 +52,7 @@ public class ChatController {
     private final AuditService auditService;
     private final long planExecutionStreamTimeoutMillis;
 
-    public record PlanStartRequest(String conversationId, String model, String planningModel) { }
+    public record PlanStartRequest(String conversationId, String model, String planningModel, String userInstruction) { }
     public record SaveTaskRequest(String title) { }
     public record SaveTaskResponse(String taskId, String taskTitle, ChatPlanState planState) { }
 
@@ -458,7 +458,8 @@ public class ChatController {
             conversationId,
             planId,
             request == null ? null : request.model(),
-            request == null ? null : request.planningModel()
+            request == null ? null : request.planningModel(),
+            request == null ? null : request.userInstruction()
         );
         List<String> conversationIds = new ArrayList<>(chatService.listConversationIds());
         if (!conversationIds.contains(conversationId)) {

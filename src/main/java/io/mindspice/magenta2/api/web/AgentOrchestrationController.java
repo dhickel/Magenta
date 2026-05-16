@@ -332,6 +332,7 @@ public class AgentOrchestrationController {
         done.put("conversationId", messageResponse.conversationId());
         done.put("model", messageResponse.model());
         done.put("message", messageResponse.response());
+        chatService.markAgentConversation(messageResponse.conversationId(), agent.id());
         return done;
     }
 

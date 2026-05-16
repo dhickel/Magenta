@@ -92,8 +92,10 @@
         const statusEl = byId('chat-plan-status');
         const titleEl = byId('chat-plan-title');
         const hintEl = byId('chat-plan-hint');
+        const documentEl = byId('chat-plan-document');
+        const documentBodyEl = byId('chat-plan-document-body');
         const evidenceEl = byId('chat-plan-evidence');
-        if (!statusEl || !titleEl || !hintEl || !evidenceEl) {
+        if (!statusEl || !titleEl || !hintEl || !documentEl || !documentBodyEl || !evidenceEl) {
             return;
         }
         const mode = planState && planState.mode ? String(planState.mode) : 'NORMAL';
@@ -109,6 +111,9 @@
             statusEl.classList.remove('active');
             titleEl.textContent = '';
             hintEl.textContent = '';
+            documentBodyEl.innerHTML = '';
+            documentEl.open = false;
+            documentEl.hidden = true;
             evidenceEl.innerHTML = '';
             renderPlanningPanel(planState);
             syncPlanningApprovalPreview(planState);
@@ -120,6 +125,12 @@
         hintEl.textContent = mode === 'PLAN'
             ? 'Use the planning panel'
             : (statusLabel === 'needs_review' ? 'Review execution evidence before trusting completion' : 'Saved execution plan');
+        const documentHtml = planState && planState.documentHtml ? String(planState.documentHtml) : '';
+        documentBodyEl.innerHTML = documentHtml;
+        documentEl.hidden = !documentHtml;
+        if (documentHtml) {
+            documentEl.open = false;
+        }
         const evidence = Array.isArray(planState && planState.executionEvidence) ? planState.executionEvidence : [];
         const validationFeedback = Array.isArray(planState && planState.validationFeedback) ? planState.validationFeedback : [];
         const evidenceItems = evidence.concat(validationFeedback);
@@ -1021,7 +1032,7 @@
         updatePlanStatus(data.planState);
     }
 
-    async function beginPlanFromDefinition(planId) {
+    async function beginPlanFromDefinition(planId, userInstruction) {
         if (!planId || requestInFlight) {
             return;
         }
@@ -1035,7 +1046,8 @@
                 body: JSON.stringify({
                     conversationId: activeConversationId(),
                     model: selectedModel(),
-                    planningModel: selectedPlanningModel()
+                    planningModel: selectedPlanningModel(),
+                    userInstruction: userInstruction || null
                 })
             });
             applyCommandResponse(data);
@@ -1694,7 +1706,7 @@
             await loadSessions();
             const continuePlanId = root().getAttribute('data-continue-plan-id');
             if (continuePlanId) {
-                await beginPlanFromDefinition(continuePlanId);
+                await beginPlanFromDefinition(continuePlanId, root().getAttribute('data-continue-plan-message'));
             } else if (root().getAttribute('data-start-planning') === 'true') {
                 await sendCommand('/plan');
             }

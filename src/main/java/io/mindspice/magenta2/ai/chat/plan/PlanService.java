@@ -1055,6 +1055,7 @@ public class PlanService {
             return ChatPlanState.normal();
         }
         String approvalMarkdown = def.status() == PlanStatus.READY_FOR_APPROVAL ? approvalMarkdown(def) : null;
+        String documentMarkdown = def.hasSavedPlan() ? approvalMarkdown(def) : null;
         return new ChatPlanState(
             mode(conversationId).name(),
             def.status().name(),
@@ -1077,7 +1078,9 @@ public class PlanService {
             def.hasPendingQuestion() ? def.pendingQuestionIndex() + 1 : 0,
             def.hasPendingQuestion() ? def.pendingQuestions().size() : 0,
             approvalMarkdown,
-            approvalMarkdown == null ? null : markdownRenderer.render(approvalMarkdown)
+            approvalMarkdown == null ? null : markdownRenderer.render(approvalMarkdown),
+            documentMarkdown,
+            documentMarkdown == null ? null : markdownRenderer.render(documentMarkdown)
         );
     }
 

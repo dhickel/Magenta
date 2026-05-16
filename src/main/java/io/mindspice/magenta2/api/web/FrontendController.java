@@ -98,6 +98,7 @@ public class FrontendController {
         @RequestParam(value = "conversationId", required = false) String conversationId,
         @RequestParam(value = "startPlanning", required = false) String startPlanning,
         @RequestParam(value = "continuePlanId", required = false) String continuePlanId,
+        @RequestParam(value = "continuePlanMessage", required = false) String continuePlanMessage,
         HttpServletResponse response
     ) {
         Component chatContent = new Div()
@@ -106,6 +107,7 @@ public class FrontendController {
             .withAttribute("data-active-conversation-id", conversationId == null ? "" : conversationId)
             .withAttribute("data-start-planning", "true".equalsIgnoreCase(startPlanning) ? "true" : "false")
             .withAttribute("data-continue-plan-id", continuePlanId == null ? "" : continuePlanId)
+            .withAttribute("data-continue-plan-message", continuePlanMessage == null ? "" : continuePlanMessage)
             .withClass("chat-page")
             .withChild(new Div().withClass("chat-layout")
                 .withChild(sessionSidebar())
@@ -116,6 +118,16 @@ public class FrontendController {
                     .withChild(tokenUsage())))
             .withChild(new Div().withId("chat-error").withAttribute("role", "status").withAttribute("aria-live", "polite"));
         return chatShell.renderWithContent(chatContent);
+    }
+
+    public String chat(
+        String hxRequest,
+        String conversationId,
+        String startPlanning,
+        String continuePlanId,
+        HttpServletResponse response
+    ) {
+        return chat(hxRequest, conversationId, startPlanning, continuePlanId, null, response);
     }
 
     private Component chatModule() {
@@ -167,6 +179,9 @@ public class FrontendController {
             .withChild(new Div().withClass("chat-plan-header")
                 .withChild(new HtmlTag("span").withId("chat-plan-title"))
                 .withChild(new HtmlTag("span").withId("chat-plan-hint")))
+            .withChild(new HtmlTag("details").withId("chat-plan-document")
+                .withChild(new HtmlTag("summary").withInnerText("View plan"))
+                .withChild(new Div().withId("chat-plan-document-body")))
             .withChild(new Div().withId("chat-plan-evidence"));
     }
 

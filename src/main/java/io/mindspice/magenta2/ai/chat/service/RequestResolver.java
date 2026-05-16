@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import io.mindspice.magenta2.ai.chat.model.ChatRequest;
 import io.mindspice.magenta2.ai.chat.model.ChatSession;
+import io.mindspice.magenta2.ai.chat.model.ChatSessionOrigin;
 import io.mindspice.magenta2.ai.chat.model.PlanMode;
 import io.mindspice.magenta2.ai.chat.repository.ChatMemoryRepository;
 import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
@@ -71,6 +72,9 @@ public class RequestResolver {
     public ResolvedChatRequest resolve(String conversationId, String message, String model, String planningModel) {
         String resolvedConversationId = StringUtils.hasText(conversationId) ? conversationId : UUID.randomUUID().toString();
         boolean newConversation = !conversationExists(resolvedConversationId);
+        if (newConversation) {
+            chatSessionMetadataRepository.saveOriginIfAbsent(resolvedConversationId, ChatSessionOrigin.CHAT, null);
+        }
         if (StringUtils.hasText(planningModel)) {
             chatSessionMetadataRepository.savePlanningModel(resolvedConversationId, planningModel);
         }

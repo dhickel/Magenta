@@ -29,6 +29,7 @@ import io.mindspice.magenta2.ai.chat.model.ChatPlanState;
 import io.mindspice.magenta2.ai.chat.model.ChatRequest;
 import io.mindspice.magenta2.ai.chat.model.ChatResponse;
 import io.mindspice.magenta2.ai.chat.model.ChatSession;
+import io.mindspice.magenta2.ai.chat.model.ChatSessionOrigin;
 import io.mindspice.magenta2.ai.chat.model.ChatToolActivity;
 import io.mindspice.magenta2.ai.chat.model.ContextUsage;
 import io.mindspice.magenta2.ai.chat.plan.PlanDefinition;
@@ -471,6 +472,16 @@ public class ChatService {
         String selectedModel,
         String planningModel
     ) {
+        return beginPlanFromDefinition(conversationId, planId, selectedModel, planningModel, null);
+    }
+
+    public ChatResponse.MsgResponse beginPlanFromDefinition(
+        String conversationId,
+        String planId,
+        String selectedModel,
+        String planningModel,
+        String userInstruction
+    ) {
         requirePlanService();
         if (!StringUtils.hasText(planId)) {
             throw new IllegalArgumentException("planId is required");
@@ -486,7 +497,11 @@ public class ChatService {
             : resolvedPlanningModel(conversationId);
         PlanDefinition source = planService.getTask(planId);
         planService.beginPlanFromDefinition(conversationId, source, prePlanningModel, executionModel);
-        return chat(requestResolver.resolve(conversationId, CONTINUE_PLAN_MESSAGE, executionModel, null).withoutTitleJob());
+        String continuationMessage = CONTINUE_PLAN_MESSAGE;
+        if (StringUtils.hasText(userInstruction)) {
+            continuationMessage += " The user also asked: " + userInstruction.trim();
+        }
+        return chat(requestResolver.resolve(conversationId, continuationMessage, executionModel, null).withoutTitleJob());
     }
 
     public void exitPlan(String conversationId) {
@@ -762,14 +777,8 @@ public class ChatService {
 
     public List<ChatSession> listSessions() {
         return rawConversationIds().stream()
-            .map(conversationId -> new ChatSession(
-                conversationId,
-                conversationTitle(conversationId),
-                conversationTitleJobStatus(conversationId),
-                chatSessionMetadataRepository.isFavorite(conversationId),
-                chatSessionMetadataRepository.isArchived(conversationId),
-                chatSessionMetadataRepository.findUpdatedAt(conversationId).orElse(null)
-            ))
+            .map(this::session)
+            .filter(session -> session.origin() != ChatSessionOrigin.AGENT_CHAT)
             .filter(session -> !session.archived())
             .sorted(java.util.Comparator
                 .comparing(ChatSession::favorite).reversed()
@@ -779,6 +788,23 @@ public class ChatService {
                 )
                 .thenComparing(ChatSession::conversationId))
             .toList();
+    }
+
+    public List<ChatSession> listAgentSessions(String agentId) {
+        if (chatSessionMetadataRepository == null) {
+            return List.of();
+        }
+        return chatSessionMetadataRepository.findAgentConversationIds(agentId).stream()
+            .map(this::session)
+            .filter(session -> !session.archived())
+            .toList();
+    }
+
+    public void markAgentConversation(String conversationId, String agentId) {
+        if (chatSessionMetadataRepository == null) {
+            return;
+        }
+        chatSessionMetadataRepository.saveAgentOrigin(conversationId, agentId);
     }
 
     public boolean conversationExists(String conversationId) {
@@ -911,7 +937,9 @@ public class ChatService {
             conversationTitleJobStatus(conversationId),
             chatSessionMetadataRepository.isFavorite(conversationId),
             chatSessionMetadataRepository.isArchived(conversationId),
-            chatSessionMetadataRepository.findUpdatedAt(conversationId).orElse(null)
+            chatSessionMetadataRepository.findUpdatedAt(conversationId).orElse(null),
+            chatSessionMetadataRepository.findOrigin(conversationId).orElse(null),
+            chatSessionMetadataRepository.findAgentId(conversationId).orElse(null)
         );
     }
 

@@ -206,15 +206,11 @@
 }
 
 .agent-chat-panel {
-    position: fixed;
-    right: 1rem;
-    bottom: 1rem;
-    z-index: 30;
-    width: min(26rem, calc(100vw - 2rem));
+    width: 100%;
     border: 1px solid #cbd6e2;
     border-radius: 8px;
     background: #ffffff;
-    box-shadow: 0 0.4rem 1.4rem rgba(22, 32, 44, 0.18);
+    box-shadow: 0 0.2rem 0.7rem rgba(22, 32, 44, 0.1);
 }
 
 .agent-chat-panel.collapsed {
@@ -236,7 +232,7 @@
 }
 
 .agent-chat-body {
-    height: 16rem;
+    height: 18rem;
     overflow: auto;
     padding: 0.65rem;
     display: flex;
@@ -669,6 +665,45 @@
     overflow-y: auto;
 }
 
+.agent-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+}
+
+.agent-card {
+    border: 1px solid #dde5ef;
+    border-radius: 8px;
+    background: #fbfcfe;
+    padding: 0.65rem;
+    min-width: 0;
+}
+
+.agent-card-name,
+.agent-card-model {
+    overflow-wrap: anywhere;
+}
+
+.agent-card-name {
+    display: block;
+    font-weight: 700;
+    margin-bottom: 0.4rem;
+}
+
+.agent-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    align-items: center;
+    margin-bottom: 0.4rem;
+}
+
+.agent-card-model {
+    color: #5c6675;
+    font-size: 0.82rem;
+    margin-bottom: 0.45rem;
+}
+
 .tool-item {
     display: block;
     width: 100%;
@@ -785,6 +820,47 @@
 .field-row textarea {
     min-width: 6rem;
     max-width: 14rem;
+}
+
+.plan-editor .field-list .field-row input {
+    flex: 1 1 24rem;
+    max-width: none;
+}
+
+.plan-editor .field-list .field-row {
+    flex-wrap: nowrap;
+    align-items: flex-start;
+}
+
+.plan-editor .field-list .field-row input {
+    white-space: normal;
+}
+
+.plan-continue-row {
+    border-top: 1px solid #dde5ef;
+    padding-top: 0.65rem;
+}
+
+.plan-continue-row form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.55rem;
+}
+
+.agent-chat-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.agent-chat-history-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    border: 1px solid #dde5ef;
+    border-radius: 6px;
+    padding: 0.5rem;
 }
 
 .field-row textarea {

@@ -1,8 +1,10 @@
 package io.mindspice.magenta2.ai.chat.repository;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
+import io.mindspice.magenta2.ai.chat.model.ChatSessionOrigin;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.util.StringUtils;
@@ -252,6 +254,90 @@ public class ChatSessionMetadataRepository {
         );
     }
 
+    public void saveOriginIfAbsent(String conversationId, ChatSessionOrigin origin, String agentId) {
+        if (!StringUtils.hasText(conversationId) || origin == null) {
+            return;
+        }
+        jdbcTemplate.update(
+            """
+                insert into ai_chat_session_metadata (conversation_id, origin, agent_id, updated_at)
+                values (?, ?, ?, ?)
+                on conflict(conversation_id) do update set
+                    origin = coalesce(ai_chat_session_metadata.origin, excluded.origin),
+                    agent_id = coalesce(ai_chat_session_metadata.agent_id, excluded.agent_id),
+                    updated_at = excluded.updated_at
+                """,
+            conversationId, origin.name(), agentId, now()
+        );
+    }
+
+    public void saveAgentOrigin(String conversationId, String agentId) {
+        if (!StringUtils.hasText(conversationId) || !StringUtils.hasText(agentId)) {
+            return;
+        }
+        jdbcTemplate.update(
+            """
+                insert into ai_chat_session_metadata (conversation_id, origin, agent_id, updated_at)
+                values (?, ?, ?, ?)
+                on conflict(conversation_id) do update set
+                    origin = excluded.origin,
+                    agent_id = excluded.agent_id,
+                    updated_at = excluded.updated_at
+                """,
+            conversationId, ChatSessionOrigin.AGENT_CHAT.name(), agentId, now()
+        );
+    }
+
+    public Optional<ChatSessionOrigin> findOrigin(String conversationId) {
+        if (!StringUtils.hasText(conversationId)) {
+            return Optional.empty();
+        }
+        return jdbcTemplate.query(
+            "select origin from ai_chat_session_metadata where conversation_id = ?",
+            rs -> {
+                if (!rs.next() || !StringUtils.hasText(rs.getString("origin"))) {
+                    return Optional.empty();
+                }
+                return Optional.of(ChatSessionOrigin.valueOf(rs.getString("origin")));
+            },
+            conversationId
+        );
+    }
+
+    public Optional<String> findAgentId(String conversationId) {
+        if (!StringUtils.hasText(conversationId)) {
+            return Optional.empty();
+        }
+        return jdbcTemplate.query(
+            "select agent_id from ai_chat_session_metadata where conversation_id = ?",
+            rs -> {
+                if (!rs.next()) {
+                    return Optional.empty();
+                }
+                String agentId = rs.getString("agent_id");
+                return StringUtils.hasText(agentId) ? Optional.of(agentId) : Optional.empty();
+            },
+            conversationId
+        );
+    }
+
+    public List<String> findAgentConversationIds(String agentId) {
+        if (!StringUtils.hasText(agentId)) {
+            return List.of();
+        }
+        return jdbcTemplate.queryForList(
+            """
+                select conversation_id
+                from ai_chat_session_metadata
+                where origin = ? and agent_id = ?
+                order by coalesce(updated_at, '') desc, conversation_id asc
+                """,
+            String.class,
+            ChatSessionOrigin.AGENT_CHAT.name(),
+            agentId
+        );
+    }
+
     private void ensureSchema() {
         jdbcTemplate.execute("""
             create table if not exists ai_chat_session_metadata (
@@ -261,6 +347,8 @@ public class ChatSessionMetadataRepository {
                 active_task_run_id text,
                 favorite integer not null default 0,
                 archived integer not null default 0,
+                origin text,
+                agent_id text,
                 updated_at text
             )
             """);
@@ -285,6 +373,12 @@ public class ChatSessionMetadataRepository {
         }
         if (!columns.contains("active_task_run_id")) {
             jdbcTemplate.execute("alter table ai_chat_session_metadata add column active_task_run_id text");
+        }
+        if (!columns.contains("origin")) {
+            jdbcTemplate.execute("alter table ai_chat_session_metadata add column origin text");
+        }
+        if (!columns.contains("agent_id")) {
+            jdbcTemplate.execute("alter table ai_chat_session_metadata add column agent_id text");
         }
     }
 

@@ -7,6 +7,7 @@ import { consumeSse, renderError } from "./api.js";
 import { $, escapeHtml } from "./dom.js";
 
 let initialized = false;
+let activeConversationId = null;
 
 export function initAgentChat(root = document) {
     if (initialized) {
@@ -21,11 +22,11 @@ export function initAgentChat(root = document) {
 
     initialized = true;
     host.innerHTML = `
-        <aside class="agent-chat-panel collapsed" id="agent-chat-panel">
+        <section class="agent-chat-panel" id="agent-chat-panel">
             <div class="agent-chat-header">
                 <strong>Agent Chat</strong>
                 <div>
-                    <button type="button" data-agent-chat-toggle>Open</button>
+                    <button type="button" data-agent-chat-toggle>Collapse</button>
                 </div>
             </div>
             <div class="agent-chat-body" id="agent-chat-messages"></div>
@@ -33,7 +34,7 @@ export function initAgentChat(root = document) {
                 <input id="agent-chat-input" placeholder="Ask this agent">
                 <button type="submit">Send</button>
             </form>
-        </aside>`;
+        </section>`;
 
     const panel = $("#agent-chat-panel");
     const toggle = $("[data-agent-chat-toggle]", panel);
@@ -45,7 +46,7 @@ export function initAgentChat(root = document) {
 
     toggle.addEventListener("click", () => {
         panel.classList.toggle("collapsed");
-        toggle.textContent = panel.classList.contains("collapsed") ? "Open" : "Close";
+        toggle.textContent = panel.classList.contains("collapsed") ? "Open" : "Collapse";
     });
 
     $("[data-action='open-agent-chat']")?.addEventListener("click", () => {
@@ -67,7 +68,7 @@ export function initAgentChat(root = document) {
             const response = await fetch(`/api/agents/${encodeURIComponent(agentId)}/chat/stream`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ message, pageContext: context })
+                body: JSON.stringify({ conversationId: activeConversationId, message, pageContext: context })
             });
             if (!response.ok) {
                 const text = await response.text();
@@ -76,7 +77,10 @@ export function initAgentChat(root = document) {
             await consumeSse(response, {
                 start: data => append(messages, "system", `Connected to ${data.agentId || data.agentName || agentId}`),
                 chunk: data => append(messages, "assistant", data.message || data.response || ""),
-                done: data => append(messages, "assistant", data.message || data.response || "Done."),
+                done: data => {
+                    activeConversationId = data.conversationId || activeConversationId;
+                    append(messages, "assistant", data.message || data.response || "Done.");
+                },
                 error: data => append(messages, "system", data.error || "Agent chat failed.")
             });
         } catch (error) {
