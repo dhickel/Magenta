@@ -1339,7 +1339,22 @@ class OrchestrationControllerTest {
         assertThat(html).contains("agent-live-transcript");
         assertThat(html).contains("/agents/_detail/agent-1/queue/asgn-running/transcript");
         assertThat(html).contains("/agents/_detail/agent-1/queue/asgn-queued");
+        assertThat(html).contains("hx-confirm=\"Cancel this assignment?\"");
+        assertThat(html).doesNotContain(">Watch<");
         assertThat(html).doesNotContain("hx-delete=\"/agents/_detail/agent-1/queue/asgn-running\"");
+    }
+
+    @Test
+    void agentQueueHidesCancelForCancelRequestedRows() {
+        StubAssignmentService stubAsgn = new StubAssignmentService();
+        WorkAssignment cancelRequested = assignment("asgn-canceling", OrchestrationStatus.CANCEL_REQUESTED, Map.of("conversationId", "conv-1"));
+        stubAsgn.setAssignments(List.of(cancelRequested));
+
+        String html = controllerWithAssignmentService(stubAsgn).agentQueueTab("agent-1");
+
+        assertThat(html).contains("Canceling");
+        assertThat(html).doesNotContain("/agents/_detail/agent-1/queue/asgn-canceling/cancel");
+        assertThat(html).doesNotContain(">Watch<");
     }
 
     @Test
@@ -1373,6 +1388,25 @@ class OrchestrationControllerTest {
         assertThat(html).contains("chat-tool");
         assertThat(html).contains("boom");
         assertThat(html).doesNotContain("textarea");
+    }
+
+    @Test
+    void assignmentDiagnosticsRefreshesTranscriptOutOfBand() {
+        StubAssignmentService stubAsgn = new StubAssignmentService();
+        WorkAssignment running = assignment("asgn-diag-transcript", OrchestrationStatus.RUNNING,
+            Map.of("conversationId", "conversation-1"));
+        stubAsgn.setAssignments(List.of(running));
+        stubAsgn.setTranscriptEvents(List.of(
+            audit("conversation-1", 0, "tool_exec", null, null, "shell", "ok", "diagnostic transcript")
+        ));
+
+        String html = controllerWithAssignmentService(stubAsgn)
+            .assignmentDiagnosticsFragment("agent-1", "asgn-diag-transcript");
+
+        assertThat(html).contains("Assignment Diagnostics");
+        assertThat(html).contains("hx-swap-oob=\"outerHTML\"");
+        assertThat(html).contains("agent-live-transcript");
+        assertThat(html).contains("diagnostic transcript");
     }
 
     @Test

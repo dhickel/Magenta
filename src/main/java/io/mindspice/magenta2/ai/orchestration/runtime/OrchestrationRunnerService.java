@@ -178,7 +178,8 @@ public class OrchestrationRunnerService {
     }
 
     public int recoverStaleLeases() {
-        return repository.markStaleRunningLeases(Instant.now());
+        Instant now = Instant.now();
+        return repository.markStaleRunningLeases(now) + repository.markStaleCancelRequestedLeases(now);
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -278,7 +279,11 @@ public class OrchestrationRunnerService {
                     Map.of("reports", List.of(text(leased.input().get("message"), "Report completed."))));
             };
         } catch (RuntimeException exception) {
-            return fail(assignmentService.get(leased.id()), exception.getMessage());
+            WorkAssignment current = assignmentService.get(leased.id());
+            if (current.status() == OrchestrationStatus.CANCEL_REQUESTED) {
+                return cancel(current);
+            }
+            return fail(current, exception.getMessage());
         } finally {
             OrchestrationTaskContextHolder.clear();
             if (projectLease != null) {
@@ -348,6 +353,9 @@ public class OrchestrationRunnerService {
             workflowId, assignmentService.resolveModel(assignment, null), assignmentConversationObserver(assignment));
         backfillWorkflowRunAttribution(workflowRun, assignment, "WORKFLOW_RUN");
         WorkAssignment current = assignmentService.get(assignment.id());
+        if (current.status() == OrchestrationStatus.CANCEL_REQUESTED) {
+            return cancel(current);
+        }
         Map<String, Object> checkpoint = mergeCheckpoint(current.checkpoint(),
             Map.of("workflowRunId", workflowRun.id(), "status", workflowRun.status().name()));
         Map<String, Object> output = mergeConversationOutput(
@@ -490,6 +498,10 @@ public class OrchestrationRunnerService {
             conversationId,
             modelOverride
         ).run();
+        WorkAssignment current = assignmentService.get(assignment.id());
+        if (current.status() == OrchestrationStatus.CANCEL_REQUESTED) {
+            throw new IllegalStateException("Assignment cancellation was requested");
+        }
         if (run.status() != TaskRunStatus.COMPLETED) {
             throw new IllegalStateException("Task run did not complete: "
                 + (run.errorText() == null ? run.status().name() : run.errorText()));
@@ -521,6 +533,7 @@ public class OrchestrationRunnerService {
     }
 
     private void checkpointActiveConversation(WorkAssignment assignment, String conversationId) {
+        repository.saveAssignmentConversationLink(assignment.id(), conversationId);
         WorkAssignment current = assignmentService.get(assignment.id());
         Map<String, Object> checkpoint = mergeConversationCheckpoint(current.checkpoint(), conversationId, Map.of());
         assignmentService.saveIfLeaseOwner(checkpointed(current, current.currentItemIndex(), checkpoint,
@@ -529,6 +542,7 @@ public class OrchestrationRunnerService {
 
     private WorkflowExecutionObserver assignmentConversationObserver(WorkAssignment assignment) {
         return (workflowRunId, nodeKey, conversationId) -> {
+            repository.saveAssignmentConversationLink(assignment.id(), conversationId);
             WorkAssignment current = assignmentService.get(assignment.id());
             Map<String, Object> checkpoint = mergeConversationCheckpoint(
                 current.checkpoint(),
@@ -602,6 +616,13 @@ public class OrchestrationRunnerService {
         return assignmentService.saveIfLeaseOwner(assignmentService.copy(
             assignment, OrchestrationStatus.FAILED, assignment.currentItemIndex(), assignment.checkpoint(),
             assignment.output(), assignment.evidence(), errorText, null, null, Instant.now()
+        ), leaseOwner);
+    }
+
+    private WorkAssignment cancel(WorkAssignment assignment) {
+        return assignmentService.saveIfLeaseOwner(assignmentService.copy(
+            assignment, OrchestrationStatus.CANCELLED, assignment.currentItemIndex(), assignment.checkpoint(),
+            assignment.output(), assignment.evidence(), "Cancelled", null, null, Instant.now()
         ), leaseOwner);
     }
 

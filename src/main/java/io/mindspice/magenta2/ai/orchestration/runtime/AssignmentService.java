@@ -137,9 +137,15 @@ public class AssignmentService {
         if (isTerminal(current.status())) {
             return current;
         }
-        return saveStatus(current, current.status() == OrchestrationStatus.QUEUED
-            ? OrchestrationStatus.CANCELLED
-            : OrchestrationStatus.CANCEL_REQUESTED);
+        if (current.status() == OrchestrationStatus.RUNNING) {
+            WorkAssignment cancelRequested = repository.requestCancel(assignmentId).orElseGet(() -> get(assignmentId));
+            localInterruptHandler.accept(assignmentId);
+            return cancelRequested;
+        }
+        if (current.status() == OrchestrationStatus.CANCEL_REQUESTED) {
+            return current;
+        }
+        return saveStatus(current, OrchestrationStatus.CANCELLED);
     }
 
     public WorkAssignment pause(String assignmentId) {
@@ -191,14 +197,11 @@ public class AssignmentService {
             && heartbeatAge.compareTo(Duration.ofMinutes(5)) < 0;
 
         List<LinkedRunStatus> linkedRuns = linkedRuns(assignment);
-        String conversationId = firstText(
-            text(assignment.checkpoint().get("conversationId")),
-            text(assignment.output().get("conversationId")),
-            text(assignment.input().get("conversationId"))
-        );
-        List<AuditRepository.AuditEvent> auditEvents = auditRepository == null || !StringUtils.hasText(conversationId)
+        List<String> conversationIds = conversationIds(assignment);
+        String conversationId = conversationIds.isEmpty() ? null : String.join(", ", conversationIds);
+        List<AuditRepository.AuditEvent> auditEvents = auditRepository == null || conversationIds.isEmpty()
             ? List.of()
-            : auditRepository.findByConversationId(conversationId).stream()
+            : auditRepository.findByConversationIds(conversationIds).stream()
                 .sorted(Comparator.comparingInt(AuditRepository.AuditEvent::sequence).reversed())
                 .limit(12)
                 .toList();
@@ -371,8 +374,13 @@ public class AssignmentService {
         LinkedHashSet<String> ids = new LinkedHashSet<>();
         collectConversationIds(ids, assignment.checkpoint());
         collectConversationIds(ids, assignment.output());
+        repository.findAssignmentConversationIds(assignment.id()).forEach(ids::add);
         collectConversationIds(ids, assignment.evidence());
         collectConversationIds(ids, assignment.input());
+        String taskId = text(assignment.input().get("taskId"));
+        Instant windowStart = assignment.startedAt() != null ? assignment.startedAt() : assignment.createdAt();
+        Instant windowEnd = firstInstant(assignment.completedAt(), assignment.updatedAt(), Instant.now());
+        repository.findLegacyTaskConversationIds(taskId, windowStart, windowEnd).forEach(ids::add);
         return List.copyOf(ids);
     }
 
@@ -428,6 +436,15 @@ public class AssignmentService {
 
     private Duration age(Instant now, Instant instant) {
         return instant == null ? null : Duration.between(instant, now);
+    }
+
+    private Instant firstInstant(Instant... values) {
+        for (Instant value : values) {
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
     }
 
     private String buildCommit() {

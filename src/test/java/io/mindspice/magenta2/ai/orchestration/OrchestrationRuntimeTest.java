@@ -5,6 +5,8 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
@@ -45,6 +47,7 @@ import io.mindspice.magenta2.ai.orchestration.runtime.ReactionActionType;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
 import io.mindspice.magenta2.ai.orchestration.runtime.WorkAssignment;
+import io.mindspice.magenta2.ai.chat.repository.AuditRepository;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.chat.service.TaskExecutionResult;
 import io.mindspice.magenta2.ai.chat.task.TaskRun;
@@ -625,10 +628,165 @@ class OrchestrationRuntimeTest {
 
         assertThat(result.status()).isEqualTo(OrchestrationStatus.COMPLETED);
         assertThat(result.output()).containsKey("conversationIds");
+        assertThat(repository.findAssignmentConversationIds("assignment-task"))
+            .containsExactly(result.output().get("conversationId").toString());
+    }
+
+    @Test
+    void assignmentTranscriptUsesCheckpointDurableAndLegacyConversationLinks() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, objectMapper);
+        AuditRepository auditRepository = new AuditRepository(jdbcTemplate);
+        AgentProfileService agentService = agentService(jdbcTemplate, aiConfig());
+        agentService.create(new AgentProfile("agent-1", "Agent 1", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of(), true, null, null));
+        AssignmentService assignmentService = new AssignmentService(
+            repository, agentService, null, null, auditRepository, null, null);
+
+        Instant started = Instant.now().minusSeconds(30);
+        repository.saveAssignment(new WorkAssignment(
+            "assignment-links", "agent-1", null, null, AssignmentType.TASK_RUN, 1,
+            OrchestrationStatus.RUNNING, null, null, 0,
+            Map.of("conversationId", "conversation-checkpoint"),
+            Map.of("taskId", "plan-legacy"), Map.of(), Map.of(),
+            null, "owner-1", Instant.now().plusSeconds(300),
+            started.minusSeconds(5), started, started, null, started, started
+        ));
+        repository.saveAssignmentConversationLink("assignment-links", "conversation-durable");
+        jdbcTemplate.execute("create table plan_runs (id text primary key, plan_id text not null, created_at text not null)");
+        jdbcTemplate.execute("create table ai_chat_session_metadata (conversation_id text primary key, active_task_run_id text, updated_at text)");
+        jdbcTemplate.update(
+            "insert into plan_runs (id, plan_id, created_at) values (?, ?, ?)",
+            "legacy-run", "plan-legacy", started.plusSeconds(1).toString()
+        );
+        jdbcTemplate.update(
+            "insert into ai_chat_session_metadata (conversation_id, active_task_run_id, updated_at) values (?, ?, ?)",
+            "conversation-legacy", "legacy-run", started.plusSeconds(2).toString()
+        );
+        auditRepository.recordUserMessage("conversation-checkpoint", "checkpoint", "model");
+        auditRepository.recordUserMessage("conversation-durable", "durable", "model");
+        auditRepository.recordUserMessage("conversation-legacy", "legacy", "model");
+
+        AssignmentService.AssignmentTranscript transcript = assignmentService.transcript("agent-1", "assignment-links");
+
+        assertThat(transcript.conversationIds())
+            .containsExactly("conversation-checkpoint", "conversation-durable", "conversation-legacy");
+        assertThat(transcript.auditEvents())
+            .extracting(AuditRepository.AuditEvent::messageText)
+            .contains("checkpoint", "durable", "legacy");
+    }
+
+    @Test
+    void queuedCancelTransitionsDirectlyToCancelled() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, new ObjectMapper());
+        AssignmentService assignmentService = new AssignmentService(repository, null, null, null);
+        repository.saveAssignment(new WorkAssignment(
+            "assignment-cancel-queued", "agent-1", null, null, AssignmentType.REPORT, 1,
+            OrchestrationStatus.QUEUED, null, null, 0,
+            Map.of(), Map.of(), Map.of(), Map.of(), null, null, null, null, null, null, null
+        ));
+
+        WorkAssignment cancelled = assignmentService.cancel("assignment-cancel-queued");
+
+        assertThat(cancelled.status()).isEqualTo(OrchestrationStatus.CANCELLED);
+        assertThat(cancelled.completedAt()).isNotNull();
+    }
+
+    @Test
+    void runningCancelInterruptsLocalWorkAndFinalizesCancelled() throws Exception {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, objectMapper);
+        AiConfig aiConfig = aiConfig();
+        AgentProfileService agentService = agentService(jdbcTemplate, aiConfig);
+        agentService.create(new AgentProfile("agent-1", "Agent 1", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of(), true, null, null));
+        RuntimeSettingsService settingsService = new RuntimeSettingsService(
+            new RuntimeSettingsRepository(jdbcTemplate), aiConfig, agentService);
+        AssignmentService assignmentService = new AssignmentService(repository, agentService, settingsService, null);
+        CountDownLatch enteredModel = new CountDownLatch(1);
+        ChatService chatService = new ChatService(null, null, null, null, null) {
+            @Override
+            public TaskExecutionResult executeTaskBlocking(
+                String taskId,
+                Map<String, Object> inputValues,
+                String conversationId,
+                String modelOverride
+            ) {
+                enteredModel.countDown();
+                try {
+                    while (true) {
+                        Thread.sleep(100);
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("model call interrupted", e);
+                }
+            }
+        };
+        MagentaWorkExecutor executor = new MagentaWorkExecutor(Map.of(
+            MagentaWorkKind.BACKGROUND_JOB, new MagentaWorkExecutor.LaneSettings("test-bg-", 1, 10)
+        ));
+        OrchestrationRunnerService runner = new OrchestrationRunnerService(
+            repository, assignmentService, null, null, null, chatService, null, null, executor
+        );
+        repository.saveAssignment(new WorkAssignment(
+            "assignment-cancel-running", "agent-1", null, null, AssignmentType.TASK_RUN, 1,
+            OrchestrationStatus.QUEUED, null, null, 0,
+            Map.of(), Map.of("taskId", "task-1"), Map.of(), Map.of(),
+            null, null, null, null, null, null, null
+        ));
+
+        runner.pollQueuedWork();
+        assertThat(enteredModel.await(5, TimeUnit.SECONDS)).isTrue();
+        WorkAssignment cancelRequested = assignmentService.cancel("assignment-cancel-running");
+        assertThat(cancelRequested.status()).isEqualTo(OrchestrationStatus.CANCEL_REQUESTED);
+        assertThat(cancelRequested.leaseOwner()).isNotNull();
+
+        WorkAssignment completed = waitForStatus(repository, "assignment-cancel-running", OrchestrationStatus.CANCELLED);
+        assertThat(completed.errorText()).isEqualTo("Cancelled");
+        executor.shutdown();
+    }
+
+    @Test
+    void staleCancelRequestedAssignmentsRecoverToCancelled() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, new ObjectMapper());
+        repository.saveAssignment(new WorkAssignment(
+            "assignment-stale-cancel", "agent-1", null, null, AssignmentType.REPORT, 1,
+            OrchestrationStatus.CANCEL_REQUESTED, null, null, 0,
+            Map.of(), Map.of(), Map.of(), Map.of(), null, "owner-1", Instant.now().minusSeconds(5),
+            null, null, Instant.now().minusSeconds(60), null
+        ));
+
+        int recovered = repository.markStaleCancelRequestedLeases(Instant.now());
+        WorkAssignment assignment = repository.findAssignment("assignment-stale-cancel").orElseThrow();
+
+        assertThat(recovered).isEqualTo(1);
+        assertThat(assignment.status()).isEqualTo(OrchestrationStatus.CANCELLED);
+        assertThat(assignment.leaseOwner()).isNull();
+        assertThat(assignment.completedAt()).isNotNull();
     }
 
     private JdbcTemplate jdbcTemplate() {
         SingleConnectionDataSource dataSource = new SingleConnectionDataSource("jdbc:sqlite::memory:", true);
         return new JdbcTemplate(dataSource);
+    }
+
+    private WorkAssignment waitForStatus(
+        OrchestrationRuntimeRepository repository,
+        String assignmentId,
+        OrchestrationStatus expected
+    ) throws InterruptedException {
+        for (int i = 0; i < 50; i++) {
+            WorkAssignment assignment = repository.findAssignment(assignmentId).orElseThrow();
+            if (assignment.status() == expected) {
+                return assignment;
+            }
+            Thread.sleep(100);
+        }
+        return repository.findAssignment(assignmentId).orElseThrow();
     }
 }

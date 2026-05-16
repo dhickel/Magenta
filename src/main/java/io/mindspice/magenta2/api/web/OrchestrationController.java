@@ -4975,7 +4975,12 @@ public class OrchestrationController {
     @GetMapping("/agents/_detail/{agentId}/queue/{assignmentId}/diagnostics")
     @ResponseBody
     public String assignmentDiagnosticsFragment(@PathVariable String agentId, @PathVariable String assignmentId) {
-        return assignmentDiagnosticsPanel(agentId, assignmentService.diagnostics(assignmentId)).render();
+        AssignmentDiagnostics diagnostics = assignmentService.diagnostics(assignmentId);
+        Div fragment = new Div();
+        fragment.withChild(assignmentDiagnosticsPanel(agentId, diagnostics));
+        Component transcript = assignmentTranscriptPanel(agentId, assignmentService.transcript(agentId, assignmentId), true);
+        fragment.withChild(transcript);
+        return fragment.render();
     }
 
     @GetMapping("/agents/_detail/{agentId}/queue/{assignmentId}/transcript")
@@ -5865,20 +5870,20 @@ public class OrchestrationController {
                     .withAttribute("hx-target", "#agent-tab-panel")
                     .withAttribute("hx-swap", "innerHTML"));
             }
-            if (a.status() != null && !a.status().isTerminal()) {
+            if (a.status() != null && !a.status().isTerminal() && a.status() != OrchestrationStatus.CANCEL_REQUESTED) {
                 actions.withChild(Button.create("Cancel")
                     .withAttribute("hx-post", "/agents/_detail/" + agentId + "/queue/" + a.id() + "/cancel")
+                    .withAttribute("hx-confirm", "Cancel this assignment?")
                     .withAttribute("hx-target", "#agent-tab-panel")
                     .withAttribute("hx-swap", "innerHTML"));
+            }
+            if (a.status() == OrchestrationStatus.CANCEL_REQUESTED) {
+                actions.withChild(new HtmlTag("span").withClass("orch-status-chip disabled").withInnerText("Canceling"));
             }
             actions.withChild(Button.create("Diagnostics")
                 .withAttribute("hx-get", "/agents/_detail/" + agentId + "/queue/" + a.id() + "/diagnostics")
                 .withAttribute("hx-target", "#assignment-diagnostics-panel")
                 .withAttribute("hx-swap", "innerHTML"));
-            actions.withChild(Button.create("Watch")
-                .withAttribute("hx-get", "/agents/_detail/" + agentId + "/queue/" + a.id() + "/transcript")
-                .withAttribute("hx-target", "#agent-live-transcript")
-                .withAttribute("hx-swap", "outerHTML"));
             if (assignmentService.deletable(a.status())) {
                 actions.withChild(Button.create("Delete")
                     .withClass("orch-danger")
@@ -5940,6 +5945,10 @@ public class OrchestrationController {
     }
 
     private Component assignmentTranscriptPanel(String agentId, AssignmentTranscript transcript) {
+        return assignmentTranscriptPanel(agentId, transcript, false);
+    }
+
+    private Component assignmentTranscriptPanel(String agentId, AssignmentTranscript transcript, boolean outOfBandSwap) {
         WorkAssignment assignment = transcript.assignment();
         Div panel = new Div().withId("agent-live-transcript")
             .withClass("orch-panel agent-live-transcript")
@@ -5947,6 +5956,9 @@ public class OrchestrationController {
                 + "/queue/" + escapeAttr(assignment.id()) + "/transcript")
             .withAttribute("hx-trigger", "every 2s")
             .withAttribute("hx-swap", "outerHTML");
+        if (outOfBandSwap) {
+            panel.withAttribute("hx-swap-oob", "outerHTML");
+        }
         panel.withChild(Header.H3("Live Transcript"));
         panel.withChild(new Div().withClass("orch-meta")
             .withChild(new HtmlTag("span").withInnerText("Assignment: " + assignment.id()))

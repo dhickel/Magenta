@@ -285,6 +285,16 @@ create table if not exists work_assignments (
 create index if not exists idx_work_assignments_queue
     on work_assignments(status, priority, created_at);
 
+create table if not exists assignment_conversation_links (
+    assignment_id text not null,
+    conversation_id text not null,
+    created_at text not null,
+    primary key (assignment_id, conversation_id)
+);
+
+create index if not exists idx_assignment_conversation_links_assignment
+    on assignment_conversation_links(assignment_id, created_at);
+
 -- Unified inbox messages for both users and agents.
 -- to_type: "user" or "agent"
 -- to_id: agent id when to_type=agent, null for user

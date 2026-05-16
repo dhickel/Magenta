@@ -180,7 +180,8 @@ public class OrchestrationRuntimeRepository {
         }
         Optional<WorkAssignment> current = findAssignment(assignment.id());
         if (current.isEmpty()
-            || current.get().status() != OrchestrationStatus.RUNNING
+            || (current.get().status() != OrchestrationStatus.RUNNING
+                && current.get().status() != OrchestrationStatus.CANCEL_REQUESTED)
             || !leaseOwner.equals(current.get().leaseOwner())) {
             return Optional.empty();
         }
@@ -213,7 +214,7 @@ public class OrchestrationRuntimeRepository {
                     updated_at = ?,
                     started_at = ?,
                     completed_at = ?
-                where id = ? and status = ? and lease_owner = ?
+                where id = ? and status in (?, ?) and lease_owner = ?
                 """,
             assignment.agentId(), assignment.jobId(), assignment.jobItemId(), assignment.assignmentType().name(),
             assignment.priority(), assignment.status().name(), assignment.modelOverride(), assignment.workspaceId(),
@@ -221,7 +222,8 @@ public class OrchestrationRuntimeRepository {
             jsonOrNull(assignment.output()), jsonOrNull(assignment.evidence()), assignment.errorText(),
             assignment.leaseOwner(), instant(assignment.leaseExpiresAt()), instant(lastProgressAt),
             instant(lastHeartbeatAt), now.toString(), instant(assignment.startedAt()),
-            instant(assignment.completedAt()), assignment.id(), OrchestrationStatus.RUNNING.name(), leaseOwner
+            instant(assignment.completedAt()), assignment.id(), OrchestrationStatus.RUNNING.name(),
+            OrchestrationStatus.CANCEL_REQUESTED.name(), leaseOwner
         );
         return updated == 1 ? findAssignment(assignment.id()) : Optional.empty();
     }
@@ -346,6 +348,89 @@ public class OrchestrationRuntimeRepository {
                 """,
             OrchestrationStatus.INTERRUPTED.name(), now.toString(), now.toString(),
             OrchestrationStatus.RUNNING.name(), now.toString()
+        );
+    }
+
+    public int markStaleCancelRequestedLeases(Instant now) {
+        return jdbcTemplate.update(
+            """
+                update work_assignments
+                set status = ?, lease_owner = null, lease_expires_at = null,
+                    error_text = coalesce(error_text, ?), completed_at = ?, last_progress_at = ?, updated_at = ?
+                where status = ? and (lease_expires_at is null or lease_expires_at <= ?)
+                """,
+            OrchestrationStatus.CANCELLED.name(), "Cancelled after stale cancel request",
+            now.toString(), now.toString(), now.toString(),
+            OrchestrationStatus.CANCEL_REQUESTED.name(), now.toString()
+        );
+    }
+
+    public Optional<WorkAssignment> requestCancel(String assignmentId) {
+        Instant now = Instant.now();
+        int updated = jdbcTemplate.update(
+            """
+                update work_assignments
+                set status = ?, error_text = coalesce(error_text, ?), last_progress_at = ?, updated_at = ?
+                where id = ? and status = ?
+                """,
+            OrchestrationStatus.CANCEL_REQUESTED.name(), "Cancel requested",
+            now.toString(), now.toString(),
+            assignmentId, OrchestrationStatus.RUNNING.name()
+        );
+        return updated == 1 ? findAssignment(assignmentId) : Optional.empty();
+    }
+
+    public void saveAssignmentConversationLink(String assignmentId, String conversationId) {
+        if (!StringUtils.hasText(assignmentId) || !StringUtils.hasText(conversationId)) {
+            return;
+        }
+        jdbcTemplate.update(
+            """
+                insert or ignore into assignment_conversation_links (
+                    assignment_id, conversation_id, created_at
+                )
+                values (?, ?, ?)
+                """,
+            assignmentId, conversationId, Instant.now().toString()
+        );
+    }
+
+    public List<String> findAssignmentConversationIds(String assignmentId) {
+        if (!StringUtils.hasText(assignmentId)) {
+            return List.of();
+        }
+        return jdbcTemplate.queryForList(
+            """
+                select conversation_id
+                from assignment_conversation_links
+                where assignment_id = ?
+                order by created_at asc, conversation_id asc
+                """,
+            String.class,
+            assignmentId
+        );
+    }
+
+    public List<String> findLegacyTaskConversationIds(String taskId, Instant windowStart, Instant windowEnd) {
+        if (!StringUtils.hasText(taskId) || !tableExists("plan_runs") || !tableExists("ai_chat_session_metadata")) {
+            return List.of();
+        }
+        Instant start = windowStart == null ? Instant.EPOCH : windowStart.minusSeconds(60);
+        Instant end = windowEnd == null ? Instant.now().plusSeconds(60) : windowEnd.plusSeconds(300);
+        return jdbcTemplate.queryForList(
+            """
+                select distinct m.conversation_id
+                from plan_runs r
+                join ai_chat_session_metadata m on m.active_task_run_id = r.id
+                where r.plan_id = ?
+                  and coalesce(m.updated_at, r.created_at) >= ?
+                  and coalesce(m.updated_at, r.created_at) <= ?
+                order by coalesce(m.updated_at, r.created_at) asc, m.conversation_id asc
+                """,
+            String.class,
+            taskId,
+            start.toString(),
+            end.toString()
         );
     }
 
@@ -826,6 +911,18 @@ public class OrchestrationRuntimeRepository {
                 on work_assignments(status, priority, created_at)
             """);
         jdbcTemplate.execute("""
+            create table if not exists assignment_conversation_links (
+                assignment_id text not null,
+                conversation_id text not null,
+                created_at text not null,
+                primary key (assignment_id, conversation_id)
+            )
+            """);
+        jdbcTemplate.execute("""
+            create index if not exists idx_assignment_conversation_links_assignment
+                on assignment_conversation_links(assignment_id, created_at)
+            """);
+        jdbcTemplate.execute("""
             create table if not exists agent_inbox_messages (
                 id text primary key,
                 to_agent_id text not null,
@@ -908,5 +1005,14 @@ public class OrchestrationRuntimeRepository {
             || !existing.evidence().equals(assignment.evidence())
             || !java.util.Objects.equals(existing.errorText(), assignment.errorText())
             || !java.util.Objects.equals(existing.completedAt(), assignment.completedAt());
+    }
+
+    private boolean tableExists(String tableName) {
+        Integer count = jdbcTemplate.queryForObject(
+            "select count(*) from sqlite_master where type = 'table' and name = ?",
+            Integer.class,
+            tableName
+        );
+        return count != null && count > 0;
     }
 }
