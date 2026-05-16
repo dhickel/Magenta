@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -612,20 +613,63 @@ public class OrchestrationController {
         if (plans.isEmpty()) {
             return new Div().withClass("tool-item").withInnerText("No plans.").render();
         }
-        Div list = new Div();
+        Div list = new Div().withClass("plan-card-list");
         for (var plan : plans) {
-            list.withChild(new HtmlTag("button")
-                .withClass("tool-item")
-                .hxGet("/plans/_editor/" + escapeAttr(plan.id()))
-                .hxTarget("#plan-editor-container")
-                .hxSwap("innerHTML")
+            Div row = new Div().withClass("plan-list-card");
+            HtmlTag openButton = new HtmlTag("button")
+                .withAttribute("type", "button")
+                .withClass("tool-item plan-list-open")
+                .withAttribute("hx-get", "/plans/_editor/" + escapeAttr(plan.id()))
+                .withAttribute("hx-target", "#plan-editor-container")
+                .withAttribute("hx-swap", "innerHTML")
                 .withChild(new HtmlTag("strong").withInnerText(plan.title() != null ? plan.title() : "Untitled"))
-                .withChild(new HtmlTag("br"))
-                .withChild(new HtmlTag("span").withInnerText(
-                    (plan.kind() != null ? plan.kind().name() : "") + " - " +
-                    (plan.status() != null ? plan.status().name() : ""))));
+                .withChild(planStatusBadge(plan.status()));
+            row.withChild(openButton);
+            row.withChild(new HtmlTag("button")
+                .withAttribute("type", "button")
+                .withClass("plan-list-delete")
+                .withAttribute("title", "Delete plan")
+                .withAttribute("aria-label", "Delete plan " + escapeAttr(plan.title() != null ? plan.title() : "Untitled"))
+                .withAttribute("hx-delete", "/plans/_editor/" + escapeAttr(plan.id()))
+                .withAttribute("hx-target", "#plan-list")
+                .withAttribute("hx-swap", "innerHTML")
+                .withAttribute("hx-include", "#plan-filter")
+                .withAttribute("hx-confirm", "Delete this plan?")
+                .withInnerText("🗑"));
+            list.withChild(row);
         }
         return list.render();
+    }
+
+    @DeleteMapping("/plans/_editor/{planId}")
+    @ResponseBody
+    public String deletePlanEditor(
+        @PathVariable String planId,
+        @RequestParam(value = "planFilter", required = false) String filter
+    ) {
+        try {
+            planService.deleteTask(planId);
+            String listHtml = planListFragment(filter);
+            String editorHtml = planEditorEmptyState().render();
+            return listHtml + "<div id=\"plan-editor-container\" hx-swap-oob=\"innerHTML\">" + editorHtml + "</div>";
+        } catch (Exception e) {
+            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+        }
+    }
+
+    private Component planStatusBadge(PlanStatus status) {
+        if (status == null) {
+            return new HtmlTag("span").withClass("plan-status-badge").withInnerText("unknown");
+        }
+        String text = status.name().toLowerCase(Locale.ROOT);
+        String colorClass = switch (status) {
+            case DRAFT -> "is-draft";
+            case APPROVED -> "is-approved";
+            default -> "is-neutral";
+        };
+        return new HtmlTag("span")
+            .withClass("plan-status-badge " + colorClass)
+            .withInnerText(text);
     }
 
     @GetMapping("/plans/_editor/_new")

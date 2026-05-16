@@ -732,6 +732,65 @@
     font-size: 0.78rem;
 }
 
+.plan-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.32rem;
+}
+
+.plan-list-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.35rem;
+    align-items: center;
+}
+
+.plan-list-open {
+    padding: 0.42rem 0.52rem;
+}
+
+.plan-list-open strong {
+    margin-bottom: 0.12rem;
+    font-size: 0.8rem;
+}
+
+.plan-status-badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 0.08rem 0.42rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: lowercase;
+    border: 1px solid #d0d9e5;
+    color: #4f5c6d;
+    background: #f2f5f9;
+}
+
+.plan-status-badge.is-draft {
+    border-color: #e5ca77;
+    color: #6d4d04;
+    background: #fff6d9;
+}
+
+.plan-status-badge.is-approved {
+    border-color: #81c08f;
+    color: #1d5f2f;
+    background: #e9f9ed;
+}
+
+.plan-list-delete {
+    min-height: 0;
+    height: 1.9rem;
+    width: 1.9rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    font-size: 0.95rem;
+    line-height: 1;
+}
+
 /* ═══════════════════════════════════════════════════════
    Entity Detail
    ═══════════════════════════════════════════════════════ */
