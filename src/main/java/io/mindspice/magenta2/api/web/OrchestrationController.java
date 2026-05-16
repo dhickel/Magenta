@@ -1653,6 +1653,7 @@ public class OrchestrationController {
             form.withChild(new Div().withId("plan-deliverables-section")
                 .withChild(planDeliverablesSection(plan)));
             form.withChild(Button.create("Add deliverable")
+                .withClass("plan-list-add-btn")
                 .withAttribute("hx-post", "/plans/_editor/" + planId + "/deliverables")
                 .withAttribute("hx-target", "#plan-deliverables-section")
                 .withAttribute("hx-swap", "innerHTML"));
@@ -1663,6 +1664,7 @@ public class OrchestrationController {
             form.withChild(new Div().withId("plan-inputs-section")
                 .withChild(planInputsSection(plan)));
             form.withChild(Button.create("Add input field")
+                .withClass("plan-list-add-btn")
                 .withAttribute("hx-post", "/plans/_editor/" + planId + "/inputs")
                 .withAttribute("hx-target", "#plan-inputs-section")
                 .withAttribute("hx-swap", "innerHTML"));
@@ -1673,6 +1675,7 @@ public class OrchestrationController {
             form.withChild(new Div().withId("plan-outputs-section")
                 .withChild(planOutputsSection(plan)));
             form.withChild(Button.create("Add output field")
+                .withClass("plan-list-add-btn")
                 .withAttribute("hx-post", "/plans/_editor/" + planId + "/outputs")
                 .withAttribute("hx-target", "#plan-outputs-section")
                 .withAttribute("hx-swap", "innerHTML"));
@@ -1683,6 +1686,7 @@ public class OrchestrationController {
             form.withChild(new Div().withId("plan-steps-section")
                 .withChild(planStepsSection(plan)));
             form.withChild(Button.create("Add step")
+                .withClass("plan-list-add-btn")
                 .withAttribute("hx-post", "/plans/_editor/" + planId + "/steps")
                 .withAttribute("hx-target", "#plan-steps-section")
                 .withAttribute("hx-swap", "innerHTML"));
@@ -1693,6 +1697,7 @@ public class OrchestrationController {
             form.withChild(new Div().withId("plan-validation-section")
                 .withChild(planValidationSection(plan)));
             form.withChild(Button.create("Add criterion")
+                .withClass("plan-list-add-btn")
                 .withAttribute("hx-post", "/plans/_editor/" + planId + "/validation")
                 .withAttribute("hx-target", "#plan-validation-section")
                 .withAttribute("hx-swap", "innerHTML"));
@@ -1703,6 +1708,7 @@ public class OrchestrationController {
             form.withChild(new Div().withId("plan-assumptions-section")
                 .withChild(planAssumptionsSection(plan)));
             form.withChild(Button.create("Add assumption")
+                .withClass("plan-list-add-btn")
                 .withAttribute("hx-post", "/plans/_editor/" + planId + "/assumptions")
                 .withAttribute("hx-target", "#plan-assumptions-section")
                 .withAttribute("hx-swap", "innerHTML"));
@@ -1930,10 +1936,10 @@ public class OrchestrationController {
             Item item = items.get(i);
             Div row = new Div().withClass("field-row");
             String placeholder = section.equals("steps") ? "Step text" : "Item text";
-            row.withChild(TextInput.create("")
-                .withAttribute("name", section + "Value" + i)
-                .withAttribute("placeholder", section.equals("steps") ? (item.order() + ". " + placeholder) : placeholder)
-                .withAttribute("value", item.text() != null ? item.text() : "")
+            row.withChild(TextArea.create(section + "Value" + i)
+                .withPlaceholder(section.equals("steps") ? (item.order() + ". " + placeholder) : placeholder)
+                .withRows(2)
+                .withValue(item.text() != null ? item.text() : "")
                 .withAttribute("hx-trigger", "change")
                 .withAttribute("hx-put", "/plans/_editor/" + planId + "/" + section)
                 .withAttribute("hx-target", "#plan-" + section + "-section")
@@ -4797,12 +4803,6 @@ public class OrchestrationController {
         return panel;
     }
 
-    private Component agentEventLogItem(String label, String message) {
-        return new Div().withClass("agent-event-log-item")
-            .withChild(new HtmlTag("span").withClass("agent-event-log-label").withInnerText(label))
-            .withChild(new HtmlTag("span").withClass("agent-event-log-message").withInnerText(message));
-    }
-
     private Component agentChatPanel(String agentId) {
         return new Div()
             .withAttribute("data-agent-chat-panel", "")
@@ -4813,6 +4813,12 @@ public class OrchestrationController {
                 .withChild(Form.create().withClass("agent-chat-form").withId("agent-chat-form")
                     .withChild(TextInput.create("").withId("agent-chat-input").withPlaceholder("Ask this agent"))
                     .withChild(Button.create("Send").withAttribute("type", "submit"))));
+    }
+
+    private Component agentEventLogItem(String label, String message) {
+        return new Div().withClass("agent-event-log-item")
+            .withChild(new HtmlTag("span").withClass("agent-event-log-label").withInnerText(label))
+            .withChild(new HtmlTag("span").withClass("agent-event-log-message").withInnerText(message));
     }
 
     // ── Agent detail tab partials ──

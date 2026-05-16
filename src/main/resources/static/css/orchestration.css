@@ -205,7 +205,7 @@
     color: #4c5a6b;
 }
 
-/* Agent chat accordion - full-width collapsible card styled like chat window */
+/* Agent chat accordion — full-width collapsible card styled like chat window */
 .agent-chat-accordion {
     width: 100%;
     border: 1px solid #d9e0ea;
@@ -238,6 +238,7 @@
     border-radius: 8px 8px 0 0;
 }
 
+/* When inside the accordion, remove outer panel chrome */
 .agent-chat-accordion .agent-chat-panel {
     border: none;
     border-radius: 0;
@@ -967,6 +968,15 @@
     max-width: none;
 }
 
+.plan-editor .field-list .field-row textarea {
+    flex: 1 1 24rem;
+    max-width: none;
+    min-height: 2.5rem;
+    resize: vertical;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
 .plan-editor .field-list .field-row {
     flex-wrap: nowrap;
     align-items: flex-start;
@@ -974,6 +984,11 @@
 
 .plan-editor .field-list .field-row input {
     white-space: normal;
+}
+
+.plan-list-add-btn {
+    margin-top: 0.35rem;
+    margin-bottom: 0.85rem;
 }
 
 .plan-continue-row {

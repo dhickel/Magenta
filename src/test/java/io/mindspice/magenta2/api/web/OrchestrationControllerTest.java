@@ -1215,6 +1215,29 @@ class OrchestrationControllerTest {
     }
 
     @Test
+    void planListRowsRenderTextareaValuesAsContent() {
+        PlanDefinition plan = new PlanDefinition(
+            "plan-list-text", PlanKind.TASK_TEMPLATE, PlanStatus.DRAFT,
+            "Test", null, null, null,
+            List.of("Visible deliverable"), List.of(), List.of(), List.of("Visible assumption"),
+            List.of(new io.mindspice.magenta2.ai.chat.plan.PlanStep(1, "Visible step")),
+            List.of("Visible validation"), List.of(), List.of(),
+            "CODING_CENTRIC", null, null,
+            null, null, List.of(), 0, 0, null, null, null, null
+        );
+        StubPlanService stubPlanService = new StubPlanService();
+        stubPlanService.setPlan(plan);
+
+        String html = controllerWithPlanService(stubPlanService).planEditor("plan-list-text");
+
+        assertThat(html).contains("<textarea");
+        assertThat(html).contains(">Visible deliverable</textarea>");
+        assertThat(html).contains(">Visible step</textarea>");
+        assertThat(html).contains(">Visible validation</textarea>");
+        assertThat(html).contains(">Visible assumption</textarea>");
+    }
+
+    @Test
     void planAddDeliverableProducesPlaceholderText() {
         // DEFECT-03-02: Adding a deliverable results in a placeholder, not empty string
         // Simulate via the stub: addItem->save handles placeholder
