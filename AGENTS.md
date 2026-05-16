@@ -4,6 +4,9 @@
 
 ### Required workflow
 - After each feature implementation or non-trivial fix, complete the full `.internal-dev` workflow: write a changelog entry, record any out-of-scope bugs discovered, capture reusable knowledge, and note deferred ideas.
+- After completing the `.internal-dev` workflow for a task, create a git commit that includes both the implementation and the `.internal-dev` updates.
+- When beginning implementation of a multi-phase plan, create a dedicated git branch for that plan before phase work starts.
+- For multi-phase plans, commit completed work at the end of each phase on that dedicated branch.
 - Plans and reviews are written to `.internal-dev/plans/` and `.internal-dev/reviews/`.
 - Out-of-scope bugs found during work are logged immediately in `.internal-dev/bugs/`.
 - Finalized work gets a changelog entry in `.internal-dev/changelogs/`.
@@ -97,6 +100,12 @@ If you find a bug pull the recent version of the library and directly implement 
 - After nontrivial code changes, run the relevant automated tests.
 - Before considering backend or application-wiring work complete, smoke test that the Spring Boot application context starts successfully. Prefer a bounded startup command such as `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` unless the task has a more specific startup path.
 - For live chat, browser, SSE, agent/model routing, planning, interruption, chat switching, or concurrent-interaction validation, use the Playwright MCP workflow documented in `.internal-dev/knowledge/live-chat-mcp-workflow-testing.md`. Read that file before running this class of test, follow its MCP-first approach, and update it when you discover better methods, new gotchas, or changed endpoint behavior.
+- For UI changes with interactions that can be validated in a small focused pass, run Playwright validation on the changed targets before sign-off.
+- Run Playwright while the application is running so validation checks both front-end interaction behavior and observable backend behavior tied to those interactions.
+- Default Playwright validation scope to focused change-target checks; deep end-to-end or full production-style Playwright integration campaigns require explicit user approval.
+- Execute Playwright validation on a subagent, never inline with the main implementation workflow; the subagent should run the checks and report findings back.
+- For all testing (including Playwright and non-Playwright validation), use model `gpt-5.3-codex` with reasoning effort `medium`.
+- If expected Playwright validation cannot be executed, report the specific blocker and do not mark the work as fully validated.
 - During UI validation and review, verify JavaScript usage is explicitly justified as the path of least resistance and that HTMX was used for standard CRUD/interaction flows.
 - If startup cannot be run because required local services or secrets are unavailable, report that explicitly with the blocking dependency.
 - Do not defer or work around alpha-blocking infrastructure dependencies (for example Docker/Podman daemon-backed execution validation) by treating unit-only coverage as completion.
