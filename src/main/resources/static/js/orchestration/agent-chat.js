@@ -21,14 +21,16 @@ export function initAgentChat(root = document) {
     if (!host) return;
 
     initialized = true;
+    const accordion = host.closest(".agent-chat-accordion");
     host.innerHTML = `
         <section class="agent-chat-panel" id="agent-chat-panel">
+            ${accordion ? "" : `
             <div class="agent-chat-header">
                 <strong>Agent Chat</strong>
                 <div>
                     <button type="button" data-agent-chat-toggle>Collapse</button>
                 </div>
-            </div>
+            </div>`}
             <div class="agent-chat-body" id="agent-chat-messages"></div>
             <form class="agent-chat-form" id="agent-chat-form">
                 <input id="agent-chat-input" placeholder="Ask this agent">
@@ -44,14 +46,9 @@ export function initAgentChat(root = document) {
     const page = $("[data-orchestration-page]");
     const context = host.dataset.pageContext || page?.dataset.orchestrationPage || "orchestration page";
 
-    toggle.addEventListener("click", () => {
+    toggle?.addEventListener("click", () => {
         panel.classList.toggle("collapsed");
         toggle.textContent = panel.classList.contains("collapsed") ? "Open" : "Collapse";
-    });
-
-    $("[data-action='open-agent-chat']")?.addEventListener("click", () => {
-        panel.classList.remove("collapsed");
-        toggle.textContent = "Close";
     });
 
     form.addEventListener("submit", async event => {

@@ -75,9 +75,12 @@ const executablePath = process.env.MAGENTA_VALIDATION_CHROMIUM
     assert.equal(updated.systemPrompt, "updated");
 
     await page.goto(base + `/agents/${createdAgent.id}`, { waitUntil: "networkidle" });
-    for (const selector of ["#agent-detail-page", "#agent-profile-form", "#agent-assignment-form", "[data-agent-chat-toggle]"]) {
+    for (const selector of ["#agent-detail-page", "#agent-profile-form", "#agent-assignment-form", ".agent-chat-accordion"]) {
         assert.equal(await page.locator(selector).count(), 1, `missing ${selector}`);
     }
+    assert.equal(await page.locator(".agent-chat-accordion[open]").count(), 0);
+    await page.click(".agent-chat-accordion > summary");
+    assert.equal(await page.locator(".agent-chat-accordion[open]").count(), 1);
     await page.click("[data-tab=workspace]");
     await page.waitForTimeout(250);
     assert.match(await page.locator("#agent-tab-panel").innerText(), /rootRelativePath/);

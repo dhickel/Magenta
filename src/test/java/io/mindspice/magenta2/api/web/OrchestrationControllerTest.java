@@ -534,6 +534,8 @@ class OrchestrationControllerTest {
         // Agent chat panel host and JS are present
         assertThat(html).contains("data-agent-chat-panel");
         assertThat(html).contains("data-agent-id=\"agent-1\"");
+        assertThat(html).contains("agent-chat-accordion");
+        assertThat(html).contains("Chat with Agent");
         assertThat(html).contains("/js/orchestration/agent-chat.js?v=1");
 
         // No old JS-dependent markers
@@ -570,15 +572,7 @@ class OrchestrationControllerTest {
         assertThat(html).contains("Workspace:");
         assertThat(html).contains("Refresh");
         assertThat(html).contains("Delete / Archive");
-    }
-
-    @Test
-    void agentChatTabRendersHostElement() {
-        String html = controller().agentChatTab("agent-1");
-
-        assertThat(html).contains("data-agent-chat-panel");
-        assertThat(html).contains("data-agent-id=\"agent-1\"");
-        assertThat(html).contains("data-page-context=\"agent detail\"");
+        assertThat(html).doesNotContain("Open Agent Chat");
     }
 
     @Test

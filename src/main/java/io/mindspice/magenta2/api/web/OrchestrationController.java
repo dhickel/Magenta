@@ -4765,26 +4765,27 @@ public class OrchestrationController {
     }
 
     private Component agentDetailLayout(AgentProfile agent) {
-        return new Div().withClass("entity-detail-layout")
-            .withChild(new Div().withClass("entity-detail-main")
-                .withChild(new HtmlTag("details").withClass("agent-chat-accordion").withAttribute("open", "open")
-                    .withChild(new HtmlTag("summary").withInnerText("Chat with Agent"))
-                    .withChild(new Div()
-                        .withAttribute("data-agent-chat-panel", "")
-                        .withAttribute("data-agent-id", agent.id())
-                        .withAttribute("data-page-context", "agent detail")))
-                .withChild(tabNav(agent.id(), "dashboard", "profile", "queue", "inbox", "jobs", "schedules", "reactions", "workspace", "outputs", "exec", "history", "submit"))
-                .withChild(new Div().withClass("agent-profile-loader-marker")
-                    .withAttribute("hidden", "hidden")
-                    .withAttribute("hx-get", "/agents/_editor/" + escapeAttr(agent.id())))
-                .withChild(new Div().withClass("agent-submit-loader-marker")
-                    .withAttribute("hidden", "hidden")
-                    .withAttribute("hx-get", "/agents/_submit-form/" + escapeAttr(agent.id())))
-                .withChild(new Div().withId("agent-tab-panel").withClass("orch-panel")
-                    .withAttribute("hx-get", "/agents/_detail/" + escapeAttr(agent.id()) + "/dashboard")
-                    .withAttribute("hx-trigger", "load")
-                    .withAttribute("hx-swap", "innerHTML")
-                    .withChild(loadingPlaceholder())));
+        return new Div()
+            .withChild(new HtmlTag("details").withClass("agent-chat-accordion")
+                .withChild(new HtmlTag("summary").withInnerText("Chat with Agent"))
+                .withChild(new Div()
+                    .withAttribute("data-agent-chat-panel", "")
+                    .withAttribute("data-agent-id", agent.id())
+                    .withAttribute("data-page-context", "agent detail")))
+            .withChild(new Div().withClass("entity-detail-layout")
+                .withChild(new Div().withClass("entity-detail-main")
+                    .withChild(tabNav(agent.id(), "dashboard", "profile", "queue", "inbox", "jobs", "schedules", "reactions", "workspace", "outputs", "exec", "history", "submit"))
+                    .withChild(new Div().withClass("agent-profile-loader-marker")
+                        .withAttribute("hidden", "hidden")
+                        .withAttribute("hx-get", "/agents/_editor/" + escapeAttr(agent.id())))
+                    .withChild(new Div().withClass("agent-submit-loader-marker")
+                        .withAttribute("hidden", "hidden")
+                        .withAttribute("hx-get", "/agents/_submit-form/" + escapeAttr(agent.id())))
+                    .withChild(new Div().withId("agent-tab-panel").withClass("orch-panel")
+                        .withAttribute("hx-get", "/agents/_detail/" + escapeAttr(agent.id()) + "/dashboard")
+                        .withAttribute("hx-trigger", "load")
+                        .withAttribute("hx-swap", "innerHTML")
+                        .withChild(loadingPlaceholder()))));
     }
 
     // ── Agent detail tab partials ──
@@ -4853,15 +4854,6 @@ public class OrchestrationController {
             .withChild(Button.create("Delete / Archive")
                 .withAttribute("hx-get", "/agents/_lifecycle/" + escapeAttr(agentId) + "/delete-confirm")
                 .withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId))
-                .withAttribute("hx-swap", "innerHTML")));
-
-        // Quick chat action routed through the agent chat tab.
-        panel.withChild(new Div().withClass("orch-actions")
-            .withChild(Button.create("Open Agent Chat")
-                .withClass("orch-primary")
-                .withAttribute("data-tab", "chat")
-                .withAttribute("hx-get", "/agents/_detail/" + escapeAttr(agentId) + "/chat")
-                .withAttribute("hx-target", "#agent-tab-panel")
                 .withAttribute("hx-swap", "innerHTML")));
 
         return panel.render();
@@ -5763,15 +5755,6 @@ public class OrchestrationController {
         }
 
         return panel.render();
-    }
-
-    // Compatibility only: chat now lives in the always-available accordion above the tabs.
-    public String agentChatTab(String agentId) {
-        return new Div()
-            .withAttribute("data-agent-chat-panel", "")
-            .withAttribute("data-agent-id", agentId)
-            .withAttribute("data-page-context", "agent detail")
-            .render();
     }
 
     @GetMapping("/agents/_detail/{agentId}/submit")
