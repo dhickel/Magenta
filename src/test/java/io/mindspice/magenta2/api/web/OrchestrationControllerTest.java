@@ -1323,7 +1323,7 @@ class OrchestrationControllerTest {
         String html = controllerWithAssignmentService(stubAsgn).agentQueueTab("agent-1");
 
         assertThat(html).contains("suspected stuck");
-        assertThat(html).contains("/agents/_detail/agent-1/queue/asgn-stuck/diagnostics");
+        assertThat(html).contains("/agents/_detail/agent-1/assignments/asgn-stuck/diagnostics");
         assertThat(html).contains("Force Interrupt");
     }
 
@@ -1337,7 +1337,7 @@ class OrchestrationControllerTest {
         String html = controllerWithAssignmentService(stubAsgn).agentQueueTab("agent-1");
 
         assertThat(html).contains("agent-live-transcript");
-        assertThat(html).contains("/agents/_detail/agent-1/queue/asgn-running/transcript");
+        assertThat(html).contains("/agents/_detail/agent-1/assignments/asgn-running/transcript");
         assertThat(html).contains("/agents/_detail/agent-1/queue/asgn-queued");
         assertThat(html).contains("hx-confirm=\"Cancel this assignment?\"");
         assertThat(html).doesNotContain(">Watch<");
@@ -1780,6 +1780,18 @@ class OrchestrationControllerTest {
 
         @Override public java.util.List<WorkAssignment> assignments(String agentId) { return storedAssignments; }
 
+        @Override public java.util.List<WorkAssignment> queueAssignments(String agentId) {
+            return storedAssignments.stream()
+                .filter(assignment -> assignment.status() == null || !assignment.status().isTerminal())
+                .toList();
+        }
+
+        @Override public java.util.List<WorkAssignment> historyAssignments(String agentId) {
+            return storedAssignments.stream()
+                .filter(assignment -> assignment.status() != null && assignment.status().isTerminal())
+                .toList();
+        }
+
         @Override public WorkAssignment get(String assignmentId) {
             return storedAssignments.stream()
                 .filter(assignment -> assignment.id().equals(assignmentId))
@@ -1788,7 +1800,10 @@ class OrchestrationControllerTest {
         }
 
         @Override public boolean deletable(OrchestrationStatus status) {
-            return status != OrchestrationStatus.RUNNING && status != OrchestrationStatus.CANCEL_REQUESTED;
+            return status != null
+                && !status.isTerminal()
+                && status != OrchestrationStatus.RUNNING
+                && status != OrchestrationStatus.CANCEL_REQUESTED;
         }
 
         @Override public void delete(String agentId, String assignmentId) {
@@ -1802,6 +1817,14 @@ class OrchestrationControllerTest {
             storedAssignments = storedAssignments.stream()
                 .filter(existing -> !existing.id().equals(assignmentId))
                 .toList();
+        }
+
+        @Override public int purgeHistory(String agentId, int olderThanDays) {
+            int before = storedAssignments.size();
+            storedAssignments = storedAssignments.stream()
+                .filter(assignment -> assignment.status() == null || !assignment.status().isTerminal())
+                .toList();
+            return before - storedAssignments.size();
         }
 
         @Override public AssignmentTranscript transcript(String agentId, String assignmentId) {

@@ -22,7 +22,7 @@ public class RuntimeSettingsRepository {
                 select default_agent_id, default_agent_name, default_model,
                        planning_model, summary_model, compaction_model, context_buffer_percent,
                        system_chat_model, system_chat_prompt, system_chat_approved_tools,
-                       system_chat_context_limit, system_chat_enabled
+                       system_chat_context_limit, system_chat_enabled, assignment_history_auto_purge_days
                 from runtime_settings
                 where id = ?
                 """,
@@ -39,7 +39,10 @@ public class RuntimeSettingsRepository {
                     rs.getString("system_chat_prompt"),
                     rs.getString("system_chat_approved_tools"),
                     (Integer) rs.getObject("system_chat_context_limit"),
-                    rs.getObject("system_chat_enabled") == null ? null : rs.getInt("system_chat_enabled") == 1
+                    rs.getObject("system_chat_enabled") == null ? null : rs.getInt("system_chat_enabled") == 1,
+                    rs.getObject("assignment_history_auto_purge_days") == null
+                        ? -1
+                        : rs.getInt("assignment_history_auto_purge_days")
                 ))
                 : Optional.empty(),
             SETTINGS_ID
@@ -53,9 +56,9 @@ public class RuntimeSettingsRepository {
                     id, default_agent_id, default_agent_name, default_model,
                     planning_model, summary_model, compaction_model, context_buffer_percent,
                     system_chat_model, system_chat_prompt, system_chat_approved_tools,
-                    system_chat_context_limit, system_chat_enabled
+                    system_chat_context_limit, system_chat_enabled, assignment_history_auto_purge_days
                 )
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict(id) do update set
                     default_agent_id = excluded.default_agent_id,
                     default_agent_name = excluded.default_agent_name,
@@ -68,7 +71,8 @@ public class RuntimeSettingsRepository {
                     system_chat_prompt = excluded.system_chat_prompt,
                     system_chat_approved_tools = excluded.system_chat_approved_tools,
                     system_chat_context_limit = excluded.system_chat_context_limit,
-                    system_chat_enabled = excluded.system_chat_enabled
+                    system_chat_enabled = excluded.system_chat_enabled,
+                    assignment_history_auto_purge_days = excluded.assignment_history_auto_purge_days
                 """,
             SETTINGS_ID,
             settings.defaultAgentId(),
@@ -82,7 +86,8 @@ public class RuntimeSettingsRepository {
             settings.systemChatPrompt(),
             settings.systemChatApprovedTools(),
             settings.systemChatContextLimit(),
-            settings.systemChatEnabled() == null || settings.systemChatEnabled() ? 1 : 0
+            settings.systemChatEnabled() == null || settings.systemChatEnabled() ? 1 : 0,
+            settings.assignmentHistoryAutoPurgeDays() == null ? -1 : settings.assignmentHistoryAutoPurgeDays()
         );
         return find().orElseThrow();
     }
@@ -102,7 +107,8 @@ public class RuntimeSettingsRepository {
                 system_chat_prompt text,
                 system_chat_approved_tools text,
                 system_chat_context_limit integer,
-                system_chat_enabled integer
+                system_chat_enabled integer,
+                assignment_history_auto_purge_days integer not null default -1
             )
             """);
         ensureColumn("system_chat_model", "text");
@@ -110,6 +116,7 @@ public class RuntimeSettingsRepository {
         ensureColumn("system_chat_approved_tools", "text");
         ensureColumn("system_chat_context_limit", "integer");
         ensureColumn("system_chat_enabled", "integer");
+        ensureColumn("assignment_history_auto_purge_days", "integer not null default -1");
     }
 
     private void ensureColumn(String columnName, String type) {

@@ -247,13 +247,119 @@ public class OrchestrationRuntimeRepository {
         );
     }
 
+    public List<WorkAssignment> findQueueAssignmentsForAgent(String agentId) {
+        return jdbcTemplate.query(
+            """
+                select * from work_assignments
+                where agent_id = ?
+                  and status not in (?, ?, ?, ?)
+                order by priority desc, created_at asc
+                """,
+            (rs, rowNum) -> toAssignment(rs),
+            agentId,
+            OrchestrationStatus.CANCELLED.name(),
+            OrchestrationStatus.FAILED.name(),
+            OrchestrationStatus.COMPLETED.name(),
+            OrchestrationStatus.NEEDS_REVIEW.name()
+        );
+    }
+
+    public List<WorkAssignment> findTerminalAssignmentsForAgent(String agentId) {
+        return jdbcTemplate.query(
+            """
+                select * from work_assignments
+                where agent_id = ?
+                  and status in (?, ?, ?, ?)
+                order by coalesce(completed_at, updated_at, created_at) desc
+                """,
+            (rs, rowNum) -> toAssignment(rs),
+            agentId,
+            OrchestrationStatus.CANCELLED.name(),
+            OrchestrationStatus.FAILED.name(),
+            OrchestrationStatus.COMPLETED.name(),
+            OrchestrationStatus.NEEDS_REVIEW.name()
+        );
+    }
+
     public boolean deleteAssignment(String agentId, String assignmentId) {
+        jdbcTemplate.update(
+            """
+                delete from assignment_conversation_links
+                where assignment_id in (
+                    select id from work_assignments where id = ? and agent_id = ?
+                )
+                """,
+            assignmentId,
+            agentId
+        );
         int deleted = jdbcTemplate.update(
             "delete from work_assignments where id = ? and agent_id = ?",
             assignmentId,
             agentId
         );
         return deleted == 1;
+    }
+
+    @Transactional
+    public int purgeTerminalAssignmentHistory(String agentId, Instant cutoff) {
+        List<String> assignmentIds = jdbcTemplate.queryForList(
+            """
+                select id from work_assignments
+                where agent_id = ?
+                  and status in (?, ?, ?, ?)
+                  and coalesce(completed_at, updated_at, created_at) < ?
+                """,
+            String.class,
+            agentId,
+            OrchestrationStatus.CANCELLED.name(),
+            OrchestrationStatus.FAILED.name(),
+            OrchestrationStatus.COMPLETED.name(),
+            OrchestrationStatus.NEEDS_REVIEW.name(),
+            cutoff.toString()
+        );
+        for (String assignmentId : assignmentIds) {
+            jdbcTemplate.update("delete from assignment_conversation_links where assignment_id = ?", assignmentId);
+        }
+        if (assignmentIds.isEmpty()) {
+            return 0;
+        }
+        int deleted = 0;
+        for (String assignmentId : assignmentIds) {
+            deleted += jdbcTemplate.update(
+                "delete from work_assignments where id = ? and agent_id = ?",
+                assignmentId,
+                agentId
+            );
+        }
+        return deleted;
+    }
+
+    @Transactional
+    public int purgeTerminalAssignmentHistory(Instant cutoff) {
+        List<String> assignmentIds = jdbcTemplate.queryForList(
+            """
+                select id from work_assignments
+                where status in (?, ?, ?, ?)
+                  and coalesce(completed_at, updated_at, created_at) < ?
+                """,
+            String.class,
+            OrchestrationStatus.CANCELLED.name(),
+            OrchestrationStatus.FAILED.name(),
+            OrchestrationStatus.COMPLETED.name(),
+            OrchestrationStatus.NEEDS_REVIEW.name(),
+            cutoff.toString()
+        );
+        for (String assignmentId : assignmentIds) {
+            jdbcTemplate.update("delete from assignment_conversation_links where assignment_id = ?", assignmentId);
+        }
+        if (assignmentIds.isEmpty()) {
+            return 0;
+        }
+        int deleted = 0;
+        for (String assignmentId : assignmentIds) {
+            deleted += jdbcTemplate.update("delete from work_assignments where id = ?", assignmentId);
+        }
+        return deleted;
     }
 
     public List<WorkAssignment> findAssignmentsForJob(String jobId) {

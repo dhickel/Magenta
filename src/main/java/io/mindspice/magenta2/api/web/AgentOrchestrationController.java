@@ -31,6 +31,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -104,6 +105,24 @@ public class AgentOrchestrationController {
     @GetMapping("/assignments")
     public List<WorkAssignment> assignments(@PathVariable String agentId) {
         return assignmentService.assignments(agentId);
+    }
+
+    @GetMapping("/assignment-history")
+    public List<WorkAssignment> assignmentHistory(@PathVariable String agentId) {
+        return assignmentService.historyAssignments(agentId);
+    }
+
+    @DeleteMapping("/assignment-history")
+    public Map<String, Object> purgeAssignmentHistory(
+        @PathVariable String agentId,
+        @RequestParam("olderThanDays") int olderThanDays
+    ) {
+        try {
+            int purged = assignmentService.purgeHistory(agentId, olderThanDays);
+            return Map.of("purged", purged);
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
     }
 
     @PostMapping("/assignments")

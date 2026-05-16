@@ -375,7 +375,8 @@ create table if not exists runtime_settings (
     system_chat_prompt text,
     system_chat_approved_tools text,
     system_chat_context_limit integer,
-    system_chat_enabled integer
+    system_chat_enabled integer,
+    assignment_history_auto_purge_days integer not null default -1
 );
 
 create table if not exists workspaces (

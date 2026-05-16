@@ -5,7 +5,7 @@ This package owns durable runtime agent, setting, workspace, and orchestration s
 ### Responsibilities
 - Store runtime settings, agent profiles, and managed workspace metadata in SQLite.
 - Store user-facing jobs, ordered job items, durable work assignments, inbox messages, schedules, event reactions, and orchestration events in SQLite.
-- Store durable assignment-to-conversation links so queue transcripts remain visible even when checkpoint output is incomplete.
+- Store durable assignment-to-conversation links so queue and retained history transcripts remain visible even when checkpoint output is incomplete.
 - Treat file AI configuration as the source for model endpoint definitions and legacy agent import only.
 - Keep orchestration services small, explicit, and usable by existing chat flows.
 - Keep filesystem workspace roots confined under the configured data root.
@@ -16,7 +16,7 @@ This package owns durable runtime agent, setting, workspace, and orchestration s
 
 ### Change guidance
 - Do not add subagent lifecycle behavior without a concrete workflow.
-- Keep new queue, scheduler, inbox, and event reaction behavior bound to explicit assignment creation paths.
+- Keep new queue, retained history, scheduler, inbox, and event reaction behavior bound to explicit assignment creation and purge paths.
 - Keep controllers thin and delegate validation and persistence to services.
 - Validate runtime model keys against configured file models.
 - Validate chat tool allowlists through `ChatToolRegistry`.

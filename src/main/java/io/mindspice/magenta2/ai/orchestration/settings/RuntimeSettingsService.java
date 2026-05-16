@@ -36,7 +36,8 @@ public class RuntimeSettingsService {
             null,
             null,
             aiConfig.resolvedContextBufferPercent(),
-            true
+            true,
+            -1
         ));
     }
 
@@ -53,6 +54,10 @@ public class RuntimeSettingsService {
         Integer systemChatLimit = settings.systemChatContextLimit();
         if (systemChatLimit != null && (systemChatLimit < 1 || systemChatLimit > 100)) {
             throw new IllegalArgumentException("systemChatContextLimit must be between 1 and 100");
+        }
+        Integer purgeDays = settings.assignmentHistoryAutoPurgeDays();
+        if (purgeDays != null && purgeDays != -1 && purgeDays < 1) {
+            throw new IllegalArgumentException("assignmentHistoryAutoPurgeDays must be -1 or at least 1");
         }
         if (StringUtils.hasText(settings.defaultAgentId())) {
             agentProfileService.get(settings.defaultAgentId());

@@ -33,6 +33,7 @@ import io.mindspice.magenta2.ai.orchestration.runtime.JobRepository;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobRun;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobRunStatus;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationEvent;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationEventService;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationJob;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationJobItem;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationRuntimeRepository;
@@ -44,6 +45,7 @@ import io.mindspice.magenta2.ai.orchestration.runtime.ProjectEvent;
 import io.mindspice.magenta2.ai.orchestration.runtime.ProjectRepository;
 import io.mindspice.magenta2.ai.orchestration.runtime.ProjectService;
 import io.mindspice.magenta2.ai.orchestration.runtime.ReactionActionType;
+import io.mindspice.magenta2.ai.orchestration.runtime.ScheduleService;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
 import io.mindspice.magenta2.ai.orchestration.runtime.WorkAssignment;
@@ -520,6 +522,225 @@ class OrchestrationRuntimeTest {
         service.delete(agent.id(), queued.id());
 
         assertThat(repository.findAssignment(queued.id())).isEmpty();
+    }
+
+    @Test
+    void assignmentDeleteRejectsTerminalHistoryRows() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, new ObjectMapper());
+        AgentProfileService agentService = agentService(jdbcTemplate, aiConfig());
+        AgentProfile agent = agentService.create(new AgentProfile(
+            "agent-1", "Agent 1", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of(), true, null, null
+        ));
+        AssignmentService service = new AssignmentService(repository, agentService, null, null);
+        repository.saveAssignment(new WorkAssignment(
+            "assignment-terminal", agent.id(), null, null, AssignmentType.REPORT, 1,
+            OrchestrationStatus.FAILED, null, null, 0,
+            Map.of(), Map.of(), Map.of(), Map.of(), "boom", null, null,
+            null, null, Instant.now().minusSeconds(120), Instant.now().minusSeconds(60)
+        ));
+
+        assertThatThrownBy(() -> service.delete(agent.id(), "assignment-terminal"))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("History");
+        assertThat(repository.findAssignment("assignment-terminal")).isPresent();
+    }
+
+    @Test
+    void queueAndHistoryFiltersSplitTerminalRows() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, new ObjectMapper());
+        AgentProfileService agentService = agentService(jdbcTemplate, aiConfig());
+        AgentProfile agent = agentService.create(new AgentProfile(
+            "agent-1", "Agent 1", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of(), true, null, null
+        ));
+        AssignmentService service = new AssignmentService(repository, agentService, null, null);
+        repository.saveAssignment(new WorkAssignment(
+            "assignment-queued", agent.id(), null, null, AssignmentType.REPORT, 1,
+            OrchestrationStatus.QUEUED, null, null, 0,
+            Map.of(), Map.of(), Map.of(), Map.of(), null, null, null, null, null, null, null
+        ));
+        repository.saveAssignment(new WorkAssignment(
+            "assignment-complete", agent.id(), null, null, AssignmentType.REPORT, 1,
+            OrchestrationStatus.COMPLETED, null, null, 0,
+            Map.of(), Map.of(), Map.of(), Map.of(), null, null, null,
+            null, null, Instant.now().minusSeconds(120), Instant.now().minusSeconds(60)
+        ));
+
+        assertThat(service.queueAssignments(agent.id())).extracting(WorkAssignment::id)
+            .containsExactly("assignment-queued");
+        assertThat(service.historyAssignments(agent.id())).extracting(WorkAssignment::id)
+            .containsExactly("assignment-complete");
+    }
+
+    @Test
+    void manualHistoryPurgeRemovesOnlyOldTerminalRowsAndLinks() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, new ObjectMapper());
+        AgentProfileService agentService = agentService(jdbcTemplate, aiConfig());
+        AgentProfile agent = agentService.create(new AgentProfile(
+            "agent-1", "Agent 1", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of(), true, null, null
+        ));
+        AssignmentService service = new AssignmentService(repository, agentService, null, null);
+        Instant old = Instant.now().minusSeconds(3 * 24 * 60 * 60);
+        repository.saveAssignment(new WorkAssignment(
+            "assignment-old-terminal", agent.id(), null, null, AssignmentType.REPORT, 1,
+            OrchestrationStatus.COMPLETED, null, null, 0,
+            Map.of(), Map.of(), Map.of(), Map.of(), null, null, null, old, old, old, old
+        ));
+        repository.saveAssignmentConversationLink("assignment-old-terminal", "conversation-old");
+        repository.saveAssignment(new WorkAssignment(
+            "assignment-new-terminal", agent.id(), null, null, AssignmentType.REPORT, 1,
+            OrchestrationStatus.FAILED, null, null, 0,
+            Map.of(), Map.of(), Map.of(), Map.of(), null, null, null, null, null, Instant.now(), Instant.now()
+        ));
+        repository.saveAssignment(new WorkAssignment(
+            "assignment-old-queued", agent.id(), null, null, AssignmentType.REPORT, 1,
+            OrchestrationStatus.QUEUED, null, null, 0,
+            Map.of(), Map.of(), Map.of(), Map.of(), null, null, null, old, old, null, null
+        ));
+
+        int purged = service.purgeHistory(agent.id(), 1);
+
+        assertThat(purged).isEqualTo(1);
+        assertThat(repository.findAssignment("assignment-old-terminal")).isEmpty();
+        assertThat(repository.findAssignmentConversationIds("assignment-old-terminal")).isEmpty();
+        assertThat(repository.findAssignment("assignment-new-terminal")).isPresent();
+        assertThat(repository.findAssignment("assignment-old-queued")).isPresent();
+    }
+
+    @Test
+    void autoHistoryPurgeNoOpsWhenDisabledAndPurgesWhenConfigured() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, objectMapper);
+        AiConfig aiConfig = aiConfig();
+        AgentProfileService agentService = agentService(jdbcTemplate, aiConfig);
+        AgentProfile agent = agentService.create(new AgentProfile(
+            "agent-1", "Agent 1", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of(), true, null, null
+        ));
+        RuntimeSettingsRepository settingsRepository = new RuntimeSettingsRepository(jdbcTemplate);
+        RuntimeSettingsService settingsService = new RuntimeSettingsService(settingsRepository, aiConfig, agentService);
+        AssignmentService service = new AssignmentService(repository, agentService, settingsService, null);
+        Instant old = Instant.now().minusSeconds(3 * 24 * 60 * 60);
+        repository.saveAssignment(new WorkAssignment(
+            "assignment-auto-terminal", agent.id(), null, null, AssignmentType.REPORT, 1,
+            OrchestrationStatus.COMPLETED, null, null, 0,
+            Map.of(), Map.of(), Map.of(), Map.of(), null, null, null, old, old, old, old
+        ));
+
+        service.autoPurgeHistory();
+        assertThat(repository.findAssignment("assignment-auto-terminal")).isPresent();
+
+        settingsService.save(new RuntimeSettings(
+            agent.id(), agent.name(), "main", "planning", "summary", "main", 20,
+            null, null, null, null, true, 1
+        ));
+        service.autoPurgeHistory();
+
+        assertThat(repository.findAssignment("assignment-auto-terminal")).isEmpty();
+    }
+
+    @Test
+    void disabledSchedulePollingNoOps() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, new ObjectMapper());
+        AgentProfileService agentService = agentService(jdbcTemplate, aiConfig());
+        AgentProfile agent = agentService.create(new AgentProfile(
+            "agent-1", "Agent 1", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of(), true, null, null
+        ));
+        AssignmentService assignmentService = new AssignmentService(repository, agentService, null, null);
+        OrchestrationEventService eventService = new OrchestrationEventService(repository, assignmentService, true);
+        ScheduleService scheduleService = new ScheduleService(repository, agentService, assignmentService, eventService, false);
+        Instant due = Instant.now().minusSeconds(60);
+        repository.saveSchedule(new AgentSchedule(
+            "schedule-disabled", agent.id(), null, Map.of("assignmentType", "REPORT"),
+            "*/5 * * * * *", "UTC", true, due, null, null
+        ));
+
+        scheduleService.pollDueSchedules();
+
+        assertThat(repository.findAssignmentsForAgent(agent.id())).isEmpty();
+        assertThat(repository.findSchedule("schedule-disabled").orElseThrow().nextRunAt()).isEqualTo(due);
+    }
+
+    @Test
+    void dueScheduleCreatesOneAssignmentAndAdvancesNextRun() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, new ObjectMapper());
+        AgentProfileService agentService = agentService(jdbcTemplate, aiConfig());
+        AgentProfile agent = agentService.create(new AgentProfile(
+            "agent-1", "Agent 1", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of(), true, null, null
+        ));
+        AssignmentService assignmentService = new AssignmentService(repository, agentService, null, null);
+        OrchestrationEventService eventService = new OrchestrationEventService(repository, assignmentService, true);
+        ScheduleService scheduleService = new ScheduleService(repository, agentService, assignmentService, eventService, true);
+        Instant due = Instant.now().minusSeconds(60);
+        repository.saveSchedule(new AgentSchedule(
+            "schedule-due", agent.id(), null, Map.of("assignmentType", "REPORT", "input", Map.of("source", "schedule")),
+            "*/5 * * * * *", "UTC", true, due, null, null
+        ));
+
+        scheduleService.pollDueSchedules();
+        scheduleService.pollDueSchedules();
+
+        List<WorkAssignment> assignments = repository.findAssignmentsForAgent(agent.id());
+        assertThat(assignments).hasSize(1);
+        assertThat(assignments.getFirst().assignmentType()).isEqualTo(AssignmentType.REPORT);
+        assertThat(repository.findSchedule("schedule-due").orElseThrow().nextRunAt()).isAfter(due);
+    }
+
+    @Test
+    void disabledReactionsMarkEventsHandledWithoutEnqueuing() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, new ObjectMapper());
+        AgentProfileService agentService = agentService(jdbcTemplate, aiConfig());
+        AgentProfile agent = agentService.create(new AgentProfile(
+            "agent-1", "Agent 1", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of(), true, null, null
+        ));
+        AssignmentService assignmentService = new AssignmentService(repository, agentService, null, null);
+        OrchestrationEventService eventService = new OrchestrationEventService(repository, assignmentService, false);
+        repository.saveReaction(new AgentEventReaction(
+            "reaction-disabled", agent.id(), EventType.MANUAL_USER_EVENT, Map.of(),
+            ReactionActionType.ENQUEUE_ASSIGNMENT, Map.of("assignmentType", "REPORT"), true, null, null
+        ));
+
+        OrchestrationEvent event = eventService.publish(EventType.MANUAL_USER_EVENT, "test", "event-1", Map.of());
+
+        assertThat(repository.findAssignmentsForAgent(agent.id())).isEmpty();
+        assertThat(repository.findEvent(event.id()).orElseThrow().handledAt()).isNotNull();
+    }
+
+    @Test
+    void enabledReactionsMatchFiltersAndEnqueueAssignments() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, new ObjectMapper());
+        AgentProfileService agentService = agentService(jdbcTemplate, aiConfig());
+        AgentProfile agent = agentService.create(new AgentProfile(
+            "agent-1", "Agent 1", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of(), true, null, null
+        ));
+        AssignmentService assignmentService = new AssignmentService(repository, agentService, null, null);
+        OrchestrationEventService eventService = new OrchestrationEventService(repository, assignmentService, true);
+        repository.saveReaction(new AgentEventReaction(
+            "reaction-enabled", agent.id(), EventType.MANUAL_USER_EVENT, Map.of("kind", "match"),
+            ReactionActionType.ENQUEUE_ASSIGNMENT, Map.of("assignmentType", "REPORT", "input", Map.of("from", "reaction")),
+            true, null, null
+        ));
+
+        eventService.publish(EventType.MANUAL_USER_EVENT, "test", "event-1", Map.of("kind", "skip"));
+        eventService.publish(EventType.MANUAL_USER_EVENT, "test", "event-2", Map.of("kind", "match"));
+
+        List<WorkAssignment> assignments = repository.findAssignmentsForAgent(agent.id());
+        assertThat(assignments).hasSize(1);
+        assertThat(assignments.getFirst().input()).containsEntry("from", "reaction");
     }
 
     @Test

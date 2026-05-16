@@ -230,6 +230,33 @@ class AgentOrchestrationControllerTest {
     }
 
     @Test
+    void deleteAssignmentReturnsConflictForTerminalAssignment() {
+        StubAssignmentService assignmentService = new StubAssignmentService();
+        assignmentService.status = OrchestrationStatus.COMPLETED;
+        AgentOrchestrationController controller = newController(
+            null, assignmentService, null, null, new StubAgentProfileService(), new StubChatService()
+        );
+
+        assertThatThrownBy(() -> controller.deleteAssignment("agent-1", "assign-1"))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
+    }
+
+    @Test
+    void purgeAssignmentHistoryReturnsPurgedCount() {
+        StubAssignmentService assignmentService = new StubAssignmentService();
+        assignmentService.purged = 3;
+        AgentOrchestrationController controller = newController(
+            null, assignmentService, null, null, new StubAgentProfileService(), new StubChatService()
+        );
+
+        Map<String, Object> response = controller.purgeAssignmentHistory("agent-1", 30);
+
+        assertThat(response).containsEntry("purged", 3);
+        assertThat(assignmentService.purgedOlderThanDays).isEqualTo(30);
+    }
+
+    @Test
     void deleteAssignmentCallsServiceForEligibleAssignment() {
         StubAssignmentService assignmentService = new StubAssignmentService();
         AgentOrchestrationController controller = newController(
@@ -365,7 +392,19 @@ class AgentOrchestrationControllerTest {
             if (status == OrchestrationStatus.RUNNING || status == OrchestrationStatus.CANCEL_REQUESTED) {
                 throw new IllegalStateException("Running assignments cannot be deleted");
             }
+            if (status.isTerminal()) {
+                throw new IllegalStateException("Terminal assignments are retained in History");
+            }
             deletedAssignmentId = assignmentId;
+        }
+
+        private int purged;
+        private int purgedOlderThanDays;
+
+        @Override
+        public int purgeHistory(String agentId, int olderThanDays) {
+            purgedOlderThanDays = olderThanDays;
+            return purged;
         }
     }
 

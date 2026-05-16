@@ -4677,7 +4677,7 @@ public class OrchestrationController {
 
     private int countAssignments(String agentId) {
         try {
-            return assignmentService.assignments(agentId).size();
+            return assignmentService.queueAssignments(agentId).size();
         } catch (Exception e) {
             return 0;
         }
@@ -4905,7 +4905,7 @@ public class OrchestrationController {
 
     private WorkAssignment currentAssignment(String agentId) {
         try {
-            List<WorkAssignment> assignments = assignmentService.assignments(agentId);
+            List<WorkAssignment> assignments = assignmentService.queueAssignments(agentId);
             return assignments.stream()
                 .filter(a -> a.status() == io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationStatus.RUNNING)
                 .findFirst().orElse(null);
@@ -4934,7 +4934,7 @@ public class OrchestrationController {
     @GetMapping("/agents/_detail/{agentId}/queue")
     @ResponseBody
     public String agentQueueTab(@PathVariable String agentId) {
-        List<WorkAssignment> assignments = assignmentService.assignments(agentId);
+        List<WorkAssignment> assignments = assignmentService.queueAssignments(agentId);
         return renderAssignmentList(agentId, "Queue", assignments);
     }
 
@@ -4975,10 +4975,17 @@ public class OrchestrationController {
     @GetMapping("/agents/_detail/{agentId}/queue/{assignmentId}/diagnostics")
     @ResponseBody
     public String assignmentDiagnosticsFragment(@PathVariable String agentId, @PathVariable String assignmentId) {
+        return assignmentDiagnosticsDetailFragment(agentId, assignmentId);
+    }
+
+    @GetMapping("/agents/_detail/{agentId}/assignments/{assignmentId}/diagnostics")
+    @ResponseBody
+    public String assignmentDiagnosticsDetailFragment(@PathVariable String agentId, @PathVariable String assignmentId) {
         AssignmentDiagnostics diagnostics = assignmentService.diagnostics(assignmentId);
         Div fragment = new Div();
         fragment.withChild(assignmentDiagnosticsPanel(agentId, diagnostics));
-        Component transcript = assignmentTranscriptPanel(agentId, assignmentService.transcript(agentId, assignmentId), true);
+        boolean staticTranscript = diagnostics.assignment().status() != null && diagnostics.assignment().status().isTerminal();
+        Component transcript = assignmentTranscriptPanel(agentId, assignmentService.transcript(agentId, assignmentId), true, staticTranscript);
         fragment.withChild(transcript);
         return fragment.render();
     }
@@ -4986,7 +4993,15 @@ public class OrchestrationController {
     @GetMapping("/agents/_detail/{agentId}/queue/{assignmentId}/transcript")
     @ResponseBody
     public String assignmentTranscriptFragment(@PathVariable String agentId, @PathVariable String assignmentId) {
-        return assignmentTranscriptPanel(agentId, assignmentService.transcript(agentId, assignmentId)).render();
+        return assignmentTranscriptDetailFragment(agentId, assignmentId);
+    }
+
+    @GetMapping("/agents/_detail/{agentId}/assignments/{assignmentId}/transcript")
+    @ResponseBody
+    public String assignmentTranscriptDetailFragment(@PathVariable String agentId, @PathVariable String assignmentId) {
+        AssignmentTranscript transcript = assignmentService.transcript(agentId, assignmentId);
+        boolean staticTranscript = transcript.assignment().status() != null && transcript.assignment().status().isTerminal();
+        return assignmentTranscriptPanel(agentId, transcript, false, staticTranscript).render();
     }
 
     @DeleteMapping("/agents/_detail/{agentId}/queue/{assignmentId}")
@@ -4996,7 +5011,7 @@ public class OrchestrationController {
             assignmentService.delete(agentId, assignmentId);
             return agentQueueTab(agentId);
         } catch (IllegalArgumentException | IllegalStateException exception) {
-            return renderAssignmentList(agentId, "Queue", assignmentService.assignments(agentId), exception.getMessage());
+            return renderAssignmentList(agentId, "Queue", assignmentService.queueAssignments(agentId), exception.getMessage());
         }
     }
 
@@ -5292,7 +5307,7 @@ public class OrchestrationController {
         String modelOverride = templateString(template, "modelOverride", "");
         String workspaceId = templateString(template, "workspaceId", "");
         String inputJson = toJsonText(templateInput(template));
-        boolean enabled = schedule == null || schedule.enabled();
+        boolean enabled = schedule != null && schedule.enabled();
 
         Form form = Form.create();
         if (edit) {
@@ -5352,7 +5367,7 @@ public class OrchestrationController {
         String modelOverride = templateString(template, "modelOverride", "");
         String workspaceId = templateString(template, "workspaceId", "");
         String inputJson = toJsonText(templateInput(template));
-        boolean enabled = reaction == null || reaction.enabled();
+        boolean enabled = reaction != null && reaction.enabled();
         String filterJson = toJsonText(reaction == null ? Map.of() : reaction.filter());
 
         Form form = Form.create();
@@ -5416,7 +5431,7 @@ public class OrchestrationController {
             assignmentTemplate,
             required(params.get("cronExpression"), "cronExpression is required"),
             params.getOrDefault("timezone", "UTC"),
-            Boolean.parseBoolean(params.getOrDefault("enabled", "true")),
+            Boolean.parseBoolean(params.getOrDefault("enabled", existing == null ? "false" : String.valueOf(existing.enabled()))),
             null,
             existing == null ? null : existing.createdAt(),
             existing == null ? null : existing.updatedAt()
@@ -5445,7 +5460,7 @@ public class OrchestrationController {
             parseJsonMap(params.get("filterJson"), "filterJson"),
             ReactionActionType.ENQUEUE_ASSIGNMENT,
             assignmentTemplate,
-            Boolean.parseBoolean(params.getOrDefault("enabled", "true")),
+            Boolean.parseBoolean(params.getOrDefault("enabled", existing == null ? "false" : String.valueOf(existing.enabled()))),
             existing == null ? null : existing.createdAt(),
             existing == null ? null : existing.updatedAt()
         );
@@ -5763,46 +5778,43 @@ public class OrchestrationController {
     public String agentHistoryTab(@PathVariable String agentId) {
         Div panel = new Div();
         panel.withChild(Header.H2("History"));
+        panel.withChild(historyPurgeForm(agentId, null));
 
-        List<WorkAssignment> assignments = assignmentService.assignments(agentId);
-        if (assignments.isEmpty()) {
-            panel.withChild(new Div().withClass("dashboard-empty")
-                .withInnerText("No assignment history for this agent."));
-            return panel.render();
-        }
-
-        // Show terminal assignments (COMPLETED, FAILED, CANCELLED) in chronological order
-        List<WorkAssignment> history = assignments.stream()
-            .filter(a -> a.status() != null && a.status().isTerminal())
-            .sorted(java.util.Comparator.comparing(
-                a -> a.completedAt() != null ? a.completedAt() : a.createdAt(),
-                java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())))
-            .toList();
-
+        List<WorkAssignment> history = assignmentService.historyAssignments(agentId);
         if (history.isEmpty()) {
             panel.withChild(new Div().withClass("dashboard-empty")
-                .withInnerText("No completed assignments yet. Active items appear in the Queue tab."));
-            return panel.render();
-        }
-
-        Table table = Table.create()
-            .withHeaders("Type", "Status", "Priority", "Job", "Run", "Completed")
+                .withInnerText("No assignment history for this agent."));
+        } else {
+            Table table = Table.create()
+            .withHeaders("Type", "Status", "Priority", "Job", "Run", "Completed", "Actions")
             .withClass("dashboard-table");
-        for (WorkAssignment a : history) {
-            table.addRow(
-                new HtmlTag("span").withInnerText(a.assignmentType() != null ? a.assignmentType().name() : "—"),
-                statusBadgeHtml(a.status() != null ? a.status().name() : "unknown"),
-                new HtmlTag("span").withInnerText(String.valueOf(a.priority())),
-                new HtmlTag("span").withInnerText(a.jobId() != null ? a.jobId() : "—"),
-                new HtmlTag("span").withInnerText(
-                    a.output().containsKey("taskRunId") ? String.valueOf(a.output().get("taskRunId"))
-                    : a.output().containsKey("workflowRunId") ? String.valueOf(a.output().get("workflowRunId"))
-                    : a.output().containsKey("jobId") ? "job:" + a.output().get("jobId")
-                    : "—"),
-                new HtmlTag("span").withInnerText(a.completedAt() != null ? formatSince(a.completedAt()) : "—")
-            );
+            for (WorkAssignment a : history) {
+                Div actions = new Div().withClass("orch-actions");
+                actions.withChild(Button.create("Details")
+                    .withAttribute("hx-get", "/agents/_detail/" + escapeAttr(agentId) + "/assignments/" + escapeAttr(a.id()) + "/diagnostics")
+                    .withAttribute("hx-target", "#assignment-history-details-panel")
+                    .withAttribute("hx-swap", "innerHTML"));
+                actions.withChild(Button.create("Transcript")
+                    .withAttribute("hx-get", "/agents/_detail/" + escapeAttr(agentId) + "/assignments/" + escapeAttr(a.id()) + "/transcript")
+                    .withAttribute("hx-target", "#assignment-history-details-panel")
+                    .withAttribute("hx-swap", "innerHTML"));
+                table.addRow(
+                    new HtmlTag("span").withInnerText(a.assignmentType() != null ? a.assignmentType().name() : "—"),
+                    statusBadgeHtml(a.status() != null ? a.status().name() : "unknown"),
+                    new HtmlTag("span").withInnerText(String.valueOf(a.priority())),
+                    new HtmlTag("span").withInnerText(a.jobId() != null ? a.jobId() : "—"),
+                    new HtmlTag("span").withInnerText(
+                        a.output().containsKey("taskRunId") ? String.valueOf(a.output().get("taskRunId"))
+                        : a.output().containsKey("workflowRunId") ? String.valueOf(a.output().get("workflowRunId"))
+                        : a.output().containsKey("jobId") ? "job:" + a.output().get("jobId")
+                        : "—"),
+                    new HtmlTag("span").withInnerText(a.completedAt() != null ? formatSince(a.completedAt()) : "—"),
+                    actions
+                );
+            }
+            panel.withChild(table);
         }
-        panel.withChild(table);
+        panel.withChild(new Div().withId("assignment-history-details-panel"));
 
         List<io.mindspice.magenta2.ai.chat.model.ChatSession> agentChats = chatService.listAgentSessions(agentId);
         panel.withChild(Header.H2("Agent Chats"));
@@ -5821,6 +5833,42 @@ public class OrchestrationController {
         }
 
         return panel.render();
+    }
+
+    @DeleteMapping("/agents/_detail/{agentId}/history")
+    @ResponseBody
+    public String purgeAgentHistory(@PathVariable String agentId, @RequestParam("olderThanDays") int olderThanDays) {
+        try {
+            assignmentService.purgeHistory(agentId, olderThanDays);
+            return agentHistoryTab(agentId);
+        } catch (Exception exception) {
+            Div panel = new Div();
+            panel.withChild(Header.H2("History"));
+            panel.withChild(historyPurgeForm(agentId, "Error: " + exception.getMessage()));
+            return panel.render();
+        }
+    }
+
+    private Component historyPurgeForm(String agentId, String message) {
+        Div wrapper = new Div().withId("assignment-history-purge-panel").withClass("orch-panel");
+        wrapper.withChild(Header.H3("Purge History"));
+        Form form = Form.create();
+        form.withAttribute("hx-delete", "/agents/_detail/" + escapeAttr(agentId) + "/history");
+        form.withAttribute("hx-target", "#agent-tab-panel");
+        form.withAttribute("hx-swap", "innerHTML");
+        form.withClass("orch-form-inline");
+        form.withChild(TextInput.number("olderThanDays")
+            .withMin("1")
+            .withValue("30"));
+        form.withChild(Button.create("Purge Terminal History")
+            .withClass("orch-danger")
+            .withAttribute("type", "submit")
+            .withAttribute("hx-confirm", "Purge terminal assignment history older than this many days?"));
+        wrapper.withChild(form);
+        if (StringUtils.hasText(message)) {
+            wrapper.withChild(new Div().withClass(message.startsWith("Error:") ? "orch-error" : "orch-status").withInnerText(message));
+        }
+        return wrapper;
     }
 
     @GetMapping("/agents/_detail/{agentId}/submit")
@@ -5881,7 +5929,7 @@ public class OrchestrationController {
                 actions.withChild(new HtmlTag("span").withClass("orch-status-chip disabled").withInnerText("Canceling"));
             }
             actions.withChild(Button.create("Diagnostics")
-                .withAttribute("hx-get", "/agents/_detail/" + agentId + "/queue/" + a.id() + "/diagnostics")
+                .withAttribute("hx-get", "/agents/_detail/" + agentId + "/assignments/" + a.id() + "/diagnostics")
                 .withAttribute("hx-target", "#assignment-diagnostics-panel")
                 .withAttribute("hx-swap", "innerHTML"));
             if (assignmentService.deletable(a.status())) {
@@ -5895,7 +5943,7 @@ public class OrchestrationController {
             if (a.status() == OrchestrationStatus.RUNNING) {
                 actions.withChild(Button.create("Force Interrupt")
                     .withClass("orch-danger")
-                    .withAttribute("hx-get", "/agents/_detail/" + agentId + "/queue/" + a.id() + "/diagnostics")
+                    .withAttribute("hx-get", "/agents/_detail/" + agentId + "/assignments/" + a.id() + "/diagnostics")
                     .withAttribute("hx-target", "#assignment-diagnostics-panel")
                     .withAttribute("hx-swap", "innerHTML"));
             }
@@ -5945,21 +5993,32 @@ public class OrchestrationController {
     }
 
     private Component assignmentTranscriptPanel(String agentId, AssignmentTranscript transcript) {
-        return assignmentTranscriptPanel(agentId, transcript, false);
+        return assignmentTranscriptPanel(agentId, transcript, false, false);
     }
 
     private Component assignmentTranscriptPanel(String agentId, AssignmentTranscript transcript, boolean outOfBandSwap) {
+        return assignmentTranscriptPanel(agentId, transcript, outOfBandSwap, false);
+    }
+
+    private Component assignmentTranscriptPanel(
+        String agentId,
+        AssignmentTranscript transcript,
+        boolean outOfBandSwap,
+        boolean staticTranscript
+    ) {
         WorkAssignment assignment = transcript.assignment();
         Div panel = new Div().withId("agent-live-transcript")
-            .withClass("orch-panel agent-live-transcript")
-            .withAttribute("hx-get", "/agents/_detail/" + escapeAttr(agentId)
-                + "/queue/" + escapeAttr(assignment.id()) + "/transcript")
-            .withAttribute("hx-trigger", "every 2s")
-            .withAttribute("hx-swap", "outerHTML");
+            .withClass("orch-panel agent-live-transcript");
+        if (!staticTranscript) {
+            panel.withAttribute("hx-get", "/agents/_detail/" + escapeAttr(agentId)
+                    + "/assignments/" + escapeAttr(assignment.id()) + "/transcript")
+                .withAttribute("hx-trigger", "every 2s")
+                .withAttribute("hx-swap", "outerHTML");
+        }
         if (outOfBandSwap) {
             panel.withAttribute("hx-swap-oob", "outerHTML");
         }
-        panel.withChild(Header.H3("Live Transcript"));
+        panel.withChild(Header.H3(staticTranscript ? "Transcript" : "Live Transcript"));
         panel.withChild(new Div().withClass("orch-meta")
             .withChild(new HtmlTag("span").withInnerText("Assignment: " + assignment.id()))
             .withChild(new HtmlTag("span").withInnerText("Status: "
@@ -6483,7 +6542,9 @@ public class OrchestrationController {
                 nn(params.getOrDefault("systemChatApprovedTools", current.systemChatApprovedTools())),
                 parseIntOrNull(params.getOrDefault("systemChatContextLimit", String.valueOf(current.systemChatContextLimit()))),
                 "true".equalsIgnoreCase(params.getOrDefault("systemChatEnabled",
-                    current.systemChatEnabled() == null || current.systemChatEnabled() ? "true" : "false"))
+                    current.systemChatEnabled() == null || current.systemChatEnabled() ? "true" : "false")),
+                parseIntOrNull(params.getOrDefault("assignmentHistoryAutoPurgeDays",
+                    String.valueOf(current.assignmentHistoryAutoPurgeDays() == null ? -1 : current.assignmentHistoryAutoPurgeDays())))
             ));
             return settingsForm(updated).render();
         } catch (Exception e) {
@@ -6546,7 +6607,15 @@ public class OrchestrationController {
                     .withValue(nn(s.systemChatPrompt())))))
             .withChild(new Div().withClass("orch-panel")
                 .withChild(Header.H2("Available Models"))
-                .withChild(modelChipList(models))));
+                .withChild(modelChipList(models)))
+            .withChild(new Div().withClass("orch-panel")
+                .withChild(Header.H2("Assignment History"))
+                .withChild(new Div().withClass("orch-form-grid")
+                    .withChild(label("Auto Purge Days", TextInput.number("assignmentHistoryAutoPurgeDays")
+                        .withId("settings-assignment-history-auto-purge-days")
+                        .withMin("-1")
+                        .withValue(String.valueOf(s.assignmentHistoryAutoPurgeDays() == null ? -1 : s.assignmentHistoryAutoPurgeDays())))))
+                .withChild(new Div().withClass("orch-status").withInnerText("-1 disables automatic purge; positive values purge terminal assignment rows older than that many days."))));
 
         form.withChild(Button.create("Save").withClass("orch-primary")
             .withAttribute("type", "submit"));

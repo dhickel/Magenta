@@ -68,7 +68,7 @@ public class AgentWorkspaceStatusService {
 
         int activeRunCount;
         try {
-            activeRunCount = assignmentService.assignments(agentId).size();
+            activeRunCount = assignmentService.queueAssignments(agentId).size();
         } catch (Exception e) {
             log.debug("Failed to query assignments for agent {}: {}", agentId, e.getMessage());
             activeRunCount = 0;

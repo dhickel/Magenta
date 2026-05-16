@@ -7,8 +7,8 @@ app:
 
 magenta:
   features:
-    schedules-enabled: false
-    reactions-enabled: false
+    schedules-enabled: true
+    reactions-enabled: true
   plan:
     execution-stream-timeout-seconds: 0
   ai:

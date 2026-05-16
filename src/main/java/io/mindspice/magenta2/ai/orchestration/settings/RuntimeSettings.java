@@ -12,7 +12,8 @@ public record RuntimeSettings(
     String systemChatPrompt,
     String systemChatApprovedTools,
     Integer systemChatContextLimit,
-    Boolean systemChatEnabled
+    Boolean systemChatEnabled,
+    Integer assignmentHistoryAutoPurgeDays
 ) {
     public RuntimeSettings(
         String defaultAgentId,
@@ -24,6 +25,6 @@ public record RuntimeSettings(
         Integer contextBufferPercent
     ) {
         this(defaultAgentId, defaultAgentName, defaultModel, planningModel, summaryModel, compactionModel,
-            contextBufferPercent, null, null, null, null, true);
+            contextBufferPercent, null, null, null, null, true, -1);
     }
 }

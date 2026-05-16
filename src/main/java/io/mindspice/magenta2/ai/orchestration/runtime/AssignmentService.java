@@ -19,6 +19,7 @@ import io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettingsService;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowRun;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -118,11 +119,24 @@ public class AssignmentService {
         return repository.findAssignmentsForAgent(agentId);
     }
 
+    public java.util.List<WorkAssignment> queueAssignments(String agentId) {
+        agentProfileService.get(agentId);
+        return repository.findQueueAssignmentsForAgent(agentId);
+    }
+
+    public java.util.List<WorkAssignment> historyAssignments(String agentId) {
+        agentProfileService.get(agentId);
+        return repository.findTerminalAssignmentsForAgent(agentId);
+    }
+
     public void delete(String agentId, String assignmentId) {
         agentProfileService.get(agentId);
         WorkAssignment assignment = get(assignmentId);
         if (!agentId.equals(assignment.agentId())) {
             throw new IllegalArgumentException("Assignment does not belong to agent: " + assignmentId);
+        }
+        if (assignment.status() != null && assignment.status().isTerminal()) {
+            throw new IllegalStateException("Terminal assignments are retained in History; use history purge to remove them: " + assignmentId);
         }
         if (!deletable(assignment.status())) {
             throw new IllegalStateException("Running assignments cannot be deleted: " + assignmentId);
@@ -130,6 +144,23 @@ public class AssignmentService {
         if (!repository.deleteAssignment(agentId, assignmentId)) {
             throw new IllegalStateException("Assignment not found: " + assignmentId);
         }
+    }
+
+    public int purgeHistory(String agentId, int olderThanDays) {
+        agentProfileService.get(agentId);
+        if (olderThanDays < 1) {
+            throw new IllegalArgumentException("olderThanDays must be at least 1");
+        }
+        return repository.purgeTerminalAssignmentHistory(agentId, Instant.now().minus(Duration.ofDays(olderThanDays)));
+    }
+
+    @Scheduled(fixedDelayString = "${magenta.orchestration.assignment-history-purge-delay-ms:3600000}")
+    public void autoPurgeHistory() {
+        RuntimeSettingsSnapshot settings = RuntimeSettingsSnapshot.from(runtimeSettingsService.get());
+        if (settings.assignmentHistoryAutoPurgeDays() == -1) {
+            return;
+        }
+        repository.purgeTerminalAssignmentHistory(Instant.now().minus(Duration.ofDays(settings.assignmentHistoryAutoPurgeDays())));
     }
 
     public WorkAssignment cancel(String assignmentId) {
@@ -367,7 +398,17 @@ public class AssignmentService {
     }
 
     public boolean deletable(OrchestrationStatus status) {
-        return status != OrchestrationStatus.RUNNING && status != OrchestrationStatus.CANCEL_REQUESTED;
+        return status != null
+            && !status.isTerminal()
+            && status != OrchestrationStatus.RUNNING
+            && status != OrchestrationStatus.CANCEL_REQUESTED;
+    }
+
+    private record RuntimeSettingsSnapshot(int assignmentHistoryAutoPurgeDays) {
+        private static RuntimeSettingsSnapshot from(io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettings settings) {
+            Integer days = settings.assignmentHistoryAutoPurgeDays();
+            return new RuntimeSettingsSnapshot(days == null ? -1 : days);
+        }
     }
 
     private List<String> conversationIds(WorkAssignment assignment) {
