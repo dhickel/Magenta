@@ -535,6 +535,9 @@ class OrchestrationControllerTest {
         assertThat(html).contains("data-agent-chat-panel");
         assertThat(html).contains("data-agent-id=\"agent-1\"");
         assertThat(html).contains("agent-chat-accordion");
+        assertThat(html).contains("id=\"agent-chat-panel\"");
+        assertThat(html).contains("id=\"agent-chat-form\"");
+        assertThat(html).contains("id=\"agent-chat-input\"");
         assertThat(html).contains("Chat with Agent");
         assertThat(html).contains("/css/orchestration.css?v=7");
         assertThat(html).contains("/js/orchestration/agent-chat.js?v=2");
@@ -585,10 +588,10 @@ class OrchestrationControllerTest {
     }
 
     @Test
-    void agentChatScriptNotOnNonAgentPages() {
-        // Verify agent-chat.js is NOT loaded on the agents list page
+    void agentChatScriptLoadsWhereAgentDetailCanRender() {
+        // The agents browser can HTMX-swap in a detail fragment that contains the chat host.
         String listHtml = controller().agents();
-        assertThat(listHtml).doesNotContain("agent-chat.js");
+        assertThat(listHtml).contains("agent-chat.js");
 
         // Verify agent-chat.js is NOT on dashboard
         String dashboardHtml = controller().dashboard(null, null);

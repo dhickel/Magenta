@@ -6,39 +6,33 @@
 import { consumeSse, renderError } from "./api.js";
 import { $, escapeHtml } from "./dom.js";
 
-let initialized = false;
 let activeConversationId = null;
 
 export function initAgentChat(root = document) {
-    if (initialized) {
-        const existing = document.getElementById("agent-chat-panel");
-        if (existing) return;
-        // Panel was removed (e.g. HTMX tab swap); allow reinit.
-        initialized = false;
-    }
-
     const host = $("[data-agent-chat-panel]", root);
-    if (!host) return;
+    if (!host || host.dataset.agentChatInitialized === "true") return;
 
-    initialized = true;
     const accordion = host.closest(".agent-chat-accordion");
-    host.innerHTML = `
-        <section class="agent-chat-panel" id="agent-chat-panel">
-            ${accordion ? "" : `
-            <div class="agent-chat-header">
-                <strong>Agent Chat</strong>
-                <div>
-                    <button type="button" data-agent-chat-toggle>Collapse</button>
-                </div>
-            </div>`}
-            <div class="agent-chat-body" id="agent-chat-messages"></div>
-            <form class="agent-chat-form" id="agent-chat-form">
-                <input id="agent-chat-input" placeholder="Ask this agent">
-                <button type="submit">Send</button>
-            </form>
-        </section>`;
+    if (!$("#agent-chat-panel", host)) {
+        host.innerHTML = `
+            <section class="agent-chat-panel" id="agent-chat-panel">
+                ${accordion ? "" : `
+                <div class="agent-chat-header">
+                    <strong>Agent Chat</strong>
+                    <div>
+                        <button type="button" data-agent-chat-toggle>Collapse</button>
+                    </div>
+                </div>`}
+                <div class="agent-chat-body" id="agent-chat-messages"></div>
+                <form class="agent-chat-form" id="agent-chat-form">
+                    <input id="agent-chat-input" placeholder="Ask this agent">
+                    <button type="submit">Send</button>
+                </form>
+            </section>`;
+    }
+    host.dataset.agentChatInitialized = "true";
 
-    const panel = $("#agent-chat-panel");
+    const panel = $("#agent-chat-panel", host);
     const toggle = $("[data-agent-chat-toggle]", panel);
     const messages = $("#agent-chat-messages", panel);
     const form = $("#agent-chat-form", panel);

@@ -4604,7 +4604,8 @@ public class OrchestrationController {
                 .withChild(new Div().withClass("browser-detail")
                     .withChild(new Div().withId("agent-detail-container")
                         .withChild(agentDetailEmptyState()))))
-            .withChild(moduleScript(AGENTS_JS));
+            .withChild(moduleScript(AGENTS_JS))
+            .withChild(moduleScript(AGENT_CHAT_JS));
         return renderPage(body, "/agents");
     }
 
@@ -4768,10 +4769,7 @@ public class OrchestrationController {
         return new Div()
             .withChild(new HtmlTag("details").withClass("agent-chat-accordion")
                 .withChild(new HtmlTag("summary").withInnerText("Chat with Agent"))
-                .withChild(new Div()
-                    .withAttribute("data-agent-chat-panel", "")
-                    .withAttribute("data-agent-id", agent.id())
-                    .withAttribute("data-page-context", "agent detail")))
+                .withChild(agentChatPanel(agent.id())))
             .withChild(new Div().withClass("entity-detail-layout")
                 .withChild(new Div().withClass("entity-detail-main")
                     .withChild(tabNav(agent.id(), "dashboard", "profile", "queue", "inbox", "jobs", "schedules", "reactions", "workspace", "outputs", "exec", "history", "submit"))
@@ -4803,6 +4801,18 @@ public class OrchestrationController {
         return new Div().withClass("agent-event-log-item")
             .withChild(new HtmlTag("span").withClass("agent-event-log-label").withInnerText(label))
             .withChild(new HtmlTag("span").withClass("agent-event-log-message").withInnerText(message));
+    }
+
+    private Component agentChatPanel(String agentId) {
+        return new Div()
+            .withAttribute("data-agent-chat-panel", "")
+            .withAttribute("data-agent-id", agentId)
+            .withAttribute("data-page-context", "agent detail")
+            .withChild(new HtmlTag("section").withClass("agent-chat-panel").withId("agent-chat-panel")
+                .withChild(new Div().withClass("agent-chat-body").withId("agent-chat-messages"))
+                .withChild(Form.create().withClass("agent-chat-form").withId("agent-chat-form")
+                    .withChild(TextInput.create("").withId("agent-chat-input").withPlaceholder("Ask this agent"))
+                    .withChild(Button.create("Send").withAttribute("type", "submit"))));
     }
 
     // ── Agent detail tab partials ──

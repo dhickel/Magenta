@@ -74,7 +74,9 @@ const executablePath = process.env.MAGENTA_VALIDATION_CHROMIUM
     })).body;
     assert.equal(updated.systemPrompt, "updated");
 
-    await page.goto(base + `/agents/${createdAgent.id}`, { waitUntil: "networkidle" });
+    await page.goto(base + "/agents", { waitUntil: "networkidle" });
+    await page.locator(".agent-card-name", { hasText: createdAgent.name }).click();
+    await page.waitForSelector(".agent-chat-accordion");
     for (const selector of ["#agent-detail-page", "#agent-profile-form", "#agent-assignment-form", ".agent-chat-accordion"]) {
         assert.equal(await page.locator(selector).count(), 1, `missing ${selector}`);
     }
