@@ -245,6 +245,15 @@ public class OrchestrationRuntimeRepository {
         );
     }
 
+    public boolean deleteAssignment(String agentId, String assignmentId) {
+        int deleted = jdbcTemplate.update(
+            "delete from work_assignments where id = ? and agent_id = ?",
+            assignmentId,
+            agentId
+        );
+        return deleted == 1;
+    }
+
     public List<WorkAssignment> findAssignmentsForJob(String jobId) {
         return jdbcTemplate.query(
             "select * from work_assignments where job_id = ? order by created_at desc",

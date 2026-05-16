@@ -112,6 +112,11 @@ public class WorkflowService {
         return workflowRunner.runSynchronously(def, modelOverride);
     }
 
+    public WorkflowRun runSynchronously(String workflowId, String modelOverride, WorkflowExecutionObserver observer) {
+        WorkflowDefinition def = getDefinition(workflowId);
+        return workflowRunner.runSynchronously(def, modelOverride, observer);
+    }
+
     private WorkflowDefinition normalizeDefinition(WorkflowDefinition definition) {
         String id = StringUtils.hasText(definition.id()) ? definition.id() : UUID.randomUUID().toString();
         return new WorkflowDefinition(

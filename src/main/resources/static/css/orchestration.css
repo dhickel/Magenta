@@ -205,6 +205,111 @@
     color: #4c5a6b;
 }
 
+.agent-live-transcript {
+    margin-top: 1rem;
+}
+
+.agent-live-transcript-messages {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    margin-top: 0.75rem;
+}
+
+.chat-message {
+    border: 1px solid #d9e0ea;
+    border-radius: 8px;
+    background: #ffffff;
+    padding: 0.7rem 0.85rem;
+}
+
+.chat-message-assistant {
+    background: #fbfcfe;
+}
+
+.chat-message-tool {
+    background: #f8fafc;
+}
+
+.chat-message-role {
+    margin-bottom: 0.35rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #5c6675;
+}
+
+.chat-message-body p {
+    margin: 0;
+    white-space: pre-wrap;
+}
+
+.chat-thinking,
+.chat-tool {
+    margin-top: 0.6rem;
+    border: 1px solid #d7e0ea;
+    border-radius: 8px;
+    background: #ffffff;
+    padding: 0.55rem 0.7rem;
+}
+
+.chat-thinking-toggle,
+.chat-tool-toggle {
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #42526a;
+}
+
+.chat-thinking-hide {
+    display: none;
+}
+
+.chat-thinking[open] .chat-thinking-show {
+    display: none;
+}
+
+.chat-thinking[open] .chat-thinking-hide {
+    display: inline;
+}
+
+.chat-thinking-body,
+.chat-tool-body {
+    color: #42526a;
+    font-size: 0.9rem;
+    line-height: 1.45;
+    margin-top: 0.5rem;
+}
+
+.chat-thinking-body pre,
+.chat-tool-section pre {
+    margin: 0;
+    white-space: pre-wrap;
+    font-size: 0.82rem;
+    background: #f0f2f5;
+    padding: 0.4rem 0.55rem;
+    border-radius: 5px;
+    border: 1px solid #dde2e9;
+}
+
+.chat-tool-name {
+    font-weight: 700;
+    margin-right: 0.5rem;
+}
+
+.chat-tool-status,
+.chat-tool-summary {
+    color: #64748b;
+    margin-right: 0.5rem;
+}
+
+.chat-tool-meta,
+.chat-tool-label {
+    color: #64748b;
+    font-size: 0.8rem;
+    margin: 0.35rem 0 0.15rem;
+}
+
 /* Agent chat accordion — full-width collapsible card styled like chat window */
 .agent-chat-accordion {
     width: 100%;

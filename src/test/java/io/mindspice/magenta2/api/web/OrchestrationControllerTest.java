@@ -15,6 +15,7 @@ import io.mindspice.magenta2.ai.chat.plan.PlanKind;
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
 import io.mindspice.magenta2.ai.chat.plan.PlanStatus;
 import io.mindspice.magenta2.ai.chat.plan.WorkTypeProfile;
+import io.mindspice.magenta2.ai.chat.repository.AuditRepository;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
@@ -22,6 +23,7 @@ import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileStatus;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentRequest;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService.AssignmentDiagnostics;
+import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService.AssignmentTranscript;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService.LinkedRunStatus;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentType;
 import io.mindspice.magenta2.ai.orchestration.runtime.AgentEventReaction;
@@ -1326,6 +1328,54 @@ class OrchestrationControllerTest {
     }
 
     @Test
+    void agentQueueShowsDeleteOnlyForEligibleRowsAndTranscriptPanel() {
+        StubAssignmentService stubAsgn = new StubAssignmentService();
+        WorkAssignment running = assignment("asgn-running", OrchestrationStatus.RUNNING, Map.of("conversationId", "conv-running"));
+        WorkAssignment queued = assignment("asgn-queued", OrchestrationStatus.QUEUED, Map.of("conversationId", "conv-queued"));
+        stubAsgn.setAssignments(List.of(running, queued));
+
+        String html = controllerWithAssignmentService(stubAsgn).agentQueueTab("agent-1");
+
+        assertThat(html).contains("agent-live-transcript");
+        assertThat(html).contains("/agents/_detail/agent-1/queue/asgn-running/transcript");
+        assertThat(html).contains("/agents/_detail/agent-1/queue/asgn-queued");
+        assertThat(html).doesNotContain("hx-delete=\"/agents/_detail/agent-1/queue/asgn-running\"");
+    }
+
+    @Test
+    void htmxAssignmentDeleteRefreshesQueue() {
+        StubAssignmentService stubAsgn = new StubAssignmentService();
+        stubAsgn.setAssignments(List.of(assignment("asgn-delete", OrchestrationStatus.QUEUED, Map.of())));
+
+        String html = controllerWithAssignmentService(stubAsgn).deleteAgentAssignment("agent-1", "asgn-delete");
+
+        assertThat(html).contains("No assignments.");
+        assertThat(html).doesNotContain("asgn-delete");
+    }
+
+    @Test
+    void assignmentTranscriptRendersChatStyleAuditMarkup() {
+        StubAssignmentService stubAsgn = new StubAssignmentService();
+        WorkAssignment running = assignment("asgn-transcript", OrchestrationStatus.RUNNING, Map.of("conversationId", "conversation-1"));
+        stubAsgn.setAssignments(List.of(running));
+        stubAsgn.setTranscriptEvents(List.of(
+            audit("conversation-1", 0, "assistant_msg", "Visible answer", "{\"magenta.thinking\":\"hidden notes\"}", null, null, null),
+            audit("conversation-1", 1, "tool_exec", null, null, "shell", "ok", "tool result"),
+            audit("conversation-1", 2, "error", "boom", null, null, null, null)
+        ));
+
+        String html = controllerWithAssignmentService(stubAsgn)
+            .assignmentTranscriptFragment("agent-1", "asgn-transcript");
+
+        assertThat(html).contains("chat-message chat-message-assistant");
+        assertThat(html).contains("chat-thinking");
+        assertThat(html).contains("chat-message chat-message-tool");
+        assertThat(html).contains("chat-tool");
+        assertThat(html).contains("boom");
+        assertThat(html).doesNotContain("textarea");
+    }
+
+    @Test
     void assignmentDiagnosticsPanelShowsAuditAndForceInterruptForm() {
         StubAssignmentService stubAsgn = new StubAssignmentService();
         WorkAssignment running = new WorkAssignment(
@@ -1365,6 +1415,37 @@ class OrchestrationControllerTest {
         // The model dropdown should contain the alias key from availableModelOptions()
         assertThat(html).contains("local-qwen");
         assertThat(html).contains("local-qwen (qwen3.6:35b)");
+    }
+
+    private static WorkAssignment assignment(String id, OrchestrationStatus status, Map<String, Object> checkpoint) {
+        return new WorkAssignment(
+            id, "agent-1", null, null, AssignmentType.TASK_RUN, 1, status,
+            null, null, 0, checkpoint, Map.of("taskId", "task-1"), Map.of(), Map.of(),
+            null, status == OrchestrationStatus.RUNNING ? "owner-1" : null,
+            status == OrchestrationStatus.RUNNING ? Instant.now().plusSeconds(300) : null,
+            Instant.now().minusSeconds(60), Instant.now(), status == OrchestrationStatus.RUNNING ? Instant.now() : null,
+            null, Instant.now().minusSeconds(30), Instant.now().minusSeconds(10)
+        );
+    }
+
+    private static AuditRepository.AuditEvent audit(
+        String conversationId,
+        int sequence,
+        String eventType,
+        String messageText,
+        String metadataJson,
+        String toolName,
+        String toolStatus,
+        String resultSummary
+    ) {
+        return new AuditRepository.AuditEvent(
+            sequence, eventType, messageText, metadataJson, "model", conversationId,
+            "call-1", toolName, "{}", "args", "call",
+            "result", resultSummary, resultSummary, toolStatus,
+            false, false, null, null,
+            10, 100, 80, 12.5, 3,
+            "error".equals(eventType) ? "runtime" : null, null, Instant.now().toString()
+        );
     }
 
     @Test
@@ -1643,10 +1724,15 @@ class OrchestrationControllerTest {
 
     private static class StubAssignmentService extends AssignmentService {
         private List<WorkAssignment> storedAssignments = List.of();
+        private List<AuditRepository.AuditEvent> transcriptEvents = List.of();
 
         StubAssignmentService() { super(null, null, null, null); }
 
         void setAssignments(List<WorkAssignment> assignments) { this.storedAssignments = assignments; }
+
+        void setTranscriptEvents(List<AuditRepository.AuditEvent> events) {
+            this.transcriptEvents = events;
+        }
 
         @Override public WorkAssignment create(AssignmentRequest request) {
             return new WorkAssignment("asgn-1", request.agentId(), null, null,
@@ -1665,6 +1751,30 @@ class OrchestrationControllerTest {
                 .filter(assignment -> assignment.id().equals(assignmentId))
                 .findFirst()
                 .orElseThrow();
+        }
+
+        @Override public boolean deletable(OrchestrationStatus status) {
+            return status != OrchestrationStatus.RUNNING && status != OrchestrationStatus.CANCEL_REQUESTED;
+        }
+
+        @Override public void delete(String agentId, String assignmentId) {
+            WorkAssignment assignment = get(assignmentId);
+            if (!agentId.equals(assignment.agentId())) {
+                throw new IllegalArgumentException("wrong agent");
+            }
+            if (!deletable(assignment.status())) {
+                throw new IllegalStateException("cannot delete");
+            }
+            storedAssignments = storedAssignments.stream()
+                .filter(existing -> !existing.id().equals(assignmentId))
+                .toList();
+        }
+
+        @Override public AssignmentTranscript transcript(String agentId, String assignmentId) {
+            WorkAssignment assignment = get(assignmentId);
+            Object conversationId = assignment.checkpoint().get("conversationId");
+            List<String> ids = conversationId == null ? List.of() : List.of(conversationId.toString());
+            return new AssignmentTranscript(assignment, ids, transcriptEvents);
         }
 
         @Override public AssignmentDiagnostics diagnostics(String assignmentId) {

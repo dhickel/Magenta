@@ -5,6 +5,7 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.StringJoiner;
 
 import io.mindspice.magenta2.ai.chat.model.ContextUsage;
 import io.mindspice.magenta2.ai.chat.tool.ToolTranscriptService.ToolTranscriptEntry;
@@ -219,6 +220,7 @@ public class AuditRepository {
         return jdbcTemplate.query(
             """
                 select sequence, event_type, message_text, message_metadata_json, model,
+                       conversation_id,
                        tool_call_id, tool_name, arguments_json, arguments_summary, call_preview,
                        result_text, result_summary, result_preview, tool_status,
                        result_truncated, result_large,
@@ -235,6 +237,35 @@ public class AuditRepository {
         );
     }
 
+    public List<AuditEvent> findByConversationIds(List<String> conversationIds) {
+        List<String> ids = conversationIds == null
+            ? List.of()
+            : conversationIds.stream()
+                .filter(id -> id != null && !id.isBlank())
+                .distinct()
+                .toList();
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        StringJoiner placeholders = new StringJoiner(", ");
+        ids.forEach(ignored -> placeholders.add("?"));
+        String sql = """
+            select sequence, event_type, message_text, message_metadata_json, model,
+                   conversation_id,
+                   tool_call_id, tool_name, arguments_json, arguments_summary, call_preview,
+                   result_text, result_summary, result_preview, tool_status,
+                   result_truncated, result_large,
+                   compaction_method, compaction_summary,
+                   used_tokens, max_tokens, trigger_tokens, percent_used, stored_message_count,
+                   error_type, stack_trace,
+                   recorded_at
+            from audit_event
+            where conversation_id in (%s)
+            order by recorded_at asc, conversation_id asc, sequence asc
+            """.formatted(placeholders);
+        return jdbcTemplate.query(sql, (rs, rowNum) -> mapEvent(rs), ids.toArray());
+    }
+
     private AuditEvent mapEvent(ResultSet rs) throws SQLException {
         return new AuditEvent(
             rs.getInt("sequence"),
@@ -242,6 +273,7 @@ public class AuditRepository {
             rs.getString("message_text"),
             rs.getString("message_metadata_json"),
             rs.getString("model"),
+            rs.getString("conversation_id"),
             rs.getString("tool_call_id"),
             rs.getString("tool_name"),
             rs.getString("arguments_json"),
@@ -272,6 +304,7 @@ public class AuditRepository {
         String messageText,
         String messageMetadataJson,
         String model,
+        String conversationId,
         String toolCallId,
         String toolName,
         String argumentsJson,

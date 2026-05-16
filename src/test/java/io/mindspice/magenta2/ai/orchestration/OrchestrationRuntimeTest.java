@@ -34,6 +34,7 @@ import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationEvent;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationJob;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationJobItem;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationRuntimeRepository;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationRunnerService;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationStatus;
 import io.mindspice.magenta2.ai.orchestration.runtime.Project;
 import io.mindspice.magenta2.ai.orchestration.runtime.ProjectAgentMembership;
@@ -44,6 +45,12 @@ import io.mindspice.magenta2.ai.orchestration.runtime.ReactionActionType;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
 import io.mindspice.magenta2.ai.orchestration.runtime.WorkAssignment;
+import io.mindspice.magenta2.ai.chat.service.ChatService;
+import io.mindspice.magenta2.ai.chat.service.TaskExecutionResult;
+import io.mindspice.magenta2.ai.chat.task.TaskRun;
+import io.mindspice.magenta2.ai.chat.task.TaskRunStatus;
+import io.mindspice.magenta2.ai.execution.MagentaWorkExecutor;
+import io.mindspice.magenta2.ai.execution.MagentaWorkKind;
 import io.mindspice.magenta2.ai.orchestration.workspaces.Workspace;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLease;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLink;
@@ -487,6 +494,137 @@ class OrchestrationRuntimeTest {
         assertThat(result.leaseOwner()).isNull();
         assertThat(result.leaseExpiresAt()).isNull();
         assertThat(result.errorText()).contains("blocked model call");
+    }
+
+    @Test
+    void assignmentDeleteRemovesNonRunningAssignment() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, objectMapper);
+        AgentProfileService agentService = agentService(jdbcTemplate, aiConfig());
+        AgentProfile agent = agentService.create(new AgentProfile(
+            "agent-1", "Agent 1", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of(), true, null, null
+        ));
+        AssignmentService service = new AssignmentService(repository, agentService, null, null);
+
+        WorkAssignment queued = repository.saveAssignment(new WorkAssignment(
+            "assignment-delete", agent.id(), null, null, AssignmentType.REPORT, 1,
+            OrchestrationStatus.QUEUED, null, null, 0,
+            Map.of(), Map.of(), Map.of(), Map.of(), null, null, null, null, null, null, null
+        ));
+
+        service.delete(agent.id(), queued.id());
+
+        assertThat(repository.findAssignment(queued.id())).isEmpty();
+    }
+
+    @Test
+    void assignmentDeleteRejectsRunningAndCancelRequested() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, objectMapper);
+        AgentProfileService agentService = agentService(jdbcTemplate, aiConfig());
+        AgentProfile agent = agentService.create(new AgentProfile(
+            "agent-1", "Agent 1", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of(), true, null, null
+        ));
+        AssignmentService service = new AssignmentService(repository, agentService, null, null);
+
+        repository.saveAssignment(new WorkAssignment(
+            "assignment-running", agent.id(), null, null, AssignmentType.REPORT, 1,
+            OrchestrationStatus.RUNNING, null, null, 0,
+            Map.of(), Map.of(), Map.of(), Map.of(), null, "owner", Instant.now().plusSeconds(60),
+            null, null, Instant.now(), null
+        ));
+        repository.saveAssignment(new WorkAssignment(
+            "assignment-cancel", agent.id(), null, null, AssignmentType.REPORT, 1,
+            OrchestrationStatus.CANCEL_REQUESTED, null, null, 0,
+            Map.of(), Map.of(), Map.of(), Map.of(), null, null, null, null, null, null, null
+        ));
+
+        assertThatThrownBy(() -> service.delete(agent.id(), "assignment-running"))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("cannot be deleted");
+        assertThatThrownBy(() -> service.delete(agent.id(), "assignment-cancel"))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("cannot be deleted");
+    }
+
+    @Test
+    void assignmentDeleteRejectsWrongAgent() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, objectMapper);
+        AgentProfileService agentService = agentService(jdbcTemplate, aiConfig());
+        agentService.create(new AgentProfile("agent-1", "Agent 1", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of(), true, null, null));
+        agentService.create(new AgentProfile("agent-2", "Agent 2", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of(), true, null, null));
+        AssignmentService service = new AssignmentService(repository, agentService, null, null);
+
+        repository.saveAssignment(new WorkAssignment(
+            "assignment-wrong-agent", "agent-1", null, null, AssignmentType.REPORT, 1,
+            OrchestrationStatus.COMPLETED, null, null, 0,
+            Map.of(), Map.of(), Map.of(), Map.of(), null, null, null, null, null, null, Instant.now()
+        ));
+
+        assertThatThrownBy(() -> service.delete("agent-2", "assignment-wrong-agent"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("does not belong");
+        assertThat(repository.findAssignment("assignment-wrong-agent")).isPresent();
+    }
+
+    @Test
+    void taskAssignmentCheckpointsConversationBeforeModelExecution() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, objectMapper);
+        AiConfig aiConfig = aiConfig();
+        AgentProfileService agentService = agentService(jdbcTemplate, aiConfig);
+        agentService.create(new AgentProfile("agent-1", "Agent 1", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of(), true, null, null));
+        RuntimeSettingsService settingsService = new RuntimeSettingsService(
+            new RuntimeSettingsRepository(jdbcTemplate), aiConfig, agentService);
+        AssignmentService assignmentService = new AssignmentService(repository, agentService, settingsService, null);
+        ChatService chatService = new ChatService(null, null, null, null, null) {
+            @Override
+            public TaskExecutionResult executeTaskBlocking(
+                String taskId,
+                Map<String, Object> inputValues,
+                String conversationId,
+                String modelOverride
+            ) {
+                WorkAssignment inFlight = repository.findAssignment("assignment-task").orElseThrow();
+                assertThat(inFlight.checkpoint()).containsEntry("activeConversationId", conversationId);
+                assertThat(inFlight.checkpoint()).containsEntry("conversationId", conversationId);
+                assertThat((List<?>) inFlight.checkpoint().get("conversationIds"))
+                    .anySatisfy(value -> assertThat(value).isEqualTo(conversationId));
+                TaskRun run = new TaskRun(
+                    "task-run-1", taskId, TaskRunStatus.COMPLETED, inputValues, Map.of("done", true),
+                    null, List.of("evidence"), List.of(), "done", null,
+                    Instant.now(), Instant.now(), Instant.now(), Instant.now()
+                );
+                return new TaskExecutionResult(conversationId, run, null);
+            }
+        };
+        OrchestrationRunnerService runner = new OrchestrationRunnerService(
+            repository, assignmentService, null, null, null, chatService, null, null,
+            new MagentaWorkExecutor(Map.of(
+                MagentaWorkKind.BACKGROUND_JOB, new MagentaWorkExecutor.LaneSettings("test-bg-", 1, 10)
+            ))
+        );
+        repository.saveAssignment(new WorkAssignment(
+            "assignment-task", "agent-1", null, null, AssignmentType.TASK_RUN, 1,
+            OrchestrationStatus.QUEUED, null, null, 0,
+            Map.of(), Map.of("taskId", "task-1", "inputValues", Map.of("prompt", "go")),
+            Map.of(), Map.of(), null, null, null, null, null, null, null
+        ));
+
+        WorkAssignment result = runner.runAssignment("assignment-task");
+
+        assertThat(result.status()).isEqualTo(OrchestrationStatus.COMPLETED);
+        assertThat(result.output()).containsKey("conversationIds");
     }
 
     private JdbcTemplate jdbcTemplate() {

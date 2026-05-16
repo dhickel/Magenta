@@ -142,6 +142,20 @@ public class AgentOrchestrationController {
         return assignmentService.resume(assignmentId);
     }
 
+    @DeleteMapping("/assignments/{assignmentId}")
+    public void deleteAssignment(@PathVariable String agentId, @PathVariable String assignmentId) {
+        try {
+            assignmentService.delete(agentId, assignmentId);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage());
+        } catch (IllegalStateException exception) {
+            if (exception.getMessage() != null && exception.getMessage().contains("not found")) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage());
+            }
+            throw new ResponseStatusException(HttpStatus.CONFLICT, exception.getMessage());
+        }
+    }
+
     @GetMapping("/schedules")
     public List<AgentSchedule> schedules(@PathVariable String agentId) {
         if (!schedulesEnabled) {

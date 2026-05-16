@@ -34,6 +34,7 @@ import io.mindspice.magenta2.ai.orchestration.runtime.AgentSchedule;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentRequest;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService.AssignmentDiagnostics;
+import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService.AssignmentTranscript;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentType;
 import io.mindspice.magenta2.ai.orchestration.runtime.EventReactionService;
 import io.mindspice.magenta2.ai.orchestration.runtime.EventType;
@@ -4977,6 +4978,23 @@ public class OrchestrationController {
         return assignmentDiagnosticsPanel(agentId, assignmentService.diagnostics(assignmentId)).render();
     }
 
+    @GetMapping("/agents/_detail/{agentId}/queue/{assignmentId}/transcript")
+    @ResponseBody
+    public String assignmentTranscriptFragment(@PathVariable String agentId, @PathVariable String assignmentId) {
+        return assignmentTranscriptPanel(agentId, assignmentService.transcript(agentId, assignmentId)).render();
+    }
+
+    @DeleteMapping("/agents/_detail/{agentId}/queue/{assignmentId}")
+    @ResponseBody
+    public String deleteAgentAssignment(@PathVariable String agentId, @PathVariable String assignmentId) {
+        try {
+            assignmentService.delete(agentId, assignmentId);
+            return agentQueueTab(agentId);
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            return renderAssignmentList(agentId, "Queue", assignmentService.assignments(agentId), exception.getMessage());
+        }
+    }
+
     @PostMapping("/agents/_detail/{agentId}/queue/{assignmentId}/force-interrupt")
     @ResponseBody
     public String forceInterruptAgentAssignment(
@@ -5814,11 +5832,19 @@ public class OrchestrationController {
     }
 
     private String renderAssignmentList(String agentId, String title, List<WorkAssignment> assignments) {
+        return renderAssignmentList(agentId, title, assignments, null);
+    }
+
+    private String renderAssignmentList(String agentId, String title, List<WorkAssignment> assignments, String errorMessage) {
         Div panel = new Div();
         panel.withChild(Header.H2(title));
+        if (StringUtils.hasText(errorMessage)) {
+            panel.withChild(new Div().withClass("orch-error").withInnerText(errorMessage));
+        }
 
         if (assignments.isEmpty()) {
             panel.withChild(new Div().withClass("dashboard-empty").withInnerText("No assignments."));
+            panel.withChild(emptyTranscriptPanel());
             return panel.render();
         }
 
@@ -5849,6 +5875,18 @@ public class OrchestrationController {
                 .withAttribute("hx-get", "/agents/_detail/" + agentId + "/queue/" + a.id() + "/diagnostics")
                 .withAttribute("hx-target", "#assignment-diagnostics-panel")
                 .withAttribute("hx-swap", "innerHTML"));
+            actions.withChild(Button.create("Watch")
+                .withAttribute("hx-get", "/agents/_detail/" + agentId + "/queue/" + a.id() + "/transcript")
+                .withAttribute("hx-target", "#agent-live-transcript")
+                .withAttribute("hx-swap", "outerHTML"));
+            if (assignmentService.deletable(a.status())) {
+                actions.withChild(Button.create("Delete")
+                    .withClass("orch-danger")
+                    .withAttribute("hx-delete", "/agents/_detail/" + agentId + "/queue/" + a.id())
+                    .withAttribute("hx-confirm", "Delete this assignment?")
+                    .withAttribute("hx-target", "#agent-tab-panel")
+                    .withAttribute("hx-swap", "innerHTML"));
+            }
             if (a.status() == OrchestrationStatus.RUNNING) {
                 actions.withChild(Button.create("Force Interrupt")
                     .withClass("orch-danger")
@@ -5875,8 +5913,63 @@ public class OrchestrationController {
         }
         panel.withChild(table);
         panel.withChild(new Div().withId("assignment-diagnostics-panel"));
+        panel.withChild(defaultTranscriptPanel(agentId, assignments));
 
         return panel.render();
+    }
+
+    private Component defaultTranscriptPanel(String agentId, List<WorkAssignment> assignments) {
+        WorkAssignment selected = assignments.stream()
+            .filter(a -> a.status() == OrchestrationStatus.RUNNING)
+            .findFirst()
+            .orElseGet(() -> assignments.stream()
+                .filter(a -> a.status() != null && !a.status().isTerminal())
+                .findFirst()
+                .orElse(null));
+        return selected == null
+            ? emptyTranscriptPanel()
+            : assignmentTranscriptPanel(agentId, assignmentService.transcript(agentId, selected.id()));
+    }
+
+    private Component emptyTranscriptPanel() {
+        return new Div().withId("agent-live-transcript")
+            .withClass("orch-panel agent-live-transcript")
+            .withChild(Header.H3("Live Transcript"))
+            .withChild(new Div().withClass("dashboard-empty")
+                .withInnerText("No running or active assignment transcript."));
+    }
+
+    private Component assignmentTranscriptPanel(String agentId, AssignmentTranscript transcript) {
+        WorkAssignment assignment = transcript.assignment();
+        Div panel = new Div().withId("agent-live-transcript")
+            .withClass("orch-panel agent-live-transcript")
+            .withAttribute("hx-get", "/agents/_detail/" + escapeAttr(agentId)
+                + "/queue/" + escapeAttr(assignment.id()) + "/transcript")
+            .withAttribute("hx-trigger", "every 2s")
+            .withAttribute("hx-swap", "outerHTML");
+        panel.withChild(Header.H3("Live Transcript"));
+        panel.withChild(new Div().withClass("orch-meta")
+            .withChild(new HtmlTag("span").withInnerText("Assignment: " + assignment.id()))
+            .withChild(new HtmlTag("span").withInnerText("Status: "
+                + (assignment.status() != null ? assignment.status().name() : "unknown")))
+            .withChild(new HtmlTag("span").withInnerText("Conversations: "
+                + (transcript.conversationIds().isEmpty() ? "—" : String.join(", ", transcript.conversationIds())))));
+        if (transcript.conversationIds().isEmpty()) {
+            panel.withChild(new Div().withClass("dashboard-empty")
+                .withInnerText("No conversation has been attached to this assignment yet."));
+            return panel;
+        }
+        if (transcript.auditEvents().isEmpty()) {
+            panel.withChild(new Div().withClass("dashboard-empty")
+                .withInnerText("Waiting for audit events."));
+            return panel;
+        }
+        Div messages = new Div().withClass("agent-live-transcript-messages");
+        for (var event : transcript.auditEvents()) {
+            messages.withChild(AssignmentAuditTranscriptRenderer.render(event));
+        }
+        panel.withChild(messages);
+        return panel;
     }
 
     private Component assignmentDiagnosticsPanel(String agentId, AssignmentDiagnostics diagnostics) {

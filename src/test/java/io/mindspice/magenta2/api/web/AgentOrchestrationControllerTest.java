@@ -217,6 +217,31 @@ class AgentOrchestrationControllerTest {
     }
 
     @Test
+    void deleteAssignmentReturnsConflictForRunningAssignment() {
+        StubAssignmentService assignmentService = new StubAssignmentService();
+        assignmentService.status = OrchestrationStatus.RUNNING;
+        AgentOrchestrationController controller = newController(
+            null, assignmentService, null, null, new StubAgentProfileService(), new StubChatService()
+        );
+
+        assertThatThrownBy(() -> controller.deleteAssignment("agent-1", "assign-1"))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
+    }
+
+    @Test
+    void deleteAssignmentCallsServiceForEligibleAssignment() {
+        StubAssignmentService assignmentService = new StubAssignmentService();
+        AgentOrchestrationController controller = newController(
+            null, assignmentService, null, null, new StubAgentProfileService(), new StubChatService()
+        );
+
+        controller.deleteAssignment("agent-1", "assign-1");
+
+        assertThat(assignmentService.deletedAssignmentId).isEqualTo("assign-1");
+    }
+
+    @Test
     void agentChatStreamEmitterHasNoTimeout() {
         StubAgentProfileService profileService = new StubAgentProfileService();
         StubChatService chatService = new StubChatService();
@@ -314,6 +339,9 @@ class AgentOrchestrationControllerTest {
     }
 
     private static class StubAssignmentService extends AssignmentService {
+        private OrchestrationStatus status = OrchestrationStatus.QUEUED;
+        private String deletedAssignmentId;
+
         StubAssignmentService() {
             super(null, null, null, null);
         }
@@ -330,6 +358,14 @@ class AgentOrchestrationControllerTest {
                 0, OrchestrationStatus.QUEUED, null, null, 0,
                 java.util.Map.of(), java.util.Map.of(), java.util.Map.of(), java.util.Map.of(),
                 null, null, null, null, null, null, null);
+        }
+
+        @Override
+        public void delete(String agentId, String assignmentId) {
+            if (status == OrchestrationStatus.RUNNING || status == OrchestrationStatus.CANCEL_REQUESTED) {
+                throw new IllegalStateException("Running assignments cannot be deleted");
+            }
+            deletedAssignmentId = assignmentId;
         }
     }
 

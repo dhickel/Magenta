@@ -6,6 +6,7 @@ This package owns HTTP and web-facing entry points.
 - Expose chat REST endpoints, SSE streaming endpoints, command endpoints, context usage payloads, structured tool activity updates, and simple web routes.
 - Expose chat plan state, queued planning questions/actions, approval/continue actions, validation criteria, deliverables, validation feedback, and execution evidence.
 - Expose runtime settings, agent profile, workspace-link, job, assignment, inbox, schedule, event-reaction, and agent side-panel chat APIs as thin orchestration entry points.
+- Expose assignment lifecycle controls, including guarded hard delete and read-only audit transcript fragments, through thin orchestration entry points.
 - Expose operational dashboard summary and output artifact query APIs as thin read models for orchestration UI pages.
 - Keep inherited shell compatibility resources local to the web layer when a shell asset reference cannot be removed directly.
 - Keep controllers thin and delegate behavior to services.

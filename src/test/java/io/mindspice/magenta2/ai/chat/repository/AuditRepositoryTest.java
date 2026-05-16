@@ -65,4 +65,21 @@ class AuditRepositoryTest {
         assertThat(sequences.getLast()).describedAs("Sequence ends at count-1")
             .isEqualTo(threadCount * insertsPerThread - 1);
     }
+
+    @Test
+    void findsMultipleConversationIdsInRecordedOrder() {
+        JdbcTemplate jt = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        AuditRepository repo = new AuditRepository(jt);
+
+        repo.recordUserMessage("conversation-b", "first", "model");
+        repo.recordUserMessage("conversation-a", "second", "model");
+        repo.recordAssistantMessage("conversation-b", "third", null, "model");
+
+        List<AuditRepository.AuditEvent> events = repo.findByConversationIds(List.of("conversation-b", "conversation-a"));
+
+        assertThat(events).extracting(AuditRepository.AuditEvent::conversationId)
+            .containsExactly("conversation-b", "conversation-a", "conversation-b");
+        assertThat(events).extracting(AuditRepository.AuditEvent::messageText)
+            .containsExactly("first", "second", "third");
+    }
 }

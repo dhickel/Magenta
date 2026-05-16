@@ -24,6 +24,7 @@ import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileStatus;
 
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowNodeRun;
+import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowExecutionObserver;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowRun;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowRunStatus;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowService;
@@ -329,24 +330,33 @@ public class OrchestrationRunnerService {
 
     private WorkAssignment runTask(WorkAssignment assignment) {
         String taskId = text(assignment.input().get("taskId"), null);
-        TaskRun taskRun = runTaskThroughModel(taskId, mapValue(assignment.input().get("inputValues")), assignment,
+        TaskExecution taskExecution = runTaskThroughModel(taskId, mapValue(assignment.input().get("inputValues")), assignment,
             assignmentService.resolveModel(assignment, null));
+        TaskRun taskRun = taskExecution.run();
         backfillTaskRunAttribution(taskRun.id(), assignment, assignment.assignmentType().name());
-        Map<String, Object> checkpoint = Map.of("taskRunId", taskRun.id(), "status", taskRun.status().name());
-        Map<String, Object> output = Map.of("taskRunId", taskRun.id(), "outputValues", taskRun.outputValues());
+        Map<String, Object> checkpoint = mergeConversationCheckpoint(assignment.checkpoint(), taskExecution.conversationId(),
+            Map.of("taskRunId", taskRun.id(), "status", taskRun.status().name()));
+        Map<String, Object> output = mergeConversationOutput(
+            Map.of("taskRunId", taskRun.id(), "outputValues", taskRun.outputValues()),
+            taskExecution.conversationId());
         return complete(checkpointed(assignment, assignment.currentItemIndex(), checkpoint, output, evidence(taskRun)), output, evidence(taskRun));
     }
 
     private WorkAssignment runWorkflow(WorkAssignment assignment) {
         String workflowId = text(assignment.input().get("workflowId"), null);
-        WorkflowRun workflowRun = workflowService.runSynchronously(workflowId, assignmentService.resolveModel(assignment, null));
+        WorkflowRun workflowRun = workflowService.runSynchronously(
+            workflowId, assignmentService.resolveModel(assignment, null), assignmentConversationObserver(assignment));
         backfillWorkflowRunAttribution(workflowRun, assignment, "WORKFLOW_RUN");
-        Map<String, Object> checkpoint = Map.of("workflowRunId", workflowRun.id(), "status", workflowRun.status().name());
-        Map<String, Object> output = Map.of("workflowRunId", workflowRun.id(), "finalOutputs", finalOutputs(workflowRun));
+        WorkAssignment current = assignmentService.get(assignment.id());
+        Map<String, Object> checkpoint = mergeCheckpoint(current.checkpoint(),
+            Map.of("workflowRunId", workflowRun.id(), "status", workflowRun.status().name()));
+        Map<String, Object> output = mergeConversationOutput(
+            Map.of("workflowRunId", workflowRun.id(), "finalOutputs", finalOutputs(workflowRun)),
+            conversationIds(current.checkpoint()));
         if (workflowRun.status() == WorkflowRunStatus.COMPLETED) {
-            return complete(checkpointed(assignment, assignment.currentItemIndex(), checkpoint, output, output), output, output);
+            return complete(checkpointed(current, current.currentItemIndex(), checkpoint, output, output), output, output);
         }
-        return fail(checkpointed(assignment, assignment.currentItemIndex(), checkpoint, output, output), workflowRun.errorText());
+        return fail(checkpointed(current, current.currentItemIndex(), checkpoint, output, output), workflowRun.errorText());
     }
 
     private WorkAssignment runJob(WorkAssignment assignment) {
@@ -384,13 +394,13 @@ public class OrchestrationRunnerService {
                 );
                 jobService.updateDefinitionStatus(job.id(), "FAILED");
                 String errorText = itemResult.errorText();
-                current = checkpointed(current, i + 1, Map.of(
+                current = checkpointed(current, i + 1, mergeCheckpoint(current.checkpoint(), Map.of(
                     "jobId", job.id(),
                     "jobRunId", jobRun.id(),
                     "nextItemIndex", i + 1,
                     "failedItemKey", item.key(),
                     "model", assignmentService.resolveModel(current, item)
-                ), outputs, evidence);
+                )), outputs, evidence);
                 return fail(current, errorText);
             }
             jobRun = jobService.updateWorkItemRun(
@@ -401,13 +411,13 @@ public class OrchestrationRunnerService {
                 mapValue(itemResult.output()),
                 null
             );
-            current = checkpointed(current, i + 1, Map.of(
+            current = checkpointed(current, i + 1, mergeCheckpoint(current.checkpoint(), Map.of(
                 "jobId", job.id(),
                 "jobRunId", jobRun.id(),
                 "nextItemIndex", i + 1,
                 "completedItemKey", item.key(),
                 "model", assignmentService.resolveModel(current, item)
-            ), outputs, evidence);
+            )), outputs, evidence);
             current = assignmentService.saveIfLeaseOwner(current, leaseOwner);
         }
         jobService.updateDefinitionStatus(job.id(), "COMPLETED");
@@ -422,22 +432,29 @@ public class OrchestrationRunnerService {
                     if (!StringUtils.hasText(item.planId())) {
                         throw new IllegalArgumentException("PLAN work item '" + item.key() + "' has no planId");
                     }
-                    TaskRun run = runTaskThroughModel(item.planId(), item.inputBindings(), assignment,
+                    TaskExecution taskExecution = runTaskThroughModel(item.planId(), item.inputBindings(), assignment,
                         assignmentService.resolveModel(current, item));
+                    TaskRun run = taskExecution.run();
                     backfillTaskRunAttribution(run.id(), assignment, "JOB_PLAN_ITEM");
-                    yield new JobItemOutput(run.id(), Map.of("planRunId", run.id(), "outputValues", run.outputValues()));
+                    yield new JobItemOutput(run.id(), mergeConversationOutput(
+                        Map.of("planRunId", run.id(), "outputValues", run.outputValues()),
+                        taskExecution.conversationId()));
                 }
                 case WORKFLOW -> {
                     if (!StringUtils.hasText(item.workflowId())) {
                         throw new IllegalArgumentException("WORKFLOW work item '" + item.key() + "' has no workflowId");
                     }
-                    WorkflowRun run = workflowService.runSynchronously(item.workflowId(),
-                        assignmentService.resolveModel(current, item));
+                    WorkflowRun run = workflowService.runSynchronously(
+                        item.workflowId(), assignmentService.resolveModel(current, item),
+                        assignmentConversationObserver(assignment));
                     if (run.status() != WorkflowRunStatus.COMPLETED) {
                         throw new IllegalStateException("Workflow job item failed: " + run.errorText());
                     }
                     backfillWorkflowRunAttribution(run, assignment, "JOB_WORKFLOW_ITEM");
-                    yield new JobItemOutput(run.id(), Map.of("workflowRunId", run.id(), "finalOutputs", finalOutputs(run)));
+                    WorkAssignment latest = assignmentService.get(assignment.id());
+                    yield new JobItemOutput(run.id(), mergeConversationOutput(
+                        Map.of("workflowRunId", run.id(), "finalOutputs", finalOutputs(run)),
+                        conversationIds(latest.checkpoint())));
                 }
             };
             return new JobItemResult(true, output.payload(), Map.of(
@@ -456,7 +473,7 @@ public class OrchestrationRunnerService {
         }
     }
 
-    private TaskRun runTaskThroughModel(
+    private TaskExecution runTaskThroughModel(
         String taskId,
         Map<String, Object> inputValues,
         WorkAssignment assignment,
@@ -465,17 +482,19 @@ public class OrchestrationRunnerService {
         if (chatService == null) {
             throw new IllegalStateException("Task execution requires model-backed chat execution");
         }
+        String conversationId = UUID.randomUUID().toString();
+        checkpointActiveConversation(assignment, conversationId);
         TaskRun run = chatService.executeTaskBlocking(
             taskId,
             inputValues,
-            UUID.randomUUID().toString(),
+            conversationId,
             modelOverride
         ).run();
         if (run.status() != TaskRunStatus.COMPLETED) {
             throw new IllegalStateException("Task run did not complete: "
                 + (run.errorText() == null ? run.status().name() : run.errorText()));
         }
-        return run;
+        return new TaskExecution(run, conversationId);
     }
 
     private WorkAssignment runAgentMessage(WorkAssignment assignment) {
@@ -501,6 +520,77 @@ public class OrchestrationRunnerService {
         );
     }
 
+    private void checkpointActiveConversation(WorkAssignment assignment, String conversationId) {
+        WorkAssignment current = assignmentService.get(assignment.id());
+        Map<String, Object> checkpoint = mergeConversationCheckpoint(current.checkpoint(), conversationId, Map.of());
+        assignmentService.saveIfLeaseOwner(checkpointed(current, current.currentItemIndex(), checkpoint,
+            current.output(), current.evidence()), leaseOwner);
+    }
+
+    private WorkflowExecutionObserver assignmentConversationObserver(WorkAssignment assignment) {
+        return (workflowRunId, nodeKey, conversationId) -> {
+            WorkAssignment current = assignmentService.get(assignment.id());
+            Map<String, Object> checkpoint = mergeConversationCheckpoint(
+                current.checkpoint(),
+                conversationId,
+                Map.of("workflowRunId", workflowRunId, "activeWorkflowNodeKey", nodeKey)
+            );
+            assignmentService.saveIfLeaseOwner(checkpointed(current, current.currentItemIndex(), checkpoint,
+                current.output(), current.evidence()), leaseOwner);
+        };
+    }
+
+    private Map<String, Object> mergeConversationCheckpoint(
+        Map<String, Object> existing,
+        String conversationId,
+        Map<String, Object> extra
+    ) {
+        Map<String, Object> merged = mergeCheckpoint(existing, extra);
+        if (StringUtils.hasText(conversationId)) {
+            merged.put("activeConversationId", conversationId);
+            merged.put("conversationId", conversationId);
+            merged.put("conversationIds", appendConversationId(conversationIds(merged), conversationId));
+        }
+        return merged;
+    }
+
+    private Map<String, Object> mergeCheckpoint(Map<String, Object> existing, Map<String, Object> extra) {
+        Map<String, Object> merged = new LinkedHashMap<>(existing == null ? Map.of() : existing);
+        if (extra != null) {
+            merged.putAll(extra);
+        }
+        return merged;
+    }
+
+    private Map<String, Object> mergeConversationOutput(Map<String, Object> output, String conversationId) {
+        return mergeConversationOutput(output, StringUtils.hasText(conversationId) ? List.of(conversationId) : List.of());
+    }
+
+    private Map<String, Object> mergeConversationOutput(Map<String, Object> output, List<String> conversationIds) {
+        Map<String, Object> merged = new LinkedHashMap<>(output == null ? Map.of() : output);
+        List<String> ids = appendConversationIds(conversationIds(merged), conversationIds);
+        if (!ids.isEmpty()) {
+            merged.put("conversationId", ids.getLast());
+            merged.put("conversationIds", ids);
+        }
+        return merged;
+    }
+
+    private List<String> appendConversationId(List<String> existing, String conversationId) {
+        return appendConversationIds(existing, StringUtils.hasText(conversationId) ? List.of(conversationId) : List.of());
+    }
+
+    private List<String> appendConversationIds(List<String> existing, List<String> additions) {
+        java.util.LinkedHashSet<String> ids = new java.util.LinkedHashSet<>();
+        if (existing != null) {
+            existing.stream().filter(StringUtils::hasText).forEach(ids::add);
+        }
+        if (additions != null) {
+            additions.stream().filter(StringUtils::hasText).forEach(ids::add);
+        }
+        return List.copyOf(ids);
+    }
+
     private WorkAssignment complete(WorkAssignment assignment, Map<String, Object> output, Map<String, Object> evidence) {
         return assignmentService.saveIfLeaseOwner(assignmentService.copy(
             assignment, OrchestrationStatus.COMPLETED, assignment.currentItemIndex(), assignment.checkpoint(), output,
@@ -522,6 +612,22 @@ public class OrchestrationRunnerService {
     @SuppressWarnings("unchecked")
     private Map<String, Object> mapValue(Object value) {
         return value instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
+    }
+
+    private List<String> conversationIds(Map<String, Object> values) {
+        Object ids = values == null ? null : values.get("conversationIds");
+        if (ids instanceof Iterable<?> iterable) {
+            List<String> result = new java.util.ArrayList<>();
+            for (Object value : iterable) {
+                String id = text(value, null);
+                if (StringUtils.hasText(id)) {
+                    result.add(id);
+                }
+            }
+            return result;
+        }
+        String id = text(values == null ? null : values.get("conversationId"), null);
+        return StringUtils.hasText(id) ? List.of(id) : List.of();
     }
 
     private int integer(Object value, int fallback) {
@@ -600,5 +706,8 @@ public class OrchestrationRunnerService {
     }
 
     private record JobItemOutput(String runId, Map<String, Object> payload) {
+    }
+
+    private record TaskExecution(TaskRun run, String conversationId) {
     }
 }

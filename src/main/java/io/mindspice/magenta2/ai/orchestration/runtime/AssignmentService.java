@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -117,6 +118,20 @@ public class AssignmentService {
         return repository.findAssignmentsForAgent(agentId);
     }
 
+    public void delete(String agentId, String assignmentId) {
+        agentProfileService.get(agentId);
+        WorkAssignment assignment = get(assignmentId);
+        if (!agentId.equals(assignment.agentId())) {
+            throw new IllegalArgumentException("Assignment does not belong to agent: " + assignmentId);
+        }
+        if (!deletable(assignment.status())) {
+            throw new IllegalStateException("Running assignments cannot be deleted: " + assignmentId);
+        }
+        if (!repository.deleteAssignment(agentId, assignmentId)) {
+            throw new IllegalStateException("Assignment not found: " + assignmentId);
+        }
+    }
+
     public WorkAssignment cancel(String assignmentId) {
         WorkAssignment current = get(assignmentId);
         if (isTerminal(current.status())) {
@@ -199,6 +214,19 @@ public class AssignmentService {
             conversationId,
             buildCommit()
         );
+    }
+
+    public AssignmentTranscript transcript(String agentId, String assignmentId) {
+        agentProfileService.get(agentId);
+        WorkAssignment assignment = get(assignmentId);
+        if (!agentId.equals(assignment.agentId())) {
+            throw new IllegalArgumentException("Assignment does not belong to agent: " + assignmentId);
+        }
+        List<String> conversationIds = conversationIds(assignment);
+        List<AuditRepository.AuditEvent> auditEvents = auditRepository == null || conversationIds.isEmpty()
+            ? List.of()
+            : auditRepository.findByConversationIds(conversationIds);
+        return new AssignmentTranscript(assignment, conversationIds, auditEvents);
     }
 
     public String resolveModel(WorkAssignment assignment, JobWorkItem item) {
@@ -335,6 +363,56 @@ public class AssignmentService {
             || status == OrchestrationStatus.FAILED || status == OrchestrationStatus.NEEDS_REVIEW;
     }
 
+    public boolean deletable(OrchestrationStatus status) {
+        return status != OrchestrationStatus.RUNNING && status != OrchestrationStatus.CANCEL_REQUESTED;
+    }
+
+    private List<String> conversationIds(WorkAssignment assignment) {
+        LinkedHashSet<String> ids = new LinkedHashSet<>();
+        collectConversationIds(ids, assignment.checkpoint());
+        collectConversationIds(ids, assignment.output());
+        collectConversationIds(ids, assignment.evidence());
+        collectConversationIds(ids, assignment.input());
+        return List.copyOf(ids);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void collectConversationIds(LinkedHashSet<String> ids, Object value) {
+        if (value == null) {
+            return;
+        }
+        if (value instanceof Map<?, ?> map) {
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                String key = entry.getKey() == null ? "" : entry.getKey().toString();
+                Object child = entry.getValue();
+                if ("conversationId".equals(key) || "activeConversationId".equals(key)) {
+                    addConversationId(ids, child);
+                } else if ("conversationIds".equals(key)) {
+                    collectConversationIds(ids, child);
+                } else if (child instanceof Map<?, ?> || child instanceof Iterable<?>) {
+                    collectConversationIds(ids, child);
+                }
+            }
+            return;
+        }
+        if (value instanceof Iterable<?> iterable) {
+            for (Object child : iterable) {
+                if (child instanceof Map<?, ?> || child instanceof Iterable<?>) {
+                    collectConversationIds(ids, child);
+                } else {
+                    addConversationId(ids, child);
+                }
+            }
+        }
+    }
+
+    private void addConversationId(LinkedHashSet<String> ids, Object value) {
+        String text = text(value);
+        if (StringUtils.hasText(text)) {
+            ids.add(text);
+        }
+    }
+
     private String firstText(String... values) {
         for (String value : values) {
             if (StringUtils.hasText(value)) {
@@ -380,6 +458,13 @@ public class AssignmentService {
         List<AuditRepository.AuditEvent> auditEvents,
         String conversationId,
         String buildCommit
+    ) {
+    }
+
+    public record AssignmentTranscript(
+        WorkAssignment assignment,
+        List<String> conversationIds,
+        List<AuditRepository.AuditEvent> auditEvents
     ) {
     }
 }

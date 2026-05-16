@@ -173,15 +173,19 @@ public class WorkflowRunner {
     }
 
     public WorkflowRun runSynchronously(WorkflowDefinition definition, String modelOverride) {
+        return runSynchronously(definition, modelOverride, WorkflowExecutionObserver.NOOP);
+    }
+
+    public WorkflowRun runSynchronously(WorkflowDefinition definition, String modelOverride, WorkflowExecutionObserver observer) {
         WorkflowRun run = startRun(definition, modelOverride);
         run = repository.findRun(run.id()).orElse(run);
-        executeFromCheckpoint(run, null, modelOverride);
+        executeFromCheckpoint(run, null, modelOverride, observer == null ? WorkflowExecutionObserver.NOOP : observer);
         return repository.findRun(run.id()).orElse(run);
     }
 
     private void executeSafely(WorkflowRun run, String modelOverride) {
         try {
-            executeFromCheckpoint(run, null, modelOverride);
+            executeFromCheckpoint(run, null, modelOverride, WorkflowExecutionObserver.NOOP);
         } catch (Exception e) {
             log.error("Workflow run {} failed", run.id(), e);
             WorkflowRun current = repository.findRun(run.id()).orElse(run);
@@ -197,6 +201,15 @@ public class WorkflowRunner {
     }
 
     private void executeFromCheckpoint(WorkflowRun run, Consumer<String> sseEventCallback, String modelOverride) {
+        executeFromCheckpoint(run, sseEventCallback, modelOverride, WorkflowExecutionObserver.NOOP);
+    }
+
+    private void executeFromCheckpoint(
+        WorkflowRun run,
+        Consumer<String> sseEventCallback,
+        String modelOverride,
+        WorkflowExecutionObserver observer
+    ) {
         WorkflowDefinition def = run.workflowSnapshot();
         Map<String, WorkflowNodeRun> nodeRuns = toNodeRunMap(run.nodeRuns());
         Map<String, Map<String, Object>> outputsByNode = new LinkedHashMap<>();
@@ -252,7 +265,8 @@ public class WorkflowRunner {
             WorkflowRun runSnapshot = run;
 
             List<CompletableFuture<NodeExecutionResult>> futures = batch.stream()
-                .map(node -> CompletableFuture.supplyAsync(() -> executeNode(node, def, outputsByNode, runSnapshot, modelOverride), executor))
+                .map(node -> CompletableFuture.supplyAsync(() -> executeNode(
+                    node, def, outputsByNode, runSnapshot, modelOverride, observer), executor))
                 .toList();
 
             List<NodeExecutionResult> results = futures.stream().map(CompletableFuture::join).toList();
@@ -307,14 +321,15 @@ public class WorkflowRunner {
         WorkflowDefinition def,
         Map<String, Map<String, Object>> outputsByNode,
         WorkflowRun run,
-        String modelOverride
+        String modelOverride,
+        WorkflowExecutionObserver observer
     ) {
         Map<String, Object> inputs = resolveNodeInputs(node, def, outputsByNode);
         List<String> routeContext = activeRouteContext(def, node.key(), toNodeRunMap(run.nodeRuns()), Map.of());
         try {
             return switch (node.type()) {
                 case TASK -> new NodeExecutionResult(node.key(), WorkflowNodeRunStatus.COMPLETED,
-                    inputs, executeTaskNode(node, inputs, run, modelOverride), routeContext, null);
+                    inputs, executeTaskNode(node, inputs, run, modelOverride, observer), routeContext, null);
                 case REPORT, FINAL_OUTPUT -> new NodeExecutionResult(node.key(), WorkflowNodeRunStatus.COMPLETED,
                     inputs, executeFinalOutputNode(node, inputs, run), routeContext, null);
                 case USER_APPROVAL, AGENT_APPROVAL -> {
@@ -346,10 +361,15 @@ public class WorkflowRunner {
         WorkflowNode node,
         Map<String, Object> inputs,
         WorkflowRun run,
-        String modelOverride
+        String modelOverride,
+        WorkflowExecutionObserver observer
     ) {
         if (workflowTaskExecutor != null) {
-            var taskRun = workflowTaskExecutor.execute(node.planId(), inputs, UUID.randomUUID().toString(), modelOverride);
+            String conversationId = UUID.randomUUID().toString();
+            if (observer != null) {
+                observer.taskConversationStarted(run.id(), node.key(), conversationId);
+            }
+            var taskRun = workflowTaskExecutor.execute(node.planId(), inputs, conversationId, modelOverride);
             if (!workflowTaskExecutor.succeeded(taskRun.status())) {
                 throw new IllegalStateException("Task node '" + node.key() + "' failed with status " + taskRun.status().name());
             }
