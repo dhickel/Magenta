@@ -228,7 +228,7 @@ class OrchestrationControllerTest {
         try {
             Path dataRoot = Files.createTempDirectory("orch-controller-workspace");
             WorkspaceRepository repository = new WorkspaceRepository(new JdbcTemplate(
-                new SingleConnectionDataSource("jdbc:sqlite::memory:", true)
+                new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true)
             ));
             WorkspaceService service = new WorkspaceService(repository, new AiConfig(
                 null, null, null, null, null, 10, dataRoot, null, Map.of(), Map.of()

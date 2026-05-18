@@ -212,7 +212,7 @@ class OperationalUiContractControllerTest {
     }
 
     private JdbcTemplate jdbc() {
-        return new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        return new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
     }
 
     private ObjectMapper mapper() {

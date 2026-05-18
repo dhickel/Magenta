@@ -37,7 +37,7 @@ class WorkflowRunnerTest {
     @BeforeEach
     void setUp() throws Exception {
         ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
-        jdbcTemplate = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        jdbcTemplate = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
 
         PlanRepository planRepository = new PlanRepository(jdbcTemplate, mapper);
         ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, mapper);

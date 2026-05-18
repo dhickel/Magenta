@@ -156,6 +156,26 @@ class WorkspaceRepositoryAttributionTest {
         WorkspaceRepository repository = new WorkspaceRepository(jdbc());
         Instant now = Instant.now();
 
+        repository.save(new Workspace(
+            "ws-1",
+            WorkspaceOwnerType.AGENT,
+            "agent-1",
+            "agents/agent-1",
+            "Agent 1",
+            "{}",
+            now.minusSeconds(40),
+            now.minusSeconds(40)
+        ));
+        repository.save(new Workspace(
+            "ws-2",
+            WorkspaceOwnerType.AGENT,
+            "agent-2",
+            "agents/agent-2",
+            "Agent 2",
+            "{}",
+            now.minusSeconds(40),
+            now.minusSeconds(40)
+        ));
         repository.saveLease(new WorkspaceLease(
             "lease-active",
             "ws-1",
@@ -199,6 +219,6 @@ class WorkspaceRepositoryAttributionTest {
     }
 
     private JdbcTemplate jdbc() {
-        return new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        return new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
     }
 }

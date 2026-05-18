@@ -45,6 +45,7 @@ class WorkspaceRepositorySchemaMigrationTest {
 
         assertThat(planRunColumns).contains("temp_workspace_path");
         assertThat(artifactColumns).contains("agent_id", "job_id", "project_id", "workspace_id", "run_type");
+        assertThat(foreignKeyTargets(jdbc, "run_output_artifacts")).doesNotContain("plan_runs");
         assertThat(indexes(jdbc, "run_output_artifacts"))
             .contains(
                 "idx_run_output_artifacts_run",
@@ -59,6 +60,7 @@ class WorkspaceRepositorySchemaMigrationTest {
 
         assertThat(columns(jdbc, "plan_runs")).isEqualTo(planRunColumns);
         assertThat(columns(jdbc, "run_output_artifacts")).isEqualTo(artifactColumns);
+        assertThat(foreignKeyTargets(jdbc, "run_output_artifacts")).doesNotContain("plan_runs");
     }
 
     @Test

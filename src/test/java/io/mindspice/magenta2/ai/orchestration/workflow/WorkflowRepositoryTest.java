@@ -12,7 +12,7 @@ class WorkflowRepositoryTest {
     @Test
     void migratesLegacyStepWorkflowDefinitionsToGraphColumns() {
         JdbcTemplate jdbcTemplate = new JdbcTemplate(
-            new SingleConnectionDataSource("jdbc:sqlite::memory:", true)
+            new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true)
         );
         jdbcTemplate.execute("""
             create table workflow_definitions (
@@ -42,7 +42,7 @@ class WorkflowRepositoryTest {
     @Test
     void migratesLegacyWorkflowRunsToGraphRunColumns() {
         JdbcTemplate jdbcTemplate = new JdbcTemplate(
-            new SingleConnectionDataSource("jdbc:sqlite::memory:", true)
+            new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true)
         );
         jdbcTemplate.execute("""
             create table workflow_definitions (

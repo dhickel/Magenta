@@ -75,7 +75,7 @@ class ChatServiceTest {
     }
 
     private JdbcTemplate jdbcTemplate() {
-        SingleConnectionDataSource dataSource = new SingleConnectionDataSource("jdbc:sqlite::memory:", true);
+        SingleConnectionDataSource dataSource = new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true);
         return new JdbcTemplate(dataSource);
     }
 

@@ -650,13 +650,8 @@ public class WorkspaceRepository {
                 file_name text not null,
                 file_path text not null,
                 content_json text,
-                created_at text not null,
-                foreign key(run_id) references plan_runs(id)
+                created_at text not null
             )
-            """);
-        jdbcTemplate.execute("""
-            create index if not exists idx_run_output_artifacts_run
-                on run_output_artifacts(run_id)
             """);
         addColumnIfMissing("run_output_artifacts", "agent_id", "alter table run_output_artifacts add column agent_id text");
         addColumnIfMissing("run_output_artifacts", "job_id", "alter table run_output_artifacts add column job_id text");
@@ -665,6 +660,13 @@ public class WorkspaceRepository {
             "alter table workspace_leases add column release_requested integer not null default 0");
         addColumnIfMissing("run_output_artifacts", "workspace_id", "alter table run_output_artifacts add column workspace_id text");
         addColumnIfMissing("run_output_artifacts", "run_type", "alter table run_output_artifacts add column run_type text");
+        if (runOutputArtifactsReferencePlanRuns()) {
+            recreateRunOutputArtifactsWithoutPlanRunFk();
+        }
+        jdbcTemplate.execute("""
+            create index if not exists idx_run_output_artifacts_run
+                on run_output_artifacts(run_id)
+            """);
         jdbcTemplate.execute("""
             create index if not exists idx_run_output_artifacts_agent
                 on run_output_artifacts(agent_id)
@@ -735,6 +737,41 @@ public class WorkspaceRepository {
         jdbcTemplate.execute("alter table workspace_leases_migrated rename to workspace_leases");
     }
 
+    private void recreateRunOutputArtifactsWithoutPlanRunFk() {
+        jdbcTemplate.execute("drop table if exists run_output_artifacts_migrated");
+        jdbcTemplate.execute("""
+            create table run_output_artifacts_migrated (
+                id text primary key,
+                run_id text not null,
+                plan_id text not null,
+                agent_id text,
+                job_id text,
+                project_id text,
+                workspace_id text,
+                run_type text,
+                output_name text not null,
+                artifact_type text not null,
+                file_name text not null,
+                file_path text not null,
+                content_json text,
+                created_at text not null
+            )
+            """);
+        jdbcTemplate.execute("""
+            insert into run_output_artifacts_migrated (
+                id, run_id, plan_id, agent_id, job_id, project_id, workspace_id,
+                run_type, output_name, artifact_type, file_name, file_path,
+                content_json, created_at
+            )
+            select id, run_id, plan_id, agent_id, job_id, project_id, workspace_id,
+                run_type, output_name, artifact_type, file_name, file_path,
+                content_json, created_at
+            from run_output_artifacts
+            """);
+        jdbcTemplate.execute("drop table run_output_artifacts");
+        jdbcTemplate.execute("alter table run_output_artifacts_migrated rename to run_output_artifacts");
+    }
+
     private void addColumnIfMissing(String table, String column, String ddl) {
         if (!table.matches("[a-zA-Z0-9_]+") || !column.matches("[a-zA-Z0-9_]+")) {
             throw new IllegalArgumentException("Unsupported table/column identifier");
@@ -776,5 +813,15 @@ public class WorkspaceRepository {
             "select \"table\" from pragma_foreign_key_list('workspace_leases') where \"from\" = 'workspace_id'",
             (rs, rowNum) -> rs.getString(1)
         ).stream().anyMatch("workspace_roots"::equals);
+    }
+
+    private boolean runOutputArtifactsReferencePlanRuns() {
+        if (!tableExists("run_output_artifacts")) {
+            return false;
+        }
+        return jdbcTemplate.query(
+            "select \"table\" from pragma_foreign_key_list('run_output_artifacts') where \"from\" = 'run_id'",
+            (rs, rowNum) -> rs.getString(1)
+        ).stream().anyMatch("plan_runs"::equals);
     }
 }

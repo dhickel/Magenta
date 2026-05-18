@@ -22,7 +22,7 @@ class OutputArtifactServiceAttributionTest {
 
     @Test
     void materializePreservesAttributionContext() throws Exception {
-        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
         WorkspaceRepository repository = new WorkspaceRepository(jdbc);
         WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
             new AiConfig(null, null, null, null, Files.createDirectories(tempDir.resolve("data")), null, null)
@@ -70,7 +70,7 @@ class OutputArtifactServiceAttributionTest {
 
     @Test
     void dataRootScopedFilePathResolvesToRunOutputDirectory() throws Exception {
-        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
         Path dataRoot = Files.createDirectories(tempDir.resolve("root"));
         WorkspaceRepository repository = new WorkspaceRepository(jdbc);
         WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
@@ -104,7 +104,7 @@ class OutputArtifactServiceAttributionTest {
 
     @Test
     void relativePathResolvesRelativeToOutputDirectory() throws Exception {
-        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
         Path dataRoot = Files.createDirectories(tempDir.resolve("root-run-scoped"));
         WorkspaceRepository repository = new WorkspaceRepository(jdbc);
         WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
@@ -136,7 +136,7 @@ class OutputArtifactServiceAttributionTest {
 
     @Test
     void bareFilenameResolvesRelativeToOutputDirectory() throws Exception {
-        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
         Path dataRoot = Files.createDirectories(tempDir.resolve("root2"));
         WorkspaceRepository repository = new WorkspaceRepository(jdbc);
         WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
@@ -168,7 +168,7 @@ class OutputArtifactServiceAttributionTest {
 
     @Test
     void copiesValidFilePathInsideDataRootIntoOutputDirectory() throws Exception {
-        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
         Path dataRoot = Files.createDirectories(tempDir.resolve("copy-root"));
         WorkspaceRepository repository = new WorkspaceRepository(jdbc);
         WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
@@ -204,7 +204,7 @@ class OutputArtifactServiceAttributionTest {
 
     @Test
     void rejectsAbsoluteFilePathOutsideDataRoot() throws Exception {
-        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
         WorkspaceRepository repository = new WorkspaceRepository(jdbc);
         WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
             new AiConfig(null, null, null, null, Files.createDirectories(tempDir.resolve("root3")), null, null)
@@ -233,7 +233,7 @@ class OutputArtifactServiceAttributionTest {
 
     @Test
     void rejectsFilePathSymlinkEscapingDataRoot() throws Exception {
-        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
         Path dataRoot = Files.createDirectories(tempDir.resolve("symlink-root"));
         WorkspaceRepository repository = new WorkspaceRepository(jdbc);
         WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
@@ -268,7 +268,7 @@ class OutputArtifactServiceAttributionTest {
 
     @Test
     void rejectsBrokenFilePathSymlinkWithClearFailure() throws Exception {
-        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
         Path dataRoot = Files.createDirectories(tempDir.resolve("broken-root"));
         WorkspaceRepository repository = new WorkspaceRepository(jdbc);
         WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
@@ -302,7 +302,7 @@ class OutputArtifactServiceAttributionTest {
 
     @Test
     void rejectsMissingFilePathWithClearFailure() throws Exception {
-        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
         Path dataRoot = Files.createDirectories(tempDir.resolve("missing-root"));
         WorkspaceRepository repository = new WorkspaceRepository(jdbc);
         WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
@@ -335,7 +335,7 @@ class OutputArtifactServiceAttributionTest {
 
     @Test
     void discoversLooseArtifactsInOutputDirectory() throws Exception {
-        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
         WorkspaceRepository repository = new WorkspaceRepository(jdbc);
         WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
             new AiConfig(null, null, null, null, Files.createDirectories(tempDir.resolve("root4")), null, null)

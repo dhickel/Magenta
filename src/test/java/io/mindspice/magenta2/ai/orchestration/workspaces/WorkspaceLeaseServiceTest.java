@@ -24,7 +24,7 @@ class WorkspaceLeaseServiceTest {
     @BeforeEach
     void setUp() {
         jdbcTemplate = new JdbcTemplate(
-            new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+            new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
         repository = new WorkspaceRepository(jdbcTemplate);
         leaseService = new WorkspaceLeaseService(repository);
         workspaceId = UUID.randomUUID().toString();

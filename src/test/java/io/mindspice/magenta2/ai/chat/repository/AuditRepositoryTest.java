@@ -68,7 +68,7 @@ class AuditRepositoryTest {
 
     @Test
     void findsMultipleConversationIdsInRecordedOrder() {
-        JdbcTemplate jt = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        JdbcTemplate jt = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
         AuditRepository repo = new AuditRepository(jt);
 
         repo.recordUserMessage("conversation-b", "first", "model");
