@@ -29,3 +29,5 @@ Implemented bug-04 executable workflow validation. Empty workflow drafts can sti
 # Validation
 
 Focused workflow/controller tests passed with 96 tests, static call graph scan confirmed draft persistence remains separate from executable validate/submit/run paths, `git diff --check` passed, and bounded startup reached `Started Magenta2Application` on port `40005`. Delegated browser validation remains the subplan gate before marking bug-04 passed.
+
+Delegated validation passed on commit `4f2eb4f` with focused tests, full `mvn test`, `git diff --check`, bounded startup, and browser-origin checks for empty draft validate/submit/run rejection, disconnected workflow rejection, unchanged run lists, SSE `failed` events, and valid one-node graph validation.
