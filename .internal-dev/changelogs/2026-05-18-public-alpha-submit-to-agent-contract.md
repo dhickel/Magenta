@@ -39,3 +39,10 @@ Some older clients that expected direct streaming task/workflow execution from p
 
 - Parent validation should include focused browser checks for `/chat`, `/plans`, and `/workflows` submit controls if UI validation is in scope.
 - Domain 03 subplan 04 still owns job `Start Run` conversion to `JOB_RUN` assignment submission.
+
+# Validation
+
+- `mvn -Dtest=WorkflowRepositoryTest,PublicRunSubmissionControllerTest,ChatControllerTest,TaskStreamSupportTest,OrchestrationControllerTest test` passed with 110 tests.
+- `git diff --check` passed.
+- Bounded Spring startup passed; evidence `/tmp/magenta2-startup-validation.log`.
+- Focused Playwright browser-origin validation passed for `/chat`, `/plans`, and `/workflows`; evidence `/tmp/magenta2-playwright-app.log`.
