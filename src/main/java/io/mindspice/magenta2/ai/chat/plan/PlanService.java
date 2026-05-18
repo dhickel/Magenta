@@ -1832,12 +1832,17 @@ Approved plan:
         if (!StringUtils.hasText(outputDir)) {
             return null;
         }
-        // Output dir pattern: data/agents/{agentId}/outputs/{slug}-{runId}
-        Path outputPath = Path.of(outputDir);
-        if (outputPath.getNameCount() >= 4
-            && "agents".equals(outputPath.getName(outputPath.getNameCount() - 4).toString())) {
-            String agentId = outputPath.getName(outputPath.getNameCount() - 3).toString();
-            if (!"system".equals(agentId)) {
+        Path outputPath = Path.of(outputDir).normalize();
+        for (int i = 0; i < outputPath.getNameCount() - 2; i++) {
+            if (!"agents".equals(outputPath.getName(i).toString())) {
+                continue;
+            }
+            String agentId = outputPath.getName(i + 1).toString();
+            boolean currentWorkspaceLayout = i + 3 < outputPath.getNameCount()
+                && "workspace".equals(outputPath.getName(i + 2).toString())
+                && "outputs".equals(outputPath.getName(i + 3).toString());
+            boolean legacyOutputLayout = "outputs".equals(outputPath.getName(i + 2).toString());
+            if ((currentWorkspaceLayout || legacyOutputLayout) && !"system".equals(agentId)) {
                 return agentId;
             }
         }
@@ -1867,22 +1872,26 @@ Approved plan:
     }
 
     private OutputArtifactContext outputArtifactContext(PlanRun run, PlanDefinition task) {
+        String defaultRunType = task.kind() == PlanKind.TASK_TEMPLATE ? "TASK_RUN" : "PLAN_RUN";
         OrchestrationTaskContext taskContext = OrchestrationTaskContextHolder.current();
         if (taskContext != null && taskContext.hasContext()) {
+            String agentId = StringUtils.hasText(taskContext.agentId())
+                ? taskContext.agentId()
+                : resolveOutputAgentId(run);
             return new OutputArtifactContext(
-                taskContext.agentId(),
+                agentId,
                 taskContext.jobId(),
                 taskContext.projectId(),
                 taskContext.workspaceId(),
                 StringUtils.hasText(taskContext.runType())
                     ? taskContext.runType()
-                    : (task.kind() == PlanKind.TASK_TEMPLATE ? "TASK_RUN" : "PLAN_RUN")
+                    : defaultRunType
             );
         }
         String agentId = resolveOutputAgentId(run);
         return new OutputArtifactContext(
             agentId, null, null, null,
-            task.kind() == PlanKind.TASK_TEMPLATE ? "TASK_RUN" : "PLAN_RUN"
+            defaultRunType
         );
     }
 

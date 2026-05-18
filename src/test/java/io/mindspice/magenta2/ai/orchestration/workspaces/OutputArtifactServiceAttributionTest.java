@@ -50,6 +50,18 @@ class OutputArtifactServiceAttributionTest {
         assertThat(artifact.projectId()).isEqualTo("project-1");
         assertThat(artifact.workspaceId()).isEqualTo("workspace-1");
         assertThat(artifact.runType()).isEqualTo("TASK_RUN");
+        assertThat(service.query(OutputArtifactQuery.of("agent-1", null, null, null, null, null, null, 10)))
+            .extracting(RunOutputArtifact::id)
+            .containsExactly(artifact.id());
+        assertThat(service.query(OutputArtifactQuery.of(null, "job-1", null, null, null, null, null, 10)))
+            .extracting(RunOutputArtifact::id)
+            .containsExactly(artifact.id());
+        assertThat(service.query(OutputArtifactQuery.of(null, null, "project-1", null, null, null, null, 10)))
+            .extracting(RunOutputArtifact::id)
+            .containsExactly(artifact.id());
+        assertThat(service.query(OutputArtifactQuery.of(null, null, null, "workspace-1", null, null, null, 10)))
+            .extracting(RunOutputArtifact::id)
+            .containsExactly(artifact.id());
     }
 
     // ════════════════════════════════════════════════════════════════

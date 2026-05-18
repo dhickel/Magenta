@@ -41,6 +41,7 @@ public record OrchestrationTaskContext(
 
     public boolean hasContext() {
         return StringUtils.hasText(agentId) || StringUtils.hasText(jobId)
+            || StringUtils.hasText(projectId)
             || StringUtils.hasText(workspaceId);
     }
 

@@ -10,7 +10,9 @@ import io.mindspice.magenta2.ai.chat.repository.ChatMemoryRepository;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
+import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactQuery;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceRepository;
 import org.junit.jupiter.api.Test;
@@ -538,6 +540,143 @@ class PlanServiceTest {
             .isNotNull()
             .contains("agents/system/workspace/outputs/");
         assertThat(Files.isDirectory(Path.of(run.outputDirectory()))).isTrue();
+    }
+
+    @Test
+    void completeRunDerivesAgentAttributionFromCurrentWorkspaceOutputPath() throws Exception {
+        Path dataRoot = Files.createDirectories(tempDir.resolve("data-attribution"));
+        WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(
+            new AiConfig(null, null, null, null, dataRoot, null, null));
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        WorkspaceRepository workspaceRepository = new WorkspaceRepository(jdbcTemplate);
+        OutputArtifactService artifactService = new OutputArtifactService(
+            workspaceRepository, dirService, new ObjectMapper().findAndRegisterModules());
+
+        PlanService service = new PlanService(
+            new PlanRepository(jdbcTemplate, new ObjectMapper()),
+            new ChatMemoryRepository(jdbcTemplate, new ObjectMapper()),
+            null, new io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer(),
+            dirService, artifactService);
+
+        PlanDefinition task = service.saveTask(new PlanDefinition(
+            null, PlanKind.TASK_TEMPLATE, PlanStatus.APPROVED,
+            "Attributed Output Task", "Do it.", "Goal.", null,
+            List.of(), List.of(),
+            List.of(new PlanFieldDefinition("result", PlanFieldType.STRING, false, "Result", true, null)),
+            List.of(), List.of(new PlanStep(1, "Do it.")), List.of("Result present."),
+            List.of(), List.of(), null, null, null, null,
+            null, List.of(), 0, 0, null, null, null, null));
+
+        OrchestrationTaskContextHolder.clear();
+        PlanRun run = service.startRun(task.id(), Map.of(),
+            new OrchestrationTaskContext("agent-1", "TestAgent", null, null, null,
+                "TASK_RUN", null, null));
+
+        assertThat(run.outputDirectory()).contains("agents/agent-1/workspace/outputs/");
+
+        service.completeRun(run.id(), Map.of("result", "done"), "Done", List.of());
+
+        RunOutputArtifact artifact = artifactService.artifactsForRun(run.id()).get(0);
+        assertThat(artifact.agentId()).isEqualTo("agent-1");
+        assertThat(artifact.jobId()).isNull();
+        assertThat(artifact.projectId()).isNull();
+        assertThat(artifact.workspaceId()).isNull();
+        assertThat(artifact.runType()).isEqualTo("TASK_RUN");
+        assertThat(artifactService.query(OutputArtifactQuery.of(
+            "agent-1", null, null, null, null, null, null, 10)))
+            .extracting(RunOutputArtifact::id)
+            .containsExactly(artifact.id());
+    }
+
+    @Test
+    void explicitTaskContextAttributionOverridesOutputPathFallback() throws Exception {
+        Path dataRoot = Files.createDirectories(tempDir.resolve("data-explicit-attribution"));
+        WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(
+            new AiConfig(null, null, null, null, dataRoot, null, null));
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        WorkspaceRepository workspaceRepository = new WorkspaceRepository(jdbcTemplate);
+        OutputArtifactService artifactService = new OutputArtifactService(
+            workspaceRepository, dirService, new ObjectMapper().findAndRegisterModules());
+
+        PlanService service = new PlanService(
+            new PlanRepository(jdbcTemplate, new ObjectMapper()),
+            new ChatMemoryRepository(jdbcTemplate, new ObjectMapper()),
+            null, new io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer(),
+            dirService, artifactService);
+
+        PlanDefinition task = service.saveTask(new PlanDefinition(
+            null, PlanKind.TASK_TEMPLATE, PlanStatus.APPROVED,
+            "Explicit Attribution Task", "Do it.", "Goal.", null,
+            List.of(), List.of(),
+            List.of(new PlanFieldDefinition("result", PlanFieldType.STRING, false, "Result", true, null)),
+            List.of(), List.of(new PlanStep(1, "Do it.")), List.of("Result present."),
+            List.of(), List.of(), null, null, null, null,
+            null, List.of(), 0, 0, null, null, null, null));
+
+        OrchestrationTaskContextHolder.clear();
+        PlanRun run = service.startRun(task.id(), Map.of(),
+            new OrchestrationTaskContext("path-agent", "PathAgent", null, null, null,
+                "TASK_RUN", null, null));
+        assertThat(run.outputDirectory()).contains("agents/path-agent/workspace/outputs/");
+
+        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
+            "explicit-agent", "ExplicitAgent", "job-1", "project-1", "workspace-1",
+            "WORKFLOW_RUN", null, null));
+        try {
+            service.completeRun(run.id(), Map.of("result", "done"), "Done", List.of());
+        } finally {
+            OrchestrationTaskContextHolder.clear();
+        }
+
+        RunOutputArtifact artifact = artifactService.artifactsForRun(run.id()).get(0);
+        assertThat(artifact.agentId()).isEqualTo("explicit-agent");
+        assertThat(artifact.jobId()).isEqualTo("job-1");
+        assertThat(artifact.projectId()).isEqualTo("project-1");
+        assertThat(artifact.workspaceId()).isEqualTo("workspace-1");
+        assertThat(artifact.runType()).isEqualTo("WORKFLOW_RUN");
+    }
+
+    @Test
+    void partialTaskContextPreservesProjectAndFallsBackToOutputPathAgent() throws Exception {
+        Path dataRoot = Files.createDirectories(tempDir.resolve("data-partial-attribution"));
+        WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(
+            new AiConfig(null, null, null, null, dataRoot, null, null));
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        WorkspaceRepository workspaceRepository = new WorkspaceRepository(jdbcTemplate);
+        OutputArtifactService artifactService = new OutputArtifactService(
+            workspaceRepository, dirService, new ObjectMapper().findAndRegisterModules());
+
+        PlanService service = new PlanService(
+            new PlanRepository(jdbcTemplate, new ObjectMapper()),
+            new ChatMemoryRepository(jdbcTemplate, new ObjectMapper()),
+            null, new io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer(),
+            dirService, artifactService);
+
+        PlanDefinition task = service.saveTask(new PlanDefinition(
+            null, PlanKind.TASK_TEMPLATE, PlanStatus.APPROVED,
+            "Partial Attribution Task", "Do it.", "Goal.", null,
+            List.of(), List.of(),
+            List.of(new PlanFieldDefinition("result", PlanFieldType.STRING, false, "Result", true, null)),
+            List.of(), List.of(new PlanStep(1, "Do it.")), List.of("Result present."),
+            List.of(), List.of(), null, null, null, null,
+            null, List.of(), 0, 0, null, null, null, null));
+
+        OrchestrationTaskContextHolder.clear();
+        PlanRun run = service.startRun(task.id(), Map.of(),
+            new OrchestrationTaskContext("path-agent", "PathAgent", null, null, null,
+                "TASK_RUN", null, null));
+        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
+            null, null, null, "project-1", null, null, null, null));
+        try {
+            service.completeRun(run.id(), Map.of("result", "done"), "Done", List.of());
+        } finally {
+            OrchestrationTaskContextHolder.clear();
+        }
+
+        RunOutputArtifact artifact = artifactService.artifactsForRun(run.id()).get(0);
+        assertThat(artifact.agentId()).isEqualTo("path-agent");
+        assertThat(artifact.projectId()).isEqualTo("project-1");
+        assertThat(artifact.runType()).isEqualTo("TASK_RUN");
     }
 
     @Test

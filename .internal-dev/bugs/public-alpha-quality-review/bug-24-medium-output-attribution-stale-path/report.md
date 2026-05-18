@@ -32,8 +32,8 @@ Medium: output artifacts can lose attribution and disappear from filtered operat
 
 ## Status
 
-Open.
+Fixed in working tree; parent validation pending.
 
 ## Next Action
 
-Update attribution parsing for the current workspace layout and add regression tests.
+Parent review should confirm the working-tree implementation and validation evidence before marking the finding passed.

@@ -12,6 +12,8 @@ Output artifact attribution query and runtime backfill pattern
 - For migration safety on SQLite, use additive `alter table ... add column` guarded by `pragma_table_info` checks.
 - When end-to-end context is not available at materialization time, use post-run backfill keyed by `run_id` to fill null attribution columns.
 - Preserve compatibility by falling back to run traversal only when direct attribution filters return empty for legacy data.
+- For non-backfilled plan output materialization, `PlanService` can derive missing agent attribution from persisted output directories. The supported shapes are current `agents/{agentId}/workspace/outputs/{slug-run}` and legacy `agents/{agentId}/outputs/{slug-run}`.
+- Explicit orchestration attribution should be applied field-by-field before path fallback. Do not overwrite explicit agent/job/project/workspace fields from path parsing; only fill missing agent attribution when the path is available.
 
 # Engine Relevance
 - This pattern keeps controller logic thin while moving filtering and attribution concerns into workspace repository/service layers.
