@@ -19,6 +19,7 @@ Future agents should start from this suite. The original review files are indexe
 - Each domain implementation starts by creating its own branch named in that domain `index.md`.
 - Domain implementation should be serial in the shared checkout. Do not run parallel mutating workers inside one domain unless the domain orchestration plan explicitly names disjoint write scopes.
 - Validation agents gate each subplan. Validation agents should read the original review and bug documents referenced by the domain before running checks.
+- Domain orchestrators must create a git commit after each completed subplan before starting the next subplan. This applies going forward from 2026-05-18; already-run agents do not need retroactive prompt changes.
 - Implementation/scoping workers should use GPT-5.5 Codex high unless the operator overrides it.
 - Validation/testing agents should follow repository policy: `gpt-5.3-codex` with reasoning effort `medium`, unless the execution prompt explicitly overrides it.
 - Agents must update `progress.md` and append useful cross-domain facts to `implementation_notes.md`.

@@ -35,8 +35,8 @@ Critical: a malformed id can target other durable runtime subtrees inside `dataR
 
 ## Status
 
-Open.
+Implementation complete; external validation pending.
 
 ## Next Action
 
-Require strict id segment validation for agent ids and any other ids used in filesystem paths; add tests for `..`, slash, backslash, absolute path, and encoded traversal values.
+Run the subplan 02 validation gate against the pending implementation. Implementer checks covered strict segment validation for `..`, slash, backslash, absolute path syntax, `%2e%2e`, encoded slash/backslash, blank, and dot-only ids at utility, agent profile, workspace service, workspace directory, and REST controller boundaries.

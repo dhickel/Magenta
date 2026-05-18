@@ -12,6 +12,7 @@ import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryServi
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceOwnerType;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceRepository;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceService;
+import io.mindspice.magenta2.core.util.PlainPathSegmentValidator;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
@@ -76,6 +77,7 @@ public class AgentProfileService {
     }
 
     public AgentProfile get(String id) {
+        requireAgentId(id);
         return repository.findById(id).orElseThrow(() -> new IllegalStateException("Agent profile not found: " + id));
     }
 
@@ -88,7 +90,7 @@ public class AgentProfileService {
     }
 
     public AgentProfile create(AgentProfile profile) {
-        String id = StringUtils.hasText(profile.id()) ? profile.id() : UUID.randomUUID().toString();
+        String id = profile.id() == null ? UUID.randomUUID().toString() : profile.id();
         AgentProfile created = save(new AgentProfile(
             id,
             profile.name(),
@@ -106,6 +108,7 @@ public class AgentProfileService {
     }
 
     public AgentProfile update(String id, AgentProfile profile) {
+        requireAgentId(id);
         AgentProfile current = get(id);
         AgentProfile updated = save(new AgentProfile(
             id,
@@ -124,6 +127,7 @@ public class AgentProfileService {
     }
 
     public AgentProfile enable(String id, boolean wakeContainer) {
+        requireAgentId(id);
         AgentProfile profile = get(id);
         AgentProfile enabled = save(new AgentProfile(
             profile.id(),
@@ -142,6 +146,7 @@ public class AgentProfileService {
     }
 
     public AgentProfile disable(String id) {
+        requireAgentId(id);
         AgentProfile profile = get(id);
         AgentProfile disabled = save(new AgentProfile(
             profile.id(),
@@ -159,6 +164,7 @@ public class AgentProfileService {
     }
 
     public AgentProfile archiveAndDisable(String id) {
+        requireAgentId(id);
         AgentProfile disabled = disable(id);
         WorkspaceService ws = workspaceService();
         if (ws != null) {
@@ -168,6 +174,7 @@ public class AgentProfileService {
     }
 
     public void hardDelete(String id, String confirmationText) {
+        requireAgentId(id);
         if (!("DELETE " + id).equals(confirmationText)) {
             throw new IllegalArgumentException("confirmation text must exactly match: DELETE " + id);
         }
@@ -198,6 +205,7 @@ public class AgentProfileService {
     }
 
     public void deleteOrDisable(String id) {
+        requireAgentId(id);
         disable(id);
     }
 
@@ -229,9 +237,7 @@ public class AgentProfileService {
     }
 
     private void validate(AgentProfile profile) {
-        if (!StringUtils.hasText(profile.id())) {
-            throw new IllegalArgumentException("agent id is required");
-        }
+        requireAgentId(profile.id());
         if (!StringUtils.hasText(profile.name())) {
             throw new IllegalArgumentException("agent name is required");
         }
@@ -243,6 +249,10 @@ public class AgentProfileService {
             registry.validateToolNames(profile.approvedTools());
         }
         validateShellCommands(profile.allowedShellCommands());
+    }
+
+    private void requireAgentId(String id) {
+        PlainPathSegmentValidator.requirePlainSegment(id, "agent id");
     }
 
     private void validateShellCommands(List<String> commands) {

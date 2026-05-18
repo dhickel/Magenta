@@ -1,20 +1,33 @@
 package io.mindspice.magenta2.api.web;
 
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mindspice.magenta2.ai.config.user.AgentConfig;
+import io.mindspice.magenta2.ai.config.user.AiConfig;
+import io.mindspice.magenta2.ai.config.user.EndpointType;
+import io.mindspice.magenta2.ai.config.user.ModelConfig;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
+import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileRepository;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileStatus;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceService;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.springframework.web.server.ResponseStatusException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AgentProfileControllerTest {
+    @TempDir
+    Path tempDir;
 
     @Test
     void createRejectsBlankName() {
@@ -68,6 +81,36 @@ class AgentProfileControllerTest {
     }
 
     @Test
+    void createReturns400ForInvalidPathSegmentId() {
+        AgentProfileController controller = new AgentProfileController(realService(), null);
+        AgentProfile invalid = new AgentProfile(
+            "%2e%2e", "Invalid Agent", AgentProfileStatus.ACTIVE, "main", null,
+            List.of(), List.of(), true, null, null
+        );
+
+        assertThatThrownBy(() -> controller.create(invalid))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(exception.getReason()).contains("agent id");
+            });
+    }
+
+    @Test
+    void updateReturns400ForInvalidPathAgentId() {
+        AgentProfileController controller = new AgentProfileController(realService(), null);
+        AgentProfile profile = new AgentProfile(
+            "../projects/example", "Invalid Agent", AgentProfileStatus.ACTIVE, "main", null,
+            List.of(), List.of(), true, null, null
+        );
+
+        assertThatThrownBy(() -> controller.update("../projects/example", profile))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(exception.getReason()).contains("agent id");
+            });
+    }
+
+    @Test
     void listReturnsProfiles() {
         AgentProfileController controller = new AgentProfileController(stubService(), null);
 
@@ -118,5 +161,27 @@ class AgentProfileControllerTest {
                 throw new IllegalStateException("agent not found: " + id);
             }
         };
+    }
+
+    private AgentProfileService realService() {
+        return new AgentProfileService(
+            new AgentProfileRepository(
+                new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true)),
+                new ObjectMapper()
+            ),
+            new AiConfig(
+                "legacy",
+                "main",
+                "main",
+                "main",
+                "main",
+                10,
+                tempDir,
+                null,
+                Map.of("main", new ModelConfig("main-remote", "http://localhost:11434", EndpointType.OLLAMA, 4096, 0, null)),
+                Map.of("legacy", new AgentConfig("main", "Prompt", List.of(), List.of("*")))
+            ),
+            null
+        );
     }
 }

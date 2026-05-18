@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.util.UUID;
 
 import io.mindspice.magenta2.ai.config.user.AiConfig;
+import io.mindspice.magenta2.core.util.PlainPathSegmentValidator;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -109,6 +110,7 @@ public class WorkspaceDirectoryService {
      * Call after Docker execution dependencies on the old paths are removed.
      */
     public void migrateLegacyAgentDirs(String agentId) {
+        requireId(agentId, "agentId");
         Path workspaceDir = confined("agents/" + agentId + "/workspace");
         if (Files.exists(workspaceDir)) {
             return; // already migrated
@@ -267,9 +269,7 @@ public class WorkspaceDirectoryService {
     }
 
     private void requireId(String value, String label) {
-        if (!StringUtils.hasText(value)) {
-            throw new IllegalArgumentException(label + " is required");
-        }
+        PlainPathSegmentValidator.requirePlainSegment(value, label);
     }
 
     private String sanitize(String value) {

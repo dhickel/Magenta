@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.UUID;
 
 import io.mindspice.magenta2.ai.config.user.AiConfig;
+import io.mindspice.magenta2.core.util.PlainPathSegmentValidator;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -40,16 +41,19 @@ public class WorkspaceService {
     }
 
     public Workspace agentWorkspace(String agentId, String displayName) {
+        PlainPathSegmentValidator.requirePlainSegment(agentId, "agentId");
         return repository.findByOwner(WorkspaceOwnerType.AGENT, agentId)
             .orElseGet(() -> createWorkspace(WorkspaceOwnerType.AGENT, agentId, "agents/" + agentId + "/workspace", displayName));
     }
 
     public Workspace jobWorkspace(String jobId, String displayName) {
+        PlainPathSegmentValidator.requirePlainSegment(jobId, "jobId");
         return repository.findByOwner(WorkspaceOwnerType.JOB, jobId)
             .orElseGet(() -> createWorkspace(WorkspaceOwnerType.JOB, jobId, "jobs/" + jobId, displayName));
     }
 
     public Workspace projectWorkspace(String projectId, String displayName) {
+        PlainPathSegmentValidator.requirePlainSegment(projectId, "projectId");
         return repository.findByOwner(WorkspaceOwnerType.PROJECT, projectId)
             .orElseGet(() -> createWorkspace(
                 WorkspaceOwnerType.PROJECT, projectId, "projects/" + projectId + "/workspace", displayName
@@ -57,6 +61,8 @@ public class WorkspaceService {
     }
 
     public Path assignmentPath(String agentId, String assignmentId) {
+        PlainPathSegmentValidator.requirePlainSegment(agentId, "agentId");
+        PlainPathSegmentValidator.requirePlainSegment(assignmentId, "assignmentId");
         return confined("agents/" + agentId + "/work/" + assignmentId);
     }
 
@@ -96,9 +102,7 @@ public class WorkspaceService {
     }
 
     public Path archiveAgentWorkspaceData(String agentId) {
-        if (!StringUtils.hasText(agentId)) {
-            throw new IllegalArgumentException("agentId is required");
-        }
+        PlainPathSegmentValidator.requirePlainSegment(agentId, "agentId");
         Path source = confined("agents/" + agentId);
         if (!Files.exists(source)) {
             return source;
@@ -117,9 +121,7 @@ public class WorkspaceService {
     }
 
     public void deleteAgentWorkspaceData(String agentId) {
-        if (!StringUtils.hasText(agentId)) {
-            throw new IllegalArgumentException("agentId is required");
-        }
+        PlainPathSegmentValidator.requirePlainSegment(agentId, "agentId");
         Path source = confined("agents/" + agentId);
         if (!Files.exists(source)) {
             return;
