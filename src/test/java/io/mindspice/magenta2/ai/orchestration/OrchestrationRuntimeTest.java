@@ -473,6 +473,9 @@ class OrchestrationRuntimeTest {
     void forceInterruptedAssignmentRejectsLateLeasedCompletion() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, new ObjectMapper());
+        AgentProfileService agentService = agentService(jdbcTemplate, aiConfig());
+        agentService.create(new AgentProfile("agent-1", "Agent 1", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of(), true, null, null));
         WorkAssignment running = repository.saveAssignment(new WorkAssignment(
             "assignment-interrupt", "agent-1", null, null, AssignmentType.REPORT, 1,
             OrchestrationStatus.RUNNING, null, null, 0,
@@ -480,9 +483,9 @@ class OrchestrationRuntimeTest {
             null, "owner-1", Instant.now().plusSeconds(300),
             null, null, Instant.now(), null
         ));
-        AssignmentService assignmentService = new AssignmentService(repository, null, null, null);
+        AssignmentService assignmentService = new AssignmentService(repository, agentService, null, null);
 
-        WorkAssignment interrupted = assignmentService.forceInterrupt(running.id(), "blocked model call");
+        WorkAssignment interrupted = assignmentService.forceInterrupt("agent-1", running.id(), "blocked model call");
         WorkAssignment lateCompletion = new WorkAssignment(
             interrupted.id(), interrupted.agentId(), interrupted.jobId(), interrupted.jobItemId(),
             interrupted.assignmentType(), interrupted.priority(), OrchestrationStatus.COMPLETED,
@@ -902,14 +905,17 @@ class OrchestrationRuntimeTest {
     void queuedCancelTransitionsDirectlyToCancelled() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, new ObjectMapper());
-        AssignmentService assignmentService = new AssignmentService(repository, null, null, null);
+        AgentProfileService agentService = agentService(jdbcTemplate, aiConfig());
+        agentService.create(new AgentProfile("agent-1", "Agent 1", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of(), true, null, null));
+        AssignmentService assignmentService = new AssignmentService(repository, agentService, null, null);
         repository.saveAssignment(new WorkAssignment(
             "assignment-cancel-queued", "agent-1", null, null, AssignmentType.REPORT, 1,
             OrchestrationStatus.QUEUED, null, null, 0,
             Map.of(), Map.of(), Map.of(), Map.of(), null, null, null, null, null, null, null
         ));
 
-        WorkAssignment cancelled = assignmentService.cancel("assignment-cancel-queued");
+        WorkAssignment cancelled = assignmentService.cancel("agent-1", "assignment-cancel-queued");
 
         assertThat(cancelled.status()).isEqualTo(OrchestrationStatus.CANCELLED);
         assertThat(cancelled.completedAt()).isNotNull();
@@ -962,7 +968,7 @@ class OrchestrationRuntimeTest {
 
         runner.pollQueuedWork();
         assertThat(enteredModel.await(5, TimeUnit.SECONDS)).isTrue();
-        WorkAssignment cancelRequested = assignmentService.cancel("assignment-cancel-running");
+        WorkAssignment cancelRequested = assignmentService.cancel("agent-1", "assignment-cancel-running");
         assertThat(cancelRequested.status()).isEqualTo(OrchestrationStatus.CANCEL_REQUESTED);
         assertThat(cancelRequested.leaseOwner()).isNotNull();
 
@@ -991,9 +997,87 @@ class OrchestrationRuntimeTest {
         assertThat(assignment.completedAt()).isNotNull();
     }
 
+    @Test
+    void scopedAssignmentLifecycleAcceptsSameAgentControls() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, new ObjectMapper());
+        AgentProfileService agentService = agentService(jdbcTemplate, aiConfig());
+        AgentProfile agent = agentService.create(new AgentProfile(
+            "agent-1", "Agent 1", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of(), true, null, null
+        ));
+        AssignmentService service = new AssignmentService(repository, agentService, null, null);
+        repository.saveAssignment(assignment("scoped-cancel", agent.id(), OrchestrationStatus.QUEUED));
+        repository.saveAssignment(assignment("scoped-pause", agent.id(), OrchestrationStatus.QUEUED));
+        repository.saveAssignment(assignment("scoped-resume", agent.id(), OrchestrationStatus.PAUSED));
+        repository.saveAssignment(assignment("scoped-force", agent.id(), OrchestrationStatus.RUNNING));
+
+        WorkAssignment cancelled = service.cancel(agent.id(), "scoped-cancel");
+        WorkAssignment paused = service.pause(agent.id(), "scoped-pause");
+        WorkAssignment resumed = service.resume(agent.id(), "scoped-resume");
+        WorkAssignment interrupted = service.forceInterrupt(agent.id(), "scoped-force", "stuck worker");
+
+        assertThat(cancelled.status()).isEqualTo(OrchestrationStatus.CANCELLED);
+        assertThat(paused.status()).isEqualTo(OrchestrationStatus.PAUSED);
+        assertThat(resumed.status()).isEqualTo(OrchestrationStatus.QUEUED);
+        assertThat(interrupted.status()).isEqualTo(OrchestrationStatus.INTERRUPTED);
+        assertThat(interrupted.errorText()).contains("stuck worker");
+    }
+
+    @Test
+    void scopedAssignmentLifecycleRejectsCrossAgentControlsWithoutMutation() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, new ObjectMapper());
+        AgentProfileService agentService = agentService(jdbcTemplate, aiConfig());
+        agentService.create(new AgentProfile(
+            "agent-1", "Agent 1", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of(), true, null, null
+        ));
+        agentService.create(new AgentProfile(
+            "agent-2", "Agent 2", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of(), true, null, null
+        ));
+        AssignmentService service = new AssignmentService(repository, agentService, null, null);
+        repository.saveAssignment(assignment("cross-cancel", "agent-2", OrchestrationStatus.QUEUED));
+        repository.saveAssignment(assignment("cross-pause", "agent-2", OrchestrationStatus.QUEUED));
+        repository.saveAssignment(assignment("cross-resume", "agent-2", OrchestrationStatus.PAUSED));
+        repository.saveAssignment(assignment("cross-force", "agent-2", OrchestrationStatus.RUNNING));
+
+        assertThatThrownBy(() -> service.cancel("agent-1", "cross-cancel"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Assignment does not belong to agent");
+        assertThatThrownBy(() -> service.pause("agent-1", "cross-pause"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Assignment does not belong to agent");
+        assertThatThrownBy(() -> service.resume("agent-1", "cross-resume"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Assignment does not belong to agent");
+        assertThatThrownBy(() -> service.forceInterrupt("agent-1", "cross-force", "wrong route"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Assignment does not belong to agent");
+
+        assertThat(repository.findAssignment("cross-cancel").orElseThrow().status()).isEqualTo(OrchestrationStatus.QUEUED);
+        assertThat(repository.findAssignment("cross-pause").orElseThrow().status()).isEqualTo(OrchestrationStatus.QUEUED);
+        assertThat(repository.findAssignment("cross-resume").orElseThrow().status()).isEqualTo(OrchestrationStatus.PAUSED);
+        WorkAssignment forceCandidate = repository.findAssignment("cross-force").orElseThrow();
+        assertThat(forceCandidate.status()).isEqualTo(OrchestrationStatus.RUNNING);
+        assertThat(forceCandidate.errorText()).isNull();
+    }
+
     private JdbcTemplate jdbcTemplate() {
         SingleConnectionDataSource dataSource = new SingleConnectionDataSource("jdbc:sqlite::memory:", true);
         return new JdbcTemplate(dataSource);
+    }
+
+    private WorkAssignment assignment(String id, String agentId, OrchestrationStatus status) {
+        return new WorkAssignment(
+            id, agentId, null, null, AssignmentType.REPORT, 1, status,
+            null, null, 0, Map.of(), Map.of(), Map.of(), Map.of(),
+            null,
+            status == OrchestrationStatus.RUNNING ? "owner-1" : null,
+            status == OrchestrationStatus.RUNNING ? Instant.now().plusSeconds(300) : null,
+            null, null, status == OrchestrationStatus.RUNNING ? Instant.now() : null, null
+        );
     }
 
     private WorkAssignment waitForStatus(

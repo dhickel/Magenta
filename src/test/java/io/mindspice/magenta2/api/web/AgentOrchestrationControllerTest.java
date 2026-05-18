@@ -269,6 +269,43 @@ class AgentOrchestrationControllerTest {
     }
 
     @Test
+    void lifecycleControlsUsePathAgentId() {
+        StubAssignmentService assignmentService = new StubAssignmentService();
+        AgentOrchestrationController controller = newController(
+            null, assignmentService, null, null, new StubAgentProfileService(), new StubChatService()
+        );
+
+        controller.cancel("agent-1", "assign-cancel");
+        controller.pause("agent-1", "assign-pause");
+        controller.resume("agent-1", "assign-resume");
+
+        assertThat(assignmentService.lifecycleCalls).containsExactly(
+            "cancel:agent-1:assign-cancel",
+            "pause:agent-1:assign-pause",
+            "resume:agent-1:assign-resume"
+        );
+    }
+
+    @Test
+    void lifecycleCrossAgentRejectionReturnsNotFound() {
+        StubAssignmentService assignmentService = new StubAssignmentService();
+        assignmentService.rejectLifecycle = true;
+        AgentOrchestrationController controller = newController(
+            null, assignmentService, null, null, new StubAgentProfileService(), new StubChatService()
+        );
+
+        assertThatThrownBy(() -> controller.cancel("agent-1", "assign-2"))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
+        assertThatThrownBy(() -> controller.pause("agent-1", "assign-2"))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
+        assertThatThrownBy(() -> controller.resume("agent-1", "assign-2"))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
     void agentChatStreamEmitterHasNoTimeout() {
         StubAgentProfileService profileService = new StubAgentProfileService();
         StubChatService chatService = new StubChatService();
@@ -368,6 +405,8 @@ class AgentOrchestrationControllerTest {
     private static class StubAssignmentService extends AssignmentService {
         private OrchestrationStatus status = OrchestrationStatus.QUEUED;
         private String deletedAssignmentId;
+        private boolean rejectLifecycle;
+        private final List<String> lifecycleCalls = new ArrayList<>();
 
         StubAssignmentService() {
             super(null, null, null, null);
@@ -396,6 +435,40 @@ class AgentOrchestrationControllerTest {
                 throw new IllegalStateException("Terminal assignments are retained in History");
             }
             deletedAssignmentId = assignmentId;
+        }
+
+        @Override
+        public WorkAssignment cancel(String agentId, String assignmentId) {
+            lifecycleCalls.add("cancel:" + agentId + ":" + assignmentId);
+            if (rejectLifecycle) {
+                throw new IllegalArgumentException("Assignment does not belong to agent: " + assignmentId);
+            }
+            return assignment(assignmentId, agentId, OrchestrationStatus.CANCELLED);
+        }
+
+        @Override
+        public WorkAssignment pause(String agentId, String assignmentId) {
+            lifecycleCalls.add("pause:" + agentId + ":" + assignmentId);
+            if (rejectLifecycle) {
+                throw new IllegalArgumentException("Assignment does not belong to agent: " + assignmentId);
+            }
+            return assignment(assignmentId, agentId, OrchestrationStatus.PAUSED);
+        }
+
+        @Override
+        public WorkAssignment resume(String agentId, String assignmentId) {
+            lifecycleCalls.add("resume:" + agentId + ":" + assignmentId);
+            if (rejectLifecycle) {
+                throw new IllegalArgumentException("Assignment does not belong to agent: " + assignmentId);
+            }
+            return assignment(assignmentId, agentId, OrchestrationStatus.QUEUED);
+        }
+
+        private WorkAssignment assignment(String assignmentId, String agentId, OrchestrationStatus status) {
+            return new WorkAssignment(assignmentId, agentId, null, null, AssignmentType.REPORT,
+                0, status, null, null, 0,
+                java.util.Map.of(), java.util.Map.of(), java.util.Map.of(), java.util.Map.of(),
+                null, null, null, null, null, null, null);
         }
 
         private int purged;

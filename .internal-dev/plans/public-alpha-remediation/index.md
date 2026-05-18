@@ -16,7 +16,7 @@ Future agents should start from this suite. The original review files are indexe
 ## Execution Contract
 
 - Root branch for this plan-generation work: `public-alpha-remediation-plans`.
-- Each domain implementation starts by creating its own branch named in that domain `index.md`.
+- Each domain implementation starts by creating its own branch named in that domain `index.md`, cut from the latest validated prior-domain/integration tip rather than the original base. Later domains intentionally build on earlier domain fixes to avoid complex merge churn on shared code targets.
 - Domain implementation should be serial in the shared checkout. Do not run parallel mutating workers inside one domain unless the domain orchestration plan explicitly names disjoint write scopes.
 - Validation agents gate each subplan. Validation agents should read the original review and bug documents referenced by the domain before running checks.
 - Domain orchestrators must create a git commit after each completed subplan before starting the next subplan. This applies going forward from 2026-05-18; already-run agents do not need retroactive prompt changes.

@@ -54,6 +54,7 @@ import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceService;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
+import org.springframework.mock.web.MockHttpServletResponse;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -1369,6 +1370,67 @@ class OrchestrationControllerTest {
     }
 
     @Test
+    void htmxAssignmentLifecycleRefreshesQueueForSameAgent() {
+        StubAssignmentService stubAsgn = new StubAssignmentService();
+        stubAsgn.setAssignments(List.of(
+            assignment("asgn-cancel", OrchestrationStatus.QUEUED, Map.of()),
+            assignment("asgn-pause", OrchestrationStatus.QUEUED, Map.of()),
+            assignment("asgn-resume", OrchestrationStatus.PAUSED, Map.of()),
+            assignment("asgn-force", OrchestrationStatus.RUNNING, Map.of())
+        ));
+        OrchestrationController controller = controllerWithAssignmentService(stubAsgn);
+        MockHttpServletResponse cancelResponse = new MockHttpServletResponse();
+        MockHttpServletResponse pauseResponse = new MockHttpServletResponse();
+        MockHttpServletResponse resumeResponse = new MockHttpServletResponse();
+        MockHttpServletResponse forceResponse = new MockHttpServletResponse();
+
+        controller.cancelAgentAssignment("agent-1", "asgn-cancel", cancelResponse);
+        controller.pauseAgentAssignment("agent-1", "asgn-pause", pauseResponse);
+        controller.resumeAgentAssignment("agent-1", "asgn-resume", resumeResponse);
+        controller.forceInterruptAgentAssignment("agent-1", "asgn-force", "stuck", forceResponse);
+
+        assertThat(cancelResponse.getStatus()).isEqualTo(200);
+        assertThat(pauseResponse.getStatus()).isEqualTo(200);
+        assertThat(resumeResponse.getStatus()).isEqualTo(200);
+        assertThat(forceResponse.getStatus()).isEqualTo(200);
+        assertThat(stubAsgn.get("asgn-cancel").status()).isEqualTo(OrchestrationStatus.CANCELLED);
+        assertThat(stubAsgn.get("asgn-pause").status()).isEqualTo(OrchestrationStatus.PAUSED);
+        assertThat(stubAsgn.get("asgn-resume").status()).isEqualTo(OrchestrationStatus.QUEUED);
+        assertThat(stubAsgn.get("asgn-force").status()).isEqualTo(OrchestrationStatus.INTERRUPTED);
+    }
+
+    @Test
+    void htmxAssignmentLifecycleRejectsCrossAgentControlsWithErrorStatus() {
+        StubAssignmentService stubAsgn = new StubAssignmentService();
+        stubAsgn.setAssignments(List.of(
+            assignment("cross-cancel", "agent-2", OrchestrationStatus.QUEUED, Map.of()),
+            assignment("cross-pause", "agent-2", OrchestrationStatus.QUEUED, Map.of()),
+            assignment("cross-resume", "agent-2", OrchestrationStatus.PAUSED, Map.of()),
+            assignment("cross-force", "agent-2", OrchestrationStatus.RUNNING, Map.of())
+        ));
+        OrchestrationController controller = controllerWithAssignmentService(stubAsgn);
+
+        MockHttpServletResponse cancelResponse = new MockHttpServletResponse();
+        MockHttpServletResponse pauseResponse = new MockHttpServletResponse();
+        MockHttpServletResponse resumeResponse = new MockHttpServletResponse();
+        MockHttpServletResponse forceResponse = new MockHttpServletResponse();
+
+        assertLifecycleError(controller.cancelAgentAssignment(
+            "agent-1", "cross-cancel", cancelResponse), cancelResponse);
+        assertLifecycleError(controller.pauseAgentAssignment(
+            "agent-1", "cross-pause", pauseResponse), pauseResponse);
+        assertLifecycleError(controller.resumeAgentAssignment(
+            "agent-1", "cross-resume", resumeResponse), resumeResponse);
+        assertLifecycleError(controller.forceInterruptAgentAssignment(
+            "agent-1", "cross-force", "wrong route", forceResponse), forceResponse);
+
+        assertThat(stubAsgn.get("cross-cancel").status()).isEqualTo(OrchestrationStatus.QUEUED);
+        assertThat(stubAsgn.get("cross-pause").status()).isEqualTo(OrchestrationStatus.QUEUED);
+        assertThat(stubAsgn.get("cross-resume").status()).isEqualTo(OrchestrationStatus.PAUSED);
+        assertThat(stubAsgn.get("cross-force").status()).isEqualTo(OrchestrationStatus.RUNNING);
+    }
+
+    @Test
     void assignmentTranscriptRendersChatStyleAuditMarkup() {
         StubAssignmentService stubAsgn = new StubAssignmentService();
         WorkAssignment running = assignment("asgn-transcript", OrchestrationStatus.RUNNING, Map.of("conversationId", "conversation-1"));
@@ -1452,14 +1514,29 @@ class OrchestrationControllerTest {
     }
 
     private static WorkAssignment assignment(String id, OrchestrationStatus status, Map<String, Object> checkpoint) {
+        return assignment(id, "agent-1", status, checkpoint);
+    }
+
+    private static WorkAssignment assignment(
+        String id,
+        String agentId,
+        OrchestrationStatus status,
+        Map<String, Object> checkpoint
+    ) {
         return new WorkAssignment(
-            id, "agent-1", null, null, AssignmentType.TASK_RUN, 1, status,
+            id, agentId, null, null, AssignmentType.TASK_RUN, 1, status,
             null, null, 0, checkpoint, Map.of("taskId", "task-1"), Map.of(), Map.of(),
             null, status == OrchestrationStatus.RUNNING ? "owner-1" : null,
             status == OrchestrationStatus.RUNNING ? Instant.now().plusSeconds(300) : null,
             Instant.now().minusSeconds(60), Instant.now(), status == OrchestrationStatus.RUNNING ? Instant.now() : null,
             null, Instant.now().minusSeconds(30), Instant.now().minusSeconds(10)
         );
+    }
+
+    private static void assertLifecycleError(String html, MockHttpServletResponse response) {
+        assertThat(response.getStatus()).isEqualTo(404);
+        assertThat(html).contains("Assignment does not belong to agent");
+        assertThat(html).contains("No assignments.");
     }
 
     private static AuditRepository.AuditEvent audit(
@@ -1778,16 +1855,22 @@ class OrchestrationControllerTest {
                 Instant.now(), Instant.now(), null, null);
         }
 
-        @Override public java.util.List<WorkAssignment> assignments(String agentId) { return storedAssignments; }
+        @Override public java.util.List<WorkAssignment> assignments(String agentId) {
+            return storedAssignments.stream()
+                .filter(assignment -> agentId.equals(assignment.agentId()))
+                .toList();
+        }
 
         @Override public java.util.List<WorkAssignment> queueAssignments(String agentId) {
             return storedAssignments.stream()
+                .filter(assignment -> agentId.equals(assignment.agentId()))
                 .filter(assignment -> assignment.status() == null || !assignment.status().isTerminal())
                 .toList();
         }
 
         @Override public java.util.List<WorkAssignment> historyAssignments(String agentId) {
             return storedAssignments.stream()
+                .filter(assignment -> agentId.equals(assignment.agentId()))
                 .filter(assignment -> assignment.status() != null && assignment.status().isTerminal())
                 .toList();
         }
@@ -1850,18 +1933,49 @@ class OrchestrationControllerTest {
             );
         }
 
-        @Override public WorkAssignment forceInterrupt(String assignmentId, String reason) {
+        @Override public WorkAssignment cancel(String agentId, String assignmentId) {
+            WorkAssignment assignment = requireAgentAssignment(agentId, assignmentId);
+            WorkAssignment updated = assignment.status() == OrchestrationStatus.RUNNING
+                ? replace(assignment, OrchestrationStatus.CANCEL_REQUESTED, "Cancel requested")
+                : replace(assignment, OrchestrationStatus.CANCELLED, null);
+            return updated;
+        }
+
+        @Override public WorkAssignment pause(String agentId, String assignmentId) {
+            return replace(requireAgentAssignment(agentId, assignmentId), OrchestrationStatus.PAUSED, null);
+        }
+
+        @Override public WorkAssignment resume(String agentId, String assignmentId) {
+            return replace(requireAgentAssignment(agentId, assignmentId), OrchestrationStatus.QUEUED, null);
+        }
+
+        @Override public WorkAssignment forceInterrupt(String agentId, String assignmentId, String reason) {
+            return replace(requireAgentAssignment(agentId, assignmentId), OrchestrationStatus.INTERRUPTED,
+                "Force interrupted: " + reason);
+        }
+
+        private WorkAssignment requireAgentAssignment(String agentId, String assignmentId) {
             WorkAssignment assignment = get(assignmentId);
-            WorkAssignment interrupted = new WorkAssignment(
+            if (!agentId.equals(assignment.agentId())) {
+                throw new IllegalArgumentException("Assignment does not belong to agent: " + assignmentId);
+            }
+            return assignment;
+        }
+
+        private WorkAssignment replace(WorkAssignment assignment, OrchestrationStatus status, String errorText) {
+            WorkAssignment updated = new WorkAssignment(
                 assignment.id(), assignment.agentId(), assignment.jobId(), assignment.jobItemId(),
-                assignment.assignmentType(), assignment.priority(), OrchestrationStatus.INTERRUPTED,
+                assignment.assignmentType(), assignment.priority(), status,
                 assignment.modelOverride(), assignment.workspaceId(), assignment.currentItemIndex(),
                 assignment.checkpoint(), assignment.input(), assignment.output(), assignment.evidence(),
-                "Force interrupted: " + reason, null, null, assignment.createdAt(), assignment.updatedAt(),
-                assignment.startedAt(), assignment.completedAt(), assignment.lastProgressAt(), assignment.lastHeartbeatAt()
+                errorText, null, null, assignment.createdAt(), assignment.updatedAt(),
+                assignment.startedAt(), status.isTerminal() ? Instant.now() : assignment.completedAt(),
+                assignment.lastProgressAt(), assignment.lastHeartbeatAt()
             );
-            storedAssignments = List.of(interrupted);
-            return interrupted;
+            storedAssignments = storedAssignments.stream()
+                .map(existing -> existing.id().equals(assignment.id()) ? updated : existing)
+                .toList();
+            return updated;
         }
     }
 

@@ -147,18 +147,30 @@ public class AgentOrchestrationController {
     }
 
     @PostMapping("/assignments/{assignmentId}/cancel")
-    public WorkAssignment cancel(@PathVariable String assignmentId) {
-        return assignmentService.cancel(assignmentId);
+    public WorkAssignment cancel(@PathVariable String agentId, @PathVariable String assignmentId) {
+        try {
+            return assignmentService.cancel(agentId, assignmentId);
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            throw assignmentLifecycleException(exception);
+        }
     }
 
     @PostMapping("/assignments/{assignmentId}/pause")
-    public WorkAssignment pause(@PathVariable String assignmentId) {
-        return assignmentService.pause(assignmentId);
+    public WorkAssignment pause(@PathVariable String agentId, @PathVariable String assignmentId) {
+        try {
+            return assignmentService.pause(agentId, assignmentId);
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            throw assignmentLifecycleException(exception);
+        }
     }
 
     @PostMapping("/assignments/{assignmentId}/resume")
-    public WorkAssignment resume(@PathVariable String assignmentId) {
-        return assignmentService.resume(assignmentId);
+    public WorkAssignment resume(@PathVariable String agentId, @PathVariable String assignmentId) {
+        try {
+            return assignmentService.resume(agentId, assignmentId);
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            throw assignmentLifecycleException(exception);
+        }
     }
 
     @DeleteMapping("/assignments/{assignmentId}")
@@ -173,6 +185,14 @@ public class AgentOrchestrationController {
             }
             throw new ResponseStatusException(HttpStatus.CONFLICT, exception.getMessage());
         }
+    }
+
+    private ResponseStatusException assignmentLifecycleException(RuntimeException exception) {
+        String message = exception.getMessage();
+        if (message != null && (message.contains("not found") || message.contains("does not belong"))) {
+            return new ResponseStatusException(HttpStatus.NOT_FOUND, message);
+        }
+        return new ResponseStatusException(HttpStatus.CONFLICT, message);
     }
 
     @GetMapping("/schedules")

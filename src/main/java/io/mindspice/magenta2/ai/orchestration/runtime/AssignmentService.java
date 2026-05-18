@@ -163,12 +163,20 @@ public class AssignmentService {
         repository.purgeTerminalAssignmentHistory(Instant.now().minus(Duration.ofDays(settings.assignmentHistoryAutoPurgeDays())));
     }
 
-    public WorkAssignment cancel(String assignmentId) {
-        WorkAssignment current = get(assignmentId);
+    WorkAssignment cancel(String assignmentId) {
+        return cancel(get(assignmentId));
+    }
+
+    public WorkAssignment cancel(String agentId, String assignmentId) {
+        return cancel(requireAgentAssignment(agentId, assignmentId));
+    }
+
+    private WorkAssignment cancel(WorkAssignment current) {
         if (isTerminal(current.status())) {
             return current;
         }
         if (current.status() == OrchestrationStatus.RUNNING) {
+            String assignmentId = current.id();
             WorkAssignment cancelRequested = repository.requestCancel(assignmentId).orElseGet(() -> get(assignmentId));
             localInterruptHandler.accept(assignmentId);
             return cancelRequested;
@@ -179,35 +187,56 @@ public class AssignmentService {
         return saveStatus(current, OrchestrationStatus.CANCELLED);
     }
 
-    public WorkAssignment pause(String assignmentId) {
-        WorkAssignment current = get(assignmentId);
+    WorkAssignment pause(String assignmentId) {
+        return pause(get(assignmentId));
+    }
+
+    public WorkAssignment pause(String agentId, String assignmentId) {
+        return pause(requireAgentAssignment(agentId, assignmentId));
+    }
+
+    private WorkAssignment pause(WorkAssignment current) {
         if (isTerminal(current.status())) {
             return current;
         }
         return saveStatus(current, OrchestrationStatus.PAUSED);
     }
 
-    public WorkAssignment resume(String assignmentId) {
-        WorkAssignment current = get(assignmentId);
+    WorkAssignment resume(String assignmentId) {
+        return resume(get(assignmentId));
+    }
+
+    public WorkAssignment resume(String agentId, String assignmentId) {
+        return resume(requireAgentAssignment(agentId, assignmentId));
+    }
+
+    private WorkAssignment resume(WorkAssignment current) {
         if (current.status() != OrchestrationStatus.PAUSED && current.status() != OrchestrationStatus.INTERRUPTED
             && current.status() != OrchestrationStatus.WAITING) {
-            throw new IllegalStateException("Assignment is not resumable: " + assignmentId);
+            throw new IllegalStateException("Assignment is not resumable: " + current.id());
         }
         return saveStatus(current, OrchestrationStatus.QUEUED);
     }
 
-    public WorkAssignment forceInterrupt(String assignmentId, String reason) {
-        WorkAssignment current = get(assignmentId);
+    WorkAssignment forceInterrupt(String assignmentId, String reason) {
+        return forceInterrupt(get(assignmentId), reason);
+    }
+
+    public WorkAssignment forceInterrupt(String agentId, String assignmentId, String reason) {
+        return forceInterrupt(requireAgentAssignment(agentId, assignmentId), reason);
+    }
+
+    private WorkAssignment forceInterrupt(WorkAssignment current, String reason) {
         if (isTerminal(current.status()) || current.status() == OrchestrationStatus.INTERRUPTED) {
             return current;
         }
         if (current.status() != OrchestrationStatus.RUNNING && current.status() != OrchestrationStatus.CANCEL_REQUESTED) {
-            throw new IllegalStateException("Assignment is not force-interruptible: " + assignmentId);
+            throw new IllegalStateException("Assignment is not force-interruptible: " + current.id());
         }
         String operatorReason = StringUtils.hasText(reason) ? reason.trim() : "operator requested force interrupt";
-        boolean updated = repository.forceInterruptAssignment(assignmentId, "Force interrupted: " + operatorReason);
-        localInterruptHandler.accept(assignmentId);
-        return updated ? get(assignmentId) : get(assignmentId);
+        boolean updated = repository.forceInterruptAssignment(current.id(), "Force interrupted: " + operatorReason);
+        localInterruptHandler.accept(current.id());
+        return updated ? get(current.id()) : get(current.id());
     }
 
     public void registerLocalInterruptHandler(Consumer<String> handler) {
@@ -248,6 +277,15 @@ public class AssignmentService {
             conversationId,
             buildCommit()
         );
+    }
+
+    private WorkAssignment requireAgentAssignment(String agentId, String assignmentId) {
+        agentProfileService.get(agentId);
+        WorkAssignment assignment = get(assignmentId);
+        if (!agentId.equals(assignment.agentId())) {
+            throw new IllegalArgumentException("Assignment does not belong to agent: " + assignmentId);
+        }
+        return assignment;
     }
 
     public AssignmentTranscript transcript(String agentId, String assignmentId) {

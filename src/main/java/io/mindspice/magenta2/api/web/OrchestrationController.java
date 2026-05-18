@@ -4955,23 +4955,50 @@ public class OrchestrationController {
 
     @PostMapping("/agents/_detail/{agentId}/queue/{assignmentId}/cancel")
     @ResponseBody
-    public String cancelAgentAssignment(@PathVariable String agentId, @PathVariable String assignmentId) {
-        assignmentService.cancel(assignmentId);
-        return agentQueueTab(agentId);
+    public String cancelAgentAssignment(
+        @PathVariable String agentId,
+        @PathVariable String assignmentId,
+        HttpServletResponse response
+    ) {
+        try {
+            assignmentService.cancel(agentId, assignmentId);
+            return agentQueueTab(agentId);
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            response.setStatus(assignmentLifecycleStatus(exception));
+            return renderAssignmentList(agentId, "Queue", assignmentService.queueAssignments(agentId), exception.getMessage());
+        }
     }
 
     @PostMapping("/agents/_detail/{agentId}/queue/{assignmentId}/pause")
     @ResponseBody
-    public String pauseAgentAssignment(@PathVariable String agentId, @PathVariable String assignmentId) {
-        assignmentService.pause(assignmentId);
-        return agentQueueTab(agentId);
+    public String pauseAgentAssignment(
+        @PathVariable String agentId,
+        @PathVariable String assignmentId,
+        HttpServletResponse response
+    ) {
+        try {
+            assignmentService.pause(agentId, assignmentId);
+            return agentQueueTab(agentId);
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            response.setStatus(assignmentLifecycleStatus(exception));
+            return renderAssignmentList(agentId, "Queue", assignmentService.queueAssignments(agentId), exception.getMessage());
+        }
     }
 
     @PostMapping("/agents/_detail/{agentId}/queue/{assignmentId}/resume")
     @ResponseBody
-    public String resumeAgentAssignment(@PathVariable String agentId, @PathVariable String assignmentId) {
-        assignmentService.resume(assignmentId);
-        return agentQueueTab(agentId);
+    public String resumeAgentAssignment(
+        @PathVariable String agentId,
+        @PathVariable String assignmentId,
+        HttpServletResponse response
+    ) {
+        try {
+            assignmentService.resume(agentId, assignmentId);
+            return agentQueueTab(agentId);
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            response.setStatus(assignmentLifecycleStatus(exception));
+            return renderAssignmentList(agentId, "Queue", assignmentService.queueAssignments(agentId), exception.getMessage());
+        }
     }
 
     @GetMapping("/agents/_detail/{agentId}/queue/{assignmentId}/diagnostics")
@@ -5022,10 +5049,24 @@ public class OrchestrationController {
     public String forceInterruptAgentAssignment(
         @PathVariable String agentId,
         @PathVariable String assignmentId,
-        @RequestParam(value = "reason", required = false) String reason
+        @RequestParam(value = "reason", required = false) String reason,
+        HttpServletResponse response
     ) {
-        assignmentService.forceInterrupt(assignmentId, reason);
-        return agentQueueTab(agentId);
+        try {
+            assignmentService.forceInterrupt(agentId, assignmentId, reason);
+            return agentQueueTab(agentId);
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            response.setStatus(assignmentLifecycleStatus(exception));
+            return renderAssignmentList(agentId, "Queue", assignmentService.queueAssignments(agentId), exception.getMessage());
+        }
+    }
+
+    private int assignmentLifecycleStatus(RuntimeException exception) {
+        String message = exception.getMessage();
+        if (message != null && (message.contains("not found") || message.contains("does not belong"))) {
+            return HttpServletResponse.SC_NOT_FOUND;
+        }
+        return HttpServletResponse.SC_CONFLICT;
     }
 
     @GetMapping("/agents/_detail/{agentId}/inbox")

@@ -34,8 +34,8 @@ High: cross-agent queue control is possible for any caller with an assignment id
 
 ## Status
 
-Open.
+Implementation complete. Focused implementer verification passed; external validation pending.
 
 ## Next Action
 
-Add scoped service methods or route-side ownership checks and tests for cross-agent rejection.
+Run the subplan 04 validation gate, then mark bug-12 passed and run the security domain gate.
