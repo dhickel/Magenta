@@ -29,6 +29,7 @@ Domain 03 subplan 01 routes public plan/task/workflow run controls through saved
 - Supported request context fields are retained in assignment fields and input metadata.
 - Public submit defaults normalize to priority `9`.
 - The `/workflows` empty state now renders a deterministic `New Workflow` action and disabled `Submit to Agent` placeholder so browser validation can see the submit-to-agent surface before a workflow is selected.
+- Warm SQLite databases with legacy workflow run rows are migrated additively for the current graph-run columns needed by workflow history rendering.
 
 # Risks
 

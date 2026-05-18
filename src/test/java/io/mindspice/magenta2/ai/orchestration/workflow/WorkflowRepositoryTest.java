@@ -38,4 +38,63 @@ class WorkflowRepositoryTest {
         assertThat(migrated.nodes()).isEmpty();
         assertThat(migrated.routes()).isEmpty();
     }
+
+    @Test
+    void migratesLegacyWorkflowRunsToGraphRunColumns() {
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(
+            new SingleConnectionDataSource("jdbc:sqlite::memory:", true)
+        );
+        jdbcTemplate.execute("""
+            create table workflow_definitions (
+                id text primary key,
+                schema_version integer not null default 2,
+                title text not null,
+                summary text,
+                max_concurrency integer not null default 4,
+                nodes_json text not null,
+                routes_json text not null default '[]',
+                ui_layout_json text not null default '{}',
+                created_at text not null,
+                updated_at text not null
+            )
+            """);
+        jdbcTemplate.execute("""
+            create table workflow_runs (
+                id text primary key,
+                workflow_id text not null,
+                status text not null,
+                workflow_snapshot_json text,
+                step_runs_json text,
+                final_output_values_json text,
+                final_message text,
+                error_text text,
+                created_at text not null,
+                started_at text,
+                completed_at text
+            )
+            """);
+        jdbcTemplate.update("""
+                insert into workflow_definitions (
+                    id, title, summary, nodes_json, routes_json, created_at, updated_at
+                ) values (?, ?, ?, ?, ?, ?, ?)
+                """,
+            "legacy-workflow", "Legacy Workflow", "old shape", "[]", "[]",
+            "2026-05-14T00:00:00Z", "2026-05-14T00:00:00Z");
+        jdbcTemplate.update("""
+                insert into workflow_runs (
+                    id, workflow_id, status, workflow_snapshot_json, step_runs_json,
+                    final_output_values_json, created_at
+                ) values (?, ?, ?, ?, ?, ?, ?)
+                """,
+            "legacy-run", "legacy-workflow", "COMPLETED", null, "[]", "{}",
+            "2026-05-14T00:00:00Z");
+
+        WorkflowRepository repository = new WorkflowRepository(jdbcTemplate, new ObjectMapper());
+
+        WorkflowRun migrated = repository.findRunsByWorkflowId("legacy-workflow").getFirst();
+        assertThat(migrated.id()).isEqualTo("legacy-run");
+        assertThat(migrated.currentNodeIndex()).isZero();
+        assertThat(migrated.nodeRuns()).isEmpty();
+        assertThat(migrated.updatedAt()).isEqualTo(migrated.createdAt());
+    }
 }
