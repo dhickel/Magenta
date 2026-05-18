@@ -33,3 +33,5 @@ Executable validation still reflects the existing validator behavior; the separa
 Focused workflow/controller tests passed with 90 tests, `git diff --check` passed, static scan confirmed draft save paths remain separate from validate/submit/run paths, and bounded startup reached `Started Magenta2Application` on port `40027`. Delegated browser validation remains the subplan gate before marking bug-03 passed.
 
 First delegated validation failed because the live page still attached the graph composer. The fix pass removed that attachment and added page-level regression coverage that `/workflows` does not load `workflows.js` or render the graph composer.
+
+Revalidation passed on commit `bb606da` with focused tests, static route/save validation scan, `git diff --check`, bounded startup, and browser-origin `/workflows` validation. Browser evidence: `/tmp/workflow-validation-bb606da-pass.json`.
