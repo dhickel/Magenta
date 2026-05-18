@@ -42,14 +42,7 @@ public class WorkflowValidator {
         List<String> errors = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
 
-        if (definition.schemaVersion() != WorkflowDefinition.CURRENT_SCHEMA_VERSION) {
-            errors.add("Workflow schemaVersion must be 2 for v2 contract");
-        }
-        if (definition.maxConcurrency() < 1) {
-            errors.add("workflow.maxConcurrency must be >= 1");
-        }
-
-        Map<String, WorkflowNode> nodesByKey = validateNodes(definition, errors);
+        Map<String, WorkflowNode> nodesByKey = validateDraftShape(definition, errors);
         Map<String, PlanDefinition> taskPlans = resolveTaskPlans(definition, errors, warnings);
 
         validateRoutes(definition, nodesByKey, taskPlans, errors, warnings);
@@ -60,7 +53,22 @@ public class WorkflowValidator {
         return new ValidationResult(errors, warnings);
     }
 
-    private Map<String, WorkflowNode> validateNodes(WorkflowDefinition definition, List<String> errors) {
+    public ValidationResult validateDraft(WorkflowDefinition definition) {
+        List<String> errors = new ArrayList<>();
+        Map<String, WorkflowNode> nodesByKey = validateDraftShape(definition, errors);
+        validateDraftRoutes(definition, nodesByKey, errors);
+        validateCycles(definition, errors);
+        return new ValidationResult(errors, List.of());
+    }
+
+    private Map<String, WorkflowNode> validateDraftShape(WorkflowDefinition definition, List<String> errors) {
+        if (definition.schemaVersion() != WorkflowDefinition.CURRENT_SCHEMA_VERSION) {
+            errors.add("Workflow schemaVersion must be 2 for v2 contract");
+        }
+        if (definition.maxConcurrency() < 1) {
+            errors.add("workflow.maxConcurrency must be >= 1");
+        }
+
         Map<String, WorkflowNode> nodesByKey = new LinkedHashMap<>();
         for (WorkflowNode node : definition.nodes()) {
             if (nodesByKey.putIfAbsent(node.key(), node) != null) {
@@ -71,6 +79,25 @@ public class WorkflowValidator {
             }
         }
         return nodesByKey;
+    }
+
+    private void validateDraftRoutes(
+        WorkflowDefinition definition,
+        Map<String, WorkflowNode> nodesByKey,
+        List<String> errors
+    ) {
+        Set<String> routeIds = new HashSet<>();
+        for (WorkflowRoute route : definition.routes()) {
+            if (!routeIds.add(route.id())) {
+                errors.add("Duplicate route id: '" + route.id() + "'");
+            }
+            if (StringUtils.hasText(route.fromNodeKey()) && !nodesByKey.containsKey(route.fromNodeKey())) {
+                errors.add("Route '" + route.id() + "': source node not found: '" + route.fromNodeKey() + "'");
+            }
+            if (!nodesByKey.containsKey(route.toNodeKey())) {
+                errors.add("Route '" + route.id() + "': destination node not found: '" + route.toNodeKey() + "'");
+            }
+        }
     }
 
     private Map<String, PlanDefinition> resolveTaskPlans(

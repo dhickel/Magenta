@@ -27,6 +27,7 @@ import io.mindspice.magenta2.ai.orchestration.runtime.WorkAssignment;
 import io.mindspice.magenta2.ai.orchestration.workflow.InboxService;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowDefinition;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowService;
+import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowValidator;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
@@ -287,6 +288,11 @@ class PublicRunSubmissionControllerTest {
                 return new WorkflowDefinition(id, "Workflow", null, List.of(), Instant.now(), Instant.now());
             }
             throw new IllegalArgumentException("Workflow not found: " + id);
+        }
+
+        @Override
+        public WorkflowValidator.ValidationResult validateGraph(WorkflowDefinition definition) {
+            return new WorkflowValidator.ValidationResult(List.of(), List.of());
         }
     }
 

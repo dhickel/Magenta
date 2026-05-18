@@ -64,7 +64,7 @@ public class WorkflowController {
     @PostMapping("/api/workflows")
     public WorkflowDefinition create(@RequestBody WorkflowDefinition definition) {
         try {
-            return workflowService.saveDefinitionValidated(withId(definition, UUID.randomUUID().toString()));
+            return workflowService.saveDefinition(withId(definition, UUID.randomUUID().toString()));
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
@@ -74,7 +74,7 @@ public class WorkflowController {
     public WorkflowDefinition update(@PathVariable String workflowId,
                                      @RequestBody WorkflowDefinition definition) {
         try {
-            return workflowService.saveDefinitionValidated(withId(definition, workflowId));
+            return workflowService.saveDefinition(withId(definition, workflowId));
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
@@ -108,7 +108,11 @@ public class WorkflowController {
     public WorkAssignment startRun(@PathVariable String workflowId, @RequestBody(required = false) WorkflowRunRequest request) {
         try {
             requireSubmissionServices();
-            workflowService.getDefinition(workflowId);
+            WorkflowDefinition workflow = workflowService.getDefinition(workflowId);
+            WorkflowValidator.ValidationResult validation = workflowService.validateGraph(workflow);
+            if (!validation.valid()) {
+                throw new IllegalArgumentException(String.join("; ", validation.errors()));
+            }
             return assignmentService.create(new AssignmentRequest(
                 resolveAgentId(request == null ? null : request.agentId()),
                 normalize(request == null ? null : request.jobId()),

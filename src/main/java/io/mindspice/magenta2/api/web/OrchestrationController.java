@@ -2196,7 +2196,7 @@ public class OrchestrationController {
     @PostMapping("/workflows/_editor/_draft")
     @ResponseBody
     public String createWorkflowDraftEditor() {
-        WorkflowDefinition created = workflowService.saveDefinitionValidated(new WorkflowDefinition(
+        WorkflowDefinition created = workflowService.saveDefinition(new WorkflowDefinition(
             null,
             "Untitled Workflow",
             "",
@@ -2231,7 +2231,7 @@ public class OrchestrationController {
                     .withInnerText("Title is required."))
                 .render();
         }
-        WorkflowDefinition created = workflowService.saveDefinitionValidated(new WorkflowDefinition(
+        WorkflowDefinition created = workflowService.saveDefinition(new WorkflowDefinition(
             null, title,
             nn(params.get("summary")),
             List.of(), List.of(), null, null));
@@ -2249,7 +2249,7 @@ public class OrchestrationController {
                 params.containsKey("summary") ? nn(params.get("summary")) : current.summary(),
                 current.nodes(), current.routes(),
                 current.createdAt(), current.updatedAt());
-            workflowService.saveDefinitionValidated(updated);
+            workflowService.saveDefinition(updated);
             return workflowEditorFragment(workflowService.getDefinition(workflowId)).render();
         } catch (IllegalArgumentException e) {
             return workflowEditorValidationError(e.getMessage()).render();
@@ -2308,7 +2308,7 @@ public class OrchestrationController {
             nodes.removeIf(n -> n.key().equals(nodeKey));
             // Also remove routes referencing this node
             List<WorkflowRoute> routes = current.routes().stream()
-                .filter(r -> !r.fromNodeKey().equals(nodeKey) && !r.toNodeKey().equals(nodeKey))
+                .filter(r -> !nodeKey.equals(r.fromNodeKey()) && !nodeKey.equals(r.toNodeKey()))
                 .toList();
             WorkflowDefinition updated = new WorkflowDefinition(
                 workflowId, current.title(), current.summary(),
@@ -2408,6 +2408,38 @@ public class OrchestrationController {
             List<WorkflowRoute> routes = current.routes().stream()
                 .filter(r -> !r.id().equals(routeId))
                 .toList();
+            WorkflowDefinition updated = new WorkflowDefinition(
+                workflowId, current.title(), current.summary(),
+                current.nodes(), routes, current.createdAt(), current.updatedAt());
+            workflowService.saveDefinition(updated);
+            return workflowRoutesSection(workflowService.getDefinition(workflowId)).render();
+        } catch (Exception e) {
+            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+        }
+    }
+
+    @PutMapping("/workflows/_editor/{workflowId}/routes/{routeId}")
+    @ResponseBody
+    public String updateWorkflowRoute(@PathVariable String workflowId, @PathVariable String routeId,
+                                      @RequestParam Map<String, String> params) {
+        try {
+            WorkflowDefinition current = workflowService.getDefinition(workflowId);
+            List<WorkflowRoute> routes = new ArrayList<>(current.routes());
+            for (int i = 0; i < routes.size(); i++) {
+                WorkflowRoute old = routes.get(i);
+                if (old.id().equals(routeId)) {
+                    routes.set(i, new WorkflowRoute(
+                        old.id(),
+                        params.containsKey("fromNodeKey") ? blankToNull(params.get("fromNodeKey")) : old.fromNodeKey(),
+                        params.containsKey("fromOutputName") ? nn(params.get("fromOutputName")) : old.fromOutputName(),
+                        params.containsKey("toNodeKey") ? nn(params.get("toNodeKey")) : old.toNodeKey(),
+                        params.containsKey("toInputName") ? nn(params.get("toInputName")) : old.toInputName(),
+                        params.containsKey("routeType") ? WorkflowRouteType.fromWireName(params.get("routeType")) : old.routeType(),
+                        params.containsKey("condition") ? nn(params.get("condition")) : old.condition()
+                    ));
+                    break;
+                }
+            }
             WorkflowDefinition updated = new WorkflowDefinition(
                 workflowId, current.title(), current.summary(),
                 current.nodes(), routes, current.createdAt(), current.updatedAt());
@@ -2668,6 +2700,7 @@ public class OrchestrationController {
             form.withChild(toSelect);
 
             form.withChild(workflowInputSelect(wf, "toInputName"));
+            form.withChild(routeConditionSelect("condition", ""));
 
             form.withChild(Button.create("Add Route")
                 .hxPost("/workflows/_editor/" + wfId + "/routes")
@@ -2856,7 +2889,7 @@ public class OrchestrationController {
             .withChild(new HtmlTag("strong").withInnerText("Condition"))
             .withChild(new HtmlTag("strong").withInnerText("Actions")));
         for (var route : wf.routes()) {
-            Div row = new Div().withClass("field-row");
+            Div row = new Div().withClass("field-row workflow-route-row");
 
             row.withChild(new HtmlTag("code").withInnerText(route.id()));
             row.withChild(routeTypeBadge(route.routeType()));
@@ -2864,7 +2897,13 @@ public class OrchestrationController {
             row.withChild(new HtmlTag("span").withInnerText(nn(route.fromOutputName())));
             row.withChild(new HtmlTag("span").withInnerText(route.toNodeKey()));
             row.withChild(new HtmlTag("span").withInnerText(nn(route.toInputName())));
-            row.withChild(new HtmlTag("span").withInnerText(nn(route.condition())));
+            Select conditionSelect = routeConditionSelect("condition", route.condition());
+            conditionSelect.withAttribute("hx-put", "/workflows/_editor/" + wf.id() + "/routes/" + route.id())
+                .withAttribute("hx-trigger", "change")
+                .withAttribute("hx-include", "closest .workflow-route-row")
+                .withAttribute("hx-target", "#workflow-routes-section")
+                .withAttribute("hx-swap", "innerHTML");
+            row.withChild(conditionSelect);
 
             row.withChild(new HtmlTag("button")
                 .withClass("remove-field")
@@ -2877,6 +2916,17 @@ public class OrchestrationController {
             container.withChild(row);
         }
         return container;
+    }
+
+    private Select routeConditionSelect(String name, String selected) {
+        Select select = Select.create(name);
+        String normalized = nn(selected).trim().toUpperCase(Locale.ROOT);
+        select.addOption("", "-- condition --", normalized.isBlank());
+        select.addOption(WorkflowRoute.OUTCOME_APPROVED, WorkflowRoute.OUTCOME_APPROVED,
+            WorkflowRoute.OUTCOME_APPROVED.equals(normalized));
+        select.addOption(WorkflowRoute.OUTCOME_REJECTED, WorkflowRoute.OUTCOME_REJECTED,
+            WorkflowRoute.OUTCOME_REJECTED.equals(normalized));
+        return select;
     }
 
     private Component workflowSelectedNodePanel(WorkflowDefinition wf, WorkflowNode node) {
@@ -6826,6 +6876,10 @@ public class OrchestrationController {
 
     private String nn(String value) {
         return value == null ? "" : value;
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 
     private String formatSince(Instant iso) {

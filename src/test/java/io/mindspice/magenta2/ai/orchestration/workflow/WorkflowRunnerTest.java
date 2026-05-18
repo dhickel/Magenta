@@ -115,6 +115,79 @@ class WorkflowRunnerTest {
     }
 
     @Test
+    void draftSaveAllowsIncrementalApprovalWorkflowBeforeExecutableValidation() {
+        WorkflowNode gate = new WorkflowNode("gate", WorkflowNodeType.USER_APPROVAL, null,
+            "gate", null, List.of(), List.of(), Map.of(), false, List.of(), "approve?", null);
+        WorkflowNode approved = simpleFinalNode("approved");
+        WorkflowNode rejected = simpleFinalNode("rejected");
+
+        WorkflowDefinition gateOnly = workflowService.saveDefinition(new WorkflowDefinition(
+            null, 2, "Incremental Gate", "", 4,
+            List.of(gate), List.of(), Map.of(), null, null
+        ));
+        WorkflowValidator.ValidationResult gateOnlyValidation = workflowService.validateGraph(gateOnly);
+        assertThat(gateOnlyValidation.valid()).isFalse();
+        assertThat(gateOnlyValidation.errors()).contains(
+            "Gate node 'gate' is missing APPROVED control route",
+            "Gate node 'gate' is missing REJECTED control route"
+        );
+
+        WorkflowDefinition oneBranch = workflowService.saveDefinition(new WorkflowDefinition(
+            gateOnly.id(), 2, "Incremental Gate", "", 4,
+            List.of(gate, approved, rejected),
+            List.of(new WorkflowRoute("approved-route", "gate", null, "approved", null,
+                WorkflowRouteType.CONTROL, WorkflowRoute.OUTCOME_APPROVED)),
+            Map.of(), null, null
+        ));
+        WorkflowValidator.ValidationResult oneBranchValidation = workflowService.validateGraph(oneBranch);
+        assertThat(oneBranchValidation.valid()).isFalse();
+        assertThat(oneBranchValidation.errors()).contains("Gate node 'gate' is missing REJECTED control route");
+
+        WorkflowDefinition complete = workflowService.saveDefinition(new WorkflowDefinition(
+            gateOnly.id(), 2, "Incremental Gate", "", 4,
+            List.of(gate, approved, rejected),
+            List.of(
+                new WorkflowRoute("approved-route", "gate", null, "approved", null,
+                    WorkflowRouteType.CONTROL, WorkflowRoute.OUTCOME_APPROVED),
+                new WorkflowRoute("rejected-route", "gate", null, "rejected", null,
+                    WorkflowRouteType.CONTROL, WorkflowRoute.OUTCOME_REJECTED)
+            ),
+            Map.of(), null, null
+        ));
+
+        assertThat(workflowService.validateGraph(complete).valid()).isTrue();
+        assertThat(workflowService.saveDefinitionValidated(complete).id()).isEqualTo(gateOnly.id());
+    }
+
+    @Test
+    void draftSaveAllowsTaskBeforeRequiredRuntimeInputsAreConnected() {
+        PlanDefinition source = task("source", List.of(), List.of(field("topic", PlanFieldType.STRING, true)));
+        PlanDefinition worker = task("worker", List.of(field("topic", PlanFieldType.STRING, true)), List.of());
+
+        WorkflowNode sourceNode = taskNode("source", source.id());
+        WorkflowNode workerNode = taskNode("worker", worker.id());
+
+        WorkflowDefinition incomplete = workflowService.saveDefinition(new WorkflowDefinition(
+            null, 2, "Incremental Task Inputs", "", 4,
+            List.of(sourceNode, workerNode), List.of(), Map.of(), null, null
+        ));
+        WorkflowValidator.ValidationResult incompleteValidation = workflowService.validateGraph(incomplete);
+        assertThat(incompleteValidation.valid()).isFalse();
+        assertThat(incompleteValidation.errors())
+            .contains("TASK node 'worker': required input 'topic' is not satisfied by incoming routes or config");
+
+        WorkflowDefinition complete = workflowService.saveDefinition(new WorkflowDefinition(
+            incomplete.id(), 2, "Incremental Task Inputs", "", 4,
+            List.of(sourceNode, workerNode),
+            List.of(new WorkflowRoute("topic-route", "source", "topic", "worker", "topic",
+                WorkflowRouteType.MAP_OUTPUT, null)),
+            Map.of(), null, null
+        ));
+
+        assertThat(workflowService.validateGraph(complete).valid()).isTrue();
+    }
+
+    @Test
     void runsParallelFanOutAndProducesFinalOutputsAndArtifacts() throws Exception {
         PlanDefinition source = task("source", List.of(), List.of(field("result", PlanFieldType.STRING, true)));
         PlanDefinition worker = task("worker", List.of(field("in", PlanFieldType.STRING, true)),

@@ -357,7 +357,41 @@ class OrchestrationControllerTest {
         assertThat(html).contains("Routes");
         assertThat(html).contains("Validation");
         assertThat(html).contains("Submit to Agent");
+        assertThat(html).contains("name=\"condition\"");
         assertThat(html).doesNotContain("run-workflow");
+    }
+
+    @Test
+    void workflowEditorSavesIncompleteApprovalDraftAndEditsRouteCondition() {
+        OrchestrationController ctrl = controller();
+        ctrl.createWorkflowDraftEditor();
+
+        String gateHtml = ctrl.addWorkflowNode("workflow-draft", Map.of(
+            "nodeType", "USER_APPROVAL",
+            "messageTemplate", "approve?"
+        ));
+        assertThat(gateHtml).contains("node_1");
+        assertThat(gateHtml).doesNotContain("Error:");
+
+        String finalHtml = ctrl.addWorkflowNode("workflow-draft", Map.of("nodeType", "FINAL_OUTPUT"));
+        assertThat(finalHtml).contains("node_2");
+        assertThat(finalHtml).doesNotContain("Error:");
+
+        String routeHtml = ctrl.addWorkflowRoute("workflow-draft", Map.of(
+            "fromNodeKey", "node_1",
+            "toNodeKey", "node_2",
+            "routeType", "CONTROL"
+        ));
+        assertThat(routeHtml).contains("route_1");
+        assertThat(routeHtml).contains("name=\"condition\"");
+        assertThat(routeHtml).doesNotContain("must define condition");
+        assertThat(routeHtml).doesNotContain("missing REJECTED");
+
+        String updatedRouteHtml = ctrl.updateWorkflowRoute("workflow-draft", "route_1",
+            Map.of("condition", "APPROVED"));
+        assertThat(updatedRouteHtml).contains("APPROVED");
+        assertThat(updatedRouteHtml).contains("selected");
+        assertThat(updatedRouteHtml).doesNotContain("Error:");
     }
 
     @Test
@@ -2237,12 +2271,16 @@ class OrchestrationControllerTest {
     }
 
     private static class StubWorkflowService extends WorkflowService {
+        private final Map<String, WorkflowDefinition> definitions = new java.util.LinkedHashMap<>();
+
         StubWorkflowService() { super(null, null, null); }
 
-        @Override public java.util.List<WorkflowDefinition> listDefinitions() { return List.of(); }
+        @Override public java.util.List<WorkflowDefinition> listDefinitions() {
+            return new ArrayList<>(definitions.values());
+        }
 
-        @Override public WorkflowDefinition saveDefinitionValidated(WorkflowDefinition definition) {
-            return new WorkflowDefinition(
+        @Override public WorkflowDefinition saveDefinition(WorkflowDefinition definition) {
+            WorkflowDefinition saved = new WorkflowDefinition(
                 definition.id() == null ? "workflow-draft" : definition.id(),
                 definition.title(),
                 definition.summary(),
@@ -2250,11 +2288,17 @@ class OrchestrationControllerTest {
                 definition.routes(),
                 definition.createdAt(),
                 definition.updatedAt());
+            definitions.put(saved.id(), saved);
+            return saved;
+        }
+
+        @Override public WorkflowDefinition saveDefinitionValidated(WorkflowDefinition definition) {
+            return saveDefinition(definition);
         }
 
         @Override public WorkflowDefinition getDefinition(String id) {
-            return new WorkflowDefinition(id, "Test WF", "summary",
-                List.of(), List.of(), null, null);
+            return definitions.getOrDefault(id, new WorkflowDefinition(id, "Test WF", "summary",
+                List.of(), List.of(), null, null));
         }
     }
 
