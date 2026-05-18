@@ -47,7 +47,12 @@ public class WorkflowService {
     }
 
     public WorkflowDefinition saveDefinition(WorkflowDefinition definition) {
-        return saveDefinitionValidated(definition);
+        WorkflowDefinition normalized = normalizeDefinition(definition);
+        WorkflowValidator.ValidationResult result = validator.validateDraft(normalized);
+        if (!result.valid()) {
+            throw new IllegalArgumentException(String.join("; ", result.errors()));
+        }
+        return repository.saveDefinition(normalized);
     }
 
     /**
@@ -83,6 +88,7 @@ public class WorkflowService {
 
     public WorkflowRun startRun(String workflowId, String modelOverride) {
         WorkflowDefinition definition = getDefinition(workflowId);
+        requireExecutable(definition);
         return workflowRunner.startRun(definition, modelOverride);
     }
 
@@ -109,12 +115,21 @@ public class WorkflowService {
 
     public WorkflowRun runSynchronously(String workflowId, String modelOverride) {
         WorkflowDefinition def = getDefinition(workflowId);
+        requireExecutable(def);
         return workflowRunner.runSynchronously(def, modelOverride);
     }
 
     public WorkflowRun runSynchronously(String workflowId, String modelOverride, WorkflowExecutionObserver observer) {
         WorkflowDefinition def = getDefinition(workflowId);
+        requireExecutable(def);
         return workflowRunner.runSynchronously(def, modelOverride, observer);
+    }
+
+    private void requireExecutable(WorkflowDefinition definition) {
+        WorkflowValidator.ValidationResult result = validateGraph(definition);
+        if (!result.valid()) {
+            throw new IllegalArgumentException(String.join("; ", result.errors()));
+        }
     }
 
     private WorkflowDefinition normalizeDefinition(WorkflowDefinition definition) {

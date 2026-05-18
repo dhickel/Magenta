@@ -43,7 +43,12 @@ import io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettings;
 import io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettingsService;
 import io.mindspice.magenta2.ai.orchestration.workflow.InboxService;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowDefinition;
+import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowNode;
+import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowNodeType;
+import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowRoute;
+import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowRouteType;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowService;
+import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowValidator;
 import io.mindspice.magenta2.ai.orchestration.workspaces.LeaseMode;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLease;
@@ -113,6 +118,28 @@ class OrchestrationControllerTest {
             emptyProvider(),
             schedulesEnabled,
             reactionsEnabled
+        );
+    }
+
+    private static OrchestrationController controllerWithWorkflowService(WorkflowService workflowService) {
+        return new OrchestrationController(
+            new StubChatService(),
+            new StubProjectService(),
+            new StubJobService(),
+            new StubAgentProfileService(),
+            new StubInboxService(),
+            new StubRuntimeInboxService(),
+            new StubOutputArtifactService(),
+            new StubRuntimeSettingsService(),
+            workspaceService(),
+            new StubPlanService(),
+            new StubAssignmentService(),
+            new StubScheduleService(),
+            new StubEventReactionService(),
+            workflowService,
+            emptyProvider(),
+            true,
+            true
         );
     }
 
@@ -320,7 +347,8 @@ class OrchestrationControllerTest {
         String html = controller().workflows();
 
         assertThat(html).contains("Workflows");
-        assertThat(html).contains("/js/orchestration/workflows.js?v=2");
+        assertThat(html).doesNotContain("/js/orchestration/workflows.js");
+        assertThat(html).doesNotContain("Workflow V2 Graph Composer");
         assertThat(html).contains("/workflows/_list");
         assertThat(html).contains("/workflows/_editor/_draft");
         assertThat(html).contains("No workflows.");
@@ -357,7 +385,143 @@ class OrchestrationControllerTest {
         assertThat(html).contains("Routes");
         assertThat(html).contains("Validation");
         assertThat(html).contains("Submit to Agent");
+        assertThat(html).contains("name=\"condition\"");
         assertThat(html).doesNotContain("run-workflow");
+    }
+
+    @Test
+    void workflowEditorSavesIncompleteApprovalDraftAndEditsRouteCondition() {
+        OrchestrationController ctrl = controller();
+        ctrl.createWorkflowDraftEditor();
+
+        String gateHtml = ctrl.addWorkflowNode("workflow-draft", Map.of(
+            "nodeType", "USER_APPROVAL",
+            "messageTemplate", "approve?"
+        ));
+        assertThat(gateHtml).contains("node_1");
+        assertThat(gateHtml).doesNotContain("Error:");
+
+        String finalHtml = ctrl.addWorkflowNode("workflow-draft", Map.of("nodeType", "FINAL_OUTPUT"));
+        assertThat(finalHtml).contains("node_2");
+        assertThat(finalHtml).doesNotContain("Error:");
+
+        String routeHtml = ctrl.addWorkflowRoute("workflow-draft", Map.of(
+            "fromNodeKey", "node_1",
+            "toNodeKey", "node_2",
+            "routeType", "CONTROL"
+        ));
+        assertThat(routeHtml).contains("route_1");
+        assertThat(routeHtml).contains("name=\"condition\"");
+        assertThat(routeHtml).doesNotContain("must define condition");
+        assertThat(routeHtml).doesNotContain("missing REJECTED");
+
+        String updatedRouteHtml = ctrl.updateWorkflowRoute("workflow-draft", "route_1",
+            Map.of("condition", "APPROVED"));
+        assertThat(updatedRouteHtml).contains("APPROVED");
+        assertThat(updatedRouteHtml).contains("selected");
+        assertThat(updatedRouteHtml).doesNotContain("Error:");
+    }
+
+    @Test
+    void htmxWorkflowValidateAndSubmitRejectEmptyDraftWithOperatorVisibleError() {
+        OrchestrationController ctrl = controller();
+        ctrl.createWorkflowDraftEditor();
+
+        String validationHtml = ctrl.validateWorkflow("workflow-draft");
+        assertThat(validationHtml).contains("ERROR:");
+        assertThat(validationHtml).contains("at least one executable node");
+        assertThat(validationHtml).doesNotContain("Valid: no errors found.");
+
+        String submitHtml = ctrl.workflowSubmitToAgent("workflow-draft", Map.of("agentId", "agent-1"));
+        assertThat(submitHtml).contains("Validation failed");
+        assertThat(submitHtml).contains("at least one executable node");
+        assertThat(submitHtml).doesNotContain("Assignment Created");
+    }
+
+    @Test
+    void failedWorkflowTitleSaveReturnsPersistedEditorWithVisibleError() {
+        StubWorkflowService workflowService = new StubWorkflowService();
+        workflowService.seed(new WorkflowDefinition(
+            "workflow-draft", "Persisted Title", "Persisted summary",
+            List.of(), List.of(), null, null));
+        workflowService.failSavesWith("database write failed");
+
+        String html = controllerWithWorkflowService(workflowService).updateWorkflowEditor(
+            "workflow-draft",
+            Map.of("title", "Unsaved Title", "summary", "Unsaved summary")
+        );
+
+        assertThat(html).contains("Workflow save failed");
+        assertThat(html).contains("database write failed");
+        assertThat(html).contains("value=\"Persisted Title\"");
+        assertThat(html).contains("Persisted summary");
+        assertThat(html).doesNotContain("Unsaved Title");
+    }
+
+    @Test
+    void failedWorkflowNodeSaveReturnsPersistedNodeSectionWithVisibleError() {
+        StubWorkflowService workflowService = new StubWorkflowService();
+        workflowService.seed(new WorkflowDefinition(
+            "workflow-draft", "Persisted Workflow", "",
+            List.of(new WorkflowNode("node_1", WorkflowNodeType.FINAL_OUTPUT, null, "Persisted Node",
+                null, Map.of(), false, List.of(), null, null)),
+            List.of(), null, null));
+        workflowService.failSavesWith("node write failed");
+
+        String html = controllerWithWorkflowService(workflowService).updateWorkflowNode(
+            "workflow-draft",
+            "node_1",
+            Map.of("label", "Unsaved Node")
+        );
+
+        assertThat(html).contains("Node save failed");
+        assertThat(html).contains("node write failed");
+        assertThat(html).contains("Persisted Node");
+        assertThat(html).doesNotContain("Unsaved Node");
+        assertThat(html).doesNotContain("Validation failed");
+    }
+
+    @Test
+    void failedWorkflowRouteSaveReturnsPersistedRouteSectionWithVisibleError() {
+        StubWorkflowService workflowService = new StubWorkflowService();
+        workflowService.seed(new WorkflowDefinition(
+            "workflow-draft", "Persisted Workflow", "",
+            List.of(
+                new WorkflowNode("node_1", WorkflowNodeType.USER_APPROVAL, null, "Gate",
+                    null, Map.of(), false, List.of(), null, null),
+                new WorkflowNode("node_2", WorkflowNodeType.FINAL_OUTPUT, null, "Done",
+                    null, Map.of(), false, List.of(), null, null)
+            ),
+            List.of(new WorkflowRoute("route_1", "node_1", null, "node_2", null,
+                WorkflowRouteType.CONTROL, WorkflowRoute.OUTCOME_APPROVED)),
+            null, null));
+        workflowService.failSavesWith("route write failed");
+
+        String html = controllerWithWorkflowService(workflowService).updateWorkflowRoute(
+            "workflow-draft",
+            "route_1",
+            Map.of("condition", WorkflowRoute.OUTCOME_REJECTED)
+        );
+
+        assertThat(html).contains("Route save failed");
+        assertThat(html).contains("route write failed");
+        assertThat(html).contains(WorkflowRoute.OUTCOME_APPROVED);
+        assertThat(html).doesNotContain(WorkflowRoute.OUTCOME_REJECTED + "\" selected");
+    }
+
+    @Test
+    void workflowValidationExceptionRendersInValidationResultArea() {
+        StubWorkflowService workflowService = new StubWorkflowService();
+        workflowService.seed(new WorkflowDefinition(
+            "workflow-draft", "Persisted Workflow", "",
+            List.of(), List.of(), null, null));
+        workflowService.failValidationWith("validator unavailable");
+
+        String html = controllerWithWorkflowService(workflowService).validateWorkflow("workflow-draft");
+
+        assertThat(html).contains("warnings");
+        assertThat(html).contains("ERROR: validator unavailable");
+        assertThat(html).doesNotContain("Valid: no errors found.");
     }
 
     @Test
@@ -1128,12 +1292,18 @@ class OrchestrationControllerTest {
     void workflowJsProvidesGraphComposerSurface() throws Exception {
         String js = Files.readString(Path.of("src/main/resources/static/js/orchestration/workflows.js"));
 
-        assertThat(js).contains("data-orchestration-page='workflows'");
-        assertThat(js).contains("Workflow V2 Graph Composer");
+        assertThat(js).contains("WorkflowGraphComposer");
+        assertThat(js).contains("window.MagentaWorkflowGraphComposer");
+        assertThat(js).contains("Workflow Graph Canvas");
         assertThat(js).contains("graph-canvas");
-        assertThat(js).contains("saveWorkflow");
-        assertThat(js).contains("validateWorkflow");
-        assertThat(js).contains("/api/workflows");
+        assertThat(js).contains("beginDrag");
+        assertThat(js).contains("addNode");
+        assertThat(js).doesNotContain("DOMContentLoaded");
+        assertThat(js).doesNotContain("data-orchestration-page='workflows'");
+        assertThat(js).doesNotContain("saveWorkflow");
+        assertThat(js).doesNotContain("validateWorkflow");
+        assertThat(js).doesNotContain("fetch(");
+        assertThat(js).doesNotContain("/api/workflows");
     }
 
     @Test
@@ -2237,12 +2407,33 @@ class OrchestrationControllerTest {
     }
 
     private static class StubWorkflowService extends WorkflowService {
+        private final Map<String, WorkflowDefinition> definitions = new java.util.LinkedHashMap<>();
+        private String saveFailure;
+        private String validationFailure;
+
         StubWorkflowService() { super(null, null, null); }
 
-        @Override public java.util.List<WorkflowDefinition> listDefinitions() { return List.of(); }
+        void seed(WorkflowDefinition definition) {
+            definitions.put(definition.id(), definition);
+        }
 
-        @Override public WorkflowDefinition saveDefinitionValidated(WorkflowDefinition definition) {
-            return new WorkflowDefinition(
+        void failSavesWith(String message) {
+            this.saveFailure = message;
+        }
+
+        void failValidationWith(String message) {
+            this.validationFailure = message;
+        }
+
+        @Override public java.util.List<WorkflowDefinition> listDefinitions() {
+            return new ArrayList<>(definitions.values());
+        }
+
+        @Override public WorkflowDefinition saveDefinition(WorkflowDefinition definition) {
+            if (saveFailure != null) {
+                throw new IllegalStateException(saveFailure);
+            }
+            WorkflowDefinition saved = new WorkflowDefinition(
                 definition.id() == null ? "workflow-draft" : definition.id(),
                 definition.title(),
                 definition.summary(),
@@ -2250,11 +2441,24 @@ class OrchestrationControllerTest {
                 definition.routes(),
                 definition.createdAt(),
                 definition.updatedAt());
+            definitions.put(saved.id(), saved);
+            return saved;
+        }
+
+        @Override public WorkflowDefinition saveDefinitionValidated(WorkflowDefinition definition) {
+            return saveDefinition(definition);
+        }
+
+        @Override public WorkflowValidator.ValidationResult validateGraph(WorkflowDefinition definition) {
+            if (validationFailure != null) {
+                throw new IllegalStateException(validationFailure);
+            }
+            return super.validateGraph(definition);
         }
 
         @Override public WorkflowDefinition getDefinition(String id) {
-            return new WorkflowDefinition(id, "Test WF", "summary",
-                List.of(), List.of(), null, null);
+            return definitions.getOrDefault(id, new WorkflowDefinition(id, "Test WF", "summary",
+                List.of(), List.of(), null, null));
         }
     }
 

@@ -42,6 +42,27 @@ public class WorkflowValidator {
         List<String> errors = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
 
+        Map<String, WorkflowNode> nodesByKey = validateDraftShape(definition, errors);
+        Map<String, PlanDefinition> taskPlans = resolveTaskPlans(definition, errors, warnings);
+
+        validateRoutes(definition, nodesByKey, taskPlans, errors, warnings);
+        validateCycles(definition, errors);
+        validateExecutableStartPath(definition, nodesByKey, errors);
+        validateRequiredTaskInputs(definition, taskPlans, errors);
+        validateApprovalGateBranches(definition, nodesByKey, errors);
+
+        return new ValidationResult(errors, warnings);
+    }
+
+    public ValidationResult validateDraft(WorkflowDefinition definition) {
+        List<String> errors = new ArrayList<>();
+        Map<String, WorkflowNode> nodesByKey = validateDraftShape(definition, errors);
+        validateDraftRoutes(definition, nodesByKey, errors);
+        validateCycles(definition, errors);
+        return new ValidationResult(errors, List.of());
+    }
+
+    private Map<String, WorkflowNode> validateDraftShape(WorkflowDefinition definition, List<String> errors) {
         if (definition.schemaVersion() != WorkflowDefinition.CURRENT_SCHEMA_VERSION) {
             errors.add("Workflow schemaVersion must be 2 for v2 contract");
         }
@@ -49,18 +70,6 @@ public class WorkflowValidator {
             errors.add("workflow.maxConcurrency must be >= 1");
         }
 
-        Map<String, WorkflowNode> nodesByKey = validateNodes(definition, errors);
-        Map<String, PlanDefinition> taskPlans = resolveTaskPlans(definition, errors, warnings);
-
-        validateRoutes(definition, nodesByKey, taskPlans, errors, warnings);
-        validateCycles(definition, errors);
-        validateRequiredTaskInputs(definition, taskPlans, errors);
-        validateApprovalGateBranches(definition, nodesByKey, errors);
-
-        return new ValidationResult(errors, warnings);
-    }
-
-    private Map<String, WorkflowNode> validateNodes(WorkflowDefinition definition, List<String> errors) {
         Map<String, WorkflowNode> nodesByKey = new LinkedHashMap<>();
         for (WorkflowNode node : definition.nodes()) {
             if (nodesByKey.putIfAbsent(node.key(), node) != null) {
@@ -71,6 +80,25 @@ public class WorkflowValidator {
             }
         }
         return nodesByKey;
+    }
+
+    private void validateDraftRoutes(
+        WorkflowDefinition definition,
+        Map<String, WorkflowNode> nodesByKey,
+        List<String> errors
+    ) {
+        Set<String> routeIds = new HashSet<>();
+        for (WorkflowRoute route : definition.routes()) {
+            if (!routeIds.add(route.id())) {
+                errors.add("Duplicate route id: '" + route.id() + "'");
+            }
+            if (StringUtils.hasText(route.fromNodeKey()) && !nodesByKey.containsKey(route.fromNodeKey())) {
+                errors.add("Route '" + route.id() + "': source node not found: '" + route.fromNodeKey() + "'");
+            }
+            if (!nodesByKey.containsKey(route.toNodeKey())) {
+                errors.add("Route '" + route.id() + "': destination node not found: '" + route.toNodeKey() + "'");
+            }
+        }
     }
 
     private Map<String, PlanDefinition> resolveTaskPlans(
@@ -280,6 +308,65 @@ public class WorkflowValidator {
 
         if (visited != definition.nodes().size()) {
             errors.add("Workflow contains a cycle; v2 graph must be a DAG");
+        }
+    }
+
+    private void validateExecutableStartPath(
+        WorkflowDefinition definition,
+        Map<String, WorkflowNode> nodesByKey,
+        List<String> errors
+    ) {
+        if (definition.nodes().isEmpty()) {
+            errors.add("Workflow must contain at least one executable node before validation, submission, or run");
+            return;
+        }
+
+        Set<String> dependencyTargets = new HashSet<>();
+        Map<String, List<String>> dependencies = new HashMap<>();
+        for (WorkflowRoute route : definition.routes()) {
+            if (!route.createsDependency()
+                || !StringUtils.hasText(route.fromNodeKey())
+                || !nodesByKey.containsKey(route.fromNodeKey())
+                || !nodesByKey.containsKey(route.toNodeKey())) {
+                continue;
+            }
+            dependencyTargets.add(route.toNodeKey());
+            dependencies.computeIfAbsent(route.fromNodeKey(), key -> new ArrayList<>()).add(route.toNodeKey());
+        }
+
+        List<String> startNodes = definition.nodes().stream()
+            .map(WorkflowNode::key)
+            .filter(key -> !dependencyTargets.contains(key))
+            .toList();
+
+        if (startNodes.isEmpty()) {
+            errors.add("Workflow must have a start node with no incoming dependency routes");
+            return;
+        }
+        if (startNodes.size() > 1) {
+            errors.add("Workflow must have exactly one start node; found: " + String.join(", ", startNodes));
+            return;
+        }
+
+        Set<String> reachable = new HashSet<>();
+        ArrayDeque<String> queue = new ArrayDeque<>();
+        queue.add(startNodes.get(0));
+        while (!queue.isEmpty()) {
+            String nodeKey = queue.removeFirst();
+            if (!reachable.add(nodeKey)) {
+                continue;
+            }
+            for (String next : dependencies.getOrDefault(nodeKey, List.of())) {
+                queue.add(next);
+            }
+        }
+
+        List<String> unreachable = definition.nodes().stream()
+            .map(WorkflowNode::key)
+            .filter(key -> !reachable.contains(key))
+            .toList();
+        if (!unreachable.isEmpty()) {
+            errors.add("Workflow contains nodes disconnected from the start path: " + String.join(", ", unreachable));
         }
     }
 
