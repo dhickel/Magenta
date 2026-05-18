@@ -1531,30 +1531,27 @@ class OrchestrationControllerTest {
     }
 
     @Test
-    void inboxJsSupportsApprovalResponseFlow() throws Exception {
-        String js = Files.readString(Path.of("src/main/resources/static/js/orchestration/inbox.js"));
+    void inboxPageUsesHtmxFragmentsWithoutStaleStaticModule() {
+        String html = controller().inbox();
 
-        assertThat(js).contains("data-orchestration-page='inbox'");
-        assertThat(js).contains("/api/users/inbox");
-        assertThat(js).contains("/api/agents/");
-        assertThat(js).contains("inbox");
-        assertThat(js).contains("data-action=\"approve\"");
-        assertThat(js).contains("data-action=\"reject\"");
-        assertThat(js).contains("approved");
-        assertThat(js).contains("/respond");
-        assertThat(js).contains("refreshRunState");
+        assertThat(html).contains("data-orchestration-page=\"inbox\"");
+        assertThat(html).contains("hx-get=\"/inbox/_user\"");
+        assertThat(html).contains("hx-get=\"/inbox/_agent-selector\"");
+        assertThat(html).contains("hx-get=\"/inbox/_agent\"");
+        assertThat(html).doesNotContain("/js/orchestration/inbox.js");
     }
 
     @Test
-    void outputsJsBrowsesByMultipleFilters() throws Exception {
-        String js = Files.readString(Path.of("src/main/resources/static/js/orchestration/outputs.js"));
+    void outputsPageUsesHtmxFragmentsWithoutStaleStaticModule() {
+        String html = controller().outputs();
 
-        assertThat(js).contains("data-orchestration-page='outputs'");
-        assertThat(js).contains("outputs-agent-select");
-        assertThat(js).contains("outputs-job-select");
-        assertThat(js).contains("outputs-project-select");
-        assertThat(js).contains("browse-outputs");
-        assertThat(js).contains("/api/outputs");
+        assertThat(html).contains("data-orchestration-page=\"outputs\"");
+        assertThat(html).contains("hx-get=\"/outputs/_list\"");
+        assertThat(html).contains("hx-target=\"#outputs-list\"");
+        assertThat(html).contains("name=\"agentId\"");
+        assertThat(html).contains("name=\"jobId\"");
+        assertThat(html).contains("name=\"projectId\"");
+        assertThat(html).doesNotContain("/js/orchestration/outputs.js");
     }
 
     @Test

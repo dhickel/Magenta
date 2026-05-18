@@ -116,8 +116,6 @@ public class OrchestrationController {
     private static final String AGENT_CHAT_JS = "/js/orchestration/agent-chat.js?v=2";
     private static final String PLANS_JS = "/js/orchestration/plans.js?v=3";
     private static final String PROJECTS_JS = "/js/orchestration/projects.js?v=3";
-    private static final String INBOX_JS = "/js/orchestration/inbox.js?v=1";
-    private static final String OUTPUTS_JS = "/js/orchestration/outputs.js?v=1";
     private static final ObjectMapper JSON = new ObjectMapper().findAndRegisterModules();
 
     private final ChatService chatService;
