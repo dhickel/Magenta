@@ -26,7 +26,7 @@
 
 | Finding | Domain | Status | Subplan | Validation Evidence | Commit |
 | --- | --- | --- | --- | --- | --- |
-| bug-01 | `01-security-access-control` | passed | `subplan-01-auth-csrf-gate.md` | validator: `mvn -Dtest=AlphaSecurityConfigurationTest,FrontendControllerTest test`; live app curl smoke for public reads, unauth mutation 401, HTMX CSRF 403 fragment, auth+CSRF controller reachability | `6655b30` |
+| bug-01 | `01-security-access-control` | passed | `subplan-01-auth-csrf-gate.md` | validator: `mvn -Dtest=AlphaSecurityConfigurationTest,FrontendControllerTest test`; live app curl smoke for public reads, unauth mutation 401, HTMX CSRF 403 fragment, auth+CSRF controller reachability | `bf10a85` |
 | bug-02 | `01-security-access-control` | planned | `subplan-02-id-segment-validation.md` | pending | pending |
 | bug-03 | `04-workflow-authoring-runtime-js` | planned | `subplan-01-draft-editing-validation.md` | pending | pending |
 | bug-04 | `04-workflow-authoring-runtime-js` | planned | `subplan-02-executable-workflow-validation.md` | pending | pending |
