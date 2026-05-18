@@ -20,9 +20,7 @@ public class RuntimeController {
     }
 
     /**
-     * Returns a summary of the workspace runtime. Replaces the removed
-     * Docker status endpoint. If no agent context is specified, returns
-     * a simple availability signal.
+     * Returns a summary of the filesystem-backed workspace runtime.
      */
     @GetMapping("/status")
     public RuntimeStatus runtimeStatus() {

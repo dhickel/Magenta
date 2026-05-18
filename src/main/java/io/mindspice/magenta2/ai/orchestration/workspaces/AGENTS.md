@@ -14,7 +14,7 @@ This package owns filesystem workspace management including agent workspace root
 - Agent outputs: `agents/<id>/workspace/outputs/<slug>-<runId>/`
 - Agent project links: `agents/<id>/workspace/projects/<projectId>`
 - Agent scratch: `agents/<id>/workspace/scratch/`
-- Legacy `agents/<id>/home` and `agents/<id>/outputs` are deprecated and will be migrated into workspace/ during the Docker removal phases.
+- Legacy `agents/<id>/home` and `agents/<id>/outputs` are deprecated and migrate into `workspace/` when warm data roots are opened.
 
 ### Services
 - `WorkspaceDirectoryService` — filesystem path management and directory creation.

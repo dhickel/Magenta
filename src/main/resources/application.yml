@@ -16,9 +16,7 @@ magenta:
     execution-stream-timeout-seconds: 0
   ai:
     openai-compatible-read-timeout-seconds: 360
-  # Docker runtime removed in favor of filesystem-backed workspaces.
-  # docker.enabled defaults to false; the Docker services are conditionally
-  # disabled and will be deleted in a follow-on phase.
+  # Agent execution uses filesystem-backed workspaces and host shell tools.
 
 spring:
   web:

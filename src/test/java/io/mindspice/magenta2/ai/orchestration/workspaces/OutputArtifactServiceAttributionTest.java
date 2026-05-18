@@ -65,7 +65,7 @@ class OutputArtifactServiceAttributionTest {
     }
 
     // ════════════════════════════════════════════════════════════════
-    //  Phase 03: Filesystem path resolution (Docker /output/ removed)
+    //  Phase 03: Filesystem path resolution
     // ════════════════════════════════════════════════════════════════
 
     @Test

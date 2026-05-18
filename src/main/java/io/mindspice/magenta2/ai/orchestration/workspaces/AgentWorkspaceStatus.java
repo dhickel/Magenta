@@ -4,9 +4,8 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * Read model for agent workspace health and activity. Replaces the
- * Docker {@code AgentContainerHandle} status surface with filesystem
- * facts derived from workspace state, leases, assignments, and outputs.
+ * Read model for agent workspace health and activity, derived from
+ * workspace state, leases, assignments, and outputs.
  */
 public record AgentWorkspaceStatus(
     String agentId,

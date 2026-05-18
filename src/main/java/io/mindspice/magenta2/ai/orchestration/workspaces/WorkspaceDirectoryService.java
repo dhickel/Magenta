@@ -46,8 +46,8 @@ public class WorkspaceDirectoryService {
     /**
      * Agent execution root: {@code agents/<id>/workspace}.
      * Does not auto-migrate legacy directories; call
-     * {@link #migrateLegacyAgentDirs(String)} explicitly after Docker
-     * dependencies are removed.
+     * {@link #migrateLegacyAgentDirs(String)} explicitly when a warm
+     * data root still contains pre-workspace directories.
      */
     public Path agentWorkspace(String agentId) {
         requireId(agentId, "agentId");
@@ -56,7 +56,7 @@ public class WorkspaceDirectoryService {
 
     /**
      * @deprecated Replaced by {@link #agentWorkspace(String)}. Retained only
-     * for Docker package backward compatibility during phased migration.
+     * for warm data roots that still reference the pre-workspace layout.
      */
     @Deprecated
     public Path agentHome(String agentId) {
@@ -86,7 +86,7 @@ public class WorkspaceDirectoryService {
 
     /**
      * @deprecated Replaced by {@link #agentWorkspaceOutputs(String)}.
-     * Retained only for Docker package backward compatibility.
+     * Retained only for warm data roots that still reference the legacy output layout.
      */
     @Deprecated
     public Path agentOutputRoot(String agentId) {
@@ -109,7 +109,6 @@ public class WorkspaceDirectoryService {
      * Migrates legacy {@code agents/<id>/home} and {@code agents/<id>/outputs}
      * into the workspace tree. Safe to call repeatedly — only performs work
      * when legacy directories exist and their workspace counterparts do not.
-     * Call after Docker execution dependencies on the old paths are removed.
      */
     public void migrateLegacyAgentDirs(String agentId) {
         requireId(agentId, "agentId");

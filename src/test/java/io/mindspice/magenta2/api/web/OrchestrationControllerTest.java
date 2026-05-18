@@ -840,7 +840,6 @@ class OrchestrationControllerTest {
         assertThat(html).contains("id=\"agent-lifecycle-panel-agent-1\"");
         assertThat(html).contains("hx-target=\"#agent-lifecycle-panel-agent-1\"");
         assertThat(html).contains("hx-swap=\"outerHTML\"");
-        assertThat(html).doesNotContain("agent-docker-status");
         assertThat(html).doesNotContain("Open Agent Chat");
     }
 
@@ -873,7 +872,6 @@ class OrchestrationControllerTest {
         assertThat(html).contains("hx-target=\"#agent-lifecycle-panel-agent-1\"");
         assertThat(html).contains("hx-post=\"/agents/_lifecycle/agent-1/disable?view=lifecycle\"");
         assertThat(html).contains("hx-post=\"/agents/_lifecycle/agent-1/archive-and-disable?view=lifecycle\"");
-        assertThat(html).doesNotContain("agent-docker-status");
     }
 
     @Test
@@ -883,12 +881,10 @@ class OrchestrationControllerTest {
         String disabled = controller.disableAgentLifecycle("agent-1", "lifecycle");
         assertThat(disabled).contains("id=\"agent-lifecycle-panel-agent-1\"");
         assertThat(disabled).contains("Agent disabled.");
-        assertThat(disabled).doesNotContain("agent-docker-status");
 
         String archived = controller.archiveAndDisableAgentLifecycle("agent-1", "lifecycle");
         assertThat(archived).contains("id=\"agent-lifecycle-panel-agent-1\"");
         assertThat(archived).contains("Agent workspace archived and profile disabled.");
-        assertThat(archived).doesNotContain("agent-docker-status");
     }
 
     @Test

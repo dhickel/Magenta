@@ -1,10 +1,8 @@
-# Test configuration: disable Docker runtime during tests
+# Test configuration for isolated test execution.
 magenta:
   alpha-access:
     username: alpha
     password: test-alpha-password
-  docker:
-    enabled: false
   features:
     schedules-enabled: false
     reactions-enabled: false
