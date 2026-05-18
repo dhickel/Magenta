@@ -34,8 +34,16 @@ Critical: a tool-capable agent can affect host files/processes outside the inten
 
 ## Status
 
-Open.
+Resolved in workspace for subplan 01; pending orchestrator commit and any external validation gate.
 
 ## Next Action
 
-Replace wildcard defaults, constrain command effects to an assignment workspace, and add explicit deny/allow tests for absolute path access and shell wrappers.
+Commit the subplan 01 workspace changes, then continue domain 02 with file tool confinement in subplan 02.
+
+## Resolution Notes
+
+- Added explicit `unsafeAllowWildcardShellCommands` config. Wildcard shell commands are disabled by default and ignored during legacy profile seeding unless this override is true.
+- Removed wildcard approved-tool and shell-command defaults from `config/ai-config.example.json`.
+- Constrained shell working directory resolution to the active run workspace/output path when `OrchestrationTaskContext.hostWorkspacePath` is present, with current-project workspace scope support for `projects/{projectId}`.
+- Rejected shell wrapper executables, absolute filesystem path arguments, parent traversal arguments, and shell-control tokens even when wildcard shell commands are explicitly enabled.
+- Added focused tests for workspace-local execution, denied absolute/unrelated/project paths, shell wrappers, wildcard defaults, and unsafe wildcard override behavior.

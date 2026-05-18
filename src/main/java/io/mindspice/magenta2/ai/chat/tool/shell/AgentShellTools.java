@@ -18,12 +18,12 @@ public class AgentShellTools {
 
     @Tool(
         name = "shell_exec",
-        description = "Run an allowed Linux command line under the configured agent data root. Use file tools for normal inspect/read/edit flows."
+        description = "Run an allowed Linux command line inside the active assignment workspace. Use file tools for normal inspect/read/edit flows."
     )
     public String exec(
         @ToolParam(description = "Command line to run, such as 'ls -la notes'. The first token must be an allowed executable.")
         String command,
-        @ToolParam(required = false, description = "Data-root-relative working directory. Defaults to '.'.")
+        @ToolParam(required = false, description = "Workspace-relative working directory. Defaults to the active workspace root.")
         String workingDirectory,
         @ToolParam(required = false, description = "Timeout in seconds. Defaults to 10 and is capped by the server.")
         Integer timeoutSeconds

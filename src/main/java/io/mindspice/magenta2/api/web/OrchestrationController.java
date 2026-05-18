@@ -6416,7 +6416,7 @@ public class OrchestrationController {
             .withValue(currentTools)
             .withPlaceholder("tool1, tool2, ..."));
         form.withChild(new Div().withClass("dashboard-muted")
-            .withInnerText("Comma-separated list. Use * for all available tools."));
+            .withInnerText("Comma-separated explicit tool names. Avoid wildcard tool access for public-alpha agents."));
         form.withChild(new Div().withClass("agent-tool-chips")
             .withInnerText(agent.approvedTools() != null && !agent.approvedTools().isEmpty()
                 ? agent.approvedTools().size() + " tools configured"
@@ -6444,7 +6444,7 @@ public class OrchestrationController {
             .withValue(currentCommands)
             .withPlaceholder("ls, cat, grep, ..."));
         form.withChild(new Div().withClass("dashboard-muted")
-            .withInnerText("Comma-separated list. Use * for all commands. Bare executable names only."));
+            .withInnerText("Comma-separated bare executable names. Wildcard shell commands require unsafeAllowWildcardShellCommands=true."));
 
         form.withChild(new Div().withClass("orch-actions")
             .withChild(Button.create("Save").withClass("orch-primary").withAttribute("type", "submit")));

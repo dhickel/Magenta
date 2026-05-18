@@ -104,6 +104,7 @@ class ExternalAiConfigLoaderTest {
               "defaultAgent": "magenta",
               "summeryModel": "local-qwen",
               "planningModel": "local-qwen",
+              "unsafeAllowWildcardShellCommands": true,
               "contextBufferPercent": 10,
               "models": {
                 "local-qwen": {
@@ -117,8 +118,8 @@ class ExternalAiConfigLoaderTest {
                 "magenta": {
                   "model": "local-qwen",
                   "systemPrompt": "prompts/system.md",
-                  "approvedTools": ["*"],
-                  "allowedShellCommands": ["*"]
+                  "approvedTools": ["file_read", "web_fetch"],
+                  "allowedShellCommands": ["printf"]
                 }
               }
             }
@@ -140,8 +141,9 @@ class ExternalAiConfigLoaderTest {
             "You are Magenta, a practical system administration assistant.",
             config.agents().get("magenta").systemPrompt()
         );
-        assertEquals(java.util.List.of("*"), config.agents().get("magenta").approvedTools());
-        assertEquals(java.util.List.of("*"), config.agents().get("magenta").allowedShellCommands());
+        assertTrue(config.unsafeAllowWildcardShellCommandsEnabled());
+        assertEquals(java.util.List.of("file_read", "web_fetch"), config.agents().get("magenta").approvedTools());
+        assertEquals(java.util.List.of("printf"), config.agents().get("magenta").allowedShellCommands());
         assertEquals(EndpointType.OLLAMA, config.models().get("local-qwen").endpointType());
     }
 

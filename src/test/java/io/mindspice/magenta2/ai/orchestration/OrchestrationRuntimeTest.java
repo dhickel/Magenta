@@ -116,6 +116,42 @@ class OrchestrationRuntimeTest {
     }
 
     @Test
+    void agentProfileRejectsWildcardShellAllowlistWithoutUnsafeOverride() {
+        AgentProfileService service = agentService(jdbcTemplate(), aiConfig());
+
+        assertThatThrownBy(() -> service.create(new AgentProfile(
+            null, "magenta", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of("*"), true, null, null
+        )))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("unsafeAllowWildcardShellCommands=true");
+    }
+
+    @Test
+    void agentProfileAllowsWildcardShellAllowlistWithUnsafeOverride() {
+        AgentProfileService service = agentService(jdbcTemplate(), aiConfig(true));
+
+        AgentProfile created = service.create(new AgentProfile(
+            null, "magenta", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of("*"), true, null, null
+        ));
+
+        assertThat(created.allowedShellCommands()).containsExactly("*");
+    }
+
+    @Test
+    void agentProfileRejectsShellWrapperAllowlistEntries() {
+        AgentProfileService service = agentService(jdbcTemplate(), aiConfig(true));
+
+        assertThatThrownBy(() -> service.create(new AgentProfile(
+            null, "magenta", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of("bash"), true, null, null
+        )))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("shell wrapper");
+    }
+
+    @Test
     void workspaceCreatesRootsAndRejectsEscapes() throws Exception {
         WorkspaceService service = new WorkspaceService(new WorkspaceRepository(jdbcTemplate()), aiConfig());
 
@@ -197,6 +233,8 @@ class OrchestrationRuntimeTest {
         AgentProfile agent = repository.findAll().getFirst();
         assertThat(agent.name()).isEqualTo("magenta");
         assertThat(agent.systemPrompt()).isEqualTo("Legacy prompt");
+        assertThat(agent.approvedTools()).isEmpty();
+        assertThat(agent.allowedShellCommands()).isEmpty();
         assertThat(settingsRepository.find().orElseThrow().defaultAgentId()).isEqualTo(agent.id());
     }
 
@@ -355,6 +393,10 @@ class OrchestrationRuntimeTest {
     }
 
     private AiConfig aiConfig() {
+        return aiConfig(false);
+    }
+
+    private AiConfig aiConfig(boolean unsafeAllowWildcardShellCommands) {
         Map<String, ModelConfig> models = Map.of(
             "main", model("main-remote"),
             "planning", model("planning-remote"),
@@ -370,7 +412,8 @@ class OrchestrationRuntimeTest {
             tempDir,
             null,
             models,
-            Map.of("legacy", new AgentConfig("main", "Legacy prompt", List.of(), List.of("*")))
+            Map.of("legacy", new AgentConfig("main", "Legacy prompt", List.of(), List.of("*"))),
+            unsafeAllowWildcardShellCommands
         );
     }
 

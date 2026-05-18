@@ -51,7 +51,8 @@ public final class ExternalAiConfigLoader {
             config.dataRoot(),
             config.webSearch(),
             config.models(),
-            agents
+            agents,
+            config.unsafeAllowWildcardShellCommands()
         );
     }
 

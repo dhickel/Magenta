@@ -1,6 +1,7 @@
 package io.mindspice.magenta2.ai.orchestration.agents;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import io.mindspice.magenta2.ai.chat.tool.ChatToolRegistry;
@@ -20,6 +21,11 @@ import org.springframework.util.StringUtils;
 
 @Service
 public class AgentProfileService {
+    private static final Set<String> SHELL_WRAPPERS = Set.of(
+        "sh", "bash", "dash", "zsh", "ksh", "fish", "csh", "tcsh",
+        "env", "sudo", "su", "doas", "xargs", "parallel", "busybox"
+    );
+
     private final AgentProfileRepository repository;
     private final AiConfig aiConfig;
     private final ObjectProvider<ChatToolRegistry> chatToolRegistry;
@@ -264,10 +270,18 @@ public class AgentProfileService {
                 continue;
             }
             if ("*".equals(command)) {
+                if (!aiConfig.unsafeAllowWildcardShellCommandsEnabled()) {
+                    throw new IllegalArgumentException(
+                        "wildcard shell command allowlist requires unsafeAllowWildcardShellCommands=true"
+                    );
+                }
                 continue;
             }
             if (command.contains("/") || command.contains("\\") || command.chars().anyMatch(Character::isWhitespace)) {
                 throw new IllegalArgumentException("shell command allowlist entries must be bare executable names");
+            }
+            if (SHELL_WRAPPERS.contains(command)) {
+                throw new IllegalArgumentException("shell wrapper commands are not allowed: " + command);
             }
         }
     }

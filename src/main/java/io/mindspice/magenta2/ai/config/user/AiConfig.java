@@ -16,7 +16,8 @@ public record AiConfig(
     Path dataRoot,
     WebSearchConfig webSearch,
     Map<String, ModelConfig> models,
-    Map<String, AgentConfig> agents
+    Map<String, AgentConfig> agents,
+    Boolean unsafeAllowWildcardShellCommands
 ) {
 
     public int resolvedContextBufferPercent() {
@@ -39,6 +40,26 @@ public record AiConfig(
         return StringUtils.hasText(compactionModel) ? compactionModel : summeryModel;
     }
 
+    public boolean unsafeAllowWildcardShellCommandsEnabled() {
+        return Boolean.TRUE.equals(unsafeAllowWildcardShellCommands);
+    }
+
+    public AiConfig(
+        String defaultAgent,
+        String defaultModel,
+        String summeryModel,
+        String planningModel,
+        String compactionModel,
+        Integer contextBufferPercent,
+        Path dataRoot,
+        WebSearchConfig webSearch,
+        Map<String, ModelConfig> models,
+        Map<String, AgentConfig> agents
+    ) {
+        this(defaultAgent, defaultModel, summeryModel, planningModel, compactionModel,
+            contextBufferPercent, dataRoot, webSearch, models, agents, false);
+    }
+
     public AiConfig(
         String defaultAgent,
         String summeryModel,
@@ -48,7 +69,7 @@ public record AiConfig(
         Map<String, ModelConfig> models,
         Map<String, AgentConfig> agents
     ) {
-        this(defaultAgent, null, summeryModel, planningModel, null, contextBufferPercent, dataRoot, null, models, agents);
+        this(defaultAgent, null, summeryModel, planningModel, null, contextBufferPercent, dataRoot, null, models, agents, false);
     }
 
     public AiConfig(
@@ -60,7 +81,7 @@ public record AiConfig(
         Map<String, ModelConfig> models,
         Map<String, AgentConfig> agents
     ) {
-        this(defaultAgent, null, summeryModel, null, null, contextBufferPercent, dataRoot, webSearch, models, agents);
+        this(defaultAgent, null, summeryModel, null, null, contextBufferPercent, dataRoot, webSearch, models, agents, false);
     }
 
     public AiConfig(
@@ -71,7 +92,7 @@ public record AiConfig(
         Map<String, ModelConfig> models,
         Map<String, AgentConfig> agents
     ) {
-        this(defaultAgent, null, summeryModel, null, null, contextBufferPercent, dataRoot, null, models, agents);
+        this(defaultAgent, null, summeryModel, null, null, contextBufferPercent, dataRoot, null, models, agents, false);
     }
 
 }

@@ -8,6 +8,8 @@ import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettings;
 import io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettingsRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
@@ -15,6 +17,8 @@ import org.springframework.util.StringUtils;
 
 @Component
 public class AgentProfileSeeder implements ApplicationRunner {
+    private static final Logger log = LoggerFactory.getLogger(AgentProfileSeeder.class);
+
     private final AgentProfileRepository repository;
     private final AgentProfileService service;
     private final RuntimeSettingsRepository settingsRepository;
@@ -52,8 +56,8 @@ public class AgentProfileSeeder implements ApplicationRunner {
             AgentProfileStatus.ACTIVE,
             model,
             prompt,
-            legacy == null ? List.of() : legacy.approvedTools(),
-            legacy == null ? List.of() : legacy.allowedShellCommands(),
+            legacyApprovedTools(legacy),
+            legacyAllowedShellCommands(legacy),
             true,
             null,
             null
@@ -67,6 +71,32 @@ public class AgentProfileSeeder implements ApplicationRunner {
             aiConfig.resolvedCompactionModelKey(),
             aiConfig.resolvedContextBufferPercent()
         ));
+    }
+
+    private List<String> legacyApprovedTools(AgentConfig legacy) {
+        if (legacy == null || legacy.approvedTools() == null) {
+            return List.of();
+        }
+        if (legacy.approvedTools().contains("*")) {
+            log.warn("Ignoring legacy wildcard approvedTools during agent profile seeding; configure explicit tools instead");
+            return legacy.approvedTools().stream()
+                .filter(tool -> !"*".equals(tool))
+                .toList();
+        }
+        return legacy.approvedTools();
+    }
+
+    private List<String> legacyAllowedShellCommands(AgentConfig legacy) {
+        if (legacy == null || legacy.allowedShellCommands() == null) {
+            return List.of();
+        }
+        if (legacy.allowedShellCommands().contains("*") && !aiConfig.unsafeAllowWildcardShellCommandsEnabled()) {
+            log.warn("Ignoring legacy wildcard allowedShellCommands during agent profile seeding; set unsafeAllowWildcardShellCommands=true to opt in");
+            return legacy.allowedShellCommands().stream()
+                .filter(command -> !"*".equals(command))
+                .toList();
+        }
+        return legacy.allowedShellCommands();
     }
 
     private String fallbackPrompt() {

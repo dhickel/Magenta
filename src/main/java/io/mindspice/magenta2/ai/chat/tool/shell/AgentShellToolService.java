@@ -32,6 +32,13 @@ public class AgentShellToolService {
     private static final int DEFAULT_TIMEOUT_SECONDS = 10;
     private static final int MAX_TIMEOUT_SECONDS = 30;
     private static final int OUTPUT_LIMIT_BYTES = 16_384;
+    private static final Set<String> SHELL_WRAPPERS = Set.of(
+        "sh", "bash", "dash", "zsh", "ksh", "fish", "csh", "tcsh",
+        "env", "sudo", "su", "doas", "xargs", "parallel", "busybox"
+    );
+    private static final Set<String> SHELL_CONTROL_TOKENS = Set.of(
+        "|", "||", "&", "&&", ";", ">", ">>", "<", "<<", "<<<", "2>", "2>>"
+    );
 
     private final Path root;
     private final Set<String> allowedCommands;
@@ -53,10 +60,10 @@ public class AgentShellToolService {
             ? (defaultAgent == null ? List.of() : defaultAgent.allowedShellCommands())
             : runtimeSettingsService.allowedShellCommands();
         this.root = aiConfig.dataRoot().toRealPath();
-        this.allowAllCommands = commands != null && commands.contains(WILDCARD);
-        this.allowedCommands = commands == null
-            ? Set.of()
-            : commands.stream().filter(StringUtils::hasText).collect(java.util.stream.Collectors.toUnmodifiableSet());
+        this.allowAllCommands = aiConfig.unsafeAllowWildcardShellCommandsEnabled()
+            && commands != null
+            && commands.contains(WILDCARD);
+        this.allowedCommands = normalizeAllowedCommands(commands);
         this.workspaceDirectoryService = workspaceDirectoryService;
     }
 
@@ -65,23 +72,30 @@ public class AgentShellToolService {
     }
 
     AgentShellToolService(Path root, List<String> allowedCommands) throws IOException {
+        this(root, allowedCommands, false);
+    }
+
+    AgentShellToolService(Path root, List<String> allowedCommands, boolean unsafeAllowWildcardShellCommands)
+        throws IOException {
         this.root = root.toRealPath();
         List<String> commands = allowedCommands == null ? List.of() : allowedCommands;
-        this.allowAllCommands = commands.contains(WILDCARD);
-        this.allowedCommands = commands.stream()
-            .filter(StringUtils::hasText)
-            .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        this.allowAllCommands = unsafeAllowWildcardShellCommands && commands.contains(WILDCARD);
+        this.allowedCommands = normalizeAllowedCommands(commands);
         this.workspaceDirectoryService = null;
     }
 
     AgentShellToolService(Path root, List<String> allowedCommands,
                           WorkspaceDirectoryService workspaceDirectoryService) throws IOException {
+        this(root, allowedCommands, workspaceDirectoryService, false);
+    }
+
+    AgentShellToolService(Path root, List<String> allowedCommands,
+                          WorkspaceDirectoryService workspaceDirectoryService,
+                          boolean unsafeAllowWildcardShellCommands) throws IOException {
         this.root = root.toRealPath();
         List<String> commands = allowedCommands == null ? List.of() : allowedCommands;
-        this.allowAllCommands = commands.contains(WILDCARD);
-        this.allowedCommands = commands.stream()
-            .filter(StringUtils::hasText)
-            .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        this.allowAllCommands = unsafeAllowWildcardShellCommands && commands.contains(WILDCARD);
+        this.allowedCommands = normalizeAllowedCommands(commands);
         this.workspaceDirectoryService = workspaceDirectoryService;
     }
 
@@ -89,23 +103,22 @@ public class AgentShellToolService {
         throws IOException, InterruptedException {
         List<String> commandLine = parseCommandLine(command);
         String executable = validateExecutable(commandLine.getFirst());
+        validateCommandLineSafety(commandLine);
         if (!allowAllCommands && !allowedCommands.contains(executable)) {
             throw new IllegalArgumentException("shell command is not allowed: " + executable);
         }
 
         OrchestrationTaskContext taskContext = OrchestrationTaskContextHolder.current();
-        Path workingDir;
-        String displayPath;
+        ResolvedWorkingDirectory resolved;
 
-        if (taskContext != null && taskContext.hasAgentContext()) {
-            workingDir = resolveAgentWorkingDirectory(taskContext, workingDirectory);
-            displayPath = agentDisplayPath(taskContext.agentId(), workingDir);
+        if (taskContext != null && taskContext.hasContext()) {
+            resolved = resolveContextWorkingDirectory(taskContext, workingDirectory);
         } else {
-            workingDir = resolveWorkingDirectory(workingDirectory);
-            displayPath = displayPath(workingDir);
+            Path workingDir = resolveWorkingDirectory(workingDirectory);
+            resolved = new ResolvedWorkingDirectory(workingDir, displayPath(workingDir));
         }
 
-        return execOnHost(command, executable, commandLine, workingDir, displayPath, timeoutSeconds);
+        return execOnHost(command, executable, commandLine, resolved.path(), resolved.displayPath(), timeoutSeconds);
     }
 
     /**
@@ -123,19 +136,61 @@ public class AgentShellToolService {
      *
      * Absolute paths and paths that escape the agent workspace are rejected.
      */
+    private ResolvedWorkingDirectory resolveContextWorkingDirectory(OrchestrationTaskContext ctx, String workingDirectory)
+        throws IOException {
+        if (StringUtils.hasText(ctx.hostWorkspacePath())) {
+            return resolveAssignmentWorkingDirectory(ctx, workingDirectory);
+        }
+        if (ctx.hasAgentContext()) {
+            Path workingDir = resolveAgentWorkingDirectory(ctx, workingDirectory);
+            return new ResolvedWorkingDirectory(workingDir, agentDisplayPath(ctx.agentId(), workingDir));
+        }
+        throw new IllegalStateException("Shell execution requires an active assignment workspace");
+    }
+
+    private ResolvedWorkingDirectory resolveAssignmentWorkingDirectory(OrchestrationTaskContext ctx, String workingDirectory)
+        throws IOException {
+        Path workspaceRoot = activeScopeRoot(ctx.hostWorkspacePath(), "active assignment workspace");
+        String requested = StringUtils.hasText(workingDirectory) ? workingDirectory.trim() : "";
+        String normalized = normalizeWorkspaceRequest(requested);
+
+        if (normalized.isEmpty() || ".".equals(normalized) || "workspace".equals(normalized)) {
+            return new ResolvedWorkingDirectory(workspaceRoot, "workspace");
+        }
+        if (normalized.startsWith("workspace/")) {
+            normalized = normalized.substring("workspace/".length());
+            if (normalized.isEmpty()) {
+                return new ResolvedWorkingDirectory(workspaceRoot, "workspace");
+            }
+        }
+        rejectUnsafeRelativePath(normalized, "Working directory escapes active assignment workspace: " + workingDirectory);
+
+        if ("outputs".equals(normalized) || normalized.startsWith("outputs/")) {
+            Path outputRoot = activeScopeRoot(ctx.hostOutputPath(), "active assignment output directory");
+            String remainder = "outputs".equals(normalized) ? "" : normalized.substring("outputs/".length());
+            Path resolved = resolveScopedDirectory(outputRoot, remainder, workingDirectory);
+            return new ResolvedWorkingDirectory(resolved, displayScoped("outputs", outputRoot, resolved));
+        }
+
+        if (normalized.startsWith("projects/")) {
+            return resolveProjectWorkingDirectory(ctx, normalized, workingDirectory);
+        }
+
+        Path resolved = resolveScopedDirectory(workspaceRoot, normalized, workingDirectory);
+        return new ResolvedWorkingDirectory(resolved, displayScoped("workspace", workspaceRoot, resolved));
+    }
+
     private Path resolveAgentWorkingDirectory(OrchestrationTaskContext ctx, String workingDirectory) throws IOException {
         if (workspaceDirectoryService == null) {
             throw new IllegalStateException("Workspace directory service is not available");
         }
         Path workspaceRoot = workspaceDirectoryService.agentWorkspace(ctx.agentId());
-        if (!Files.isDirectory(workspaceRoot, LinkOption.NOFOLLOW_LINKS)) {
-            throw new IllegalStateException("Agent workspace does not exist: " + workspaceRoot);
-        }
+        workspaceRoot = workspaceRoot.toRealPath();
         String requested = StringUtils.hasText(workingDirectory) ? workingDirectory.trim() : "";
         if (requested.isEmpty() || ".".equals(requested)) {
             return workspaceRoot;
         }
-        String normalized = requested.replace('\\', '/');
+        String normalized = normalizeWorkspaceRequest(requested);
         if ("workspace".equals(normalized)) {
             return workspaceRoot;
         }
@@ -145,24 +200,26 @@ public class AgentShellToolService {
                 return workspaceRoot;
             }
         }
-        if (normalized.startsWith("/")) {
-            throw new IllegalArgumentException(
-                "Absolute working directory not allowed in agent context: " + workingDirectory);
+        rejectUnsafeRelativePath(normalized, "Working directory escapes agent workspace: " + workingDirectory);
+        if (normalized.startsWith("projects/")) {
+            return resolveProjectWorkingDirectory(ctx, normalized, workingDirectory).path();
         }
-        if (normalized.contains("//") || normalized.contains("..")) {
-            throw new IllegalArgumentException(
-                "Working directory escapes agent workspace: " + workingDirectory);
+        return resolveScopedDirectory(workspaceRoot, normalized, workingDirectory);
+    }
+
+    private ResolvedWorkingDirectory resolveProjectWorkingDirectory(OrchestrationTaskContext ctx, String normalized,
+                                                                    String workingDirectory) throws IOException {
+        if (workspaceDirectoryService == null || !StringUtils.hasText(ctx.projectId())) {
+            throw new IllegalArgumentException("Project workspace is not available for this assignment");
         }
-        Path resolved = workspaceRoot.resolve(normalized).normalize();
-        if (!resolved.startsWith(workspaceRoot)) {
-            throw new IllegalArgumentException(
-                "Working directory escapes agent workspace: " + workingDirectory);
+        String projectPrefix = "projects/" + ctx.projectId();
+        if (!normalized.equals(projectPrefix) && !normalized.startsWith(projectPrefix + "/")) {
+            throw new IllegalArgumentException("Project working directory is not linked to this assignment: " + workingDirectory);
         }
-        if (!Files.isDirectory(resolved, LinkOption.NOFOLLOW_LINKS)) {
-            throw new IllegalArgumentException(
-                "Working directory is not a directory: " + workingDirectory);
-        }
-        return resolved;
+        Path projectRoot = workspaceDirectoryService.projectWorkspace(ctx.projectId()).toRealPath();
+        String remainder = normalized.equals(projectPrefix) ? "" : normalized.substring((projectPrefix + "/").length());
+        Path resolved = resolveScopedDirectory(projectRoot, remainder, workingDirectory);
+        return new ResolvedWorkingDirectory(resolved, displayScoped(projectPrefix, projectRoot, resolved));
     }
 
     /**
@@ -327,7 +384,106 @@ public class AgentShellToolService {
         if (executable.contains("/") || executable.contains("\\") || executable.chars().anyMatch(Character::isWhitespace)) {
             throw new IllegalArgumentException("command must be a bare executable name");
         }
+        if (SHELL_WRAPPERS.contains(executable)) {
+            throw new IllegalArgumentException("shell wrapper executables are not allowed: " + executable);
+        }
         return executable;
+    }
+
+    private static Set<String> normalizeAllowedCommands(List<String> commands) {
+        if (commands == null) {
+            return Set.of();
+        }
+        return commands.stream()
+            .filter(StringUtils::hasText)
+            .filter(command -> !WILDCARD.equals(command))
+            .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
+    private void validateCommandLineSafety(List<String> commandLine) {
+        for (int i = 1; i < commandLine.size(); i++) {
+            String token = commandLine.get(i);
+            if (SHELL_CONTROL_TOKENS.contains(token) || token.contains("$(") || token.contains("`")) {
+                throw new IllegalArgumentException("shell control syntax is not allowed");
+            }
+            if (containsPathTraversal(token)) {
+                throw new IllegalArgumentException("shell arguments may not contain parent-directory traversal");
+            }
+            if (containsAbsolutePathPattern(token)) {
+                throw new IllegalArgumentException("shell arguments may not reference absolute filesystem paths");
+            }
+        }
+    }
+
+    private boolean containsPathTraversal(String token) {
+        String normalized = token.replace('\\', '/');
+        return normalized.equals("..")
+            || normalized.startsWith("../")
+            || normalized.endsWith("/..")
+            || normalized.contains("/../");
+    }
+
+    private boolean containsAbsolutePathPattern(String token) {
+        if (!StringUtils.hasText(token)) {
+            return false;
+        }
+        if (token.matches("^[a-zA-Z][a-zA-Z0-9+.-]*://.*")) {
+            return false;
+        }
+        if (token.startsWith("/") || token.startsWith("\\") || token.startsWith("~")) {
+            return true;
+        }
+        if (token.matches("^[A-Za-z]:[\\\\/].*")) {
+            return true;
+        }
+        return token.matches(".*(^|[^A-Za-z0-9._-])/(?!/).*");
+    }
+
+    private String normalizeWorkspaceRequest(String requested) {
+        String normalized = requested.replace('\\', '/');
+        if (normalized.startsWith("/")) {
+            throw new IllegalArgumentException("Absolute working directory not allowed in agent context: " + requested);
+        }
+        if (normalized.contains("//")) {
+            throw new IllegalArgumentException("Working directory escapes agent workspace: " + requested);
+        }
+        return normalized;
+    }
+
+    private void rejectUnsafeRelativePath(String normalized, String message) {
+        if (containsPathTraversal(normalized)) {
+            throw new IllegalArgumentException(message);
+        }
+    }
+
+    private Path activeScopeRoot(String path, String label) throws IOException {
+        if (!StringUtils.hasText(path)) {
+            throw new IllegalStateException("Shell execution requires an " + label);
+        }
+        Path real = Path.of(path).toRealPath();
+        if (!real.startsWith(root)) {
+            throw new IllegalArgumentException(label + " escapes data root");
+        }
+        if (!Files.isDirectory(real, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IllegalArgumentException(label + " is not a directory");
+        }
+        return real;
+    }
+
+    private Path resolveScopedDirectory(Path scopeRoot, String relativePath, String originalRequest) throws IOException {
+        String path = relativePath == null ? "" : relativePath;
+        Path resolved = path.isEmpty() ? scopeRoot : scopeRoot.resolve(path).normalize();
+        if (!resolved.startsWith(scopeRoot)) {
+            throw new IllegalArgumentException("Working directory escapes active workspace: " + originalRequest);
+        }
+        Path real = resolved.toRealPath();
+        if (!real.startsWith(scopeRoot)) {
+            throw new IllegalArgumentException("Working directory escapes active workspace: " + originalRequest);
+        }
+        if (!Files.isDirectory(real, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IllegalArgumentException("Working directory is not a directory: " + originalRequest);
+        }
+        return real;
     }
 
     private Path resolveWorkingDirectory(String workingDirectory) throws IOException {
@@ -364,7 +520,16 @@ public class AgentShellToolService {
         return rel.isEmpty() ? "workspace" : rel;
     }
 
+    private String displayScoped(String label, Path scopeRoot, Path path) {
+        Path relative = scopeRoot.relativize(path.toAbsolutePath().normalize());
+        String rel = relative.toString();
+        return rel.isEmpty() ? label : label + "/" + rel;
+    }
+
     private record CapturedOutput(String text, boolean truncated) {
+    }
+
+    private record ResolvedWorkingDirectory(Path path, String displayPath) {
     }
 
     public record ShellExecResult(
