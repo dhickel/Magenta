@@ -109,6 +109,18 @@ class WorkspaceRepositorySchemaMigrationTest {
     }
 
     @Test
+    void schemaSqlDoesNotCreateOrphanJobWorkItemsTable() throws Exception {
+        JdbcTemplate jdbc = jdbc();
+
+        applySchema(jdbc);
+
+        assertThat(tableExists(jdbc, "job_work_items")).isFalse();
+        assertThat(tableExists(jdbc, "orchestration_job_items")).isTrue();
+        assertThat(tableExists(jdbc, "job_definitions")).isTrue();
+        assertThat(tableExists(jdbc, "job_runs")).isTrue();
+    }
+
+    @Test
     void workflowAndRuntimeInboxMessagesRemainReadableOnDistinctSurfaces() throws Exception {
         JdbcTemplate jdbc = jdbc();
         Instant created = Instant.parse("2026-05-18T12:00:00Z");

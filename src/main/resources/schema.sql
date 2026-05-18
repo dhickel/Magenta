@@ -512,20 +512,6 @@ create table if not exists job_definitions (
     updated_at text not null
 );
 
--- Per-item run state within a job run, denormalized from job_runs.work_item_runs_json
--- for queryability.
-create table if not exists job_work_items (
-    id text primary key,
-    key text not null,
-    type text not null,
-    plan_id text,
-    workflow_id text,
-    input_bindings_json text not null,
-    item_order integer not null,
-    model_override text,
-    priority integer
-);
-
 -- A single execution run of a job definition.
 -- work_item_runs_json is a JSON array of JobWorkItemRun objects.
 create table if not exists job_runs (

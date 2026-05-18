@@ -62,7 +62,7 @@
 | ro-09 | `06-operational-ui-htmx-mobile` | planned | `subplan-04-stale-runtime-labels.md` | pending | pending |
 | ro-10 | `06-operational-ui-htmx-mobile` | planned | `subplan-05-agent-detail-quality.md` | pending | pending |
 | ro-11 | `06-operational-ui-htmx-mobile` | planned | `subplan-05-agent-detail-quality.md` | pending | pending |
-| ro-12 | `05-schema-data-ownership` | planned | `subplan-04-orphan-schema-cleanup.md` | pending | pending |
+| ro-12 | `05-schema-data-ownership` | passed | `subplan-04-orphan-schema-cleanup.md` | implementer: `rg` found no production/code owner after cleanup; focused schema/runtime/controller tests passed with 47 tests; clean and post-startup SQLite probes confirmed no `job_work_items` and retained `orchestration_job_items`, `job_definitions`, `job_runs`; `git diff --check`; bounded startup reached `Started Magenta2Application` | pending |
 | ro-13 | `05-schema-data-ownership` | passed | `subplan-02-canonical-schema-drift.md` | validator: clean schema/repository bootstrap drift test captures plan/output columns before `PlanRepository` and `WorkspaceRepository` construction and confirms those target columns do not change afterward; focused tests, full `mvn test`, startup, and DB probes passed. | `9f22d1a` |
 | ro-14 | `07-validation-harness-regression` | planned | `subplan-02-playwright-harness.md` | pending | pending |
 | ro-15 | `07-validation-harness-regression` | planned | `subplan-03-fixture-parity.md` | pending | pending |
