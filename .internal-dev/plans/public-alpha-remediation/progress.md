@@ -14,7 +14,7 @@
 | Domain | Branch | Status | Current Owner | Validation Gate | Notes |
 | --- | --- | --- | --- | --- | --- |
 | `01-security-access-control` | `public-alpha-remediation/security-access-control` | passed | Codex | passed: focused tests, full `mvn test`, bounded startup, live auth/CSRF and workflow XSS probes | Ready to merge into integration. Evidence: `/tmp/magenta-security-domain-live-3317476.log`, `/tmp/magenta-security-domain-live-extra-3318140.log`, `/tmp/magenta-security-domain-playwright-3317476.log`. |
-| `02-workspace-tools-outputs` | `public-alpha-remediation/workspace-tools-outputs` | in_progress | Codex | subplan 01 validation pending | Subplan 01 shell confinement implementation complete; subplan validation pending. |
+| `02-workspace-tools-outputs` | `public-alpha-remediation/workspace-tools-outputs` | in_progress | Codex | subplan 01 passed | Subplan 02 file tool workspace scope active next. |
 | `03-execution-history-streams` | `public-alpha-remediation/execution-history-streams` | planned | unassigned | planned | Owns public execution contract and transcript preservation. |
 | `04-workflow-authoring-runtime-js` | `public-alpha-remediation/workflow-authoring-runtime-js` | planned | unassigned | planned | Must preserve HTMX-first CRUD and narrow JS graph behavior. |
 | `05-schema-data-ownership` | `public-alpha-remediation/schema-data-ownership` | planned | unassigned | planned | Should run before runtime/workspace lease validation if possible. |
@@ -33,7 +33,7 @@
 | bug-05 | `03-execution-history-streams` | planned | `subplan-01-submit-to-agent-contract.md` | pending | pending |
 | bug-06 | `03-execution-history-streams` | planned | `subplan-02-transcript-preservation.md` | pending | pending |
 | bug-07 | `05-schema-data-ownership` | planned | `subplan-01-lease-preserving-schema.md` | pending | pending |
-| bug-08 | `02-workspace-tools-outputs` | validating | `subplan-01-shell-tool-confinement.md` | implementer: `mvn -Dtest=AgentShellToolServiceTest,ExternalAiConfigLoaderTest,OrchestrationRuntimeTest test`; `mvn -Dtest=ChatToolRegistryTest test`; config JSON parse; bounded Spring startup reached Tomcat on port 35595 before timeout shutdown | pending |
+| bug-08 | `02-workspace-tools-outputs` | passed | `subplan-01-shell-tool-confinement.md` | validator: `mvn -Dtest=AgentShellToolServiceTest,ExternalAiConfigLoaderTest,OrchestrationRuntimeTest,ChatToolRegistryTest test`; config JSON parse; `git diff --check`; bounded startup; confirmed wildcard override gating, wrapper/path rejection, active workspace/output/project cwd confinement, safe example config | `cddbb6c` |
 | bug-09 | `02-workspace-tools-outputs` | planned | `subplan-02-file-tool-workspace-scope.md` | pending | pending |
 | bug-10 | `02-workspace-tools-outputs` | planned | `subplan-03-web-fetch-redirect-ssrf.md` | pending | pending |
 | bug-11 | `01-security-access-control` | passed | `subplan-03-workflow-xss-security.md` | validator: `mvn -Dtest=WorkflowGraphComposerSecurityTest,OrchestrationControllerTest#workflowJsProvidesGraphComposerSurface test`; `node --check src/main/resources/static/js/orchestration/workflows.js`; live `/workflows` XSS probe on isolated DB confirmed inert payloads and no injected `img`/`script` nodes | `0c114bb` |
