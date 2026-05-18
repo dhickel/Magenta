@@ -1,0 +1,22 @@
+# Technical Documentation Index
+
+These docs explain Magenta internals for contributors. Detailed content will be filled in during the technical documentation phase.
+
+## Guides
+
+- [Architecture](architecture.md)
+- [API Reference](api-reference.md)
+- [Data Model](data-model.md)
+- [Services](services.md)
+- [Chat, Planning, and Tasks](chat-planning-tasks.md)
+- [Orchestration Runtime](orchestration-runtime.md)
+- [Workflow Engine](workflow-engine.md)
+- [Workspaces, Tools, and Outputs](workspaces-tools-outputs.md)
+- [Frontend HTMX](frontend-htmx.md)
+- [Security](security.md)
+- [Configuration and Operations](configuration-operations.md)
+
+## Owner Notes
+
+- Architecture, API, service, schema, persistence, frontend, security, and configuration changes must update the relevant page.
+- Keep this index current when pages are added, renamed, or removed.

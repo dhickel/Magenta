@@ -7,6 +7,7 @@
 - After completing the `.internal-dev` workflow for a task, create a git commit that includes both the implementation and the `.internal-dev` updates.
 - When beginning implementation of a multi-phase plan, create a dedicated git branch for that plan before phase work starts.
 - For multi-phase plans, commit completed work at the end of each phase on that dedicated branch.
+- For any feature or non-trivial fix, update relevant docs in `docs/`: end-user docs for behavior changes, technical docs for architecture/API/service/schema/config changes, and API docs for route or payload changes.
 - Plans and reviews are written to `.internal-dev/plans/` and `.internal-dev/reviews/`.
 - Out-of-scope bugs found during work are logged immediately in `.internal-dev/bugs/`.
 - Finalized work gets a changelog entry in `.internal-dev/changelogs/`.

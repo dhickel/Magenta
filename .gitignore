@@ -48,6 +48,5 @@ build/
 
 ### Node modules
 node_modules/
-
-### Docs (auto-generated / build output)
-docs/
+### Legacy Maestro docs workspace
+docs/maestro/

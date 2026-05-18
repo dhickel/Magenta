@@ -1,0 +1,53 @@
+# Magenta Documentation
+
+This is the alpha documentation entry point for Magenta.
+
+## Audiences
+
+- [End users](end-user/00-index.md): how to operate Magenta through chat, dashboards, plans, workflows, jobs, agents, projects, workspaces, inboxes, outputs, and settings.
+- [Technical contributors](technical/00-index.md): how the Spring Boot services, APIs, persistence, orchestration runtime, workflow engine, HTMX UI, and operational configuration fit together.
+- [API consumers](api/00-index.md): route, payload, streaming, and integration contracts.
+
+## Documentation Map
+
+End-user docs:
+
+- [End-user index](end-user/00-index.md)
+- [Quickstart](end-user/quickstart.md)
+- [Chat](end-user/chat.md)
+- [Dashboard](end-user/dashboard.md)
+- [Plans and Tasks](end-user/plans-and-tasks.md)
+- [Workflows](end-user/workflows.md)
+- [Jobs](end-user/jobs.md)
+- [Agents](end-user/agents.md)
+- [Projects and Workspaces](end-user/projects-and-workspaces.md)
+- [Inbox, Outputs, and Settings](end-user/inbox-outputs-settings.md)
+
+Technical docs:
+
+- [Technical index](technical/00-index.md)
+- [Architecture](technical/architecture.md)
+- [API Reference](technical/api-reference.md)
+- [Data Model](technical/data-model.md)
+- [Services](technical/services.md)
+- [Chat, Planning, and Tasks](technical/chat-planning-tasks.md)
+- [Orchestration Runtime](technical/orchestration-runtime.md)
+- [Workflow Engine](technical/workflow-engine.md)
+- [Workspaces, Tools, and Outputs](technical/workspaces-tools-outputs.md)
+- [Frontend HTMX](technical/frontend-htmx.md)
+- [Security](technical/security.md)
+- [Configuration and Operations](technical/configuration-operations.md)
+
+API docs:
+
+- [API index](api/00-index.md)
+
+## Current Status
+
+These pages establish the documentation structure and ownership rules. Detailed content is intentionally deferred to the technical and end-user documentation phases of the alpha docs plan.
+
+## Related Material
+
+- Documentation maintenance rules: [AGENTS.md](AGENTS.md)
+- Repository overview: [../README.md](../README.md)
+- Older Maestro design/planning material: [maestro/](maestro/)

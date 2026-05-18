@@ -1,8 +1,15 @@
-# magenta2
+# Magenta
 
-Minimal Spring AI + Ollama chat scaffold.
+Magenta is a Spring Boot and Spring AI assistant application for chat, planning, operational workflows, jobs, agents, projects, workspaces, and tool-assisted work. It is currently in alpha development and uses SQLite-backed persistence for local development.
 
-Chat memory is persisted in local SQLite (`./chat-memory.db`).
+## Documentation
+
+- End-user docs: [docs/end-user/00-index.md](docs/end-user/00-index.md)
+- Technical docs: [docs/technical/00-index.md](docs/technical/00-index.md)
+- API docs: [docs/api/00-index.md](docs/api/00-index.md)
+- Documentation contribution rules: [docs/AGENTS.md](docs/AGENTS.md)
+
+Older Maestro design and planning material remains under `docs/maestro/`; it is not the alpha documentation entry point.
 
 ## Run
 
@@ -11,7 +18,7 @@ mvn spring-boot:run
 ```
 
 This starts:
-- the web API in the background (`/api/chat`)
+- the web API in the background
 - the terminal REPL in the foreground
 
 Type directly in the terminal to chat. Useful commands:
@@ -22,15 +29,15 @@ Type directly in the terminal to chat. Useful commands:
 - `/clear` or `/clear <conversation-id>`
 - `/exit`
 
-If you want API-only mode (no terminal loop):
+If you want API-only mode without the terminal loop:
 
 ```bash
 mvn spring-boot:run -Dspring-boot.run.arguments=--app.repl.enabled=false
 ```
 
-## Chat loop (HTTP)
+## Chat API Examples
 
-Start a conversation (model defaults to `gemma4-26b:32k`):
+Start a conversation:
 
 ```bash
 curl -s http://localhost:8080/api/chat \
@@ -46,12 +53,12 @@ curl -s http://localhost:8080/api/chat \
   -d '{"conversationId":"<conversation-id>","message":"What did I just ask you?"}'
 ```
 
-Override model per request (optional):
+Override model per request:
 
 ```bash
 curl -s http://localhost:8080/api/chat \
   -H 'Content-Type: application/json' \
-  -d '{"conversationId":"<conversation-id>","model":"gemma4-26b:32k","message":"Reply with one sentence."}'
+  -d '{"conversationId":"<conversation-id>","model":"<model-name>","message":"Reply with one sentence."}'
 ```
 
 Stream a response as server-sent events:
@@ -69,7 +76,7 @@ Clear a conversation from memory:
 curl -i -X DELETE http://localhost:8080/api/chat/<conversation-id>
 ```
 
-## Session + history bootstrap endpoints
+## Session And History Endpoints
 
 List persisted conversation ids:
 
@@ -91,7 +98,7 @@ curl -s http://localhost:8080/api/chat/commands \
   -d '{"conversationId":"<active-id>","command":"/new"}'
 ```
 
-Supported commands:
+Supported commands include:
 - `/new`
 - `/switch <uuid>`
 - `/clear`
@@ -100,8 +107,8 @@ Supported commands:
 - `/exit-plan`
 - `/exec-plan`
 
-Planning mode uses the configured `planningModel`, records goal, deliverables, optional inputs/outputs, assumptions, notes, detailed steps, and validation criteria. The planner can queue up to five free-response questions in the browser planning panel. `/exec-plan` clears chat context, streams execution from the approved plan, and requires `plan_complete` validation before the plan is marked completed.
+Planning mode records the goal, deliverables, optional inputs and outputs, assumptions, notes, detailed steps, and validation criteria. `/exec-plan` streams execution from the approved plan and requires `plan_complete` validation before the plan is marked completed.
 
-## Browser demo
+## Browser UI
 
-Open `http://localhost:8080/chat` for a simple chat UI that uses these endpoints.
+Open `http://localhost:8080/chat` for the chat UI. Operational alpha surfaces, including dashboards, plans, workflows, jobs, agents, projects, and workspaces, are documented from the indexes under `docs/` as those sections are completed.
