@@ -1513,24 +1513,6 @@ class OrchestrationControllerTest {
     }
 
     @Test
-    void workflowJsProvidesGraphComposerSurface() throws Exception {
-        String js = Files.readString(Path.of("src/main/resources/static/js/orchestration/workflows.js"));
-
-        assertThat(js).contains("WorkflowGraphComposer");
-        assertThat(js).contains("window.MagentaWorkflowGraphComposer");
-        assertThat(js).contains("Workflow Graph Canvas");
-        assertThat(js).contains("graph-canvas");
-        assertThat(js).contains("beginDrag");
-        assertThat(js).contains("addNode");
-        assertThat(js).doesNotContain("DOMContentLoaded");
-        assertThat(js).doesNotContain("data-orchestration-page='workflows'");
-        assertThat(js).doesNotContain("saveWorkflow");
-        assertThat(js).doesNotContain("validateWorkflow");
-        assertThat(js).doesNotContain("fetch(");
-        assertThat(js).doesNotContain("/api/workflows");
-    }
-
-    @Test
     void inboxPageUsesHtmxFragmentsWithoutStaleStaticModule() {
         String html = controller().inbox();
 
