@@ -101,7 +101,9 @@ class FrontendControllerTest {
         assertThat(js).contains("data-planning-approval-preview");
         assertThat(js).contains("approvalHtml");
         assertThat(js).contains("Planning mode received.");
-        assertThat(js).contains("Execution request received.");
+        assertThat(js).contains("Send to agent");
+        assertThat(js).doesNotContain("Execution request received.");
+        assertThat(js).doesNotContain("Execute now");
         assertThat(js).contains("data-transient-assistant");
         assertThat(js).contains("function clearPlanningPanel()");
         assertThat(js).contains("clearPlanningPanel();");

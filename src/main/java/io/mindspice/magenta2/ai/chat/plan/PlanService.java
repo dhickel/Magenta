@@ -540,10 +540,6 @@ public class PlanService {
         });
     }
 
-    public void clearConversationForExecution(String conversationId) {
-        chatMemoryRepository.saveAll(conversationId, List.of());
-    }
-
     // ════════════════════════════════════════════════════════════════
     //  Task template (TASK_TEMPLATE) operations
     // ════════════════════════════════════════════════════════════════
@@ -1238,7 +1234,7 @@ Status: """).append(" ").append(plan.status().name()).append("\n");
     String planExecutionInstructions(PlanDefinition plan) {
         StringBuilder builder = new StringBuilder();
         builder.append("""
-You are Magenta executing an approved plan in a fresh chat context.
+You are Magenta executing an approved plan. Use the approved structured plan below as the execution source of truth.
 
 Work through the plan directly. Track each validation criterion explicitly as you work — verify it is met with specific, verifiable evidence (counts, file contents read back, query results, checks performed).
 

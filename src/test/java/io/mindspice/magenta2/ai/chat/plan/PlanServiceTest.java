@@ -66,7 +66,7 @@ class PlanServiceTest {
         service.markExecuting("conversation-1");
 
         assertThat(service.runtimeInstructions("conversation-1"))
-            .contains("fresh chat context")
+            .contains("Use the approved structured plan below as the execution source of truth")
             .contains("# Plan Mode")
             .contains("## Deliverables")
             .contains("Do not alter existing command names.")

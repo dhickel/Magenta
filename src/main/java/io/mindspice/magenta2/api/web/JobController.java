@@ -5,15 +5,22 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
+import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentRequest;
+import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService;
+import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentType;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobDefinition;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobRecurrence;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobRun;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobService;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobWorkItem;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobWorkItemType;
+import io.mindspice.magenta2.ai.orchestration.runtime.WorkAssignment;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -26,13 +33,24 @@ import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 public class JobController {
+    private static final int PUBLIC_SUBMIT_PRIORITY = 9;
 
     private final JobService jobService;
     private final OutputArtifactService outputArtifactService;
+    private final AssignmentService assignmentService;
+    private final AgentProfileService agentProfileService;
 
     public JobController(JobService jobService, OutputArtifactService outputArtifactService) {
+        this(jobService, outputArtifactService, null, null);
+    }
+
+    @Autowired
+    public JobController(JobService jobService, OutputArtifactService outputArtifactService,
+                         AssignmentService assignmentService, AgentProfileService agentProfileService) {
         this.jobService = jobService;
         this.outputArtifactService = outputArtifactService;
+        this.assignmentService = assignmentService;
+        this.agentProfileService = agentProfileService;
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -129,11 +147,22 @@ public class JobController {
     // ════════════════════════════════════════════════════════════════
 
     @PostMapping("/api/jobs/{jobId}/runs")
-    public JobRun startRun(@PathVariable String jobId) {
+    public WorkAssignment startRun(@PathVariable String jobId, @RequestBody(required = false) JobRunRequest request) {
         try {
-            return jobService.startRun(jobId);
+            requireSubmissionServices();
+            JobDefinition job = jobService.getDefinition(jobId);
+            return assignmentService.create(new AssignmentRequest(
+                resolveAgentId(request == null ? null : request.agentId(), job),
+                jobId,
+                null,
+                AssignmentType.JOB_RUN,
+                request == null || request.priority() == null ? PUBLIC_SUBMIT_PRIORITY : request.priority(),
+                normalize(request == null ? null : request.modelOverride(), job.model()),
+                normalize(request == null ? null : request.workspaceId(), job.workspaceId()),
+                Map.of("jobId", jobId)
+            ));
         } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
     }
 
@@ -214,6 +243,13 @@ public class JobController {
         Instant nextFireTime
     ) {}
 
+    public record JobRunRequest(
+        String agentId,
+        String modelOverride,
+        String workspaceId,
+        Integer priority
+    ) {}
+
     public record JobItemRequest(
         String key,
         JobWorkItemType type,
@@ -247,4 +283,33 @@ public class JobController {
         Instant createdAt,
         Instant updatedAt
     ) {}
+
+    private void requireSubmissionServices() {
+        if (assignmentService == null || agentProfileService == null) {
+            throw new IllegalStateException("Job run submission requires assignment services");
+        }
+    }
+
+    private String resolveAgentId(String requestedAgentId, JobDefinition job) {
+        String normalized = normalize(requestedAgentId, null);
+        if (normalized != null) {
+            return normalized;
+        }
+        normalized = normalize(job.ownerAgentId(), null);
+        if (normalized != null) {
+            return normalized;
+        }
+        return agentProfileService.list().stream()
+            .filter(agent -> agent.status() != null && !"DISABLED".equals(agent.status().name()))
+            .findFirst()
+            .map(agent -> agent.id())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No active agents available"));
+    }
+
+    private String normalize(String value, String fallback) {
+        if (StringUtils.hasText(value)) {
+            return value.trim();
+        }
+        return StringUtils.hasText(fallback) ? fallback.trim() : null;
+    }
 }

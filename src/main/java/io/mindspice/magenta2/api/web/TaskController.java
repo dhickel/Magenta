@@ -1,5 +1,6 @@
 package io.mindspice.magenta2.api.web;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -11,12 +12,16 @@ import io.mindspice.magenta2.ai.chat.task.TaskRun;
 import io.mindspice.magenta2.ai.chat.task.TaskService;
 import io.mindspice.magenta2.ai.chat.task.TaskStep;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
-import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationRunContext;
-import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationRunResult;
+import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
+import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentRequest;
+import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService;
+import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentType;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationRunService;
+import io.mindspice.magenta2.ai.orchestration.runtime.WorkAssignment;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -30,26 +35,26 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import reactor.core.Disposable;
-import reactor.core.publisher.Flux;
-import reactor.core.scheduler.Schedulers;
 
 @RestController
 @RequestMapping("/api/tasks")
 public class TaskController {
+    private static final int PUBLIC_SUBMIT_PRIORITY = 9;
+
     private final TaskService taskService;
-    private final ChatService chatService;
-    private final OrchestrationRunService orchestrationRunService;
+    private final AssignmentService assignmentService;
+    private final AgentProfileService agentProfileService;
 
     public TaskController(TaskService taskService, OrchestrationRunService orchestrationRunService) {
-        this(taskService, null, orchestrationRunService);
+        this(taskService, null, orchestrationRunService, null, null);
     }
 
     @Autowired
-    public TaskController(TaskService taskService, ChatService chatService, OrchestrationRunService orchestrationRunService) {
+    public TaskController(TaskService taskService, ChatService chatService, OrchestrationRunService orchestrationRunService,
+                          AssignmentService assignmentService, AgentProfileService agentProfileService) {
         this.taskService = taskService;
-        this.chatService = chatService;
-        this.orchestrationRunService = orchestrationRunService;
+        this.assignmentService = assignmentService;
+        this.agentProfileService = agentProfileService;
     }
 
     @GetMapping
@@ -174,49 +179,27 @@ public class TaskController {
     @PostMapping(value = "/{taskId}/runs/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter streamRun(@PathVariable String taskId, @RequestBody(required = false) TaskRunRequest request) {
         SseEmitter emitter = SseStreamLifecycle.createEmitter();
-        Map<String, Object> inputs = request == null || request.inputValues() == null ? Map.of() : request.inputValues();
-        SseStreamLifecycle.SubscriptionGuard guard = SseStreamLifecycle.guardSubscription();
-        SseStreamLifecycle.registerCallbacks(emitter, guard, null, null);
-
         try {
-            OrchestrationRunContext context = TaskStreamSupport.toContext(request);
-            Flux<SsePayload> stream;
-            if (context.hasContext()) {
-                stream = Flux.defer(() -> {
-                    OrchestrationRunResult result = orchestrationRunService.runTask(taskId, inputs, context);
-                    return TaskStreamSupport.orchestrationRunEvents(taskId, result);
-                });
-            } else if (chatService == null) {
-                throw new IllegalStateException("Task streaming requires model-backed chat execution");
-            } else {
-                stream = TaskStreamSupport.chatServiceRunEvents(
-                    taskId,
-                    chatService.streamTaskExecution(
-                        taskId,
-                        inputs,
-                        request == null ? null : request.conversationId(),
-                        request == null ? null : request.modelOverride()
-                    )
-                );
-            }
-            Disposable subscription = stream
-                .subscribeOn(Schedulers.boundedElastic())
-                .subscribe(
-                    event -> {
-                        if (!SseStreamLifecycle.trySendSseEvent(emitter, event.name(), event.data())) {
-                            guard.dispose();
-                            SseStreamLifecycle.completeQuietly(emitter);
-                        }
-                    },
-                    error -> {
-                        if (SseStreamLifecycle.trySendSseEvent(emitter, "failed",
-                                Map.of("event", "failed", "error", error.getMessage()))) {
-                            SseStreamLifecycle.completeQuietly(emitter);
-                        }
-                    },
-                    () -> SseStreamLifecycle.completeQuietly(emitter)
-                );
-            guard.set(subscription);
+            requireSubmissionServices();
+            taskService.getTask(taskId);
+            WorkAssignment assignment = assignmentService.create(new AssignmentRequest(
+                resolveAgentId(request == null ? null : request.agentId()),
+                normalize(request == null ? null : request.jobId()),
+                null,
+                AssignmentType.TASK_RUN,
+                request == null || request.priority() == null ? PUBLIC_SUBMIT_PRIORITY : request.priority(),
+                normalize(request == null ? null : request.modelOverride()),
+                normalize(request == null ? null : request.workspaceId()),
+                taskRunInput(taskId, request)
+            ));
+            SseStreamLifecycle.sendSseEvent(emitter, "submitted", Map.of(
+                "event", "submitted",
+                "assignmentId", assignment.id(),
+                "taskId", taskId,
+                "status", assignment.status().name(),
+                "priority", assignment.priority()
+            ));
+            SseStreamLifecycle.completeQuietly(emitter);
         } catch (IllegalArgumentException exception) {
             if (SseStreamLifecycle.trySendSseEvent(emitter, "failed",
                     Map.of("event", "failed", "error", exception.getMessage()))) {
@@ -229,6 +212,41 @@ public class TaskController {
             }
         }
         return emitter;
+    }
+
+    private void requireSubmissionServices() {
+        if (assignmentService == null || agentProfileService == null) {
+            throw new IllegalStateException("Task run submission requires assignment services");
+        }
+    }
+
+    private String resolveAgentId(String requestedAgentId) {
+        String normalized = normalize(requestedAgentId);
+        if (normalized != null) {
+            return normalized;
+        }
+        return agentProfileService.list().stream()
+            .filter(agent -> agent.status() != null && !"DISABLED".equals(agent.status().name()))
+            .findFirst()
+            .map(agent -> agent.id())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No active agents available"));
+    }
+
+    private Map<String, Object> taskRunInput(String taskId, TaskRunRequest request) {
+        Map<String, Object> input = new LinkedHashMap<>();
+        input.put("taskId", taskId);
+        input.put("inputValues", request == null || request.inputValues() == null ? Map.of() : request.inputValues());
+        if (request != null && StringUtils.hasText(request.conversationId())) {
+            input.put("conversationId", request.conversationId().trim());
+        }
+        return input;
+    }
+
+    private String normalize(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        return value.trim();
     }
 
     public record DraftRequest(String prePlanningModel, String executionModel) {

@@ -43,13 +43,17 @@ public class EventReactionService {
         if (reaction.actionType() != ReactionActionType.ENQUEUE_ASSIGNMENT) {
             throw new IllegalArgumentException("unsupported actionType: " + reaction.actionType());
         }
+        Map<String, Object> assignmentTemplate = reaction.assignmentTemplate() == null
+            ? Map.of()
+            : reaction.assignmentTemplate();
+        AssignmentTemplateParser.reactionRequest(agentId, assignmentTemplate);
         return repository.saveReaction(new AgentEventReaction(
             reaction.id() == null || reaction.id().isBlank() ? UUID.randomUUID().toString() : reaction.id(),
             agentId,
             reaction.eventType(),
             reaction.filter() == null ? Map.of() : reaction.filter(),
             reaction.actionType(),
-            reaction.assignmentTemplate() == null ? Map.of() : reaction.assignmentTemplate(),
+            assignmentTemplate,
             reaction.enabled(),
             reaction.createdAt(),
             reaction.updatedAt()

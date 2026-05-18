@@ -188,48 +188,6 @@ class ChatControllerTest {
     }
 
     @Test
-    void planExecutionStreamUsesNoTimeoutByDefault() throws Exception {
-        BlockingStreamChatService blockingChatService = new BlockingStreamChatService(
-            List.of(CONVERSATION_ID),
-            Map.of(CONVERSATION_ID, "qwen3")
-        );
-        ChatController controller = new ChatController(blockingChatService);
-
-        SseEmitter emitter = controller.streamPlanExecution(CONVERSATION_ID);
-
-        assertThat(emitter.getTimeout()).isZero();
-        blockingChatService.release.countDown();
-    }
-
-    @Test
-    void planExecutionStreamUsesConfiguredPositiveTimeout() throws Exception {
-        BlockingStreamChatService blockingChatService = new BlockingStreamChatService(
-            List.of(CONVERSATION_ID),
-            Map.of(CONVERSATION_ID, "qwen3")
-        );
-        ChatController controller = new ChatController(blockingChatService, new io.mindspice.magenta2.ai.execution.ActiveTurnRegistry(), 7);
-
-        SseEmitter emitter = controller.streamPlanExecution(CONVERSATION_ID);
-
-        assertThat(emitter.getTimeout()).isEqualTo(7000L);
-        blockingChatService.release.countDown();
-    }
-
-    @Test
-    void planExecutionStreamErrorRecordsExecutionFailure() throws Exception {
-        ErrorPlanExecutionChatService errorChatService = new ErrorPlanExecutionChatService(
-            List.of(CONVERSATION_ID),
-            Map.of(CONVERSATION_ID, "qwen3")
-        );
-        ChatController controller = new ChatController(errorChatService, new io.mindspice.magenta2.ai.execution.ActiveTurnRegistry(), 7);
-
-        controller.streamPlanExecution(CONVERSATION_ID);
-
-        assertThat(errorChatService.failureRecorded.await(1, TimeUnit.SECONDS)).isTrue();
-        assertThat(errorChatService.executionFailureMessage).contains("model timed out");
-    }
-
-    @Test
     void renameRejectsInvalidUuid() {
         assertThatThrownBy(() -> chatController.rename("not-a-uuid", new ChatRequest.SetTitle("title")))
             .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
@@ -266,11 +224,20 @@ class ChatControllerTest {
     }
 
     @Test
-    void executePlanRejectsWithoutSavedPlan() {
+    void executePlanRejectsDirectPublicRun() {
         assertThatThrownBy(() -> chatController.executePlan(CONVERSATION_ID))
             .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
                 assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-                assertThat(exception.getReason()).contains("No saved plan");
+                assertThat(exception.getReason()).contains("Direct plan execution is disabled");
+            });
+    }
+
+    @Test
+    void streamPlanExecutionRejectsDirectPublicRun() {
+        assertThatThrownBy(() -> chatController.streamPlanExecution(CONVERSATION_ID))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(exception.getReason()).contains("Direct plan execution is disabled");
             });
     }
 
@@ -304,36 +271,6 @@ class ChatControllerTest {
         SseEmitter emitter = controller.stream(
             new ChatRequest.MsgRequest(CONVERSATION_ID, "hello", "qwen3", null)
         );
-
-        assertThat(emitter.getTimeout()).isZero();
-        blockingChatService.release.countDown();
-    }
-
-    @Test
-    void planExecutionStreamEmitterUsesConfiguredTimeout() throws Exception {
-        BlockingStreamChatService blockingChatService = new BlockingStreamChatService(
-            List.of(CONVERSATION_ID),
-            Map.of(CONVERSATION_ID, "qwen3")
-        );
-        ChatController controller = new ChatController(blockingChatService,
-            new io.mindspice.magenta2.ai.execution.ActiveTurnRegistry(), 30);
-
-        SseEmitter emitter = controller.streamPlanExecution(CONVERSATION_ID);
-
-        assertThat(emitter.getTimeout()).isEqualTo(30000L);
-        blockingChatService.release.countDown();
-    }
-
-    @Test
-    void planExecutionStreamEmitterDisablesNonPositiveConfiguredTimeout() throws Exception {
-        BlockingStreamChatService blockingChatService = new BlockingStreamChatService(
-            List.of(CONVERSATION_ID),
-            Map.of(CONVERSATION_ID, "qwen3")
-        );
-        ChatController controller = new ChatController(blockingChatService,
-            new io.mindspice.magenta2.ai.execution.ActiveTurnRegistry(), -1);
-
-        SseEmitter emitter = controller.streamPlanExecution(CONVERSATION_ID);
 
         assertThat(emitter.getTimeout()).isZero();
         blockingChatService.release.countDown();

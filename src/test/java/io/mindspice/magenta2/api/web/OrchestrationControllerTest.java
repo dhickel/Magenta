@@ -77,10 +77,28 @@ class OrchestrationControllerTest {
         ScheduleService scheduleService,
         EventReactionService reactionService
     ) {
+        return controller(
+            schedulesEnabled,
+            reactionsEnabled,
+            scheduleService,
+            reactionService,
+            new StubJobService(),
+            new StubAssignmentService()
+        );
+    }
+
+    private static OrchestrationController controller(
+        boolean schedulesEnabled,
+        boolean reactionsEnabled,
+        ScheduleService scheduleService,
+        EventReactionService reactionService,
+        JobService jobService,
+        AssignmentService assignmentService
+    ) {
         return new OrchestrationController(
             new StubChatService(),
             new StubProjectService(),
-            new StubJobService(),
+            jobService,
             new StubAgentProfileService(),
             new StubInboxService(),
             new StubRuntimeInboxService(),
@@ -88,7 +106,7 @@ class OrchestrationControllerTest {
             new StubRuntimeSettingsService(),
             workspaceService(),
             new StubPlanService(),
-            new StubAssignmentService(),
+            assignmentService,
             scheduleService,
             reactionService,
             new StubWorkflowService(),
@@ -320,6 +338,8 @@ class OrchestrationControllerTest {
 
         // Editor container exists
         assertThat(html).contains("workflow-editor-container");
+        assertThat(html).contains("Submit to Agent");
+        assertThat(html).contains("disabled=\"disabled\"");
 
         // Filter input has HTMX attributes
         assertThat(html).contains("workflow-filter");
@@ -384,6 +404,33 @@ class OrchestrationControllerTest {
         // Events and outputs load via HTMX
         assertThat(html).contains("/jobs/_detail/job-abc/events");
         assertThat(html).contains("/jobs/_detail/job-abc/outputs");
+    }
+
+    @Test
+    void jobStartRunSubmitsHighPriorityAssignmentWithoutDirectJobRun() {
+        StubJobService jobService = new StubJobService();
+        StubAssignmentService assignmentService = new StubAssignmentService();
+        OrchestrationController ctrl = controller(
+            true,
+            true,
+            new StubScheduleService(),
+            new StubEventReactionService(),
+            jobService,
+            assignmentService
+        );
+
+        String html = ctrl.startJobRun("job-abc");
+
+        assertThat(html).contains("Assignment Created");
+        assertThat(html).contains("Type: JOB_RUN");
+        assertThat(html).contains("Priority: 9");
+        assertThat(assignmentService.lastRequest).isNotNull();
+        assertThat(assignmentService.lastRequest.assignmentType()).isEqualTo(AssignmentType.JOB_RUN);
+        assertThat(assignmentService.lastRequest.agentId()).isEqualTo("agent-1");
+        assertThat(assignmentService.lastRequest.jobId()).isEqualTo("job-abc");
+        assertThat(assignmentService.lastRequest.priority()).isEqualTo(9);
+        assertThat(assignmentService.lastRequest.input()).containsEntry("jobId", "job-abc");
+        assertThat(jobService.startRunCalls).isZero();
     }
 
     @Test
@@ -694,6 +741,17 @@ class OrchestrationControllerTest {
         ));
         assertThat(invalidJson).contains("orch-error");
         assertThat(invalidJson).contains("Invalid JSON for inputJson");
+
+        String missingJobId = controller.createAgentSchedule("agent-1", Map.of(
+            "assignmentType", "JOB_RUN",
+            "priority", "1",
+            "cronExpression", "0 * * * * *",
+            "timezone", "UTC",
+            "enabled", "true",
+            "inputJson", "{\"key\":\"value\"}"
+        ));
+        assertThat(missingJobId).contains("orch-error");
+        assertThat(missingJobId).contains("JOB_RUN assignments require jobId");
     }
 
     @Test
@@ -750,7 +808,7 @@ class OrchestrationControllerTest {
             "cronExpression", "0 */5 * * * *",
             "timezone", "UTC",
             "enabled", "false",
-            "inputJson", "{\"task\":\"updated\"}"
+            "inputJson", "{\"taskId\":\"task-1\",\"task\":\"updated\"}"
         ));
         assertThat(updated).contains("Cron: 0 */5 * * * *");
         assertThat(updated).contains("Assignment Type: TASK_RUN");
@@ -839,13 +897,28 @@ class OrchestrationControllerTest {
             "priority", "1",
             "enabled", "true",
             "filterJson", "{\"status\":\"QUEUED\"}",
-            "inputJson", "{\"task\":\"check\"}"
+            "inputJson", "{\"jobId\":\"job-abc\",\"task\":\"check\"}"
         ));
 
         assertThat(html).contains("Event Type: JOB_STATUS_CHANGED");
         assertThat(html).contains("Action: ENQUEUE_ASSIGNMENT");
         assertThat(html).contains("Assignment Type: JOB_RUN");
         assertThat(reactionService.reactions("agent-1")).hasSize(1);
+    }
+
+    @Test
+    void reactionFormDefaultsAssignmentTypeToReport() {
+        OrchestrationController controller = controller(
+            true,
+            true,
+            new StubScheduleService(),
+            new StubEventReactionService()
+        );
+
+        String html = controller.agentReactionsTab("agent-1");
+
+        assertThat(html).contains("<option value=\"REPORT\" selected>REPORT</option>");
+        assertThat(html).doesNotContain("<option value=\"JOB_RUN\" selected>JOB_RUN</option>");
     }
 
     @Test
@@ -860,7 +933,7 @@ class OrchestrationControllerTest {
 
         controller.createAgentReaction("agent-1", Map.of(
             "eventType", "JOB_STATUS_CHANGED",
-            "assignmentType", "JOB_RUN",
+            "assignmentType", "REPORT",
             "priority", "1",
             "enabled", "true",
             "filterJson", "{\"status\":\"QUEUED\"}",
@@ -874,7 +947,7 @@ class OrchestrationControllerTest {
             "priority", "3",
             "enabled", "false",
             "filterJson", "{\"channel\":\"ops\"}",
-            "inputJson", "{\"task\":\"updated\"}"
+            "inputJson", "{\"taskId\":\"task-1\",\"task\":\"updated\"}"
         ));
         assertThat(updated).contains("Event Type: MANUAL_USER_EVENT");
         assertThat(updated).contains("Assignment Type: TASK_RUN");
@@ -900,7 +973,7 @@ class OrchestrationControllerTest {
 
         controller.createAgentReaction("agent-1", Map.of(
             "eventType", "JOB_STATUS_CHANGED",
-            "assignmentType", "JOB_RUN",
+            "assignmentType", "REPORT",
             "priority", "1",
             "enabled", "true",
             "filterJson", "{\"status\":\"QUEUED\"}",
@@ -1730,6 +1803,8 @@ class OrchestrationControllerTest {
     }
 
     private static class StubJobService extends JobService {
+        private int startRunCalls;
+
         private static final JobDefinition STUB_JOB = new JobDefinition(
             "job-abc", "agent-1", null, null, "DRAFT",
             "Test Job", "A test job", List.of(),
@@ -1748,6 +1823,10 @@ class OrchestrationControllerTest {
         }
         @Override public JobDefinition saveDefinition(JobDefinition def) { return def; }
         @Override public java.util.List<String> outputRunIds(String jobId) { return List.of(); }
+        @Override public io.mindspice.magenta2.ai.orchestration.runtime.JobRun startRun(String jobId) {
+            startRunCalls++;
+            throw new AssertionError("Public job run routes must submit assignments");
+        }
     }
 
     private static class StubAgentProfileService extends AgentProfileService {
@@ -1836,6 +1915,7 @@ class OrchestrationControllerTest {
     private static class StubAssignmentService extends AssignmentService {
         private List<WorkAssignment> storedAssignments = List.of();
         private List<AuditRepository.AuditEvent> transcriptEvents = List.of();
+        private AssignmentRequest lastRequest;
 
         StubAssignmentService() { super(null, null, null, null); }
 
@@ -1846,7 +1926,8 @@ class OrchestrationControllerTest {
         }
 
         @Override public WorkAssignment create(AssignmentRequest request) {
-            return new WorkAssignment("asgn-1", request.agentId(), null, null,
+            lastRequest = request;
+            return new WorkAssignment("asgn-1", request.agentId(), request.jobId(), request.jobItemId(),
                 request.assignmentType(), request.priority() != null ? request.priority() : 0,
                 io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationStatus.QUEUED,
                 request.modelOverride(), request.workspaceId(),
@@ -2004,6 +2085,7 @@ class OrchestrationControllerTest {
             if (!org.springframework.scheduling.support.CronExpression.isValidExpression(schedule.cronExpression())) {
                 throw new IllegalArgumentException("invalid cronExpression");
             }
+            validateAssignmentTemplate(schedule.assignmentTemplate(), AssignmentType.JOB_RUN, schedule.jobId());
             List<AgentSchedule> current = new ArrayList<>(schedules(agentId));
             AgentSchedule saved = new AgentSchedule(
                 schedule.id() != null ? schedule.id() : "sched-" + (current.size() + 1),
@@ -2073,6 +2155,7 @@ class OrchestrationControllerTest {
 
         @Override
         public AgentEventReaction save(String agentId, AgentEventReaction reaction) {
+            validateAssignmentTemplate(reaction.assignmentTemplate(), AssignmentType.REPORT, null);
             List<AgentEventReaction> current = new ArrayList<>(reactions(agentId));
             AgentEventReaction saved = new AgentEventReaction(
                 reaction.id() != null ? reaction.id() : "reaction-" + (current.size() + 1),
@@ -2116,6 +2199,41 @@ class OrchestrationControllerTest {
             }
             reactions.put(agentId, current);
         }
+    }
+
+    private static void validateAssignmentTemplate(
+        Map<String, Object> template,
+        AssignmentType defaultType,
+        String fallbackJobId
+    ) {
+        Map<String, Object> values = template == null ? Map.of() : template;
+        AssignmentType type;
+        try {
+            Object rawType = values.get("assignmentType");
+            type = AssignmentType.valueOf(rawType == null || rawType.toString().isBlank()
+                ? defaultType.name()
+                : rawType.toString().trim().toUpperCase());
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("invalid assignmentType");
+        }
+        Object rawInput = values.get("input");
+        Map<?, ?> input = rawInput instanceof Map<?, ?> map ? map : Map.of();
+        if (type == AssignmentType.TASK_RUN && !hasText(input.get("taskId"))) {
+            throw new IllegalArgumentException("TASK_RUN assignments require input.taskId");
+        }
+        if (type == AssignmentType.WORKFLOW_RUN && !hasText(input.get("workflowId"))) {
+            throw new IllegalArgumentException("WORKFLOW_RUN assignments require input.workflowId");
+        }
+        if (type == AssignmentType.JOB_RUN
+            && !hasText(values.get("jobId"))
+            && !hasText(fallbackJobId)
+            && !hasText(input.get("jobId"))) {
+            throw new IllegalArgumentException("JOB_RUN assignments require jobId");
+        }
+    }
+
+    private static boolean hasText(Object value) {
+        return value != null && !value.toString().isBlank();
     }
 
     private static class StubWorkflowService extends WorkflowService {

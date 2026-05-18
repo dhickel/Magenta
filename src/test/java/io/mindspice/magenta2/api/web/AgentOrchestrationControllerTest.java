@@ -619,7 +619,8 @@ class AgentOrchestrationControllerTest {
                 "0 * * * * *", "UTC", true, null, null, null));
 
         AgentSchedule updated = controller.updateSchedule("agent-1", created.id(),
-            new AgentSchedule(created.id(), "agent-1", "job-2", Map.of("assignmentType", "TASK_RUN"),
+            new AgentSchedule(created.id(), "agent-1", "job-2",
+                Map.of("assignmentType", "TASK_RUN", "input", Map.of("taskId", "task-1")),
                 "0 */5 * * * *", "UTC", false, null, null, null));
 
         assertThat(updated.jobId()).isEqualTo("job-2");
@@ -628,6 +629,30 @@ class AgentOrchestrationControllerTest {
 
         controller.deleteSchedule("agent-1", created.id());
         assertThat(scheduleService.schedules("agent-1")).isEmpty();
+    }
+
+    @Test
+    void scheduleCreateReturnsBadRequestForInvalidAssignmentTemplate() {
+        StubScheduleService scheduleService = new StubScheduleService();
+        AgentOrchestrationController controller = newController(
+            null, null, scheduleService, null, new StubAgentProfileService(), null
+        );
+        setFeatureFlag(controller, "schedulesEnabled", true);
+
+        assertThatThrownBy(() -> controller.schedule("agent-1",
+            new AgentSchedule(null, "agent-1", null, Map.of("assignmentType", "NOT_A_TYPE"),
+                "0 * * * * *", "UTC", true, null, null, null)))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(exception.getReason()).contains("invalid assignmentType");
+            });
+        assertThatThrownBy(() -> controller.schedule("agent-1",
+            new AgentSchedule(null, "agent-1", null, Map.of(),
+                "0 * * * * *", "UTC", true, null, null, null)))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(exception.getReason()).contains("JOB_RUN assignments require jobId");
+            });
     }
 
     @Test
@@ -661,18 +686,44 @@ class AgentOrchestrationControllerTest {
         AgentEventReaction created = controller.reaction("agent-1",
             new AgentEventReaction(null, "agent-1", EventType.JOB_STATUS_CHANGED,
                 Map.of("status", "QUEUED"), ReactionActionType.ENQUEUE_ASSIGNMENT,
-                Map.of("assignmentType", "JOB_RUN"), true, null, null));
+                Map.of("assignmentType", "REPORT"), true, null, null));
 
         AgentEventReaction updated = controller.updateReaction("agent-1", created.id(),
             new AgentEventReaction(created.id(), "agent-1", EventType.MANUAL_USER_EVENT,
                 Map.of("source", "ops"), ReactionActionType.ENQUEUE_ASSIGNMENT,
-                Map.of("assignmentType", "TASK_RUN"), false, null, null));
+                Map.of("assignmentType", "TASK_RUN", "input", Map.of("taskId", "task-1")), false, null, null));
 
         assertThat(updated.eventType()).isEqualTo(EventType.MANUAL_USER_EVENT);
         assertThat(updated.enabled()).isFalse();
 
         controller.deleteReaction("agent-1", created.id());
         assertThat(reactionService.reactions("agent-1")).isEmpty();
+    }
+
+    @Test
+    void reactionCreateReturnsBadRequestForInvalidAssignmentTemplate() {
+        StubReactionService reactionService = new StubReactionService();
+        AgentOrchestrationController controller = newController(
+            null, null, null, reactionService, new StubAgentProfileService(), null
+        );
+        setFeatureFlag(controller, "reactionsEnabled", true);
+
+        assertThatThrownBy(() -> controller.reaction("agent-1",
+            new AgentEventReaction(null, "agent-1", EventType.JOB_STATUS_CHANGED,
+                Map.of(), ReactionActionType.ENQUEUE_ASSIGNMENT,
+                Map.of("assignmentType", "NOT_A_TYPE"), true, null, null)))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(exception.getReason()).contains("invalid assignmentType");
+            });
+        assertThatThrownBy(() -> controller.reaction("agent-1",
+            new AgentEventReaction(null, "agent-1", EventType.JOB_STATUS_CHANGED,
+                Map.of(), ReactionActionType.ENQUEUE_ASSIGNMENT,
+                Map.of("assignmentType", "WORKFLOW_RUN"), true, null, null)))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(exception.getReason()).contains("WORKFLOW_RUN assignments require input.workflowId");
+            });
     }
 
     @Test
@@ -686,7 +737,7 @@ class AgentOrchestrationControllerTest {
         AgentEventReaction created = controller.reaction("agent-1",
             new AgentEventReaction(null, "agent-1", EventType.JOB_STATUS_CHANGED,
                 Map.of("status", "QUEUED"), ReactionActionType.ENQUEUE_ASSIGNMENT,
-                Map.of("assignmentType", "JOB_RUN"), true, null, null));
+                Map.of("assignmentType", "REPORT"), true, null, null));
 
         assertThatThrownBy(() -> controller.deleteReaction("agent-2", created.id()))
             .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
@@ -731,6 +782,7 @@ class AgentOrchestrationControllerTest {
             if (!org.springframework.scheduling.support.CronExpression.isValidExpression(schedule.cronExpression())) {
                 throw new IllegalArgumentException("invalid cronExpression");
             }
+            validateAssignmentTemplate(schedule.assignmentTemplate(), AssignmentType.JOB_RUN, schedule.jobId());
             List<AgentSchedule> current = new ArrayList<>(schedules(agentId));
             AgentSchedule saved = new AgentSchedule(
                 schedule.id() == null || schedule.id().isBlank() ? "sched-" + (current.size() + 1) : schedule.id(),
@@ -783,6 +835,7 @@ class AgentOrchestrationControllerTest {
 
         @Override
         public AgentEventReaction save(String agentId, AgentEventReaction reaction) {
+            validateAssignmentTemplate(reaction.assignmentTemplate(), AssignmentType.REPORT, null);
             List<AgentEventReaction> current = new ArrayList<>(reactions(agentId));
             AgentEventReaction saved = new AgentEventReaction(
                 reaction.id() == null || reaction.id().isBlank() ? "reaction-" + (current.size() + 1) : reaction.id(),
@@ -810,5 +863,40 @@ class AgentOrchestrationControllerTest {
             }
             byAgent.put(agentId, current);
         }
+    }
+
+    private static void validateAssignmentTemplate(
+        Map<String, Object> template,
+        AssignmentType defaultType,
+        String fallbackJobId
+    ) {
+        Map<String, Object> values = template == null ? Map.of() : template;
+        AssignmentType type;
+        try {
+            Object rawType = values.get("assignmentType");
+            type = AssignmentType.valueOf(rawType == null || rawType.toString().isBlank()
+                ? defaultType.name()
+                : rawType.toString().trim().toUpperCase());
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("invalid assignmentType");
+        }
+        Object rawInput = values.get("input");
+        Map<?, ?> input = rawInput instanceof Map<?, ?> map ? map : Map.of();
+        if (type == AssignmentType.TASK_RUN && !hasText(input.get("taskId"))) {
+            throw new IllegalArgumentException("TASK_RUN assignments require input.taskId");
+        }
+        if (type == AssignmentType.WORKFLOW_RUN && !hasText(input.get("workflowId"))) {
+            throw new IllegalArgumentException("WORKFLOW_RUN assignments require input.workflowId");
+        }
+        if (type == AssignmentType.JOB_RUN
+            && !hasText(values.get("jobId"))
+            && !hasText(fallbackJobId)
+            && !hasText(input.get("jobId"))) {
+            throw new IllegalArgumentException("JOB_RUN assignments require jobId");
+        }
+    }
+
+    private static boolean hasText(Object value) {
+        return value != null && !value.toString().isBlank();
     }
 }

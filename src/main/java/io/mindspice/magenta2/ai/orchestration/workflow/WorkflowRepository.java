@@ -88,6 +88,28 @@ public class WorkflowRepository {
         catch (Exception ignored) { }
         try { jdbcTemplate.execute("alter table workflow_runs add column artifact_ids_json text not null default '[]'"); }
         catch (Exception ignored) { }
+        try { jdbcTemplate.execute("alter table workflow_runs add column current_node_index integer not null default 0"); }
+        catch (Exception ignored) { }
+        try { jdbcTemplate.execute("alter table workflow_runs add column node_runs_json text not null default '[]'"); }
+        catch (Exception ignored) { }
+        try { jdbcTemplate.execute("alter table workflow_runs add column workspace_path text"); }
+        catch (Exception ignored) { }
+        try { jdbcTemplate.execute("alter table workflow_runs add column output_dir text"); }
+        catch (Exception ignored) { }
+        try { jdbcTemplate.execute("alter table workflow_runs add column workflow_snapshot_json text"); }
+        catch (Exception ignored) { }
+        try { jdbcTemplate.execute("alter table workflow_runs add column final_message text"); }
+        catch (Exception ignored) { }
+        try { jdbcTemplate.execute("alter table workflow_runs add column error_text text"); }
+        catch (Exception ignored) { }
+        try { jdbcTemplate.execute("alter table workflow_runs add column updated_at text"); }
+        catch (Exception ignored) { }
+        try { jdbcTemplate.execute("alter table workflow_runs add column started_at text"); }
+        catch (Exception ignored) { }
+        try { jdbcTemplate.execute("alter table workflow_runs add column completed_at text"); }
+        catch (Exception ignored) { }
+        try { jdbcTemplate.update("update workflow_runs set updated_at = created_at where updated_at is null"); }
+        catch (Exception ignored) { }
 
         jdbcTemplate.execute("""
             create table if not exists workflow_node_runs (

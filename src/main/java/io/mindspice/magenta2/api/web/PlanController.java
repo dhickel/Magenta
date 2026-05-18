@@ -1,5 +1,6 @@
 package io.mindspice.magenta2.api.web;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -40,6 +41,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @RestController
 @RequestMapping("/api/plans")
 public class PlanController {
+    private static final int PUBLIC_SUBMIT_PRIORITY = 9;
+
     private final PlanService planService;
     private final ChatService chatService;
     private final AssignmentService assignmentService;
@@ -124,7 +127,7 @@ public class PlanController {
                 null,          // jobId
                 null,          // jobItemId
                 AssignmentType.TASK_RUN,
-                request.priority() != null ? request.priority() : 0,
+                request.priority() != null ? request.priority() : PUBLIC_SUBMIT_PRIORITY,
                 normalize(request.modelOverride()),
                 request.workspaceId(),
                 Map.of("taskId", planId)
@@ -235,40 +238,26 @@ public class PlanController {
     @PostMapping(value = "/{planId}/runs/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter streamRun(@PathVariable String planId, @RequestBody(required = false) PlanRunRequest request) {
         SseEmitter emitter = SseStreamLifecycle.createEmitter();
-        Map<String, Object> inputs = request == null || request.inputValues() == null ? Map.of() : request.inputValues();
-        SseStreamLifecycle.SubscriptionGuard guard = SseStreamLifecycle.guardSubscription();
-        SseStreamLifecycle.registerCallbacks(emitter, guard, null, null);
-
-        // Delegate to the task run streaming via ChatService (which uses TaskService facade)
-        if (chatService == null) {
-            throw new IllegalStateException("Task streaming requires model-backed chat execution");
-        }
         try {
-            var stream = chatService.streamTaskExecution(
-                planId,
-                inputs,
-                request == null ? null : request.conversationId(),
-                request == null ? null : request.modelOverride()
-            );
-            reactor.core.Disposable subscription = stream
-                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
-                .subscribe(
-                    event -> {
-                        if (!SseStreamLifecycle.trySendSseEvent(emitter, event.getClass().getSimpleName(),
-                                Map.of("event", event.getClass().getSimpleName(), "data", event))) {
-                            guard.dispose();
-                            SseStreamLifecycle.completeQuietly(emitter);
-                        }
-                    },
-                    error -> {
-                        if (SseStreamLifecycle.trySendSseEvent(emitter, "failed",
-                                Map.of("event", "failed", "error", error.getMessage()))) {
-                            SseStreamLifecycle.completeQuietly(emitter);
-                        }
-                    },
-                    () -> SseStreamLifecycle.completeQuietly(emitter)
-                );
-            guard.set(subscription);
+            planService.getTask(planId);
+            WorkAssignment assignment = assignmentService.create(new AssignmentRequest(
+                resolveAgentId(request == null ? null : request.agentId()),
+                normalize(request == null ? null : request.jobId()),
+                null,
+                AssignmentType.TASK_RUN,
+                request == null || request.priority() == null ? PUBLIC_SUBMIT_PRIORITY : request.priority(),
+                normalize(request == null ? null : request.modelOverride()),
+                normalize(request == null ? null : request.workspaceId()),
+                taskRunInput(planId, request)
+            ));
+            SseStreamLifecycle.sendSseEvent(emitter, "submitted", Map.of(
+                "event", "submitted",
+                "assignmentId", assignment.id(),
+                "taskId", planId,
+                "status", assignment.status().name(),
+                "priority", assignment.priority()
+            ));
+            SseStreamLifecycle.completeQuietly(emitter);
         } catch (IllegalArgumentException exception) {
             if (SseStreamLifecycle.trySendSseEvent(emitter, "failed",
                     Map.of("event", "failed", "error", exception.getMessage()))) {
@@ -281,6 +270,28 @@ public class PlanController {
             }
         }
         return emitter;
+    }
+
+    private String resolveAgentId(String requestedAgentId) {
+        String normalized = normalize(requestedAgentId);
+        if (normalized != null) {
+            return normalized;
+        }
+        return agentProfileService.list().stream()
+            .filter(agent -> agent.status() != null && !"DISABLED".equals(agent.status().name()))
+            .findFirst()
+            .map(agent -> agent.id())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No active agents available"));
+    }
+
+    private Map<String, Object> taskRunInput(String planId, PlanRunRequest request) {
+        Map<String, Object> input = new LinkedHashMap<>();
+        input.put("taskId", planId);
+        input.put("inputValues", request == null || request.inputValues() == null ? Map.of() : request.inputValues());
+        if (request != null && StringUtils.hasText(request.conversationId())) {
+            input.put("conversationId", request.conversationId().trim());
+        }
+        return input;
     }
 
     // ── Request DTOs ──

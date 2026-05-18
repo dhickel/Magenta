@@ -15,7 +15,8 @@ This package owns HTTP and web-facing entry points.
 
 ### Change guidance
 - Treat controller request and response changes as public API changes.
-- Task run SSE responses include the task conversation id, task run id, status, output values, errors, and tool/progress events from model-backed execution.
+- Public plan/task/workflow run controls submit saved definitions to agent assignments; direct model-backed execution stays internal/test-only when needed.
+- Public task and workflow run stream routes acknowledge queued assignment submission instead of streaming inline model execution.
 - Public operational job APIs use `JobDefinition` records, allow empty `DRAFT` jobs, and expose job item routes separately from run routes.
 - Preserve HTMX-compatible security failures and keep CSRF compatibility in the shared shell/client helpers when adding browser mutation routes.
 - Do not put chat, persistence, or orchestration logic in controllers.

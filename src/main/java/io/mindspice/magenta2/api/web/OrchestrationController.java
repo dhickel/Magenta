@@ -2138,7 +2138,17 @@ public class OrchestrationController {
     private Component workflowEditorEmptyState() {
         return new Div().withClass("orch-panel")
             .withChild(new Div().withClass("dashboard-empty")
-                .withInnerText("Select a workflow from the list or create a new one."));
+                .withInnerText("Select a workflow from the list or create a new one."))
+            .withChild(new Div().withClass("tool-actions")
+                .withChild(Button.create("New Workflow")
+                    .withClass("orch-primary")
+                    .hxPost("/workflows/_editor/_draft")
+                    .hxTarget("#workflow-editor-container")
+                    .hxSwap("innerHTML"))
+                .withChild(Button.create("Submit to Agent")
+                    .withAttribute("type", "button")
+                    .withAttribute("disabled", "disabled")
+                    .withAttribute("aria-disabled", "true")));
     }
 
     // ── Workflow list HTMX partial ──
@@ -2465,8 +2475,8 @@ public class OrchestrationController {
             if (agentId == null || agentId.isBlank()) {
                 return new Div().withClass("orch-status").withInnerText("No active agents available. Create an agent first.").render();
             }
-            int priority = 0;
-            try { priority = Integer.parseInt(params.getOrDefault("priority", "0")); } catch (NumberFormatException ignored) {}
+            int priority = 9;
+            try { priority = Integer.parseInt(params.getOrDefault("priority", "9")); } catch (NumberFormatException ignored) {}
             WorkAssignment assignment = assignmentService.create(new AssignmentRequest(
                 agentId, null, null, AssignmentType.WORKFLOW_RUN,
                 priority,
@@ -3382,7 +3392,7 @@ public class OrchestrationController {
             .withChild(label("Model Override", TextInput.create("modelOverride")
                 .withPlaceholder("optional")))
             .withChild(label("Priority", TextInput.number("priority")
-                .withValue("0").withMin("0").withMax("100"))));
+                .withValue("9").withMin("0").withMax("100"))));
 
         form.withChild(Button.create("Submit").withClass("orch-primary")
             .withAttribute("type", "submit"));
@@ -3408,27 +3418,32 @@ public class OrchestrationController {
                 jobId,
                 null, // jobItemId
                 AssignmentType.JOB_RUN,
-                parseIntOrNull(params.get("priority")),
+                parseIntOrDefault(params.get("priority"), 9),
                 nn(params.get("modelOverride")),
                 job.workspaceId(),
                 Map.of("jobId", jobId)
             );
             WorkAssignment assignment = assignmentService.create(request);
 
-            return new Div().withClass("orch-panel")
-                .withChild(Header.H3("Assignment Created"))
-                .withChild(new Div().withClass("orch-meta")
-                    .withChild(new HtmlTag("span").withInnerText("ID: " + assignment.id()))
-                    .withChild(new HtmlTag("span").withInnerText("Agent: " +
-                        (assignment.agentId() != null ? assignment.agentId() : "—")))
-                    .withChild(new HtmlTag("span").withInnerText("Status: " +
-                        (assignment.status() != null ? assignment.status().name() : "—")))
-                    .withChild(new HtmlTag("span").withInnerText("Priority: " + assignment.priority())))
-                .render();
+            return jobAssignmentCreatedPanel(assignment).render();
         } catch (Exception e) {
             return new Div().withClass("orch-status")
                 .withInnerText("Error submitting job: " + e.getMessage()).render();
         }
+    }
+
+    private Component jobAssignmentCreatedPanel(WorkAssignment assignment) {
+        return new Div().withClass("orch-panel")
+            .withChild(Header.H3("Assignment Created"))
+            .withChild(new Div().withClass("orch-meta")
+                .withChild(new HtmlTag("span").withInnerText("ID: " + assignment.id()))
+                .withChild(new HtmlTag("span").withInnerText("Agent: " +
+                    (assignment.agentId() != null ? assignment.agentId() : "—")))
+                .withChild(new HtmlTag("span").withInnerText("Status: " +
+                    (assignment.status() != null ? assignment.status().name() : "—")))
+                .withChild(new HtmlTag("span").withInnerText("Type: " +
+                    (assignment.assignmentType() != null ? assignment.assignmentType().name() : "—")))
+                .withChild(new HtmlTag("span").withInnerText("Priority: " + assignment.priority())));
     }
 
     // ── Job detail fragments ──
@@ -3588,7 +3603,7 @@ public class OrchestrationController {
             actions.withChild(Button.create("Start Run")
                 .withClass("orch-primary")
                 .withAttribute("hx-post", "/jobs/_runs/" + jobId + "/start")
-                .withAttribute("hx-target", "#job-runs-panel")
+                .withAttribute("hx-target", "#job-submit-container")
                 .withAttribute("hx-swap", "innerHTML"));
             actions.withChild(Button.create("Submit to Agent")
                 .withClass("orch-primary")
@@ -3698,8 +3713,35 @@ public class OrchestrationController {
     @PostMapping("/jobs/_runs/{jobId}/start")
     @ResponseBody
     public String startJobRun(@PathVariable String jobId) {
-        jobService.startRun(jobId);
-        return jobRunsFragment(jobId);
+        try {
+            JobDefinition job = jobService.getDefinition(jobId);
+            String agentId = nn(job.ownerAgentId());
+            if (agentId.isBlank()) {
+                agentId = agentProfileService.list().stream()
+                    .filter(agent -> agent.status() != null && !"DISABLED".equals(agent.status().name()))
+                    .findFirst()
+                    .map(AgentProfile::id)
+                    .orElse("");
+            }
+            if (agentId.isBlank()) {
+                return new Div().withClass("orch-status")
+                    .withInnerText("No active agents available. Create an agent first.").render();
+            }
+            WorkAssignment assignment = assignmentService.create(new AssignmentRequest(
+                agentId,
+                jobId,
+                null,
+                AssignmentType.JOB_RUN,
+                9,
+                nn(job.model()),
+                job.workspaceId(),
+                Map.of("jobId", jobId)
+            ));
+            return jobAssignmentCreatedPanel(assignment).render();
+        } catch (Exception e) {
+            return new Div().withClass("orch-status")
+                .withInnerText("Error submitting job: " + e.getMessage()).render();
+        }
     }
 
     @PostMapping("/jobs/_runs/{runId}/cancel")
@@ -3757,6 +3799,15 @@ public class OrchestrationController {
             return Integer.parseInt(value.trim());
         } catch (NumberFormatException e) {
             return 0;
+        }
+    }
+
+    private int parseIntOrDefault(String value, int fallback) {
+        if (value == null || value.isBlank()) return fallback;
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException e) {
+            return fallback;
         }
     }
 
@@ -5323,7 +5374,7 @@ public class OrchestrationController {
         }
 
         for (AgentEventReaction reaction : reactions) {
-            String assignmentType = templateString(reaction.assignmentTemplate(), "assignmentType", AssignmentType.JOB_RUN.name());
+            String assignmentType = templateString(reaction.assignmentTemplate(), "assignmentType", AssignmentType.REPORT.name());
             Div item = new Div().withClass("orch-panel");
             item.withChild(new Div().withClass("orch-meta")
                 .withChild(new HtmlTag("span").withInnerText("Event Type: " + reaction.eventType().name()))
@@ -5405,7 +5456,7 @@ public class OrchestrationController {
 
         Map<String, Object> template = reaction == null || reaction.assignmentTemplate() == null
             ? Map.of() : reaction.assignmentTemplate();
-        String assignmentType = templateString(template, "assignmentType", AssignmentType.JOB_RUN.name());
+        String assignmentType = templateString(template, "assignmentType", AssignmentType.REPORT.name());
         int priority = templateInt(template, "priority", 0);
         String modelOverride = templateString(template, "modelOverride", "");
         String workspaceId = templateString(template, "workspaceId", "");
@@ -5462,6 +5513,7 @@ public class OrchestrationController {
             agentId,
             normalize(params.get("jobId")),
             params.get("assignmentType"),
+            AssignmentType.JOB_RUN,
             params.get("priority"),
             params.get("modelOverride"),
             params.get("workspaceId"),
@@ -5491,6 +5543,7 @@ public class OrchestrationController {
             agentId,
             normalize(params.get("jobId")),
             params.get("assignmentType"),
+            AssignmentType.REPORT,
             params.get("priority"),
             params.get("modelOverride"),
             params.get("workspaceId"),
@@ -5513,6 +5566,7 @@ public class OrchestrationController {
         String agentId,
         String jobId,
         String assignmentType,
+        AssignmentType defaultAssignmentType,
         String priority,
         String modelOverride,
         String workspaceId,
@@ -5521,7 +5575,7 @@ public class OrchestrationController {
         Map<String, Object> template = new LinkedHashMap<>();
         template.put("agentId", agentId);
         template.put("jobId", jobId);
-        template.put("assignmentType", parseAssignmentType(assignmentType).name());
+        template.put("assignmentType", parseAssignmentType(assignmentType, defaultAssignmentType).name());
         template.put("priority", parsePriority(priority));
         template.put("modelOverride", normalize(modelOverride));
         template.put("workspaceId", normalize(workspaceId));
@@ -5579,9 +5633,9 @@ public class OrchestrationController {
         }
     }
 
-    private AssignmentType parseAssignmentType(String value) {
+    private AssignmentType parseAssignmentType(String value, AssignmentType defaultAssignmentType) {
         try {
-            return AssignmentType.valueOf((value == null || value.isBlank() ? AssignmentType.JOB_RUN.name() : value.trim().toUpperCase()));
+            return AssignmentType.valueOf((value == null || value.isBlank() ? defaultAssignmentType.name() : value.trim().toUpperCase()));
         } catch (IllegalArgumentException exception) {
             throw new IllegalArgumentException("invalid assignmentType");
         }

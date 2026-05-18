@@ -208,8 +208,7 @@
             body = '<div class="planning-panel-body">'
                 + '<div class="planning-panel-title">' + (status === 'SAVED_TASK' ? 'Plan saved' : 'Approved plan') + '</div>'
                 + planningActions(
-                    '<button type="button" data-plan-action="execute">Execute now</button>'
-                    + '<button type="button" data-plan-action="save-task">' + saveButtonLabel + '</button>'
+                    '<button type="button" data-plan-action="save-task">' + saveButtonLabel + '</button>'
                     + '<button type="button" data-plan-action="send-agent">Send to agent</button>'
                 )
                 + renderSendAgentChooser()
@@ -1059,87 +1058,6 @@
         }
     }
 
-    async function executePlanStream() {
-        const conversationId = activeConversationId();
-        if (!conversationId || requestInFlight) {
-            return;
-        }
-        requestInFlight = true;
-        setFormDisabled(true);
-        clearPlanningPanel();
-        appendTransientAssistantMessage('Execution request received. I am clearing context and starting from the approved plan...');
-        renderHistory([]);
-        const assistantEl = appendStreamingAssistantMessage();
-        try {
-            const response = await fetch('/api/chat/' + encodeURIComponent(conversationId) + '/plan/execute/stream', {
-                method: 'POST',
-                headers: { 'Accept': 'text/event-stream' }
-            });
-            if (!response.ok) {
-                throw await responseError(response);
-            }
-            await readSse(response, async function(event) {
-                const data = event.data || {};
-                if (event.name === 'start') {
-                    setActiveConversationId(data.conversationId);
-                    activeTurnId = data.turnId || null;
-                    activeInterruptToken = data.interruptToken || null;
-                    syncModelSelection(data.model);
-                    updatePlanStatus(data.planState);
-                    return;
-                }
-                if (event.name === 'chunk') {
-                    updateContextUsageIfPresent(data.contextUsage);
-                    updateStreamingAssistantMessage(assistantEl, data);
-                    return;
-                }
-                if (event.name === 'tool') {
-                    appendToolActivity(data, assistantEl);
-                    updateContextUsageIfPresent(data.contextUsage);
-                    updatePlanStatus(data.planState);
-                    return;
-                }
-                if (event.name === 'system') {
-                    appendSystemMessage(data, assistantEl);
-                    updateContextUsageIfPresent(data.contextUsage);
-                    updatePlanStatus(data.planState);
-                    return;
-                }
-                if (event.name === 'context') {
-                    updateContextUsageIfPresent(data.contextUsage);
-                    updatePlanStatus(data.planState);
-                    return;
-                }
-                if (event.name === 'done') {
-                    updateStreamingAssistantMessage(assistantEl, data);
-                    updateContextUsage(data.contextUsage);
-                    updatePlanStatus(data.planState);
-                    return;
-                }
-                if (event.name === 'error') {
-                    throw new Error(data.message || 'stream failed');
-                }
-            });
-            await loadHistory(conversationId);
-            await loadSessions();
-            setStatus();
-        } catch (error) {
-            removeStreamingAssistantMessage(assistantEl);
-            try {
-                await loadHistory(conversationId);
-                await loadSessions();
-            } catch (reloadError) {
-                // Keep the original streaming error visible.
-            }
-            throw error;
-        } finally {
-            requestInFlight = false;
-            activeTurnId = null;
-            activeInterruptToken = null;
-            setFormDisabled(false);
-        }
-    }
-
     async function submitPlanningAnswer(form) {
         const conversationId = activeConversationId();
         if (!conversationId || requestInFlight) {
@@ -1306,7 +1224,7 @@
             await getJson('/api/plans/' + encodeURIComponent(savedTask.taskId) + '/submit', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ agentId: agentId })
+                body: JSON.stringify({ agentId: agentId, priority: 9 })
             });
             clearAgentSendChooser();
             renderPlanningPanel(lastPlanState);
@@ -1324,10 +1242,6 @@
         }
         if (action === 'cancel') {
             await runPlanningPatch('/plan/cancel');
-            return;
-        }
-        if (action === 'execute') {
-            await executePlanStream();
             return;
         }
         if (action === 'save-task') {

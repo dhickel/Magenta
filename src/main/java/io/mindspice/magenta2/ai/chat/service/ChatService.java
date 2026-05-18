@@ -604,7 +604,6 @@ public class ChatService {
         if (!StringUtils.hasText(model)) {
             model = defaultModel();
         }
-        planService.clearConversationForExecution(conversationId);
         if (contextUsageTracker != null) {
             contextUsageTracker.clear(conversationId);
         }
