@@ -13,7 +13,7 @@
 
 | Domain | Branch | Status | Current Owner | Validation Gate | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `01-security-access-control` | `public-alpha-remediation/security-access-control` | planned | unassigned | planned | Blocks public exposure and tool/runtime security domains. |
+| `01-security-access-control` | `public-alpha-remediation/security-access-control` | in_progress | Codex | subplan 01 passed | Subplan 02 active next; full domain validation still pending. |
 | `02-workspace-tools-outputs` | `public-alpha-remediation/workspace-tools-outputs` | planned | unassigned | planned | Depends on id validation policy and may coordinate with schema domain. |
 | `03-execution-history-streams` | `public-alpha-remediation/execution-history-streams` | planned | unassigned | planned | Owns public execution contract and transcript preservation. |
 | `04-workflow-authoring-runtime-js` | `public-alpha-remediation/workflow-authoring-runtime-js` | planned | unassigned | planned | Must preserve HTMX-first CRUD and narrow JS graph behavior. |
@@ -26,7 +26,7 @@
 
 | Finding | Domain | Status | Subplan | Validation Evidence | Commit |
 | --- | --- | --- | --- | --- | --- |
-| bug-01 | `01-security-access-control` | planned | `subplan-01-auth-csrf-gate.md` | pending | pending |
+| bug-01 | `01-security-access-control` | passed | `subplan-01-auth-csrf-gate.md` | validator: `mvn -Dtest=AlphaSecurityConfigurationTest,FrontendControllerTest test`; live app curl smoke for public reads, unauth mutation 401, HTMX CSRF 403 fragment, auth+CSRF controller reachability | `6655b30` |
 | bug-02 | `01-security-access-control` | planned | `subplan-02-id-segment-validation.md` | pending | pending |
 | bug-03 | `04-workflow-authoring-runtime-js` | planned | `subplan-01-draft-editing-validation.md` | pending | pending |
 | bug-04 | `04-workflow-authoring-runtime-js` | planned | `subplan-02-executable-workflow-validation.md` | pending | pending |

@@ -104,6 +104,7 @@ import jakarta.servlet.http.HttpServletResponse;
 @Controller
 public class OrchestrationController {
     private static final String DASHBOARD_CSS = "/css/orchestration.css?v=7";
+    private static final String ALPHA_SECURITY_JS = "/js/alpha-security.js?v=1";
     private static final String DASHBOARD_JS = "/js/orchestration/dashboard.js?v=5";
     private static final String AGENTS_JS = "/js/orchestration/agents.js?v=1";
     private static final String AGENT_CHAT_JS = "/js/orchestration/agent-chat.js?v=2";
@@ -184,6 +185,7 @@ public class OrchestrationController {
         return ShellBuilder.create()
             .withPageTitle("Magenta Dashboard")
             .withCustomCss(DASHBOARD_CSS)
+            .addCustomJs(ALPHA_SECURITY_JS)
             .withTopBanner(BannerBuilder.create()
                 .withLayout(BannerBuilder.BannerLayout.CENTERED)
                 .withTitle("Magenta Operations")

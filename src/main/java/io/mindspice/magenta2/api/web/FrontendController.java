@@ -37,6 +37,7 @@ import java.util.List;
 public class FrontendController {
 
     private static final String APP_CSS = "/css/magenta.css?v=2";
+    private static final String ALPHA_SECURITY_JS = "/js/alpha-security.js?v=1";
     private static final String CHAT_JS = "/js/chat-client.js?v=24";
 
     private final ChatService chatService;
@@ -63,6 +64,7 @@ public class FrontendController {
         return ShellBuilder.create()
             .withPageTitle(pageTitle)
             .withCustomCss(APP_CSS)
+            .addCustomJs(ALPHA_SECURITY_JS)
             .withTopBanner(BannerBuilder.create()
                 .withLayout(BannerBuilder.BannerLayout.CENTERED)
                 .withTitle(title)

@@ -28,6 +28,7 @@ Static review found no Spring Security dependency/configuration, no `SecurityFil
 - `OrchestrationController.java:6168` exposes agent hard delete.
 - `RuntimeSettingsController.java:15` exposes runtime settings mutation.
 - `AgentProfileController.java:56`, `JobController.java:49`, `ProjectController.java:37`, and `WorkspaceController.java:68` expose additional mutation APIs.
+- 2026-05-18 update: `src/main/java/io/mindspice/magenta2/api/web/AlphaSecurityConfiguration.java` adds the alpha HTTP gate; `src/test/java/io/mindspice/magenta2/api/web/AlphaSecurityConfigurationTest.java` covers unauthenticated, CSRF-missing, HTMX error, and authenticated-with-CSRF mutation paths.
 
 ## Impact
 
@@ -35,8 +36,8 @@ Critical for a remote-host public alpha: unauthenticated callers can mutate runt
 
 ## Status
 
-Open.
+Implementation complete; pending validation-agent review for the security-access-control domain.
 
 ## Next Action
 
-Add an explicit public-alpha auth/CSRF gate before exposing the portal beyond trusted localhost, then add Spring web/security tests for mutation rejection.
+Run the planned validation pass against the original bug evidence and security domain route matrix before marking bug-01 passed.
