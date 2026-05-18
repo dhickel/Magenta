@@ -97,6 +97,7 @@ create table if not exists plan_runs (
     plan_snapshot_json text not null,
     workspace_id text,
     output_directory text,
+    temp_workspace_path text,
     execution_evidence_json text not null,
     validation_feedback_json text not null,
     deliverable_evidence_json text not null,
@@ -439,6 +440,11 @@ create table if not exists run_output_artifacts (
     id text primary key,
     run_id text not null,
     plan_id text not null,
+    agent_id text,
+    job_id text,
+    project_id text,
+    workspace_id text,
+    run_type text,
     output_name text not null,
     artifact_type text not null,
     file_name text not null,
@@ -450,6 +456,18 @@ create table if not exists run_output_artifacts (
 
 create index if not exists idx_run_output_artifacts_run
     on run_output_artifacts(run_id);
+
+create index if not exists idx_run_output_artifacts_agent
+    on run_output_artifacts(agent_id);
+
+create index if not exists idx_run_output_artifacts_job
+    on run_output_artifacts(job_id);
+
+create index if not exists idx_run_output_artifacts_project
+    on run_output_artifacts(project_id);
+
+create index if not exists idx_run_output_artifacts_workspace
+    on run_output_artifacts(workspace_id);
 
 -- ════════════════════════════════════════════════════════════════
 --  Phase 04: Jobs, Projects, Agent Networks

@@ -3,12 +3,18 @@ package io.mindspice.magenta2.ai.orchestration.workspaces;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Connection;
 import java.time.Instant;
 import java.util.List;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
+import org.springframework.jdbc.datasource.init.ScriptUtils;
+
+import io.mindspice.magenta2.ai.chat.plan.PlanRepository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -22,6 +28,35 @@ class WorkspaceRepositorySchemaMigrationTest {
         assertThat(schema).doesNotContain("references workspace_roots");
         assertThat(schema).contains("create table if not exists workspace_leases");
         assertThat(schema).contains("foreign key(workspace_id) references workspaces(id)");
+    }
+
+    @Test
+    void schemaSqlCreatesCurrentPlanAndOutputArtifactShape() throws Exception {
+        JdbcTemplate jdbc = jdbc();
+
+        try (Connection connection = jdbc.getDataSource().getConnection()) {
+            ScriptUtils.executeSqlScript(connection, new ClassPathResource("schema.sql"));
+        }
+
+        List<String> planRunColumns = columns(jdbc, "plan_runs");
+        List<String> artifactColumns = columns(jdbc, "run_output_artifacts");
+
+        assertThat(planRunColumns).contains("temp_workspace_path");
+        assertThat(artifactColumns).contains("agent_id", "job_id", "project_id", "workspace_id", "run_type");
+        assertThat(indexes(jdbc, "run_output_artifacts"))
+            .contains(
+                "idx_run_output_artifacts_run",
+                "idx_run_output_artifacts_agent",
+                "idx_run_output_artifacts_job",
+                "idx_run_output_artifacts_project",
+                "idx_run_output_artifacts_workspace"
+            );
+
+        new PlanRepository(jdbc, new ObjectMapper());
+        new WorkspaceRepository(jdbc);
+
+        assertThat(columns(jdbc, "plan_runs")).isEqualTo(planRunColumns);
+        assertThat(columns(jdbc, "run_output_artifacts")).isEqualTo(artifactColumns);
     }
 
     @Test
@@ -144,5 +179,13 @@ class WorkspaceRepositorySchemaMigrationTest {
             "select \"table\" from pragma_foreign_key_list('" + table + "')",
             (rs, rowNum) -> rs.getString(1)
         );
+    }
+
+    private List<String> columns(JdbcTemplate jdbc, String table) {
+        return jdbc.queryForList("select name from pragma_table_info('" + table + "')", String.class);
+    }
+
+    private List<String> indexes(JdbcTemplate jdbc, String table) {
+        return jdbc.queryForList("select name from pragma_index_list('" + table + "')", String.class);
     }
 }
