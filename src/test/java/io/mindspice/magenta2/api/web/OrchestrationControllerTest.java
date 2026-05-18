@@ -1256,11 +1256,14 @@ class OrchestrationControllerTest {
         String html = controller().settings();
 
         assertThat(html).contains("Model Routing");
+        assertThat(html).contains("id=\"settings-form-container\"");
         assertThat(html).contains("settings-default-model");
         assertThat(html).contains("settings-planning-model");
         assertThat(html).contains("settings-compaction-model");
         assertThat(html).contains("contextBufferPercent");
         assertThat(html).contains("hx-put=\"/settings\"");
+        assertThat(html).contains("hx-target=\"#settings-form-container\"");
+        assertThat(html).contains("hx-swap=\"innerHTML\"");
         assertThat(html).contains(">Save<");
         assertThat(html).doesNotContain("/js/chat-client.js");
     }
@@ -1280,6 +1283,22 @@ class OrchestrationControllerTest {
         assertThat(response.getStatus()).isEqualTo(400);
         assertThat(html).contains("orch-status-error");
         assertThat(html).contains("defaultAgentId was not found");
+    }
+
+    @Test
+    void alphaSecurityJsAllowsKnownOperationalErrorFragmentsToSwapOnNon2xx() throws Exception {
+        String js = Files.readString(Path.of("src/main/resources/static/js/alpha-security.js"));
+
+        assertThat(js).contains("htmx:beforeSwap");
+        assertThat(js).contains("event.detail.shouldSwap = true");
+        assertThat(js).contains("xhr.status < 400");
+        assertThat(js).contains("xhr.status === 401 || xhr.status === 403");
+        assertThat(js).contains("responseIsSameOrigin(xhr)");
+        assertThat(js).contains("document.documentElement.contains(detail.target)");
+        assertThat(js).contains(".orch-error, .orch-status-error, .agent-lifecycle-panel");
+        assertThat(js).contains("htmx:responseError");
+        assertThat(js).contains("Authentication required.");
+        assertThat(js).contains("CSRF token missing or invalid.");
     }
 
     @Test
