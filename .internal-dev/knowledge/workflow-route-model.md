@@ -61,6 +61,8 @@ record WorkflowNode(
 
 As of the workflow canonicalization remediation, production callers import `io.mindspice.magenta2.ai.orchestration.workflow.WorkflowService`. The older `io.mindspice.magenta2.ai.chat.workflow` classes are deprecated and are no longer Spring beans, so runtime assignments, job workflow items, and workflow stream helpers should not depend on `ai_workflow_definitions` or `ai_workflow_runs`.
 
+As of the 2026-05-18 Domain 08 legacy cleanup, the older `io.mindspice.magenta2.ai.chat.workflow` package has been removed from `src/main/java`. New workflow code should use only `io.mindspice.magenta2.ai.orchestration.workflow`; the old `ai_workflow_*` table names are historical references, not active persistence targets.
+
 Task nodes execute through `WorkflowTaskExecutor`, which calls `ChatService.executeTaskBlocking(...)`. Workflow task outputs must come from persisted `TaskRun.outputValues()` keyed by declared output names; assistant text and default output maps are not valid workflow outputs.
 
 The runner now has deterministic control-node handling for:
