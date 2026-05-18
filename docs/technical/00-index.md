@@ -1,6 +1,6 @@
 # Technical Documentation Index
 
-These docs explain Magenta internals for contributors. Detailed content will be filled in during the technical documentation phase.
+These docs explain Magenta internals for contributors. Code remains the source of truth; each page links back to the current controller, service, repository, schema, or static asset areas it describes.
 
 ## Guides
 
@@ -20,3 +20,4 @@ These docs explain Magenta internals for contributors. Detailed content will be 
 
 - Architecture, API, service, schema, persistence, frontend, security, and configuration changes must update the relevant page.
 - Keep this index current when pages are added, renamed, or removed.
+- Keep route and payload summaries aligned with [`../api/00-index.md`](../api/00-index.md).

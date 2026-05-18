@@ -1529,6 +1529,88 @@
     font-size: 0.84rem;
 }
 
+.entity-selector {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 12rem;
+    position: relative;
+}
+
+.entity-selector-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #334155;
+}
+
+.entity-selector-results {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    max-height: 14rem;
+    overflow: auto;
+}
+
+.entity-selector-options {
+    border: 1px solid #d8e2ee;
+    border-radius: 6px;
+    background: #fff;
+    box-shadow: 0 8px 18px rgb(15 23 42 / 10%);
+    padding: 0.25rem;
+}
+
+.entity-selector-option {
+    width: 100%;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: #1f2937;
+    display: grid;
+    grid-template-columns: minmax(6rem, 1fr) minmax(5rem, auto);
+    gap: 0.15rem 0.5rem;
+    text-align: left;
+    padding: 0.4rem 0.45rem;
+    cursor: pointer;
+}
+
+.entity-selector-option:hover,
+.entity-selector-option:focus {
+    background: #eef6ff;
+    outline: none;
+}
+
+.entity-selector-option-label {
+    font-weight: 650;
+}
+
+.entity-selector-option-detail {
+    color: #64748b;
+    font-size: 0.78rem;
+}
+
+.entity-selector-option-status,
+.entity-selector-status {
+    color: #64748b;
+    font-size: 0.76rem;
+}
+
+.entity-selector-selected {
+    color: #1f6f3d;
+}
+
+.entity-selector-invalid {
+    color: #9f2f2f;
+}
+
+.entity-selector-empty {
+    color: #64748b;
+    font-size: 0.82rem;
+    padding: 0.45rem;
+}
+
 /* ═══════════════════════════════════════════════════════
    Agent page responsive
    ═══════════════════════════════════════════════════════ */

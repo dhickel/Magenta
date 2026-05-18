@@ -1,11 +1,107 @@
-# Chat, Planning, And Tasks
+# Chat, Planning, and Tasks
 
-## Status
+This page explains the implemented chat/planning/task stack. Source anchors are [`ai/chat`](../../src/main/java/io/mindspice/magenta2/ai/chat), [`ChatController`](../../src/main/java/io/mindspice/magenta2/api/web/ChatController.java), [`PlanController`](../../src/main/java/io/mindspice/magenta2/api/web/PlanController.java), and [`TaskController`](../../src/main/java/io/mindspice/magenta2/api/web/TaskController.java).
 
-Placeholder for the technical documentation phase.
+## Conversation State
 
-## Intended Scope
+Conversation content is stored in `ai_chat_memory` through `ChatMemoryRepository` and exposed as `ChatHistory`. Session metadata is stored in `ai_chat_session_metadata` through `ChatSessionMetadataRepository` and exposed as `ChatSession`/`ChatSessions`.
 
-- Chat services.
-- Planning state and execution contracts.
-- Task definition and run integration.
+Session metadata includes:
+
+- Current model and planning model.
+- Title, favorite, and archived state.
+- Active task run id.
+- Origin and agent id for agent-scoped conversations.
+- Updated timestamp.
+
+`AuditService` writes a separate append-only audit trail in `audit_event`, including messages, tool calls, compaction/context snapshots, and errors. This is used for diagnostics and transcript visibility separate from the user-facing chat memory.
+
+## Chat Turn Lifecycle
+
+`ChatController` receives `ChatRequest.MsgRequest` or `ChatRequest.CmdRequest`. `RequestResolver` normalizes conversation/model context into `ResolvedChatRequest`. `ChatService` then:
+
+1. Records user input.
+2. Resolves model settings through `ChatModelRouter`.
+3. Assembles prompt context and context usage through `ContextManagementAdvisor`.
+4. Applies tool access policy and approved tool registry.
+5. Streams model output and tool activity.
+6. Persists assistant messages, audit events, context usage, and any plan/task state changes.
+
+Streaming events are represented by `ChatStreamEvent` and sent over `/api/chat/stream`. Expected event names are `start`, `chunk`, `tool`, `system`, `interrupt`, `context`, `done`, and `error`.
+
+## Planning State
+
+Plan mode uses `PlanMode` and `ChatPlanState` in `ai.chat.model` plus persisted plan definitions in `ai.chat.plan`.
+
+`PlanService` owns:
+
+- Session plan creation and retrieval.
+- Pending planning questions and current question index.
+- Plan answer recording.
+- Plan approval, continue, cancel, deletion, and final message state.
+- Execution evidence and validation feedback.
+- Saving a session plan as a reusable task-like definition.
+
+`PlanDefinition` is the durable plan contract. It contains title, summary, goal, notes, deliverables, structured inputs/outputs, assumptions, ordered steps, validation criteria, evidence, feedback, planning/execution model choices, settings overrides, pending questions, and conversation linkage.
+
+The `/api/chat/{conversationId}/plan/*` routes operate on session plans. The `/api/plans` routes operate on saved definitions.
+
+## Task Drafts
+
+Task drafts are chat-backed task creation sessions owned by `TaskService`.
+
+Routes:
+
+- `POST /api/tasks/drafts/{conversationId}` starts a draft.
+- `GET /api/tasks/drafts/{conversationId}` returns the active draft.
+- `POST /api/tasks/drafts/{conversationId}/answers` records an answer.
+- `POST /api/tasks/drafts/{conversationId}/approve` promotes the draft into a `TaskDefinition`.
+
+Draft state is represented by `TaskDraft` and `TaskDraftStatus`. Draft answers are captured as structured task definition fields rather than freeform blob-only text.
+
+## Saved Definitions
+
+Saved plans and task-like definitions are durable records used by chat, operational pages, and assignment submission.
+
+- `PlanController` exposes the unified saved plan/task API under `/api/plans`.
+- `TaskController` exposes task-specific definition/draft/run routes under `/api/tasks`.
+- Public run controls submit saved definitions to an agent assignment. They do not directly run arbitrary model execution from the controller.
+
+Plan/task fields use record types such as `PlanFieldDefinition`, `TaskFieldDefinition`, `PlanStep`, and `TaskStep`. Field value types come from `PlanFieldType` and `TaskValueType`.
+
+## Runs and Evidence
+
+Plan runs and task runs preserve execution history:
+
+- `PlanRun` stores input values, output values, definition snapshot, workspace/output paths, evidence, validation feedback, deliverable evidence, final/error messages, status, and timestamps.
+- `TaskRun` stores task-specific run state and is used by task execution paths.
+
+Runs snapshot their definitions so edits after execution do not rewrite historical meaning. Outputs are materialized through workspace/output services and indexed in `run_output_artifacts`.
+
+## Submit-To-Agent Semantics
+
+Public plan/task run routes now submit durable assignments:
+
+- `POST /api/plans/{planId}/submit`
+- `POST /api/plans/{planId}/runs/stream`
+- `POST /api/tasks/{taskId}/runs/stream`
+
+The controller resolves an active agent when no `agentId` is supplied, defaults priority to `9`, builds `AssignmentRequest`, and calls `AssignmentService.create` with `AssignmentType.TASK_RUN`. The SSE stream returns `submitted` or `failed` and then completes.
+
+Actual execution is handled later by orchestration runner services. This keeps HTTP request handling short and makes queued work observable/cancellable.
+
+## Model and Tool Routing
+
+Model choices come from both file-backed AI config and runtime settings:
+
+- File config in `ai.config.user` defines model endpoints and legacy agent defaults.
+- `RuntimeSettingsService` provides default model, planning model, summary/compaction model, system chat settings, and tool defaults.
+- `ChatModelRouter` resolves concrete model clients for chat turns.
+
+Tools are controlled by `ChatToolRegistry` and per-agent approved tools. Shell execution also consults agent shell command allowlists and the explicit unsafe wildcard override from file config.
+
+## Interruption and Active Turns
+
+`ConversationTurnCoordinator`, `ActiveTurnRegistry`, and related `ai.execution` records track active work and interrupt status. `/api/chat/turns/{turnId}/interrupt` accepts a conversation id, interrupt token, and message to request interruption of an active turn.
+
+The orchestration runtime can also force-interrupt agent queue work through operational routes, but durable assignment state remains owned by `AssignmentService`.

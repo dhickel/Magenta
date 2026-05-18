@@ -59,6 +59,8 @@ import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLink;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLinkType;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceRepository;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceService;
+import io.mindspice.magenta2.api.web.selector.EntityLookupService;
+import io.mindspice.magenta2.api.web.selector.EntitySelectorComponents;
 import org.junit.jupiter.api.Test;
 import org.jsoup.Jsoup;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -127,6 +129,8 @@ class OrchestrationControllerTest {
             scheduleService,
             reactionService,
             new StubWorkflowService(),
+            selectorLookup(),
+            new EntitySelectorComponents(),
             emptyProvider(),
             schedulesEnabled,
             reactionsEnabled
@@ -150,6 +154,8 @@ class OrchestrationControllerTest {
             new StubScheduleService(),
             new StubEventReactionService(),
             workflowService,
+            selectorLookup(),
+            new EntitySelectorComponents(),
             emptyProvider(),
             true,
             true
@@ -173,6 +179,8 @@ class OrchestrationControllerTest {
             new StubScheduleService(),
             new StubEventReactionService(),
             new StubWorkflowService(),
+            selectorLookup(),
+            new EntitySelectorComponents(),
             emptyProvider(),
             true,
             true
@@ -196,6 +204,8 @@ class OrchestrationControllerTest {
             new StubScheduleService(),
             new StubEventReactionService(),
             new StubWorkflowService(),
+            selectorLookup(),
+            new EntitySelectorComponents(),
             emptyProvider(),
             true,
             true
@@ -219,6 +229,8 @@ class OrchestrationControllerTest {
             new StubScheduleService(),
             new StubEventReactionService(),
             new StubWorkflowService(),
+            selectorLookup(),
+            new EntitySelectorComponents(),
             emptyProvider(),
             true,
             true
@@ -262,6 +274,18 @@ class OrchestrationControllerTest {
         } catch (Exception exception) {
             throw new RuntimeException("Failed to create workspace test service", exception);
         }
+    }
+
+    private static EntityLookupService selectorLookup() {
+        return new EntityLookupService(
+            new StubAgentProfileService(),
+            new StubPlanService(),
+            new StubWorkflowService(),
+            new StubJobService(),
+            new StubProjectService(),
+            workspaceService(),
+            new StubChatService()
+        );
     }
 
     @Test
@@ -2116,6 +2140,8 @@ class OrchestrationControllerTest {
             new StubScheduleService(),
             new StubEventReactionService(),
             new StubWorkflowService(),
+            selectorLookup(),
+            new EntitySelectorComponents(),
             emptyProvider(),
             true,
             true
@@ -2139,6 +2165,8 @@ class OrchestrationControllerTest {
             new StubScheduleService(),
             new StubEventReactionService(),
             new StubWorkflowService(),
+            selectorLookup(),
+            new EntitySelectorComponents(),
             emptyProvider(),
             true,
             true
@@ -2162,6 +2190,8 @@ class OrchestrationControllerTest {
             new StubScheduleService(),
             new StubEventReactionService(),
             new StubWorkflowService(),
+            selectorLookup(),
+            new EntitySelectorComponents(),
             emptyProvider(),
             schedulesEnabled,
             reactionsEnabled

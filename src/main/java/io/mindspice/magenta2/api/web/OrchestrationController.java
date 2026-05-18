@@ -72,6 +72,10 @@ import io.mindspice.magenta2.ai.orchestration.workspaces.Workspace;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLease;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLink;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceService;
+import io.mindspice.magenta2.api.web.selector.EntityKind;
+import io.mindspice.magenta2.api.web.selector.EntityLookupService;
+import io.mindspice.magenta2.api.web.selector.EntitySelectorComponents;
+import io.mindspice.magenta2.api.web.selector.EntitySelectorConfig;
 import io.mindspice.simplypages.builders.BannerBuilder;
 import io.mindspice.simplypages.builders.ShellBuilder;
 import io.mindspice.simplypages.builders.ShellTemplate;
@@ -131,6 +135,8 @@ public class OrchestrationController {
     private final RuntimeSettingsService runtimeSettingsService;
     private final WorkspaceService workspaceService;
     private final ObjectProvider<AgentWorkspaceStatusService> workspaceStatusServiceRef;
+    private final EntityLookupService entityLookupService;
+    private final EntitySelectorComponents entitySelectorComponents;
 
     // ── Plan editor services ──
     private final PlanService planService;
@@ -161,6 +167,8 @@ public class OrchestrationController {
                                    ScheduleService scheduleService,
                                    EventReactionService eventReactionService,
                                    WorkflowService workflowService,
+                                   EntityLookupService entityLookupService,
+                                   EntitySelectorComponents entitySelectorComponents,
                                    ObjectProvider<AgentShellToolService> execShellServiceRef,
                                    @Value("${magenta.features.schedules-enabled:false}") boolean schedulesEnabled,
                                    @Value("${magenta.features.reactions-enabled:false}") boolean reactionsEnabled) {
@@ -179,6 +187,8 @@ public class OrchestrationController {
         this.scheduleService = scheduleService;
         this.eventReactionService = eventReactionService;
         this.workflowService = workflowService;
+        this.entityLookupService = entityLookupService;
+        this.entitySelectorComponents = entitySelectorComponents;
         this.execShellServiceRef = execShellServiceRef;
         this.schedulesEnabled = schedulesEnabled;
         this.reactionsEnabled = reactionsEnabled;
@@ -1529,6 +1539,8 @@ public class OrchestrationController {
             }
             int priority = 9;
             try { priority = Integer.parseInt(params.getOrDefault("priority", "9")); } catch (NumberFormatException ignored) {}
+            validateSelectedEntity(EntityKind.MODEL, params.get("modelOverride"), false, "Model Override");
+            validateSelectedEntity(EntityKind.WORKSPACE, params.get("workspaceId"), false, "Workspace");
             Map<String, Object> inputValues = parsePlanInputValues(plan, params);
             WorkAssignment assignment = assignmentService.create(new AssignmentRequest(
                 agentId, null, null, AssignmentType.TASK_RUN,
@@ -2012,25 +2024,14 @@ public class OrchestrationController {
             .withHxTarget("#plan-submit-result")
             .withHxSwap("innerHTML");
 
-        // Agent select
-        List<AgentProfile> agents = agentProfileService.list();
-        Select agentSelect = Select.create("agentId");
-        for (var agent : agents) {
-            if (agent.status() != null && !"DISABLED".equals(agent.status().name())) {
-                agentSelect.addOption(agent.id(),
-                    (agent.name() != null ? agent.name() : agent.id()) +
-                    " (" + (agent.defaultModel() != null ? agent.defaultModel() : "no model") + ")",
-                    false);
-            }
-        }
         form.withChild(new Div().withClass("orch-form-stack")
-            .withChild(label("Agent", agentSelect))
+            .withChild(entitySelector("agentId", EntityKind.AGENT, null, "Agent", "agent", false))
             .withChild(label("Model Override", modelSelectWithCurrent(
                 "modelOverride", null, chatService.availableModels())))
             .withChild(label("Priority", TextInput.number("priority")
                 .withValue("9").withMin("0").withMax("100")))
-            .withChild(label("Workspace ID", TextInput.create("workspaceId")
-                .withPlaceholder("optional"))));
+            .withChild(entitySelector("workspaceId", EntityKind.WORKSPACE, null,
+                "Workspace", "optional workspace", false)));
 
         // Generated input form from declared inputs
         if (!plan.inputs().isEmpty()) {
@@ -2521,6 +2522,8 @@ public class OrchestrationController {
             }
             int priority = 9;
             try { priority = Integer.parseInt(params.getOrDefault("priority", "9")); } catch (NumberFormatException ignored) {}
+            validateSelectedEntity(EntityKind.MODEL, params.get("modelOverride"), false, "Model Override");
+            validateSelectedEntity(EntityKind.WORKSPACE, params.get("workspaceId"), false, "Workspace");
             WorkAssignment assignment = assignmentService.create(new AssignmentRequest(
                 agentId, null, null, AssignmentType.WORKFLOW_RUN,
                 priority,
@@ -3090,24 +3093,14 @@ public class OrchestrationController {
             .withHxTarget("#workflow-submit-result")
             .withHxSwap("innerHTML");
 
-        List<AgentProfile> agents = agentProfileService.list();
-        Select agentSelect = Select.create("agentId");
-        for (var agent : agents) {
-            if (agent.status() != null && !"DISABLED".equals(agent.status().name())) {
-                agentSelect.addOption(agent.id(),
-                    (agent.name() != null ? agent.name() : agent.id()) +
-                    " (" + (agent.defaultModel() != null ? agent.defaultModel() : "no model") + ")",
-                    false);
-            }
-        }
         form.withChild(new Div().withClass("orch-form-stack")
-            .withChild(label("Agent", agentSelect))
+            .withChild(entitySelector("agentId", EntityKind.AGENT, null, "Agent", "agent", false))
             .withChild(label("Model Override", modelSelectWithCurrent(
                 "modelOverride", null, chatService.availableModels())))
             .withChild(label("Priority", TextInput.number("priority")
                 .withValue("9").withMin("0").withMax("100")))
-            .withChild(label("Workspace ID", TextInput.create("workspaceId")
-                .withPlaceholder("optional"))));
+            .withChild(entitySelector("workspaceId", EntityKind.WORKSPACE, null,
+                "Workspace", "optional workspace", false)));
 
         form.withChild(Button.create("Submit").withClass("orch-primary").withAttribute("type", "submit"));
         panel.withChild(form);
@@ -3294,6 +3287,9 @@ public class OrchestrationController {
                     .withChild(new Div().withClass("orch-status").withInnerText("Title is required."))
                     .render();
             }
+            validateSelectedEntity(EntityKind.AGENT, params.get("ownerAgentId"), false, "Owner Agent");
+            validateSelectedEntity(EntityKind.PROJECT, params.get("projectId"), false, "Project");
+            validateSelectedEntity(EntityKind.MODEL, params.get("model"), false, "Default Model");
             JobDefinition created = jobService.saveDefinition(new JobDefinition(
                 null, // id - auto-generated
                 nn(params.get("ownerAgentId")),
@@ -3321,6 +3317,9 @@ public class OrchestrationController {
     public String updateJob(@PathVariable String jobId, @RequestParam Map<String, String> params) {
         try {
             JobDefinition current = jobService.getDefinition(jobId);
+            validateSelectedEntity(EntityKind.AGENT, params.get("ownerAgentId"), false, "Owner Agent");
+            validateSelectedEntity(EntityKind.PROJECT, params.get("projectId"), false, "Project");
+            validateSelectedEntity(EntityKind.MODEL, params.get("model"), false, "Default Model");
             JobDefinition updated = new JobDefinition(
                 jobId,
                 params.containsKey("ownerAgentId") ? nn(params.get("ownerAgentId")) : current.ownerAgentId(),
@@ -3510,20 +3509,10 @@ public class OrchestrationController {
             .withHxTarget("#job-submit-result")
             .withHxSwap("innerHTML");
 
-        List<AgentProfile> agents = agentProfileService.list();
-        Select agentSelect = Select.create("agentId");
-        for (var agent : agents) {
-            if (agent.status() != null && !"DISABLED".equals(agent.status().name())) {
-                agentSelect.addOption(agent.id(),
-                    (agent.name() != null ? agent.name() : agent.id()) +
-                    " (" + (agent.defaultModel() != null ? agent.defaultModel() : "no model") + ")",
-                    false);
-            }
-        }
         form.withChild(new Div().withClass("orch-form-stack")
-            .withChild(label("Agent", agentSelect))
-            .withChild(label("Model Override", TextInput.create("modelOverride")
-                .withPlaceholder("optional")))
+            .withChild(entitySelector("agentId", EntityKind.AGENT, null, "Agent", "agent", false))
+            .withChild(entitySelector("modelOverride", EntityKind.MODEL, null,
+                "Model Override", "optional model", false))
             .withChild(label("Priority", TextInput.number("priority")
                 .withValue("9").withMin("0").withMax("100"))));
 
@@ -3545,6 +3534,8 @@ public class OrchestrationController {
                 return new Div().withClass("orch-status")
                     .withInnerText("Agent is required.").render();
             }
+            validateSelectedEntity(EntityKind.AGENT, agentId, true, "Agent");
+            validateSelectedEntity(EntityKind.MODEL, params.get("modelOverride"), false, "Model Override");
 
             AssignmentRequest request = new AssignmentRequest(
                 agentId,
@@ -3657,11 +3648,10 @@ public class OrchestrationController {
             .withChild(label("Summary", TextArea.create("summary")
                 .withId("job-summary").withRows(3)
                 .withValue(isNew ? "" : nn(job.summary()))))
-            .withChild(label("Owner Agent", agentSelect("ownerAgentId",
-                isNew ? "" : nn(job.ownerAgentId())).withId("job-owner-agent")))
-            .withChild(label("Project ID", TextInput.create("projectId")
-                .withId("job-project")
-                .withValue(isNew ? "" : nn(job.projectId()))))
+            .withChild(entitySelector("ownerAgentId", EntityKind.AGENT, isNew ? "" : nn(job.ownerAgentId()),
+                "Owner Agent", "agent", false))
+            .withChild(entitySelector("projectId", EntityKind.PROJECT, isNew ? "" : nn(job.projectId()),
+                "Project", "optional project", false))
             .withChild(label("Status", TextInput.create("status")
                 .withId("job-status")
                 .withValue(isNew ? "DRAFT" : nn(job.status())))));
@@ -3708,19 +3698,22 @@ public class OrchestrationController {
                 .withChild(TextInput.create("key").withAttribute("placeholder", "item key")
                     .withAttribute("style", "max-width:100px"))
                 .withChild(jobItemTypeSelect("itemType"))
-                .withChild(TextInput.create("planId").withAttribute("placeholder", "plan ID")
-                    .withAttribute("style", "max-width:120px")
+                .withChild(((HtmlTag) entitySelector("planId", EntityKind.PLAN, null,
+                    "Plan", "plan ID", false))
+                    .withAttribute("style", "max-width:220px")
                     .withAttribute("hx-get", "/jobs/_editor/_plan-inputs")
                     .withAttribute("hx-trigger", "change delay:500ms")
                     .withAttribute("hx-target", "#plan-inputs-guidance")
                     .withAttribute("hx-swap", "innerHTML")
                     .withAttribute("hx-include", "this"))
-                .withChild(TextInput.create("workflowId").withAttribute("placeholder", "workflow ID")
-                    .withAttribute("style", "max-width:120px"))
+                .withChild(((HtmlTag) entitySelector("workflowId", EntityKind.WORKFLOW, null,
+                    "Workflow", "workflow ID", false))
+                    .withAttribute("style", "max-width:220px"))
                 .withChild(TextInput.create("bindingsJson").withAttribute("placeholder", "bindings JSON")
                     .withAttribute("style", "min-width:200px;max-width:240px"))
-                .withChild(TextInput.create("modelOverride").withAttribute("placeholder", "model")
-                    .withAttribute("style", "max-width:80px"))
+                .withChild(((HtmlTag) entitySelector("modelOverride", EntityKind.MODEL, null,
+                    "Model", "model", false))
+                    .withAttribute("style", "max-width:220px"))
                 .withChild(TextInput.number("priority").withAttribute("placeholder", "pri")
                     .withAttribute("value", "0").withAttribute("style", "max-width:50px;min-width:50px")));
 
@@ -4694,21 +4687,6 @@ public class OrchestrationController {
         form.withAttribute("hx-target", "#outputs-list");
         form.withAttribute("hx-swap", "innerHTML");
 
-        Select agent = Select.create("agentId");
-        agent.addOption("", "All agents", true);
-        for (AgentProfile profile : agentProfileService.list()) {
-            agent.addOption(profile.id(), profile.name() != null ? profile.name() : profile.id(), false);
-        }
-        Select job = Select.create("jobId");
-        job.addOption("", "All jobs", true);
-        for (JobDefinition definition : jobService.listDefinitions()) {
-            job.addOption(definition.id(), definition.title() != null ? definition.title() : definition.id(), false);
-        }
-        Select project = Select.create("projectId");
-        project.addOption("", "All projects", true);
-        for (Project value : projectService.listProjects()) {
-            project.addOption(value.id(), value.name() != null ? value.name() : value.id(), false);
-        }
         Select type = Select.create("type");
         type.addOption("", "All types", true);
         type.addOption("file_path", "file_path", false);
@@ -4717,9 +4695,9 @@ public class OrchestrationController {
         type.addOption("text", "text", false);
 
         Div toolbar = new Div().withClass("outputs-toolbar")
-            .withChild(agent)
-            .withChild(job)
-            .withChild(project)
+            .withChild(entitySelector("agentId", EntityKind.AGENT, null, "Agent", "all agents", false))
+            .withChild(entitySelector("jobId", EntityKind.JOB, null, "Job", "all jobs", false))
+            .withChild(entitySelector("projectId", EntityKind.PROJECT, null, "Project", "all projects", false))
             .withChild(TextInput.create("runId").withPlaceholder("run ID"))
             .withChild(type)
             .withChild(Button.create("Browse").withClass("orch-primary").withAttribute("type", "submit"));
@@ -5584,13 +5562,14 @@ public class OrchestrationController {
         form.withHxSwap("innerHTML");
 
         Div grid = new Div().withClass("orch-form-grid");
-        grid.withChild(label("Job ID", TextInput.create("jobId").withValue(schedule != null ? nn(schedule.jobId()) : "")));
+        grid.withChild(entitySelector("jobId", EntityKind.JOB, schedule != null ? nn(schedule.jobId()) : "",
+            "Job", "job ID", true));
         grid.withChild(label("Cron Expression", TextInput.create("cronExpression").withValue(schedule != null ? nn(schedule.cronExpression()) : "")));
         grid.withChild(label("Timezone", TextInput.create("timezone").withValue(schedule != null ? nn(schedule.timezone()) : "UTC")));
         grid.withChild(label("Assignment Type", assignmentTypeSelect("assignmentType", assignmentType)));
         grid.withChild(label("Priority", TextInput.number("priority").withMin("0").withMax("9").withValue(String.valueOf(priority))));
-        grid.withChild(label("Model Override", TextInput.create("modelOverride").withValue(modelOverride)));
-        grid.withChild(label("Workspace ID", TextInput.create("workspaceId").withValue(workspaceId)));
+        grid.withChild(entitySelector("modelOverride", EntityKind.MODEL, modelOverride, "Model Override", "model", false));
+        grid.withChild(entitySelector("workspaceId", EntityKind.WORKSPACE, workspaceId, "Workspace", "workspace ID", false));
         grid.withChild(label("Enabled", Select.create("enabled")
             .addOption("true", "Enabled", enabled)
             .addOption("false", "Disabled", !enabled)));
@@ -5648,8 +5627,8 @@ public class OrchestrationController {
         grid.withChild(label("Event Type", eventTypeSelect("eventType", reaction == null ? EventType.MANUAL_USER_EVENT.name() : reaction.eventType().name())));
         grid.withChild(label("Assignment Type", assignmentTypeSelect("assignmentType", assignmentType)));
         grid.withChild(label("Priority", TextInput.number("priority").withMin("0").withMax("9").withValue(String.valueOf(priority))));
-        grid.withChild(label("Model Override", TextInput.create("modelOverride").withValue(modelOverride)));
-        grid.withChild(label("Workspace ID", TextInput.create("workspaceId").withValue(workspaceId)));
+        grid.withChild(entitySelector("modelOverride", EntityKind.MODEL, modelOverride, "Model Override", "model", false));
+        grid.withChild(entitySelector("workspaceId", EntityKind.WORKSPACE, workspaceId, "Workspace", "workspace ID", false));
         grid.withChild(label("Enabled", Select.create("enabled")
             .addOption("true", "Enabled", enabled)
             .addOption("false", "Disabled", !enabled)));
@@ -5680,6 +5659,12 @@ public class OrchestrationController {
     }
 
     private AgentSchedule buildSchedule(String agentId, String scheduleId, AgentSchedule existing, Map<String, String> params) {
+        if (!StringUtils.hasText(params.get("jobId"))) {
+            throw new IllegalArgumentException("JOB_RUN assignments require jobId");
+        }
+        validateSelectedEntity(EntityKind.JOB, params.get("jobId"), true, "Job");
+        validateSelectedEntity(EntityKind.MODEL, params.get("modelOverride"), false, "Model Override");
+        validateSelectedEntity(EntityKind.WORKSPACE, params.get("workspaceId"), false, "Workspace");
         Map<String, Object> assignmentTemplate = assignmentTemplate(
             agentId,
             normalize(params.get("jobId")),
@@ -5710,6 +5695,8 @@ public class OrchestrationController {
         AgentEventReaction existing,
         Map<String, String> params
     ) {
+        validateSelectedEntity(EntityKind.MODEL, params.get("modelOverride"), false, "Model Override");
+        validateSelectedEntity(EntityKind.WORKSPACE, params.get("workspaceId"), false, "Workspace");
         Map<String, Object> assignmentTemplate = assignmentTemplate(
             agentId,
             normalize(params.get("jobId")),
@@ -6747,8 +6734,8 @@ public class OrchestrationController {
             .addOption("WORKFLOW_RUN", "Workflow Run", false)
             .addOption("JOB_RUN", "Job Run", false)));
 
-        form.withChild(label("Plan/Workflow/Job ID", TextInput.create("targetId")
-            .withPlaceholder("Enter plan, workflow, or job ID")));
+        form.withChild(entitySelector("targetId", EntityKind.TARGET, null,
+            "Plan/Workflow/Job ID", "type an existing task, workflow, or job ID", true));
 
         form.withChild(label("Priority (0-9)", TextInput.number("priority")
             .withMin("0").withMax("9").withValue("0")));
@@ -6777,6 +6764,8 @@ public class OrchestrationController {
         try {
             AgentProfile agent = agentProfileService.get(agentId);
             AssignmentType type = AssignmentType.valueOf(assignmentType);
+            validateSelectedEntity(targetKindForAssignment(type), targetId, true, "Target");
+            validateSelectedEntity(EntityKind.MODEL, modelOverride, false, "Model Override");
 
             java.util.Map<String, Object> input = new java.util.LinkedHashMap<>();
             if (type == AssignmentType.TASK_RUN) {
@@ -6889,9 +6878,8 @@ public class OrchestrationController {
             .withChild(new Div().withClass("orch-panel")
                 .withChild(Header.H2("Model Routing"))
                 .withChild(new Div().withClass("orch-form-grid")
-                    .withChild(label("Default Agent ID", TextInput.create("defaultAgentId")
-                        .withId("settings-default-agent-id")
-                        .withValue(nn(s.defaultAgentId()))))
+                    .withChild(entitySelector("defaultAgentId", EntityKind.AGENT, nn(s.defaultAgentId()),
+                        "Default Agent", "agent ID", false))
                     .withChild(label("Default Agent Name", TextInput.create("defaultAgentName")
                         .withId("settings-default-agent-name")
                         .withValue(nn(s.defaultAgentName()))))
@@ -7001,6 +6989,28 @@ public class OrchestrationController {
             chips.withChild(new HtmlTag("span").withClass("orch-chip").withInnerText(model));
         }
         return chips;
+    }
+
+    private Component entitySelector(String name, EntityKind kind, String current, String label, String placeholder, boolean required) {
+        EntitySelectorConfig config = new EntitySelectorConfig(name, kind, current, label, placeholder, required, Map.of());
+        return entitySelectorComponents.selector(config, entityLookupService.currentOption(kind, current));
+    }
+
+    private void validateSelectedEntity(EntityKind kind, String id, boolean required, String label) {
+        var validation = entityLookupService.validate(kind, id, required);
+        if (!validation.exists()) {
+            String suffix = StringUtils.hasText(validation.message()) ? ": " + validation.message() : "";
+            throw new IllegalArgumentException(label + suffix);
+        }
+    }
+
+    private EntityKind targetKindForAssignment(AssignmentType type) {
+        return switch (type) {
+            case TASK_RUN -> EntityKind.TASK;
+            case WORKFLOW_RUN -> EntityKind.WORKFLOW;
+            case JOB_RUN -> EntityKind.JOB;
+            default -> EntityKind.TARGET;
+        };
     }
 
     private Component label(String text, Component input) {

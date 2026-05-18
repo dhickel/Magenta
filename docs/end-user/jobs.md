@@ -1,11 +1,95 @@
 # Jobs
 
-## Status
+Use `/jobs` to define ordered work made from plans and workflows, configure optional recurrence, start runs, and inspect job outputs and events.
 
-Placeholder for the end-user documentation phase.
+## Page Layout
 
-## Intended Scope
+The page has:
 
-- Job creation.
-- Run lifecycle.
-- Operator controls and status interpretation.
+- A sidebar with **New Job**, an agent filter, and job rows.
+- An editor for title, summary, owner, project, status, manager type, and default model.
+- Ordered items for plans and workflows.
+- Recurrence settings.
+- Run, output, and event panels.
+
+## Create A Job
+
+1. Open `/jobs`.
+2. Select **New Job**.
+3. Fill **Title** and **Summary**.
+4. Choose an **Owner Agent**.
+5. Choose an optional **Project**.
+6. Set **Status**, **Manager Type**, and **Default Model**.
+7. Save.
+
+The project field is selector-backed where available. The owner agent field is currently a plain agent dropdown in the job editor.
+
+## Add Ordered Items
+
+Job items run in sequence. Each item can point at a plan or workflow.
+
+For each item:
+
+- Enter an item key.
+- Choose item type: `PLAN` or `WORKFLOW`.
+- Select a plan or workflow.
+- Fill optional **bindings JSON** for plan inputs.
+- Choose optional model override.
+- Set priority.
+- Select **Add Item**.
+
+Plan, workflow, and model fields in the add-item form are searchable selectors where available. Type part of the title, ID, summary, or model name and select a match. **Bindings JSON** remains manual because it is user-authored runtime data, not an entity selector.
+
+## Bind Required Plan Inputs
+
+When a plan item references a plan with required inputs, the UI displays required binding guidance. Use JSON object syntax:
+
+```json
+{
+  "input_name": "value"
+}
+```
+
+If required bindings are missing, the job item save fails and names the missing fields.
+
+## Recurrence
+
+Each saved job can have an optional recurrence:
+
+- **Cron Expression**: cron schedule.
+- **Timezone**: schedule timezone, defaulting to `UTC`.
+- **Next Fire Time**: optional ISO timestamp for the next run.
+
+Save recurrence from the job editor. Recurrence config does not prove the scheduler has fired; inspect runs and events for runtime proof.
+
+## Start Or Submit A Job
+
+Saved jobs expose two operational actions:
+
+- **Start Run** creates a job assignment using the job owner or the first active agent.
+- **Submit to Agent** opens a form where you choose the agent and priority before submitting.
+
+The submit form's agent field is currently a plain dropdown. If you need a specific agent, choose it explicitly.
+
+## Runs, Cancellation, Outputs, Events
+
+The job detail panels show:
+
+- **Runs** with run ID, status, created time, and cancel action for non-terminal runs.
+- **Recent Outputs** from job runs.
+- **Run Events** summarizing job run state changes.
+
+Use **Cancel** for a non-terminal run when you want Magenta to stop work. Use `/outputs` to browse and download artifacts across jobs, agents, projects, and runs.
+
+## Common Errors
+
+- **Title is required**: fill the job title before saving.
+- **Agent is required**: choose an agent in the submit form.
+- **No active agents available**: create or enable an agent.
+- **Missing required bindings**: add each required plan input to bindings JSON.
+- **Invalid JSON** or ignored bindings: bindings must be a JSON object.
+- **Job not found**: the job was deleted or the page is stale.
+
+## Alpha Limits
+
+Job item editing is intentionally simple and ordered. Existing item rows show entity IDs for compact reference. Selector-backed fields help choose new plan, workflow, project, model, and workspace values, but bindings, cron, next-fire timestamps, run IDs, and status strings remain manual fields.

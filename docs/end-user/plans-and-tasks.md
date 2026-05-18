@@ -1,11 +1,94 @@
 # Plans And Tasks
 
-## Status
+Use `/plans` to create saved plan/task definitions and submit them to agents. In the current UI, plans are the user-facing editor for structured executable task definitions.
 
-Placeholder for the end-user documentation phase.
+## Page Layout
 
-## Intended Scope
+The page has:
 
-- Plan creation and approval.
-- Task definitions.
-- Submitting saved plans or tasks to an agent.
+- A sidebar with **New Plan**, **New Plan Chat**, a filter box, and plan cards.
+- An editor panel for the selected plan.
+- In-editor sections for scalar fields, deliverables, inputs, outputs, steps, validation criteria, assumptions, evidence, feedback, questions, model choices, and submission.
+
+## Create A Plan
+
+1. Open `/plans`.
+2. Select **New Plan**.
+3. Fill **Title**, **Summary**, **Goal**, and **Notes**.
+4. Save the plan.
+5. Add structured sections after the draft exists.
+
+Use **New Plan Chat** when you want Magenta to interview you and build the plan from conversation.
+
+## Structured Plan Sections
+
+- **Deliverables**: human-readable things the plan must produce.
+- **Inputs**: structured runtime fields the agent must receive when the plan runs.
+- **Outputs**: structured results the plan should produce.
+- **Steps**: ordered execution instructions.
+- **Validation Criteria**: checks that prove the task is complete.
+- **Assumptions**: explicit defaults or constraints.
+- **Evidence**: proof collected while executing or reviewing.
+- **Feedback**: validation or review feedback.
+- **Questions**: open questions that still need user input.
+
+Inputs and outputs have a name, type, required flag, array flag, description, and optional schema. Use simple names that will be easy to map in jobs and workflows.
+
+## Models And Manager Type
+
+The editor exposes:
+
+- **Manager Type** for the work profile.
+- **Planning Model** for plan drafting.
+- **Execution Model** for running the plan.
+
+Model fields are populated from configured models. If the current model is no longer available, the UI may still show it with a warning or as a current value.
+
+## Finalize A Plan
+
+Finalize only after the plan has enough detail for an agent to execute without guessing:
+
+- Clear goal.
+- Concrete deliverables.
+- Required inputs and expected outputs.
+- Ordered steps.
+- Validation criteria.
+- Important assumptions.
+
+Finalize changes the plan status from draft to approved. It does not execute the plan.
+
+## Submit To Agent
+
+1. Open an existing plan.
+2. Select **Submit to Agent**.
+3. Choose an agent.
+4. Optionally choose a model override and workspace.
+5. Set priority.
+6. Fill runtime inputs generated from the plan's input definitions.
+7. Submit.
+
+The workspace field uses a searchable selector where available. The agent field in the plan submit panel may still be a plain dropdown. Do not copy opaque workspace IDs if the selector is visible; type a workspace label, owner, path, or ID and choose the matching option.
+
+After submit, Magenta creates an assignment. Open the linked agent page and use the queue, diagnostics, transcript, history, workspace, and outputs tabs to follow execution.
+
+## Runs And History
+
+Plan submissions create agent assignments and may create task run records. The plan page focuses on definition authoring and submission. For runtime state, use:
+
+- The agent **Queue** tab for active assignments.
+- The agent **History** tab for terminal assignments, diagnostics, and transcripts.
+- `/outputs` for artifacts.
+- `/jobs` when the plan runs as part of a job.
+
+## Common Validation Failures
+
+- **Title is required**: every plan must have a title.
+- **Cannot determine field index**: a structured field row did not submit its expected form data. Refresh and retry the row edit.
+- **Field index out of range**: another tab or user changed the field list. Refresh before editing.
+- **No active agents available**: create or enable an agent.
+- **Plan not found**: the plan was deleted or the page is stale.
+- **Required runtime input omitted**: fill every required input before submitting, especially when the plan is used inside a job.
+
+## Alpha Limits
+
+Plans are saved definitions, not direct execution buttons. Direct plan execution from chat is disabled; submit saved work to an agent. Some older continue-in-chat fragments may still provide a copyable prompt instead of a direct launch. Concurrent edits can make list indexes stale, so refresh before editing the same plan in multiple tabs.

@@ -1,19 +1,60 @@
 # API Documentation Index
 
-This index owns route, payload, streaming, and integration contracts for Magenta APIs.
+This index owns route, payload, streaming, and integration contracts for Magenta APIs. The detailed contributor reference is [`../technical/api-reference.md`](../technical/api-reference.md).
 
-## Status
+Security summary: `GET`, `HEAD`, and `OPTIONS` routes are public in alpha mode. Unsafe methods require HTTP Basic alpha credentials and CSRF. See [`../technical/security.md`](../technical/security.md).
 
-Placeholder for the API documentation phase.
+## API Families
 
-## Intended Scope
+| Family | Purpose | Source |
+| --- | --- | --- |
+| `/api/chat` | Chat turns, SSE streaming, sessions, history, commands, interrupts, and conversation plan controls. | [`ChatController`](../../src/main/java/io/mindspice/magenta2/api/web/ChatController.java) |
+| `/api/fragments` | HTMX chat transcript/session/planning fragments. | [`FrontendFragmentController`](../../src/main/java/io/mindspice/magenta2/api/web/FrontendFragmentController.java) |
+| `/api/plans` | Saved plan/task-like definitions, chat prompt generation, submit-to-agent, and plan run reads. | [`PlanController`](../../src/main/java/io/mindspice/magenta2/api/web/PlanController.java) |
+| `/api/tasks` | Task definitions, chat-backed task drafts, draft approval, and task run reads/submission. | [`TaskController`](../../src/main/java/io/mindspice/magenta2/api/web/TaskController.java) |
+| `/api/workflows`, `/api/workflow-runs`, `/api/users/inbox` | Workflow definitions, validation, assignment submission, run reads/resume, and workflow approval inbox. | [`WorkflowController`](../../src/main/java/io/mindspice/magenta2/api/web/WorkflowController.java) |
+| `/api/jobs`, `/api/job-runs` | Job definitions, ordered job items, assignment submission, runs, cancellation, outputs, events, and recurrence. | [`JobController`](../../src/main/java/io/mindspice/magenta2/api/web/JobController.java) |
+| `/api/agents` | Agent profile CRUD and agent workspace status. | [`AgentProfileController`](../../src/main/java/io/mindspice/magenta2/api/web/AgentProfileController.java) |
+| `/api/agents/{agentId}` | Agent inbox, assignments/history/lifecycle, schedules, event reactions, and agent side-panel chat SSE. | [`AgentOrchestrationController`](../../src/main/java/io/mindspice/magenta2/api/web/AgentOrchestrationController.java) |
+| `/api/projects` | Projects, memberships, network view, events, workspace summary, and workspace release requests. | [`ProjectController`](../../src/main/java/io/mindspice/magenta2/api/web/ProjectController.java) |
+| `/api/workspaces` | Workspace records, active leases, and workspace links. | [`WorkspaceController`](../../src/main/java/io/mindspice/magenta2/api/web/WorkspaceController.java) |
+| `/api/outputs` | Output artifact query, inline content, and confined downloads. | [`OutputController`](../../src/main/java/io/mindspice/magenta2/api/web/OutputController.java) |
+| `/api/dashboard/summary` | Operational dashboard read model. | [`DashboardController`](../../src/main/java/io/mindspice/magenta2/api/web/DashboardController.java) |
+| `/api/runtime/status` | Runtime status summary. | [`RuntimeController`](../../src/main/java/io/mindspice/magenta2/api/web/RuntimeController.java) |
+| `/api/settings/runtime` | Persisted runtime settings read/update. | [`RuntimeSettingsController`](../../src/main/java/io/mindspice/magenta2/api/web/RuntimeSettingsController.java) |
+| `/api/models` | Configured model summaries. | [`ModelController`](../../src/main/java/io/mindspice/magenta2/api/web/ModelController.java) |
+| `/selectors` | Read-only entity selector options/selected/validation fragments used by operational UI. | [`selector`](../../src/main/java/io/mindspice/magenta2/api/web/selector) |
 
-- Chat REST and SSE endpoints.
-- Planning and command endpoints.
-- Operational dashboard, plans, workflows, jobs, agents, projects, workspaces, outputs, and settings endpoints.
-- Fragment endpoints used by HTMX surfaces.
+## Streaming Endpoints
 
-## Owner Notes
+| Route | Stream Purpose | Events |
+| --- | --- | --- |
+| `POST /api/chat/stream` | Live chat turn. | `start`, `chunk`, `tool`, `system`, `interrupt`, `context`, `done`, `error` |
+| `POST /api/chat/{conversationId}/plan/execute/stream` | Session plan execution stream. | Chat/plan execution events from `ChatController` |
+| `POST /api/plans/{planId}/runs/stream` | Submit saved plan/task-like definition to an agent assignment. | `submitted`, `failed` |
+| `POST /api/tasks/{taskId}/runs/stream` | Submit saved task to an agent assignment. | `submitted`, `failed` |
+| `POST /api/workflows/{workflowId}/runs/stream` | Submit saved workflow to an agent assignment. | `submitted`, `failed` |
+| `POST /api/agents/{agentId}/chat/stream` | Agent-scoped side-panel chat. | `start`, `done`, `error` |
 
-- API or controller changes must update this index or a linked API reference page.
-- Keep API docs aligned with implemented request and response payloads.
+The public plan/task/workflow stream routes acknowledge durable assignment submission; they do not stream inline model execution.
+
+## Payload Anchors
+
+- Chat payloads: [`ChatRequest`](../../src/main/java/io/mindspice/magenta2/ai/chat/model/ChatRequest.java), [`ChatResponse`](../../src/main/java/io/mindspice/magenta2/ai/chat/model/ChatResponse.java), [`ChatStreamEvent`](../../src/main/java/io/mindspice/magenta2/ai/chat/model/ChatStreamEvent.java).
+- Plans: [`PlanDefinition`](../../src/main/java/io/mindspice/magenta2/ai/chat/plan/PlanDefinition.java), [`PlanRun`](../../src/main/java/io/mindspice/magenta2/ai/chat/plan/PlanRun.java).
+- Tasks: [`TaskDefinition`](../../src/main/java/io/mindspice/magenta2/ai/chat/task/TaskDefinition.java), [`TaskDraft`](../../src/main/java/io/mindspice/magenta2/ai/chat/task/TaskDraft.java), [`TaskRun`](../../src/main/java/io/mindspice/magenta2/ai/chat/task/TaskRun.java).
+- Workflows: [`WorkflowDefinition`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workflow/WorkflowDefinition.java), [`WorkflowRun`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workflow/WorkflowRun.java), [`WorkflowValidator.ValidationResult`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workflow/WorkflowValidator.java).
+- Runtime assignments/jobs/projects: [`WorkAssignment`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/runtime/WorkAssignment.java), [`JobDefinition`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/runtime/JobDefinition.java), [`Project`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/runtime/Project.java).
+- Workspaces/outputs: [`Workspace`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/Workspace.java), [`WorkspaceLease`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/WorkspaceLease.java), [`RunOutputArtifact`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/RunOutputArtifact.java).
+
+## Error Conventions
+
+Controllers generally map:
+
+- Invalid request/body/lifecycle input to `400`.
+- Missing records to `404`.
+- Invalid lifecycle conflicts to `409`.
+- Authentication failures to `401`.
+- CSRF/access-denied failures to `403`.
+
+HTMX security failures return HTML with `HX-Trigger: magenta:security-error`; JSON/API failures return JSON or Spring error responses depending on the controller path.

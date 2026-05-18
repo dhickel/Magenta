@@ -1,20 +1,57 @@
-# End-User Documentation Index
+# End-User Documentation
 
-These guides explain how to operate Magenta. Detailed content will be filled in during the end-user documentation phase.
+These guides explain how to operate Magenta through the current alpha browser UI.
 
-## Guides
+Magenta has two main surfaces:
 
-- [Quickstart](quickstart.md)
-- [Chat](chat.md)
-- [Dashboard](dashboard.md)
-- [Plans and Tasks](plans-and-tasks.md)
-- [Workflows](workflows.md)
-- [Jobs](jobs.md)
-- [Agents](agents.md)
-- [Projects and Workspaces](projects-and-workspaces.md)
-- [Inbox, Outputs, and Settings](inbox-outputs-settings.md)
+- `/chat` for conversations, planning, saved plan chats, and plan refinement.
+- `/dashboard` and the operational pages for agents, plans, workflows, jobs, projects, inboxes, outputs, and runtime settings.
 
-## Owner Notes
+## Start Here
 
-- User-facing behavior changes must update the relevant guide.
-- Keep this index current when pages are added, renamed, or removed.
+- New user setup: [Quickstart](quickstart.md)
+- Conversational work and planning: [Chat](chat.md)
+- Operator overview: [Dashboard](dashboard.md)
+- Build executable work: [Plans and Tasks](plans-and-tasks.md)
+- Chain work together: [Workflows](workflows.md)
+- Coordinate repeated or ordered work: [Jobs](jobs.md)
+- Manage execution capacity: [Agents](agents.md)
+- Organize workspace-backed work: [Projects and Workspaces](projects-and-workspaces.md)
+- Handle messages, artifacts, and defaults: [Inbox, Outputs, and Settings](inbox-outputs-settings.md)
+
+## Common Workflows
+
+Create and run a plan:
+
+1. Open `/plans`.
+2. Select **New Plan** or **New Plan Chat**.
+3. Fill title, goal, deliverables, structured inputs and outputs, steps, validation criteria, and assumptions.
+4. Save and finalize the plan.
+5. Use **Submit to Agent**, select an agent and optional workspace, then submit.
+6. Track the assignment from the selected agent's queue or history.
+
+Create a workflow:
+
+1. Open `/workflows`.
+2. Create a draft workflow.
+3. Add nodes, routes, and conditions.
+4. Validate the graph.
+5. Submit the saved workflow to an agent.
+6. Resume approval or waiting runs from the workflow run table or inbox.
+
+Operate a running agent:
+
+1. Open `/agents`.
+2. Select an agent.
+3. Use the dashboard, queue, inbox, workspace, outputs, exec, history, and submit tabs.
+4. Pause, resume, cancel, force-interrupt, or inspect diagnostics from the queue and history tabs.
+
+## Selector Behavior
+
+Many entity fields now use searchable selectors. Type part of the name, ID, status, or detail, choose a match, and watch for the selected or not-found validation message. This applies to current selector-backed fields such as project, workspace, plan, workflow, model, target, job, and default agent fields.
+
+Some fields intentionally remain manual or plain dropdowns in the alpha UI. Manual fields include JSON bindings, input JSON, filter JSON, cron expressions, run IDs in output filters, free-form prompts, shell command fields, and some agent dropdown filters. Only enter an opaque ID when the visible field still asks for one or when filtering by an exact run ID.
+
+## Alpha Limits
+
+Magenta is still an alpha operator tool. Expect rough edges around validation messages, stale browser state after concurrent edits, incomplete selector coverage, and infrastructure-dependent execution. If the UI and docs disagree, treat the UI response and controller-backed validation as the source of truth and report the mismatch.
