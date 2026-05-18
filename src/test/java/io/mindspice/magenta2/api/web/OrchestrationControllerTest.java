@@ -77,10 +77,28 @@ class OrchestrationControllerTest {
         ScheduleService scheduleService,
         EventReactionService reactionService
     ) {
+        return controller(
+            schedulesEnabled,
+            reactionsEnabled,
+            scheduleService,
+            reactionService,
+            new StubJobService(),
+            new StubAssignmentService()
+        );
+    }
+
+    private static OrchestrationController controller(
+        boolean schedulesEnabled,
+        boolean reactionsEnabled,
+        ScheduleService scheduleService,
+        EventReactionService reactionService,
+        JobService jobService,
+        AssignmentService assignmentService
+    ) {
         return new OrchestrationController(
             new StubChatService(),
             new StubProjectService(),
-            new StubJobService(),
+            jobService,
             new StubAgentProfileService(),
             new StubInboxService(),
             new StubRuntimeInboxService(),
@@ -88,7 +106,7 @@ class OrchestrationControllerTest {
             new StubRuntimeSettingsService(),
             workspaceService(),
             new StubPlanService(),
-            new StubAssignmentService(),
+            assignmentService,
             scheduleService,
             reactionService,
             new StubWorkflowService(),
@@ -386,6 +404,33 @@ class OrchestrationControllerTest {
         // Events and outputs load via HTMX
         assertThat(html).contains("/jobs/_detail/job-abc/events");
         assertThat(html).contains("/jobs/_detail/job-abc/outputs");
+    }
+
+    @Test
+    void jobStartRunSubmitsHighPriorityAssignmentWithoutDirectJobRun() {
+        StubJobService jobService = new StubJobService();
+        StubAssignmentService assignmentService = new StubAssignmentService();
+        OrchestrationController ctrl = controller(
+            true,
+            true,
+            new StubScheduleService(),
+            new StubEventReactionService(),
+            jobService,
+            assignmentService
+        );
+
+        String html = ctrl.startJobRun("job-abc");
+
+        assertThat(html).contains("Assignment Created");
+        assertThat(html).contains("Type: JOB_RUN");
+        assertThat(html).contains("Priority: 9");
+        assertThat(assignmentService.lastRequest).isNotNull();
+        assertThat(assignmentService.lastRequest.assignmentType()).isEqualTo(AssignmentType.JOB_RUN);
+        assertThat(assignmentService.lastRequest.agentId()).isEqualTo("agent-1");
+        assertThat(assignmentService.lastRequest.jobId()).isEqualTo("job-abc");
+        assertThat(assignmentService.lastRequest.priority()).isEqualTo(9);
+        assertThat(assignmentService.lastRequest.input()).containsEntry("jobId", "job-abc");
+        assertThat(jobService.startRunCalls).isZero();
     }
 
     @Test
@@ -1732,6 +1777,8 @@ class OrchestrationControllerTest {
     }
 
     private static class StubJobService extends JobService {
+        private int startRunCalls;
+
         private static final JobDefinition STUB_JOB = new JobDefinition(
             "job-abc", "agent-1", null, null, "DRAFT",
             "Test Job", "A test job", List.of(),
@@ -1750,6 +1797,10 @@ class OrchestrationControllerTest {
         }
         @Override public JobDefinition saveDefinition(JobDefinition def) { return def; }
         @Override public java.util.List<String> outputRunIds(String jobId) { return List.of(); }
+        @Override public io.mindspice.magenta2.ai.orchestration.runtime.JobRun startRun(String jobId) {
+            startRunCalls++;
+            throw new AssertionError("Public job run routes must submit assignments");
+        }
     }
 
     private static class StubAgentProfileService extends AgentProfileService {
@@ -1838,6 +1889,7 @@ class OrchestrationControllerTest {
     private static class StubAssignmentService extends AssignmentService {
         private List<WorkAssignment> storedAssignments = List.of();
         private List<AuditRepository.AuditEvent> transcriptEvents = List.of();
+        private AssignmentRequest lastRequest;
 
         StubAssignmentService() { super(null, null, null, null); }
 
@@ -1848,7 +1900,8 @@ class OrchestrationControllerTest {
         }
 
         @Override public WorkAssignment create(AssignmentRequest request) {
-            return new WorkAssignment("asgn-1", request.agentId(), null, null,
+            lastRequest = request;
+            return new WorkAssignment("asgn-1", request.agentId(), request.jobId(), request.jobItemId(),
                 request.assignmentType(), request.priority() != null ? request.priority() : 0,
                 io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationStatus.QUEUED,
                 request.modelOverride(), request.workspaceId(),

@@ -20,11 +20,14 @@ import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileStatus;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentRequest;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentType;
+import io.mindspice.magenta2.ai.orchestration.runtime.JobDefinition;
+import io.mindspice.magenta2.ai.orchestration.runtime.JobService;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationStatus;
 import io.mindspice.magenta2.ai.orchestration.runtime.WorkAssignment;
 import io.mindspice.magenta2.ai.orchestration.workflow.InboxService;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowDefinition;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -169,6 +172,30 @@ class PublicRunSubmissionControllerTest {
     }
 
     @Test
+    void jobRunSubmitsHighPriorityJobAssignment() {
+        CapturingAssignmentService assignmentService = new CapturingAssignmentService();
+        StubJobService jobService = new StubJobService();
+        JobController controller = new JobController(
+            jobService,
+            new StubOutputArtifactService(),
+            assignmentService,
+            new StubAgentProfileService()
+        );
+
+        WorkAssignment assignment = controller.startRun("job-1", null);
+
+        assertThat(assignment.assignmentType()).isEqualTo(AssignmentType.JOB_RUN);
+        assertThat(assignment.priority()).isEqualTo(9);
+        assertThat(assignment.jobId()).isEqualTo("job-1");
+        assertThat(assignmentService.lastRequest.assignmentType()).isEqualTo(AssignmentType.JOB_RUN);
+        assertThat(assignmentService.lastRequest.agentId()).isEqualTo("agent-1");
+        assertThat(assignmentService.lastRequest.jobId()).isEqualTo("job-1");
+        assertThat(assignmentService.lastRequest.priority()).isEqualTo(9);
+        assertThat(assignmentService.lastRequest.input()).containsEntry("jobId", "job-1");
+        assertThat(jobService.startRunCalls).isZero();
+    }
+
+    @Test
     void planSubmitDefaultsToHighPriority() {
         CapturingAssignmentService assignmentService = new CapturingAssignmentService();
         PlanController controller = new PlanController(
@@ -260,6 +287,48 @@ class PublicRunSubmissionControllerTest {
                 return new WorkflowDefinition(id, "Workflow", null, List.of(), Instant.now(), Instant.now());
             }
             throw new IllegalArgumentException("Workflow not found: " + id);
+        }
+    }
+
+    private static class StubJobService extends JobService {
+        private int startRunCalls;
+
+        StubJobService() {
+            super(null, null, null, null);
+        }
+
+        @Override
+        public JobDefinition getDefinition(String id) {
+            if ("job-1".equals(id)) {
+                return new JobDefinition(
+                    id,
+                    "agent-1",
+                    null,
+                    "workspace-1",
+                    "DRAFT",
+                    "Job",
+                    null,
+                    List.of(),
+                    "CODING_CENTRIC",
+                    "model-a",
+                    null,
+                    Instant.now(),
+                    Instant.now()
+                );
+            }
+            throw new IllegalArgumentException("Job not found: " + id);
+        }
+
+        @Override
+        public io.mindspice.magenta2.ai.orchestration.runtime.JobRun startRun(String jobId) {
+            startRunCalls++;
+            throw new AssertionError("Public job run routes must submit assignments");
+        }
+    }
+
+    private static class StubOutputArtifactService extends OutputArtifactService {
+        StubOutputArtifactService() {
+            super(null, null, null);
         }
     }
 
