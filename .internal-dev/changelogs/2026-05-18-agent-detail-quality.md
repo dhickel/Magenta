@@ -27,11 +27,13 @@ Agent detail no longer displays fake timeline data such as dashboard-loaded, ass
 - `rg -n "Agent dashboard loaded|1 assignment waiting|agent-event-log" src/main` returned no production matches.
 - `git diff --check` passed.
 - Bounded Spring startup reached `Started Magenta2Application` with isolated SQLite DB `/tmp/domain06-subplan05-parent.sqlite`; log: `/tmp/domain06-subplan05-parent-startup.log`.
+- Validation agent passed commit `670200c`: focused controller tests passed with 88 tests, placeholder scan returned no matches, `git diff --check` and `git show --check 670200c` passed, and bounded startup reached `Started Magenta2Application`.
+- Browser-origin Playwright on `/agents/1f9ce016-8cf9-44ee-8c53-4a9c7639622e` confirmed `/css/orchestration.css?v=10` and the dashboard partial loaded `200`; `.agent-event-log` count was `0`; `Event Log`, `Agent dashboard loaded`, and `1 assignment waiting` were absent; `entity-detail-layout-full` produced one full-width column; no side panel remained; workspace health showed real status-service fields; console/network were clean.
 
 ## Risks
 
-No new event persistence or audit subsystem was added, so the event-log area is absent until a real scoped recent-event source exists.
+No remaining subplan-specific risk after validation. No new event persistence or audit subsystem was added, so the event-log area is absent until a real scoped recent-event source exists.
 
 ## Follow-up Items
 
-Validator should run the subplan browser/UI gate and update `progress.md` with external evidence before marking ro-10/ro-11 passed.
+Run the Domain 06 validation gate.
