@@ -14,7 +14,7 @@
 | Domain | Branch | Status | Current Owner | Validation Gate | Notes |
 | --- | --- | --- | --- | --- | --- |
 | `01-security-access-control` | `public-alpha-remediation/security-access-control` | passed | Codex | passed: focused tests, full `mvn test`, bounded startup, live auth/CSRF and workflow XSS probes | Ready to merge into integration. Evidence: `/tmp/magenta-security-domain-live-3317476.log`, `/tmp/magenta-security-domain-live-extra-3318140.log`, `/tmp/magenta-security-domain-playwright-3317476.log`. |
-| `02-workspace-tools-outputs` | `public-alpha-remediation/workspace-tools-outputs` | in_progress | Codex | subplan 06 implementer checks passed; parent review pending | Subplan 07 output attribution remains next. |
+| `02-workspace-tools-outputs` | `public-alpha-remediation/workspace-tools-outputs` | in_progress | Codex | subplan 06 passed | Subplan 07 output attribution active next. |
 | `03-execution-history-streams` | `public-alpha-remediation/execution-history-streams` | planned | unassigned | planned | Owns public execution contract and transcript preservation. |
 | `04-workflow-authoring-runtime-js` | `public-alpha-remediation/workflow-authoring-runtime-js` | planned | unassigned | planned | Must preserve HTMX-first CRUD and narrow JS graph behavior. |
 | `05-schema-data-ownership` | `public-alpha-remediation/schema-data-ownership` | planned | unassigned | planned | Should run before runtime/workspace lease validation if possible. |
@@ -48,7 +48,7 @@
 | bug-20 | `06-operational-ui-htmx-mobile` | planned | `subplan-03-htmx-error-statuses.md` | pending | pending |
 | bug-21 | `03-execution-history-streams` | planned | `subplan-05-schedule-reaction-template-validation.md` | pending | pending |
 | bug-22 | `02-workspace-tools-outputs` | passed | `subplan-05-filesystem-allocation-fail-fast.md` | validator: `git diff --check 82d6edb^..82d6edb`; `mvn -Dtest=PlanServiceTest,OrchestrationRuntimeTest,WorkflowRunnerTest,TaskStreamSupportTest test`; bounded startup on ephemeral port `35813`; confirmed terminal failed run persistence, operator-visible error/evidence, no null-path running continuation, and ChatService non-running startup short-circuit | `82d6edb` |
-| bug-23 | `02-workspace-tools-outputs` | validating | `subplan-06-output-symlink-materialization.md` | implementer: `mvn -Dtest=OutputArtifactServiceAttributionTest test`; `git diff --check`; bounded startup on ephemeral port `45683`; valid copy, escaped symlink, broken symlink, missing file coverage passed | pending |
+| bug-23 | `02-workspace-tools-outputs` | passed | `subplan-06-output-symlink-materialization.md` | validator: `mvn -Dtest=OutputArtifactServiceAttributionTest test`; `git diff --check`; bounded startup on ephemeral port `38791`; confirmed realpath data-root confinement before copy/registration plus valid file, escaped symlink, broken symlink, and missing file coverage | `a7cd293` |
 | bug-24 | `02-workspace-tools-outputs` | planned | `subplan-07-output-attribution.md` | pending | pending |
 | bug-25 | `05-schema-data-ownership` | planned | `subplan-03-inbox-table-ownership.md` | pending | pending |
 | ro-01 | `03-execution-history-streams` | planned | `subplan-01-submit-to-agent-contract.md` | pending | pending |

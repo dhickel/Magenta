@@ -33,7 +33,7 @@ Tests or ad hoc callers that previously materialized `file_path` outputs from te
 
 - Focused validation passed with `mvn -Dtest=OutputArtifactServiceAttributionTest test`.
 - `git diff --check` passed.
-- Bounded Spring Boot startup reached a healthy app on ephemeral port `45683` before timeout shutdown.
+- Bounded Spring Boot startup reached healthy apps on ephemeral ports `45683` during implementation and `38791` during validation before timeout shutdown.
 
 ## Follow-up Items
 

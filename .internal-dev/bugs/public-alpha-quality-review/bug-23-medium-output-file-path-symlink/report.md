@@ -33,14 +33,14 @@ Medium: data outside `dataRoot` can be copied into managed output artifacts if s
 
 ## Status
 
-Implemented in working tree for public alpha remediation domain 02 subplan 06; parent review pending.
+Implemented and validated in public alpha remediation domain 02 subplan 06.
 
 ## Validation
 
 - `mvn -Dtest=OutputArtifactServiceAttributionTest test`
 - `git diff --check`
-- Bounded Spring Boot startup on ephemeral port `45683`
+- Bounded Spring Boot startup on ephemeral ports `45683` and `38791`
 
 ## Next Action
 
-Parent review should confirm the focused materialization tests and then continue with domain 02 subplan 07.
+Continue with public alpha remediation domain 02 subplan 07.
