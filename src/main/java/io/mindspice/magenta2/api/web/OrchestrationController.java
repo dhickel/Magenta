@@ -2138,7 +2138,17 @@ public class OrchestrationController {
     private Component workflowEditorEmptyState() {
         return new Div().withClass("orch-panel")
             .withChild(new Div().withClass("dashboard-empty")
-                .withInnerText("Select a workflow from the list or create a new one."));
+                .withInnerText("Select a workflow from the list or create a new one."))
+            .withChild(new Div().withClass("tool-actions")
+                .withChild(Button.create("New Workflow")
+                    .withClass("orch-primary")
+                    .hxPost("/workflows/_editor/_draft")
+                    .hxTarget("#workflow-editor-container")
+                    .hxSwap("innerHTML"))
+                .withChild(Button.create("Submit to Agent")
+                    .withAttribute("type", "button")
+                    .withAttribute("disabled", "disabled")
+                    .withAttribute("aria-disabled", "true")));
     }
 
     // ── Workflow list HTMX partial ──

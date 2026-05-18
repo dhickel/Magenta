@@ -28,6 +28,7 @@ Domain 03 subplan 01 routes public plan/task/workflow run controls through saved
 - Workflow public run and run stream endpoints create queued `WORKFLOW_RUN` assignments instead of starting workflow runs directly.
 - Supported request context fields are retained in assignment fields and input metadata.
 - Public submit defaults normalize to priority `9`.
+- The `/workflows` empty state now renders a deterministic `New Workflow` action and disabled `Submit to Agent` placeholder so browser validation can see the submit-to-agent surface before a workflow is selected.
 
 # Risks
 

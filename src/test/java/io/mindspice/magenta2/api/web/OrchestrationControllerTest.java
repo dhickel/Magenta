@@ -320,6 +320,8 @@ class OrchestrationControllerTest {
 
         // Editor container exists
         assertThat(html).contains("workflow-editor-container");
+        assertThat(html).contains("Submit to Agent");
+        assertThat(html).contains("disabled=\"disabled\"");
 
         // Filter input has HTMX attributes
         assertThat(html).contains("workflow-filter");
