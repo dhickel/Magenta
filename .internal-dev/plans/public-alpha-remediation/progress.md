@@ -13,7 +13,7 @@
 
 | Domain | Branch | Status | Current Owner | Validation Gate | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `01-security-access-control` | `public-alpha-remediation/security-access-control` | in_progress | Codex | subplans 01-03 passed; subplan 04 validation pending | Subplan 04 implementation checks passed; subplan validation and full domain validation still pending. |
+| `01-security-access-control` | `public-alpha-remediation/security-access-control` | validating | Codex | subplans 01-04 passed | Full security domain validation gate pending. |
 | `02-workspace-tools-outputs` | `public-alpha-remediation/workspace-tools-outputs` | planned | unassigned | planned | Depends on id validation policy and may coordinate with schema domain. |
 | `03-execution-history-streams` | `public-alpha-remediation/execution-history-streams` | planned | unassigned | planned | Owns public execution contract and transcript preservation. |
 | `04-workflow-authoring-runtime-js` | `public-alpha-remediation/workflow-authoring-runtime-js` | planned | unassigned | planned | Must preserve HTMX-first CRUD and narrow JS graph behavior. |
@@ -37,7 +37,7 @@
 | bug-09 | `02-workspace-tools-outputs` | planned | `subplan-02-file-tool-workspace-scope.md` | pending | pending |
 | bug-10 | `02-workspace-tools-outputs` | planned | `subplan-03-web-fetch-redirect-ssrf.md` | pending | pending |
 | bug-11 | `01-security-access-control` | passed | `subplan-03-workflow-xss-security.md` | validator: `mvn -Dtest=WorkflowGraphComposerSecurityTest,OrchestrationControllerTest#workflowJsProvidesGraphComposerSurface test`; `node --check src/main/resources/static/js/orchestration/workflows.js`; live `/workflows` XSS probe on isolated DB confirmed inert payloads and no injected `img`/`script` nodes | `0c114bb` |
-| bug-12 | `01-security-access-control` | validating | `subplan-04-agent-scoped-lifecycle.md` | implementer: `mvn -Dtest=OrchestrationRuntimeTest,AgentOrchestrationControllerTest,OrchestrationControllerTest test`; bounded `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` reached successful startup before timeout shutdown; same-agent lifecycle success and cross-agent 404/non-mutation coverage for cancel, pause, resume, and force interrupt | pending |
+| bug-12 | `01-security-access-control` | passed | `subplan-04-agent-scoped-lifecycle.md` | validator: `mvn -Dtest=OrchestrationRuntimeTest,AgentOrchestrationControllerTest,OrchestrationControllerTest test`; confirmed REST/HTMX scoped service calls, cross-agent 404/non-mutation, and no public controller use of unscoped lifecycle methods | `f4b1978` |
 | bug-13 | `02-workspace-tools-outputs` | planned | `subplan-04-project-workspace-materialization.md` | pending | pending |
 | bug-14 | `03-execution-history-streams` | planned | `subplan-03-plan-sse-contract.md` | pending | pending |
 | bug-15 | `03-execution-history-streams` | planned | `subplan-04-job-run-submission.md` | pending | pending |
