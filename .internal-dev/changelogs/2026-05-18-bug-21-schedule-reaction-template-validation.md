@@ -30,6 +30,6 @@ Implemented bug-21 schedule and reaction assignment-template validation. Schedul
 
 - Existing persisted invalid schedule/reaction rows are not migrated or repaired by this change; the fix prevents new invalid saves through service/controller paths.
 
-# Follow-up Items
+# Validation
 
-- Parent validation should run the domain validation gate and decide whether any warm-database cleanup is needed for pre-existing invalid operator data.
+Validated after fix commit `c3db8a4` with focused runtime/controller tests, static parser scan, `git diff --check`, bounded startup, and live browser-origin checks for schedule/reaction form defaults, inline HTMX validation errors, REST 400 validation errors, and valid schedule/reaction saves.
