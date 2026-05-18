@@ -2239,8 +2239,9 @@ public class OrchestrationController {
     @PutMapping("/workflows/_editor/{workflowId}")
     @ResponseBody
     public String updateWorkflowEditor(@PathVariable String workflowId, @RequestParam Map<String, String> params) {
+        WorkflowDefinition current = null;
         try {
-            WorkflowDefinition current = workflowService.getDefinition(workflowId);
+            current = workflowService.getDefinition(workflowId);
             WorkflowDefinition updated = new WorkflowDefinition(
                 workflowId,
                 params.containsKey("title") ? nn(params.get("title")) : current.title(),
@@ -2250,9 +2251,9 @@ public class OrchestrationController {
             workflowService.saveDefinition(updated);
             return workflowEditorFragment(workflowService.getDefinition(workflowId)).render();
         } catch (IllegalArgumentException e) {
-            return workflowEditorValidationError(e.getMessage()).render();
+            return workflowEditorFragmentOrError(workflowId, current, e.getMessage()).render();
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return workflowEditorFragmentOrError(workflowId, current, e.getMessage()).render();
         }
     }
 
@@ -2272,8 +2273,9 @@ public class OrchestrationController {
     @PostMapping("/workflows/_editor/{workflowId}/nodes")
     @ResponseBody
     public String addWorkflowNode(@PathVariable String workflowId, @RequestParam Map<String, String> params) {
+        WorkflowDefinition current = null;
         try {
-            WorkflowDefinition current = workflowService.getDefinition(workflowId);
+            current = workflowService.getDefinition(workflowId);
             String nodeType = params.getOrDefault("nodeType", "TASK");
             List<WorkflowNode> nodes = new ArrayList<>(current.nodes());
             int maxIdx = nodes.stream()
@@ -2293,15 +2295,16 @@ public class OrchestrationController {
             workflowService.saveDefinition(updated);
             return workflowNodesSection(workflowService.getDefinition(workflowId)).render();
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return workflowNodesSectionOrError(workflowId, current, e.getMessage()).render();
         }
     }
 
     @DeleteMapping("/workflows/_editor/{workflowId}/nodes/{nodeKey}")
     @ResponseBody
     public String removeWorkflowNode(@PathVariable String workflowId, @PathVariable String nodeKey) {
+        WorkflowDefinition current = null;
         try {
-            WorkflowDefinition current = workflowService.getDefinition(workflowId);
+            current = workflowService.getDefinition(workflowId);
             List<WorkflowNode> nodes = new ArrayList<>(current.nodes());
             nodes.removeIf(n -> n.key().equals(nodeKey));
             // Also remove routes referencing this node
@@ -2315,7 +2318,7 @@ public class OrchestrationController {
             // Refresh full editor
             return workflowEditorFragment(workflowService.getDefinition(workflowId)).render();
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return workflowEditorFragmentOrError(workflowId, current, e.getMessage()).render();
         }
     }
 
@@ -2323,8 +2326,9 @@ public class OrchestrationController {
     @ResponseBody
     public String updateWorkflowNode(@PathVariable String workflowId, @PathVariable String nodeKey,
                                      @RequestParam Map<String, String> params) {
+        WorkflowDefinition current = null;
         try {
-            WorkflowDefinition current = workflowService.getDefinition(workflowId);
+            current = workflowService.getDefinition(workflowId);
             List<WorkflowNode> nodes = new ArrayList<>(current.nodes());
             for (int i = 0; i < nodes.size(); i++) {
                 if (nodes.get(i).key().equals(nodeKey)) {
@@ -2350,7 +2354,7 @@ public class OrchestrationController {
             workflowService.saveDefinition(updated);
             return workflowNodesSection(workflowService.getDefinition(workflowId)).render();
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return workflowNodesSectionOrError(workflowId, current, e.getMessage()).render();
         }
     }
 
@@ -2374,8 +2378,9 @@ public class OrchestrationController {
     @PostMapping("/workflows/_editor/{workflowId}/routes")
     @ResponseBody
     public String addWorkflowRoute(@PathVariable String workflowId, @RequestParam Map<String, String> params) {
+        WorkflowDefinition current = null;
         try {
-            WorkflowDefinition current = workflowService.getDefinition(workflowId);
+            current = workflowService.getDefinition(workflowId);
             List<WorkflowRoute> routes = new ArrayList<>(current.routes());
             String fromNodeKey = nn(params.get("fromNodeKey"));
             String routeType = params.getOrDefault("routeType", "MAP_OUTPUT");
@@ -2394,15 +2399,16 @@ public class OrchestrationController {
             workflowService.saveDefinition(updated);
             return workflowRoutesSection(workflowService.getDefinition(workflowId)).render();
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return workflowRoutesSectionOrError(workflowId, current, e.getMessage()).render();
         }
     }
 
     @DeleteMapping("/workflows/_editor/{workflowId}/routes/{routeId}")
     @ResponseBody
     public String removeWorkflowRoute(@PathVariable String workflowId, @PathVariable String routeId) {
+        WorkflowDefinition current = null;
         try {
-            WorkflowDefinition current = workflowService.getDefinition(workflowId);
+            current = workflowService.getDefinition(workflowId);
             List<WorkflowRoute> routes = current.routes().stream()
                 .filter(r -> !r.id().equals(routeId))
                 .toList();
@@ -2412,7 +2418,7 @@ public class OrchestrationController {
             workflowService.saveDefinition(updated);
             return workflowRoutesSection(workflowService.getDefinition(workflowId)).render();
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return workflowRoutesSectionOrError(workflowId, current, e.getMessage()).render();
         }
     }
 
@@ -2420,8 +2426,9 @@ public class OrchestrationController {
     @ResponseBody
     public String updateWorkflowRoute(@PathVariable String workflowId, @PathVariable String routeId,
                                       @RequestParam Map<String, String> params) {
+        WorkflowDefinition current = null;
         try {
-            WorkflowDefinition current = workflowService.getDefinition(workflowId);
+            current = workflowService.getDefinition(workflowId);
             List<WorkflowRoute> routes = new ArrayList<>(current.routes());
             for (int i = 0; i < routes.size(); i++) {
                 WorkflowRoute old = routes.get(i);
@@ -2444,7 +2451,7 @@ public class OrchestrationController {
             workflowService.saveDefinition(updated);
             return workflowRoutesSection(workflowService.getDefinition(workflowId)).render();
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return workflowRoutesSectionOrError(workflowId, current, e.getMessage()).render();
         }
     }
 
@@ -2473,7 +2480,7 @@ public class OrchestrationController {
             }
             return container.render();
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return workflowValidationResultError(e.getMessage()).render();
         }
     }
 
@@ -2526,19 +2533,23 @@ public class OrchestrationController {
 
     private Component workflowEditorValidationError(String message) {
         Div container = new Div().withClass("orch-panel workflow-editor");
-        container.withChild(new Div().withClass("orch-status orch-status-error")
-            .withChild(new HtmlTag("strong").withInnerText("Validation failed"))
-            .withChild(new HtmlTag("br"))
-            .withChild(new HtmlTag("span").withInnerText(message)));
+        container.withChild(workflowErrorBanner("Validation failed", message));
         return container;
     }
 
     private Component workflowEditorFragment(WorkflowDefinition wf) {
+        return workflowEditorFragment(wf, null);
+    }
+
+    private Component workflowEditorFragment(WorkflowDefinition wf, String errorMessage) {
         boolean isNew = wf == null;
         String wfId = isNew ? null : wf.id();
 
         Div container = new Div().withClass("orch-panel workflow-editor");
         container.withChild(Header.H2(isNew ? "New Workflow" : "Workflow Editor"));
+        if (StringUtils.hasText(errorMessage)) {
+            container.withChild(workflowErrorBanner("Workflow save failed", errorMessage));
+        }
 
         // Scalar fields form
         Form form = Form.create();
@@ -2711,6 +2722,53 @@ public class OrchestrationController {
         }
     }
 
+    private Component workflowEditorFragmentOrError(String workflowId, WorkflowDefinition fallback, String message) {
+        WorkflowDefinition persisted = reloadWorkflowOrFallback(workflowId, fallback);
+        if (persisted != null) {
+            return workflowEditorFragment(persisted, message);
+        }
+        return workflowErrorBanner("Workflow save failed", message);
+    }
+
+    private Component workflowNodesSectionOrError(String workflowId, WorkflowDefinition fallback, String message) {
+        WorkflowDefinition persisted = reloadWorkflowOrFallback(workflowId, fallback);
+        if (persisted == null) {
+            return workflowErrorBanner("Node save failed", message);
+        }
+        return workflowNodesSection(persisted, message);
+    }
+
+    private Component workflowRoutesSectionOrError(String workflowId, WorkflowDefinition fallback, String message) {
+        WorkflowDefinition persisted = reloadWorkflowOrFallback(workflowId, fallback);
+        if (persisted == null) {
+            return workflowErrorBanner("Route save failed", message);
+        }
+        return workflowRoutesSection(persisted, message);
+    }
+
+    private WorkflowDefinition reloadWorkflowOrFallback(String workflowId, WorkflowDefinition fallback) {
+        try {
+            return workflowService.getDefinition(workflowId);
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
+    private Component workflowValidationResultError(String message) {
+        Div container = new Div().withClass("warnings");
+        container.withChild(new Div().withClass("warning-item")
+            .withAttribute("style", "background:#fff1f1;border-color:#e6b3b3")
+            .withInnerText("ERROR: " + nn(message)));
+        return container;
+    }
+
+    private Component workflowErrorBanner(String title, String message) {
+        return new Div().withClass("orch-status orch-status-error")
+            .withChild(new HtmlTag("strong").withInnerText(title))
+            .withChild(new HtmlTag("br"))
+            .withChild(new HtmlTag("span").withInnerText(nn(message)));
+    }
+
     private Select routeTypeSelect() {
         Select select = Select.create("routeType");
         for (WorkflowRouteType rt : WorkflowRouteType.values()) {
@@ -2765,7 +2823,14 @@ public class OrchestrationController {
     }
 
     private Component workflowNodesSection(WorkflowDefinition wf) {
+        return workflowNodesSection(wf, null);
+    }
+
+    private Component workflowNodesSection(WorkflowDefinition wf, String errorMessage) {
         Div container = new Div().withClass("field-list");
+        if (StringUtils.hasText(errorMessage)) {
+            container.withChild(workflowErrorBanner("Node save failed", errorMessage));
+        }
         if (wf.nodes().isEmpty()) {
             container.withChild(new Div().withClass("dashboard-empty").withInnerText("No nodes. Add a node above."));
             return container;
@@ -2872,7 +2937,14 @@ public class OrchestrationController {
     }
 
     private Component workflowRoutesSection(WorkflowDefinition wf) {
+        return workflowRoutesSection(wf, null);
+    }
+
+    private Component workflowRoutesSection(WorkflowDefinition wf, String errorMessage) {
         Div container = new Div().withClass("field-list");
+        if (StringUtils.hasText(errorMessage)) {
+            container.withChild(workflowErrorBanner("Route save failed", errorMessage));
+        }
         if (wf.routes().isEmpty()) {
             container.withChild(new Div().withClass("dashboard-empty").withInnerText("No routes. Routes connect node outputs to downstream node inputs."));
             return container;
@@ -2992,7 +3064,13 @@ public class OrchestrationController {
 
         Div panel = new Div().withClass("orch-panel");
         panel.withChild(Header.H2("Submit to Agent"));
-        WorkflowValidator.ValidationResult workflowValidation = workflowService.validateGraph(wf);
+        WorkflowValidator.ValidationResult workflowValidation;
+        try {
+            workflowValidation = workflowService.validateGraph(wf);
+        } catch (Exception e) {
+            panel.withChild(workflowErrorBanner("Validation failed", e.getMessage()));
+            return panel;
+        }
         if (!workflowValidation.valid()) {
             panel.withChild(new Div().withClass("orch-status orch-status-error")
                 .withInnerText("Fix validation errors before submitting: "
