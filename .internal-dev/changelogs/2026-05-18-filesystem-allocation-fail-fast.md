@@ -24,8 +24,12 @@ Filesystem-backed task/plan execution no longer proceeds after workspace/output 
 
 Callers that previously assumed `startRun` always returned `RUNNING` now need to respect terminal startup failure states. The blocking and streaming chat task paths were updated to return non-running startup results immediately.
 
+# Validation
+
+- Focused validation passed with `mvn -Dtest=PlanServiceTest,OrchestrationRuntimeTest,WorkflowRunnerTest,TaskStreamSupportTest test`.
+- `git diff --check 82d6edb^..82d6edb` passed.
+- Bounded Spring Boot startup reached a healthy app on ephemeral port `35813`.
+
 # Follow-up Items
 
-Parent validation should run the public alpha subplan 05 gate and record final evidence before this subplan is marked passed.
-
-Implementer validation passed with focused `PlanServiceTest`, adjacent orchestration/workflow/stream tests, `git diff --check`, and bounded Spring Boot startup on ephemeral port `33235`.
+- Domain 02 subplans 06-07 remain out of scope for this change.

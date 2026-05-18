@@ -33,8 +33,8 @@ Medium: filesystem runtime can produce confusing downstream failures or missing 
 
 ## Status
 
-Implemented; pending parent validation.
+Implemented and validated in public alpha remediation domain 02 subplan 05.
 
 ## Next Action
 
-Parent validator should confirm allocation failures persist a failed run with operator-visible error text/evidence and do not call model execution with null workspace/output paths.
+Continue with public alpha remediation domain 02 subplan 06.
