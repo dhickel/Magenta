@@ -28,6 +28,12 @@ Leased project workspaces are now materialized into active assignment workspaces
 - The materialized view requires filesystem symlink support for the host data root.
 - Existing assignment-context tests or callers that hand-build project contexts must now materialize the assignment project link before using `projects/<projectId>` aliases.
 
+## Validation
+
+- Focused validation passed with `mvn -Dtest=WorkspacePathSegmentValidationTest,AgentFileToolServiceTest,AgentShellToolServiceTest,PlanServiceTest,OrchestrationRuntimeTest test`.
+- `git diff --check` passed.
+- Bounded Spring Boot startup reached a healthy app on ephemeral port `45047`.
+
 ## Follow-up Items
 
-- Parent review should mark bug-13 passed after independent validation.
+- Domain 02 subplans 05-07 remain out of scope for this change.
