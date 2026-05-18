@@ -1,6 +1,4 @@
 (function () {
-  const PAGE_SELECTOR = "[data-orchestration-page='workflows']";
-
   function byId(id) {
     return document.getElementById(id);
   }
@@ -57,20 +55,15 @@
   }
 
   class WorkflowGraphComposer {
-    constructor(page) {
-      this.page = page;
+    constructor(host, workflow) {
+      this.host = host;
       this.state = {
-        workflow: null,
+        workflow: this.normalizeWorkflow(workflow || this.newWorkflowDraft()),
         selectedNodeKey: null,
         diagnostics: { errors: [], warnings: [] }
       };
       this.dragState = null;
-      this.bootstrap();
-    }
-
-    async bootstrap() {
       this.mount();
-      await this.loadLatestWorkflow();
       this.render();
     }
 
@@ -79,12 +72,9 @@
       container.className = "orch-panel graph-composer";
       container.innerHTML = `
         <header class="graph-composer-header">
-          <h2>Workflow V2 Graph Composer</h2>
+          <h2>Workflow Graph Canvas</h2>
           <div class="graph-actions">
-            <button id="graph-load-latest" type="button">Load Latest</button>
-            <button id="graph-new" type="button">New</button>
-            <button id="graph-save" type="button">Save</button>
-            <button id="graph-validate" type="button">Validate</button>
+            <button id="graph-new" type="button">New Local Graph</button>
           </div>
         </header>
         <div class="graph-layout">
@@ -104,7 +94,7 @@
                   <option value="control">control</option>
                 </select>
               </label>
-              <label>Control Outcome (for control)
+              <label>Control Outcome
                 <select id="graph-route-condition">
                   <option value="APPROVED">APPROVED</option>
                   <option value="REJECTED">REJECTED</option>
@@ -120,21 +110,16 @@
         </div>
         <section class="graph-diagnostics" id="graph-diagnostics"></section>
       `;
-      const host = byId("workflow-editor-container") || this.page;
-      host.replaceChildren();
-      host.appendChild(container);
+      this.host.replaceChildren(container);
 
-      byId("graph-load-latest").addEventListener("click", () => this.loadLatestWorkflow().then(() => this.render()));
       byId("graph-new").addEventListener("click", () => {
         this.state.workflow = this.newWorkflowDraft();
         this.state.selectedNodeKey = null;
         this.state.diagnostics = { errors: [], warnings: [] };
         this.render();
       });
-      byId("graph-save").addEventListener("click", () => this.saveWorkflow());
-      byId("graph-validate").addEventListener("click", () => this.validateWorkflow());
-      byId("graph-connect-form").addEventListener("submit", (e) => {
-        e.preventDefault();
+      byId("graph-connect-form").addEventListener("submit", (event) => {
+        event.preventDefault();
         this.addRouteFromForm();
       });
 
@@ -163,31 +148,19 @@
       };
     }
 
-    async loadLatestWorkflow() {
-      const response = await fetch("/api/workflows");
-      if (!response.ok) {
-        this.state.workflow = this.newWorkflowDraft();
-        return;
-      }
-      const list = await response.json();
-      this.state.workflow = list && list.length ? list[0] : this.newWorkflowDraft();
-      if (!this.state.workflow.uiLayout) {
-        this.state.workflow.uiLayout = { nodes: {} };
-      }
-      if (!this.state.workflow.uiLayout.nodes) {
-        this.state.workflow.uiLayout.nodes = {};
-      }
-      if (!this.state.workflow.schemaVersion) {
-        this.state.workflow.schemaVersion = 2;
-      }
-      if (!this.state.workflow.maxConcurrency) {
-        this.state.workflow.maxConcurrency = 4;
-      }
+    normalizeWorkflow(workflow) {
+      const normalized = { ...workflow };
+      normalized.nodes = Array.isArray(normalized.nodes) ? normalized.nodes : [];
+      normalized.routes = Array.isArray(normalized.routes) ? normalized.routes : [];
+      normalized.uiLayout = normalized.uiLayout || { nodes: {} };
+      normalized.uiLayout.nodes = normalized.uiLayout.nodes || {};
+      normalized.schemaVersion = normalized.schemaVersion || 2;
+      normalized.maxConcurrency = normalized.maxConcurrency || 4;
+      return normalized;
     }
 
     addNode(type) {
       const wf = this.state.workflow;
-      if (!wf) return;
       const nodeKey = `${type}_${Math.random().toString(36).slice(2, 8)}`;
       const x = 40 + (wf.nodes.length % 4) * 180;
       const y = 40 + Math.floor(wf.nodes.length / 4) * 140;
@@ -212,7 +185,6 @@
 
     addRouteFromForm() {
       const wf = this.state.workflow;
-      if (!wf) return;
       const fromNodeKey = byId("graph-route-from").value;
       const toNodeKey = byId("graph-route-to").value;
       const routeType = byId("graph-route-type").value;
@@ -243,19 +215,19 @@
     inlineRouteError(fromNodeKey, toNodeKey, routeType, fromOutputName, toInputName, condition) {
       if (!fromNodeKey || !toNodeKey) return "Route must include source and target nodes.";
       if (fromNodeKey === toNodeKey) return "Self-routes are not allowed.";
-      const exists = this.state.workflow.routes.some((r) =>
-        r.fromNodeKey === fromNodeKey
-        && r.toNodeKey === toNodeKey
-        && r.fromOutputName === fromOutputName
-        && r.toInputName === toInputName
-        && r.routeType === routeType
-        && r.condition === condition);
+      const exists = this.state.workflow.routes.some((route) =>
+        route.fromNodeKey === fromNodeKey
+        && route.toNodeKey === toNodeKey
+        && route.fromOutputName === fromOutputName
+        && route.toInputName === toInputName
+        && route.routeType === routeType
+        && route.condition === condition);
       if (exists) return "Duplicate route is not allowed.";
       if (routeType === "control") {
         if (fromOutputName || toInputName) return "Control routes may not carry data ports.";
         if (condition !== "APPROVED" && condition !== "REJECTED") return "Control routes require APPROVED or REJECTED condition.";
-      } else {
-        if (!fromOutputName || !toInputName) return "Data routes require source and target ports.";
+      } else if (!fromOutputName || !toInputName) {
+        return "Data routes require source and target ports.";
       }
       if (this.createsCyclePreview(fromNodeKey, toNodeKey)) {
         return "Route would create a cycle.";
@@ -264,7 +236,7 @@
     }
 
     createsCyclePreview(fromNodeKey, toNodeKey) {
-      const edges = this.state.workflow.routes.map((r) => [r.fromNodeKey, r.toNodeKey]);
+      const edges = this.state.workflow.routes.map((route) => [route.fromNodeKey, route.toNodeKey]);
       edges.push([fromNodeKey, toNodeKey]);
       const visited = new Set();
       const stack = new Set();
@@ -273,7 +245,7 @@
         if (visited.has(node)) return false;
         visited.add(node);
         stack.add(node);
-        const next = edges.filter((e) => e[0] === node).map((e) => e[1]);
+        const next = edges.filter((edge) => edge[0] === node).map((edge) => edge[1]);
         for (const n of next) {
           if (walk(n)) return true;
         }
@@ -294,8 +266,8 @@
 
     removeNode(nodeKey) {
       const wf = this.state.workflow;
-      wf.nodes = wf.nodes.filter((n) => n.key !== nodeKey);
-      wf.routes = wf.routes.filter((r) => r.fromNodeKey !== nodeKey && r.toNodeKey !== nodeKey);
+      wf.nodes = wf.nodes.filter((node) => node.key !== nodeKey);
+      wf.routes = wf.routes.filter((route) => route.fromNodeKey !== nodeKey && route.toNodeKey !== nodeKey);
       delete wf.uiLayout.nodes[nodeKey];
       if (this.state.selectedNodeKey === nodeKey) {
         this.state.selectedNodeKey = null;
@@ -305,7 +277,7 @@
 
     updateSelectedNode(updater) {
       const wf = this.state.workflow;
-      const idx = wf.nodes.findIndex((n) => n.key === this.state.selectedNodeKey);
+      const idx = wf.nodes.findIndex((node) => node.key === this.state.selectedNodeKey);
       if (idx < 0) return;
       wf.nodes[idx] = updater(wf.nodes[idx]);
       this.renderCanvas();
@@ -356,7 +328,7 @@
         line.setAttribute("y2", String(toPos.y + 30));
         line.setAttribute("class", `graph-edge graph-edge-${route.routeType}`);
         line.addEventListener("click", () => {
-          this.state.workflow.routes = this.state.workflow.routes.filter((r) => r.id !== route.id);
+          this.state.workflow.routes = this.state.workflow.routes.filter((candidate) => candidate.id !== route.id);
           this.render();
         });
         svg.appendChild(line);
@@ -413,7 +385,7 @@
     renderSidePanel() {
       const panel = byId("graph-side-panel");
       const wf = this.state.workflow;
-      const node = wf.nodes.find((n) => n.key === this.state.selectedNodeKey);
+      const node = wf.nodes.find((candidate) => candidate.key === this.state.selectedNodeKey);
       if (!node) {
         panel.replaceChildren(
           textElement("h3", "Node Config"),
@@ -474,15 +446,15 @@
     renameNodeKey(oldKey, newKey) {
       const wf = this.state.workflow;
       if (oldKey === newKey) return;
-      if (wf.nodes.some((n) => n.key === newKey)) {
+      if (wf.nodes.some((node) => node.key === newKey)) {
         this.state.diagnostics = { errors: [`Node key '${newKey}' already exists.`], warnings: [] };
         this.renderDiagnostics();
         return;
       }
-      wf.routes = wf.routes.map((r) => ({
-        ...r,
-        fromNodeKey: r.fromNodeKey === oldKey ? newKey : r.fromNodeKey,
-        toNodeKey: r.toNodeKey === oldKey ? newKey : r.toNodeKey
+      wf.routes = wf.routes.map((route) => ({
+        ...route,
+        fromNodeKey: route.fromNodeKey === oldKey ? newKey : route.fromNodeKey,
+        toNodeKey: route.toNodeKey === oldKey ? newKey : route.toNodeKey
       }));
       wf.uiLayout.nodes[newKey] = wf.uiLayout.nodes[oldKey] || { x: 20, y: 20 };
       delete wf.uiLayout.nodes[oldKey];
@@ -492,9 +464,9 @@
     renderDiagnostics() {
       const panel = byId("graph-diagnostics");
       const { errors, warnings } = this.state.diagnostics;
-      panel.replaceChildren(textElement("h3", "Compile / Validate"));
+      panel.replaceChildren(textElement("h3", "Local Graph Checks"));
       if (!errors.length && !warnings.length) {
-        panel.appendChild(textElement("p", "No diagnostics."));
+        panel.appendChild(textElement("p", "No local graph diagnostics."));
         return;
       }
       const makeList = (title, items, cls) => {
@@ -506,7 +478,7 @@
         items.forEach((item) => {
           const li = document.createElement("li");
           li.textContent = item;
-          const match = this.state.workflow.nodes.find((n) => item.includes(`'${n.key}'`));
+          const match = this.state.workflow.nodes.find((node) => item.includes(`'${node.key}'`));
           if (match) {
             li.classList.add("clickable");
             li.addEventListener("click", () => this.selectNode(match.key));
@@ -519,57 +491,7 @@
       makeList("Errors", errors, "error");
       makeList("Warnings", warnings, "warning");
     }
-
-    async validateWorkflow() {
-      if (!this.state.workflow) return;
-      const wf = this.state.workflow;
-      const url = wf.id ? `/api/workflows/${wf.id}/validate` : "/api/workflows/validate";
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(wf)
-      });
-      if (!response.ok) {
-        this.state.diagnostics = { errors: ["Validation request failed"], warnings: [] };
-        this.renderDiagnostics();
-        return;
-      }
-      this.state.diagnostics = await response.json();
-      this.renderDiagnostics();
-    }
-
-    async saveWorkflow() {
-      if (!this.state.workflow) return;
-      await this.validateWorkflow();
-      if (this.state.diagnostics.errors.length) {
-        return;
-      }
-
-      const wf = this.state.workflow;
-      const url = wf.id ? `/api/workflows/${wf.id}` : "/api/workflows";
-      const method = wf.id ? "PUT" : "POST";
-      const response = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(wf)
-      });
-      if (!response.ok) {
-        const text = await response.text();
-        this.state.diagnostics = { errors: [text || "Save failed"], warnings: [] };
-        this.renderDiagnostics();
-        return;
-      }
-      this.state.workflow = await response.json();
-      this.state.diagnostics = { errors: [], warnings: [] };
-      this.render();
-    }
   }
 
-  document.addEventListener("DOMContentLoaded", () => {
-    const page = document.querySelector(PAGE_SELECTOR);
-    if (!page) {
-      return;
-    }
-    new WorkflowGraphComposer(page);
-  });
+  window.MagentaWorkflowGraphComposer = WorkflowGraphComposer;
 })();
