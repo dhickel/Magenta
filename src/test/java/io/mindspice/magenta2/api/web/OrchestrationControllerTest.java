@@ -907,6 +907,21 @@ class OrchestrationControllerTest {
     }
 
     @Test
+    void reactionFormDefaultsAssignmentTypeToReport() {
+        OrchestrationController controller = controller(
+            true,
+            true,
+            new StubScheduleService(),
+            new StubEventReactionService()
+        );
+
+        String html = controller.agentReactionsTab("agent-1");
+
+        assertThat(html).contains("<option value=\"REPORT\" selected>REPORT</option>");
+        assertThat(html).doesNotContain("<option value=\"JOB_RUN\" selected>JOB_RUN</option>");
+    }
+
+    @Test
     void reactionLifecycleSupportsUpdateToggleAndDelete() {
         StubEventReactionService reactionService = new StubEventReactionService();
         OrchestrationController controller = controller(

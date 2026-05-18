@@ -5456,7 +5456,7 @@ public class OrchestrationController {
 
         Map<String, Object> template = reaction == null || reaction.assignmentTemplate() == null
             ? Map.of() : reaction.assignmentTemplate();
-        String assignmentType = templateString(template, "assignmentType", AssignmentType.JOB_RUN.name());
+        String assignmentType = templateString(template, "assignmentType", AssignmentType.REPORT.name());
         int priority = templateInt(template, "priority", 0);
         String modelOverride = templateString(template, "modelOverride", "");
         String workspaceId = templateString(template, "workspaceId", "");
