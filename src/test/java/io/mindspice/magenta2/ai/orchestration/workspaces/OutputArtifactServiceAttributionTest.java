@@ -104,7 +104,7 @@ class OutputArtifactServiceAttributionTest {
             new ObjectMapper().findAndRegisterModules()
         );
 
-        Path outputDir = Files.createDirectories(tempDir.resolve("my-task-run-123"));
+        Path outputDir = Files.createDirectories(dataRoot.resolve("my-task-run-123"));
         Files.writeString(outputDir.resolve("result.json"), "{\"ok\":true}");
 
         // Materialize with bare filename relative to output dir
@@ -125,9 +125,10 @@ class OutputArtifactServiceAttributionTest {
     @Test
     void bareFilenameResolvesRelativeToOutputDirectory() throws Exception {
         JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        Path dataRoot = Files.createDirectories(tempDir.resolve("root2"));
         WorkspaceRepository repository = new WorkspaceRepository(jdbc);
         WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
-            new AiConfig(null, null, null, null, Files.createDirectories(tempDir.resolve("root2")), null, null)
+            new AiConfig(null, null, null, null, dataRoot, null, null)
         );
         OutputArtifactService service = new OutputArtifactService(
             repository,
@@ -135,7 +136,7 @@ class OutputArtifactServiceAttributionTest {
             new ObjectMapper().findAndRegisterModules()
         );
 
-        Path outputDir = Files.createDirectories(tempDir.resolve("outputs2"));
+        Path outputDir = Files.createDirectories(dataRoot.resolve("outputs2"));
         Files.writeString(outputDir.resolve("hello.txt"), "hello world");
 
         // Materialize with bare filename (model might report just "hello.txt")
@@ -151,6 +152,42 @@ class OutputArtifactServiceAttributionTest {
 
         assertThat(artifact.fileName()).isEqualTo("hello.txt");
         assertThat(Files.exists(Path.of(artifact.filePath()))).isTrue();
+    }
+
+    @Test
+    void copiesValidFilePathInsideDataRootIntoOutputDirectory() throws Exception {
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        Path dataRoot = Files.createDirectories(tempDir.resolve("copy-root"));
+        WorkspaceRepository repository = new WorkspaceRepository(jdbc);
+        WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
+            new AiConfig(null, null, null, null, dataRoot, null, null)
+        );
+        OutputArtifactService service = new OutputArtifactService(
+            repository,
+            directoryService,
+            new ObjectMapper().findAndRegisterModules()
+        );
+
+        Path sourceDir = Files.createDirectories(dataRoot.resolve("runtime/task-runs/run-copy"));
+        Path outputDir = Files.createDirectories(dataRoot.resolve("agents/agent-1/workspace/outputs/run-copy"));
+        Path source = sourceDir.resolve("result.txt");
+        Files.writeString(source, "safe output");
+
+        RunOutputArtifact artifact = service.materialize(
+            "run-copy",
+            "plan-copy",
+            "result",
+            PlanFieldType.FILE_PATH,
+            source.toString(),
+            outputDir,
+            OutputArtifactContext.EMPTY
+        );
+
+        Path artifactPath = Path.of(artifact.filePath());
+        assertThat(artifact.fileName()).isEqualTo("result.txt");
+        assertThat(artifactPath).isEqualTo(outputDir.resolve("result.txt"));
+        assertThat(Files.readString(artifactPath)).isEqualTo("safe output");
+        assertThat(artifactPath).isNotEqualTo(source);
     }
 
     @Test
@@ -180,6 +217,108 @@ class OutputArtifactServiceAttributionTest {
             )
         ).isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("escapes data root");
+    }
+
+    @Test
+    void rejectsFilePathSymlinkEscapingDataRoot() throws Exception {
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        Path dataRoot = Files.createDirectories(tempDir.resolve("symlink-root"));
+        WorkspaceRepository repository = new WorkspaceRepository(jdbc);
+        WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
+            new AiConfig(null, null, null, null, dataRoot, null, null)
+        );
+        OutputArtifactService service = new OutputArtifactService(
+            repository,
+            directoryService,
+            new ObjectMapper().findAndRegisterModules()
+        );
+
+        Path outputDir = Files.createDirectories(dataRoot.resolve("outputs-symlink"));
+        Path outside = Files.writeString(tempDir.resolve("outside-secret.txt"), "secret");
+        Path symlink = outputDir.resolve("outside-link.txt");
+        Files.createSymbolicLink(symlink, outside);
+
+        assertThatThrownBy(() ->
+            service.materialize(
+                "run-symlink",
+                "plan-symlink",
+                "bad",
+                PlanFieldType.FILE_PATH,
+                symlink.toString(),
+                outputDir,
+                OutputArtifactContext.EMPTY
+            )
+        ).isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("escapes data root");
+
+        assertThat(repository.findArtifactsByRunId("run-symlink")).isEmpty();
+    }
+
+    @Test
+    void rejectsBrokenFilePathSymlinkWithClearFailure() throws Exception {
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        Path dataRoot = Files.createDirectories(tempDir.resolve("broken-root"));
+        WorkspaceRepository repository = new WorkspaceRepository(jdbc);
+        WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
+            new AiConfig(null, null, null, null, dataRoot, null, null)
+        );
+        OutputArtifactService service = new OutputArtifactService(
+            repository,
+            directoryService,
+            new ObjectMapper().findAndRegisterModules()
+        );
+
+        Path outputDir = Files.createDirectories(dataRoot.resolve("outputs-broken"));
+        Path symlink = outputDir.resolve("missing-link.txt");
+        Files.createSymbolicLink(symlink, tempDir.resolve("missing-target.txt"));
+
+        assertThatThrownBy(() ->
+            service.materialize(
+                "run-broken",
+                "plan-broken",
+                "broken",
+                PlanFieldType.FILE_PATH,
+                symlink.toString(),
+                outputDir,
+                OutputArtifactContext.EMPTY
+            )
+        ).isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("broken symlink");
+
+        assertThat(repository.findArtifactsByRunId("run-broken")).isEmpty();
+    }
+
+    @Test
+    void rejectsMissingFilePathWithClearFailure() throws Exception {
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        Path dataRoot = Files.createDirectories(tempDir.resolve("missing-root"));
+        WorkspaceRepository repository = new WorkspaceRepository(jdbc);
+        WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
+            new AiConfig(null, null, null, null, dataRoot, null, null)
+        );
+        OutputArtifactService service = new OutputArtifactService(
+            repository,
+            directoryService,
+            new ObjectMapper().findAndRegisterModules()
+        );
+
+        Path outputDir = Files.createDirectories(dataRoot.resolve("outputs-missing"));
+        Path missing = outputDir.resolve("missing.txt");
+
+        assertThatThrownBy(() ->
+            service.materialize(
+                "run-missing",
+                "plan-missing",
+                "missing",
+                PlanFieldType.FILE_PATH,
+                missing.toString(),
+                outputDir,
+                OutputArtifactContext.EMPTY
+            )
+        ).isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("does not exist");
+
+        assertThat(repository.findArtifactsByRunId("run-missing")).isEmpty();
     }
 
     @Test

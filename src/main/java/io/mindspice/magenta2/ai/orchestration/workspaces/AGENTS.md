@@ -22,7 +22,8 @@ This package owns filesystem workspace management including agent workspace root
 - `OutputArtifactService` — output materialization (file copy, .md, .json, .txt) and artifact persistence.
 
 ### Change guidance
-- All paths must be confined under `dataRoot` with normalized path checks.
+- Workspace paths constructed by this package must be confined under `dataRoot` with normalized path checks.
+- Source paths supplied for persisted output materialization must also resolve through `toRealPath()` and stay under the real `dataRoot` before copy or artifact registration, so symlinks cannot escape the managed data tree.
 - Always use `Files.createDirectories` before returning a workspace path.
 - Temp directories are deleted after terminal run completion; output directories persist.
 - Lease extension must verify holder ownership.

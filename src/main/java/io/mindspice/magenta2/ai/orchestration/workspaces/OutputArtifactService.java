@@ -2,6 +2,8 @@ package io.mindspice.magenta2.ai.orchestration.workspaces;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
@@ -247,7 +249,11 @@ public class OutputArtifactService {
                                                     Path outputDir,
                                                     OutputArtifactContext context) throws IOException {
         String sourcePathStr = value.toString().trim();
+        if (!StringUtils.hasText(sourcePathStr)) {
+            throw new IllegalArgumentException("Source file path is blank for output: " + outputName);
+        }
         Path sourcePath;
+        Path realDataRoot = directoryService.dataRoot().toRealPath();
 
         // Handle bare filenames from model output: resolve relative to output directory
         if (!sourcePathStr.contains("/") && !sourcePathStr.contains("\\")) {
@@ -257,35 +263,71 @@ public class OutputArtifactService {
         else if (!Path.of(sourcePathStr).isAbsolute()) {
             sourcePath = resolveRunOutputPath(outputDir, sourcePathStr, sourcePathStr);
         } else {
-            // Absolute host paths: reject unless under data root
-            Path absolute = Path.of(sourcePathStr).normalize();
-            if (!absolute.startsWith(directoryService.dataRoot())) {
+            // Absolute host paths keep the existing data-root lexical boundary,
+            // then resolve symlinks below before copying or registering.
+            Path absolute = Path.of(sourcePathStr).toAbsolutePath().normalize();
+            if (!absolute.startsWith(realDataRoot)) {
                 throw new IllegalArgumentException(
                     "Absolute file_path output escapes data root: " + sourcePathStr);
             }
             sourcePath = absolute;
         }
 
-        if (!Files.exists(sourcePath)) {
-            throw new IllegalArgumentException(
-                "Source file for output '" + outputName + "' does not exist: " + sourcePath);
-        }
+        Path realSourcePath = requireConfinedRealSourcePath(sourcePath, realDataRoot, outputName);
 
         String fileName = sourcePath.getFileName().toString();
         // Use actual filename; add output name prefix only for collision avoidance
         Path destPath = outputDir.resolve(fileName);
-        boolean sourceEqualsDest = sourcePath.normalize().equals(destPath.normalize());
-        if (!sourceEqualsDest && Files.exists(destPath)) {
+        boolean sourceEqualsDest = sourceEqualsDestination(sourcePath, realSourcePath, destPath);
+        if (!sourceEqualsDest && Files.exists(destPath, LinkOption.NOFOLLOW_LINKS)) {
             destPath = outputDir.resolve(sanitize(outputName) + "_" + fileName);
         }
 
         if (!sourceEqualsDest) {
-            Files.copy(sourcePath, destPath, StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(realSourcePath, destPath, StandardCopyOption.REPLACE_EXISTING);
         }
 
         return saveArtifact(runId, planId, outputName, "file_path",
             destPath.getFileName().toString(),
             destPath.toString(), null, context);
+    }
+
+    private Path requireConfinedRealSourcePath(Path sourcePath, Path realDataRoot, String outputName) throws IOException {
+        boolean sourceExistsWithoutFollowingLinks = Files.exists(sourcePath, LinkOption.NOFOLLOW_LINKS);
+        if (!sourceExistsWithoutFollowingLinks && !Files.exists(sourcePath)) {
+            throw new IllegalArgumentException(
+                "Source file for output '" + outputName + "' does not exist: " + sourcePath);
+        }
+        Path realSourcePath;
+        try {
+            realSourcePath = sourcePath.toRealPath();
+        } catch (NoSuchFileException e) {
+            if (sourceExistsWithoutFollowingLinks) {
+                throw new IllegalArgumentException(
+                    "Source file for output '" + outputName + "' is a broken symlink: " + sourcePath, e);
+            }
+            throw new IllegalArgumentException(
+                "Source file for output '" + outputName + "' does not exist: " + sourcePath, e);
+        }
+        if (!realSourcePath.startsWith(realDataRoot)) {
+            throw new IllegalArgumentException(
+                "Source file for output '" + outputName + "' escapes data root: " + sourcePath);
+        }
+        return realSourcePath;
+    }
+
+    private boolean sourceEqualsDestination(Path sourcePath, Path realSourcePath, Path destPath) throws IOException {
+        if (sourcePath.toAbsolutePath().normalize().equals(destPath.toAbsolutePath().normalize())) {
+            return true;
+        }
+        if (!Files.exists(destPath, LinkOption.NOFOLLOW_LINKS)) {
+            return false;
+        }
+        try {
+            return realSourcePath.equals(destPath.toRealPath());
+        } catch (NoSuchFileException e) {
+            return false;
+        }
     }
 
     private Path resolveRunOutputPath(Path outputDir, String relativePath, String displayPath) {
