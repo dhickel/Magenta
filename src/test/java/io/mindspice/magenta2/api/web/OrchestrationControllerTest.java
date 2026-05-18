@@ -1,13 +1,14 @@
 package io.mindspice.magenta2.api.web;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import java.util.ArrayList;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.ai.chat.plan.PlanDefinition;
@@ -186,7 +187,7 @@ class OrchestrationControllerTest {
     void dashboardRendersFullShellWithSidebar() {
         String html = controller().dashboard(null, null);
 
-        assertThat(html).contains("/css/orchestration.css?v=7");
+        assertThat(html).contains("/css/orchestration.css?v=8");
         assertThat(html).contains("Magenta Operations");
         assertThat(html).contains("Dashboard");
         assertThat(html).contains("/dashboard");
@@ -753,7 +754,7 @@ class OrchestrationControllerTest {
         assertThat(html).contains("id=\"agent-chat-form\"");
         assertThat(html).contains("id=\"agent-chat-input\"");
         assertThat(html).contains("Chat with Agent");
-        assertThat(html).contains("/css/orchestration.css?v=7");
+        assertThat(html).contains("/css/orchestration.css?v=8");
         assertThat(html).contains("/js/orchestration/agent-chat.js?v=2");
         assertThat(html).contains("agent-event-log");
         assertThat(html).contains("Event Log");
@@ -1215,7 +1216,7 @@ class OrchestrationControllerTest {
         for (String html : pages) {
             assertThat(html).contains("main-sidebar");
             assertThat(html).contains("sidenav");
-            assertThat(html).contains("/css/orchestration.css?v=7");
+            assertThat(html).contains("/css/orchestration.css?v=8");
             assertThat(html).doesNotContain("/js/chat-client.js");
         }
     }
@@ -1234,6 +1235,20 @@ class OrchestrationControllerTest {
         assertThat(html).contains("/outputs");
         assertThat(html).contains("/settings");
         assertThat(html).doesNotContain("hx-get=\"/chat\"");
+    }
+
+    @Test
+    void orchestrationCssOverridesShellSidebarGridAtPhoneWidth() throws Exception {
+        try (var stream = OrchestrationControllerTest.class.getResourceAsStream("/static/css/orchestration.css")) {
+            assertThat(stream).isNotNull();
+            String css = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+
+            assertThat(css).contains("@media (max-width: 768px)");
+            assertThat(css).contains(".main-container.has-sidebar");
+            assertThat(css).contains("grid-template-areas: \"content\"");
+            assertThat(css).contains("grid-template-columns: minmax(0, 1fr)");
+            assertThat(css).contains(".main-container.has-sidebar > .content-wrapper");
+        }
     }
 
     @Test
