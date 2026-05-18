@@ -1,8 +1,13 @@
 package io.mindspice.magenta2.api.web;
 
+import java.lang.reflect.Proxy;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import io.mindspice.magenta2.ai.chat.plan.PlanDefinition;
 import io.mindspice.magenta2.ai.chat.plan.PlanKind;
@@ -22,6 +27,7 @@ import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowDefinition;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowService;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -56,6 +62,56 @@ class PublicRunSubmissionControllerTest {
         assertThat(assignmentService.lastRequest.input()).containsEntry("taskId", "plan-1");
         assertThat(assignmentService.lastRequest.input()).containsEntry("conversationId", "conversation-1");
         assertThat(assignmentService.lastRequest.input()).containsEntry("inputValues", Map.of("prompt", "ship it"));
+    }
+
+    @Test
+    void planRunStreamEmitsSubmittedSseEventName() throws Exception {
+        PlanController controller = new PlanController(
+            new StubPlanService(),
+            null,
+            new CapturingAssignmentService(),
+            new StubAgentProfileService()
+        );
+
+        SseEmitter emitter = controller.streamRun("plan-1", new PlanController.PlanRunRequest(
+            Map.of("prompt", "ship it"),
+            "conversation-1",
+            null,
+            null,
+            "workspace-1",
+            "model-a",
+            null
+        ));
+        CapturedSse captured = initializeEmitter(emitter);
+
+        assertThat(captured.completed.await(1, TimeUnit.SECONDS)).isTrue();
+        assertThat(captured.events).anyMatch(event -> event.contains("event:submitted"));
+        assertThat(captured.events).noneMatch(event -> event.contains("event:TaskExecutionEvent"));
+    }
+
+    @Test
+    void planRunStreamEmitsFailedSseEventNameForSubmissionErrors() throws Exception {
+        PlanController controller = new PlanController(
+            new StubPlanService(),
+            null,
+            new CapturingAssignmentService(),
+            new EmptyAgentProfileService()
+        );
+
+        SseEmitter emitter = controller.streamRun("plan-1", new PlanController.PlanRunRequest(
+            Map.of("prompt", "ship it"),
+            "conversation-1",
+            null,
+            null,
+            null,
+            null,
+            null
+        ));
+        CapturedSse captured = initializeEmitter(emitter);
+
+        assertThat(captured.completed.await(1, TimeUnit.SECONDS)).isTrue();
+        assertThat(captured.events).anyMatch(event -> event.contains("event:failed"));
+        assertThat(captured.events).noneMatch(event -> event.contains("event:TaskExecutionEvent"));
     }
 
     @Test
@@ -234,6 +290,39 @@ class PublicRunSubmissionControllerTest {
         public List<AgentProfile> list() {
             return List.of();
         }
+    }
+
+    private CapturedSse initializeEmitter(SseEmitter emitter) throws Exception {
+        CapturedSse captured = new CapturedSse();
+        Class<?> handlerType = Class.forName(
+            "org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter$Handler"
+        );
+        Object handler = Proxy.newProxyInstance(
+            handlerType.getClassLoader(),
+            new Class<?>[] { handlerType },
+            (proxy, method, args) -> {
+                if ("send".equals(method.getName()) && args[0] instanceof Set<?> set) {
+                    for (Object item : set) {
+                        captured.events.add(String.valueOf(item.getClass().getMethod("getData").invoke(item)));
+                    }
+                } else if ("send".equals(method.getName())) {
+                    captured.events.add(String.valueOf(args[0]));
+                } else if ("complete".equals(method.getName()) || "completeWithError".equals(method.getName())) {
+                    captured.completed.countDown();
+                }
+                return null;
+            }
+        );
+        var initialize = org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter.class
+            .getDeclaredMethod("initialize", handlerType);
+        initialize.setAccessible(true);
+        initialize.invoke(emitter, handler);
+        return captured;
+    }
+
+    private static final class CapturedSse {
+        private final List<String> events = new ArrayList<>();
+        private final CountDownLatch completed = new CountDownLatch(1);
     }
 
     private static class CapturingAssignmentService extends AssignmentService {
