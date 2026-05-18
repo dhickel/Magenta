@@ -22,6 +22,40 @@
     }
   }
 
+  function textValue(value) {
+    return String(value ?? "");
+  }
+
+  function textElement(tagName, value, className) {
+    const element = document.createElement(tagName);
+    if (className) {
+      element.className = className;
+    }
+    element.textContent = textValue(value);
+    return element;
+  }
+
+  function labeledInput(labelText, inputId, value, disabled = false) {
+    const label = document.createElement("label");
+    label.appendChild(document.createTextNode(labelText));
+    const input = document.createElement("input");
+    input.id = inputId;
+    input.value = textValue(value);
+    input.disabled = disabled;
+    label.appendChild(input);
+    return label;
+  }
+
+  function labeledTextarea(labelText, textareaId, value) {
+    const label = document.createElement("label");
+    label.appendChild(document.createTextNode(labelText));
+    const textarea = document.createElement("textarea");
+    textarea.id = textareaId;
+    textarea.value = textValue(value);
+    label.appendChild(textarea);
+    return label;
+  }
+
   class WorkflowGraphComposer {
     constructor(page) {
       this.page = page;
@@ -87,7 +121,7 @@
         <section class="graph-diagnostics" id="graph-diagnostics"></section>
       `;
       const host = byId("workflow-editor-container") || this.page;
-      host.innerHTML = "";
+      host.replaceChildren();
       host.appendChild(container);
 
       byId("graph-load-latest").addEventListener("click", () => this.loadLatestWorkflow().then(() => this.render()));
@@ -289,8 +323,8 @@
       const wf = this.state.workflow;
       const from = byId("graph-route-from");
       const to = byId("graph-route-to");
-      from.innerHTML = "";
-      to.innerHTML = "";
+      from.replaceChildren();
+      to.replaceChildren();
       wf.nodes.forEach((node) => {
         const opt1 = document.createElement("option");
         opt1.value = node.key;
@@ -307,11 +341,10 @@
     renderCanvas() {
       const canvas = byId("graph-canvas");
       const wf = this.state.workflow;
-      canvas.innerHTML = "";
 
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
       svg.setAttribute("class", "graph-edges");
-      canvas.appendChild(svg);
+      canvas.replaceChildren(svg);
 
       wf.routes.forEach((route) => {
         const fromPos = wf.uiLayout.nodes[route.fromNodeKey] || { x: 0, y: 0 };
@@ -335,11 +368,13 @@
         card.className = "graph-node-card" + (this.state.selectedNodeKey === node.key ? " selected" : "");
         card.style.left = `${pos.x}px`;
         card.style.top = `${pos.y}px`;
-        card.innerHTML = `
-          <header><strong>${node.label || node.key}</strong></header>
-          <div>${node.type}</div>
-          <div class="graph-node-key">${node.key}</div>
-        `;
+        const header = document.createElement("header");
+        header.appendChild(textElement("strong", node.label || node.key));
+        card.append(
+          header,
+          textElement("div", node.type),
+          textElement("div", node.key, "graph-node-key")
+        );
         card.addEventListener("click", () => this.selectNode(node.key));
         card.addEventListener("pointerdown", (event) => this.beginDrag(node.key, event));
         canvas.appendChild(card);
@@ -380,25 +415,37 @@
       const wf = this.state.workflow;
       const node = wf.nodes.find((n) => n.key === this.state.selectedNodeKey);
       if (!node) {
-        panel.innerHTML = "<h3>Node Config</h3><p>Select a node on the canvas.</p>";
+        panel.replaceChildren(
+          textElement("h3", "Node Config"),
+          textElement("p", "Select a node on the canvas.")
+        );
         return;
       }
 
-      panel.innerHTML = `
-        <h3>Node Config</h3>
-        <label>Key<input id="node-key" value="${node.key}" /></label>
-        <label>Label<input id="node-label" value="${node.label || ""}" /></label>
-        <label>Type<input id="node-type" value="${node.type}" disabled /></label>
-        <label>Task Plan ID<input id="node-plan-id" value="${node.planId || ""}" /></label>
-        <label>Message Template<textarea id="node-message">${node.messageTemplate || ""}</textarea></label>
-        <label>Config JSON<textarea id="node-config">${asJsonText(node.config || {})}</textarea></label>
-        <label>Input Ports JSON<textarea id="node-input-ports">${asJsonText(node.inputPorts || [])}</textarea></label>
-        <label>Output Ports JSON<textarea id="node-output-ports">${asJsonText(node.outputPorts || [])}</textarea></label>
-        <div class="graph-side-actions">
-          <button id="node-apply" type="button">Apply</button>
-          <button id="node-delete" type="button">Delete</button>
-        </div>
-      `;
+      const actions = document.createElement("div");
+      actions.className = "graph-side-actions";
+      const apply = document.createElement("button");
+      apply.id = "node-apply";
+      apply.type = "button";
+      apply.textContent = "Apply";
+      const del = document.createElement("button");
+      del.id = "node-delete";
+      del.type = "button";
+      del.textContent = "Delete";
+      actions.append(apply, del);
+
+      panel.replaceChildren(
+        textElement("h3", "Node Config"),
+        labeledInput("Key", "node-key", node.key),
+        labeledInput("Label", "node-label", node.label || ""),
+        labeledInput("Type", "node-type", node.type, true),
+        labeledInput("Task Plan ID", "node-plan-id", node.planId || ""),
+        labeledTextarea("Message Template", "node-message", node.messageTemplate || ""),
+        labeledTextarea("Config JSON", "node-config", asJsonText(node.config || {})),
+        labeledTextarea("Input Ports JSON", "node-input-ports", asJsonText(node.inputPorts || [])),
+        labeledTextarea("Output Ports JSON", "node-output-ports", asJsonText(node.outputPorts || [])),
+        actions
+      );
 
       byId("node-apply").addEventListener("click", () => {
         this.updateSelectedNode((current) => {
@@ -445,16 +492,16 @@
     renderDiagnostics() {
       const panel = byId("graph-diagnostics");
       const { errors, warnings } = this.state.diagnostics;
-      panel.innerHTML = "<h3>Compile / Validate</h3>";
+      panel.replaceChildren(textElement("h3", "Compile / Validate"));
       if (!errors.length && !warnings.length) {
-        panel.innerHTML += "<p>No diagnostics.</p>";
+        panel.appendChild(textElement("p", "No diagnostics."));
         return;
       }
       const makeList = (title, items, cls) => {
         if (!items.length) return;
         const wrap = document.createElement("div");
         wrap.className = `graph-diag-group ${cls}`;
-        wrap.innerHTML = `<h4>${title}</h4>`;
+        wrap.appendChild(textElement("h4", title));
         const ul = document.createElement("ul");
         items.forEach((item) => {
           const li = document.createElement("li");

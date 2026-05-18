@@ -13,7 +13,7 @@
 
 | Domain | Branch | Status | Current Owner | Validation Gate | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `01-security-access-control` | `public-alpha-remediation/security-access-control` | in_progress | Codex | subplans 01-02 passed | Subplan 03 active next; full domain validation still pending. |
+| `01-security-access-control` | `public-alpha-remediation/security-access-control` | in_progress | Codex | subplans 01-02 passed | Subplan 03 implemented with focused checks; validation subagent/browser proof still pending. |
 | `02-workspace-tools-outputs` | `public-alpha-remediation/workspace-tools-outputs` | planned | unassigned | planned | Depends on id validation policy and may coordinate with schema domain. |
 | `03-execution-history-streams` | `public-alpha-remediation/execution-history-streams` | planned | unassigned | planned | Owns public execution contract and transcript preservation. |
 | `04-workflow-authoring-runtime-js` | `public-alpha-remediation/workflow-authoring-runtime-js` | planned | unassigned | planned | Must preserve HTMX-first CRUD and narrow JS graph behavior. |
@@ -36,7 +36,7 @@
 | bug-08 | `02-workspace-tools-outputs` | planned | `subplan-01-shell-tool-confinement.md` | pending | pending |
 | bug-09 | `02-workspace-tools-outputs` | planned | `subplan-02-file-tool-workspace-scope.md` | pending | pending |
 | bug-10 | `02-workspace-tools-outputs` | planned | `subplan-03-web-fetch-redirect-ssrf.md` | pending | pending |
-| bug-11 | `01-security-access-control` | planned | `subplan-03-workflow-xss-security.md` | pending | pending |
+| bug-11 | `01-security-access-control` | validating | `subplan-03-workflow-xss-security.md` | implementer: `mvn -Dtest=WorkflowGraphComposerSecurityTest,OrchestrationControllerTest#workflowJsProvidesGraphComposerSurface test`; `node --check src/main/resources/static/js/orchestration/workflows.js`; focused browser/Playwright validation pending validation subagent | pending |
 | bug-12 | `01-security-access-control` | planned | `subplan-04-agent-scoped-lifecycle.md` | pending | pending |
 | bug-13 | `02-workspace-tools-outputs` | planned | `subplan-04-project-workspace-materialization.md` | pending | pending |
 | bug-14 | `03-execution-history-streams` | planned | `subplan-03-plan-sse-contract.md` | pending | pending |
