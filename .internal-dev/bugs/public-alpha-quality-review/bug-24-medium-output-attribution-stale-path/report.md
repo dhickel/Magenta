@@ -32,8 +32,8 @@ Medium: output artifacts can lose attribution and disappear from filtered operat
 
 ## Status
 
-Fixed in working tree; parent validation pending.
+Implemented and validated in public alpha remediation domain 02 subplan 07.
 
 ## Next Action
 
-Parent review should confirm the working-tree implementation and validation evidence before marking the finding passed.
+Run the public alpha remediation domain 02 validation gate.

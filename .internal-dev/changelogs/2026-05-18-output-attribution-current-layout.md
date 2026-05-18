@@ -34,8 +34,8 @@ The fallback parser is path-shape based. Future workspace layout changes must up
 
 - Focused validation passed with `mvn -Dtest=PlanServiceTest,OutputArtifactServiceAttributionTest,WorkspaceRepositoryAttributionTest test`.
 - `git diff --check` passed.
-- Bounded Spring Boot startup passed.
+- Bounded Spring Boot startup reached a healthy app on ephemeral port `39639`.
 
 ## Follow-up Items
 
-- Parent review/validation should mark bug-24 passed before the domain is closed.
+- Domain 02 validation gate remains before the domain can close.
