@@ -406,23 +406,6 @@ create table if not exists workspace_links (
     foreign key(workspace_id) references workspaces(id)
 );
 
--- Managed workspace roots: one row per logical root path, each owned by
--- a single agent, job, or project. The root_relative_path is resolved
--- against dataRoot at runtime.
-create table if not exists workspace_roots (
-    id text primary key,
-    owner_type text not null,
-    owner_id text not null,
-    root_relative_path text not null,
-    display_name text not null,
-    metadata_json text,
-    created_at text not null,
-    updated_at text not null
-);
-
-create unique index if not exists idx_workspace_roots_owner
-    on workspace_roots(owner_type, owner_id);
-
 -- Exclusive writable leases on job/project workspaces. Only one active
 -- writable lease per workspace at a time. Extension must verify holder
 -- ownership.
@@ -437,7 +420,7 @@ create table if not exists workspace_leases (
     released_at text,
     created_at text not null,
     updated_at text not null,
-    foreign key(workspace_id) references workspace_roots(id)
+    foreign key(workspace_id) references workspaces(id)
 );
 
 -- At most one active WRITE lease per workspace. Enforced by the database,
