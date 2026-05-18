@@ -683,26 +683,11 @@ public class WorkspaceRepository {
             """);
     }
 
-    /**
-     * Migrate data from the deprecated {@code workspace_roots} table into
-     * {@code workspaces}, then drop the old table. Also fixes the
-     * {@code workspace_leases} foreign key to reference {@code workspaces(id)}
-     * instead of {@code workspace_roots(id)}.
-     *
-     * <p>Safe to call after {@code workspaces} has been created. Handles the
-     * case where {@code workspace_roots} does not exist.
-     */
     private void migrateWorkspaceRootsToWorkspaces() {
-        // Check if workspace_roots exists
-        Integer count = jdbcTemplate.queryForObject(
-            "select count(*) from sqlite_master where type = 'table' and name = 'workspace_roots'",
-            Integer.class
-        );
-        if (count == null || count == 0) {
-            return; // Already migrated or never existed
+        if (!tableExists("workspace_roots")) {
+            return;
         }
 
-        // Copy any roots data into workspaces (skip duplicates via ON CONFLICT)
         jdbcTemplate.update("""
             insert or ignore into workspaces (id, owner_type, owner_id, root_relative_path,
                 display_name, metadata_json, created_at, updated_at)
@@ -711,17 +696,67 @@ public class WorkspaceRepository {
             from workspace_roots
             """);
 
-        // Recreate workspace_leases with correct FK referencing workspaces.
-        // SQLite does not support ALTER TABLE to change FKs, so we must
-        // recreate. Existing lease data is ephemeral and can be safely lost
-        // during startup (leases are re-acquired by the runner on poll).
-        jdbcTemplate.execute("drop table if exists workspace_leases");
-
-        // Drop the legacy table
+        if (workspaceLeasesReferenceWorkspaceRoots()) {
+            recreateWorkspaceLeasesForWorkspaces();
+        }
         jdbcTemplate.execute("drop table if exists workspace_roots");
     }
 
+    private void recreateWorkspaceLeasesForWorkspaces() {
+        String releaseRequested = columnExists("workspace_leases", "release_requested")
+            ? "release_requested"
+            : "0";
+        jdbcTemplate.execute("drop table if exists workspace_leases_migrated");
+        jdbcTemplate.execute("""
+            create table workspace_leases_migrated (
+                id text primary key,
+                workspace_id text not null,
+                holder_type text not null,
+                holder_id text not null,
+                mode text not null,
+                expires_at text,
+                release_requested integer not null default 0,
+                released_at text,
+                created_at text not null,
+                updated_at text not null,
+                foreign key(workspace_id) references workspaces(id)
+            )
+            """);
+        jdbcTemplate.execute("""
+            insert into workspace_leases_migrated (
+                id, workspace_id, holder_type, holder_id, mode,
+                expires_at, release_requested, released_at, created_at, updated_at
+            )
+            select id, workspace_id, holder_type, holder_id, mode,
+                expires_at, %s, released_at, created_at, updated_at
+            from workspace_leases
+            """.formatted(releaseRequested));
+        jdbcTemplate.execute("drop table workspace_leases");
+        jdbcTemplate.execute("alter table workspace_leases_migrated rename to workspace_leases");
+    }
+
     private void addColumnIfMissing(String table, String column, String ddl) {
+        if (!table.matches("[a-zA-Z0-9_]+") || !column.matches("[a-zA-Z0-9_]+")) {
+            throw new IllegalArgumentException("Unsupported table/column identifier");
+        }
+        if (!columnExists(table, column)) {
+            jdbcTemplate.execute(ddl);
+        }
+    }
+
+    private boolean tableExists(String table) {
+        if (!table.matches("[a-zA-Z0-9_]+")) {
+            throw new IllegalArgumentException("Unsupported table identifier");
+        }
+        Integer count = jdbcTemplate.queryForObject(
+            "select count(*) from sqlite_master where type = 'table' and name = ?",
+            Integer.class,
+            table
+        );
+        return count != null && count > 0;
+    }
+
+    private boolean columnExists(String table, String column) {
         if (!table.matches("[a-zA-Z0-9_]+") || !column.matches("[a-zA-Z0-9_]+")) {
             throw new IllegalArgumentException("Unsupported table/column identifier");
         }
@@ -730,8 +765,16 @@ public class WorkspaceRepository {
             Integer.class,
             column
         );
-        if (count != null && count == 0) {
-            jdbcTemplate.execute(ddl);
+        return count != null && count > 0;
+    }
+
+    private boolean workspaceLeasesReferenceWorkspaceRoots() {
+        if (!tableExists("workspace_leases")) {
+            return false;
         }
+        return jdbcTemplate.query(
+            "select \"table\" from pragma_foreign_key_list('workspace_leases') where \"from\" = 'workspace_id'",
+            (rs, rowNum) -> rs.getString(1)
+        ).stream().anyMatch("workspace_roots"::equals);
     }
 }

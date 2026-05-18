@@ -97,6 +97,7 @@ create table if not exists plan_runs (
     plan_snapshot_json text not null,
     workspace_id text,
     output_directory text,
+    temp_workspace_path text,
     execution_evidence_json text not null,
     validation_feedback_json text not null,
     deliverable_evidence_json text not null,
@@ -295,10 +296,10 @@ create table if not exists assignment_conversation_links (
 create index if not exists idx_assignment_conversation_links_assignment
     on assignment_conversation_links(assignment_id, created_at);
 
--- Unified inbox messages for both users and agents.
--- to_type: "user" or "agent"
--- to_id: agent id when to_type=agent, null for user
--- message_type: "info", "question", "approval", "run_output"
+-- Workflow inbox messages owned by ai.orchestration.workflow.
+-- Used for workflow/user approvals, workflow agent approval nodes, notifications,
+-- and run-output delivery. Runtime direct-line agent/operator inbox messages
+-- are intentionally stored in agent_inbox_messages below.
 create table if not exists inbox_messages (
     id text primary key,
     to_type text not null,
@@ -316,6 +317,27 @@ create table if not exists inbox_messages (
 
 create index if not exists idx_inbox_messages_to
     on inbox_messages (to_type, to_id, created_at desc);
+
+-- Runtime direct-line agent inbox messages owned by ai.orchestration.runtime.
+-- Used by agent/operator inbox surfaces for direct-line messages, read state,
+-- handled state, and runtime inbox events. This table is intentionally separate
+-- from workflow-owned inbox_messages because the message models and lifecycle
+-- states differ.
+create table if not exists agent_inbox_messages (
+    id text primary key,
+    to_agent_id text not null,
+    from_id text,
+    message_type text not null,
+    body text,
+    metadata_json text,
+    read_flag integer not null,
+    handled_flag integer not null,
+    created_at text not null,
+    updated_at text not null
+);
+
+create index if not exists idx_agent_inbox_messages_to
+    on agent_inbox_messages (to_agent_id, created_at desc);
 
 create table if not exists agent_schedules (
     id text primary key,
@@ -406,23 +428,6 @@ create table if not exists workspace_links (
     foreign key(workspace_id) references workspaces(id)
 );
 
--- Managed workspace roots: one row per logical root path, each owned by
--- a single agent, job, or project. The root_relative_path is resolved
--- against dataRoot at runtime.
-create table if not exists workspace_roots (
-    id text primary key,
-    owner_type text not null,
-    owner_id text not null,
-    root_relative_path text not null,
-    display_name text not null,
-    metadata_json text,
-    created_at text not null,
-    updated_at text not null
-);
-
-create unique index if not exists idx_workspace_roots_owner
-    on workspace_roots(owner_type, owner_id);
-
 -- Exclusive writable leases on job/project workspaces. Only one active
 -- writable lease per workspace at a time. Extension must verify holder
 -- ownership.
@@ -437,7 +442,7 @@ create table if not exists workspace_leases (
     released_at text,
     created_at text not null,
     updated_at text not null,
-    foreign key(workspace_id) references workspace_roots(id)
+    foreign key(workspace_id) references workspaces(id)
 );
 
 -- At most one active WRITE lease per workspace. Enforced by the database,
@@ -456,6 +461,11 @@ create table if not exists run_output_artifacts (
     id text primary key,
     run_id text not null,
     plan_id text not null,
+    agent_id text,
+    job_id text,
+    project_id text,
+    workspace_id text,
+    run_type text,
     output_name text not null,
     artifact_type text not null,
     file_name text not null,
@@ -467,6 +477,18 @@ create table if not exists run_output_artifacts (
 
 create index if not exists idx_run_output_artifacts_run
     on run_output_artifacts(run_id);
+
+create index if not exists idx_run_output_artifacts_agent
+    on run_output_artifacts(agent_id);
+
+create index if not exists idx_run_output_artifacts_job
+    on run_output_artifacts(job_id);
+
+create index if not exists idx_run_output_artifacts_project
+    on run_output_artifacts(project_id);
+
+create index if not exists idx_run_output_artifacts_workspace
+    on run_output_artifacts(workspace_id);
 
 -- ════════════════════════════════════════════════════════════════
 --  Phase 04: Jobs, Projects, Agent Networks
@@ -488,20 +510,6 @@ create table if not exists job_definitions (
     settings_override_json text,
     created_at text not null,
     updated_at text not null
-);
-
--- Per-item run state within a job run, denormalized from job_runs.work_item_runs_json
--- for queryability.
-create table if not exists job_work_items (
-    id text primary key,
-    key text not null,
-    type text not null,
-    plan_id text,
-    workflow_id text,
-    input_bindings_json text not null,
-    item_order integer not null,
-    model_override text,
-    priority integer
 );
 
 -- A single execution run of a job definition.
