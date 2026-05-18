@@ -1,5 +1,22 @@
 # Public Alpha Remediation Progress
 
+## Final Validation
+
+Final validation passed on `public-alpha-remediation/integration` at `76b1ae9` after all eight domains were merged.
+
+Evidence:
+
+- Full `mvn test`: `/tmp/public-alpha-final-mvn-test.log` (547 tests, 0 failures)
+- Clean startup: `/tmp/public-alpha-final-startup/clean-startup.log`
+- Warm startup: `/tmp/public-alpha-final-startup/warm-startup.log`
+- Live app log: `/tmp/public-alpha-final-live/spring-live.log`
+- Checked-in Playwright harness: `/tmp/public-alpha-final-live/playwright-harness.log` (5/5 passed)
+- Browser/mobile/XSS/HTMX sweep: `/tmp/public-alpha-final-live/browser-sweep-summary.txt`
+- Red-team API probes: `/tmp/public-alpha-final-live/redteam-api-probes.log`
+- SSRF redirect and output symlink focused tests: `/tmp/public-alpha-final-redteam-focused-tests.log`
+
+Red-team coverage passed for auth/CSRF bypass, path traversal/id segment payloads, workflow XSS, cross-agent lifecycle mutation, direct chat execution disablement, plan/task SSE `submitted` semantics, high-priority job submission, invalid schedule/reaction templates, empty workflow rejection/no-assignment behavior, HTMX error visibility, SSRF redirect rejection, and output symlink escape rejection.
+
 ## Status Legend
 
 - `planned`: plan exists, implementation not started.
