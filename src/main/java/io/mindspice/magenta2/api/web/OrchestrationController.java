@@ -87,6 +87,8 @@ import io.mindspice.simplypages.components.forms.TextInput;
 import io.mindspice.simplypages.components.navigation.SideNav;
 import io.mindspice.simplypages.core.Component;
 import io.mindspice.simplypages.core.HtmlTag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.util.StringUtils;
@@ -103,6 +105,7 @@ import jakarta.servlet.http.HttpServletResponse;
 
 @Controller
 public class OrchestrationController {
+    private static final Logger log = LoggerFactory.getLogger(OrchestrationController.class);
     private static final String DASHBOARD_CSS = "/css/orchestration.css?v=9";
     private static final String ALPHA_SECURITY_JS = "/js/alpha-security.js?v=1";
     private static final String DASHBOARD_JS = "/js/orchestration/dashboard.js?v=5";
@@ -5214,11 +5217,16 @@ public class OrchestrationController {
 
     @DeleteMapping("/agents/_detail/{agentId}/queue/{assignmentId}")
     @ResponseBody
-    public String deleteAgentAssignment(@PathVariable String agentId, @PathVariable String assignmentId) {
+    public String deleteAgentAssignment(
+        @PathVariable String agentId,
+        @PathVariable String assignmentId,
+        HttpServletResponse response
+    ) {
         try {
             assignmentService.delete(agentId, assignmentId);
             return agentQueueTab(agentId);
         } catch (IllegalArgumentException | IllegalStateException exception) {
+            response.setStatus(assignmentLifecycleStatus(exception));
             return renderAssignmentList(agentId, "Queue", assignmentService.queueAssignments(agentId), exception.getMessage());
         }
     }
@@ -5966,11 +5974,16 @@ public class OrchestrationController {
 
     @PostMapping("/agents/_detail/{agentId}/exec")
     @ResponseBody
-    public String execInAgent(@PathVariable String agentId, @RequestParam Map<String, String> params) {
+    public String execInAgent(
+        @PathVariable String agentId,
+        @RequestParam Map<String, String> params,
+        HttpServletResponse response
+    ) {
         AgentProfile agent = agentProfileService.get(agentId);
         try {
             AgentShellToolService shellService = execShellService();
             if (shellService == null) {
+                response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
                 return new Div().withClass("orch-error").withInnerText("Shell execution service is unavailable.").render();
             }
             OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
@@ -5989,7 +6002,12 @@ public class OrchestrationController {
             } finally {
                 OrchestrationTaskContextHolder.clear();
             }
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            return new Div().withClass("orch-error").withInnerText("Error: " + exception.getMessage()).render();
         } catch (Exception exception) {
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            log.warn("Shell exec fragment failed for agent {}", agentId, exception);
             return new Div().withClass("orch-error").withInnerText("Error: " + exception.getMessage()).render();
         }
     }
@@ -6406,7 +6424,8 @@ public class OrchestrationController {
     @ResponseBody
     public String hardDeleteAgentLifecycle(
         @PathVariable String agentId,
-        @RequestParam("confirmationText") String confirmationText
+        @RequestParam("confirmationText") String confirmationText,
+        HttpServletResponse response
     ) {
         try {
             agentProfileService.hardDelete(agentId, confirmationText);
@@ -6416,9 +6435,14 @@ public class OrchestrationController {
                 .withAttribute("hx-get", "/agents/_list")
                 .withAttribute("hx-trigger", "load")
                 .withAttribute("hx-target", "#agent-list")
-                    .withAttribute("hx-swap", "innerHTML"))
+                .withAttribute("hx-swap", "innerHTML"))
                 .render();
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            return agentLifecyclePanel(agentId, "Error: " + exception.getMessage()).render();
         } catch (Exception exception) {
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            log.warn("Agent hard delete fragment failed for agent {}", agentId, exception);
             return agentLifecyclePanel(agentId, "Error: " + exception.getMessage()).render();
         }
     }
@@ -6784,7 +6808,10 @@ public class OrchestrationController {
 
     @PutMapping("/settings")
     @ResponseBody
-    public String saveSettings(@RequestParam Map<String, String> params) {
+    public String saveSettings(
+        @RequestParam Map<String, String> params,
+        HttpServletResponse response
+    ) {
         try {
             RuntimeSettings current = runtimeSettingsService.get();
             RuntimeSettings updated = runtimeSettingsService.save(new RuntimeSettings(
@@ -6805,7 +6832,12 @@ public class OrchestrationController {
                     String.valueOf(current.assignmentHistoryAutoPurgeDays() == null ? -1 : current.assignmentHistoryAutoPurgeDays())))
             ));
             return settingsForm(updated).render();
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            return new Div().withClass("orch-status orch-status-error").withInnerText("Error: " + e.getMessage()).render();
         } catch (Exception e) {
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            log.warn("Settings save fragment failed", e);
             return new Div().withClass("orch-status orch-status-error").withInnerText("Error: " + e.getMessage()).render();
         }
     }

@@ -144,6 +144,50 @@ class OrchestrationControllerTest {
         );
     }
 
+    private static OrchestrationController controllerWithAgentProfileService(AgentProfileService agentProfileService) {
+        return new OrchestrationController(
+            new StubChatService(),
+            new StubProjectService(),
+            new StubJobService(),
+            agentProfileService,
+            new StubInboxService(),
+            new StubRuntimeInboxService(),
+            new StubOutputArtifactService(),
+            new StubRuntimeSettingsService(),
+            workspaceService(),
+            new StubPlanService(),
+            new StubAssignmentService(),
+            new StubScheduleService(),
+            new StubEventReactionService(),
+            new StubWorkflowService(),
+            emptyProvider(),
+            true,
+            true
+        );
+    }
+
+    private static OrchestrationController controllerWithRuntimeSettingsService(RuntimeSettingsService runtimeSettingsService) {
+        return new OrchestrationController(
+            new StubChatService(),
+            new StubProjectService(),
+            new StubJobService(),
+            new StubAgentProfileService(),
+            new StubInboxService(),
+            new StubRuntimeInboxService(),
+            new StubOutputArtifactService(),
+            runtimeSettingsService,
+            workspaceService(),
+            new StubPlanService(),
+            new StubAssignmentService(),
+            new StubScheduleService(),
+            new StubEventReactionService(),
+            new StubWorkflowService(),
+            emptyProvider(),
+            true,
+            true
+        );
+    }
+
     private static WorkspaceService workspaceService() {
         try {
             Path dataRoot = Files.createTempDirectory("orch-controller-workspace");
@@ -1222,6 +1266,23 @@ class OrchestrationControllerTest {
     }
 
     @Test
+    void htmxSettingsSaveFailureReturnsErrorStatusAndFragment() {
+        RuntimeSettingsService failingSettingsService = new StubRuntimeSettingsService() {
+            @Override public RuntimeSettings save(RuntimeSettings settings) {
+                throw new IllegalArgumentException("defaultAgentId was not found");
+            }
+        };
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        String html = controllerWithRuntimeSettingsService(failingSettingsService)
+            .saveSettings(Map.of("defaultAgentId", "missing-agent"), response);
+
+        assertThat(response.getStatus()).isEqualTo(400);
+        assertThat(html).contains("orch-status-error");
+        assertThat(html).contains("defaultAgentId was not found");
+    }
+
+    @Test
     void allOrchestrationPagesUseDashboardShellWithSidebar() {
         OrchestrationController controller = controller();
 
@@ -1646,11 +1707,57 @@ class OrchestrationControllerTest {
     void htmxAssignmentDeleteRefreshesQueue() {
         StubAssignmentService stubAsgn = new StubAssignmentService();
         stubAsgn.setAssignments(List.of(assignment("asgn-delete", OrchestrationStatus.QUEUED, Map.of())));
+        MockHttpServletResponse response = new MockHttpServletResponse();
 
-        String html = controllerWithAssignmentService(stubAsgn).deleteAgentAssignment("agent-1", "asgn-delete");
+        String html = controllerWithAssignmentService(stubAsgn).deleteAgentAssignment("agent-1", "asgn-delete", response);
 
+        assertThat(response.getStatus()).isEqualTo(200);
         assertThat(html).contains("No assignments.");
         assertThat(html).doesNotContain("asgn-delete");
+    }
+
+    @Test
+    void htmxAssignmentDeleteFailureReturnsErrorStatusAndQueueFragment() {
+        StubAssignmentService stubAsgn = new StubAssignmentService();
+        stubAsgn.setAssignments(List.of(assignment("asgn-running-delete", OrchestrationStatus.RUNNING, Map.of())));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        String html = controllerWithAssignmentService(stubAsgn)
+            .deleteAgentAssignment("agent-1", "asgn-running-delete", response);
+
+        assertThat(response.getStatus()).isEqualTo(409);
+        assertThat(html).contains("orch-error");
+        assertThat(html).contains("cannot delete");
+        assertThat(html).contains("asgn-running-delete");
+    }
+
+    @Test
+    void htmxShellExecFailureReturnsErrorStatusAndFragment() {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        String html = controller().execInAgent("agent-1", Map.of("command", "pwd"), response);
+
+        assertThat(response.getStatus()).isEqualTo(500);
+        assertThat(html).contains("orch-error");
+        assertThat(html).contains("Shell execution service is unavailable.");
+    }
+
+    @Test
+    void htmxHardDeleteFailureReturnsErrorStatusAndLifecycleFragment() {
+        AgentProfileService failingAgentService = new StubAgentProfileService() {
+            @Override public void hardDelete(String id, String confirmationText) {
+                throw new IllegalArgumentException("confirmation text did not match");
+            }
+        };
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        String html = controllerWithAgentProfileService(failingAgentService)
+            .hardDeleteAgentLifecycle("agent-1", "wrong", response);
+
+        assertThat(response.getStatus()).isEqualTo(400);
+        assertThat(html).contains("agent-lifecycle-panel-agent-1");
+        assertThat(html).contains("orch-error");
+        assertThat(html).contains("confirmation text did not match");
     }
 
     @Test
