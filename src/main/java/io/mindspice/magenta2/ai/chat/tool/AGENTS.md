@@ -6,7 +6,7 @@ This package owns chat-scoped tool execution support.
 - Resolve configured Spring AI tools for chat agents.
 - Represent tool activity as Magenta-owned chat context messages.
 - Keep tool output retention and truncation policy local to chat tooling.
-- Own chat-approved file tools that operate inside the configured agent data root.
+- Own chat-approved file tools that operate inside the active assignment or agent workspace, with a configured data-root fallback only when no orchestration context is active.
 - Own chat-approved shell execution for explicitly allowed Linux commands inside the active assignment workspace or configured data root fallback.
 - Own chat-approved public web search and fetch tools backed by configured web search services.
 - Own lightweight keyed chat planning tools that mutate Magenta-owned plan state through services.

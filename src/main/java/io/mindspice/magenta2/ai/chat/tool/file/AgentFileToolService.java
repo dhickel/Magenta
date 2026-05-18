@@ -22,6 +22,9 @@ import java.util.regex.PatternSyntaxException;
 import java.util.stream.Stream;
 
 import io.mindspice.magenta2.ai.config.user.AiConfig;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -44,9 +47,13 @@ public class AgentFileToolService {
         Long.parseLong(System.getProperty("magenta.file.maxFullBufferBytes", Long.toString(10_485_760))); // 10 MB
 
     private final Path root;
+    private final WorkspaceDirectoryService workspaceDirectoryService;
 
     @Autowired
-    public AgentFileToolService(AiConfig aiConfig) throws IOException {
+    public AgentFileToolService(
+        AiConfig aiConfig,
+        @Autowired(required = false) WorkspaceDirectoryService workspaceDirectoryService
+    ) throws IOException {
         if (aiConfig == null || aiConfig.dataRoot() == null) {
             throw new IllegalArgumentException("AI config dataRoot is required for file tools");
         }
@@ -54,10 +61,20 @@ public class AgentFileToolService {
             throw new IllegalArgumentException("AI config dataRoot must be an existing directory: " + aiConfig.dataRoot());
         }
         this.root = aiConfig.dataRoot().toRealPath();
+        this.workspaceDirectoryService = workspaceDirectoryService;
+    }
+
+    public AgentFileToolService(AiConfig aiConfig) throws IOException {
+        this(aiConfig, null);
     }
 
     AgentFileToolService(Path root) throws IOException {
+        this(root, null);
+    }
+
+    AgentFileToolService(Path root, WorkspaceDirectoryService workspaceDirectoryService) throws IOException {
         this.root = root.toRealPath();
+        this.workspaceDirectoryService = workspaceDirectoryService;
     }
 
     public FileListResult list(String path, boolean recursive, Integer maxEntries) throws IOException {
@@ -65,45 +82,46 @@ public class AgentFileToolService {
     }
 
     public FileListResult list(String path, boolean recursive, Integer maxEntries, String glob) throws IOException {
-        Path target = resolveExisting(path);
-        if (Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)) {
+        ResolvedFilePath target = resolveExisting(path);
+        if (Files.isRegularFile(target.path(), LinkOption.NOFOLLOW_LINKS)) {
             return new FileListResult(
                 displayPath(target),
-                matchesGlob(target, glob) ? List.of(fileEntry(target)) : List.of(),
+                matchesGlob(target.path(), target.scope(), glob) ? List.of(fileEntry(target.path(), target.scope())) : List.of(),
                 false
             );
         }
         int limit = clamp(maxEntries, DEFAULT_MAX_ENTRIES, 1, MAX_ENTRIES);
         List<FileEntry> entries = new ArrayList<>();
-        try (Stream<Path> stream = recursive ? Files.walk(target) : Files.list(target)) {
+        try (Stream<Path> stream = recursive ? Files.walk(target.path()) : Files.list(target.path())) {
             List<Path> paths = stream
-                .filter(item -> !item.equals(target))
-                .filter(item -> matchesGlob(item, glob))
-                .sorted(Comparator.comparing(item -> relativePath(item).toString()))
+                .filter(item -> !item.equals(target.path()))
+                .filter(item -> matchesGlob(item, target.scope(), glob))
+                .sorted(Comparator.comparing(item -> displayPath(item, target.scope())))
                 .limit(limit + 1L)
                 .toList();
             for (Path item : paths.stream().limit(limit).toList()) {
-                entries.add(fileEntry(item));
+                entries.add(fileEntry(item, target.scope()));
             }
             return new FileListResult(displayPath(target), entries, paths.size() > limit);
         }
     }
 
-    private boolean matchesGlob(Path path, String glob) {
+    private boolean matchesGlob(Path path, FileScope scope, String glob) {
         if (!StringUtils.hasText(glob)) {
             return true;
         }
         PathMatcher matcher = root.getFileSystem().getPathMatcher("glob:" + glob.trim());
-        return matcher.matches(relativePath(path));
+        Path scopedRelative = relativePath(path, scope);
+        return matcher.matches(scopedRelative) || matcher.matches(Path.of(displayPath(path, scope)));
     }
 
     public FileReadResult read(String path, Integer startLine, Integer maxLines) throws IOException {
-        Path target = resolveTextFile(path);
+        ResolvedFilePath target = resolveTextFile(path);
         int limit = clamp(maxLines, DEFAULT_READ_LINES, 1, MAX_READ_LINES);
         int firstLine = Math.max(1, startLine == null ? 1 : startLine);
         List<String> formattedLines = new ArrayList<>();
         int totalLines = 0;
-        try (BufferedReader reader = Files.newBufferedReader(target, StandardCharsets.UTF_8)) {
+        try (BufferedReader reader = Files.newBufferedReader(target.path(), StandardCharsets.UTF_8)) {
             String line;
             while ((line = reader.readLine()) != null) {
                 totalLines++;
@@ -130,7 +148,7 @@ public class AgentFileToolService {
         if (!StringUtils.hasText(query)) {
             throw new IllegalArgumentException("query is required");
         }
-        Path target = resolveExisting(path);
+        ResolvedFilePath target = resolveExisting(path);
         int context = clamp(contextLines, 0, 0, MAX_CONTEXT_LINES);
         int limit = clamp(maxMatches, DEFAULT_MAX_MATCHES, 1, MAX_MATCHES);
         Pattern pattern = compilePattern(query, regex, caseSensitive);
@@ -143,7 +161,7 @@ public class AgentFileToolService {
                 break;
             }
             try {
-                truncated = searchFile(file, pattern, context, limit, matches);
+                truncated = searchFile(file, target.scope(), pattern, context, limit, matches);
             } catch (IOException | RuntimeException ignored) {
                 continue;
             }
@@ -156,6 +174,7 @@ public class AgentFileToolService {
 
     private boolean searchFile(
         Path file,
+        FileScope scope,
         Pattern pattern,
         int context,
         int limit,
@@ -175,7 +194,7 @@ public class AgentFileToolService {
                 }
                 if (pattern.matcher(line).find()) {
                     pending.add(new PendingSearchMatch(
-                        displayPath(file),
+                        displayPath(file, scope),
                         lineNumber,
                         hashLine(line),
                         displayLine(line),
@@ -221,33 +240,33 @@ public class AgentFileToolService {
     }
 
     public FileWriteResult write(String path, String content, boolean overwrite) throws IOException {
-        Path target = resolveForWrite(path);
-        boolean existed = Files.exists(target, LinkOption.NOFOLLOW_LINKS);
+        ResolvedFilePath target = resolveForWrite(path);
+        boolean existed = Files.exists(target.path(), LinkOption.NOFOLLOW_LINKS);
         if (existed && !overwrite) {
             throw new IllegalArgumentException("file already exists: " + displayPath(target));
         }
-        if (existed && !Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)) {
+        if (existed && !Files.isRegularFile(target.path(), LinkOption.NOFOLLOW_LINKS)) {
             throw new IllegalArgumentException("target is not a regular file: " + displayPath(target));
         }
-        Files.createDirectories(target.getParent());
+        Files.createDirectories(target.path().getParent());
         String text = content == null ? "" : content;
-        Files.writeString(target, text, StandardCharsets.UTF_8);
+        Files.writeString(target.path(), text, StandardCharsets.UTF_8);
         return new FileWriteResult(displayPath(target), text.getBytes(StandardCharsets.UTF_8).length, !existed);
     }
 
     public FileAppendResult append(String path, String content, boolean create) throws IOException {
-        Path target = create ? resolveForWrite(path) : resolveTextFile(path);
-        boolean existed = Files.exists(target, LinkOption.NOFOLLOW_LINKS);
-        if (existed && !Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)) {
+        ResolvedFilePath target = create ? resolveForWrite(path) : resolveTextFile(path);
+        boolean existed = Files.exists(target.path(), LinkOption.NOFOLLOW_LINKS);
+        if (existed && !Files.isRegularFile(target.path(), LinkOption.NOFOLLOW_LINKS)) {
             throw new IllegalArgumentException("target is not a regular file: " + displayPath(target));
         }
         if (!existed && !create) {
             throw new IllegalArgumentException("file does not exist: " + displayPath(target));
         }
-        Files.createDirectories(target.getParent());
+        Files.createDirectories(target.path().getParent());
         String text = content == null ? "" : content;
         Files.writeString(
-            target,
+            target.path(),
             text,
             StandardCharsets.UTF_8,
             StandardOpenOption.CREATE,
@@ -257,8 +276,8 @@ public class AgentFileToolService {
     }
 
     public FileReplaceResult replace(String path, String startAnchor, String endAnchor, String replacement) throws IOException {
-        Path target = resolveTextFile(path);
-        long fileSize = Files.size(target);
+        ResolvedFilePath target = resolveTextFile(path);
+        long fileSize = Files.size(target.path());
         if (fileSize > MAX_FULL_BUFFER_BYTES) {
             throw new IllegalArgumentException(
                 "File is too large for file_replace (" + fileSize + " bytes exceeds "
@@ -272,7 +291,7 @@ public class AgentFileToolService {
             throw new IllegalArgumentException("endAnchor must not be before startAnchor");
         }
 
-        String original = Files.readString(target, StandardCharsets.UTF_8);
+        String original = Files.readString(target.path(), StandardCharsets.UTF_8);
         List<String> lines = splitLines(original);
         validateAnchor(start, lines, "startAnchor");
         validateAnchor(end, lines, "endAnchor");
@@ -289,7 +308,7 @@ public class AgentFileToolService {
         if (finalNewline && !updatedText.isEmpty()) {
             updatedText += lineSeparator;
         }
-        Files.writeString(target, updatedText, StandardCharsets.UTF_8);
+        Files.writeString(target.path(), updatedText, StandardCharsets.UTF_8);
         return new FileReplaceResult(
             displayPath(target),
             start.lineNumber(),
@@ -299,55 +318,193 @@ public class AgentFileToolService {
         );
     }
 
-    private Path resolveExisting(String path) throws IOException {
-        Path resolved = resolveNormalized(path);
-        if (!Files.exists(resolved, LinkOption.NOFOLLOW_LINKS)) {
+    private ResolvedFilePath resolveExisting(String path) throws IOException {
+        ResolvedFilePath resolved = resolveNormalized(path);
+        if (!Files.exists(resolved.path(), LinkOption.NOFOLLOW_LINKS)) {
             throw new IllegalArgumentException("path does not exist: " + displayPath(resolved));
         }
-        Path real = resolved.toRealPath();
-        if (!real.startsWith(root)) {
-            throw new IllegalArgumentException("path escapes data root");
+        Path real = resolved.path().toRealPath();
+        if (!real.startsWith(resolved.scope().root())) {
+            throw new IllegalArgumentException("path escapes " + resolved.scope().label());
         }
-        return real;
+        return new ResolvedFilePath(real, resolved.scope());
     }
 
-    private Path resolveTextFile(String path) throws IOException {
-        Path resolved = resolveExisting(path);
-        if (!Files.isRegularFile(resolved, LinkOption.NOFOLLOW_LINKS)) {
+    private ResolvedFilePath resolveTextFile(String path) throws IOException {
+        ResolvedFilePath resolved = resolveExisting(path);
+        if (!Files.isRegularFile(resolved.path(), LinkOption.NOFOLLOW_LINKS)) {
             throw new IllegalArgumentException("path is not a regular file: " + displayPath(resolved));
         }
         return resolved;
     }
 
-    private Path resolveForWrite(String path) throws IOException {
-        Path resolved = resolveNormalized(path);
-        if (Files.exists(resolved, LinkOption.NOFOLLOW_LINKS)) {
-            Path real = resolved.toRealPath();
-            if (!real.startsWith(root)) {
-                throw new IllegalArgumentException("path escapes data root");
+    private ResolvedFilePath resolveForWrite(String path) throws IOException {
+        ResolvedFilePath resolved = resolveNormalized(path);
+        if (Files.exists(resolved.path(), LinkOption.NOFOLLOW_LINKS)) {
+            Path real = resolved.path().toRealPath();
+            if (!real.startsWith(resolved.scope().root())) {
+                throw new IllegalArgumentException("path escapes " + resolved.scope().label());
             }
-            return real;
+            return new ResolvedFilePath(real, resolved.scope());
         }
-        Path parent = resolved.getParent();
+        Path parent = resolved.path().getParent();
         if (parent == null) {
             throw new IllegalArgumentException("path must have a parent directory");
         }
         Path existingParent = nearestExistingParent(parent);
         Path parentReal = existingParent.toRealPath();
-        if (!parentReal.startsWith(root)) {
-            throw new IllegalArgumentException("path escapes data root");
+        if (!parentReal.startsWith(resolved.scope().root())) {
+            throw new IllegalArgumentException("path escapes " + resolved.scope().label());
         }
         return resolved;
     }
 
-    private Path resolveNormalized(String path) {
+    private ResolvedFilePath resolveNormalized(String path) throws IOException {
+        FileScope scope = resolveScope(path);
+        Path resolved = scope.relativePath().isEmpty()
+            ? scope.root()
+            : scope.root().resolve(scope.relativePath()).normalize();
+        if (!resolved.startsWith(scope.root())) {
+            throw new IllegalArgumentException("path escapes " + scope.label());
+        }
+        return new ResolvedFilePath(resolved, scope);
+    }
+
+    private FileScope resolveScope(String path) throws IOException {
         String requested = StringUtils.hasText(path) ? path : ".";
+        OrchestrationTaskContext ctx = OrchestrationTaskContextHolder.current();
+        if (ctx != null && ctx.hasContext()) {
+            return resolveContextScope(ctx, requested);
+        }
         Path input = Path.of(requested);
         Path resolved = input.isAbsolute() ? input.normalize() : root.resolve(input).normalize();
         if (!resolved.startsWith(root)) {
             throw new IllegalArgumentException("path escapes data root");
         }
-        return resolved;
+        Path relative = root.relativize(resolved);
+        return new FileScope(root, "", "data root", relative.toString());
+    }
+
+    private FileScope resolveContextScope(OrchestrationTaskContext ctx, String requested) throws IOException {
+        String normalized = normalizeContextRequest(requested);
+        if (StringUtils.hasText(ctx.hostWorkspacePath())) {
+            return resolveAssignmentScope(ctx, normalized, requested);
+        }
+        if (ctx.hasAgentContext()) {
+            return resolveAgentScope(ctx, normalized, requested);
+        }
+        throw new IllegalStateException("File tools require an active assignment workspace");
+    }
+
+    private FileScope resolveAssignmentScope(OrchestrationTaskContext ctx, String normalized, String requested)
+        throws IOException {
+        Path workspaceRoot = activeScopeRoot(ctx.hostWorkspacePath(), "active assignment workspace");
+        if (isRootAlias(normalized, "workspace")) {
+            return new FileScope(workspaceRoot, "workspace", "active assignment workspace", "");
+        }
+        if (normalized.startsWith("workspace/")) {
+            return workspaceScope(workspaceRoot, normalized.substring("workspace/".length()), requested,
+                "active assignment workspace");
+        }
+        if ("outputs".equals(normalized) || normalized.startsWith("outputs/")) {
+            Path outputRoot = activeScopeRoot(ctx.hostOutputPath(), "active assignment output directory");
+            String remainder = "outputs".equals(normalized) ? "" : normalized.substring("outputs/".length());
+            rejectUnsafeRelativePath(remainder, "path escapes active assignment output directory: " + requested);
+            return new FileScope(outputRoot, "outputs", "active assignment output directory", remainder);
+        }
+        if (normalized.startsWith("projects/")) {
+            return resolveProjectScope(ctx, normalized, requested);
+        }
+        return workspaceScope(workspaceRoot, normalized, requested, "active assignment workspace");
+    }
+
+    private FileScope resolveAgentScope(OrchestrationTaskContext ctx, String normalized, String requested)
+        throws IOException {
+        if (workspaceDirectoryService == null) {
+            throw new IllegalStateException("Workspace directory service is not available");
+        }
+        Path workspaceRoot = workspaceDirectoryService.agentWorkspace(ctx.agentId()).toRealPath();
+        if (isRootAlias(normalized, "workspace")) {
+            return new FileScope(workspaceRoot, "workspace", "agent workspace", "");
+        }
+        if (normalized.startsWith("workspace/")) {
+            return workspaceScope(workspaceRoot, normalized.substring("workspace/".length()), requested, "agent workspace");
+        }
+        if ("outputs".equals(normalized) || normalized.startsWith("outputs/")) {
+            Path outputRoot = workspaceDirectoryService.agentWorkspaceOutputs(ctx.agentId()).toRealPath();
+            String remainder = "outputs".equals(normalized) ? "" : normalized.substring("outputs/".length());
+            rejectUnsafeRelativePath(remainder, "path escapes agent output directory: " + requested);
+            return new FileScope(outputRoot, "outputs", "agent output directory", remainder);
+        }
+        if ("scratch".equals(normalized) || normalized.startsWith("scratch/")) {
+            Path scratchRoot = workspaceDirectoryService.agentScratch(ctx.agentId()).toRealPath();
+            String remainder = "scratch".equals(normalized) ? "" : normalized.substring("scratch/".length());
+            rejectUnsafeRelativePath(remainder, "path escapes agent scratch directory: " + requested);
+            return new FileScope(scratchRoot, "scratch", "agent scratch directory", remainder);
+        }
+        if (normalized.startsWith("projects/")) {
+            return resolveProjectScope(ctx, normalized, requested);
+        }
+        return workspaceScope(workspaceRoot, normalized, requested, "agent workspace");
+    }
+
+    private FileScope workspaceScope(Path workspaceRoot, String relativePath, String requested, String label) {
+        rejectUnsafeRelativePath(relativePath, "path escapes " + label + ": " + requested);
+        return new FileScope(workspaceRoot, "workspace", label, relativePath);
+    }
+
+    private FileScope resolveProjectScope(OrchestrationTaskContext ctx, String normalized, String requested)
+        throws IOException {
+        if (workspaceDirectoryService == null || !StringUtils.hasText(ctx.projectId())) {
+            throw new IllegalArgumentException("Project workspace is not available for this assignment");
+        }
+        String projectPrefix = "projects/" + ctx.projectId();
+        if (!normalized.equals(projectPrefix) && !normalized.startsWith(projectPrefix + "/")) {
+            throw new IllegalArgumentException("Project path is not linked to this assignment: " + requested);
+        }
+        Path projectRoot = workspaceDirectoryService.projectWorkspace(ctx.projectId()).toRealPath();
+        String remainder = normalized.equals(projectPrefix) ? "" : normalized.substring((projectPrefix + "/").length());
+        rejectUnsafeRelativePath(remainder, "path escapes current project workspace: " + requested);
+        return new FileScope(projectRoot, projectPrefix, "current project workspace", remainder);
+    }
+
+    private String normalizeContextRequest(String requested) {
+        String normalized = requested.trim().replace('\\', '/');
+        if (normalized.startsWith("/")) {
+            throw new IllegalArgumentException("Absolute file paths are not allowed in active task context: " + requested);
+        }
+        if (normalized.contains("//")) {
+            throw new IllegalArgumentException("path escapes active workspace: " + requested);
+        }
+        return normalized;
+    }
+
+    private boolean isRootAlias(String normalized, String alias) {
+        return normalized.isEmpty() || ".".equals(normalized) || alias.equals(normalized);
+    }
+
+    private void rejectUnsafeRelativePath(String relativePath, String message) {
+        String normalized = relativePath == null ? "" : relativePath.replace('\\', '/');
+        if (normalized.equals("..")
+            || normalized.startsWith("../")
+            || normalized.endsWith("/..")
+            || normalized.contains("/../")) {
+            throw new IllegalArgumentException(message);
+        }
+    }
+
+    private Path activeScopeRoot(String path, String label) throws IOException {
+        if (!StringUtils.hasText(path)) {
+            throw new IllegalStateException("File tools require an " + label);
+        }
+        Path real = Path.of(path).toRealPath();
+        if (!real.startsWith(root)) {
+            throw new IllegalArgumentException(label + " escapes data root");
+        }
+        if (!Files.isDirectory(real, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IllegalArgumentException(label + " is not a directory");
+        }
+        return real;
     }
 
     private Path nearestExistingParent(Path path) {
@@ -361,17 +518,17 @@ public class AgentFileToolService {
         return current;
     }
 
-    private List<Path> searchableFiles(Path target) throws IOException {
-        if (Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)) {
-            return List.of(target);
+    private List<Path> searchableFiles(ResolvedFilePath target) throws IOException {
+        if (Files.isRegularFile(target.path(), LinkOption.NOFOLLOW_LINKS)) {
+            return List.of(target.path());
         }
-        if (!Files.isDirectory(target, LinkOption.NOFOLLOW_LINKS)) {
+        if (!Files.isDirectory(target.path(), LinkOption.NOFOLLOW_LINKS)) {
             return List.of();
         }
-        try (Stream<Path> stream = Files.walk(target)) {
+        try (Stream<Path> stream = Files.walk(target.path())) {
             return stream
                 .filter(path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS))
-                .sorted(Comparator.comparing(path -> relativePath(path).toString()))
+                .sorted(Comparator.comparing(path -> displayPath(path, target.scope())))
                 .toList();
         }
     }
@@ -462,24 +619,38 @@ public class AgentFileToolService {
         return Math.min(max, Math.max(min, actual));
     }
 
-    private Path relativePath(Path path) {
-        return root.relativize(path.toAbsolutePath().normalize());
+    private Path relativePath(Path path, FileScope scope) {
+        return scope.root().relativize(path.toAbsolutePath().normalize());
     }
 
-    private String displayPath(Path path) {
-        Path relative = relativePath(path);
-        return relative.toString().isEmpty() ? "." : relative.toString();
+    private String displayPath(ResolvedFilePath path) {
+        return displayPath(path.path(), path.scope());
     }
 
-    private FileEntry fileEntry(Path path) throws IOException {
+    private String displayPath(Path path, FileScope scope) {
+        Path relative = relativePath(path, scope);
+        String rel = relative.toString();
+        if (!StringUtils.hasText(scope.displayPrefix())) {
+            return rel.isEmpty() ? "." : rel;
+        }
+        return rel.isEmpty() ? scope.displayPrefix() : scope.displayPrefix() + "/" + rel;
+    }
+
+    private FileEntry fileEntry(Path path, FileScope scope) throws IOException {
         return new FileEntry(
-            displayPath(path),
+            displayPath(path, scope),
             Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) ? "directory" : "file",
             Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) ? Files.size(path) : null
         );
     }
 
     private record LineAnchor(int lineNumber, String hash) {
+    }
+
+    private record FileScope(Path root, String displayPrefix, String label, String relativePath) {
+    }
+
+    private record ResolvedFilePath(Path path, FileScope scope) {
     }
 
     private static final class PendingSearchMatch {

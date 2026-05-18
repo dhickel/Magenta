@@ -7,6 +7,11 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.IntStream;
 
+import io.mindspice.magenta2.ai.config.user.AiConfig;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -17,6 +22,11 @@ class AgentFileToolServiceTest {
 
     @TempDir
     Path tempDir;
+
+    @AfterEach
+    void clearTaskContext() {
+        OrchestrationTaskContextHolder.clear();
+    }
 
     @Test
     void rejectsTraversalOutsideRoot() throws IOException {
@@ -276,8 +286,143 @@ class AgentFileToolServiceTest {
             .hasMessageContaining("path does not exist");
     }
 
+    @Test
+    void activeAssignmentContextUsesRunWorkspaceAndNotDataRootFallback() throws Exception {
+        Path runWorkspace = Files.createDirectories(tempDir.resolve("runtime/task-runs/run-1"));
+        Path outputDir = Files.createDirectories(tempDir.resolve("agents/agent-1/workspace/outputs/run-1"));
+        Files.writeString(runWorkspace.resolve("notes.txt"), "workspace note\n");
+        Path unrelatedRuntime = Files.createDirectories(tempDir.resolve("runtime/task-runs/run-2"));
+        Files.writeString(unrelatedRuntime.resolve("secret.txt"), "other run\n");
+
+        AgentFileToolService service = serviceWithWorkspaceDirectory();
+        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
+            "agent-1", "TestAgent", null, null, null, "TASK_RUN",
+            runWorkspace.toString(), outputDir.toString()));
+
+        AgentFileToolService.FileReadResult result = service.read("notes.txt", 1, 10);
+
+        assertThat(result.path()).isEqualTo("workspace/notes.txt");
+        assertThat(result.lines().getFirst()).endsWith("|workspace note");
+        assertThatThrownBy(() -> service.read("runtime/task-runs/run-2/secret.txt", 1, 10))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("workspace/runtime/task-runs/run-2/secret.txt");
+    }
+
+    @Test
+    void activeAssignmentContextAllowsOutputAliasButDeniesOtherAgentWorkspace() throws Exception {
+        Path runWorkspace = Files.createDirectories(tempDir.resolve("runtime/task-runs/run-1"));
+        Path outputDir = Files.createDirectories(tempDir.resolve("agents/agent-1/workspace/outputs/run-1"));
+        Path otherAgent = Files.createDirectories(tempDir.resolve("agents/agent-2/workspace"));
+        Files.writeString(otherAgent.resolve("secret.txt"), "other agent\n");
+
+        AgentFileToolService service = serviceWithWorkspaceDirectory();
+        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
+            "agent-1", "TestAgent", null, null, null, "TASK_RUN",
+            runWorkspace.toString(), outputDir.toString()));
+
+        AgentFileToolService.FileWriteResult written = service.write("outputs/result.txt", "done\n", false);
+
+        assertThat(written.path()).isEqualTo("outputs/result.txt");
+        assertThat(Files.readString(outputDir.resolve("result.txt"))).isEqualTo("done\n");
+        assertThatThrownBy(() -> service.read("agents/agent-2/workspace/secret.txt", 1, 10))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("workspace/agents/agent-2/workspace/secret.txt");
+    }
+
+    @Test
+    void noContextKeepsLegacyDataRootFallback() throws Exception {
+        Path otherAgent = Files.createDirectories(tempDir.resolve("agents/agent-2/workspace"));
+        Files.writeString(otherAgent.resolve("legacy.txt"), "legacy fallback\n");
+
+        AgentFileToolService.FileReadResult result = serviceWithWorkspaceDirectory()
+            .read("agents/agent-2/workspace/legacy.txt", 1, 10);
+
+        assertThat(result.path()).isEqualTo("agents/agent-2/workspace/legacy.txt");
+        assertThat(result.lines().getFirst()).endsWith("|legacy fallback");
+    }
+
+    @Test
+    void activeAssignmentContextAllowsOnlyCurrentProjectScope() throws Exception {
+        Path runWorkspace = Files.createDirectories(tempDir.resolve("runtime/task-runs/run-1"));
+        Path outputDir = Files.createDirectories(tempDir.resolve("agents/agent-1/workspace/outputs/run-1"));
+        WorkspaceDirectoryService dirService = workspaceDirectoryService();
+        Path projectOne = dirService.projectWorkspace("project-1");
+        Path projectTwo = dirService.projectWorkspace("project-2");
+        Files.writeString(projectOne.resolve("shared.txt"), "current project\n");
+        Files.writeString(projectTwo.resolve("secret.txt"), "other project\n");
+
+        AgentFileToolService service = new AgentFileToolService(tempDir, dirService);
+        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
+            "agent-1", "TestAgent", null, "project-1", null, "TASK_RUN",
+            runWorkspace.toString(), outputDir.toString()));
+
+        AgentFileToolService.FileReadResult result = service.read("projects/project-1/shared.txt", 1, 10);
+
+        assertThat(result.path()).isEqualTo("projects/project-1/shared.txt");
+        assertThat(result.lines().getFirst()).endsWith("|current project");
+        assertThatThrownBy(() -> service.read("projects/project-2/secret.txt", 1, 10))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("not linked");
+    }
+
+    @Test
+    void activeAgentContextUsesAgentWorkspaceWhenNoRunHostPathExists() throws Exception {
+        WorkspaceDirectoryService dirService = workspaceDirectoryService();
+        Path agentWorkspace = dirService.agentWorkspace("agent-1");
+        Files.writeString(agentWorkspace.resolve("profile.txt"), "agent workspace\n");
+
+        AgentFileToolService service = new AgentFileToolService(tempDir, dirService);
+        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
+            "agent-1", "TestAgent", null, null, null, "TASK_RUN", null, null));
+
+        AgentFileToolService.FileReadResult result = service.read("workspace/profile.txt", 1, 10);
+
+        assertThat(result.path()).isEqualTo("workspace/profile.txt");
+        assertThat(result.lines().getFirst()).endsWith("|agent workspace");
+    }
+
+    @Test
+    void activeContextRejectsTraversalAbsolutePathsAndSymlinkEscapes() throws Exception {
+        Path runWorkspace = Files.createDirectories(tempDir.resolve("runtime/task-runs/run-1"));
+        Path outputDir = Files.createDirectories(tempDir.resolve("agents/agent-1/workspace/outputs/run-1"));
+        Path outsideScope = Files.createDirectories(tempDir.resolve("agents/agent-2/workspace"));
+        Files.writeString(outsideScope.resolve("secret.txt"), "do not read\n");
+        try {
+            Files.createSymbolicLink(runWorkspace.resolve("escape"), outsideScope);
+        } catch (UnsupportedOperationException | FileSystemException exception) {
+            return;
+        }
+
+        AgentFileToolService service = serviceWithWorkspaceDirectory();
+        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
+            "agent-1", "TestAgent", null, null, null, "TASK_RUN",
+            runWorkspace.toString(), outputDir.toString()));
+
+        assertThatThrownBy(() -> service.read("../run-2/secret.txt", 1, 10))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("escapes active assignment workspace");
+        assertThatThrownBy(() -> service.read(runWorkspace.resolve("missing.txt").toString(), 1, 10))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Absolute file paths are not allowed");
+        assertThatThrownBy(() -> service.read("escape/secret.txt", 1, 10))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("escapes active assignment workspace");
+        assertThatThrownBy(() -> service.write("escape/new.txt", "bad", false))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("escapes active assignment workspace");
+    }
+
     private AgentFileToolService service() throws IOException {
         return new AgentFileToolService(tempDir);
+    }
+
+    private AgentFileToolService serviceWithWorkspaceDirectory() throws IOException {
+        return new AgentFileToolService(tempDir, workspaceDirectoryService());
+    }
+
+    private WorkspaceDirectoryService workspaceDirectoryService() throws IOException {
+        return new WorkspaceDirectoryService(
+            new AiConfig(null, null, null, null, null, null, tempDir, null, null, null));
     }
 
     private String generatedLines(int count) {
