@@ -1,0 +1,2 @@
+- Have the agent be able to call a cron like tool for waiting
+    - Can update the main agent thread of state of long running sub agents.
