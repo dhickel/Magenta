@@ -103,7 +103,7 @@ import jakarta.servlet.http.HttpServletResponse;
 
 @Controller
 public class OrchestrationController {
-    private static final String DASHBOARD_CSS = "/css/orchestration.css?v=8";
+    private static final String DASHBOARD_CSS = "/css/orchestration.css?v=9";
     private static final String ALPHA_SECURITY_JS = "/js/alpha-security.js?v=1";
     private static final String DASHBOARD_JS = "/js/orchestration/dashboard.js?v=5";
     private static final String AGENTS_JS = "/js/orchestration/agents.js?v=1";

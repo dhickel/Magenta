@@ -187,7 +187,7 @@ class OrchestrationControllerTest {
     void dashboardRendersFullShellWithSidebar() {
         String html = controller().dashboard(null, null);
 
-        assertThat(html).contains("/css/orchestration.css?v=8");
+        assertThat(html).contains("/css/orchestration.css?v=9");
         assertThat(html).contains("Magenta Operations");
         assertThat(html).contains("Dashboard");
         assertThat(html).contains("/dashboard");
@@ -754,7 +754,7 @@ class OrchestrationControllerTest {
         assertThat(html).contains("id=\"agent-chat-form\"");
         assertThat(html).contains("id=\"agent-chat-input\"");
         assertThat(html).contains("Chat with Agent");
-        assertThat(html).contains("/css/orchestration.css?v=8");
+        assertThat(html).contains("/css/orchestration.css?v=9");
         assertThat(html).contains("/js/orchestration/agent-chat.js?v=2");
         assertThat(html).contains("agent-event-log");
         assertThat(html).contains("Event Log");
@@ -1216,7 +1216,7 @@ class OrchestrationControllerTest {
         for (String html : pages) {
             assertThat(html).contains("main-sidebar");
             assertThat(html).contains("sidenav");
-            assertThat(html).contains("/css/orchestration.css?v=8");
+            assertThat(html).contains("/css/orchestration.css?v=9");
             assertThat(html).doesNotContain("/js/chat-client.js");
         }
     }
@@ -1247,6 +1247,8 @@ class OrchestrationControllerTest {
             assertThat(css).contains(".main-container.has-sidebar");
             assertThat(css).contains("grid-template-areas: \"content\"");
             assertThat(css).contains("grid-template-columns: minmax(0, 1fr)");
+            assertThat(css).contains(".main-container.has-sidebar > .main-sidebar");
+            assertThat(css).contains("grid-area: auto");
             assertThat(css).contains(".main-container.has-sidebar > .content-wrapper");
         }
     }
