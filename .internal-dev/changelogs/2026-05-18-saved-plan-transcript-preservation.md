@@ -20,3 +20,9 @@ Execution prompts may still include existing conversation history because this s
 
 Follow-up Items
 Parent validation should confirm the focused regression and decide whether a later domain needs a separate run-scoped model context store.
+
+Validation
+- `mvn -Dtest=ChatServiceTest,PlanServiceTest,FrontendControllerTest test` passed with 31 tests.
+- Stale-copy search found no production/static `clearConversationForExecution`, `fresh chat context`, execution-clearing copy, or `Execute now` strings.
+- `git diff --check` passed.
+- Bounded Spring startup passed; logs reached `Started Magenta2Application` before the expected timeout shutdown.
