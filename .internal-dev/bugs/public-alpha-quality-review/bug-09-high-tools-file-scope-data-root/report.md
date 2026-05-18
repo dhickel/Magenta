@@ -26,6 +26,7 @@ Resolved before remediation as `aiConfig.dataRoot().toRealPath()`, allowing any 
 - Original review evidence: `AgentFileToolService` set its only root to `dataRoot`, path checks accepted any normalized path under that root, and `AgentFileTools` descriptions advertised data-root access.
 - 2026-05-18 implementation: `AgentFileToolService` scopes active assignment file access to the run workspace, active output directory, and current project workspace aliases, while tests deny unrelated runtime, agent, and project paths.
 - 2026-05-18 implementation: `AgentFileTools` descriptions no longer advertise whole data-root access.
+- 2026-05-18 validation: focused file/shell/registry/runtime tests passed, `git diff --check` passed, and bounded Spring startup reached a healthy app on ephemeral port `37939`.
 
 ## Impact
 
@@ -33,8 +34,8 @@ High: one tool-capable agent can access unrelated runtime data under `dataRoot`.
 
 ## Status
 
-Implemented; validation pending.
+Implemented and validated in public alpha remediation domain 02 subplan 02.
 
 ## Next Action
 
-Run validation for subplan 02 and record the final result in the public alpha remediation progress tracker.
+Continue with public alpha remediation domain 02 subplan 03.

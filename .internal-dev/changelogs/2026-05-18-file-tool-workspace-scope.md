@@ -25,7 +25,12 @@ Active task contexts with host workspace paths can read/write the current run wo
 
 Existing orchestration prompts or tests that relied on data-root-relative file paths during active task execution must switch to workspace-relative paths or the supported aliases.
 
+# Validation
+
+- Focused validation passed with `mvn -Dtest=AgentFileToolServiceTest,ChatToolRegistryTest,AgentShellToolServiceTest,OrchestrationRuntimeTest test`.
+- `git diff --check` passed.
+- Bounded Spring Boot startup reached a healthy app on ephemeral port `37939`.
+
 # Follow-up Items
 
-- External validation for subplan 02 is still pending.
 - Domain 02 subplans 03-07 remain out of scope for this change.
