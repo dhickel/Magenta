@@ -396,6 +396,22 @@ class OrchestrationControllerTest {
     }
 
     @Test
+    void htmxWorkflowValidateAndSubmitRejectEmptyDraftWithOperatorVisibleError() {
+        OrchestrationController ctrl = controller();
+        ctrl.createWorkflowDraftEditor();
+
+        String validationHtml = ctrl.validateWorkflow("workflow-draft");
+        assertThat(validationHtml).contains("ERROR:");
+        assertThat(validationHtml).contains("at least one executable node");
+        assertThat(validationHtml).doesNotContain("Valid: no errors found.");
+
+        String submitHtml = ctrl.workflowSubmitToAgent("workflow-draft", Map.of("agentId", "agent-1"));
+        assertThat(submitHtml).contains("Validation failed");
+        assertThat(submitHtml).contains("at least one executable node");
+        assertThat(submitHtml).doesNotContain("Assignment Created");
+    }
+
+    @Test
     void jobPageRendersHtmxFirstWithListAndEditor() {
         String html = controller().jobs();
 

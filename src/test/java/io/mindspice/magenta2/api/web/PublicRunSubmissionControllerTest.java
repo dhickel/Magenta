@@ -231,6 +231,39 @@ class PublicRunSubmissionControllerTest {
             .hasMessageContaining("No active agents available");
     }
 
+    @Test
+    void workflowRunRejectsNonExecutableWorkflowBeforeAssignmentSubmission() {
+        CapturingAssignmentService assignmentService = new CapturingAssignmentService();
+        WorkflowController controller = new WorkflowController(
+            new EmptyWorkflowService(),
+            (InboxService) null,
+            assignmentService,
+            new StubAgentProfileService()
+        );
+
+        assertThatThrownBy(() -> controller.startRun("workflow-1", null))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("at least one executable node");
+        assertThat(assignmentService.lastRequest).isNull();
+    }
+
+    @Test
+    void workflowRunStreamEmitsFailedEventForNonExecutableWorkflow() throws Exception {
+        WorkflowController controller = new WorkflowController(
+            new EmptyWorkflowService(),
+            (InboxService) null,
+            new CapturingAssignmentService(),
+            new StubAgentProfileService()
+        );
+
+        SseEmitter emitter = controller.streamRun("workflow-1", null);
+        CapturedSse captured = initializeEmitter(emitter);
+
+        assertThat(captured.completed.await(1, TimeUnit.SECONDS)).isTrue();
+        assertThat(captured.events).anyMatch(event -> event.contains("event:failed"));
+        assertThat(captured.events).anyMatch(event -> event.contains("at least one executable node"));
+    }
+
     private static PlanDefinition plan(String id) {
         return new PlanDefinition(
             id,
@@ -293,6 +326,21 @@ class PublicRunSubmissionControllerTest {
         @Override
         public WorkflowValidator.ValidationResult validateGraph(WorkflowDefinition definition) {
             return new WorkflowValidator.ValidationResult(List.of(), List.of());
+        }
+    }
+
+    private static class EmptyWorkflowService extends StubWorkflowService {
+        @Override
+        public WorkflowDefinition getDefinition(String id) {
+            return new WorkflowDefinition(id, "Workflow", null, List.of(), Instant.now(), Instant.now());
+        }
+
+        @Override
+        public WorkflowValidator.ValidationResult validateGraph(WorkflowDefinition definition) {
+            return new WorkflowValidator.ValidationResult(
+                List.of("Workflow must contain at least one executable node before validation, submission, or run"),
+                List.of()
+            );
         }
     }
 

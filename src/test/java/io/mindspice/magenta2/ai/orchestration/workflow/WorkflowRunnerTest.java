@@ -81,6 +81,85 @@ class WorkflowRunnerTest {
     }
 
     @Test
+    void draftSaveAllowsEmptyWorkflowButExecutableValidationRejectsIt() {
+        WorkflowDefinition draft = workflowService.saveDefinition(new WorkflowDefinition(
+            null,
+            2,
+            "Empty Draft",
+            "test",
+            4,
+            List.of(),
+            List.of(),
+            Map.of(),
+            null,
+            null
+        ));
+
+        WorkflowValidator.ValidationResult validation = workflowService.validateGraph(draft);
+        assertThat(validation.valid()).isFalse();
+        assertThat(validation.errors())
+            .contains("Workflow must contain at least one executable node before validation, submission, or run");
+
+        assertThatThrownBy(() -> workflowService.saveDefinitionValidated(draft))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("at least one executable node");
+        assertThatThrownBy(() -> workflowService.startRun(draft.id()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("at least one executable node");
+    }
+
+    @Test
+    void executableValidationRejectsDisconnectedWorkflowRoots() {
+        WorkflowDefinition disconnected = workflowService.saveDefinition(new WorkflowDefinition(
+            null,
+            2,
+            "Disconnected",
+            "test",
+            4,
+            List.of(simpleFinalNode("left"), simpleFinalNode("right")),
+            List.of(),
+            Map.of(),
+            null,
+            null
+        ));
+
+        WorkflowValidator.ValidationResult validation = workflowService.validateGraph(disconnected);
+
+        assertThat(validation.valid()).isFalse();
+        assertThat(validation.errors())
+            .contains("Workflow must have exactly one start node; found: left, right");
+    }
+
+    @Test
+    void executableValidationRejectsWorkflowWithoutStartPath() {
+        WorkflowNode first = simpleFinalNode("first");
+        WorkflowNode second = simpleFinalNode("second");
+        WorkflowDefinition noStart = new WorkflowDefinition(
+            null,
+            2,
+            "No Start",
+            "test",
+            4,
+            List.of(first, second),
+            List.of(
+                new WorkflowRoute("r1", "first", "out", "second", "in", WorkflowRouteType.MAP_OUTPUT, null),
+                new WorkflowRoute("r2", "second", "out", "first", "in", WorkflowRouteType.MAP_OUTPUT, null)
+            ),
+            Map.of(),
+            null,
+            null
+        );
+
+        WorkflowValidator.ValidationResult validation = workflowService.validateGraph(noStart);
+
+        assertThat(validation.valid()).isFalse();
+        assertThat(validation.errors()).contains(
+            "Workflow contains a cycle; v2 graph must be a DAG",
+            "Workflow must have a start node with no incoming dependency routes"
+        );
+    }
+
+    @Test
     void rejectsLegacyInputBindingsInV2() {
         WorkflowNode legacy = new WorkflowNode(
             "legacy", WorkflowNodeType.TASK, "missing", "legacy", null,
