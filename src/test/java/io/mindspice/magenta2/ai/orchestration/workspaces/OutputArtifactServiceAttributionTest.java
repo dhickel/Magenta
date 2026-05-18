@@ -65,7 +65,7 @@ class OutputArtifactServiceAttributionTest {
     }
 
     // ════════════════════════════════════════════════════════════════
-    //  Phase 03: Filesystem path resolution (Docker /output/ removed)
+    //  Phase 03: Filesystem path resolution
     // ════════════════════════════════════════════════════════════════
 
     @Test
@@ -84,7 +84,7 @@ class OutputArtifactServiceAttributionTest {
 
         // Output dir must be under dataRoot for absolute path resolution
         Path outputDir = Files.createDirectories(dataRoot.resolve("outputs"));
-        Files.writeString(outputDir.resolve("container-result.txt"), "container output");
+        Files.writeString(outputDir.resolve("workspace-result.txt"), "workspace output");
 
         // Materialize with absolute path under data root
         RunOutputArtifact artifact = service.materialize(
@@ -92,12 +92,12 @@ class OutputArtifactServiceAttributionTest {
             "plan-1",
             "result",
             PlanFieldType.FILE_PATH,
-            outputDir.resolve("container-result.txt").toString(),
+            outputDir.resolve("workspace-result.txt").toString(),
             outputDir,
             OutputArtifactContext.EMPTY
         );
 
-        assertThat(artifact.fileName()).isEqualTo("container-result.txt");
+        assertThat(artifact.fileName()).isEqualTo("workspace-result.txt");
         assertThat(artifact.artifactType()).isEqualTo("file_path");
         assertThat(Files.exists(Path.of(artifact.filePath()))).isTrue();
     }

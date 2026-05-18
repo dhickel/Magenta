@@ -14,7 +14,7 @@ import org.springframework.util.StringUtils;
 
 /**
  * Produces workspace health/activity read models for agents.
- * Replaces container status with filesystem-derived facts.
+ * Reports filesystem-derived workspace facts.
  */
 @Service
 public class AgentWorkspaceStatusService {

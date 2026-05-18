@@ -1,13 +1,14 @@
 package io.mindspice.magenta2.api.web;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import java.util.ArrayList;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.ai.chat.plan.PlanDefinition;
@@ -51,6 +52,8 @@ import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowService;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowValidator;
 import io.mindspice.magenta2.ai.orchestration.workspaces.LeaseMode;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.AgentWorkspaceStatus;
+import io.mindspice.magenta2.ai.orchestration.workspaces.AgentWorkspaceStatusService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLease;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLink;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLinkType;
@@ -69,6 +72,13 @@ class OrchestrationControllerTest {
         return new org.springframework.beans.factory.ObjectProvider<>() {
             @Override public T getObject() { return null; }
             @Override public T getIfAvailable() { return null; }
+        };
+    }
+
+    private static <T> org.springframework.beans.factory.ObjectProvider<T> providerOf(T instance) {
+        return new org.springframework.beans.factory.ObjectProvider<>() {
+            @Override public T getObject() { return instance; }
+            @Override public T getIfAvailable() { return instance; }
         };
     }
 
@@ -110,6 +120,7 @@ class OrchestrationControllerTest {
             new StubOutputArtifactService(),
             new StubRuntimeSettingsService(),
             workspaceService(),
+            emptyProvider(),
             new StubPlanService(),
             assignmentService,
             scheduleService,
@@ -132,11 +143,81 @@ class OrchestrationControllerTest {
             new StubOutputArtifactService(),
             new StubRuntimeSettingsService(),
             workspaceService(),
+            emptyProvider(),
             new StubPlanService(),
             new StubAssignmentService(),
             new StubScheduleService(),
             new StubEventReactionService(),
             workflowService,
+            emptyProvider(),
+            true,
+            true
+        );
+    }
+
+    private static OrchestrationController controllerWithAgentProfileService(AgentProfileService agentProfileService) {
+        return new OrchestrationController(
+            new StubChatService(),
+            new StubProjectService(),
+            new StubJobService(),
+            agentProfileService,
+            new StubInboxService(),
+            new StubRuntimeInboxService(),
+            new StubOutputArtifactService(),
+            new StubRuntimeSettingsService(),
+            workspaceService(),
+            emptyProvider(),
+            new StubPlanService(),
+            new StubAssignmentService(),
+            new StubScheduleService(),
+            new StubEventReactionService(),
+            new StubWorkflowService(),
+            emptyProvider(),
+            true,
+            true
+        );
+    }
+
+    private static OrchestrationController controllerWithRuntimeSettingsService(RuntimeSettingsService runtimeSettingsService) {
+        return new OrchestrationController(
+            new StubChatService(),
+            new StubProjectService(),
+            new StubJobService(),
+            new StubAgentProfileService(),
+            new StubInboxService(),
+            new StubRuntimeInboxService(),
+            new StubOutputArtifactService(),
+            runtimeSettingsService,
+            workspaceService(),
+            emptyProvider(),
+            new StubPlanService(),
+            new StubAssignmentService(),
+            new StubScheduleService(),
+            new StubEventReactionService(),
+            new StubWorkflowService(),
+            emptyProvider(),
+            true,
+            true
+        );
+    }
+
+    private static OrchestrationController controllerWithWorkspaceStatus(AgentWorkspaceStatus status) {
+        return new OrchestrationController(
+            new StubChatService(),
+            new StubProjectService(),
+            new StubJobService(),
+            new StubAgentProfileService(),
+            new StubInboxService(),
+            new StubRuntimeInboxService(),
+            new StubOutputArtifactService(),
+            new StubRuntimeSettingsService(),
+            workspaceService(),
+            providerOf(new StubAgentWorkspaceStatusService(status)),
+            new StubPlanService(),
+            new StubAssignmentService(),
+            new StubScheduleService(),
+            new StubEventReactionService(),
+            new StubWorkflowService(),
             emptyProvider(),
             true,
             true
@@ -186,7 +267,7 @@ class OrchestrationControllerTest {
     void dashboardRendersFullShellWithSidebar() {
         String html = controller().dashboard(null, null);
 
-        assertThat(html).contains("/css/orchestration.css?v=7");
+        assertThat(html).contains("/css/orchestration.css?v=10");
         assertThat(html).contains("Magenta Operations");
         assertThat(html).contains("Dashboard");
         assertThat(html).contains("/dashboard");
@@ -725,6 +806,7 @@ class OrchestrationControllerTest {
 
         assertThat(html).contains("Agent: Test Agent");
         assertThat(html).contains("entity-detail-layout");
+        assertThat(html).contains("entity-detail-layout-full");
         assertThat(html).contains("orch-tabs");
         assertThat(html).contains("/js/orchestration/agents.js?v=1");
 
@@ -753,10 +835,10 @@ class OrchestrationControllerTest {
         assertThat(html).contains("id=\"agent-chat-form\"");
         assertThat(html).contains("id=\"agent-chat-input\"");
         assertThat(html).contains("Chat with Agent");
-        assertThat(html).contains("/css/orchestration.css?v=7");
+        assertThat(html).contains("/css/orchestration.css?v=10");
         assertThat(html).contains("/js/orchestration/agent-chat.js?v=2");
-        assertThat(html).contains("agent-event-log");
-        assertThat(html).contains("Event Log");
+        assertThat(html).doesNotContain("agent-event-log");
+        assertThat(html).doesNotContain("Event Log");
 
         // No old JS-dependent markers
         assertThat(html).doesNotContain("agent-assignment-form");
@@ -777,7 +859,7 @@ class OrchestrationControllerTest {
     }
 
     @Test
-    void agentDashboardTabRendersCountersAndDockerStatus() {
+    void agentDashboardTabRendersCountersAndLifecycleTarget() {
         String html = controller().agentDashboardTab("agent-1");
 
         assertThat(html).contains("Dashboard");
@@ -792,6 +874,9 @@ class OrchestrationControllerTest {
         assertThat(html).contains("Workspace:");
         assertThat(html).contains("Refresh");
         assertThat(html).contains("Delete / Archive");
+        assertThat(html).contains("id=\"agent-lifecycle-panel-agent-1\"");
+        assertThat(html).contains("hx-target=\"#agent-lifecycle-panel-agent-1\"");
+        assertThat(html).contains("hx-swap=\"outerHTML\"");
         assertThat(html).doesNotContain("Open Agent Chat");
     }
 
@@ -820,6 +905,23 @@ class OrchestrationControllerTest {
         assertThat(html).contains("Archive + Disable");
         assertThat(html).contains("Hard Delete");
         assertThat(html).contains("DELETE agent-1");
+        assertThat(html).contains("id=\"agent-lifecycle-panel-agent-1\"");
+        assertThat(html).contains("hx-target=\"#agent-lifecycle-panel-agent-1\"");
+        assertThat(html).contains("hx-post=\"/agents/_lifecycle/agent-1/disable?view=lifecycle\"");
+        assertThat(html).contains("hx-post=\"/agents/_lifecycle/agent-1/archive-and-disable?view=lifecycle\"");
+    }
+
+    @Test
+    void lifecycleMutationResultsRenderIntoVisibleLifecyclePanel() {
+        OrchestrationController controller = controller();
+
+        String disabled = controller.disableAgentLifecycle("agent-1", "lifecycle");
+        assertThat(disabled).contains("id=\"agent-lifecycle-panel-agent-1\"");
+        assertThat(disabled).contains("Agent disabled.");
+
+        String archived = controller.archiveAndDisableAgentLifecycle("agent-1", "lifecycle");
+        assertThat(archived).contains("id=\"agent-lifecycle-panel-agent-1\"");
+        assertThat(archived).contains("Agent workspace archived and profile disabled.");
     }
 
     @Test
@@ -852,6 +954,54 @@ class OrchestrationControllerTest {
         assertThat(html).contains("TASK_RUN:run-1");
         assertThat(html).contains("Workspace Links");
         assertThat(html).contains("Home");
+    }
+
+    @Test
+    void agentDetailDoesNotRenderStaticPlaceholderEventLog() {
+        String html = controller().agentDetailFragment("agent-1");
+
+        assertThat(html).doesNotContain("Event Log");
+        assertThat(html).doesNotContain("Agent dashboard loaded");
+        assertThat(html).doesNotContain("1 assignment waiting");
+        assertThat(html).doesNotContain("Workspace ready");
+    }
+
+    @Test
+    void agentDashboardRendersWorkspaceStatusServiceDetailsWhenAvailable() {
+        AgentWorkspaceStatus status = new AgentWorkspaceStatus(
+            "agent-1",
+            "agents/agent-1/workspace",
+            AgentWorkspaceStatus.WorkspaceHealth.BUSY,
+            true,
+            true,
+            2,
+            1,
+            List.of("project-1", "project-2"),
+            7,
+            4096,
+            Instant.parse("2026-05-18T12:00:00Z"),
+            "Active runs: 2"
+        );
+        String html = controllerWithWorkspaceStatus(status).agentDashboardTab("agent-1");
+
+        assertThat(html).contains("Workspace Health");
+        assertThat(html).contains("Health");
+        assertThat(html).contains("BUSY");
+        assertThat(html).contains("Path");
+        assertThat(html).contains("agents/agent-1/workspace");
+        assertThat(html).contains("Writable");
+        assertThat(html).contains("Yes");
+        assertThat(html).contains("Active Runs");
+        assertThat(html).contains("2");
+        assertThat(html).contains("Active Leases");
+        assertThat(html).contains("1");
+        assertThat(html).contains("Linked Projects");
+        assertThat(html).contains("project-1, project-2");
+        assertThat(html).contains("Output Artifacts");
+        assertThat(html).contains("7");
+        assertThat(html).contains("Output Bytes");
+        assertThat(html).contains("4096");
+        assertThat(html).contains("Active runs: 2");
     }
 
     @Test
@@ -1187,13 +1337,49 @@ class OrchestrationControllerTest {
         String html = controller().settings();
 
         assertThat(html).contains("Model Routing");
+        assertThat(html).contains("id=\"settings-form-container\"");
         assertThat(html).contains("settings-default-model");
         assertThat(html).contains("settings-planning-model");
         assertThat(html).contains("settings-compaction-model");
         assertThat(html).contains("contextBufferPercent");
         assertThat(html).contains("hx-put=\"/settings\"");
+        assertThat(html).contains("hx-target=\"#settings-form-container\"");
+        assertThat(html).contains("hx-swap=\"innerHTML\"");
         assertThat(html).contains(">Save<");
         assertThat(html).doesNotContain("/js/chat-client.js");
+    }
+
+    @Test
+    void htmxSettingsSaveFailureReturnsErrorStatusAndFragment() {
+        RuntimeSettingsService failingSettingsService = new StubRuntimeSettingsService() {
+            @Override public RuntimeSettings save(RuntimeSettings settings) {
+                throw new IllegalArgumentException("defaultAgentId was not found");
+            }
+        };
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        String html = controllerWithRuntimeSettingsService(failingSettingsService)
+            .saveSettings(Map.of("defaultAgentId", "missing-agent"), response);
+
+        assertThat(response.getStatus()).isEqualTo(400);
+        assertThat(html).contains("orch-status-error");
+        assertThat(html).contains("defaultAgentId was not found");
+    }
+
+    @Test
+    void alphaSecurityJsAllowsKnownOperationalErrorFragmentsToSwapOnNon2xx() throws Exception {
+        String js = Files.readString(Path.of("src/main/resources/static/js/alpha-security.js"));
+
+        assertThat(js).contains("htmx:beforeSwap");
+        assertThat(js).contains("event.detail.shouldSwap = true");
+        assertThat(js).contains("xhr.status < 400");
+        assertThat(js).contains("xhr.status === 401 || xhr.status === 403");
+        assertThat(js).contains("responseIsSameOrigin(xhr)");
+        assertThat(js).contains("document.documentElement.contains(detail.target)");
+        assertThat(js).contains(".orch-error, .orch-status-error, .agent-lifecycle-panel");
+        assertThat(js).contains("htmx:responseError");
+        assertThat(js).contains("Authentication required.");
+        assertThat(js).contains("CSRF token missing or invalid.");
     }
 
     @Test
@@ -1215,7 +1401,7 @@ class OrchestrationControllerTest {
         for (String html : pages) {
             assertThat(html).contains("main-sidebar");
             assertThat(html).contains("sidenav");
-            assertThat(html).contains("/css/orchestration.css?v=7");
+            assertThat(html).contains("/css/orchestration.css?v=10");
             assertThat(html).doesNotContain("/js/chat-client.js");
         }
     }
@@ -1234,6 +1420,22 @@ class OrchestrationControllerTest {
         assertThat(html).contains("/outputs");
         assertThat(html).contains("/settings");
         assertThat(html).doesNotContain("hx-get=\"/chat\"");
+    }
+
+    @Test
+    void orchestrationCssOverridesShellSidebarGridAtPhoneWidth() throws Exception {
+        try (var stream = OrchestrationControllerTest.class.getResourceAsStream("/static/css/orchestration.css")) {
+            assertThat(stream).isNotNull();
+            String css = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+
+            assertThat(css).contains("@media (max-width: 768px)");
+            assertThat(css).contains(".main-container.has-sidebar");
+            assertThat(css).contains("grid-template-areas: \"content\"");
+            assertThat(css).contains("grid-template-columns: minmax(0, 1fr)");
+            assertThat(css).contains(".main-container.has-sidebar > .main-sidebar");
+            assertThat(css).contains("grid-area: auto");
+            assertThat(css).contains(".main-container.has-sidebar > .content-wrapper");
+        }
     }
 
     @Test
@@ -1605,11 +1807,57 @@ class OrchestrationControllerTest {
     void htmxAssignmentDeleteRefreshesQueue() {
         StubAssignmentService stubAsgn = new StubAssignmentService();
         stubAsgn.setAssignments(List.of(assignment("asgn-delete", OrchestrationStatus.QUEUED, Map.of())));
+        MockHttpServletResponse response = new MockHttpServletResponse();
 
-        String html = controllerWithAssignmentService(stubAsgn).deleteAgentAssignment("agent-1", "asgn-delete");
+        String html = controllerWithAssignmentService(stubAsgn).deleteAgentAssignment("agent-1", "asgn-delete", response);
 
+        assertThat(response.getStatus()).isEqualTo(200);
         assertThat(html).contains("No assignments.");
         assertThat(html).doesNotContain("asgn-delete");
+    }
+
+    @Test
+    void htmxAssignmentDeleteFailureReturnsErrorStatusAndQueueFragment() {
+        StubAssignmentService stubAsgn = new StubAssignmentService();
+        stubAsgn.setAssignments(List.of(assignment("asgn-running-delete", OrchestrationStatus.RUNNING, Map.of())));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        String html = controllerWithAssignmentService(stubAsgn)
+            .deleteAgentAssignment("agent-1", "asgn-running-delete", response);
+
+        assertThat(response.getStatus()).isEqualTo(409);
+        assertThat(html).contains("orch-error");
+        assertThat(html).contains("cannot delete");
+        assertThat(html).contains("asgn-running-delete");
+    }
+
+    @Test
+    void htmxShellExecFailureReturnsErrorStatusAndFragment() {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        String html = controller().execInAgent("agent-1", Map.of("command", "pwd"), response);
+
+        assertThat(response.getStatus()).isEqualTo(500);
+        assertThat(html).contains("orch-error");
+        assertThat(html).contains("Shell execution service is unavailable.");
+    }
+
+    @Test
+    void htmxHardDeleteFailureReturnsErrorStatusAndLifecycleFragment() {
+        AgentProfileService failingAgentService = new StubAgentProfileService() {
+            @Override public void hardDelete(String id, String confirmationText) {
+                throw new IllegalArgumentException("confirmation text did not match");
+            }
+        };
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        String html = controllerWithAgentProfileService(failingAgentService)
+            .hardDeleteAgentLifecycle("agent-1", "wrong", response);
+
+        assertThat(response.getStatus()).isEqualTo(400);
+        assertThat(html).contains("agent-lifecycle-panel-agent-1");
+        assertThat(html).contains("orch-error");
+        assertThat(html).contains("confirmation text did not match");
     }
 
     @Test
@@ -1861,6 +2109,7 @@ class OrchestrationControllerTest {
             new StubOutputArtifactService(),
             new StubRuntimeSettingsService(),
             workspaceService(),
+            emptyProvider(),
             planService,
             new StubAssignmentService(),
             new StubScheduleService(),
@@ -1883,6 +2132,7 @@ class OrchestrationControllerTest {
             new StubOutputArtifactService(),
             new StubRuntimeSettingsService(),
             workspaceService(),
+            emptyProvider(),
             new StubPlanService(),
             assignmentService,
             new StubScheduleService(),
@@ -1905,6 +2155,7 @@ class OrchestrationControllerTest {
             new StubOutputArtifactService(),
             new StubRuntimeSettingsService(),
             workspaceService(),
+            emptyProvider(),
             new StubPlanService(),
             new StubAssignmentService(),
             new StubScheduleService(),
@@ -2014,6 +2265,10 @@ class OrchestrationControllerTest {
             throw new IllegalStateException("Agent not found: " + id);
         }
         @Override public AgentProfile update(String id, AgentProfile profile) { return profile; }
+        @Override public AgentProfile enable(String id, boolean prepareWorkspace) { return get(id); }
+        @Override public AgentProfile disable(String id) { return get(id); }
+        @Override public AgentProfile archiveAndDisable(String id) { return get(id); }
+        @Override public void hardDelete(String id, String confirmationText) {}
     }
 
     private static class StubInboxService extends InboxService {
@@ -2041,6 +2296,20 @@ class OrchestrationControllerTest {
             String r, String p, String t, Integer l) { return List.of(); }
         @Override public java.util.List<io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact> query(
             io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactQuery query) { return List.of(); }
+    }
+
+    private static class StubAgentWorkspaceStatusService extends AgentWorkspaceStatusService {
+        private final AgentWorkspaceStatus status;
+
+        StubAgentWorkspaceStatusService(AgentWorkspaceStatus status) {
+            super(null, null, null, null, null);
+            this.status = status;
+        }
+
+        @Override
+        public AgentWorkspaceStatus statusFor(String agentId) {
+            return status;
+        }
     }
 
     private static class StubRuntimeSettingsService extends RuntimeSettingsService {

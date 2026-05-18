@@ -448,13 +448,12 @@ class AgentShellToolServiceTest {
     }
 
     @Test
-    void provenanceNoLongerMentionsDocker() throws Exception {
+    void provenanceUsesFilesystemRuntimeExecutionType() throws Exception {
         AgentShellToolService service = new AgentShellToolService(tempDir, List.of("printf"));
 
         AgentShellToolService.ShellExecResult result = service.exec("printf clean", ".", 5);
 
         assertThat(result.executionType()).isEqualTo("bash");
-        // ShellExecResult no longer has containerId
         assertThat(result.exitCode()).isZero();
         assertThat(result.stdout()).isEqualTo("clean");
     }

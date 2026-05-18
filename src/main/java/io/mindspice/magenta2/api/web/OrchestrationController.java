@@ -66,6 +66,8 @@ import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowValidator;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactQuery;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact;
+import io.mindspice.magenta2.ai.orchestration.workspaces.AgentWorkspaceStatus;
+import io.mindspice.magenta2.ai.orchestration.workspaces.AgentWorkspaceStatusService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.Workspace;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLease;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLink;
@@ -87,6 +89,9 @@ import io.mindspice.simplypages.components.forms.TextInput;
 import io.mindspice.simplypages.components.navigation.SideNav;
 import io.mindspice.simplypages.core.Component;
 import io.mindspice.simplypages.core.HtmlTag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.util.StringUtils;
@@ -103,7 +108,8 @@ import jakarta.servlet.http.HttpServletResponse;
 
 @Controller
 public class OrchestrationController {
-    private static final String DASHBOARD_CSS = "/css/orchestration.css?v=7";
+    private static final Logger log = LoggerFactory.getLogger(OrchestrationController.class);
+    private static final String DASHBOARD_CSS = "/css/orchestration.css?v=10";
     private static final String ALPHA_SECURITY_JS = "/js/alpha-security.js?v=1";
     private static final String DASHBOARD_JS = "/js/orchestration/dashboard.js?v=5";
     private static final String AGENTS_JS = "/js/orchestration/agents.js?v=1";
@@ -126,6 +132,7 @@ public class OrchestrationController {
     private final OutputArtifactService outputArtifactService;
     private final RuntimeSettingsService runtimeSettingsService;
     private final WorkspaceService workspaceService;
+    private final ObjectProvider<AgentWorkspaceStatusService> workspaceStatusServiceRef;
 
     // ── Plan editor services ──
     private final PlanService planService;
@@ -150,12 +157,13 @@ public class OrchestrationController {
                                    OutputArtifactService outputArtifactService,
                                    RuntimeSettingsService runtimeSettingsService,
                                    WorkspaceService workspaceService,
+                                   ObjectProvider<AgentWorkspaceStatusService> workspaceStatusServiceRef,
                                    PlanService planService,
                                    AssignmentService assignmentService,
                                    ScheduleService scheduleService,
                                    EventReactionService eventReactionService,
                                    WorkflowService workflowService,
-                                   org.springframework.beans.factory.ObjectProvider<AgentShellToolService> execShellServiceRef,
+                                   ObjectProvider<AgentShellToolService> execShellServiceRef,
                                    @Value("${magenta.features.schedules-enabled:false}") boolean schedulesEnabled,
                                    @Value("${magenta.features.reactions-enabled:false}") boolean reactionsEnabled) {
         this.chatService = chatService;
@@ -167,6 +175,7 @@ public class OrchestrationController {
         this.outputArtifactService = outputArtifactService;
         this.runtimeSettingsService = runtimeSettingsService;
         this.workspaceService = workspaceService;
+        this.workspaceStatusServiceRef = workspaceStatusServiceRef;
         this.planService = planService;
         this.assignmentService = assignmentService;
         this.scheduleService = scheduleService;
@@ -4871,11 +4880,28 @@ public class OrchestrationController {
     }
 
     private String agentWorkspaceHealth(AgentProfile agent) {
+        AgentWorkspaceStatus status = agentWorkspaceStatus(agent.id());
+        if (status != null && status.health() != null) {
+            return status.health().name();
+        }
         try {
             workspaceService.agentWorkspace(agent.id(), null);
             return "READY";
         } catch (Exception e) {
             return "PENDING";
+        }
+    }
+
+    private AgentWorkspaceStatus agentWorkspaceStatus(String agentId) {
+        AgentWorkspaceStatusService statusService = workspaceStatusServiceRef.getIfAvailable();
+        if (statusService == null) {
+            return null;
+        }
+        try {
+            return statusService.statusFor(agentId);
+        } catch (Exception e) {
+            log.debug("Failed to load workspace status for agent {}: {}", agentId, e.getMessage());
+            return AgentWorkspaceStatus.error(agentId, e.getMessage());
         }
     }
 
@@ -4966,7 +4992,7 @@ public class OrchestrationController {
             .withChild(new HtmlTag("details").withClass("agent-chat-accordion")
                 .withChild(new HtmlTag("summary").withInnerText("Chat with Agent"))
                 .withChild(agentChatPanel(agent.id())))
-            .withChild(new Div().withClass("entity-detail-layout")
+            .withChild(new Div().withClass("entity-detail-layout entity-detail-layout-full")
                 .withChild(new Div().withClass("entity-detail-main")
                     .withChild(tabNav(agent.id(), "dashboard", "profile", "queue", "inbox", "jobs", "schedules", "reactions", "workspace", "outputs", "exec", "history", "submit"))
                     .withChild(new Div().withClass("agent-profile-loader-marker")
@@ -4979,18 +5005,7 @@ public class OrchestrationController {
                         .withAttribute("hx-get", "/agents/_detail/" + escapeAttr(agent.id()) + "/dashboard")
                         .withAttribute("hx-trigger", "load")
                         .withAttribute("hx-swap", "innerHTML")
-                        .withChild(loadingPlaceholder())))
-                .withChild(agentEventLogPanel()));
-    }
-
-    private Component agentEventLogPanel() {
-        Div panel = new Div().withClass("entity-detail-side agent-event-log");
-        panel.withChild(Header.H2("Event Log"));
-        panel.withChild(new Div().withClass("agent-event-log-list")
-            .withChild(agentEventLogItem("Now", "Agent dashboard loaded"))
-            .withChild(agentEventLogItem("Queue", "1 assignment waiting"))
-            .withChild(agentEventLogItem("Workspace", "Workspace ready")));
-        return panel;
+                        .withChild(loadingPlaceholder()))));
     }
 
     private Component agentChatPanel(String agentId) {
@@ -5003,12 +5018,6 @@ public class OrchestrationController {
                 .withChild(Form.create().withClass("agent-chat-form").withId("agent-chat-form")
                     .withChild(TextInput.create("").withId("agent-chat-input").withPlaceholder("Ask this agent"))
                     .withChild(Button.create("Send").withAttribute("type", "submit"))));
-    }
-
-    private Component agentEventLogItem(String label, String message) {
-        return new Div().withClass("agent-event-log-item")
-            .withChild(new HtmlTag("span").withClass("agent-event-log-label").withInnerText(label))
-            .withChild(new HtmlTag("span").withClass("agent-event-log-message").withInnerText(message));
     }
 
     // ── Agent detail tab partials ──
@@ -5059,10 +5068,8 @@ public class OrchestrationController {
             panel.withChild(running);
         }
 
-        // Workspace status
-        String health = agentWorkspaceHealth(agent);
-        panel.withChild(new Div().withClass("orch-meta")
-            .withChild(new HtmlTag("span").withInnerText("Workspace: " + health)));
+        panel.withChild(agentWorkspaceHealthPanel(agent));
+        panel.withChild(agentLifecyclePanel(agentId, null));
 
         panel.withChild(new Div().withClass("orch-actions")
             .withChild(Button.create("Refresh")
@@ -5071,15 +5078,50 @@ public class OrchestrationController {
                 .withAttribute("hx-swap", "innerHTML"))
             .withChild(Button.create(agent.status() == AgentProfileStatus.ACTIVE ? "Disable Agent" : "Enable Agent")
                 .withAttribute("hx-post", "/agents/_lifecycle/" + escapeAttr(agentId)
-                    + (agent.status() == AgentProfileStatus.ACTIVE ? "/disable" : "/enable"))
-                .withAttribute("hx-target", "#agent-tab-panel")
-                .withAttribute("hx-swap", "innerHTML"))
+                    + (agent.status() == AgentProfileStatus.ACTIVE ? "/disable" : "/enable")
+                    + "?view=lifecycle")
+                .withAttribute("hx-target", agentLifecycleTarget(agentId))
+                .withAttribute("hx-swap", "outerHTML"))
             .withChild(Button.create("Delete / Archive")
                 .withAttribute("hx-get", "/agents/_lifecycle/" + escapeAttr(agentId) + "/delete-confirm")
-                .withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId))
-                .withAttribute("hx-swap", "innerHTML")));
+                .withAttribute("hx-target", agentLifecycleTarget(agentId))
+                .withAttribute("hx-swap", "outerHTML")));
 
         return panel.render();
+    }
+
+    private Component agentWorkspaceHealthPanel(AgentProfile agent) {
+        AgentWorkspaceStatus status = agentWorkspaceStatus(agent.id());
+        if (status == null) {
+            return new Div().withClass("orch-meta")
+                .withChild(new HtmlTag("span").withInnerText("Workspace: " + agentWorkspaceHealth(agent)));
+        }
+
+        Div section = new Div().withClass("orch-panel agent-workspace-health");
+        section.withChild(Header.H2("Workspace Health"));
+        Div grid = new Div().withClass("orch-form-grid");
+        grid.withChild(agentMetaItem("Health", status.health() != null ? status.health().name() : "UNKNOWN"));
+        grid.withChild(agentMetaItem("Path", status.workspaceRelativePath() != null ? status.workspaceRelativePath() : "—"));
+        grid.withChild(agentMetaItem("Writable", status.writable() ? "Yes" : "No"));
+        grid.withChild(agentMetaItem("Active Runs", String.valueOf(status.activeRunCount())));
+        grid.withChild(agentMetaItem("Active Leases", String.valueOf(status.activeLeaseCount())));
+        grid.withChild(agentMetaItem("Linked Projects", formatLinkedProjects(status.linkedProjectIds())));
+        grid.withChild(agentMetaItem("Output Artifacts", String.valueOf(status.outputArtifactCount())));
+        grid.withChild(agentMetaItem("Output Bytes", String.valueOf(status.outputBytes())));
+        grid.withChild(agentMetaItem("Last Activity", status.lastActivityAt() != null ? formatSince(status.lastActivityAt()) : "—"));
+        section.withChild(grid);
+        if (StringUtils.hasText(status.message())) {
+            section.withChild(new Div().withClass("orch-meta")
+                .withChild(new HtmlTag("span").withInnerText(status.message())));
+        }
+        return section;
+    }
+
+    private String formatLinkedProjects(List<String> projectIds) {
+        if (projectIds == null || projectIds.isEmpty()) {
+            return "—";
+        }
+        return String.join(", ", projectIds);
     }
 
     private WorkAssignment currentAssignment(String agentId) {
@@ -5212,11 +5254,16 @@ public class OrchestrationController {
 
     @DeleteMapping("/agents/_detail/{agentId}/queue/{assignmentId}")
     @ResponseBody
-    public String deleteAgentAssignment(@PathVariable String agentId, @PathVariable String assignmentId) {
+    public String deleteAgentAssignment(
+        @PathVariable String agentId,
+        @PathVariable String assignmentId,
+        HttpServletResponse response
+    ) {
         try {
             assignmentService.delete(agentId, assignmentId);
             return agentQueueTab(agentId);
         } catch (IllegalArgumentException | IllegalStateException exception) {
+            response.setStatus(assignmentLifecycleStatus(exception));
             return renderAssignmentList(agentId, "Queue", assignmentService.queueAssignments(agentId), exception.getMessage());
         }
     }
@@ -5964,11 +6011,16 @@ public class OrchestrationController {
 
     @PostMapping("/agents/_detail/{agentId}/exec")
     @ResponseBody
-    public String execInAgent(@PathVariable String agentId, @RequestParam Map<String, String> params) {
+    public String execInAgent(
+        @PathVariable String agentId,
+        @RequestParam Map<String, String> params,
+        HttpServletResponse response
+    ) {
         AgentProfile agent = agentProfileService.get(agentId);
         try {
             AgentShellToolService shellService = execShellService();
             if (shellService == null) {
+                response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
                 return new Div().withClass("orch-error").withInnerText("Shell execution service is unavailable.").render();
             }
             OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
@@ -5987,7 +6039,12 @@ public class OrchestrationController {
             } finally {
                 OrchestrationTaskContextHolder.clear();
             }
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            return new Div().withClass("orch-error").withInnerText("Error: " + exception.getMessage()).render();
         } catch (Exception exception) {
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            log.warn("Shell exec fragment failed for agent {}", agentId, exception);
             return new Div().withClass("orch-error").withInnerText("Error: " + exception.getMessage()).render();
         }
     }
@@ -6335,6 +6392,9 @@ public class OrchestrationController {
         @RequestParam(value = "view", required = false) String view
     ) {
         agentProfileService.enable(agentId, true);
+        if ("lifecycle".equalsIgnoreCase(view)) {
+            return agentLifecyclePanel(agentId, "Agent enabled.").render();
+        }
         return "list".equalsIgnoreCase(view) ? agentList(null) : agentDetailFragment(agentId);
     }
 
@@ -6345,6 +6405,9 @@ public class OrchestrationController {
         @RequestParam(value = "view", required = false) String view
     ) {
         agentProfileService.disable(agentId);
+        if ("lifecycle".equalsIgnoreCase(view)) {
+            return agentLifecyclePanel(agentId, "Agent disabled.").render();
+        }
         return "list".equalsIgnoreCase(view) ? agentList(null) : agentDetailFragment(agentId);
     }
 
@@ -6352,23 +6415,23 @@ public class OrchestrationController {
     @ResponseBody
     public String deleteAgentLifecycleConfirm(@PathVariable String agentId) {
         AgentProfile agent = agentProfileService.get(agentId);
-        Div panel = new Div().withClass("orch-panel")
+        Div panel = new Div().withId(agentLifecyclePanelId(agentId)).withClass("orch-panel agent-lifecycle-panel")
             .withChild(Header.H3("Delete Agent: " + nn(agent.name())))
             .withChild(new Paragraph("Choose an explicit lifecycle action. No data is removed by default."));
         panel.withChild(new Div().withClass("orch-actions")
             .withChild(Button.create("Disable Only")
-                .withAttribute("hx-post", "/agents/_lifecycle/" + escapeAttr(agentId) + "/disable")
-                .withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId))
-                .withAttribute("hx-swap", "innerHTML"))
+                .withAttribute("hx-post", "/agents/_lifecycle/" + escapeAttr(agentId) + "/disable?view=lifecycle")
+                .withAttribute("hx-target", agentLifecycleTarget(agentId))
+                .withAttribute("hx-swap", "outerHTML"))
             .withChild(Button.create("Archive + Disable")
-                .withAttribute("hx-post", "/agents/_lifecycle/" + escapeAttr(agentId) + "/archive-and-disable")
-                .withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId))
-                .withAttribute("hx-swap", "innerHTML")));
+                .withAttribute("hx-post", "/agents/_lifecycle/" + escapeAttr(agentId) + "/archive-and-disable?view=lifecycle")
+                .withAttribute("hx-target", agentLifecycleTarget(agentId))
+                .withAttribute("hx-swap", "outerHTML")));
 
         Form hardDeleteForm = Form.create();
         hardDeleteForm.withHxPost("/agents/_lifecycle/" + escapeAttr(agentId) + "/hard-delete");
-        hardDeleteForm.withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId));
-        hardDeleteForm.withAttribute("hx-swap", "innerHTML");
+        hardDeleteForm.withAttribute("hx-target", agentLifecycleTarget(agentId));
+        hardDeleteForm.withAttribute("hx-swap", "outerHTML");
         hardDeleteForm.withChild(new HtmlTag("label").withInnerText("Type DELETE " + agentId + " to hard-delete"));
         hardDeleteForm.withChild(TextInput.create("confirmationText")
             .withPlaceholder("DELETE " + agentId));
@@ -6379,12 +6442,18 @@ public class OrchestrationController {
 
     @PostMapping("/agents/_lifecycle/{agentId}/archive-and-disable")
     @ResponseBody
-    public String archiveAndDisableAgentLifecycle(@PathVariable String agentId) {
+    public String archiveAndDisableAgentLifecycle(
+        @PathVariable String agentId,
+        @RequestParam(value = "view", required = false) String view
+    ) {
         try {
             agentProfileService.archiveAndDisable(agentId);
+            if ("lifecycle".equalsIgnoreCase(view)) {
+                return agentLifecyclePanel(agentId, "Agent workspace archived and profile disabled.").render();
+            }
             return agentDetailFragment(agentId);
         } catch (Exception exception) {
-            return new Div().withClass("orch-error").withInnerText("Error: " + exception.getMessage()).render();
+            return agentLifecyclePanel(agentId, "Error: " + exception.getMessage()).render();
         }
     }
 
@@ -6392,20 +6461,47 @@ public class OrchestrationController {
     @ResponseBody
     public String hardDeleteAgentLifecycle(
         @PathVariable String agentId,
-        @RequestParam("confirmationText") String confirmationText
+        @RequestParam("confirmationText") String confirmationText,
+        HttpServletResponse response
     ) {
         try {
             agentProfileService.hardDelete(agentId, confirmationText);
-            return new Div().withClass("orch-status")
+            return new Div().withId(agentLifecyclePanelId(agentId)).withClass("orch-panel agent-lifecycle-panel")
+                .withChild(new Div().withClass("orch-status")
                 .withInnerText("Agent deleted. Refreshing agent list...")
                 .withAttribute("hx-get", "/agents/_list")
                 .withAttribute("hx-trigger", "load")
                 .withAttribute("hx-target", "#agent-list")
-                .withAttribute("hx-swap", "innerHTML")
+                .withAttribute("hx-swap", "innerHTML"))
                 .render();
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            return agentLifecyclePanel(agentId, "Error: " + exception.getMessage()).render();
         } catch (Exception exception) {
-            return new Div().withClass("orch-error").withInnerText("Error: " + exception.getMessage()).render();
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            log.warn("Agent hard delete fragment failed for agent {}", agentId, exception);
+            return agentLifecyclePanel(agentId, "Error: " + exception.getMessage()).render();
         }
+    }
+
+    private Component agentLifecyclePanel(String agentId, String message) {
+        Div panel = new Div().withId(agentLifecyclePanelId(agentId)).withClass("orch-panel agent-lifecycle-panel");
+        if (StringUtils.hasText(message)) {
+            panel.withChild(new Div().withClass(message.startsWith("Error:") ? "orch-error" : "orch-status")
+                .withInnerText(message));
+        } else {
+            panel.withChild(new Div().withClass("orch-meta")
+                .withChild(new HtmlTag("span").withInnerText("Lifecycle controls update here.")));
+        }
+        return panel;
+    }
+
+    private String agentLifecycleTarget(String agentId) {
+        return "#" + agentLifecyclePanelId(agentId);
+    }
+
+    private String agentLifecyclePanelId(String agentId) {
+        return "agent-lifecycle-panel-" + escapeAttr(agentId);
     }
 
     // ── Agent profile editor HTMX partials ──
@@ -6749,7 +6845,10 @@ public class OrchestrationController {
 
     @PutMapping("/settings")
     @ResponseBody
-    public String saveSettings(@RequestParam Map<String, String> params) {
+    public String saveSettings(
+        @RequestParam Map<String, String> params,
+        HttpServletResponse response
+    ) {
         try {
             RuntimeSettings current = runtimeSettingsService.get();
             RuntimeSettings updated = runtimeSettingsService.save(new RuntimeSettings(
@@ -6770,7 +6869,12 @@ public class OrchestrationController {
                     String.valueOf(current.assignmentHistoryAutoPurgeDays() == null ? -1 : current.assignmentHistoryAutoPurgeDays())))
             ));
             return settingsForm(updated).render();
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            return new Div().withClass("orch-status orch-status-error").withInnerText("Error: " + e.getMessage()).render();
         } catch (Exception e) {
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            log.warn("Settings save fragment failed", e);
             return new Div().withClass("orch-status orch-status-error").withInnerText("Error: " + e.getMessage()).render();
         }
     }

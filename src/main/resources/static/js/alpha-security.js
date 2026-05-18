@@ -27,6 +27,26 @@
         return new URL(url, window.location.href).origin === window.location.origin;
     }
 
+    function responseIsSameOrigin(xhr) {
+        if (!xhr || !xhr.responseURL) return true;
+        return new URL(xhr.responseURL, window.location.href).origin === window.location.origin;
+    }
+
+    function hasOperationalErrorFragment(responseText) {
+        if (!responseText) return false;
+        const doc = new DOMParser().parseFromString(responseText, "text/html");
+        return Boolean(doc.querySelector(".orch-error, .orch-status-error, .agent-lifecycle-panel"));
+    }
+
+    function shouldSwapOperationalError(event) {
+        const detail = event.detail || {};
+        const xhr = detail.xhr;
+        if (!xhr || xhr.status < 400 || xhr.status === 401 || xhr.status === 403) return false;
+        if (!responseIsSameOrigin(xhr)) return false;
+        if (!detail.target || !document.documentElement.contains(detail.target)) return false;
+        return hasOperationalErrorFragment(xhr.responseText);
+    }
+
     function ensureErrorHost() {
         let host = document.getElementById("magenta-security-error");
         if (!host) {
@@ -55,6 +75,11 @@
             if (token && isUnsafe(method)) {
                 event.detail.headers[csrfHeaderName()] = token;
             }
+        });
+
+        document.body.addEventListener("htmx:beforeSwap", function (event) {
+            if (!shouldSwapOperationalError(event)) return;
+            event.detail.shouldSwap = true;
         });
 
         document.body.addEventListener("htmx:responseError", function (event) {

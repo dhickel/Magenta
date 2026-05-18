@@ -132,7 +132,7 @@ public class AgentProfileService {
         return updated;
     }
 
-    public AgentProfile enable(String id, boolean wakeContainer) {
+    public AgentProfile enable(String id, boolean prepareWorkspace) {
         requireAgentId(id);
         AgentProfile profile = get(id);
         AgentProfile enabled = save(new AgentProfile(
