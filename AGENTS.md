@@ -108,6 +108,6 @@ If you find a bug pull the recent version of the library and directly implement 
 - If expected Playwright validation cannot be executed, report the specific blocker and do not mark the work as fully validated.
 - During UI validation and review, verify JavaScript usage is explicitly justified as the path of least resistance and that HTMX was used for standard CRUD/interaction flows.
 - If startup cannot be run because required local services or secrets are unavailable, report that explicitly with the blocking dependency.
-- Do not defer or work around alpha-blocking infrastructure dependencies (for example Docker/Podman daemon-backed execution validation) by treating unit-only coverage as completion.
+- Do not defer or work around alpha-blocking infrastructure dependencies, including filesystem/workspace-backed execution validation, by treating unit-only coverage as completion.
 - If a blocking dependency prevents real execution validation, stop and consult the user immediately before proceeding; do not shoehorn substitute validation paths as a sign-off.
 - Any deferred blocker must be explicitly user-approved and recorded as a blocked state, not marked as functionally complete.
