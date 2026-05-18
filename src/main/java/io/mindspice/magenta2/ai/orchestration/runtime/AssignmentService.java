@@ -81,7 +81,16 @@ public class AssignmentService {
             jobService.getDefinition(request.jobId());
         }
         Map<String, Object> input = request.input() == null ? Map.of() : request.input();
-        validateInput(request.assignmentType(), input, request.jobId());
+        AssignmentTemplateParser.validate(new AssignmentRequest(
+            request.agentId(),
+            request.jobId(),
+            request.jobItemId(),
+            request.assignmentType(),
+            request.priority(),
+            request.modelOverride(),
+            request.workspaceId(),
+            input
+        ));
         return repository.saveAssignment(new WorkAssignment(
             assignmentId,
             request.agentId(),
@@ -415,18 +424,6 @@ public class AssignmentService {
             }
         } catch (RuntimeException ignored) {
             runs.add(new LinkedRunStatus("JOB_RUN", runId, null, "missing", null));
-        }
-    }
-
-    private void validateInput(AssignmentType type, Map<String, Object> input, String jobId) {
-        if (type == AssignmentType.TASK_RUN && !StringUtils.hasText(text(input.get("taskId")))) {
-            throw new IllegalArgumentException("TASK_RUN assignments require input.taskId");
-        }
-        if (type == AssignmentType.WORKFLOW_RUN && !StringUtils.hasText(text(input.get("workflowId")))) {
-            throw new IllegalArgumentException("WORKFLOW_RUN assignments require input.workflowId");
-        }
-        if (type == AssignmentType.JOB_RUN && !StringUtils.hasText(jobId) && !StringUtils.hasText(text(input.get("jobId")))) {
-            throw new IllegalArgumentException("JOB_RUN assignments require jobId");
         }
     }
 

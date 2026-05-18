@@ -26,6 +26,7 @@ import io.mindspice.magenta2.ai.orchestration.runtime.AgentEventReaction;
 import io.mindspice.magenta2.ai.orchestration.runtime.AgentSchedule;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentType;
+import io.mindspice.magenta2.ai.orchestration.runtime.EventReactionService;
 import io.mindspice.magenta2.ai.orchestration.runtime.EventType;
 import io.mindspice.magenta2.ai.orchestration.runtime.InboxMessage;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobDefinition;
@@ -757,6 +758,62 @@ class OrchestrationRuntimeTest {
     }
 
     @Test
+    void scheduleSaveValidatesAssignmentTemplateBeforePersisting() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, new ObjectMapper());
+        AgentProfileService agentService = agentService(jdbcTemplate, aiConfig());
+        AgentProfile agent = agentService.create(new AgentProfile(
+            "agent-1", "Agent 1", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of(), true, null, null
+        ));
+        AssignmentService assignmentService = new AssignmentService(repository, agentService, null, null);
+        OrchestrationEventService eventService = new OrchestrationEventService(repository, assignmentService, true);
+        ScheduleService scheduleService = new ScheduleService(repository, agentService, assignmentService, eventService, true);
+
+        assertThatThrownBy(() -> scheduleService.save(agent.id(), new AgentSchedule(
+            null, agent.id(), "job-1", Map.of("assignmentType", "NOT_A_TYPE"),
+            "0 * * * * *", "UTC", true, null, null, null
+        )))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("invalid assignmentType");
+        assertThatThrownBy(() -> scheduleService.save(agent.id(), new AgentSchedule(
+            null, agent.id(), null, Map.of(),
+            "0 * * * * *", "UTC", true, null, null, null
+        )))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("JOB_RUN assignments require jobId");
+        assertThatThrownBy(() -> scheduleService.save(agent.id(), new AgentSchedule(
+            null, agent.id(), null, Map.of("assignmentType", "TASK_RUN"),
+            "0 * * * * *", "UTC", true, null, null, null
+        )))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("TASK_RUN assignments require input.taskId");
+        assertThatThrownBy(() -> scheduleService.save(agent.id(), new AgentSchedule(
+            null, agent.id(), null, Map.of("assignmentType", "WORKFLOW_RUN"),
+            "0 * * * * *", "UTC", true, null, null, null
+        )))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("WORKFLOW_RUN assignments require input.workflowId");
+
+        AgentSchedule defaultJobRun = scheduleService.save(agent.id(), new AgentSchedule(
+            null, agent.id(), "job-1", Map.of(),
+            "0 * * * * *", "UTC", true, null, null, null
+        ));
+        AgentSchedule taskRun = scheduleService.save(agent.id(), new AgentSchedule(
+            null, agent.id(), null, Map.of("assignmentType", "TASK_RUN", "input", Map.of("taskId", "task-1")),
+            "0 * * * * *", "UTC", true, null, null, null
+        ));
+        AgentSchedule workflowRun = scheduleService.save(agent.id(), new AgentSchedule(
+            null, agent.id(), null, Map.of("assignmentType", "WORKFLOW_RUN", "input", Map.of("workflowId", "workflow-1")),
+            "0 * * * * *", "UTC", true, null, null, null
+        ));
+
+        assertThat(repository.findSchedulesForAgent(agent.id()))
+            .extracting(AgentSchedule::id)
+            .containsExactlyInAnyOrder(defaultJobRun.id(), taskRun.id(), workflowRun.id());
+    }
+
+    @Test
     void disabledReactionsMarkEventsHandledWithoutEnqueuing() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, new ObjectMapper());
@@ -801,6 +858,60 @@ class OrchestrationRuntimeTest {
         List<WorkAssignment> assignments = repository.findAssignmentsForAgent(agent.id());
         assertThat(assignments).hasSize(1);
         assertThat(assignments.getFirst().input()).containsEntry("from", "reaction");
+    }
+
+    @Test
+    void reactionSaveValidatesAssignmentTemplateBeforePersisting() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, new ObjectMapper());
+        AgentProfileService agentService = agentService(jdbcTemplate, aiConfig());
+        AgentProfile agent = agentService.create(new AgentProfile(
+            "agent-1", "Agent 1", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of(), true, null, null
+        ));
+        EventReactionService reactionService = new EventReactionService(repository, agentService);
+
+        assertThatThrownBy(() -> reactionService.save(agent.id(), new AgentEventReaction(
+            null, agent.id(), EventType.MANUAL_USER_EVENT, Map.of(), ReactionActionType.ENQUEUE_ASSIGNMENT,
+            Map.of("assignmentType", "NOT_A_TYPE"), true, null, null
+        )))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("invalid assignmentType");
+        assertThatThrownBy(() -> reactionService.save(agent.id(), new AgentEventReaction(
+            null, agent.id(), EventType.MANUAL_USER_EVENT, Map.of(), ReactionActionType.ENQUEUE_ASSIGNMENT,
+            Map.of("assignmentType", "JOB_RUN"), true, null, null
+        )))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("JOB_RUN assignments require jobId");
+        assertThatThrownBy(() -> reactionService.save(agent.id(), new AgentEventReaction(
+            null, agent.id(), EventType.MANUAL_USER_EVENT, Map.of(), ReactionActionType.ENQUEUE_ASSIGNMENT,
+            Map.of("assignmentType", "TASK_RUN"), true, null, null
+        )))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("TASK_RUN assignments require input.taskId");
+        assertThatThrownBy(() -> reactionService.save(agent.id(), new AgentEventReaction(
+            null, agent.id(), EventType.MANUAL_USER_EVENT, Map.of(), ReactionActionType.ENQUEUE_ASSIGNMENT,
+            Map.of("assignmentType", "WORKFLOW_RUN"), true, null, null
+        )))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("WORKFLOW_RUN assignments require input.workflowId");
+
+        AgentEventReaction defaultReport = reactionService.save(agent.id(), new AgentEventReaction(
+            null, agent.id(), EventType.MANUAL_USER_EVENT, Map.of(), ReactionActionType.ENQUEUE_ASSIGNMENT,
+            Map.of(), true, null, null
+        ));
+        AgentEventReaction taskRun = reactionService.save(agent.id(), new AgentEventReaction(
+            null, agent.id(), EventType.MANUAL_USER_EVENT, Map.of(), ReactionActionType.ENQUEUE_ASSIGNMENT,
+            Map.of("assignmentType", "TASK_RUN", "input", Map.of("taskId", "task-1")), true, null, null
+        ));
+        AgentEventReaction workflowRun = reactionService.save(agent.id(), new AgentEventReaction(
+            null, agent.id(), EventType.MANUAL_USER_EVENT, Map.of(), ReactionActionType.ENQUEUE_ASSIGNMENT,
+            Map.of("assignmentType", "WORKFLOW_RUN", "input", Map.of("workflowId", "workflow-1")), true, null, null
+        ));
+
+        assertThat(repository.findReactionsForAgent(agent.id()))
+            .extracting(AgentEventReaction::id)
+            .containsExactlyInAnyOrder(defaultReport.id(), taskRun.id(), workflowRun.id());
     }
 
     @Test

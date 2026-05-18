@@ -88,19 +88,8 @@ public class OrchestrationEventService {
         return true;
     }
 
-    @SuppressWarnings("unchecked")
     private AssignmentRequest requestFromTemplate(String agentId, Map<String, Object> template) {
-        Map<String, Object> input = template == null ? Map.of() : (Map<String, Object>) template.getOrDefault("input", Map.of());
-        return new AssignmentRequest(
-            text(template, "agentId", agentId),
-            text(template, "jobId", null),
-            text(template, "jobItemId", null),
-            AssignmentType.valueOf(text(template, "assignmentType", AssignmentType.REPORT.name())),
-            integer(template, "priority", 0),
-            text(template, "modelOverride", null),
-            text(template, "workspaceId", null),
-            input
-        );
+        return AssignmentTemplateParser.reactionRequest(agentId, template);
     }
 
     private String stringValue(Map<String, Object> values, String key) {
@@ -110,18 +99,4 @@ public class OrchestrationEventService {
         return values.get(key).toString();
     }
 
-    private String text(Map<String, Object> values, String key, String fallback) {
-        if (values == null || values.get(key) == null) {
-            return fallback;
-        }
-        return values.get(key).toString();
-    }
-
-    private Integer integer(Map<String, Object> values, String key, int fallback) {
-        if (values == null || values.get(key) == null) {
-            return fallback;
-        }
-        Object value = values.get(key);
-        return value instanceof Number number ? number.intValue() : Integer.parseInt(value.toString());
-    }
 }

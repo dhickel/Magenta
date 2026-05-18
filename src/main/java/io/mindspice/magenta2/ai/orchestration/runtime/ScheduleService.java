@@ -65,6 +65,21 @@ public class ScheduleService {
         agentProfileService.get(agentId);
         ZoneId zoneId = zone(schedule.timezone());
         CronExpression cron = cron(schedule.cronExpression());
+        Map<String, Object> assignmentTemplate = schedule.assignmentTemplate() == null
+            ? Map.of()
+            : schedule.assignmentTemplate();
+        AssignmentTemplateParser.scheduleRequest(new AgentSchedule(
+            schedule.id(),
+            agentId,
+            normalize(schedule.jobId()),
+            assignmentTemplate,
+            schedule.cronExpression(),
+            zoneId.getId(),
+            schedule.enabled(),
+            schedule.nextRunAt(),
+            schedule.createdAt(),
+            schedule.updatedAt()
+        ));
         Instant nextRun = schedule.nextRunAt() == null
             ? nextRun(cron, zoneId, Instant.now())
             : schedule.nextRunAt();
@@ -72,7 +87,7 @@ public class ScheduleService {
             StringUtils.hasText(schedule.id()) ? schedule.id() : UUID.randomUUID().toString(),
             agentId,
             normalize(schedule.jobId()),
-            schedule.assignmentTemplate() == null ? Map.of() : schedule.assignmentTemplate(),
+            assignmentTemplate,
             schedule.cronExpression().trim(),
             zoneId.getId(),
             schedule.enabled(),
@@ -139,21 +154,7 @@ public class ScheduleService {
     }
 
     private AssignmentRequest requestFromTemplate(AgentSchedule schedule) {
-        Map<String, Object> template = schedule.assignmentTemplate();
-        @SuppressWarnings("unchecked")
-        Map<String, Object> input = template.get("input") instanceof Map<?, ?> map
-            ? (Map<String, Object>) map
-            : Map.of();
-        return new AssignmentRequest(
-            text(template, "agentId", schedule.agentId()),
-            text(template, "jobId", schedule.jobId()),
-            text(template, "jobItemId", null),
-            AssignmentType.valueOf(text(template, "assignmentType", AssignmentType.JOB_RUN.name())),
-            integer(template, "priority", 0),
-            text(template, "modelOverride", null),
-            text(template, "workspaceId", null),
-            input
-        );
+        return AssignmentTemplateParser.scheduleRequest(schedule);
     }
 
     private CronExpression cron(String expression) {
@@ -179,19 +180,6 @@ public class ScheduleService {
             throw new IllegalArgumentException("cronExpression has no next run");
         }
         return next.toInstant();
-    }
-
-    private String text(Map<String, Object> values, String key, String fallback) {
-        Object value = values == null ? null : values.get(key);
-        return value == null ? fallback : value.toString();
-    }
-
-    private Integer integer(Map<String, Object> values, String key, int fallback) {
-        Object value = values == null ? null : values.get(key);
-        if (value == null) {
-            return fallback;
-        }
-        return value instanceof Number number ? number.intValue() : Integer.parseInt(value.toString());
     }
 
     private String normalize(String value) {

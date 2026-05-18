@@ -5374,7 +5374,7 @@ public class OrchestrationController {
         }
 
         for (AgentEventReaction reaction : reactions) {
-            String assignmentType = templateString(reaction.assignmentTemplate(), "assignmentType", AssignmentType.JOB_RUN.name());
+            String assignmentType = templateString(reaction.assignmentTemplate(), "assignmentType", AssignmentType.REPORT.name());
             Div item = new Div().withClass("orch-panel");
             item.withChild(new Div().withClass("orch-meta")
                 .withChild(new HtmlTag("span").withInnerText("Event Type: " + reaction.eventType().name()))
@@ -5513,6 +5513,7 @@ public class OrchestrationController {
             agentId,
             normalize(params.get("jobId")),
             params.get("assignmentType"),
+            AssignmentType.JOB_RUN,
             params.get("priority"),
             params.get("modelOverride"),
             params.get("workspaceId"),
@@ -5542,6 +5543,7 @@ public class OrchestrationController {
             agentId,
             normalize(params.get("jobId")),
             params.get("assignmentType"),
+            AssignmentType.REPORT,
             params.get("priority"),
             params.get("modelOverride"),
             params.get("workspaceId"),
@@ -5564,6 +5566,7 @@ public class OrchestrationController {
         String agentId,
         String jobId,
         String assignmentType,
+        AssignmentType defaultAssignmentType,
         String priority,
         String modelOverride,
         String workspaceId,
@@ -5572,7 +5575,7 @@ public class OrchestrationController {
         Map<String, Object> template = new LinkedHashMap<>();
         template.put("agentId", agentId);
         template.put("jobId", jobId);
-        template.put("assignmentType", parseAssignmentType(assignmentType).name());
+        template.put("assignmentType", parseAssignmentType(assignmentType, defaultAssignmentType).name());
         template.put("priority", parsePriority(priority));
         template.put("modelOverride", normalize(modelOverride));
         template.put("workspaceId", normalize(workspaceId));
@@ -5630,9 +5633,9 @@ public class OrchestrationController {
         }
     }
 
-    private AssignmentType parseAssignmentType(String value) {
+    private AssignmentType parseAssignmentType(String value, AssignmentType defaultAssignmentType) {
         try {
-            return AssignmentType.valueOf((value == null || value.isBlank() ? AssignmentType.JOB_RUN.name() : value.trim().toUpperCase()));
+            return AssignmentType.valueOf((value == null || value.isBlank() ? defaultAssignmentType.name() : value.trim().toUpperCase()));
         } catch (IllegalArgumentException exception) {
             throw new IllegalArgumentException("invalid assignmentType");
         }
