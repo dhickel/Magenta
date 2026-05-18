@@ -25,11 +25,14 @@ At phone viewport widths, `.main-container.has-sidebar` no longer lets the off-c
 - Static coverage confirms the mobile `.main-container.has-sidebar > .main-sidebar { grid-area: auto; }` override and `orchestration.css?v=9` cache-bust references.
 - `git diff --check` passed.
 - Bounded Spring startup reached `Started Magenta2Application` on port `43965` with isolated SQLite DB `/tmp/domain06-subplan01-v9-startup.sqlite`; the command exited `124` only after the timeout wrapper stopped the live app.
+- Validation agent passed commit `2064463` with isolated bounded startup evidence at `/tmp/domain06-subplan01-2064463-startup.log` and live app evidence at `/tmp/domain06-subplan01-2064463-live.log`.
+- Browser-origin Playwright at `390x780` passed on `/agents/699a84ee-109a-4acb-a3de-c9d4f0c97102`: `#content-area` and `.content-wrapper` measured `366px`, `.main-container.has-sidebar` computed one `366px` column with `"content"` grid areas, `.main-sidebar` computed `grid-area: auto`, document scroll width was `390px`, and no sidebar/content overlap was detected.
+- Browser validation confirmed `/css/orchestration.css?v=9` loaded `200`, no stale asset 404s, zero console errors/warnings, no 4xx/5xx network responses, HTMX WebJar loaded `200`, and desktop spot check preserved `250px 982px` `"sidebar content"` layout. Evidence: `/tmp/domain06-subplan01-2064463-browser-evidence.json`, `/tmp/domain06-subplan01-2064463-network.md`, `/tmp/domain06-subplan01-2064463-console.md`.
 
 # Risks
 
-Browser-origin Playwright proof at `390x780` is still required by the validation agent. The implementer added static CSS coverage and startup proof but did not run inline Playwright.
+No remaining subplan-specific risk after validation. The broader Domain 06 mobile/HTMX gate still needs to run after later subplans.
 
 # Follow-up Items
 
-- Run the focused validation-agent Playwright check for `/agents/{agentId}` at `390x780`.
+- Continue serially to Domain 06 subplan 02.
