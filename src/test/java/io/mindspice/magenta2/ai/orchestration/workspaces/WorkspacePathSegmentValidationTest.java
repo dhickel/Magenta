@@ -120,7 +120,7 @@ class WorkspacePathSegmentValidationTest {
 
     private WorkspaceService workspaceService() throws Exception {
         return new WorkspaceService(
-            new WorkspaceRepository(new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true))),
+            new WorkspaceRepository(new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true))),
             aiConfig()
         );
     }

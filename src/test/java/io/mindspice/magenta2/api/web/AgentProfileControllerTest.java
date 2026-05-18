@@ -166,7 +166,7 @@ class AgentProfileControllerTest {
     private AgentProfileService realService() {
         return new AgentProfileService(
             new AgentProfileRepository(
-                new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true)),
+                new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true)),
                 new ObjectMapper()
             ),
             new AiConfig(

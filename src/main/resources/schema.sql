@@ -471,8 +471,7 @@ create table if not exists run_output_artifacts (
     file_name text not null,
     file_path text not null,
     content_json text,
-    created_at text not null,
-    foreign key(run_id) references plan_runs(id)
+    created_at text not null
 );
 
 create index if not exists idx_run_output_artifacts_run

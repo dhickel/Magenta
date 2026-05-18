@@ -60,6 +60,7 @@ import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLinkType;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceRepository;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceService;
 import org.junit.jupiter.api.Test;
+import org.jsoup.Jsoup;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -228,7 +229,7 @@ class OrchestrationControllerTest {
         try {
             Path dataRoot = Files.createTempDirectory("orch-controller-workspace");
             WorkspaceRepository repository = new WorkspaceRepository(new JdbcTemplate(
-                new SingleConnectionDataSource("jdbc:sqlite::memory:", true)
+                new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true)
             ));
             WorkspaceService service = new WorkspaceService(repository, new AiConfig(
                 null, null, null, null, null, 10, dataRoot, null, Map.of(), Map.of()
@@ -603,6 +604,27 @@ class OrchestrationControllerTest {
         assertThat(html).contains("warnings");
         assertThat(html).contains("ERROR: validator unavailable");
         assertThat(html).doesNotContain("Valid: no errors found.");
+    }
+
+    @Test
+    void workflowEditorRendersPersistedNodePayloadsAsEscapedDomValues() {
+        String payload = "<img src=x onerror=alert('workflow-xss')><script>alert('workflow-xss')</script>";
+        StubWorkflowService workflowService = new StubWorkflowService();
+        workflowService.seed(new WorkflowDefinition(
+            "workflow-xss", "Workflow XSS", "",
+            List.of(new WorkflowNode("node_xss", WorkflowNodeType.FINAL_OUTPUT, null, payload,
+                null, Map.of(), false, List.of(), payload, null)),
+            List.of(), null, null));
+        OrchestrationController controller = controllerWithWorkflowService(workflowService);
+
+        org.jsoup.nodes.Document editor = Jsoup.parse(controller.workflowEditor("workflow-xss"));
+        org.jsoup.nodes.Document nodePanel = Jsoup.parse(controller.workflowNodePanel("workflow-xss", "node_xss"));
+
+        assertThat(editor.select("script,img,[onerror]")).isEmpty();
+        assertThat(nodePanel.select("script,img,[onerror]")).isEmpty();
+        assertThat(editor.select("input[name=label]").attr("value")).isEqualTo(payload);
+        assertThat(editor.select("input[name=messageTemplate]").attr("value")).isEqualTo(payload);
+        assertThat(nodePanel.text()).contains(payload);
     }
 
     @Test

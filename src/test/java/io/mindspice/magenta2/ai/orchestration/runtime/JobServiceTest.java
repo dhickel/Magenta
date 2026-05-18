@@ -180,7 +180,7 @@ class JobServiceTest {
     }
 
     private JobRepository repository() {
-        SingleConnectionDataSource ds = new SingleConnectionDataSource("jdbc:sqlite::memory:", true);
+        SingleConnectionDataSource ds = new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true);
         ObjectMapper mapper = new ObjectMapper().registerModule(new JavaTimeModule());
         return new JobRepository(new JdbcTemplate(ds), mapper);
     }

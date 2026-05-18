@@ -45,6 +45,7 @@ class WorkspaceRepositorySchemaMigrationTest {
 
         assertThat(planRunColumns).contains("temp_workspace_path");
         assertThat(artifactColumns).contains("agent_id", "job_id", "project_id", "workspace_id", "run_type");
+        assertThat(foreignKeyTargets(jdbc, "run_output_artifacts")).doesNotContain("plan_runs");
         assertThat(indexes(jdbc, "run_output_artifacts"))
             .contains(
                 "idx_run_output_artifacts_run",
@@ -59,6 +60,7 @@ class WorkspaceRepositorySchemaMigrationTest {
 
         assertThat(columns(jdbc, "plan_runs")).isEqualTo(planRunColumns);
         assertThat(columns(jdbc, "run_output_artifacts")).isEqualTo(artifactColumns);
+        assertThat(foreignKeyTargets(jdbc, "run_output_artifacts")).doesNotContain("plan_runs");
     }
 
     @Test
@@ -209,7 +211,20 @@ class WorkspaceRepositorySchemaMigrationTest {
         assertThat(repository.findLeaseById("lease-requested").orElseThrow().releaseRequested()).isTrue();
         assertThat(repository.findLeaseById("lease-released").orElseThrow().releasedAt()).isNotNull();
         assertThat(repository.findActiveWritableLease("ws-active").orElseThrow().holderId()).isEqualTo("run-active");
-        assertThat(repository.findById("ws-requested").orElseThrow().ownerId()).isEqualTo("project-2");
+        Workspace migratedActive = repository.findById("ws-active").orElseThrow();
+        Workspace migratedRequested = repository.findById("ws-requested").orElseThrow();
+        Workspace migratedReleased = repository.findById("ws-released").orElseThrow();
+        assertThat(migratedActive.ownerType()).isEqualTo(WorkspaceOwnerType.PROJECT);
+        assertThat(migratedActive.ownerId()).isEqualTo("project-1");
+        assertThat(migratedActive.rootRelativePath()).isEqualTo("projects/project-1");
+        assertThat(migratedActive.displayName()).isEqualTo("ws-active");
+        assertThat(migratedActive.metadataJson()).isEqualTo("{}");
+        assertThat(migratedRequested.ownerType()).isEqualTo(WorkspaceOwnerType.PROJECT);
+        assertThat(migratedRequested.ownerId()).isEqualTo("project-2");
+        assertThat(migratedRequested.rootRelativePath()).isEqualTo("projects/project-2");
+        assertThat(migratedReleased.ownerType()).isEqualTo(WorkspaceOwnerType.JOB);
+        assertThat(migratedReleased.ownerId()).isEqualTo("job-1");
+        assertThat(migratedReleased.rootRelativePath()).isEqualTo("jobs/job-1");
     }
 
     private Path schemaPath() throws URISyntaxException {

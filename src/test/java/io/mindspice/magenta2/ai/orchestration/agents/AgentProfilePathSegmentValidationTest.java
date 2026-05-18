@@ -54,7 +54,7 @@ class AgentProfilePathSegmentValidationTest {
     private AgentProfileService service() {
         return new AgentProfileService(
             new AgentProfileRepository(
-                new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true)),
+                new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true)),
                 new ObjectMapper()
             ),
             aiConfig(),

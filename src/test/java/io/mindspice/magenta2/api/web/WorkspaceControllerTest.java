@@ -33,7 +33,7 @@ class WorkspaceControllerTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        repository = new WorkspaceRepository(new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true)));
+        repository = new WorkspaceRepository(new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true)));
         Path dataRoot = Files.createTempDirectory("workspace-controller-test");
         workspaceService = new WorkspaceService(repository, new AiConfig(
             null, null, null, null, null, 10, dataRoot, null, Map.of(), Map.of()

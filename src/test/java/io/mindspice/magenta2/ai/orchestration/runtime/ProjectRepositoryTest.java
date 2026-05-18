@@ -118,7 +118,7 @@ class ProjectRepositoryTest {
     }
 
     private ProjectRepository repository() {
-        SingleConnectionDataSource ds = new SingleConnectionDataSource("jdbc:sqlite::memory:", true);
+        SingleConnectionDataSource ds = new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true);
         return new ProjectRepository(new JdbcTemplate(ds), new ObjectMapper());
     }
 }

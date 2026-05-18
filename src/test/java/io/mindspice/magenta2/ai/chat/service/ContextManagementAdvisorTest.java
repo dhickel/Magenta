@@ -35,7 +35,7 @@ class ContextManagementAdvisorTest {
 
     @Test
     void compactionCarriesPreviousHiddenSummaryForward() {
-        JdbcTemplate jdbcTemplate = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
         ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
         SummaryChatModel summaryModel = new SummaryChatModel();
         ContextManagementAdvisor advisor = new ContextManagementAdvisor(
@@ -71,7 +71,7 @@ class ContextManagementAdvisorTest {
 
     @Test
     void toolLoopCheckpointCompactsActiveToolMessagesBeforeContinuing() {
-        JdbcTemplate jdbcTemplate = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
         ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
         SummaryChatModel summaryModel = new SummaryChatModel();
         ContextManagementAdvisor advisor = new ContextManagementAdvisor(
@@ -110,7 +110,7 @@ class ContextManagementAdvisorTest {
 
     @Test
     void maintainStoredContextCompactsBeforeReturningUsage() {
-        JdbcTemplate jdbcTemplate = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
         ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
         SummaryChatModel summaryModel = new SummaryChatModel();
         ContextManagementAdvisor advisor = new ContextManagementAdvisor(
@@ -149,7 +149,7 @@ class ContextManagementAdvisorTest {
 
     @Test
     void runtimeSettingsControlContextBufferPercent() {
-        JdbcTemplate jdbcTemplate = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
         ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
         SummaryChatModel summaryModel = new SummaryChatModel();
         AiConfig aiConfig = aiConfig(); // contextBufferPercent=10 → trigger=1080 for qwen3
@@ -188,7 +188,7 @@ class ContextManagementAdvisorTest {
 
     @Test
     void defaultContextBufferAndCompactionModelApplyWhenNoRuntimeSettings() {
-        JdbcTemplate jdbcTemplate = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true));
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
         ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
         SummaryChatModel summaryModel = new SummaryChatModel();
         AiConfig aiConfig = aiConfig(); // contextBufferPercent=10, compaction model key="summary"
