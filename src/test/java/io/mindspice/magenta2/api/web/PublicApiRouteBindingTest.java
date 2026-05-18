@@ -14,12 +14,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
@@ -56,6 +58,9 @@ class PublicApiRouteBindingTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @DynamicPropertySource
     static void sqliteProperties(DynamicPropertyRegistry registry) {
@@ -117,6 +122,18 @@ class PublicApiRouteBindingTest {
     }
 
     @Test
+    void removedPlanDirectRunRouteDoesNotBind() throws Exception {
+        String planId = createPlan("No Direct Run Plan");
+
+        mockMvc.perform(post("/api/plans/" + planId + "/runs")
+                .with(alphaAuth())
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json(Map.of("agentId", createAgent()))))
+            .andExpect(status().isMethodNotAllowed());
+    }
+
+    @Test
     void taskRoutesBindDtosAndSubmittedSseEvent() throws Exception {
         String agentId = createAgent();
         String taskId = createTask("Route Task");
@@ -158,6 +175,7 @@ class PublicApiRouteBindingTest {
                 .content(json(Map.of("agentId", createAgent()))))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.error").exists());
+        assertNoWorkflowAssignmentQueued(workflowId);
 
         MvcResult stream = mockMvc.perform(post("/api/workflows/" + workflowId + "/runs/stream")
                 .with(alphaAuth())
@@ -172,6 +190,7 @@ class PublicApiRouteBindingTest {
             .andExpect(status().isOk())
             .andExpect(content().string(containsString("event:failed")))
             .andExpect(content().string(containsString("\"event\":\"failed\"")));
+        assertNoWorkflowAssignmentQueued(workflowId);
     }
 
     @Test
@@ -231,6 +250,49 @@ class PublicApiRouteBindingTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.defaultAgentId").value(agentId))
             .andExpect(jsonPath("$.defaultModel").value("local-qwen"));
+    }
+
+    @Test
+    void agentAssignmentLifecycleRoutesRejectCrossAgentOwnership() throws Exception {
+        String ownerAgentId = createAgent();
+        String otherAgentId = createAgent();
+        MvcResult created = mockMvc.perform(post("/api/agents/" + ownerAgentId + "/assignments")
+                .with(alphaAuth())
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json(Map.of(
+                    "assignmentType", "REPORT",
+                    "priority", 1,
+                    "input", Map.of("message", "ownership route regression")
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.agentId").value(ownerAgentId))
+            .andExpect(jsonPath("$.status").value("QUEUED"))
+            .andReturn();
+        String assignmentId = read(created, "id");
+
+        mockMvc.perform(post("/api/agents/" + otherAgentId + "/assignments/" + assignmentId + "/cancel")
+                .with(alphaAuth())
+                .with(csrf()))
+            .andExpect(status().isNotFound());
+
+        Map<String, Object> assignmentRow = jdbcTemplate.queryForMap(
+            "select agent_id, status from work_assignments where id = ?",
+            assignmentId
+        );
+        assertThat(assignmentRow)
+            .containsEntry("agent_id", ownerAgentId);
+        assertThat(assignmentRow.get("status"))
+            .isNotIn("CANCELLED", "CANCEL_REQUESTED");
+
+        mockMvc.perform(get("/api/agents/" + ownerAgentId + "/assignments"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].id").value(assignmentId))
+            .andExpect(jsonPath("$[0].agentId").value(ownerAgentId));
+
+        mockMvc.perform(get("/api/agents/" + otherAgentId + "/assignments"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$").isEmpty());
     }
 
     private String createAgent() throws Exception {
@@ -365,6 +427,20 @@ class PublicApiRouteBindingTest {
     private String read(MvcResult result, String field) throws Exception {
         JsonNode node = objectMapper.readTree(result.getResponse().getContentAsByteArray());
         return node.get(field).asText();
+    }
+
+    private void assertNoWorkflowAssignmentQueued(String workflowId) {
+        Integer count = jdbcTemplate.queryForObject(
+            """
+                select count(*)
+                from work_assignments
+                where assignment_type = 'WORKFLOW_RUN'
+                  and input_json like ?
+                """,
+            Integer.class,
+            "%" + workflowId + "%"
+        );
+        assertThat(count).isZero();
     }
 
     private static org.springframework.test.web.servlet.request.RequestPostProcessor alphaAuth() {
