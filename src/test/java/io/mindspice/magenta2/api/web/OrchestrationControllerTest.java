@@ -2265,7 +2265,7 @@ class OrchestrationControllerTest {
             throw new IllegalStateException("Agent not found: " + id);
         }
         @Override public AgentProfile update(String id, AgentProfile profile) { return profile; }
-        @Override public AgentProfile enable(String id, boolean wakeContainer) { return get(id); }
+        @Override public AgentProfile enable(String id, boolean prepareWorkspace) { return get(id); }
         @Override public AgentProfile disable(String id) { return get(id); }
         @Override public AgentProfile archiveAndDisable(String id) { return get(id); }
         @Override public void hardDelete(String id, String confirmationText) {}

@@ -33,6 +33,7 @@ The application no longer declares unused container-runtime client dependencies 
 - Bounded Spring startup reached `Started Magenta2Application` with isolated SQLite DB `/tmp/domain06-subplan04-parent.sqlite`; log: `/tmp/domain06-subplan04-parent-startup.log`.
 - Validation agent passed commit `3a41d0b`: required active-surface scan returned no matches, extra scan including `config/` returned no matches, `pom.xml` had no container-runtime/testcontainers hits, focused tests passed with 125 tests, `git diff --check` and `git show --check 3a41d0b` passed, and bounded startup reached `Started Magenta2Application`. Evidence: `/tmp/domain06-subplan04-startup-pEMW4A/startup.log`.
 - Playwright was skipped by validation because no active UI/static stale label hits remained and the subplan made no interaction behavior changes.
+- Domain validation later broadened the stale-wording scan and failed commit `9800a0a` on active runtime uses of `container` in source/test comments, parameter names, and fixture names. The serial gate-fix pass removed those flagged active terms while leaving generic HTMX DOM container terminology intact.
 
 ## Risks
 
