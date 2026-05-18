@@ -132,7 +132,7 @@ async function initTasks(root) {
                     agentId: $("#task-run-agent-id", root).value || null,
                     jobId: $("#task-run-job-id", root).value || null,
                     modelOverride: $("#task-run-model", root).value || null,
-                    priority: Number($("#task-run-priority", root).value || 0)
+                    priority: Number($("#task-run-priority", root).value || 9)
                 })
             });
             const events = await consumeSse(response);
@@ -238,7 +238,7 @@ async function initWorkflows(root) {
                     agentId: $("#workflow-run-agent-id", root).value || null,
                     jobId: $("#workflow-run-job-id", root).value || null,
                     modelOverride: $("#workflow-run-model", root).value || null,
-                    priority: Number($("#workflow-run-priority", root).value || 0)
+                    priority: Number($("#workflow-run-priority", root).value || 9)
                 })
             });
             const events = await consumeSse(response);

@@ -1,8 +1,15 @@
 package io.mindspice.magenta2.api.web;
 
+import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
+import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentRequest;
+import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService;
+import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentType;
+import io.mindspice.magenta2.ai.orchestration.runtime.WorkAssignment;
 import io.mindspice.magenta2.ai.orchestration.workflow.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -16,12 +23,24 @@ import java.util.UUID;
  */
 @RestController
 public class WorkflowController {
+    private static final int PUBLIC_SUBMIT_PRIORITY = 9;
+
     private final WorkflowService workflowService;
     private final InboxService inboxService;
+    private final AssignmentService assignmentService;
+    private final AgentProfileService agentProfileService;
 
     public WorkflowController(WorkflowService workflowService, InboxService inboxService) {
+        this(workflowService, inboxService, null, null);
+    }
+
+    @Autowired
+    public WorkflowController(WorkflowService workflowService, InboxService inboxService,
+                              AssignmentService assignmentService, AgentProfileService agentProfileService) {
         this.workflowService = workflowService;
         this.inboxService = inboxService;
+        this.assignmentService = assignmentService;
+        this.agentProfileService = agentProfileService;
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -86,63 +105,39 @@ public class WorkflowController {
     // ════════════════════════════════════════════════════════════════
 
     @PostMapping("/api/workflows/{workflowId}/runs")
-    public WorkflowRun startRun(@PathVariable String workflowId) {
+    public WorkAssignment startRun(@PathVariable String workflowId, @RequestBody(required = false) WorkflowRunRequest request) {
         try {
-            return workflowService.startRun(workflowId);
+            requireSubmissionServices();
+            workflowService.getDefinition(workflowId);
+            return assignmentService.create(new AssignmentRequest(
+                resolveAgentId(request == null ? null : request.agentId()),
+                normalize(request == null ? null : request.jobId()),
+                null,
+                AssignmentType.WORKFLOW_RUN,
+                request == null || request.priority() == null ? PUBLIC_SUBMIT_PRIORITY : request.priority(),
+                normalize(request == null ? null : request.modelOverride()),
+                normalize(request == null ? null : request.workspaceId()),
+                Map.of("workflowId", workflowId)
+            ));
         } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
     }
 
     @PostMapping(value = "/api/workflows/{workflowId}/runs/stream",
             produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter streamRun(@PathVariable String workflowId) {
+    public SseEmitter streamRun(@PathVariable String workflowId, @RequestBody(required = false) WorkflowRunRequest request) {
         SseEmitter emitter = SseStreamLifecycle.createEmitter();
-        SseStreamLifecycle.SubscriptionGuard guard = SseStreamLifecycle.guardSubscription();
-        SseStreamLifecycle.registerCallbacks(emitter, guard, null, null);
-
         try {
-            WorkflowRun run = workflowService.startRun(workflowId);
-
-            SseStreamLifecycle.sendSseEvent(emitter, "started",
-                Map.of("workflowRunId", run.id(), "workflowId", workflowId,
-                       "event", "started"));
-
-            reactor.core.Disposable subscription = reactor.core.publisher.Flux
-                .interval(java.time.Duration.ofSeconds(1))
-                .subscribe(
-                    i -> {
-                        try {
-                            WorkflowRun current = workflowService.getRun(run.id());
-                            String eventType = switch (current.status()) {
-                                case WAITING -> "waiting";
-                                case COMPLETED -> "completed";
-                                case FAILED, CANCELLED, NEEDS_REVIEW -> "failed";
-                                default -> "progress";
-                            };
-                            if (SseStreamLifecycle.trySendSseEvent(emitter, eventType,
-                                    Map.of("event", eventType,
-                                           "workflowRunId", current.id(),
-                                           "status", current.status().wireName(),
-                                           "nodeIndex", current.currentNodeIndex()))) {
-                                if (current.isTerminal()) {
-                                    guard.dispose();
-                                    SseStreamLifecycle.completeQuietly(emitter);
-                                }
-                            }
-                        } catch (Exception e) {
-                            guard.dispose();
-                            SseStreamLifecycle.completeQuietly(emitter);
-                        }
-                    },
-                    error -> {
-                        guard.dispose();
-                        SseStreamLifecycle.trySendSseEvent(emitter, "failed",
-                            Map.of("event", "failed", "error", error.getMessage()));
-                        SseStreamLifecycle.completeQuietly(emitter);
-                    }
-                );
-            guard.set(subscription);
+            WorkAssignment assignment = startRun(workflowId, request);
+            SseStreamLifecycle.sendSseEvent(emitter, "submitted", Map.of(
+                "event", "submitted",
+                "assignmentId", assignment.id(),
+                "workflowId", workflowId,
+                "status", assignment.status().name(),
+                "priority", assignment.priority()
+            ));
+            SseStreamLifecycle.completeQuietly(emitter);
         } catch (IllegalArgumentException exception) {
             SseStreamLifecycle.trySendSseEvent(emitter, "failed",
                 Map.of("event", "failed", "error", exception.getMessage()));
@@ -154,6 +149,31 @@ public class WorkflowController {
         }
 
         return emitter;
+    }
+
+    private void requireSubmissionServices() {
+        if (assignmentService == null || agentProfileService == null) {
+            throw new IllegalStateException("Workflow run submission requires assignment services");
+        }
+    }
+
+    private String resolveAgentId(String requestedAgentId) {
+        String normalized = normalize(requestedAgentId);
+        if (normalized != null) {
+            return normalized;
+        }
+        return agentProfileService.list().stream()
+            .filter(agent -> agent.status() != null && !"DISABLED".equals(agent.status().name()))
+            .findFirst()
+            .map(agent -> agent.id())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No active agents available"));
+    }
+
+    private String normalize(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        return value.trim();
     }
 
     @GetMapping("/api/workflow-runs/{runId}")

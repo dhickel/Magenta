@@ -15,7 +15,7 @@
 | --- | --- | --- | --- | --- | --- |
 | `01-security-access-control` | `public-alpha-remediation/security-access-control` | passed | Codex | passed: focused tests, full `mvn test`, bounded startup, live auth/CSRF and workflow XSS probes | Ready to merge into integration. Evidence: `/tmp/magenta-security-domain-live-3317476.log`, `/tmp/magenta-security-domain-live-extra-3318140.log`, `/tmp/magenta-security-domain-playwright-3317476.log`. |
 | `02-workspace-tools-outputs` | `public-alpha-remediation/workspace-tools-outputs` | passed | Codex | passed: focused tests, full `mvn test`, `git diff --check`, bounded startup | Evidence: `/tmp/domain02-focused-tests.log`, `/tmp/domain02-full-mvn-test.log`, `/tmp/domain02-git-diff-check.log`, `/tmp/domain02-bounded-startup.log`. Ready to merge into integration. |
-| `03-execution-history-streams` | `public-alpha-remediation/execution-history-streams` | planned | unassigned | planned | Owns public execution contract and transcript preservation. |
+| `03-execution-history-streams` | `public-alpha-remediation/execution-history-streams` | in_progress | Codex | subplan-01 implementer validation passed; parent validation pending | Owns public execution contract and transcript preservation. |
 | `04-workflow-authoring-runtime-js` | `public-alpha-remediation/workflow-authoring-runtime-js` | planned | unassigned | planned | Must preserve HTMX-first CRUD and narrow JS graph behavior. |
 | `05-schema-data-ownership` | `public-alpha-remediation/schema-data-ownership` | planned | unassigned | planned | Should run before runtime/workspace lease validation if possible. |
 | `06-operational-ui-htmx-mobile` | `public-alpha-remediation/operational-ui-htmx-mobile` | planned | unassigned | planned | Requires focused Playwright mobile/HTMX validation. |
@@ -30,7 +30,7 @@
 | bug-02 | `01-security-access-control` | passed | `subplan-02-id-segment-validation.md` | validator: `mvn -Dtest=PlainPathSegmentValidatorTest,AgentProfilePathSegmentValidationTest,WorkspacePathSegmentValidationTest,AgentProfileControllerTest test`; `mvn -Dtest=WorkspaceControllerTest test`; confirmed validator, agent profile, workspace, directory, and controller 400 coverage | `b1418f4` |
 | bug-03 | `04-workflow-authoring-runtime-js` | planned | `subplan-01-draft-editing-validation.md` | pending | pending |
 | bug-04 | `04-workflow-authoring-runtime-js` | planned | `subplan-02-executable-workflow-validation.md` | pending | pending |
-| bug-05 | `03-execution-history-streams` | planned | `subplan-01-submit-to-agent-contract.md` | pending | pending |
+| bug-05 | `03-execution-history-streams` | validating | `subplan-01-submit-to-agent-contract.md` | implementer: `mvn -Dtest=PublicRunSubmissionControllerTest,ChatControllerTest,TaskStreamSupportTest,OrchestrationControllerTest test`; public chat direct execute routes reject, plan/task/workflow public run routes submit assignments with high priority defaults | pending |
 | bug-06 | `03-execution-history-streams` | planned | `subplan-02-transcript-preservation.md` | pending | pending |
 | bug-07 | `05-schema-data-ownership` | planned | `subplan-01-lease-preserving-schema.md` | pending | pending |
 | bug-08 | `02-workspace-tools-outputs` | passed | `subplan-01-shell-tool-confinement.md` | validator: `mvn -Dtest=AgentShellToolServiceTest,ExternalAiConfigLoaderTest,OrchestrationRuntimeTest,ChatToolRegistryTest test`; config JSON parse; `git diff --check`; bounded startup; confirmed wildcard override gating, wrapper/path rejection, active workspace/output/project cwd confinement, safe example config | `cddbb6c` |
@@ -51,9 +51,9 @@
 | bug-23 | `02-workspace-tools-outputs` | passed | `subplan-06-output-symlink-materialization.md` | validator: `mvn -Dtest=OutputArtifactServiceAttributionTest test`; `git diff --check`; bounded startup on ephemeral port `38791`; confirmed realpath data-root confinement before copy/registration plus valid file, escaped symlink, broken symlink, and missing file coverage | `a7cd293` |
 | bug-24 | `02-workspace-tools-outputs` | passed | `subplan-07-output-attribution.md` | validator: `mvn -Dtest=PlanServiceTest,OutputArtifactServiceAttributionTest,WorkspaceRepositoryAttributionTest test`; `git diff --check`; bounded startup on ephemeral port `39639`; confirmed current workspace-layout fallback attribution, explicit context precedence, partial context merge, filtered attribution queries, system guard, and legacy parser branch preservation | `3020dac` |
 | bug-25 | `05-schema-data-ownership` | planned | `subplan-03-inbox-table-ownership.md` | pending | pending |
-| ro-01 | `03-execution-history-streams` | planned | `subplan-01-submit-to-agent-contract.md` | pending | pending |
-| ro-02 | `03-execution-history-streams` | planned | `subplan-01-submit-to-agent-contract.md` | pending | pending |
-| ro-03 | `03-execution-history-streams` | planned | `subplan-01-submit-to-agent-contract.md` | pending | pending |
+| ro-01 | `03-execution-history-streams` | validating | `subplan-01-submit-to-agent-contract.md` | implementer: workflow public run API now creates `WORKFLOW_RUN` assignments and carries request agent/job/workspace/model/priority into assignment fields instead of dropping context | pending |
+| ro-02 | `03-execution-history-streams` | validating | `subplan-01-submit-to-agent-contract.md` | implementer: chat send-to-agent and plan/workflow public submit defaults now use priority `9`; focused tests cover plan submit and run defaults | pending |
+| ro-03 | `03-execution-history-streams` | validating | `subplan-01-submit-to-agent-contract.md` | implementer: task public run stream now creates a queued `TASK_RUN` assignment instead of inline synchronous execution | pending |
 | ro-04 | `04-workflow-authoring-runtime-js` | planned | `subplan-03-js-island-narrowing.md` | pending | pending |
 | ro-05 | `04-workflow-authoring-runtime-js` | planned | `subplan-04-graph-error-handling.md` | pending | pending |
 | ro-06 | `08-code-quality-stale-cleanup` | planned | `subplan-01-legacy-workflow-cleanup.md` | pending | pending |

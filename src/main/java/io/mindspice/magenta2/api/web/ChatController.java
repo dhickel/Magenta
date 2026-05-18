@@ -97,11 +97,8 @@ public class ChatController {
     @PostMapping(value = "/{conversationId}/plan/execute/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter streamPlanExecution(@PathVariable String conversationId) {
         requireValidUuid(conversationId);
-        try {
-            return streamResolved(chatService.resolveSavedPlanExecution(conversationId), true);
-        } catch (IllegalStateException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
-        }
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+            "Direct plan execution is disabled. Save the plan and send it to an agent.");
     }
 
     private SseEmitter streamResolved(ResolvedChatRequest resolvedRequest, boolean planExecution) {
@@ -442,7 +439,8 @@ public class ChatController {
     @PostMapping("/{conversationId}/plan/execute")
     public ChatResponse.CmdResponse executePlan(@PathVariable String conversationId) {
         requireValidUuid(conversationId);
-        return handleExecPlan(conversationId);
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+            "Direct plan execution is disabled. Save the plan and send it to an agent.");
     }
 
     @PostMapping("/plans/{planId}/continue")
@@ -529,29 +527,6 @@ public class ChatController {
             chatService.history(conversationId),
             contextUsage.usage(),
             chatService.planState(conversationId)
-        );
-    }
-
-    private ChatResponse.CmdResponse handleExecPlan(String requestConversationId) {
-        String conversationId = requiredConversationId(
-            requestConversationId,
-            "plan execution requires an active conversation"
-        );
-        ChatResponse.MsgResponse response;
-        try {
-            response = chatService.executeSavedPlan(conversationId);
-        } catch (IllegalStateException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
-        }
-        return new ChatResponse.CmdResponse(
-            conversationId,
-            response.model(),
-            response.response(),
-            chatService.listConversationIds(),
-            chatService.history(conversationId),
-            response.contextUsage(),
-            chatService.planState(conversationId),
-            response.toolActivities()
         );
     }
 

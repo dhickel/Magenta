@@ -2465,8 +2465,8 @@ public class OrchestrationController {
             if (agentId == null || agentId.isBlank()) {
                 return new Div().withClass("orch-status").withInnerText("No active agents available. Create an agent first.").render();
             }
-            int priority = 0;
-            try { priority = Integer.parseInt(params.getOrDefault("priority", "0")); } catch (NumberFormatException ignored) {}
+            int priority = 9;
+            try { priority = Integer.parseInt(params.getOrDefault("priority", "9")); } catch (NumberFormatException ignored) {}
             WorkAssignment assignment = assignmentService.create(new AssignmentRequest(
                 agentId, null, null, AssignmentType.WORKFLOW_RUN,
                 priority,
