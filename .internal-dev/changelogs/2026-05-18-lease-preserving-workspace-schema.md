@@ -21,9 +21,11 @@ Warm startup with legacy `workspace_roots` and active, release-requested, or rel
 # Validation
 
 - `mvn -Dtest=WorkspaceLeaseServiceTest,WorkspaceRepositoryAttributionTest,WorkspacePathSegmentValidationTest,WorkspaceRepositorySchemaMigrationTest test` passed with 27 tests.
+- Full `mvn test` passed with 526 tests.
 - `git diff --check` passed.
 - Bounded Spring startup reached `Started Magenta2Application` on port `34269` with isolated SQLite DB `/tmp/magenta2-lease-schema-parent.sqlite`.
 - SQLite probe on `/tmp/magenta2-lease-schema-parent.sqlite` found `workspaces` and `workspace_leases`, no `workspace_roots`, and `workspace_leases.workspace_id` referencing `workspaces(id)`.
+- Validator clean/warm startup probes confirmed active, release-requested, and released lease rows survive legacy-root migration, and current-FK warm DBs keep leases intact even when stale `workspace_roots` exists.
 
 # Risks
 
