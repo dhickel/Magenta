@@ -778,7 +778,7 @@ class OrchestrationControllerTest {
     }
 
     @Test
-    void agentDashboardTabRendersCountersAndDockerStatus() {
+    void agentDashboardTabRendersCountersAndLifecycleTarget() {
         String html = controller().agentDashboardTab("agent-1");
 
         assertThat(html).contains("Dashboard");
@@ -793,6 +793,10 @@ class OrchestrationControllerTest {
         assertThat(html).contains("Workspace:");
         assertThat(html).contains("Refresh");
         assertThat(html).contains("Delete / Archive");
+        assertThat(html).contains("id=\"agent-lifecycle-panel-agent-1\"");
+        assertThat(html).contains("hx-target=\"#agent-lifecycle-panel-agent-1\"");
+        assertThat(html).contains("hx-swap=\"outerHTML\"");
+        assertThat(html).doesNotContain("agent-docker-status");
         assertThat(html).doesNotContain("Open Agent Chat");
     }
 
@@ -821,6 +825,26 @@ class OrchestrationControllerTest {
         assertThat(html).contains("Archive + Disable");
         assertThat(html).contains("Hard Delete");
         assertThat(html).contains("DELETE agent-1");
+        assertThat(html).contains("id=\"agent-lifecycle-panel-agent-1\"");
+        assertThat(html).contains("hx-target=\"#agent-lifecycle-panel-agent-1\"");
+        assertThat(html).contains("hx-post=\"/agents/_lifecycle/agent-1/disable?view=lifecycle\"");
+        assertThat(html).contains("hx-post=\"/agents/_lifecycle/agent-1/archive-and-disable?view=lifecycle\"");
+        assertThat(html).doesNotContain("agent-docker-status");
+    }
+
+    @Test
+    void lifecycleMutationResultsRenderIntoVisibleLifecyclePanel() {
+        OrchestrationController controller = controller();
+
+        String disabled = controller.disableAgentLifecycle("agent-1", "lifecycle");
+        assertThat(disabled).contains("id=\"agent-lifecycle-panel-agent-1\"");
+        assertThat(disabled).contains("Agent disabled.");
+        assertThat(disabled).doesNotContain("agent-docker-status");
+
+        String archived = controller.archiveAndDisableAgentLifecycle("agent-1", "lifecycle");
+        assertThat(archived).contains("id=\"agent-lifecycle-panel-agent-1\"");
+        assertThat(archived).contains("Agent workspace archived and profile disabled.");
+        assertThat(archived).doesNotContain("agent-docker-status");
     }
 
     @Test
@@ -2031,6 +2055,10 @@ class OrchestrationControllerTest {
             throw new IllegalStateException("Agent not found: " + id);
         }
         @Override public AgentProfile update(String id, AgentProfile profile) { return profile; }
+        @Override public AgentProfile enable(String id, boolean wakeContainer) { return get(id); }
+        @Override public AgentProfile disable(String id) { return get(id); }
+        @Override public AgentProfile archiveAndDisable(String id) { return get(id); }
+        @Override public void hardDelete(String id, String confirmationText) {}
     }
 
     private static class StubInboxService extends InboxService {

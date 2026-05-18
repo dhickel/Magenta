@@ -5063,6 +5063,7 @@ public class OrchestrationController {
         String health = agentWorkspaceHealth(agent);
         panel.withChild(new Div().withClass("orch-meta")
             .withChild(new HtmlTag("span").withInnerText("Workspace: " + health)));
+        panel.withChild(agentLifecyclePanel(agentId, null));
 
         panel.withChild(new Div().withClass("orch-actions")
             .withChild(Button.create("Refresh")
@@ -5071,13 +5072,14 @@ public class OrchestrationController {
                 .withAttribute("hx-swap", "innerHTML"))
             .withChild(Button.create(agent.status() == AgentProfileStatus.ACTIVE ? "Disable Agent" : "Enable Agent")
                 .withAttribute("hx-post", "/agents/_lifecycle/" + escapeAttr(agentId)
-                    + (agent.status() == AgentProfileStatus.ACTIVE ? "/disable" : "/enable"))
-                .withAttribute("hx-target", "#agent-tab-panel")
-                .withAttribute("hx-swap", "innerHTML"))
+                    + (agent.status() == AgentProfileStatus.ACTIVE ? "/disable" : "/enable")
+                    + "?view=lifecycle")
+                .withAttribute("hx-target", agentLifecycleTarget(agentId))
+                .withAttribute("hx-swap", "outerHTML"))
             .withChild(Button.create("Delete / Archive")
                 .withAttribute("hx-get", "/agents/_lifecycle/" + escapeAttr(agentId) + "/delete-confirm")
-                .withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId))
-                .withAttribute("hx-swap", "innerHTML")));
+                .withAttribute("hx-target", agentLifecycleTarget(agentId))
+                .withAttribute("hx-swap", "outerHTML")));
 
         return panel.render();
     }
@@ -6335,6 +6337,9 @@ public class OrchestrationController {
         @RequestParam(value = "view", required = false) String view
     ) {
         agentProfileService.enable(agentId, true);
+        if ("lifecycle".equalsIgnoreCase(view)) {
+            return agentLifecyclePanel(agentId, "Agent enabled.").render();
+        }
         return "list".equalsIgnoreCase(view) ? agentList(null) : agentDetailFragment(agentId);
     }
 
@@ -6345,6 +6350,9 @@ public class OrchestrationController {
         @RequestParam(value = "view", required = false) String view
     ) {
         agentProfileService.disable(agentId);
+        if ("lifecycle".equalsIgnoreCase(view)) {
+            return agentLifecyclePanel(agentId, "Agent disabled.").render();
+        }
         return "list".equalsIgnoreCase(view) ? agentList(null) : agentDetailFragment(agentId);
     }
 
@@ -6352,23 +6360,23 @@ public class OrchestrationController {
     @ResponseBody
     public String deleteAgentLifecycleConfirm(@PathVariable String agentId) {
         AgentProfile agent = agentProfileService.get(agentId);
-        Div panel = new Div().withClass("orch-panel")
+        Div panel = new Div().withId(agentLifecyclePanelId(agentId)).withClass("orch-panel agent-lifecycle-panel")
             .withChild(Header.H3("Delete Agent: " + nn(agent.name())))
             .withChild(new Paragraph("Choose an explicit lifecycle action. No data is removed by default."));
         panel.withChild(new Div().withClass("orch-actions")
             .withChild(Button.create("Disable Only")
-                .withAttribute("hx-post", "/agents/_lifecycle/" + escapeAttr(agentId) + "/disable")
-                .withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId))
-                .withAttribute("hx-swap", "innerHTML"))
+                .withAttribute("hx-post", "/agents/_lifecycle/" + escapeAttr(agentId) + "/disable?view=lifecycle")
+                .withAttribute("hx-target", agentLifecycleTarget(agentId))
+                .withAttribute("hx-swap", "outerHTML"))
             .withChild(Button.create("Archive + Disable")
-                .withAttribute("hx-post", "/agents/_lifecycle/" + escapeAttr(agentId) + "/archive-and-disable")
-                .withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId))
-                .withAttribute("hx-swap", "innerHTML")));
+                .withAttribute("hx-post", "/agents/_lifecycle/" + escapeAttr(agentId) + "/archive-and-disable?view=lifecycle")
+                .withAttribute("hx-target", agentLifecycleTarget(agentId))
+                .withAttribute("hx-swap", "outerHTML")));
 
         Form hardDeleteForm = Form.create();
         hardDeleteForm.withHxPost("/agents/_lifecycle/" + escapeAttr(agentId) + "/hard-delete");
-        hardDeleteForm.withAttribute("hx-target", "#agent-docker-status-" + escapeAttr(agentId));
-        hardDeleteForm.withAttribute("hx-swap", "innerHTML");
+        hardDeleteForm.withAttribute("hx-target", agentLifecycleTarget(agentId));
+        hardDeleteForm.withAttribute("hx-swap", "outerHTML");
         hardDeleteForm.withChild(new HtmlTag("label").withInnerText("Type DELETE " + agentId + " to hard-delete"));
         hardDeleteForm.withChild(TextInput.create("confirmationText")
             .withPlaceholder("DELETE " + agentId));
@@ -6379,12 +6387,18 @@ public class OrchestrationController {
 
     @PostMapping("/agents/_lifecycle/{agentId}/archive-and-disable")
     @ResponseBody
-    public String archiveAndDisableAgentLifecycle(@PathVariable String agentId) {
+    public String archiveAndDisableAgentLifecycle(
+        @PathVariable String agentId,
+        @RequestParam(value = "view", required = false) String view
+    ) {
         try {
             agentProfileService.archiveAndDisable(agentId);
+            if ("lifecycle".equalsIgnoreCase(view)) {
+                return agentLifecyclePanel(agentId, "Agent workspace archived and profile disabled.").render();
+            }
             return agentDetailFragment(agentId);
         } catch (Exception exception) {
-            return new Div().withClass("orch-error").withInnerText("Error: " + exception.getMessage()).render();
+            return agentLifecyclePanel(agentId, "Error: " + exception.getMessage()).render();
         }
     }
 
@@ -6396,16 +6410,37 @@ public class OrchestrationController {
     ) {
         try {
             agentProfileService.hardDelete(agentId, confirmationText);
-            return new Div().withClass("orch-status")
+            return new Div().withId(agentLifecyclePanelId(agentId)).withClass("orch-panel agent-lifecycle-panel")
+                .withChild(new Div().withClass("orch-status")
                 .withInnerText("Agent deleted. Refreshing agent list...")
                 .withAttribute("hx-get", "/agents/_list")
                 .withAttribute("hx-trigger", "load")
                 .withAttribute("hx-target", "#agent-list")
-                .withAttribute("hx-swap", "innerHTML")
+                    .withAttribute("hx-swap", "innerHTML"))
                 .render();
         } catch (Exception exception) {
-            return new Div().withClass("orch-error").withInnerText("Error: " + exception.getMessage()).render();
+            return agentLifecyclePanel(agentId, "Error: " + exception.getMessage()).render();
         }
+    }
+
+    private Component agentLifecyclePanel(String agentId, String message) {
+        Div panel = new Div().withId(agentLifecyclePanelId(agentId)).withClass("orch-panel agent-lifecycle-panel");
+        if (StringUtils.hasText(message)) {
+            panel.withChild(new Div().withClass(message.startsWith("Error:") ? "orch-error" : "orch-status")
+                .withInnerText(message));
+        } else {
+            panel.withChild(new Div().withClass("orch-meta")
+                .withChild(new HtmlTag("span").withInnerText("Lifecycle controls update here.")));
+        }
+        return panel;
+    }
+
+    private String agentLifecycleTarget(String agentId) {
+        return "#" + agentLifecyclePanelId(agentId);
+    }
+
+    private String agentLifecyclePanelId(String agentId) {
+        return "agent-lifecycle-panel-" + escapeAttr(agentId);
     }
 
     // ── Agent profile editor HTMX partials ──

@@ -1521,7 +1521,7 @@
     margin-top: 0.2rem;
 }
 
-.agent-docker-status {
+.agent-lifecycle-panel {
     border: 1px solid #dde5ef;
     border-radius: 8px;
     background: #fbfcfe;
@@ -1532,27 +1532,27 @@
     align-items: center;
 }
 
-.agent-docker-stat {
+.agent-lifecycle-stat {
     display: flex;
     align-items: center;
     gap: 0.3rem;
     font-size: 0.84rem;
 }
 
-.agent-docker-stat-label {
+.agent-lifecycle-stat-label {
     color: #6b7889;
 }
 
-.agent-docker-stat-value {
+.agent-lifecycle-stat-value {
     font-weight: 600;
     color: #202936;
 }
 
-.agent-docker-stat-value.available {
+.agent-lifecycle-stat-value.available {
     color: #286238;
 }
 
-.agent-docker-stat-value.unavailable {
+.agent-lifecycle-stat-value.unavailable {
     color: #8c2f2f;
 }
 
