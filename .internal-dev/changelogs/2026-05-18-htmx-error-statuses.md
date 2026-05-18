@@ -27,12 +27,15 @@ HTMX clients and browser automation can now distinguish failed operational mutat
 - `node --check src/main/resources/static/js/alpha-security.js` passed.
 - `git diff --check` passed.
 - Bounded Spring startup reached `Started Magenta2Application` with isolated SQLite DB `/tmp/domain06-subplan03-swap-parent.sqlite`; log: `/tmp/domain06-subplan03-swap-parent-startup.log`.
-- Delegated browser-origin validation remains pending.
+- Validation agent passed commit `1561406`: `mvn -Dtest=OrchestrationControllerTest test` passed with 86 tests, `node --check src/main/resources/static/js/alpha-security.js` passed, `git diff --check` passed, and bounded startup reached `Started Magenta2Application`.
+- Browser-origin validation on live app port `18080` confirmed settings HTMX failure returned `400`, body contained `.orch-status-error`, `htmx:beforeSwap.shouldSwap=true`, `afterRequest.failed=true`, and the visible error swapped into `#settings-form-container`.
+- Browser-origin probes confirmed shell exec failure `400` with `.orch-error`, hard-delete validation failure `400` with `.agent-lifecycle-panel` and `.orch-error`, and queue delete failure `409` with queue fragment/table, assignment id, and `.orch-error`.
+- CSRF HTMX `403` retained `shouldSwap=false`, fired `htmx:responseError`, showed the CSRF banner, and did not swap the target. Direct dispatch confirmed both `Authentication required.` and `CSRF token missing or invalid.` banner text.
 
 # Risks
 
-Delegated browser validation should confirm the visible fragments now render in the live UI for the changed targets, especially the settings form failure that failed with `visibleError=false` on `df7f99d`.
+No remaining subplan-specific risk after validation. The broader Domain 06 gate still needs to run after later subplans.
 
 # Follow-up Items
 
-Run the Domain 06 validation-agent browser-origin HTMX proof for bug-20 before marking the subplan passed.
+Continue serially to Domain 06 subplan 04.
