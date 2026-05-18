@@ -23,6 +23,6 @@ Operators and API callers no longer create orphan job runs through public routes
 
 `POST /api/jobs/{jobId}/runs` now returns a `WorkAssignment` rather than a `JobRun`, which is an intentional public contract change for alpha remediation.
 
-## Follow-up Items
+## Validation
 
-Parent validation should confirm the focused job submission contract and bounded startup before marking bug-15 passed.
+Validated on commit `cb3b6e2` with focused controller tests, static scan for public direct `jobService.startRun` calls, `git diff --check`, bounded Spring startup, and a live `/jobs` Playwright CLI check that confirmed `Start Run` renders a `JOB_RUN` assignment with priority `9`.
