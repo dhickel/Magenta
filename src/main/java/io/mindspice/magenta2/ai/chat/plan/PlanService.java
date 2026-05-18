@@ -804,6 +804,7 @@ public class PlanService {
         Instant now = Instant.now();
         String runId = UUID.randomUUID().toString();
         OrchestrationTaskContext effectiveContext = context;
+        OrchestrationTaskContext previousContext = OrchestrationTaskContextHolder.current();
 
         // Allocate workspace directories
         String tempWorkspacePath = null;
@@ -826,18 +827,23 @@ public class PlanService {
                 log.info("Allocated temp={} output={} agent={} for run={}",
                     tempWorkspacePath, outputDirectoryPath, agentId, runId);
             } catch (Exception e) {
-                log.error("Failed to allocate workspace directories for run={}: {}", runId, e.getMessage());
-                // Continue without workspace dirs — execution will fail at Docker level
+                return saveAllocationFailureRun(
+                    runId, definition, cleanInputs, tempWorkspacePath, outputDirectoryPath, now, e, previousContext);
             }
         }
-        if (workspaceDirectoryService != null
-            && effectiveContext != null
-            && StringUtils.hasText(effectiveContext.hostWorkspacePath())
-            && StringUtils.hasText(effectiveContext.projectId())) {
-            Path projectLink = workspaceDirectoryService.materializeAssignmentProjectLink(
-                effectiveContext.hostWorkspacePath(), effectiveContext.projectId());
-            log.info("Materialized project workspace link={} project={} run={}",
-                projectLink, effectiveContext.projectId(), runId);
+        try {
+            if (workspaceDirectoryService != null
+                && effectiveContext != null
+                && StringUtils.hasText(effectiveContext.hostWorkspacePath())
+                && StringUtils.hasText(effectiveContext.projectId())) {
+                Path projectLink = workspaceDirectoryService.materializeAssignmentProjectLink(
+                    effectiveContext.hostWorkspacePath(), effectiveContext.projectId());
+                log.info("Materialized project workspace link={} project={} run={}",
+                    projectLink, effectiveContext.projectId(), runId);
+            }
+        } catch (Exception e) {
+            return saveAllocationFailureRun(
+                runId, definition, cleanInputs, tempWorkspacePath, outputDirectoryPath, now, e, previousContext);
         }
 
         return planRepository.saveRun(new PlanRun(
@@ -859,6 +865,45 @@ public class PlanService {
             now,
             now,
             null
+        ));
+    }
+
+    private PlanRun saveAllocationFailureRun(
+        String runId,
+        PlanDefinition definition,
+        Map<String, Object> cleanInputs,
+        String tempWorkspacePath,
+        String outputDirectoryPath,
+        Instant startedAt,
+        Exception exception,
+        OrchestrationTaskContext previousContext
+    ) {
+        String message = "Filesystem workspace/output allocation failed for run " + runId + ": "
+            + rootCauseMessage(exception);
+        log.error("Failed to allocate workspace directories for run={}: {}", runId, message, exception);
+        if (previousContext != null) {
+            OrchestrationTaskContextHolder.set(previousContext);
+        }
+        Instant completedAt = Instant.now();
+        return planRepository.saveRun(new PlanRun(
+            runId,
+            definition.id(),
+            PlanRunStatus.FAILED,
+            cleanInputs,
+            Map.of(),
+            definition,
+            null,
+            outputDirectoryPath,
+            tempWorkspacePath,
+            List.of("Failure: " + message),
+            List.of(),
+            List.of(),
+            null,
+            message,
+            startedAt,
+            completedAt,
+            startedAt,
+            completedAt
         ));
     }
 
@@ -1632,6 +1677,20 @@ Approved plan:
 
     private String normalize(String value) {
         return PlanText.normalize(value);
+    }
+
+    private String rootCauseMessage(Throwable throwable) {
+        Throwable current = throwable;
+        Throwable root = throwable;
+        while (current != null) {
+            root = current;
+            current = current.getCause();
+        }
+        String message = root == null ? null : root.getMessage();
+        if (!StringUtils.hasText(message) && throwable != null) {
+            message = throwable.getMessage();
+        }
+        return StringUtils.hasText(message) ? message : "unknown allocation error";
     }
 
     private String normalizePlanningTask(String value) {

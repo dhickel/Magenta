@@ -541,6 +541,47 @@ class PlanServiceTest {
     }
 
     @Test
+    void workspaceAllocationFailurePersistsFailedRunAndDoesNotContinueWithNullPaths() throws Exception {
+        Path dataRoot = Files.createDirectories(tempDir.resolve("allocation-failure-data"));
+        WorkspaceDirectoryService dirService = new FailingWorkspaceDirectoryService(dataRoot);
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        PlanRepository planRepository = new PlanRepository(jdbcTemplate, new ObjectMapper());
+        PlanService service = new PlanService(
+            planRepository,
+            new ChatMemoryRepository(jdbcTemplate, new ObjectMapper()),
+            null, new io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer(),
+            dirService, null);
+
+        PlanDefinition task = service.saveTask(new PlanDefinition(
+            null, PlanKind.TASK_TEMPLATE, PlanStatus.APPROVED,
+            "Allocation Failure Task", "Do it.", "Goal.", null,
+            List.of(), List.of(), List.of(),
+            List.of(), List.of(new PlanStep(1, "Do it.")), List.of("Run starts clearly."),
+            List.of(), List.of(), null, null, null, null,
+            null, List.of(), 0, 0, null, null, null, null));
+
+        PlanRun run = service.startRun(task.id(), Map.of(),
+            new OrchestrationTaskContext("agent-1", "TestAgent", "job-1", null, "ws-1",
+                "TASK_RUN", null, null));
+
+        assertThat(run.status()).isEqualTo(PlanRunStatus.FAILED);
+        assertThat(run.tempWorkspacePath()).isNull();
+        assertThat(run.outputDirectory()).isNull();
+        assertThat(run.errorText())
+            .contains("Filesystem workspace/output allocation failed")
+            .contains("simulated temp allocation failure");
+        assertThat(run.executionEvidence()).anySatisfy(entry -> assertThat(entry)
+            .contains("Failure: Filesystem workspace/output allocation failed")
+            .contains("simulated temp allocation failure"));
+
+        PlanRun persisted = planRepository.findRun(run.id()).orElseThrow();
+        assertThat(persisted.status()).isEqualTo(PlanRunStatus.FAILED);
+        assertThat(persisted.errorText()).isEqualTo(run.errorText());
+        assertThatThrownBy(() -> service.completeRun(run.id(), Map.of(), "done", List.of()))
+            .hasMessageContaining("complete is available only while a run is active");
+    }
+
+    @Test
     void completeRunCleansTempDirectoryAndDetectsLooseArtifacts() throws Exception {
         Path dataRoot = Files.createDirectories(tempDir.resolve("data2"));
         WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(
@@ -668,5 +709,16 @@ class PlanServiceTest {
     private JdbcTemplate jdbcTemplate() {
         SingleConnectionDataSource dataSource = new SingleConnectionDataSource("jdbc:sqlite::memory:", true);
         return new JdbcTemplate(dataSource);
+    }
+
+    private static final class FailingWorkspaceDirectoryService extends WorkspaceDirectoryService {
+        private FailingWorkspaceDirectoryService(Path dataRoot) throws Exception {
+            super(new AiConfig(null, null, null, null, dataRoot, null, null));
+        }
+
+        @Override
+        public Path taskTemp(String runId) {
+            throw new IllegalStateException("simulated temp allocation failure");
+        }
     }
 }

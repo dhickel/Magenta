@@ -14,7 +14,7 @@
 | Domain | Branch | Status | Current Owner | Validation Gate | Notes |
 | --- | --- | --- | --- | --- | --- |
 | `01-security-access-control` | `public-alpha-remediation/security-access-control` | passed | Codex | passed: focused tests, full `mvn test`, bounded startup, live auth/CSRF and workflow XSS probes | Ready to merge into integration. Evidence: `/tmp/magenta-security-domain-live-3317476.log`, `/tmp/magenta-security-domain-live-extra-3318140.log`, `/tmp/magenta-security-domain-playwright-3317476.log`. |
-| `02-workspace-tools-outputs` | `public-alpha-remediation/workspace-tools-outputs` | in_progress | Codex | subplan 04 passed | Subplan 05 filesystem allocation fail-fast active next. |
+| `02-workspace-tools-outputs` | `public-alpha-remediation/workspace-tools-outputs` | in_progress | Codex | subplan 05 implementer checks passed | Subplan 05 filesystem allocation fail-fast ready for parent validation; subplan 06 next after gate. |
 | `03-execution-history-streams` | `public-alpha-remediation/execution-history-streams` | planned | unassigned | planned | Owns public execution contract and transcript preservation. |
 | `04-workflow-authoring-runtime-js` | `public-alpha-remediation/workflow-authoring-runtime-js` | planned | unassigned | planned | Must preserve HTMX-first CRUD and narrow JS graph behavior. |
 | `05-schema-data-ownership` | `public-alpha-remediation/schema-data-ownership` | planned | unassigned | planned | Should run before runtime/workspace lease validation if possible. |
@@ -47,7 +47,7 @@
 | bug-19 | `05-schema-data-ownership` | planned | `subplan-02-canonical-schema-drift.md` | pending | pending |
 | bug-20 | `06-operational-ui-htmx-mobile` | planned | `subplan-03-htmx-error-statuses.md` | pending | pending |
 | bug-21 | `03-execution-history-streams` | planned | `subplan-05-schedule-reaction-template-validation.md` | pending | pending |
-| bug-22 | `02-workspace-tools-outputs` | planned | `subplan-05-filesystem-allocation-fail-fast.md` | pending | pending |
+| bug-22 | `02-workspace-tools-outputs` | validating | `subplan-05-filesystem-allocation-fail-fast.md` | implementer: `mvn -Dtest=PlanServiceTest test`; `mvn -Dtest=PlanServiceTest,OrchestrationRuntimeTest test`; `mvn -Dtest=WorkflowRunnerTest,TaskStreamSupportTest test`; `git diff --check`; bounded startup reached port `33235`; pending parent validation | pending |
 | bug-23 | `02-workspace-tools-outputs` | planned | `subplan-06-output-symlink-materialization.md` | pending | pending |
 | bug-24 | `02-workspace-tools-outputs` | planned | `subplan-07-output-attribution.md` | pending | pending |
 | bug-25 | `05-schema-data-ownership` | planned | `subplan-03-inbox-table-ownership.md` | pending | pending |

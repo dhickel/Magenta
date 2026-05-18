@@ -648,6 +648,10 @@ public class ChatService {
     public TaskExecutionResult executeTaskBlocking(String taskId, Map<String, Object> inputValues, String conversationId, String modelOverride) {
         requireTaskService();
         ResolvedTaskExecution execution = resolveTaskExecution(taskId, inputValues, conversationId, modelOverride);
+        TaskRun started = taskService.getRun(execution.runId());
+        if (started.status() != TaskRunStatus.RUNNING) {
+            return new TaskExecutionResult(execution.conversationId(), started, null);
+        }
         try {
             ChatResponse.MsgResponse response = chat(execution.request());
             TaskRun run = taskService.getRun(execution.runId());
@@ -678,6 +682,12 @@ public class ChatService {
         ResolvedTaskExecution execution = resolveTaskExecution(taskId, inputValues, conversationId, modelOverride);
         return Flux.create(sink -> {
             sink.next(TaskExecutionEvent.started(execution.conversationId(), execution.runId()));
+            TaskRun started = taskService.getRun(execution.runId());
+            if (started.status() != TaskRunStatus.RUNNING) {
+                sink.next(TaskExecutionEvent.finished(execution.conversationId(), started));
+                sink.complete();
+                return;
+            }
             try {
                 ChatMessage finalMessage = toolChatMessageWithRetry(
                     execution.request(),

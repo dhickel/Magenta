@@ -33,8 +33,8 @@ Medium: filesystem runtime can produce confusing downstream failures or missing 
 
 ## Status
 
-Open.
+Implemented; pending parent validation.
 
 ## Next Action
 
-Fail the run immediately when required filesystem workspace/output allocation fails.
+Parent validator should confirm allocation failures persist a failed run with operator-visible error text/evidence and do not call model execution with null workspace/output paths.
