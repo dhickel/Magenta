@@ -21,9 +21,11 @@ Clean SQLite databases now start with the same key plan/output schema shape that
 # Validation
 
 - `mvn -Dtest=WorkspaceRepositorySchemaMigrationTest,WorkspaceRepositoryAttributionTest,PlanRepositoryTest test` passed with 16 tests.
+- Full `mvn test` passed with 527 tests.
 - Clean SQLite schema probe confirmed `plan_runs.temp_workspace_path`, `run_output_artifacts.agent_id`, `job_id`, `project_id`, `workspace_id`, `run_type`, and output attribution indexes exist after applying `schema.sql`.
 - `git diff --check` passed.
 - Bounded Spring startup reached `Started Magenta2Application` on port `42715` with isolated SQLite DB `/tmp/domain05-subplan02-startup.sqlite`.
+- Validator post-startup DB probes confirmed the same target columns/indexes, and static review confirmed warm add-column guards remain in `PlanRepository` and `WorkspaceRepository`.
 
 # Risks
 
