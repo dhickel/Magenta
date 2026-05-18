@@ -22,10 +22,12 @@ Fresh SQLite databases no longer create an unexplained `job_work_items` table. W
 
 - `rg -n "job_work_items" src/main src/test .internal-dev/plans/public-alpha-remediation .internal-dev/changelogs/2026-05-18-orphan-job-work-items-schema-cleanup.md` found no production schema/code usage after cleanup; remaining hits are the intentional test and plan/changelog/history references.
 - `mvn -Dtest=WorkspaceRepositorySchemaMigrationTest,OrchestrationRuntimeTest,OperationalUiContractControllerTest test` passed with 47 tests.
+- Full `mvn test` passed with 530 tests.
 - Clean SQLite schema probe returned `job_definitions`, `job_runs`, and `orchestration_job_items`, with no `job_work_items`.
 - `git diff --check` passed.
 - Bounded Spring startup reached `Started Magenta2Application` on port `39667` with isolated SQLite DB `/tmp/domain05-subplan04-parent.sqlite` before the timeout stopped it.
 - Post-startup SQLite probe on `/tmp/domain05-subplan04-parent.sqlite` returned `job_definitions`, `job_runs`, and `orchestration_job_items`, with no `job_work_items`.
+- Validator confirmed no production `src/main` hit for `job_work_items` and no destructive `DROP TABLE job_work_items` migration.
 
 # Risks
 
