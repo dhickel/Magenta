@@ -320,7 +320,8 @@ class OrchestrationControllerTest {
         String html = controller().workflows();
 
         assertThat(html).contains("Workflows");
-        assertThat(html).contains("/js/orchestration/workflows.js?v=2");
+        assertThat(html).doesNotContain("/js/orchestration/workflows.js");
+        assertThat(html).doesNotContain("Workflow V2 Graph Composer");
         assertThat(html).contains("/workflows/_list");
         assertThat(html).contains("/workflows/_editor/_draft");
         assertThat(html).contains("No workflows.");

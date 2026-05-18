@@ -109,7 +109,6 @@ public class OrchestrationController {
     private static final String AGENTS_JS = "/js/orchestration/agents.js?v=1";
     private static final String AGENT_CHAT_JS = "/js/orchestration/agent-chat.js?v=2";
     private static final String PLANS_JS = "/js/orchestration/plans.js?v=3";
-    private static final String WORKFLOWS_JS = "/js/orchestration/workflows.js?v=2";
     private static final String PROJECTS_JS = "/js/orchestration/projects.js?v=3";
     private static final String INBOX_JS = "/js/orchestration/inbox.js?v=1";
     private static final String OUTPUTS_JS = "/js/orchestration/outputs.js?v=1";
@@ -2130,8 +2129,7 @@ public class OrchestrationController {
                         .withChild(workflowListContent(null))))
                 .withChild(new Div().withClass("browser-detail")
                     .withChild(new Div().withId("workflow-editor-container")
-                        .withChild(workflowEditorEmptyState()))))
-            .withChild(moduleScript(WORKFLOWS_JS));
+                        .withChild(workflowEditorEmptyState()))));
         return renderPage(body, "/workflows");
     }
 
