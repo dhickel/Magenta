@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
@@ -32,6 +33,7 @@ import io.mindspice.magenta2.ai.orchestration.runtime.JobRecurrence;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobRepository;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobRun;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobRunStatus;
+import io.mindspice.magenta2.ai.orchestration.runtime.JobService;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationEvent;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationEventService;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationJob;
@@ -49,15 +51,27 @@ import io.mindspice.magenta2.ai.orchestration.runtime.ScheduleService;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
 import io.mindspice.magenta2.ai.orchestration.runtime.WorkAssignment;
+import io.mindspice.magenta2.ai.chat.plan.PlanDefinition;
+import io.mindspice.magenta2.ai.chat.plan.PlanKind;
+import io.mindspice.magenta2.ai.chat.plan.PlanRepository;
+import io.mindspice.magenta2.ai.chat.plan.PlanService;
+import io.mindspice.magenta2.ai.chat.plan.PlanStatus;
+import io.mindspice.magenta2.ai.chat.plan.PlanStep;
 import io.mindspice.magenta2.ai.chat.repository.AuditRepository;
+import io.mindspice.magenta2.ai.chat.repository.ChatMemoryRepository;
+import io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.chat.service.TaskExecutionResult;
+import io.mindspice.magenta2.ai.chat.task.TaskService;
 import io.mindspice.magenta2.ai.chat.task.TaskRun;
 import io.mindspice.magenta2.ai.chat.task.TaskRunStatus;
+import io.mindspice.magenta2.ai.chat.tool.file.AgentFileToolService;
 import io.mindspice.magenta2.ai.execution.MagentaWorkExecutor;
 import io.mindspice.magenta2.ai.execution.MagentaWorkKind;
+import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.Workspace;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLease;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLeaseService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLink;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLinkType;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceRepository;
@@ -897,6 +911,113 @@ class OrchestrationRuntimeTest {
         assertThat(result.output()).containsKey("conversationIds");
         assertThat(repository.findAssignmentConversationIds("assignment-task"))
             .containsExactly(result.output().get("conversationId").toString());
+    }
+
+    @Test
+    void projectLeaseMaterializesPromisedWorkspacePathForTaskTools() throws Exception {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        AiConfig aiConfig = aiConfig();
+        WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(aiConfig);
+        WorkspaceRepository workspaceRepository = new WorkspaceRepository(jdbcTemplate);
+        WorkspaceService workspaceService = new WorkspaceService(workspaceRepository, aiConfig);
+        WorkspaceLeaseService leaseService = new WorkspaceLeaseService(workspaceRepository);
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, objectMapper);
+        AgentProfileService agentService = agentService(jdbcTemplate, aiConfig);
+        AgentProfile agent = agentService.create(new AgentProfile(
+            "agent-1", "Agent 1", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of("file_read"), List.of(), true, null, null
+        ));
+        ProjectService projectService = new ProjectService(
+            new ProjectRepository(jdbcTemplate, objectMapper),
+            directoryService,
+            workspaceService,
+            leaseService,
+            repository
+        );
+        Project project = projectService.createProject("Linked Project", "desc", agent.id(), null);
+        Path projectWorkspace = directoryService.projectWorkspace(project.id());
+        Files.writeString(projectWorkspace.resolve("shared.txt"), "leased project\n");
+        JobService jobService = new JobService(new JobRepository(jdbcTemplate, objectMapper), directoryService, null, null);
+        JobDefinition job = jobService.saveDefinition(new JobDefinition(
+            "job-project", agent.id(), project.id(), null, "READY",
+            "Project Job", "summary", List.of(), null, null, null, null, null
+        ));
+        PlanService planService = new PlanService(
+            new PlanRepository(jdbcTemplate, objectMapper),
+            new ChatMemoryRepository(jdbcTemplate, objectMapper),
+            null,
+            new ChatMarkdownRenderer(),
+            directoryService,
+            new OutputArtifactService(workspaceRepository, directoryService, objectMapper)
+        );
+        PlanDefinition task = planService.saveTask(new PlanDefinition(
+            null, PlanKind.TASK_TEMPLATE, PlanStatus.APPROVED,
+            "Project Link Task", "Read project data.", "Read project data.", null,
+            List.of(), List.of(), List.of(), List.of(),
+            List.of(new PlanStep(1, "Read linked project workspace.")),
+            List.of("Project path is readable."), List.of(), List.of(),
+            null, null, null, null, null, List.of(), 0, 0,
+            null, null, null, null
+        ));
+        TaskService taskService = new TaskService(planService);
+        RuntimeSettingsService settingsService = new RuntimeSettingsService(
+            new RuntimeSettingsRepository(jdbcTemplate), aiConfig, agentService);
+        AssignmentService assignmentService = new AssignmentService(repository, agentService, settingsService, jobService);
+        AtomicReference<Path> materializedLink = new AtomicReference<>();
+        ChatService chatService = new ChatService(null, null, null, null, null) {
+            @Override
+            public TaskExecutionResult executeTaskBlocking(
+                String taskId,
+                Map<String, Object> inputValues,
+                String conversationId,
+                String modelOverride
+            ) {
+                OrchestrationTaskContext context = OrchestrationTaskContextHolder.current();
+                TaskRun started = taskService.startChatExecution(conversationId, taskId, inputValues, context);
+                OrchestrationTaskContext updated = OrchestrationTaskContextHolder.current();
+                Path link = Path.of(updated.hostWorkspacePath()).resolve("projects").resolve(project.id());
+                materializedLink.set(link);
+                try {
+                    assertThat(Files.isSymbolicLink(link)).isTrue();
+                    assertThat(link.toRealPath()).isEqualTo(projectWorkspace.toRealPath());
+                    AgentFileToolService fileTool = new AgentFileToolService(aiConfig, directoryService);
+                    AgentFileToolService.FileReadResult read = fileTool.read(
+                        "projects/" + project.id() + "/shared.txt", 1, 10);
+                    assertThat(read.lines().getFirst()).endsWith("|leased project");
+                } catch (Exception e) {
+                    throw new IllegalStateException(e);
+                }
+                TaskRun completed = taskService.completeRun(
+                    started.id(), Map.of(), "done", List.of("project link readable"));
+                return new TaskExecutionResult(conversationId, completed, null);
+            }
+        };
+        OrchestrationRunnerService runner = new OrchestrationRunnerService(
+            repository, assignmentService, jobService, taskService, null, chatService, null, null,
+            agentService, null, projectService, workspaceService, leaseService, directoryService,
+            new MagentaWorkExecutor(Map.of(
+                MagentaWorkKind.BACKGROUND_JOB, new MagentaWorkExecutor.LaneSettings("test-bg-", 1, 10)
+            )),
+            300,
+            60
+        );
+        repository.saveAssignment(new WorkAssignment(
+            "assignment-project-link", agent.id(), job.id(), null, AssignmentType.TASK_RUN, 1,
+            OrchestrationStatus.QUEUED, null, null, 0,
+            Map.of(), Map.of("taskId", task.id(), "inputValues", Map.of()),
+            Map.of(), Map.of(), null, null, null, null, null, null, null
+        ));
+
+        WorkAssignment result = runner.runAssignment("assignment-project-link");
+
+        assertThat(result.errorText()).isNull();
+        assertThat(result.status()).isEqualTo(OrchestrationStatus.COMPLETED);
+        assertThat(materializedLink.get()).isNotNull();
+        assertThat(Files.exists(materializedLink.get())).isFalse();
+        Workspace workspace = workspaceRepository.findByOwner(WorkspaceOwnerType.PROJECT, project.id()).orElseThrow();
+        assertThat(workspaceService.activeLeases(workspace.id())).isEmpty();
+        assertThat(Files.readString(projectWorkspace.resolve("shared.txt"))).isEqualTo("leased project\n");
     }
 
     @Test

@@ -285,6 +285,8 @@ public class OrchestrationRunnerService {
             }
             return fail(current, exception.getMessage());
         } finally {
+            OrchestrationTaskContext finalContext = OrchestrationTaskContextHolder.current();
+            removeMaterializedProjectLink(finalContext);
             OrchestrationTaskContextHolder.clear();
             if (projectLease != null) {
                 workspaceLeaseService.release(projectLease.id(), leased.id());
@@ -293,6 +295,21 @@ public class OrchestrationRunnerService {
             if (projectHeartbeat != null) {
                 projectHeartbeat.cancel(false);
             }
+        }
+    }
+
+    private void removeMaterializedProjectLink(OrchestrationTaskContext context) {
+        if (context == null
+            || workspaceDirectoryService == null
+            || !StringUtils.hasText(context.hostWorkspacePath())
+            || !StringUtils.hasText(context.projectId())) {
+            return;
+        }
+        try {
+            workspaceDirectoryService.removeAssignmentProjectLink(context.hostWorkspacePath(), context.projectId());
+        } catch (RuntimeException e) {
+            logger.warn("Failed to remove materialized project workspace link for assignment project={}: {}",
+                context.projectId(), e.getMessage());
         }
     }
 

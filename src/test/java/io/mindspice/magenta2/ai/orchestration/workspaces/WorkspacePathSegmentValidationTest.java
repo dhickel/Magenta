@@ -89,6 +89,35 @@ class WorkspacePathSegmentValidationTest {
             .hasMessageContaining("runId");
     }
 
+    @Test
+    void projectLinkMaterializationCreatesUsableAssignmentPathAndCleanupRemovesLink() throws Exception {
+        WorkspaceDirectoryService service = new WorkspaceDirectoryService(aiConfig());
+        Path assignmentWorkspace = service.taskTemp("run-1");
+        Path projectWorkspace = service.projectWorkspace("project-1");
+        Files.writeString(projectWorkspace.resolve("shared.txt"), "project data");
+
+        Path link;
+        try {
+            link = service.materializeAssignmentProjectLink(assignmentWorkspace.toString(), "project-1");
+        } catch (IllegalStateException e) {
+            if (e.getMessage().contains("symlink support")) {
+                return;
+            }
+            throw e;
+        }
+
+        assertThat(link).isEqualTo(assignmentWorkspace.resolve("projects/project-1"));
+        assertThat(Files.isSymbolicLink(link)).isTrue();
+        assertThat(service.requireAssignmentProjectLinkTarget(assignmentWorkspace.toString(), "project-1"))
+            .isEqualTo(projectWorkspace.toRealPath());
+        assertThat(Files.readString(link.resolve("shared.txt"))).isEqualTo("project data");
+
+        service.removeAssignmentProjectLink(assignmentWorkspace.toString(), "project-1");
+
+        assertThat(Files.exists(link)).isFalse();
+        assertThat(Files.exists(projectWorkspace.resolve("shared.txt"))).isTrue();
+    }
+
     private WorkspaceService workspaceService() throws Exception {
         return new WorkspaceService(
             new WorkspaceRepository(new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:", true))),

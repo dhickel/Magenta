@@ -216,7 +216,9 @@ public class AgentShellToolService {
         if (!normalized.equals(projectPrefix) && !normalized.startsWith(projectPrefix + "/")) {
             throw new IllegalArgumentException("Project working directory is not linked to this assignment: " + workingDirectory);
         }
-        Path projectRoot = workspaceDirectoryService.projectWorkspace(ctx.projectId()).toRealPath();
+        Path projectRoot = StringUtils.hasText(ctx.hostWorkspacePath())
+            ? workspaceDirectoryService.requireAssignmentProjectLinkTarget(ctx.hostWorkspacePath(), ctx.projectId())
+            : workspaceDirectoryService.projectWorkspace(ctx.projectId()).toRealPath();
         String remainder = normalized.equals(projectPrefix) ? "" : normalized.substring((projectPrefix + "/").length());
         Path resolved = resolveScopedDirectory(projectRoot, remainder, workingDirectory);
         return new ResolvedWorkingDirectory(resolved, displayScoped(projectPrefix, projectRoot, resolved));

@@ -386,6 +386,7 @@ class AgentShellToolServiceTest {
         AiConfig aiConfig = new AiConfig(null, null, null, null, null, null, tempDir, null, null, null);
         WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(aiConfig);
         Path projectWorkspace = dirService.projectWorkspace("project-1");
+        dirService.materializeAssignmentProjectLink(runWorkspace.toString(), "project-1");
         AgentShellToolService service = new AgentShellToolService(tempDir, List.of("pwd"), dirService);
 
         OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(

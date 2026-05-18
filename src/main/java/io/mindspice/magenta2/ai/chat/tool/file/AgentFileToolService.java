@@ -462,7 +462,9 @@ public class AgentFileToolService {
         if (!normalized.equals(projectPrefix) && !normalized.startsWith(projectPrefix + "/")) {
             throw new IllegalArgumentException("Project path is not linked to this assignment: " + requested);
         }
-        Path projectRoot = workspaceDirectoryService.projectWorkspace(ctx.projectId()).toRealPath();
+        Path projectRoot = StringUtils.hasText(ctx.hostWorkspacePath())
+            ? workspaceDirectoryService.requireAssignmentProjectLinkTarget(ctx.hostWorkspacePath(), ctx.projectId())
+            : workspaceDirectoryService.projectWorkspace(ctx.projectId()).toRealPath();
         String remainder = normalized.equals(projectPrefix) ? "" : normalized.substring((projectPrefix + "/").length());
         rejectUnsafeRelativePath(remainder, "path escapes current project workspace: " + requested);
         return new FileScope(projectRoot, projectPrefix, "current project workspace", remainder);

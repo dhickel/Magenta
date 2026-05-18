@@ -830,6 +830,15 @@ public class PlanService {
                 // Continue without workspace dirs — execution will fail at Docker level
             }
         }
+        if (workspaceDirectoryService != null
+            && effectiveContext != null
+            && StringUtils.hasText(effectiveContext.hostWorkspacePath())
+            && StringUtils.hasText(effectiveContext.projectId())) {
+            Path projectLink = workspaceDirectoryService.materializeAssignmentProjectLink(
+                effectiveContext.hostWorkspacePath(), effectiveContext.projectId());
+            log.info("Materialized project workspace link={} project={} run={}",
+                projectLink, effectiveContext.projectId(), runId);
+        }
 
         return planRepository.saveRun(new PlanRun(
             runId,

@@ -350,6 +350,7 @@ class AgentFileToolServiceTest {
         Path projectTwo = dirService.projectWorkspace("project-2");
         Files.writeString(projectOne.resolve("shared.txt"), "current project\n");
         Files.writeString(projectTwo.resolve("secret.txt"), "other project\n");
+        dirService.materializeAssignmentProjectLink(runWorkspace.toString(), "project-1");
 
         AgentFileToolService service = new AgentFileToolService(tempDir, dirService);
         OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(

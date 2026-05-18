@@ -1,7 +1,9 @@
 package io.mindspice.magenta2.ai.orchestration.workspaces;
 
 import java.io.IOException;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.UUID;
 
@@ -186,6 +188,79 @@ public class WorkspaceDirectoryService {
         return ensureDir(confined("projects/" + projectId + "/workspace"));
     }
 
+    /**
+     * Materializes the current project workspace under an assignment temp
+     * workspace as {@code projects/<projectId>}. The returned path is the
+     * visible assignment-relative link; callers should remove it before
+     * releasing the corresponding project workspace lease.
+     */
+    public Path materializeAssignmentProjectLink(String assignmentWorkspacePath, String projectId) {
+        requireId(projectId, "projectId");
+        try {
+            Path assignmentWorkspace = existingConfinedDirectory(assignmentWorkspacePath, "assignment workspace");
+            Path projectsDir = ensureDir(confinedChild(assignmentWorkspace, "projects"));
+            Path link = confinedChild(projectsDir, projectId);
+            Path target = projectWorkspace(projectId).toRealPath();
+            removeExistingProjectLink(link, target);
+            try {
+                Files.createSymbolicLink(link, target);
+            } catch (UnsupportedOperationException | FileSystemException e) {
+                throw new IllegalStateException(
+                    "Project workspace links require filesystem symlink support: " + link, e);
+            }
+            return link;
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to materialize project workspace link for " + projectId, e);
+        }
+    }
+
+    public Path requireAssignmentProjectLinkTarget(String assignmentWorkspacePath, String projectId) {
+        requireId(projectId, "projectId");
+        try {
+            Path assignmentWorkspace = existingConfinedDirectory(assignmentWorkspacePath, "assignment workspace");
+            Path projectsDir = confinedChild(assignmentWorkspace, "projects");
+            Path link = confinedChild(projectsDir, projectId);
+            if (!Files.exists(link, LinkOption.NOFOLLOW_LINKS)) {
+                throw new IllegalArgumentException("Project workspace is not materialized for this assignment: " + projectId);
+            }
+            Path expectedTarget = projectWorkspace(projectId).toRealPath();
+            Path actualTarget = link.toRealPath();
+            if (!actualTarget.equals(expectedTarget)) {
+                throw new IllegalArgumentException("Project workspace link target does not match leased project: " + projectId);
+            }
+            return actualTarget;
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to resolve project workspace link for " + projectId, e);
+        }
+    }
+
+    public void removeAssignmentProjectLink(String assignmentWorkspacePath, String projectId) {
+        requireId(projectId, "projectId");
+        if (!StringUtils.hasText(assignmentWorkspacePath)) {
+            return;
+        }
+        Path assignmentWorkspace = Path.of(assignmentWorkspacePath).toAbsolutePath().normalize();
+        if (!assignmentWorkspace.startsWith(dataRoot) || !Files.exists(assignmentWorkspace, LinkOption.NOFOLLOW_LINKS)) {
+            return;
+        }
+        try {
+            Path projectsDir = confinedChild(assignmentWorkspace, "projects");
+            Path link = confinedChild(projectsDir, projectId);
+            if (Files.isSymbolicLink(link)) {
+                Files.deleteIfExists(link);
+            } else if (Files.exists(link, LinkOption.NOFOLLOW_LINKS)) {
+                throw new IllegalStateException("Refusing to remove non-link project path: " + link);
+            }
+            try {
+                Files.deleteIfExists(projectsDir);
+            } catch (IOException ignored) {
+                // Directory is not empty; leave other assignment-local project links alone.
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to remove project workspace link for " + projectId, e);
+        }
+    }
+
     // ── Input file resolution ──
 
     /**
@@ -258,6 +333,50 @@ public class WorkspaceDirectoryService {
             throw new IllegalArgumentException("Workspace path escapes data root: " + relativePath);
         }
         return resolved;
+    }
+
+    private Path existingConfinedDirectory(String path, String label) throws IOException {
+        if (!StringUtils.hasText(path)) {
+            throw new IllegalArgumentException(label + " is required");
+        }
+        Path raw = Path.of(path);
+        Path normalized = raw.isAbsolute() ? raw.normalize() : dataRoot.resolve(raw).normalize();
+        if (!normalized.startsWith(dataRoot)) {
+            throw new IllegalArgumentException(label + " escapes data root");
+        }
+        Path real = normalized.toRealPath();
+        if (!real.startsWith(dataRoot)) {
+            throw new IllegalArgumentException(label + " escapes data root");
+        }
+        if (!Files.isDirectory(real, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IllegalArgumentException(label + " is not a directory");
+        }
+        return real;
+    }
+
+    private Path confinedChild(Path parent, String child) {
+        Path resolved = parent.resolve(child).normalize();
+        if (!resolved.startsWith(parent)) {
+            throw new IllegalArgumentException("Workspace child path escapes parent: " + child);
+        }
+        if (!resolved.startsWith(dataRoot)) {
+            throw new IllegalArgumentException("Workspace child path escapes data root: " + child);
+        }
+        return resolved;
+    }
+
+    private void removeExistingProjectLink(Path link, Path expectedTarget) throws IOException {
+        if (!Files.exists(link, LinkOption.NOFOLLOW_LINKS)) {
+            return;
+        }
+        if (!Files.isSymbolicLink(link)) {
+            throw new IllegalStateException("Refusing to replace non-link project path: " + link);
+        }
+        Path actualTarget = link.toRealPath();
+        if (!actualTarget.equals(expectedTarget)) {
+            throw new IllegalStateException("Refusing to replace project link with unexpected target: " + link);
+        }
+        Files.delete(link);
     }
 
     private Path ensureDir(Path path) {

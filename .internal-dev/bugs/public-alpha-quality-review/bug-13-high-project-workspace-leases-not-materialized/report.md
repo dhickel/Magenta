@@ -29,6 +29,8 @@ Runner acquires the lease but sets task context without host paths/link material
 - `AgentShellToolService.java:126` confines shell to agent workspace.
 - `AgentShellToolService.java:156` expects actual project directory for alias.
 - `PlanService.java:1873` promises `workspace/projects/` linked project workspaces.
+- 2026-05-18 implementation: `PlanService.startRun` now materializes `projects/{projectId}` under the allocated assignment temp workspace when the orchestration context has an active project; shell/file assignment-context aliases verify that materialized link before resolving project paths; `OrchestrationRunnerService` removes the materialized link before releasing the project lease.
+- 2026-05-18 validation: `OrchestrationRuntimeTest.projectLeaseMaterializesPromisedWorkspacePathForTaskTools` proves a project-backed task lease creates a real `runtime/task-runs/{runId}/projects/{projectId}` symlink, reads it through `file_read`, releases the lease, and leaves the canonical project workspace intact.
 
 ## Impact
 
@@ -36,8 +38,8 @@ High: operators can see a held project lease while tasks cannot inspect or mutat
 
 ## Status
 
-Open.
+Implemented; pending parent review/validation sign-off.
 
 ## Next Action
 
-Implement and validate materialized project links or revise the runtime contract/UI to match actual access.
+Parent review should confirm the focused evidence and decide when to mark bug-13 passed in the remediation tracker.

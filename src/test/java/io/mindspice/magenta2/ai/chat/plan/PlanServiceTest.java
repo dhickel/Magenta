@@ -497,6 +497,9 @@ class PlanServiceTest {
             assertThat(run.outputDirectory()).contains("agents/agent-1/workspace/outputs/");
             assertThat(updated.hostWorkspacePath()).isEqualTo(run.tempWorkspacePath());
             assertThat(updated.hostOutputPath()).isEqualTo(run.outputDirectory());
+            Path projectLink = Path.of(run.tempWorkspacePath()).resolve("projects/project-1");
+            assertThat(Files.isSymbolicLink(projectLink)).isTrue();
+            assertThat(projectLink.toRealPath()).isEqualTo(dirService.projectWorkspace("project-1").toRealPath());
         } finally {
             OrchestrationTaskContextHolder.clear();
         }
