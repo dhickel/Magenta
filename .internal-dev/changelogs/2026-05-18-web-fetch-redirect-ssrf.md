@@ -29,7 +29,7 @@ Public sites with more than five redirects or redirects through hosts that resol
 
 - Focused validation passed with `mvn -Dtest=AgentWebToolServiceTest,ChatToolRegistryTest test`.
 - `git diff --check` passed.
-- Bounded Spring Boot startup reached a healthy app on ephemeral port `42287`; `timeout` then stopped the process with exit code 124.
+- Bounded Spring Boot startup reached a healthy app on ephemeral port `42287` during implementation and `44333` during validation; `timeout` then stopped the process as expected.
 
 ## Follow-up Items
 

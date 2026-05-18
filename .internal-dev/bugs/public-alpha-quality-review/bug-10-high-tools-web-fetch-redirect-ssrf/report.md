@@ -27,6 +27,7 @@ Resolved in implementation: production `web_fetch` no longer relies on automatic
 - `AgentWebToolService` validates the initial URI and every redirect target for http/https scheme, public host, and DNS/private/local rules.
 - `AgentWebToolServiceTest` covers direct private host rejection, public-to-private redirect rejection, redirect loop cap, valid public redirect success, and invalid redirect target rejection.
 - Implementer validation passed with `mvn -Dtest=AgentWebToolServiceTest,ChatToolRegistryTest test`, `git diff --check`, and bounded startup reaching port `42287`.
+- Validator reran focused web tool/registry tests, `git diff --check`, and bounded startup reaching port `44333`.
 
 ## Impact
 
@@ -34,8 +35,8 @@ High: possible SSRF into local/private services.
 
 ## Status
 
-Implemented; pending parent validation/review.
+Implemented and validated in public alpha remediation domain 02 subplan 03.
 
 ## Next Action
 
-Run parent validation for domain 02 subplan 03 and then commit with the subplan closeout if accepted.
+Continue with public alpha remediation domain 02 subplan 04.
