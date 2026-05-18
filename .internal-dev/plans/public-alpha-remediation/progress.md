@@ -13,7 +13,7 @@
 
 | Domain | Branch | Status | Current Owner | Validation Gate | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `01-security-access-control` | `public-alpha-remediation/security-access-control` | validating | Codex | subplans 01-04 passed | Full security domain validation gate pending. |
+| `01-security-access-control` | `public-alpha-remediation/security-access-control` | passed | Codex | passed: focused tests, full `mvn test`, bounded startup, live auth/CSRF and workflow XSS probes | Ready to merge into integration. Evidence: `/tmp/magenta-security-domain-live-3317476.log`, `/tmp/magenta-security-domain-live-extra-3318140.log`, `/tmp/magenta-security-domain-playwright-3317476.log`. |
 | `02-workspace-tools-outputs` | `public-alpha-remediation/workspace-tools-outputs` | planned | unassigned | planned | Depends on id validation policy and may coordinate with schema domain. |
 | `03-execution-history-streams` | `public-alpha-remediation/execution-history-streams` | planned | unassigned | planned | Owns public execution contract and transcript preservation. |
 | `04-workflow-authoring-runtime-js` | `public-alpha-remediation/workflow-authoring-runtime-js` | planned | unassigned | planned | Must preserve HTMX-first CRUD and narrow JS graph behavior. |
