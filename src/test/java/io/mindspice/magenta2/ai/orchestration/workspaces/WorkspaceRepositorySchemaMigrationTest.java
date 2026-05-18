@@ -15,6 +15,10 @@ import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
 
 import io.mindspice.magenta2.ai.chat.plan.PlanRepository;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationRuntimeRepository;
+import io.mindspice.magenta2.ai.orchestration.workflow.InboxMessageToType;
+import io.mindspice.magenta2.ai.orchestration.workflow.InboxMessageType;
+import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowRepository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -34,9 +38,7 @@ class WorkspaceRepositorySchemaMigrationTest {
     void schemaSqlCreatesCurrentPlanAndOutputArtifactShape() throws Exception {
         JdbcTemplate jdbc = jdbc();
 
-        try (Connection connection = jdbc.getDataSource().getConnection()) {
-            ScriptUtils.executeSqlScript(connection, new ClassPathResource("schema.sql"));
-        }
+        applySchema(jdbc);
 
         List<String> planRunColumns = columns(jdbc, "plan_runs");
         List<String> artifactColumns = columns(jdbc, "run_output_artifacts");
@@ -57,6 +59,120 @@ class WorkspaceRepositorySchemaMigrationTest {
 
         assertThat(columns(jdbc, "plan_runs")).isEqualTo(planRunColumns);
         assertThat(columns(jdbc, "run_output_artifacts")).isEqualTo(artifactColumns);
+    }
+
+    @Test
+    void schemaSqlCreatesCurrentInboxOwnershipShape() throws Exception {
+        JdbcTemplate jdbc = jdbc();
+
+        applySchema(jdbc);
+
+        List<String> workflowInboxColumns = columns(jdbc, "inbox_messages");
+        List<String> runtimeInboxColumns = columns(jdbc, "agent_inbox_messages");
+
+        assertThat(workflowInboxColumns).containsExactly(
+            "id",
+            "to_type",
+            "to_id",
+            "from_id",
+            "message_type",
+            "body",
+            "metadata_json",
+            "response_json",
+            "responded_at",
+            "handled_at",
+            "created_at",
+            "updated_at"
+        );
+        assertThat(runtimeInboxColumns).containsExactly(
+            "id",
+            "to_agent_id",
+            "from_id",
+            "message_type",
+            "body",
+            "metadata_json",
+            "read_flag",
+            "handled_flag",
+            "created_at",
+            "updated_at"
+        );
+        assertThat(indexes(jdbc, "inbox_messages")).contains("idx_inbox_messages_to");
+        assertThat(indexes(jdbc, "agent_inbox_messages")).contains("idx_agent_inbox_messages_to");
+
+        new WorkflowRepository(jdbc, new ObjectMapper());
+        new OrchestrationRuntimeRepository(jdbc, new ObjectMapper());
+
+        assertThat(columns(jdbc, "inbox_messages")).isEqualTo(workflowInboxColumns);
+        assertThat(columns(jdbc, "agent_inbox_messages")).isEqualTo(runtimeInboxColumns);
+        assertThat(indexes(jdbc, "inbox_messages")).contains("idx_inbox_messages_to");
+        assertThat(indexes(jdbc, "agent_inbox_messages")).contains("idx_agent_inbox_messages_to");
+    }
+
+    @Test
+    void workflowAndRuntimeInboxMessagesRemainReadableOnDistinctSurfaces() throws Exception {
+        JdbcTemplate jdbc = jdbc();
+        Instant created = Instant.parse("2026-05-18T12:00:00Z");
+        ObjectMapper mapper = new ObjectMapper();
+
+        applySchema(jdbc);
+        WorkflowRepository workflowRepository = new WorkflowRepository(jdbc, mapper);
+        OrchestrationRuntimeRepository runtimeRepository = new OrchestrationRuntimeRepository(jdbc, mapper);
+
+        workflowRepository.saveInboxMessage(new io.mindspice.magenta2.ai.orchestration.workflow.InboxMessage(
+            "workflow-user-message",
+            InboxMessageToType.USER,
+            null,
+            "workflow-agent",
+            InboxMessageType.APPROVAL,
+            "Approve workflow run?",
+            "{\"workflowRunId\":\"run-1\"}",
+            null,
+            null,
+            null,
+            created,
+            created
+        ));
+        workflowRepository.saveInboxMessage(new io.mindspice.magenta2.ai.orchestration.workflow.InboxMessage(
+            "workflow-agent-message",
+            InboxMessageToType.AGENT,
+            "agent-1",
+            "workflow-agent",
+            InboxMessageType.INFO,
+            "Workflow node message",
+            "{}",
+            null,
+            null,
+            null,
+            created.plusSeconds(1),
+            created.plusSeconds(1)
+        ));
+        runtimeRepository.saveInboxMessage(new io.mindspice.magenta2.ai.orchestration.runtime.InboxMessage(
+            "runtime-agent-message",
+            "agent-1",
+            "operator",
+            "INFO",
+            "Runtime direct-line message",
+            java.util.Map.of("surface", "runtime"),
+            false,
+            false,
+            created.plusSeconds(2),
+            created.plusSeconds(2)
+        ));
+
+        assertThat(workflowRepository.findInboxByRecipient(InboxMessageToType.USER, null))
+            .extracting(io.mindspice.magenta2.ai.orchestration.workflow.InboxMessage::id)
+            .containsExactly("workflow-user-message");
+        assertThat(workflowRepository.findInboxByRecipient(InboxMessageToType.AGENT, "agent-1"))
+            .extracting(io.mindspice.magenta2.ai.orchestration.workflow.InboxMessage::id)
+            .containsExactly("workflow-agent-message");
+        assertThat(runtimeRepository.findInboxMessages("agent-1"))
+            .extracting(io.mindspice.magenta2.ai.orchestration.runtime.InboxMessage::id)
+            .containsExactly("runtime-agent-message");
+
+        assertThat(workflowRepository.findInboxMessage("runtime-agent-message")).isEmpty();
+        assertThat(runtimeRepository.findInboxMessage("workflow-user-message")).isEmpty();
+        assertThat(jdbc.queryForObject("select count(*) from inbox_messages", Integer.class)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("select count(*) from agent_inbox_messages", Integer.class)).isEqualTo(1);
     }
 
     @Test
@@ -90,6 +206,12 @@ class WorkspaceRepositorySchemaMigrationTest {
 
     private JdbcTemplate jdbc() {
         return new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
+    }
+
+    private void applySchema(JdbcTemplate jdbc) throws Exception {
+        try (Connection connection = jdbc.getDataSource().getConnection()) {
+            ScriptUtils.executeSqlScript(connection, new ClassPathResource("schema.sql"));
+        }
     }
 
     private void createLegacyWorkspaceTables(JdbcTemplate jdbc) {

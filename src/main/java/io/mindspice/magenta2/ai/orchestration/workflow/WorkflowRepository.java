@@ -127,6 +127,7 @@ public class WorkflowRepository {
             )
             """);
 
+        // Workflow-owned inbox table for workflow/user approvals and run-output messages.
         jdbcTemplate.execute("""
             create table if not exists inbox_messages (
                 id text primary key,
@@ -142,6 +143,10 @@ public class WorkflowRepository {
                 created_at text not null,
                 updated_at text not null
             )
+            """);
+        jdbcTemplate.execute("""
+            create index if not exists idx_inbox_messages_to
+                on inbox_messages (to_type, to_id, created_at desc)
             """);
     }
 

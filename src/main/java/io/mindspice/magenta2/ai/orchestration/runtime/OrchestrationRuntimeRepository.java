@@ -1028,6 +1028,7 @@ public class OrchestrationRuntimeRepository {
             create index if not exists idx_assignment_conversation_links_assignment
                 on assignment_conversation_links(assignment_id, created_at)
             """);
+        // Runtime-owned direct-line agent inbox table. Workflow inbox messages stay in inbox_messages.
         jdbcTemplate.execute("""
             create table if not exists agent_inbox_messages (
                 id text primary key,
@@ -1041,6 +1042,10 @@ public class OrchestrationRuntimeRepository {
                 created_at text not null,
                 updated_at text not null
             )
+            """);
+        jdbcTemplate.execute("""
+            create index if not exists idx_agent_inbox_messages_to
+                on agent_inbox_messages (to_agent_id, created_at desc)
             """);
         jdbcTemplate.execute("""
             create table if not exists agent_schedules (

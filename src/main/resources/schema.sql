@@ -296,10 +296,10 @@ create table if not exists assignment_conversation_links (
 create index if not exists idx_assignment_conversation_links_assignment
     on assignment_conversation_links(assignment_id, created_at);
 
--- Unified inbox messages for both users and agents.
--- to_type: "user" or "agent"
--- to_id: agent id when to_type=agent, null for user
--- message_type: "info", "question", "approval", "run_output"
+-- Workflow inbox messages owned by ai.orchestration.workflow.
+-- Used for workflow/user approvals, workflow agent approval nodes, notifications,
+-- and run-output delivery. Runtime direct-line agent/operator inbox messages
+-- are intentionally stored in agent_inbox_messages below.
 create table if not exists inbox_messages (
     id text primary key,
     to_type text not null,
@@ -317,6 +317,27 @@ create table if not exists inbox_messages (
 
 create index if not exists idx_inbox_messages_to
     on inbox_messages (to_type, to_id, created_at desc);
+
+-- Runtime direct-line agent inbox messages owned by ai.orchestration.runtime.
+-- Used by agent/operator inbox surfaces for direct-line messages, read state,
+-- handled state, and runtime inbox events. This table is intentionally separate
+-- from workflow-owned inbox_messages because the message models and lifecycle
+-- states differ.
+create table if not exists agent_inbox_messages (
+    id text primary key,
+    to_agent_id text not null,
+    from_id text,
+    message_type text not null,
+    body text,
+    metadata_json text,
+    read_flag integer not null,
+    handled_flag integer not null,
+    created_at text not null,
+    updated_at text not null
+);
+
+create index if not exists idx_agent_inbox_messages_to
+    on agent_inbox_messages (to_agent_id, created_at desc);
 
 create table if not exists agent_schedules (
     id text primary key,
