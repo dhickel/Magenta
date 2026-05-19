@@ -32,7 +32,7 @@ Typical flows:
 
 ## Package Boundaries
 
-`api.web` owns transport shape: routes, status mapping, SSE emission, HTMX fragments, alpha security, and browser shell compatibility. It delegates use-case logic into services.
+`api.web` owns transport shape: routes, status mapping, SSE emission, HTMX fragments, and browser shell compatibility. It delegates use-case logic into services.
 
 `ai.chat` owns conversational behavior: request resolution, model selection, streaming turns, memory/audit persistence, context compaction, tool calls, plan mode state, and task execution through chat.
 
@@ -74,6 +74,6 @@ See [API Reference](api-reference.md) for route-level SSE details.
 
 ## Frontend Shape
 
-The frontend is server-rendered. SimplyPages renders the main shell and operational pages; HTMX drives standard CRUD, tab, panel, list, and fragment refresh interactions. JavaScript is limited to behavior where persistent browser state or SSE interaction is simpler than HTMX alone: chat streaming, alpha CSRF/header injection, orchestration dashboard polling/fragment helpers, entity side-panel interactions, and agent chat islands.
+The frontend is server-rendered. SimplyPages renders the main shell and operational pages; HTMX drives standard CRUD, tab, panel, list, and fragment refresh interactions. JavaScript is limited to behavior where persistent browser state or SSE interaction is simpler than HTMX alone: chat streaming, shared HTMX/error shell helpers, orchestration dashboard polling/fragment helpers, entity side-panel interactions, and agent chat islands.
 
 See [Frontend HTMX](frontend-htmx.md) for file-level guidance.

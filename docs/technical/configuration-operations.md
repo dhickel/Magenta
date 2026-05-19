@@ -71,14 +71,9 @@ Configured feature flags:
 
 When disabled, schedule and event reaction routes in `AgentOrchestrationController` return `404`.
 
-## Alpha Access
+## Access Posture
 
-Alpha credentials:
-
-- `MAGENTA_ALPHA_USERNAME`, default `alpha`.
-- `MAGENTA_ALPHA_PASSWORD`, default `change-me-alpha`.
-
-Unsafe HTTP methods require Basic auth and CSRF. See [Security](security.md).
+Current alpha access is open at the application layer (no built-in Basic auth or CSRF gate). See [Security](security.md) for active safeguards and limits.
 
 ## Data and Schema Operations
 
@@ -125,4 +120,4 @@ For documentation-only changes like this phase:
 - `GET /api/models`: configured model summaries.
 - `GET /api/settings/runtime`: persisted/effective runtime settings.
 
-These routes are public `GET` routes under alpha security; avoid exposing secrets through them.
+These routes are public `GET` routes in current alpha posture; avoid exposing secrets through them.

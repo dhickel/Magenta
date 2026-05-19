@@ -27,11 +27,11 @@ The home page links to:
 
 Operational pages also expose `/agents`, `/projects`, `/outputs`, and `/settings`.
 
-## Authentication And CSRF
+## Open Alpha Access
 
-The alpha UI is intended for a trusted deployment or local development environment. If your deployment adds credentials, sign in through the host's configured access layer before opening Magenta. Browser forms use server-rendered HTMX requests; use the UI buttons and forms instead of replaying requests manually unless you are testing the API directly.
+Magenta currently has no built-in login gate in this application layer. The alpha UI is intended for local or otherwise trusted environments.
 
-If a form unexpectedly fails with a security or forbidden response, reload the page and retry from the visible form. If the deployment uses an external proxy or login system, confirm the browser session is still valid.
+If your deployment adds credentials, they come from an external host/proxy layer. Sign in there before opening Magenta. Browser forms use server-rendered HTMX requests; prefer the UI controls over manual request replay unless you are testing API behavior directly.
 
 ## Choose Models
 

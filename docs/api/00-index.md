@@ -2,7 +2,7 @@
 
 This index owns route, payload, streaming, and integration contracts for Magenta APIs. The detailed contributor reference is [`../technical/api-reference.md`](../technical/api-reference.md).
 
-Security summary: `GET`, `HEAD`, and `OPTIONS` routes are public in alpha mode. Unsafe methods require HTTP Basic alpha credentials and CSRF. See [`../technical/security.md`](../technical/security.md).
+Security summary: alpha routes are currently open at the application layer. Request safety currently relies on route semantics, controller/service validation, and bounded runtime/tooling safeguards. See [`../technical/security.md`](../technical/security.md).
 
 ## API Families
 
@@ -54,7 +54,5 @@ Controllers generally map:
 - Invalid request/body/lifecycle input to `400`.
 - Missing records to `404`.
 - Invalid lifecycle conflicts to `409`.
-- Authentication failures to `401`.
-- CSRF/access-denied failures to `403`.
 
-HTMX security failures return HTML with `HX-Trigger: magenta:security-error`; JSON/API failures return JSON or Spring error responses depending on the controller path.
+HTMX failures typically return fragment-friendly HTML for in-panel rendering; JSON/API failures return JSON or Spring error responses depending on the controller path.

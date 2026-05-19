@@ -2,7 +2,7 @@
 
 This page maps implemented API families to their controllers, domain services, payload records, security expectations, and stream behavior. The route index in [`../api/00-index.md`](../api/00-index.md) is the shorter integration entry point.
 
-Unless noted otherwise, all `GET`, `HEAD`, and `OPTIONS` routes are public in alpha mode, and all unsafe methods require HTTP Basic alpha credentials plus a valid CSRF token. Security is configured in [`AlphaSecurityConfiguration`](../../src/main/java/io/mindspice/magenta2/api/web/AlphaSecurityConfiguration.java).
+In current alpha posture, routes are open at the application layer. Use controller/service validation and route semantics as the contract for expected failures. See [`security.md`](security.md) for the current safety posture.
 
 ## Chat: `/api/chat`
 
@@ -20,7 +20,7 @@ Source: [`ChatController`](../../src/main/java/io/mindspice/magenta2/api/web/Cha
 
 SSE events are JSON events. Chat emits `start`, `chunk`, `tool`, `system`, `interrupt`, `context`, `done`, and `error` from `ChatStreamEvent`; the controller also emits plan-execution updates around saved plan execution.
 
-Common errors: validation failures return `400`; missing sessions/plans generally return `404`; active-turn conflicts or invalid lifecycle operations return controller-specific conflict/error payloads; authentication/CSRF failures return `401`/`403`.
+Common errors: validation failures return `400`; missing sessions/plans generally return `404`; active-turn conflicts or invalid lifecycle operations return controller-specific conflict/error payloads.
 
 ## Fragments: `/api/fragments`
 
@@ -32,7 +32,7 @@ Fragment routes return `text/html` for HTMX refreshes:
 - `GET /api/fragments/chat/sessions`
 - `GET /api/fragments/chat/planning`
 
-They read chat state and render server HTML. They are public `GET` routes under alpha security.
+They read chat state and render server HTML. They are public `GET` routes.
 
 ## Plans: `/api/plans`
 
@@ -164,4 +164,4 @@ Selector endpoints are read-only HTMX fragment surface for reusable operational 
 - `GET /selectors/{kind}/selected`
 - `GET /selectors/{kind}/validate`
 
-They are read-only `GET` routes and therefore public under alpha security. They should be kept in sync with selector-supported entity kinds.
+They are read-only `GET` routes. They should be kept in sync with selector-supported entity kinds.

@@ -8,7 +8,7 @@ Source anchors:
 - Main CSS: [`magenta.css`](../../src/main/resources/static/css/magenta.css)
 - Orchestration CSS: [`orchestration.css`](../../src/main/resources/static/css/orchestration.css)
 - Chat client JS: [`chat-client.js`](../../src/main/resources/static/js/chat-client.js)
-- Alpha security JS: [`alpha-security.js`](../../src/main/resources/static/js/alpha-security.js)
+- Shared shell JS: [`static/js`](../../src/main/resources/static/js)
 - Orchestration JS islands: [`static/js/orchestration`](../../src/main/resources/static/js/orchestration)
 
 ## Page and Fragment Controllers
@@ -38,14 +38,14 @@ Use HTMX for:
 - Submit-to-agent forms.
 - Delete/confirm actions.
 
-HTMX routes should return server-rendered HTML and preserve alpha security behavior. Failed unsafe requests from HTMX receive a small HTML auth error plus `HX-Trigger: magenta:security-error` from `AlphaSecurityConfiguration`.
+HTMX routes should return server-rendered HTML fragments and preserve consistent status/markup behavior for failed requests so operational panels show actionable errors instead of silent failures.
 
 ## JavaScript Islands
 
 Existing JavaScript is justified where persistent browser state, SSE, or client-side graph/editor interaction is simpler than pure HTMX.
 
 - `chat-client.js`: chat SSE, active stream state, incremental token rendering, interruption, and chat-specific browser behavior.
-- `alpha-security.js`: reads the CSRF cookie and applies the `X-XSRF-TOKEN` header to unsafe browser requests; handles alpha security events.
+- shared shell helper(s): HTMX error-swap and small shell-level behavior that is simpler than reproducing in every page/module.
 - `orchestration/api.js` and `dom.js`: small shared helpers for operational islands.
 - `orchestration/dashboard.js`: dashboard refresh/poll style behavior.
 - `orchestration/agent-chat.js`: agent side-panel SSE chat behavior.

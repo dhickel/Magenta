@@ -1,54 +1,21 @@
 # Security
 
-Alpha access security is implemented in [`AlphaSecurityConfiguration`](../../src/main/java/io/mindspice/magenta2/api/web/AlphaSecurityConfiguration.java). It is intentionally simple: public read routes, protected unsafe mutations, HTTP Basic alpha credentials, and cookie-backed CSRF tokens.
+Current alpha access is intentionally open at the application layer. Magenta does not currently enforce built-in HTTP authentication, authorization, or CSRF checks on web/API routes.
 
 ## Access Rules
 
-The security filter chain permits:
+`GET`, `HEAD`, and `OPTIONS` routes are public, and unsafe methods (`POST`, `PUT`, `PATCH`, `DELETE`) currently reach controller/service validation directly without an app-layer auth gate.
 
-- All `GET /**`
-- All `HEAD /**`
-- All `OPTIONS /**`
-
-All other methods require authentication:
-
-- `POST`
-- `PUT`
-- `PATCH`
-- `DELETE`
-
-This means read-only API routes, page routes, static assets, fragment GETs, and selector GETs are public in alpha mode. Mutating JSON and HTMX routes are protected.
-
-## Alpha Credentials
-
-Credentials come from `magenta.alpha-access`:
-
-- `magenta.alpha-access.username`, default `alpha`
-- `magenta.alpha-access.password`, default `change-me-alpha`
-
-`application.yml` maps these to `MAGENTA_ALPHA_USERNAME` and `MAGENTA_ALPHA_PASSWORD` environment variables. `AlphaSecurityConfiguration` requires both values to have text and registers a single in-memory user with role `ALPHA`.
-
-Passwords are configured with Spring's `{noop}` encoder prefix, so deployment should supply a non-default secret through environment/config.
-
-## CSRF
-
-CSRF uses `CookieCsrfTokenRepository.withHttpOnlyFalse()`, which exposes the token cookie to browser JavaScript. `CsrfCookieFilter` forces token generation by resolving the request token after the CSRF filter.
-
-Unsafe browser requests must include the expected CSRF header. `alpha-security.js` is the browser helper that reads the cookie and attaches the header for client-side requests.
-
-HTMX unsafe requests must also carry the token. Shell/client helpers should preserve that behavior when new mutation routes are added.
+This keeps local/trusted alpha operation simple, but it is not a multi-user security model.
 
 ## Error Shape
 
-Security failures are response-shape aware:
+Request failures are primarily domain and lifecycle failures:
 
-- Unauthenticated requests return `401` and `WWW-Authenticate: Basic realm="Magenta Alpha"`.
-- Access denied requests return `403`.
-- CSRF failures return message `CSRF token missing or invalid.`.
-- HTMX requests (`HX-Request: true`) receive `text/html`, a small `.mag-auth-error` alert body, and `HX-Trigger: magenta:security-error`.
-- Non-HTMX requests receive JSON such as `{"error":"Authentication required."}`.
-
-This matters for operational UI: mutation controls should surface HTMX security failures instead of failing silently.
+- Validation/input failures generally return `400`.
+- Missing records generally return `404`.
+- Lifecycle/state conflicts generally return `409`.
+- Unexpected failures return controller or framework `5xx` errors.
 
 ## Public Read Surface
 
@@ -66,7 +33,7 @@ Do not put sensitive secrets, raw credentials, or unrestricted filesystem conten
 
 ## Mutation Surface
 
-Protected unsafe routes include:
+Unsafe routes include:
 
 - Chat turns, commands, interrupts, and conversation metadata changes.
 - Plan/task/workflow/job/project/agent/settings CRUD.
@@ -76,7 +43,7 @@ Protected unsafe routes include:
 - Inbox read/handled/respond actions.
 - Output state changes if added later.
 
-Controllers should validate ownership/identity at the service layer where relevant. Current alpha security authenticates the operator, not multiple end users.
+Because there is no app-layer auth gate, these routes rely on controller/service validation and bounded runtime behavior for safety.
 
 ## Tool Safety
 
@@ -90,6 +57,12 @@ Agent tools are controlled outside HTTP security:
 
 These checks should stay in tool/workspace services, not controllers.
 
+## Additional Safety Controls
+
+- Plain path segment validation for filesystem/path-derived ids.
+- Inert rendering of user-authored workflow graph text.
+- Assignment lifecycle route-agent scoping.
+
 ## Current Limitations
 
-Alpha mode is not a multi-user authorization model. It provides a single operator access gate for unsafe actions. Any future multi-user deployment needs route-level authorization, object ownership, audit review, and likely different public read rules before exposing sensitive operational data broadly.
+Alpha mode is not a multi-user authorization model. Deploy behind trusted network boundaries and add a dedicated auth/authorization layer before exposing sensitive operational surfaces broadly.
