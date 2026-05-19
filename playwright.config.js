@@ -1,8 +1,6 @@
 const { defineConfig, devices } = require("playwright/test");
 
 const baseURL = process.env.MAGENTA_PLAYWRIGHT_BASE_URL || "http://localhost:18080";
-const username = process.env.MAGENTA_ALPHA_USERNAME || "alpha";
-const password = process.env.MAGENTA_ALPHA_PASSWORD || "test-alpha-password";
 
 module.exports = defineConfig({
   testDir: "./tests/playwright",
@@ -15,10 +13,6 @@ module.exports = defineConfig({
   reporter: [["list"]],
   use: {
     baseURL,
-    httpCredentials: {
-      username,
-      password,
-    },
     actionTimeout: 10_000,
     navigationTimeout: 15_000,
     trace: "retain-on-failure",

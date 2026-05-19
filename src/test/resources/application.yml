@@ -1,8 +1,5 @@
 # Test configuration for isolated test execution.
 magenta:
-  alpha-access:
-    username: alpha
-    password: test-alpha-password
   features:
     schedules-enabled: false
     reactions-enabled: false

@@ -16,7 +16,7 @@ const PUBLIC_ROUTES = [
 
 const STATIC_ASSET_PATTERN = /\/(?:css|js|webjars)\//;
 const EXPECTED_NON_2XX = [
-  { method: "POST", path: "/plans/_editor/_draft", status: 401, reason: "anonymous unsafe mutation auth gate" },
+  { method: "POST", path: "/api/chat/not-a-real-conversation/plan/execute", status: 400, reason: "domain validation without auth gate" },
 ];
 
 test.beforeEach(async ({ page }, testInfo) => {
@@ -157,6 +157,22 @@ test("plan editor HTMX mutation persists through UI and API", async ({ page }) =
   await expect(page.locator("#plan-list")).toContainText(title);
 });
 
+test("chat delete endpoint does not require auth", async ({ baseURL }, testInfo) => {
+  const context = await request.newContext({ baseURL });
+  const conversationId = crypto.randomUUID();
+  const response = await context.delete(`/api/chat/${conversationId}`);
+  testInfo.expectedResponses.push({
+    method: "DELETE",
+    path: `/api/chat/${conversationId}`,
+    status: response.status(),
+    reason: "chat delete no-auth validation",
+  });
+  expect(response.status(), "chat delete should not require auth").not.toBe(401);
+  expect(response.status(), "chat delete should not require csrf").not.toBe(403);
+  expect(response.status(), "chat delete should behave like normal domain endpoint").toBe(204);
+  await context.dispose();
+});
+
 test("workflow HTMX critical flow saves, validates, and separates submit validation", async ({ page }) => {
   const title = `PW Harness Workflow ${Date.now()}`;
 
@@ -197,35 +213,19 @@ test("workflow HTMX critical flow saves, validates, and separates submit validat
   expect(apiWorkflow.nodes.length).toBeGreaterThanOrEqual(1);
 });
 
-test("unsafe anonymous mutation is an expected non-2xx validation path", async ({ baseURL }, testInfo) => {
-  const csrfContext = await request.newContext({ baseURL, httpCredentials: alphaCredentials() });
-  const csrfResponse = await csrfContext.get("/plans");
-  expect(csrfResponse.ok(), "GET /plans should issue the CSRF cookie").toBe(true);
-  const csrfToken = await xsrfToken(csrfContext);
-  await csrfContext.dispose();
-
-  const context = await request.newContext({
-    baseURL,
-    httpCredentials: {
-      username: alphaCredentials().username,
-      password: "invalid-alpha-password",
-    },
-  });
-  const response = await context.post("/plans/_editor/_draft", {
-    headers: {
-      "HX-Request": "true",
-      "X-XSRF-TOKEN": csrfToken,
-      "Cookie": `XSRF-TOKEN=${encodeURIComponent(csrfToken)}`,
-    },
-  });
+test("unsafe anonymous mutation surfaces domain validation, not auth prompts", async ({ baseURL }, testInfo) => {
+  const context = await request.newContext({ baseURL });
+  const response = await context.post("/api/chat/not-a-real-conversation/plan/execute");
   const observed = {
     method: "POST",
-    path: "/plans/_editor/_draft",
+    path: "/api/chat/not-a-real-conversation/plan/execute",
     status: response.status(),
-    reason: "anonymous unsafe mutation auth gate",
+    reason: "domain validation without auth gate",
   };
   testInfo.expectedResponses.push(observed);
   expect(observed).toMatchObject(EXPECTED_NON_2XX[0]);
+  expect(response.status(), "mutations should not be blocked by auth/csrf").not.toBe(401);
+  expect(response.status(), "mutations should not be blocked by auth/csrf").not.toBe(403);
   await context.dispose();
 });
 
@@ -248,20 +248,6 @@ async function idFromHxAttribute(locator, attribute, prefix) {
   const id = value.slice(prefix.length).split("/")[0];
   expect(id, "persisted draft id should be non-empty").toBeTruthy();
   return id;
-}
-
-function alphaCredentials() {
-  return {
-    username: process.env.MAGENTA_ALPHA_USERNAME || "alpha",
-    password: process.env.MAGENTA_ALPHA_PASSWORD || "test-alpha-password",
-  };
-}
-
-async function xsrfToken(context) {
-  const cookies = await context.storageState().then((state) => state.cookies);
-  const token = cookies.find((cookie) => cookie.name === "XSRF-TOKEN")?.value;
-  expect(token, "XSRF-TOKEN cookie should be issued before auth-gate probe").toBeTruthy();
-  return token;
 }
 
 async function attachDiagnostics(testInfo) {

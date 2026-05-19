@@ -293,6 +293,7 @@ class OrchestrationControllerTest {
         String html = controller().dashboard(null, null);
 
         assertThat(html).contains("/css/orchestration.css?v=10");
+        assertThat(html).doesNotContain("/js/alpha-security.js?v=1");
         assertThat(html).contains("Magenta Operations");
         assertThat(html).contains("Dashboard");
         assertThat(html).contains("/dashboard");
@@ -1413,22 +1414,6 @@ class OrchestrationControllerTest {
     }
 
     @Test
-    void alphaSecurityJsAllowsKnownOperationalErrorFragmentsToSwapOnNon2xx() throws Exception {
-        String js = Files.readString(Path.of("src/main/resources/static/js/alpha-security.js"));
-
-        assertThat(js).contains("htmx:beforeSwap");
-        assertThat(js).contains("event.detail.shouldSwap = true");
-        assertThat(js).contains("xhr.status < 400");
-        assertThat(js).contains("xhr.status === 401 || xhr.status === 403");
-        assertThat(js).contains("responseIsSameOrigin(xhr)");
-        assertThat(js).contains("document.documentElement.contains(detail.target)");
-        assertThat(js).contains(".orch-error, .orch-status-error, .agent-lifecycle-panel");
-        assertThat(js).contains("htmx:responseError");
-        assertThat(js).contains("Authentication required.");
-        assertThat(js).contains("CSRF token missing or invalid.");
-    }
-
-    @Test
     void allOrchestrationPagesUseDashboardShellWithSidebar() {
         OrchestrationController controller = controller();
 
@@ -1448,6 +1433,7 @@ class OrchestrationControllerTest {
             assertThat(html).contains("main-sidebar");
             assertThat(html).contains("sidenav");
             assertThat(html).contains("/css/orchestration.css?v=10");
+            assertThat(html).doesNotContain("/js/alpha-security.js?v=1");
             assertThat(html).doesNotContain("/js/chat-client.js");
         }
     }

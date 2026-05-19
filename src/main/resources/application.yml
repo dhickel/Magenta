@@ -6,9 +6,6 @@ app:
     config-path: ./config/ai-config.example.json
 
 magenta:
-  alpha-access:
-    username: ${MAGENTA_ALPHA_USERNAME:alpha}
-    password: ${MAGENTA_ALPHA_PASSWORD:change-me-alpha}
   features:
     schedules-enabled: true
     reactions-enabled: true

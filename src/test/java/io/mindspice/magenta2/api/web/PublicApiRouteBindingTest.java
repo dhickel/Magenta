@@ -23,8 +23,6 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -38,8 +36,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
-    "magenta.alpha-access.username=alpha",
-    "magenta.alpha-access.password=test-alpha-password",
     "magenta.plan.execution-stream-timeout-seconds=0"
 })
 class PublicApiRouteBindingTest {
@@ -76,15 +72,11 @@ class PublicApiRouteBindingTest {
             .andExpect(jsonPath("$.sessions").isArray());
 
         String conversationId = UUID.randomUUID().toString();
-        mockMvc.perform(post("/api/chat/" + conversationId + "/plan/execute")
-                .with(alphaAuth())
-                .with(csrf()))
+        mockMvc.perform(post("/api/chat/" + conversationId + "/plan/execute"))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.error", containsString("Direct plan execution is disabled")));
 
         mockMvc.perform(post("/api/chat/" + conversationId + "/plan/execute/stream")
-                .with(alphaAuth())
-                .with(csrf())
                 .accept(MediaType.TEXT_EVENT_STREAM))
             .andExpect(status().isBadRequest());
     }
@@ -104,8 +96,6 @@ class PublicApiRouteBindingTest {
             .andExpect(jsonPath("$.prompt", containsString("Route Plan")));
 
         MvcResult stream = mockMvc.perform(post("/api/plans/" + planId + "/runs/stream")
-                .with(alphaAuth())
-                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .accept(MediaType.TEXT_EVENT_STREAM)
                 .content(json(Map.of("agentId", agentId))))
@@ -126,8 +116,6 @@ class PublicApiRouteBindingTest {
         String planId = createPlan("No Direct Run Plan");
 
         mockMvc.perform(post("/api/plans/" + planId + "/runs")
-                .with(alphaAuth())
-                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json(Map.of("agentId", createAgent()))))
             .andExpect(status().isMethodNotAllowed());
@@ -144,8 +132,6 @@ class PublicApiRouteBindingTest {
             .andExpect(content().string(containsString("Route Task")));
 
         MvcResult stream = mockMvc.perform(post("/api/tasks/" + taskId + "/runs/stream")
-                .with(alphaAuth())
-                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .accept(MediaType.TEXT_EVENT_STREAM)
                 .content(json(Map.of("agentId", agentId))))
@@ -169,8 +155,6 @@ class PublicApiRouteBindingTest {
             .andExpect(content().string(containsString("Route Workflow")));
 
         mockMvc.perform(post("/api/workflows/" + workflowId + "/runs")
-                .with(alphaAuth())
-                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json(Map.of("agentId", createAgent()))))
             .andExpect(status().isBadRequest())
@@ -178,8 +162,6 @@ class PublicApiRouteBindingTest {
         assertNoWorkflowAssignmentQueued(workflowId);
 
         MvcResult stream = mockMvc.perform(post("/api/workflows/" + workflowId + "/runs/stream")
-                .with(alphaAuth())
-                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .accept(MediaType.TEXT_EVENT_STREAM)
                 .content(json(Map.of("agentId", createAgent()))))
@@ -205,8 +187,6 @@ class PublicApiRouteBindingTest {
             .andExpect(content().string(containsString("Route Job")));
 
         mockMvc.perform(post("/api/jobs/" + jobId + "/runs")
-                .with(alphaAuth())
-                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json(Map.of("agentId", agentId))))
             .andExpect(status().isOk())
@@ -243,8 +223,6 @@ class PublicApiRouteBindingTest {
             .andExpect(jsonPath("$.defaultModel").exists());
 
         mockMvc.perform(put("/api/settings/runtime")
-                .with(alphaAuth())
-                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json(runtimeSettings(agentId))))
             .andExpect(status().isOk())
@@ -257,8 +235,6 @@ class PublicApiRouteBindingTest {
         String ownerAgentId = createAgent();
         String otherAgentId = createAgent();
         MvcResult created = mockMvc.perform(post("/api/agents/" + ownerAgentId + "/assignments")
-                .with(alphaAuth())
-                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json(Map.of(
                     "assignmentType", "REPORT",
@@ -271,9 +247,7 @@ class PublicApiRouteBindingTest {
             .andReturn();
         String assignmentId = read(created, "id");
 
-        mockMvc.perform(post("/api/agents/" + otherAgentId + "/assignments/" + assignmentId + "/cancel")
-                .with(alphaAuth())
-                .with(csrf()))
+        mockMvc.perform(post("/api/agents/" + otherAgentId + "/assignments/" + assignmentId + "/cancel"))
             .andExpect(status().isNotFound());
 
         Map<String, Object> assignmentRow = jdbcTemplate.queryForMap(
@@ -299,8 +273,6 @@ class PublicApiRouteBindingTest {
         String agentId = "route-agent-" + UUID.randomUUID();
         String agentName = "Route Agent " + agentId;
         mockMvc.perform(post("/api/agents")
-                .with(alphaAuth())
-                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json(Map.of(
                     "id", agentId,
@@ -316,8 +288,6 @@ class PublicApiRouteBindingTest {
 
     private String createPlan(String title) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/plans")
-                .with(alphaAuth())
-                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json(Map.of(
                     "title", title,
@@ -336,8 +306,6 @@ class PublicApiRouteBindingTest {
 
     private String createTask(String title) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/tasks")
-                .with(alphaAuth())
-                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json(Map.of(
                     "title", title,
@@ -353,8 +321,6 @@ class PublicApiRouteBindingTest {
 
     private String createWorkflow(String title) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/workflows")
-                .with(alphaAuth())
-                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json(Map.of(
                     "title", title,
@@ -370,8 +336,6 @@ class PublicApiRouteBindingTest {
 
     private String createProject(String agentId) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/projects")
-                .with(alphaAuth())
-                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json(Map.of(
                     "name", "Route Project",
@@ -386,8 +350,6 @@ class PublicApiRouteBindingTest {
 
     private String createJob(String agentId, String projectId) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/jobs")
-                .with(alphaAuth())
-                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json(Map.of(
                     "ownerAgentId", agentId,
@@ -441,10 +403,6 @@ class PublicApiRouteBindingTest {
             "%" + workflowId + "%"
         );
         assertThat(count).isZero();
-    }
-
-    private static org.springframework.test.web.servlet.request.RequestPostProcessor alphaAuth() {
-        return httpBasic("alpha", "test-alpha-password");
     }
 
     private static Path aiConfigPath() {
