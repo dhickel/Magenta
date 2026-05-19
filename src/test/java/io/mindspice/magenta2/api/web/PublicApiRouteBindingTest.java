@@ -74,7 +74,7 @@ class PublicApiRouteBindingTest {
         String conversationId = UUID.randomUUID().toString();
         mockMvc.perform(post("/api/chat/" + conversationId + "/plan/execute"))
             .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.error", containsString("Direct plan execution is disabled")));
+            .andExpect(jsonPath("$.error", containsString("No plan exists for this conversation")));
 
         mockMvc.perform(post("/api/chat/" + conversationId + "/plan/execute/stream")
                 .accept(MediaType.TEXT_EVENT_STREAM))

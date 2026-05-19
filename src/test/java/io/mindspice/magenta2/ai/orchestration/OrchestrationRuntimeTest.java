@@ -699,7 +699,7 @@ class OrchestrationRuntimeTest {
 
         settingsService.save(new RuntimeSettings(
             agent.id(), agent.name(), "main", "planning", "summary", "main", 20,
-            null, null, null, null, true, 1
+            null, null, null, null, true, 1, false
         ));
         service.autoPurgeHistory();
 

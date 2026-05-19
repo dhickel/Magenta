@@ -4,7 +4,7 @@ These guides explain how to operate Magenta through the current alpha browser UI
 
 Magenta has two main surfaces:
 
-- `/chat` for conversations, planning, saved plan chats, and plan refinement.
+- `/chat` for conversations and anonymous ad hoc planning.
 - `/dashboard` and the operational pages for agents, plans, workflows, jobs, projects, inboxes, outputs, and runtime settings.
 
 ## Start Here

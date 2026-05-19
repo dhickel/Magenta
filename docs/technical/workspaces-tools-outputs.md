@@ -12,6 +12,7 @@ Workspace paths are confined under the configured data root managed by `Workspac
 - Agent scratch: `agents/<id>/workspace/scratch/`
 - Task temp directories.
 - Workflow temp directories.
+- Persistent chat files: `chats/<conversationId>/files/`
 - Job workspaces.
 - Project workspaces.
 - Agent/job output directories.
@@ -116,3 +117,12 @@ Typical task/plan/workflow output flow:
 5. Output APIs and operational pages query by run, agent, job, project, workspace, or type.
 
 Temp workspaces can be cleaned up on terminal run states, but output directories persist.
+
+## Temp Retention
+
+`RuntimeSettings.retainTempWork` controls cleanup for task temp work:
+
+- `true`: never auto-delete temp run directories.
+- `false`: delete temp directories only after clean completion.
+
+When validation or output materialization detects missing required output, missing referenced file deliverables, or missing final-message deliverables, Magenta keeps the temp directory and marks the run for review instead of silently completing it. Persistent chat files are separate from temp work and are never auto-deleted by this cleanup path.

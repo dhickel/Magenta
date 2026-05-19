@@ -317,7 +317,7 @@ class OrchestrationControllerTest {
         assertThat(html).contains("hx-get=\"/plans/_list\"");
         assertThat(html).contains("hx-post=\"/plans/_editor/_draft\"");
         assertThat(html).contains("New Plan Chat");
-        assertThat(html).contains("/chat?startPlanning=true");
+        assertThat(html).contains("hx-post=\"/plans/_editor/_planning-chat\"");
 
         // No Run button, No Run panel, No run-plan
         assertThat(html).doesNotContain("run-plan");
@@ -402,8 +402,8 @@ class OrchestrationControllerTest {
         assertThat(html).contains("Save");
         assertThat(html).contains("Finalize Task");
         assertThat(html).contains("Submit to Agent");
-        assertThat(html).contains("Continue in Chat");
-        assertThat(html).contains("/chat?continuePlanId=" + planId);
+        assertThat(html).contains("Saved Plan Chat");
+        assertThat(html).contains("/plans/_editor/" + planId + "/planning-chat/start");
 
         // Has Advanced section (collapsible)
         assertThat(html).contains("Advanced");

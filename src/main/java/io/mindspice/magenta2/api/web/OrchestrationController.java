@@ -21,6 +21,8 @@ import io.mindspice.magenta2.ai.chat.plan.PlanRun;
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
 import io.mindspice.magenta2.ai.chat.plan.PlanStatus;
 import io.mindspice.magenta2.ai.chat.plan.PlanStep;
+import io.mindspice.magenta2.ai.chat.plan.SavedPlanChatService;
+import io.mindspice.magenta2.ai.chat.plan.SavedPlanChatService.SavedPlanChatState;
 import io.mindspice.magenta2.ai.chat.plan.WorkTypeProfile;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
@@ -96,6 +98,7 @@ import io.mindspice.simplypages.core.HtmlTag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.util.StringUtils;
@@ -139,6 +142,8 @@ public class OrchestrationController {
 
     // ── Plan editor services ──
     private final PlanService planService;
+    @Autowired(required = false)
+    private SavedPlanChatService savedPlanChatService;
     private final AssignmentService assignmentService;
     private final ScheduleService scheduleService;
     private final EventReactionService eventReactionService;
@@ -582,8 +587,9 @@ public class OrchestrationController {
                             .hxTarget("#plan-editor-container")
                             .hxSwap("innerHTML"))
                         .withChild(Button.create("New Plan Chat")
-                            .withAttribute("type", "button")
-                            .withAttribute("onclick", "window.location.href='/chat?startPlanning=true'")
+                            .withAttribute("hx-post", "/plans/_editor/_planning-chat")
+                            .hxTarget("#plan-editor-container")
+                            .hxSwap("innerHTML")
                             .withClass("orch-primary")
                             .withInnerText("New Plan Chat")))
                     .withChild(TextInput.search("planFilter")
@@ -722,6 +728,16 @@ public class OrchestrationController {
         return planEditorFragment(created).render();
     }
 
+    @PostMapping("/plans/_editor/_planning-chat")
+    @ResponseBody
+    public String createPlanChatEditor() {
+        if (savedPlanChatService == null) {
+            return new Div().withClass("orch-status").withInnerText("Saved plan chat service is unavailable.").render();
+        }
+        SavedPlanChatState state = savedPlanChatService.create();
+        return planEditorFragment(state.plan()).render();
+    }
+
     @GetMapping("/plans/_editor/{planId}")
     @ResponseBody
     public String planEditor(@PathVariable String planId) {
@@ -734,6 +750,26 @@ public class OrchestrationController {
                     .withInnerText("Plan not found: " + escapeAttr(planId)))
                 .render();
         }
+    }
+
+    @PostMapping("/plans/_editor/{planId}/planning-chat/start")
+    @ResponseBody
+    public String startPlanEditorChat(@PathVariable String planId, @RequestParam Map<String, String> params) {
+        if (savedPlanChatService == null) {
+            return new Div().withClass("orch-status").withInnerText("Saved plan chat service is unavailable.").render();
+        }
+        SavedPlanChatState state = savedPlanChatService.start(planId, params.get("message"));
+        return planEditorFragment(state.plan()).render();
+    }
+
+    @PostMapping("/plans/_editor/{planId}/planning-chat/answers")
+    @ResponseBody
+    public String answerPlanEditorChat(@PathVariable String planId, @RequestParam Map<String, String> params) {
+        if (savedPlanChatService == null) {
+            return new Div().withClass("orch-status").withInnerText("Saved plan chat service is unavailable.").render();
+        }
+        SavedPlanChatState state = savedPlanChatService.answer(planId, params.get("message"));
+        return planEditorFragment(state.plan()).render();
     }
 
     @PostMapping("/plans/_editor")
@@ -1784,18 +1820,16 @@ public class OrchestrationController {
         if (!isNew) {
             container.withChild(new Div().withClass("plan-continue-row")
                 .withChild(new HtmlTag("details")
-                    .withChild(new HtmlTag("summary").withInnerText("Continue in Chat"))
-                    .withChild(new HtmlTag("a")
-                        .withAttribute("href", "/chat?continuePlanId=" + escapeAttr(planId))
-                        .withClass("visually-hidden")
-                        .withInnerText("Continue in chat without extra instruction"))
-                    .withChild(Form.create().withAttribute("method", "get").withAttribute("action", "/chat")
-                        .withChild(new HtmlTag("input", true).withAttribute("type", "hidden")
-                            .withAttribute("name", "continuePlanId").withAttribute("value", planId))
-                        .withChild(label("Optional instruction", TextArea.create("continuePlanMessage")
+                    .withChild(new HtmlTag("summary").withInnerText("Saved Plan Chat"))
+                    .withChild(Form.create()
+                        .withAttribute("hx-post", "/plans/_editor/" + planId + "/planning-chat/start")
+                        .withAttribute("hx-target", "#plan-editor-container")
+                        .withAttribute("hx-swap", "innerHTML")
+                        .withChild(label("Optional instruction", TextArea.create("message")
                             .withRows(2)
-                            .withPlaceholder("What should the planning chat revisit or change?")))
-                        .withChild(Button.create("Open planning chat").withAttribute("type", "submit")))));
+                            .withPlaceholder("What should the saved plan chat revisit or change?")))
+                        .withChild(Button.create("Begin chat from this plan").withAttribute("type", "submit")))
+                    .withChild(savedPlanChatPanel(plan))));
         }
 
         if (!isNew) {
@@ -1829,6 +1863,28 @@ public class OrchestrationController {
             );
         }
         return table.render();
+    }
+
+    private Component savedPlanChatPanel(PlanDefinition plan) {
+        if (savedPlanChatService == null || plan == null) {
+            return new Div();
+        }
+        SavedPlanChatState state = savedPlanChatService.state(plan.id());
+        Div panel = new Div().withClass("orch-panel plan-saved-chat");
+        for (var message : state.messages()) {
+            panel.withChild(new Div().withClass("chat-message chat-message-" + message.role())
+                .withInnerText(message.text()));
+        }
+        Form form = Form.create();
+        form.withAttribute("hx-post", "/plans/_editor/" + plan.id() + "/planning-chat/answers");
+        form.withAttribute("hx-target", "#plan-editor-container");
+        form.withAttribute("hx-swap", "innerHTML");
+        form.withChild(label(state.promptQuestion() == null ? "Message" : state.promptQuestion(),
+            TextArea.create("message").withRows(3)));
+        form.withChild(Button.create(state.promptQuestion() == null ? "Send" : "Submit answer")
+            .withAttribute("type", "submit"));
+        panel.withChild(form);
+        return panel;
     }
 
     // ── Section renderers ──
@@ -6851,7 +6907,9 @@ public class OrchestrationController {
                 "true".equalsIgnoreCase(params.getOrDefault("systemChatEnabled",
                     current.systemChatEnabled() == null || current.systemChatEnabled() ? "true" : "false")),
                 parseIntOrNull(params.getOrDefault("assignmentHistoryAutoPurgeDays",
-                    String.valueOf(current.assignmentHistoryAutoPurgeDays() == null ? -1 : current.assignmentHistoryAutoPurgeDays())))
+                    String.valueOf(current.assignmentHistoryAutoPurgeDays() == null ? -1 : current.assignmentHistoryAutoPurgeDays()))),
+                "true".equalsIgnoreCase(params.getOrDefault("retainTempWork",
+                    Boolean.TRUE.equals(current.retainTempWork()) ? "true" : "false"))
             ));
             return settingsForm(updated).render();
         } catch (IllegalArgumentException | IllegalStateException e) {
@@ -6927,6 +6985,16 @@ public class OrchestrationController {
                         .withMin("-1")
                         .withValue(String.valueOf(s.assignmentHistoryAutoPurgeDays() == null ? -1 : s.assignmentHistoryAutoPurgeDays())))))
                 .withChild(new Div().withClass("orch-status").withInnerText("-1 disables automatic purge; positive values purge terminal assignment rows older than that many days."))));
+
+        form.withChild(new Div().withClass("orch-panel")
+            .withChild(Header.H2("Run Workspaces"))
+            .withChild(new Div().withClass("orch-form-grid")
+                .withChild(label("Retain Temp Work", Select.create("retainTempWork")
+                    .withId("settings-retain-temp-work")
+                    .addOption("false", "Delete temp after clean completion", !Boolean.TRUE.equals(s.retainTempWork()))
+                    .addOption("true", "Always retain temp work", Boolean.TRUE.equals(s.retainTempWork())))))
+            .withChild(new Div().withClass("orch-status")
+                .withInnerText("Incomplete or needs-review runs keep temp work for inspection.")));
 
         form.withChild(Button.create("Save").withClass("orch-primary")
             .withAttribute("type", "submit"));

@@ -51,6 +51,7 @@ Persisted settings include:
 - Context buffer percent.
 - System chat model, prompt, approved tools, context limit, enabled flag.
 - Assignment history auto-purge days.
+- Retain temp work.
 
 API:
 
@@ -61,6 +62,8 @@ Operational UI:
 
 - `/settings`
 - `PUT /settings`
+
+When **Retain Temp Work** is enabled, task temp run directories are never auto-deleted. When disabled, Magenta deletes temp work only after clean completion and keeps temp work for runs that need review because required outputs, referenced files, or final-message deliverables were not satisfied.
 
 ## Feature Flags
 

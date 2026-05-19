@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import io.mindspice.magenta2.ai.chat.model.ChatHistory;
 import io.mindspice.magenta2.ai.chat.model.ChatMessage;
@@ -14,7 +15,6 @@ import io.mindspice.magenta2.ai.chat.model.ChatResponse;
 import io.mindspice.magenta2.ai.chat.model.ChatSession;
 import io.mindspice.magenta2.ai.chat.model.ChatSessions;
 import io.mindspice.magenta2.ai.chat.model.ChatPlanState;
-import io.mindspice.magenta2.ai.chat.plan.PlanDefinition;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.chat.service.ResolvedChatRequest;
 import io.mindspice.magenta2.ai.chat.service.StoredContextUsage;
@@ -53,8 +53,7 @@ public class ChatController {
     private final long planExecutionStreamTimeoutMillis;
 
     public record PlanStartRequest(String conversationId, String model, String planningModel, String userInstruction) { }
-    public record SaveTaskRequest(String title) { }
-    public record SaveTaskResponse(String taskId, String taskTitle, ChatPlanState planState) { }
+    public record PlanExecuteRequest(boolean clearContext) { }
 
     public ChatController(ChatService chatService) {
         this(chatService, new ActiveTurnRegistry());
@@ -97,8 +96,12 @@ public class ChatController {
     @PostMapping(value = "/{conversationId}/plan/execute/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter streamPlanExecution(@PathVariable String conversationId) {
         requireValidUuid(conversationId);
-        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-            "Direct plan execution is disabled. Save the plan and send it to an agent.");
+        try {
+            ResolvedChatRequest resolvedRequest = chatService.resolveSavedPlanExecution(conversationId);
+            return streamResolved(resolvedRequest, true);
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
     }
 
     private SseEmitter streamResolved(ResolvedChatRequest resolvedRequest, boolean planExecution) {
@@ -108,6 +111,7 @@ public class ChatController {
         );
         SseStreamLifecycle.SubscriptionGuard guard = SseStreamLifecycle.guardSubscription();
         AtomicBoolean planExecutionFinalized = new AtomicBoolean(false);
+        AtomicReference<String> planExecutionFinalMessage = new AtomicReference<>();
 
         Runnable domainCleanup = () -> {
             guard.dispose();
@@ -188,6 +192,9 @@ public class ChatController {
                         );
                         return;
                     }
+                    if (planExecution) {
+                        planExecutionFinalMessage.set(message.text());
+                    }
                     ChatStreamSupport.sendSseEvent(
                         emitter,
                         "context",
@@ -238,7 +245,10 @@ public class ChatController {
                 try {
                     activeTurnRegistry.complete(activeTurn.turnId());
                     if (planExecution) {
-                        chatService.handlePlanExecutionStreamFinished(resolvedRequest.conversationId());
+                        chatService.handlePlanExecutionStreamFinished(
+                            resolvedRequest.conversationId(),
+                            planExecutionFinalMessage.get()
+                        );
                         planExecutionFinalized.set(true);
                     }
                     StoredContextUsage contextUsage = chatService.maintainContextUsage(
@@ -419,60 +429,34 @@ public class ChatController {
         return chatService.planState(conversationId);
     }
 
-    @PatchMapping("/{conversationId}/plan/save-task")
-    public SaveTaskResponse savePlanAsTask(
+    @PostMapping("/{conversationId}/plan/execute")
+    public ChatResponse.CmdResponse executePlan(
         @PathVariable String conversationId,
-        @RequestBody(required = false) SaveTaskRequest request
+        @RequestBody(required = false) PlanExecuteRequest request
     ) {
         requireValidUuid(conversationId);
         try {
-            PlanDefinition savedTask = chatService.savePlanAsTask(
+            ChatResponse.MsgResponse response = chatService.executeSavedPlan(
                 conversationId,
-                request == null ? null : request.title()
+                request != null && request.clearContext()
             );
-            return new SaveTaskResponse(savedTask.id(), savedTask.title(), chatService.planState(conversationId));
+            return new ChatResponse.CmdResponse(
+                conversationId,
+                response.model(),
+                response.response(),
+                chatService.listConversationIds(),
+                chatService.history(conversationId),
+                response.contextUsage(),
+                chatService.planState(conversationId),
+                response.toolActivities()
+            );
         } catch (IllegalArgumentException | IllegalStateException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
     }
 
-    @PostMapping("/{conversationId}/plan/execute")
-    public ChatResponse.CmdResponse executePlan(@PathVariable String conversationId) {
-        requireValidUuid(conversationId);
-        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-            "Direct plan execution is disabled. Save the plan and send it to an agent.");
-    }
-
-    @PostMapping("/plans/{planId}/continue")
-    public ChatResponse.CmdResponse continuePlanDefinition(
-        @PathVariable String planId,
-        @RequestBody(required = false) PlanStartRequest request
-    ) {
-        String conversationId = normalize(request == null ? null : request.conversationId());
-        if (conversationId == null) {
-            conversationId = chatService.newConversationId();
-        }
-        ChatResponse.MsgResponse response = chatService.beginPlanFromDefinition(
-            conversationId,
-            planId,
-            request == null ? null : request.model(),
-            request == null ? null : request.planningModel(),
-            request == null ? null : request.userInstruction()
-        );
-        List<String> conversationIds = new ArrayList<>(chatService.listConversationIds());
-        if (!conversationIds.contains(conversationId)) {
-            conversationIds.add(0, conversationId);
-        }
-        return new ChatResponse.CmdResponse(
-            conversationId,
-            response.model(),
-            response.response(),
-            List.copyOf(conversationIds),
-            chatService.history(conversationId),
-            response.contextUsage(),
-            chatService.planState(conversationId),
-            response.toolActivities()
-        );
+    public ChatResponse.CmdResponse executePlan(String conversationId) {
+        return executePlan(conversationId, null);
     }
 
     @DeleteMapping("/{conversationId}/plan")

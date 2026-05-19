@@ -19,6 +19,7 @@ import io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer;
 import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
+import io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettingsService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactContext;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
@@ -50,10 +51,11 @@ public class PlanService {
     private final ChatMarkdownRenderer markdownRenderer;
     private final WorkspaceDirectoryService workspaceDirectoryService;
     private final OutputArtifactService outputArtifactService;
+    private final RuntimeSettingsService runtimeSettingsService;
     private final Map<String, String> executionRunsByConversationId = new ConcurrentHashMap<>();
 
     public PlanService(PlanRepository planRepository, ChatMemoryRepository chatMemoryRepository) {
-        this(planRepository, chatMemoryRepository, null, new ChatMarkdownRenderer(), null, null);
+        this(planRepository, chatMemoryRepository, null, new ChatMarkdownRenderer(), null, null, null);
     }
 
     // Used by tests that need session metadata and markdown rendering
@@ -63,7 +65,19 @@ public class PlanService {
         ChatSessionMetadataRepository chatSessionMetadataRepository,
         ChatMarkdownRenderer markdownRenderer
     ) {
-        this(planRepository, chatMemoryRepository, chatSessionMetadataRepository, markdownRenderer, null, null);
+        this(planRepository, chatMemoryRepository, chatSessionMetadataRepository, markdownRenderer, null, null, null);
+    }
+
+    public PlanService(
+        PlanRepository planRepository,
+        ChatMemoryRepository chatMemoryRepository,
+        ChatSessionMetadataRepository chatSessionMetadataRepository,
+        ChatMarkdownRenderer markdownRenderer,
+        WorkspaceDirectoryService workspaceDirectoryService,
+        OutputArtifactService outputArtifactService
+    ) {
+        this(planRepository, chatMemoryRepository, chatSessionMetadataRepository, markdownRenderer,
+            workspaceDirectoryService, outputArtifactService, null);
     }
 
     @Autowired
@@ -73,7 +87,8 @@ public class PlanService {
         @Autowired(required = false) ChatSessionMetadataRepository chatSessionMetadataRepository,
         ChatMarkdownRenderer markdownRenderer,
         @Autowired(required = false) WorkspaceDirectoryService workspaceDirectoryService,
-        @Autowired(required = false) OutputArtifactService outputArtifactService
+        @Autowired(required = false) OutputArtifactService outputArtifactService,
+        @Autowired(required = false) RuntimeSettingsService runtimeSettingsService
     ) {
         this.planRepository = planRepository;
         this.chatMemoryRepository = chatMemoryRepository;
@@ -81,6 +96,7 @@ public class PlanService {
         this.markdownRenderer = markdownRenderer;
         this.workspaceDirectoryService = workspaceDirectoryService;
         this.outputArtifactService = outputArtifactService;
+        this.runtimeSettingsService = runtimeSettingsService;
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -168,7 +184,7 @@ public class PlanService {
             normalize(executionModel),
             null,
             "goal_and_deliverables",
-            List.of(),
+            anonymousOpeningQuestions(),
             0,
             startOrder,
             null,
@@ -180,6 +196,36 @@ public class PlanService {
 
     public PlanDefinition beginPlan(String conversationId) {
         return beginPlan(conversationId, null, null);
+    }
+
+    public Path chatFileDirectory(String conversationId) {
+        if (!StringUtils.hasText(conversationId)) {
+            throw new IllegalArgumentException("conversationId is required");
+        }
+        if (workspaceDirectoryService == null) {
+            throw new IllegalStateException("Workspace directory service is not available");
+        }
+        return workspaceDirectoryService.chatFiles(conversationId);
+    }
+
+    public Path persistChatFinalMessage(String conversationId, String finalMessage) {
+        String normalized = normalize(finalMessage);
+        if (normalized == null) {
+            return null;
+        }
+        try {
+            Path dir = chatFileDirectory(conversationId);
+            Path target = dir.resolve("final-message.md");
+            int suffix = 2;
+            while (Files.exists(target)) {
+                target = dir.resolve("final-message-" + suffix + ".md");
+                suffix++;
+            }
+            Files.writeString(target, normalized + "\n");
+            return target;
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to persist chat final message", e);
+        }
     }
 
     public PlanDefinition beginPlanFromDefinition(
@@ -206,8 +252,8 @@ public class PlanService {
             source.goal(),
             source.notes(),
             source.deliverables(),
-            source.inputs(),
-            source.outputs(),
+            List.of(),
+            List.of(),
             source.assumptions(),
             source.steps(),
             source.validationCriteria(),
@@ -261,6 +307,9 @@ public class PlanService {
     public PlanDefinition putItem(String conversationId, String sectionName, Integer key, String text) {
         PlanDefinition existing = requirePlanMode(conversationId, "plan_put_item");
         PlanSection section = PlanSection.fromToolName(sectionName);
+        if (section == PlanSection.INPUT || section == PlanSection.OUTPUT) {
+            throw new IllegalArgumentException("Anonymous chat plans do not define structured inputs or outputs; use deliverables instead");
+        }
         int itemKey = requirePositiveKey(key, "plan_put_item");
         String normalizedText = normalize(text);
         if (normalizedText == null) {
@@ -339,54 +388,11 @@ public class PlanService {
     }
 
     public PlanDefinition saveAsTask(String conversationId) {
-        return saveAsTask(conversationId, null);
+        throw new IllegalStateException("Anonymous chat plans cannot be saved as task templates. Create saved plans from /plans.");
     }
 
     public PlanDefinition saveAsTask(String conversationId, String taskTitle) {
-        PlanDefinition plan = requirePlanConversation(conversationId, "save as task");
-        validateComplete(plan, "save as task");
-        String resolvedTitle = normalize(taskTitle);
-        if (resolvedTitle == null) {
-            resolvedTitle = normalize(plan.title());
-        }
-        if (resolvedTitle == null) {
-            resolvedTitle = "Untitled Task";
-        }
-
-        PlanDefinition savedTask = saveTask(new PlanDefinition(
-            UUID.randomUUID().toString(),
-            PlanKind.TASK_TEMPLATE,
-            PlanStatus.APPROVED,
-            resolvedTitle,
-            plan.summary(),
-            plan.goal(),
-            plan.notes(),
-            plan.deliverables(),
-            plan.inputs(),
-            plan.outputs(),
-            plan.assumptions(),
-            plan.steps(),
-            plan.validationCriteria(),
-            List.of(),
-            List.of(),
-            plan.promptProfile(),
-            plan.planningModel(),
-            plan.executionModel(),
-            plan.settingsOverrideJson(),
-            null,
-            List.of(),
-            0,
-            0,
-            null,
-            null,
-            null,
-            null
-        ));
-
-        planRepository.saveDefinition(plan
-            .withStatus(PlanStatus.SAVED_TASK)
-            .withPendingQuestions(List.of(), 0));
-        return savedTask;
+        throw new IllegalStateException("Anonymous chat plans cannot be saved as task templates. Create saved plans from /plans.");
     }
 
     public PlanDefinition markExecuting(String conversationId) {
@@ -487,6 +493,12 @@ public class PlanService {
         List<String> acceptanceCriteria
     ) {
         PlanDefinition existing = requirePlanMode(conversationId, "plan_update");
+        List<PlanFieldDefinition> updatedInputs = existing.kind() == PlanKind.SESSION_PLAN
+            ? existing.inputs()
+            : (inputs == null ? existing.inputs() : textFieldList(inputs));
+        List<PlanFieldDefinition> updatedOutputs = existing.kind() == PlanKind.SESSION_PLAN
+            ? existing.outputs()
+            : (outputs == null ? existing.outputs() : textFieldList(outputs));
         return planRepository.saveDefinition(new PlanDefinition(
             existing.id(),
             existing.kind(),
@@ -496,8 +508,8 @@ public class PlanService {
             choose(goal, existing.goal()),
             mergeNotes(existing.notes(), notes),
             deliverables == null ? existing.deliverables() : cleanList(deliverables),
-            inputs == null ? existing.inputs() : textFieldList(inputs),
-            outputs == null ? existing.outputs() : textFieldList(outputs),
+            updatedInputs,
+            updatedOutputs,
             assumptions == null ? existing.assumptions() : cleanList(assumptions),
             steps == null ? existing.steps() : orderedSteps(steps),
             acceptanceCriteria == null ? existing.validationCriteria() : cleanList(acceptanceCriteria),
@@ -588,9 +600,9 @@ public class PlanService {
             normalize(task.planningModel()),
             normalize(task.executionModel()),
             task.settingsOverrideJson(),
-            null,
-            List.of(),
-            0,
+            resolvedStatus == PlanStatus.DRAFT || resolvedStatus == PlanStatus.READY_FOR_APPROVAL ? task.planningTask() : null,
+            resolvedStatus == PlanStatus.DRAFT || resolvedStatus == PlanStatus.READY_FOR_APPROVAL ? task.pendingQuestions() : List.of(),
+            resolvedStatus == PlanStatus.DRAFT || resolvedStatus == PlanStatus.READY_FOR_APPROVAL ? task.pendingQuestionIndex() : 0,
             0,
             null,
             null,
@@ -1001,7 +1013,7 @@ public class PlanService {
             .withCompletedAt(Instant.now()));
 
         // Clean up temp dir (never delete output dir)
-        cleanupTempForRun(run);
+        cleanupTempForRun(run, true);
 
         return completed;
     }
@@ -1012,7 +1024,7 @@ public class PlanService {
             .withStatus(PlanRunStatus.FAILED)
             .withErrorText(normalize(errorText))
             .withCompletedAt(Instant.now()));
-        cleanupTempForRun(run);
+        cleanupTempForRun(run, true);
         return failed;
     }
 
@@ -1027,7 +1039,7 @@ public class PlanService {
             .withStatus(PlanRunStatus.NEEDS_REVIEW)
             .withValidationFeedback(feedback)
             .withCompletedAt(Instant.now()));
-        cleanupTempForRun(run);
+        cleanupTempForRun(run, false);
         return reviewed;
     }
 
@@ -1115,8 +1127,8 @@ public class PlanService {
             def.goal(),
             def.notes(),
             def.deliverables(),
-            inputNames(def.inputs()),
-            outputNames(def.outputs()),
+            def.kind() == PlanKind.SESSION_PLAN ? List.of() : inputNames(def.inputs()),
+            def.kind() == PlanKind.SESSION_PLAN ? List.of() : outputNames(def.outputs()),
             def.assumptions(),
             def.steps().stream().map(PlanStep::text).toList(),
             def.validationCriteria(),
@@ -1145,14 +1157,14 @@ public class PlanService {
         appendMarkdownValue(builder, "Goal", plan.goal());
         appendMarkdownValue(builder, "Summary", plan.summary());
         appendMarkdownList(builder, "Deliverables", plan.deliverables());
-        if (!plan.inputs().isEmpty()) {
+        if (plan.kind() != PlanKind.SESSION_PLAN && !plan.inputs().isEmpty()) {
             builder.append("## Inputs\n\n");
             for (PlanFieldDefinition input : plan.inputs()) {
                 builder.append("- ").append(fieldSummary(input)).append("\n");
             }
             builder.append("\n");
         }
-        if (!plan.outputs().isEmpty()) {
+        if (plan.kind() != PlanKind.SESSION_PLAN && !plan.outputs().isEmpty()) {
             builder.append("## Outputs\n\n");
             for (PlanFieldDefinition output : plan.outputs()) {
                 builder.append("- ").append(fieldSummary(output)).append("\n");
@@ -1184,10 +1196,10 @@ You are Magenta in PLAN mode.
 Your job is to turn the user's intent into a clear, approved execution plan. Do not perform implementation work in PLAN mode.
 
 Required workflow:
-1. Ask the user to describe their goal via ask_user_questions. Do NOT call plan_set_goal until the user has told you what they want.
-2. After the user responds, set the goal with plan_set_goal and define concrete deliverables with plan_put_item using integer keys.
-3. Ask the user to describe the task and any relevant information: preferred approaches, workflow expectations, constraints, gotchas, and known details via ask_user_questions. Iteratively explore the problem space — start with broad domain questions, then use follow-up questions to drill into specifics as the plan takes shape.
-4. After the user responds, build a structured approach: use plan_put_item with integer keys to add steps, assumptions, notes, and validation criteria. Iteratively move through the plan's problem space, using ask_user_questions to ask domain-specific questions that clarify ambiguities, surface information needs, or narrow approach choices. Formulate each step with associated assumptions, notes, and validation criteria.
+1. Treat the three backend-seeded opening answers as authoritative seed context: goal, assumptions/details/expectations/approach, and expected deliverables.
+2. Set the goal with plan_set_goal and define concrete deliverables with plan_put_item using integer keys.
+3. Continue questioning only for missing or ambiguous planning details. Ask domain-specific follow-up questions that clarify tradeoffs, assumptions, steps, deliverables, or validation.
+4. Build a structured approach: use plan_put_item with integer keys to add deliverables, steps, assumptions, notes, and validation criteria. Formulate each step with associated assumptions, notes, and validation criteria.
 5. When the draft is complete, call plan_ready_for_approval. Do not send a normal message asking for approval, and do not claim approval until the user approves through the planning UI.
 
 Turn contract:
@@ -1204,11 +1216,10 @@ Turn contract:
 
 Tool rules:
 - Use plan_set_goal for the goal only AFTER the user has described their goal. Use plan_set_task to update the current planning task when moving between workflow phases.
-- Use plan_put_item with section and integer key to add or replace exactly one item in any section: deliverable, input, output, assumption, note, step, or validation_criterion. All plan fields use this same integer-key API.
+- Use plan_put_item with section and integer key to add or replace exactly one item in these sections only: deliverable, assumption, note, step, or validation_criterion.
 - Use plan_delete_item with section and integer key to remove one keyed item.
 - Use assumptions for explicit defaults or choices being locked into the plan.
-- Inputs are optional and only for values a future reusable task would require at execution time.
-- Outputs are expected model/work products; they are rendered as deliverables for users.
+- Do not define structured inputs or outputs for anonymous chat plans. Use deliverables for user-visible or operational outcomes.
 - Research gate: before keyed edits set or revise fact-dependent deliverables, steps, notes, or validation criteria, use available research tools first.
 - Use ask_user_questions with 1 to 5 free-response questions. Each question must be a single, distinct question. Do not bundle multiple numbered sub-questions into one question string — split them into separate questions so the UI can show them one at a time. Prefer one focused question when that is enough.
 - Use plan_ready_for_approval only after goal, deliverables/outputs, steps, assumptions, and validation criteria are complete enough to execute without guessing.
@@ -1420,8 +1431,8 @@ Approved plan:
         if (!StringUtils.hasText(plan.goal())) {
             throw new IllegalArgumentException(action + " requires a goal");
         }
-        if (effectiveDeliverables(plan).isEmpty()) {
-            throw new IllegalArgumentException(action + " requires at least one deliverable or output");
+        if (plan.deliverables().isEmpty()) {
+            throw new IllegalArgumentException(action + " requires at least one deliverable");
         }
         if (plan.steps().isEmpty()) {
             throw new IllegalArgumentException(action + " requires at least one step");
@@ -1675,6 +1686,14 @@ Approved plan:
         return PlanText.normalize(value);
     }
 
+    private List<String> anonymousOpeningQuestions() {
+        return List.of(
+            "What is the goal?",
+            "What assumptions, details, expectations, constraints, or preferred approach should guide the plan?",
+            "What are the expected deliverables?"
+        );
+    }
+
     private String rootCauseMessage(Throwable throwable) {
         Throwable current = throwable;
         Throwable root = throwable;
@@ -1896,8 +1915,16 @@ Approved plan:
      * Uses the stored temp path from the run record to avoid recreating
      * the directory during cleanup. Never deletes the output directory.
      */
-    private void cleanupTempForRun(PlanRun run) {
+    private void cleanupTempForRun(PlanRun run, boolean cleanCompletion) {
         if (workspaceDirectoryService == null) {
+            return;
+        }
+        if (runtimeSettingsService != null && runtimeSettingsService.retainTempWork()) {
+            log.debug("Retaining temp dir for run={} because retainTempWork=true", run.id());
+            return;
+        }
+        if (!cleanCompletion) {
+            log.debug("Retaining temp dir for run={} because run needs review or failed validation", run.id());
             return;
         }
         String tempPath = run.tempWorkspacePath();

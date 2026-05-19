@@ -11,6 +11,8 @@ import io.mindspice.magenta2.ai.chat.plan.PlanRun;
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
 import io.mindspice.magenta2.ai.chat.plan.PlanStatus;
 import io.mindspice.magenta2.ai.chat.plan.PlanStep;
+import io.mindspice.magenta2.ai.chat.plan.SavedPlanChatService;
+import io.mindspice.magenta2.ai.chat.plan.SavedPlanChatService.SavedPlanChatState;
 import io.mindspice.magenta2.ai.chat.plan.WorkTypeProfile;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentRequest;
@@ -20,6 +22,7 @@ import io.mindspice.magenta2.ai.orchestration.runtime.WorkAssignment;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -47,14 +50,24 @@ public class PlanController {
     private final ChatService chatService;
     private final AssignmentService assignmentService;
     private final AgentProfileService agentProfileService;
+    private final SavedPlanChatService savedPlanChatService;
 
     public PlanController(PlanService planService, ChatService chatService,
                           AssignmentService assignmentService,
                           AgentProfileService agentProfileService) {
+        this(planService, chatService, assignmentService, agentProfileService, null);
+    }
+
+    @Autowired
+    public PlanController(PlanService planService, ChatService chatService,
+                          AssignmentService assignmentService,
+                          AgentProfileService agentProfileService,
+                          @Autowired(required = false) SavedPlanChatService savedPlanChatService) {
         this.planService = planService;
         this.chatService = chatService;
         this.assignmentService = assignmentService;
         this.agentProfileService = agentProfileService;
+        this.savedPlanChatService = savedPlanChatService;
     }
 
     // ── Definition CRUD ──
@@ -93,7 +106,51 @@ public class PlanController {
 
     @DeleteMapping("/{planId}")
     public void delete(@PathVariable String planId) {
+        if (savedPlanChatService != null) {
+            savedPlanChatService.deleteMessages(planId);
+        }
         planService.deleteTask(planId);
+    }
+
+    // ── Saved plan chat ──
+
+    @PostMapping("/planning-chats")
+    public SavedPlanChatState createPlanningChat() {
+        requireSavedPlanChatService();
+        return savedPlanChatService.create();
+    }
+
+    @PostMapping("/{planId}/planning-chat/start")
+    public SavedPlanChatState startPlanningChat(
+        @PathVariable String planId,
+        @RequestBody(required = false) PlanningChatMessage request
+    ) {
+        requireSavedPlanChatService();
+        return savedPlanChatService.start(planId, request == null ? null : request.message());
+    }
+
+    @PostMapping("/{planId}/planning-chat/answers")
+    public SavedPlanChatState answerPlanningChat(
+        @PathVariable String planId,
+        @RequestBody PlanningChatMessage request
+    ) {
+        requireSavedPlanChatService();
+        return savedPlanChatService.answer(planId, request == null ? null : request.message());
+    }
+
+    @PostMapping("/{planId}/planning-chat/messages")
+    public SavedPlanChatState messagePlanningChat(
+        @PathVariable String planId,
+        @RequestBody PlanningChatMessage request
+    ) {
+        requireSavedPlanChatService();
+        return savedPlanChatService.message(planId, request == null ? null : request.message());
+    }
+
+    @GetMapping("/{planId}/planning-chat")
+    public SavedPlanChatState getPlanningChat(@PathVariable String planId) {
+        requireSavedPlanChatService();
+        return savedPlanChatService.state(planId);
     }
 
     // ── Finalize / task template conversion ──
@@ -284,6 +341,12 @@ public class PlanController {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No active agents available"));
     }
 
+    private void requireSavedPlanChatService() {
+        if (savedPlanChatService == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Saved plan chat service is unavailable");
+        }
+    }
+
     private Map<String, Object> taskRunInput(String planId, PlanRunRequest request) {
         Map<String, Object> input = new LinkedHashMap<>();
         input.put("taskId", planId);
@@ -313,6 +376,9 @@ public class PlanController {
         Integer priority,
         String workspaceId
     ) {
+    }
+
+    public record PlanningChatMessage(String message) {
     }
 
     public record PlanCreateRequest(

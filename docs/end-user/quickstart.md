@@ -18,7 +18,7 @@ Start at `/`.
 
 The home page links to:
 
-- `/chat`: conversation and planning surface.
+- `/chat`: conversation and anonymous ad hoc planning surface.
 - `/dashboard`: operational overview for jobs, agents, inbox messages, outputs, and recent events.
 - `/plans`: saved plan and task definitions.
 - `/workflows`: graph-based workflow definitions.
@@ -55,7 +55,7 @@ If no models appear, check `/settings` for runtime defaults and confirm the unde
 - **No active agents available**: create or enable an agent under `/agents`.
 - **Title is required** or **Name is required**: fill the required form field before saving.
 - **Not found** in a selector: the selected entity was deleted or is not available. Search again and choose a valid option.
-- **Direct plan execution is disabled**: save the plan and submit it to an agent instead of trying to run it directly from chat.
+- **Anonymous chat plans cannot be saved**: create saved plans from `/plans`; use `/chat` planning only for ad hoc execution.
 - **Shell execution service is unavailable**: agent workspace shell execution is not enabled in this runtime.
 
 ## Alpha Limits

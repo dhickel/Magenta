@@ -29,22 +29,38 @@ Session metadata includes:
 
 Streaming events are represented by `ChatStreamEvent` and sent over `/api/chat/stream`. Expected event names are `start`, `chunk`, `tool`, `system`, `interrupt`, `context`, `done`, and `error`.
 
-## Planning State
+## Anonymous Chat Planning
 
-Plan mode uses `PlanMode` and `ChatPlanState` in `ai.chat.model` plus persisted plan definitions in `ai.chat.plan`.
+The `/chat` planning path is anonymous and conversation-scoped. It uses `PlanMode` and `ChatPlanState` in `ai.chat.model` plus a `SESSION_PLAN` persisted through `ai.chat.plan`, but it is not a saved `/plans` definition and cannot be saved as a task template.
 
 `PlanService` owns:
 
 - Session plan creation and retrieval.
-- Pending planning questions and current question index.
+- Three backend-seeded opening questions for goal, assumptions/details/constraints/approach, and expected deliverables.
+- Pending follow-up planning questions and current question index.
 - Plan answer recording.
-- Plan approval, continue, cancel, deletion, and final message state.
+- Plan approval, continue, cancel, anonymous execution, deletion, and final message state.
 - Execution evidence and validation feedback.
-- Saving a session plan as a reusable task-like definition.
+- Persistent chat file directory resolution under `data/chats/<conversationId>/files/`.
 
-`PlanDefinition` is the durable plan contract. It contains title, summary, goal, notes, deliverables, structured inputs/outputs, assumptions, ordered steps, validation criteria, evidence, feedback, planning/execution model choices, settings overrides, pending questions, and conversation linkage.
+Anonymous plan prompts do not expose structured inputs or outputs. They focus on goal, assumptions, expected deliverables, ordered steps, and validation. Approval actions are continue planning, approve and execute with conversation context, approve and execute clean, and cancel.
 
-The `/api/chat/{conversationId}/plan/*` routes operate on session plans. The `/api/plans` routes operate on saved definitions.
+Anonymous execution installs a chat-scoped file context when there is no assignment context. File tools then resolve to the active chat file directory instead of a broad data-root fallback. Final anonymous execution messages are persisted as markdown files in that directory.
+
+## Saved Plan Chat
+
+Saved plan chat is separate from `/api/chat`, `ai_chat_memory`, and `ai_chat_session_metadata`. It is plan-scoped under `/api/plans` and stores messages in `plan_chat_messages`.
+
+`SavedPlanChatService` owns:
+
+- Creating a `TASK_TEMPLATE` draft directly for new saved plan chats.
+- Persisting plan-scoped chat messages.
+- Seeding four backend questions for goal, runtime inputs, high-level deliverables, and structured outputs.
+- Updating typed inputs, typed outputs, deliverables, assumptions, steps, and validation details on the saved draft.
+
+`PlanDefinition` is the durable plan contract for saved definitions. It contains title, summary, goal, notes, deliverables, structured inputs/outputs, assumptions, ordered steps, validation criteria, evidence, feedback, planning/execution model choices, settings overrides, pending questions, and conversation linkage.
+
+The `/api/chat/{conversationId}/plan/*` routes operate on anonymous session plans. The `/api/plans` routes operate on saved definitions and plan-scoped saved chats.
 
 ## Task Drafts
 

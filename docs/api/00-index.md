@@ -8,9 +8,9 @@ Security summary: alpha routes are currently open at the application layer. Requ
 
 | Family | Purpose | Source |
 | --- | --- | --- |
-| `/api/chat` | Chat turns, SSE streaming, sessions, history, commands, interrupts, and conversation plan controls. | [`ChatController`](../../src/main/java/io/mindspice/magenta2/api/web/ChatController.java) |
+| `/api/chat` | Chat turns, SSE streaming, sessions, history, commands, interrupts, and anonymous conversation plan controls. | [`ChatController`](../../src/main/java/io/mindspice/magenta2/api/web/ChatController.java) |
 | `/api/fragments` | HTMX chat transcript/session/planning fragments. | [`FrontendFragmentController`](../../src/main/java/io/mindspice/magenta2/api/web/FrontendFragmentController.java) |
-| `/api/plans` | Saved plan/task-like definitions, chat prompt generation, submit-to-agent, and plan run reads. | [`PlanController`](../../src/main/java/io/mindspice/magenta2/api/web/PlanController.java) |
+| `/api/plans` | Saved plan/task-like definitions, saved plan chat, submit-to-agent, and plan run reads. | [`PlanController`](../../src/main/java/io/mindspice/magenta2/api/web/PlanController.java) |
 | `/api/tasks` | Task definitions, chat-backed task drafts, draft approval, and task run reads/submission. | [`TaskController`](../../src/main/java/io/mindspice/magenta2/api/web/TaskController.java) |
 | `/api/workflows`, `/api/workflow-runs`, `/api/users/inbox` | Workflow definitions, validation, assignment submission, run reads/resume, and workflow approval inbox. | [`WorkflowController`](../../src/main/java/io/mindspice/magenta2/api/web/WorkflowController.java) |
 | `/api/jobs`, `/api/job-runs` | Job definitions, ordered job items, assignment submission, runs, cancellation, outputs, events, and recurrence. | [`JobController`](../../src/main/java/io/mindspice/magenta2/api/web/JobController.java) |
@@ -30,7 +30,7 @@ Security summary: alpha routes are currently open at the application layer. Requ
 | Route | Stream Purpose | Events |
 | --- | --- | --- |
 | `POST /api/chat/stream` | Live chat turn. | `start`, `chunk`, `tool`, `system`, `interrupt`, `context`, `done`, `error` |
-| `POST /api/chat/{conversationId}/plan/execute/stream` | Session plan execution stream. | Chat/plan execution events from `ChatController` |
+| `POST /api/chat/{conversationId}/plan/execute/stream` | Anonymous session plan execution stream. | Chat/plan execution events from `ChatController` |
 | `POST /api/plans/{planId}/runs/stream` | Submit saved plan/task-like definition to an agent assignment. | `submitted`, `failed` |
 | `POST /api/tasks/{taskId}/runs/stream` | Submit saved task to an agent assignment. | `submitted`, `failed` |
 | `POST /api/workflows/{workflowId}/runs/stream` | Submit saved workflow to an agent assignment. | `submitted`, `failed` |

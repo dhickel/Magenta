@@ -47,9 +47,9 @@ public class PlanSaveTools {
         String notes,
         @ToolParam(required = false, description = "Concrete expected user-facing outputs or work products.")
         List<String> deliverables,
-        @ToolParam(required = false, description = "Optional named execution-time inputs for future reusable tasks. Omit when none exist.")
+        @ToolParam(required = false, description = "Ignored for anonymous chat plans. Saved /plans chats collect typed inputs.")
         List<String> inputs,
-        @ToolParam(required = false, description = "Expected model/work outputs. These render as deliverables to the user.")
+        @ToolParam(required = false, description = "Ignored for anonymous chat plans. Use deliverables instead.")
         List<String> outputs,
         @ToolParam(required = false, description = "Explicit defaults, decisions, or assumptions locked into the plan.")
         List<String> assumptions,
@@ -115,10 +115,10 @@ public class PlanSaveTools {
 
     @Tool(
         name = "plan_put_item",
-        description = "Add or replace one keyed plan item. Sections: deliverable, input, output, assumption, note, step, validation_criterion. The key is a positive integer; using an existing key replaces that item."
+        description = "Add or replace one keyed anonymous plan item. Sections: deliverable, assumption, note, step, validation_criterion. The key is a positive integer; using an existing key replaces that item."
     )
     public String putItem(
-        @ToolParam(description = "Plan section to edit: deliverable, input, output, assumption, note, step, or validation_criterion.")
+        @ToolParam(description = "Plan section to edit: deliverable, assumption, note, step, or validation_criterion.")
         String section,
         @ToolParam(description = "Positive integer key for this item.")
         Integer key,
@@ -132,10 +132,10 @@ public class PlanSaveTools {
 
     @Tool(
         name = "plan_delete_item",
-        description = "Delete one keyed plan item. Sections: deliverable, input, output, assumption, note, step, validation_criterion."
+        description = "Delete one keyed anonymous plan item. Sections: deliverable, assumption, note, step, validation_criterion."
     )
     public String deleteItem(
-        @ToolParam(description = "Plan section to edit: deliverable, input, output, assumption, note, step, or validation_criterion.")
+        @ToolParam(description = "Plan section to edit: deliverable, assumption, note, step, or validation_criterion.")
         String section,
         @ToolParam(description = "Positive integer key to delete.")
         Integer key

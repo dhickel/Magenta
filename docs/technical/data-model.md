@@ -8,6 +8,7 @@ Source packages: [`ai/chat/repository`](../../src/main/java/io/mindspice/magenta
 
 - `ai_chat_memory`: ordered chat messages by `conversation_id` and `message_order`, including message type, text, and metadata JSON.
 - `ai_chat_session_metadata`: per-conversation model, title, active task run, planning model, favorite/archive flags, origin, agent id, and updated timestamp.
+- `plan_chat_messages`: saved `/plans` planning chat messages by `plan_id`, separate from `/api/chat` session memory.
 - `audit_event`: append-only conversation event log for user/assistant messages, tool execution, compaction/context snapshots, errors, token usage, and result previews.
 - `agent_jobs`: background chat jobs such as conversation title generation, with selected model, input/result JSON, status, and timestamps.
 
@@ -28,6 +29,7 @@ Important invariants:
 
 - `SESSION_PLAN` uses `id = conversation_id`.
 - Task templates use UUID ids and may carry conversation id for draft tracking.
+- Saved plan chats are keyed by saved `plan_id`; anonymous `/chat` planning remains keyed by conversation id and does not use `plan_chat_messages`.
 - Runs snapshot definitions at start time so later edits do not change historical run meaning.
 - `PlanRepository` adds `plan_runs.temp_workspace_path` for warm databases.
 
@@ -110,6 +112,6 @@ Compatibility notes:
 
 Source package: [`ai/orchestration/settings`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/settings).
 
-- `runtime_settings`: singleton-style persisted defaults for default agent/model, planning/summary/compaction models, context buffer, system chat model/prompt/tools/context limit/enabled flag, and assignment history auto-purge days.
+- `runtime_settings`: singleton-style persisted defaults for default agent/model, planning/summary/compaction models, context buffer, system chat model/prompt/tools/context limit/enabled flag, assignment history auto-purge days, and temp work retention.
 
 `RuntimeSettingsRepository` adds settings columns as needed for warm databases. `RuntimeSettingsService` falls back to legacy file config when persisted values are absent.

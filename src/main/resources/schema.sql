@@ -46,6 +46,17 @@ create unique index if not exists idx_agent_jobs_conversation_title_active
     where type = 'CONVERSATION_TITLE'
       and status in ('QUEUED', 'RUNNING', 'SUCCEEDED');
 
+create table if not exists plan_chat_messages (
+    id text primary key,
+    plan_id text not null,
+    role text not null,
+    text text not null,
+    created_at text not null
+);
+
+create index if not exists idx_plan_chat_messages_plan
+    on plan_chat_messages (plan_id, created_at);
+
 -- Unified plan/task definitions.
 -- SESSION_PLAN uses id = conversation_id.
 -- TASK_TEMPLATE uses a UUID id with optional conversation_id for draft tracking.
@@ -398,7 +409,8 @@ create table if not exists runtime_settings (
     system_chat_approved_tools text,
     system_chat_context_limit integer,
     system_chat_enabled integer,
-    assignment_history_auto_purge_days integer not null default -1
+    assignment_history_auto_purge_days integer not null default -1,
+    retain_temp_work integer not null default 0
 );
 
 create table if not exists workspaces (

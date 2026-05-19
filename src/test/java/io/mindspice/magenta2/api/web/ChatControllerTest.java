@@ -224,36 +224,26 @@ class ChatControllerTest {
     }
 
     @Test
-    void executePlanRejectsDirectPublicRun() {
-        assertThatThrownBy(() -> chatController.executePlan(CONVERSATION_ID))
-            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
-                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-                assertThat(exception.getReason()).contains("Direct plan execution is disabled");
-            });
+    void executePlanRunsApprovedAnonymousPlan() {
+        chatService.savedPlan = true;
+
+        ChatResponse.CmdResponse response = chatController.executePlan(CONVERSATION_ID);
+
+        assertThat(response.message()).isEqualTo("executed plan");
+        assertThat(chatService.executed).isTrue();
     }
 
     @Test
-    void streamPlanExecutionRejectsDirectPublicRun() {
-        assertThatThrownBy(() -> chatController.streamPlanExecution(CONVERSATION_ID))
-            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
-                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-                assertThat(exception.getReason()).contains("Direct plan execution is disabled");
-            });
+    void streamPlanExecutionBindsApprovedAnonymousPlan() {
+        SseEmitter emitter = chatController.streamPlanExecution(CONVERSATION_ID);
+
+        assertThat(emitter).isNotNull();
     }
 
     @Test
     void answerPlanPromptRejectsInvalidUuid() {
         assertThatThrownBy(() -> chatController.answerPlanPrompt(
             "not-a-uuid", new ChatRequest.PlanAnswer("yes", null, 0)))
-            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
-                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-                assertThat(exception.getReason()).contains("invalid UUID");
-            });
-    }
-
-    @Test
-    void savePlanAsTaskRejectsInvalidUuid() {
-        assertThatThrownBy(() -> chatController.savePlanAsTask("not-a-uuid", null))
             .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
                 assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
                 assertThat(exception.getReason()).contains("invalid UUID");
@@ -413,6 +403,11 @@ class ChatControllerTest {
         }
 
         @Override
+        public ChatResponse.MsgResponse executeSavedPlan(String conversationId, boolean clearContext) {
+            return executeSavedPlan(conversationId);
+        }
+
+        @Override
         public ChatPlanState planState(String conversationId) {
             return planState;
         }
@@ -423,10 +418,20 @@ class ChatControllerTest {
         }
 
         @Override
+        public Flux<ChatMessage> stream(ResolvedChatRequest request, ActiveTurn activeTurn) {
+            return Flux.just(new ChatMessage("assistant", "done", "<p>done</p>", null));
+        }
+
+        @Override
         public void handlePlanExecutionStreamFinished(String conversationId) {
+            handlePlanExecutionStreamFinished(conversationId, "done");
+        }
+
+        @Override
+        public void handlePlanExecutionStreamFinished(String conversationId, String finalMessage) {
             planState = new ChatPlanState(
                 "NORMAL",
-                "NEEDS_REVIEW",
+                "COMPLETED",
                 "Saved Plan",
                 null,
                 null,

@@ -35,7 +35,7 @@ class FrontendControllerTest {
     void chatPageRendersSimplyPagesChatShell() {
         FrontendController controller = new FrontendController(stubChatService());
 
-        String html = controller.chat(null, null, null, null, null);
+        String html = controller.chat(null, null, null, null);
 
         assertThat(html).contains("/css/magenta.css?v=2");
         assertThat(html).doesNotContain("/js/alpha-security.js?v=1");
@@ -60,7 +60,7 @@ class FrontendControllerTest {
     @Test
     void chatPageIsolatesFromOrchestrationScripts() {
         FrontendController controller = new FrontendController(stubChatService());
-        String html = controller.chat(null, null, null, null, null);
+        String html = controller.chat(null, null, null, null);
 
         // Chat page must NOT load orchestration dashboard scripts
         assertThat(html).doesNotContain("/js/orchestration/dashboard.js");
@@ -101,7 +101,7 @@ class FrontendControllerTest {
         assertThat(js).contains("data-planning-approval-preview");
         assertThat(js).contains("approvalHtml");
         assertThat(js).contains("Planning mode received.");
-        assertThat(js).contains("Send to agent");
+        assertThat(js).contains("Approve And Exec");
         assertThat(js).doesNotContain("Execution request received.");
         assertThat(js).doesNotContain("Execute now");
         assertThat(js).contains("data-transient-assistant");

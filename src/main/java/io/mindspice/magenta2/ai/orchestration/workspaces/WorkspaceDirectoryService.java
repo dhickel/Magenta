@@ -24,6 +24,7 @@ import org.springframework.util.StringUtils;
  *   <li>Agent project links: {@code data/agents/{agentId}/workspace/projects/{projectId}}</li>
  *   <li>Agent scratch: {@code data/agents/{agentId}/workspace/scratch}</li>
  *   <li>Task temp: {@code data/runtime/task-runs/{runId}}</li>
+ *   <li>Chat files: {@code data/chats/{conversationId}/files}</li>
  *   <li>Workflow temp: {@code data/runtime/workflow-runs/{runId}}</li>
  *   <li>Job workspace: {@code data/jobs/{jobId}/workspace}</li>
  *   <li>Job outputs: {@code data/jobs/{jobId}/outputs/{slug}-{runId}/}</li>
@@ -164,6 +165,15 @@ public class WorkspaceDirectoryService {
     public Path workflowTemp(String runId) {
         requireId(runId, "runId");
         return ensureDir(confined("runtime/workflow-runs/" + runId));
+    }
+
+    /**
+     * Persistent file directory for an ordinary chat conversation. This is not
+     * task temp and is never auto-deleted by run cleanup.
+     */
+    public Path chatFiles(String conversationId) {
+        requireId(conversationId, "conversationId");
+        return ensureDir(confined("chats/" + conversationId + "/files"));
     }
 
     // ── Job ──

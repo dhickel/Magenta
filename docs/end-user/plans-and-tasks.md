@@ -18,13 +18,13 @@ The page has:
 4. Save the plan.
 5. Add structured sections after the draft exists.
 
-Use **New Plan Chat** when you want Magenta to interview you and build the plan from conversation.
+Use **New Plan Chat** when you want Magenta to interview you and build a saved draft in `/plans`. This chat is plan-scoped and does not appear in the `/chat` session sidebar.
 
 ## Structured Plan Sections
 
-- **Deliverables**: human-readable things the plan must produce.
+- **Deliverables**: high-level user-visible or operational outcomes such as code/file edits, reports, state changes, management operations, or transient updates.
 - **Inputs**: structured runtime fields the agent must receive when the plan runs.
-- **Outputs**: structured results the plan should produce.
+- **Outputs**: named structured values intended for workflow chaining, downstream plan inputs, or highly specific directed task results.
 - **Steps**: ordered execution instructions.
 - **Validation Criteria**: checks that prove the task is complete.
 - **Assumptions**: explicit defaults or constraints.
@@ -33,6 +33,17 @@ Use **New Plan Chat** when you want Magenta to interview you and build the plan 
 - **Questions**: open questions that still need user input.
 
 Inputs and outputs have a name, type, required flag, array flag, description, and optional schema. Use simple names that will be easy to map in jobs and workflows.
+
+## Saved Plan Chat
+
+The embedded saved plan chat asks four opening questions for new drafts:
+
+1. Goal.
+2. Specific runtime inputs, including field names, types, required flags, array flags, schemas, and examples, or “no inputs”.
+3. High-level deliverables, with structured outputs handled separately.
+4. Specific structured outputs for workflow chaining or downstream use, or “no outputs”.
+
+Saved plan chat updates the selected saved draft. The manual editor remains authoritative for direct edits, and you can use **Begin chat from this plan** to continue plan-scoped discussion from an existing partial or complete definition.
 
 ## Models And Manager Type
 
@@ -91,4 +102,4 @@ Plan submissions create agent assignments and may create task run records. The p
 
 ## Alpha Limits
 
-Plans are saved definitions, not direct execution buttons. Direct plan execution from chat is disabled; submit saved work to an agent. Some older continue-in-chat fragments may still provide a copyable prompt instead of a direct launch. Concurrent edits can make list indexes stale, so refresh before editing the same plan in multiple tabs.
+Plans are saved definitions, not direct execution buttons. Submit saved work to an agent. Anonymous `/chat` plans are separate ad hoc sessions and are not saved into `/plans`. Concurrent edits can make list indexes stale, so refresh before editing the same plan in multiple tabs.

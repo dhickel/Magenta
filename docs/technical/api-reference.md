@@ -10,15 +10,16 @@ Source: [`ChatController`](../../src/main/java/io/mindspice/magenta2/api/web/Cha
 
 - `POST /api/chat`: non-streaming chat turn from `ChatRequest.MsgRequest`.
 - `POST /api/chat/stream`: SSE chat turn.
-- `POST /api/chat/{conversationId}/plan/execute/stream`: SSE execution of the current session plan path.
+- `POST /api/chat/{conversationId}/plan/execute`: execute an approved anonymous session plan. Payload may set `clearContext=true` for clean execution.
+- `POST /api/chat/{conversationId}/plan/execute/stream`: SSE execution of the current anonymous session plan path.
 - `POST /api/chat/turns/{turnId}/interrupt`: interrupt an active turn.
 - `GET /api/chat/sessions`, `GET /api/chat/{conversationId}/history`: session/history reads.
 - `PATCH /api/chat/{conversationId}/title`, `/favorite`, `/archive`: session metadata updates.
 - `POST /api/chat/commands`: command request using `ChatRequest.CmdRequest`.
 - `DELETE /api/chat/{conversationId}`: delete a conversation.
-- Plan controls under `/api/chat/{conversationId}/plan/*`: answer, approve, continue, cancel, save-task, execute, delete; `/api/chat/plans/{planId}/continue` resumes work from a saved plan.
+- Plan controls under `/api/chat/{conversationId}/plan/*`: answer, approve, continue, cancel, execute, delete. Anonymous chat plans cannot be saved as task templates.
 
-SSE events are JSON events. Chat emits `start`, `chunk`, `tool`, `system`, `interrupt`, `context`, `done`, and `error` from `ChatStreamEvent`; the controller also emits plan-execution updates around saved plan execution.
+SSE events are JSON events. Chat emits `start`, `chunk`, `tool`, `system`, `interrupt`, `context`, `done`, and `error` from `ChatStreamEvent`; the controller also emits plan-execution updates around anonymous plan execution.
 
 Common errors: validation failures return `400`; missing sessions/plans generally return `404`; active-turn conflicts or invalid lifecycle operations return controller-specific conflict/error payloads.
 
@@ -45,8 +46,13 @@ Source: [`PlanController`](../../src/main/java/io/mindspice/magenta2/api/web/Pla
 - `GET /api/plans/{planId}/chat-prompt`: produce a prompt for continuing work in chat.
 - `GET /api/plans/{planId}/runs`, `GET /api/plans/runs/{runId}`: run reads.
 - `POST /api/plans/{planId}/runs/stream`: SSE submit-to-agent path.
+- `POST /api/plans/planning-chats`: create a saved draft and start a saved plan chat.
+- `POST /api/plans/{planId}/planning-chat/start`: seed or restart the saved plan chat for an existing plan.
+- `POST /api/plans/{planId}/planning-chat/answers`: answer saved plan chat opening questions.
+- `POST /api/plans/{planId}/planning-chat/messages`: append saved plan chat messages.
+- `GET /api/plans/{planId}/planning-chat`: read saved plan chat state and messages.
 
-Create/update payloads include title, summary, goal, notes, deliverables, inputs, outputs, assumptions, steps, validation criteria, work type/prompt profile, planning model, and execution model. `PlanRunRequest` accepts input values, conversation id, agent id, job id, workspace id, model override, and priority.
+Create/update payloads include title, summary, goal, notes, deliverables, inputs, outputs, assumptions, steps, validation criteria, work type/prompt profile, planning model, and execution model. `PlanRunRequest` accepts input values, conversation id, agent id, job id, workspace id, model override, and priority. Saved plan chat input/output questions collect field name, type, required flag, array flag, description, examples, and optional schema.
 
 `runs/stream` emits `submitted` with assignment metadata or `failed`. It does not stream inline model output.
 

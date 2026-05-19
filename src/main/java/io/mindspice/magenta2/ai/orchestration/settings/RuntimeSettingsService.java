@@ -37,7 +37,8 @@ public class RuntimeSettingsService {
             null,
             aiConfig.resolvedContextBufferPercent(),
             true,
-            -1
+            -1,
+            false
         ));
     }
 
@@ -151,6 +152,10 @@ public class RuntimeSettingsService {
     public boolean systemChatEnabled() {
         Boolean enabled = get().systemChatEnabled();
         return enabled == null || enabled;
+    }
+
+    public boolean retainTempWork() {
+        return Boolean.TRUE.equals(get().retainTempWork());
     }
 
     public java.util.List<String> approvedTools() {

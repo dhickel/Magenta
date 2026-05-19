@@ -17,6 +17,7 @@ import java.util.regex.Pattern;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.nio.file.Path;
 
 import org.springframework.web.client.ResourceAccessException;
 
@@ -101,12 +102,13 @@ public class ChatService {
     public static final List<String> PLAN_MODE_TOOLS = ToolAccessPolicy.PLAN_MODE_TOOLS;
     public static final List<String> TASK_MODE_TOOLS = ToolAccessPolicy.TASK_MODE_TOOLS;
     private static final String EXECUTE_PLAN_MESSAGE = "Execute the saved plan now. Work through the plan directly and report the completed result.";
+    private static final String EXECUTE_PLAN_CLEAN_MESSAGE = "Execute the approved anonymous chat plan now using only the approved plan instructions and the persistent chat file directory context. Do not rely on earlier chat transcript details unless they are present in the approved plan.";
     private static final String EXECUTE_TASK_MESSAGE = """
         Execute the reusable task now using the provided runtime inputs.
         Work through the declared task steps directly. You must call task_complete with outputValues keyed exactly by declared output name before any final completion answer.
         If you cannot complete the task, call task_report with the evidence gathered and explain the missing output, then continue until task_complete succeeds or Magenta marks the run for review.
         """.trim();
-    private static final String BEGIN_PLAN_MESSAGE = "The user is ready to plan. Begin the structured planning workflow by asking the user about their goal.";
+    private static final String BEGIN_PLAN_MESSAGE = "The user is ready to plan. The backend has collected the opening answers; continue planning from that seed context.";
     private static final String CONTINUE_PLAN_MESSAGE = "The user opened an existing plan in planning chat. Review the loaded structured state and ask the next focused question needed to improve or complete the plan.";
 
     private final ChatMemory chatMemory;
@@ -289,18 +291,68 @@ public class ChatService {
     }
 
     private ChatResponse.MsgResponse chatNow(ResolvedChatRequest resolvedRequest, ActiveTurn activeTurn) {
-        List<ToolCallback> approvedTools = approvedTools(resolvedRequest);
-        if (!approvedTools.isEmpty() && supportsTools(resolvedRequest.model())) {
-            try {
-                return toolChatWithRetry(resolvedRequest, approvedTools, activeTurn);
-            } catch (NonTransientAiException exception) {
-                if (!isToolUnsupported(exception)) {
-                    throw exception;
+        OrchestrationTaskContext previousContext = OrchestrationTaskContextHolder.current();
+        boolean installedChatContext = installChatFileContextIfNeeded(resolvedRequest.conversationId(), previousContext);
+        try {
+            List<ToolCallback> approvedTools = approvedTools(resolvedRequest);
+            if (!approvedTools.isEmpty() && supportsTools(resolvedRequest.model())) {
+                try {
+                    return toolChatWithRetry(resolvedRequest, approvedTools, activeTurn);
+                } catch (NonTransientAiException exception) {
+                    if (!isToolUnsupported(exception)) {
+                        throw exception;
+                    }
+                    rememberToolUnsupportedModel(resolvedRequest.model());
                 }
-                rememberToolUnsupportedModel(resolvedRequest.model());
             }
+            return plainChat(resolvedRequest);
+        } finally {
+            restoreContext(previousContext, installedChatContext);
         }
-        return plainChat(resolvedRequest);
+    }
+
+    private boolean installChatFileContextIfNeeded(String conversationId, OrchestrationTaskContext previousContext) {
+        if (previousContext != null || planService == null || !StringUtils.hasText(conversationId)) {
+            return false;
+        }
+        try {
+            Path dir = planService.chatFileDirectory(conversationId).toRealPath();
+            OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
+                null, null, null, null, conversationId, "CHAT", dir.toString(), dir.toString()
+            ));
+            return true;
+        } catch (RuntimeException | IOException ignored) {
+            return false;
+        }
+    }
+
+    private void restoreContext(OrchestrationTaskContext previousContext, boolean installedChatContext) {
+        if (!installedChatContext) {
+            return;
+        }
+        if (previousContext == null) {
+            OrchestrationTaskContextHolder.clear();
+        } else {
+            OrchestrationTaskContextHolder.set(previousContext);
+        }
+    }
+
+    private ResolvedChatRequest withoutStoredMessages(ResolvedChatRequest request) {
+        if (chatMemoryRepository != null) {
+            chatMemoryRepository.saveAll(request.conversationId(), List.of());
+        }
+        return request;
+    }
+
+    private String approvedPlanExecutionMessage(String conversationId, boolean cleanContext) {
+        String markdown = planService.approvalMarkdown(conversationId);
+        String files = "";
+        try {
+            files = "\n\nPersistent chat file directory: " + planService.chatFileDirectory(conversationId).toRealPath();
+        } catch (Exception ignored) {
+        }
+        return (cleanContext ? EXECUTE_PLAN_CLEAN_MESSAGE : EXECUTE_PLAN_MESSAGE)
+            + "\n\nApproved anonymous plan:\n\n" + markdown + files;
     }
 
     private ChatResponse.MsgResponse plainChat(ResolvedChatRequest resolvedRequest) {
@@ -357,6 +409,15 @@ public class ChatService {
     }
 
     private Flux<ChatMessage> streamNow(ResolvedChatRequest request, ActiveTurn activeTurn) {
+        return Flux.defer(() -> {
+            OrchestrationTaskContext previousContext = OrchestrationTaskContextHolder.current();
+            boolean installedChatContext = installChatFileContextIfNeeded(request.conversationId(), previousContext);
+            return streamNowWithContext(request, activeTurn)
+                .doFinally(signal -> restoreContext(previousContext, installedChatContext));
+        });
+    }
+
+    private Flux<ChatMessage> streamNowWithContext(ResolvedChatRequest request, ActiveTurn activeTurn) {
         List<ToolCallback> approvedTools = approvedTools(request);
         if (!approvedTools.isEmpty() && supportsTools(request.model())) {
             // Try the tool-capable path first. Models that reject tools are remembered and use plain chat later.
@@ -463,7 +524,13 @@ public class ChatService {
             ? planningModel
             : resolvedPlanningModel(conversationId);
         planService.beginPlan(conversationId, prePlanningModel, executionModel);
-        return chat(requestResolver.resolve(conversationId, BEGIN_PLAN_MESSAGE, executionModel, null).withoutTitleJob());
+        return new ChatResponse.MsgResponse(
+            conversationId,
+            executionModel,
+            "",
+            maintainContextUsage(conversationId, executionModel).usage(),
+            planState(conversationId)
+        );
     }
 
     public ChatResponse.MsgResponse beginPlanFromDefinition(
@@ -534,7 +601,12 @@ public class ChatService {
             );
         }
         String continueModel = resolvedPlanningModel(conversationId);
-        return chat(requestResolver.resolve(conversationId, "Continue planning using the updated structured planning state.", continueModel, null).withoutTitleJob());
+        return chat(requestResolver.resolve(
+            conversationId,
+            "Continue planning from the three opening answers stored in the structured planning state. Treat those answers as authoritative seed context and ask only the next useful clarification if the plan is not ready.",
+            continueModel,
+            null
+        ).withoutTitleJob());
     }
 
     public ChatPlanState approvePlan(String conversationId) {
@@ -552,31 +624,24 @@ public class ChatService {
         return planState(conversationId);
     }
 
-    public PlanDefinition savePlanAsTask(String conversationId) {
-        return savePlanAsTask(conversationId, null);
-    }
-
-    public PlanDefinition savePlanAsTask(String conversationId, String taskTitle) {
-        requirePlanService();
-        String prePlanningModel = planService.prePlanningModel(conversationId);
-        PlanDefinition savedTask = planService.saveAsTask(conversationId, taskTitle);
-        if (StringUtils.hasText(prePlanningModel)) {
-            chatSessionMetadataRepository.saveModel(conversationId, prePlanningModel);
-        }
-        return savedTask;
-    }
-
     public ChatResponse.MsgResponse executeSavedPlan(String conversationId, boolean clearContext) {
-        return executeSavedPlan(conversationId);
+        return executeSavedPlan(conversationId, clearContext, true);
     }
 
     public ChatResponse.MsgResponse executeSavedPlan(String conversationId) {
-        ResolvedChatRequest request = resolveSavedPlanExecution(conversationId);
+        return executeSavedPlan(conversationId, false, true);
+    }
+
+    private ChatResponse.MsgResponse executeSavedPlan(String conversationId, boolean clearContext, boolean persistFinalMessage) {
+        ResolvedChatRequest request = resolveSavedPlanExecution(conversationId, clearContext);
         try {
             ChatResponse.MsgResponse response = chat(request);
             planService.recordFallbackExecutionEvidence(conversationId);
             if (planService.mode(conversationId) == PlanMode.EXECUTE_PLAN) {
-                planService.markNeedsReview(conversationId);
+                planService.markCompleted(conversationId, response.response());
+            }
+            if (persistFinalMessage) {
+                planService.persistChatFinalMessage(conversationId, response.response());
             }
             return new ChatResponse.MsgResponse(
                 response.conversationId(),
@@ -593,6 +658,10 @@ public class ChatService {
     }
 
     public ResolvedChatRequest resolveSavedPlanExecution(String conversationId) {
+        return resolveSavedPlanExecution(conversationId, false);
+    }
+
+    public ResolvedChatRequest resolveSavedPlanExecution(String conversationId, boolean clearContext) {
         requirePlanService();
         String model = planService.executionModel(conversationId);
         if (!StringUtils.hasText(model)) {
@@ -608,14 +677,29 @@ public class ChatService {
             contextUsageTracker.clear(conversationId);
         }
         planService.markExecuting(conversationId);
-        return requestResolver.resolve(conversationId, EXECUTE_PLAN_MESSAGE, model, null).withoutTitleJob();
+        ResolvedChatRequest request = requestResolver.resolve(
+            conversationId,
+            approvedPlanExecutionMessage(conversationId, clearContext),
+            model,
+            null
+        ).withoutTitleJob();
+        return clearContext ? withoutStoredMessages(request) : request;
     }
 
     public void handlePlanExecutionStreamFinished(String conversationId) {
+        handlePlanExecutionStreamFinished(conversationId, null);
+    }
+
+    public void handlePlanExecutionStreamFinished(String conversationId, String finalMessage) {
         requirePlanService();
         planService.recordFallbackExecutionEvidence(conversationId);
         if (planService.mode(conversationId) == PlanMode.EXECUTE_PLAN) {
-            planService.markNeedsReview(conversationId);
+            if (StringUtils.hasText(finalMessage)) {
+                planService.markCompleted(conversationId, finalMessage);
+                planService.persistChatFinalMessage(conversationId, finalMessage);
+            } else {
+                planService.markNeedsReview(conversationId);
+            }
         }
     }
 
