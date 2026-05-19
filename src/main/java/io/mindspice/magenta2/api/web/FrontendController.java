@@ -37,7 +37,7 @@ import java.util.List;
 public class FrontendController {
 
     private static final String APP_CSS = "/css/magenta.css?v=2";
-    private static final String CHAT_JS = "/js/chat-client.js?v=24";
+    private static final String CHAT_JS = "/js/chat-client.js?v=25";
 
     private final ChatService chatService;
     private final Component topNavBar;

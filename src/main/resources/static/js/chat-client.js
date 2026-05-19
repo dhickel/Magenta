@@ -144,6 +144,12 @@
         syncPlanningApprovalPreview(planState);
     }
 
+    function updateStreamPlanStatus(data) {
+        if (data && data.planState) {
+            updatePlanStatus(data.planState);
+        }
+    }
+
     function syncPlanningApprovalPreview(planState) {
         const historyEl = byId('chat-history');
         if (!historyEl) {
@@ -869,47 +875,48 @@
                     activeTurnId = data.turnId || null;
                     activeInterruptToken = data.interruptToken || null;
                     syncModelSelection(data.model);
-                    updatePlanStatus(data.planState);
+                    updateStreamPlanStatus(data);
                     completedConversationId = data.conversationId;
                     return;
                 }
                 if (event.name === 'chunk') {
                     updateContextUsageIfPresent(data.contextUsage);
+                    updateStreamPlanStatus(data);
                     updateStreamingAssistantMessage(assistantEl, data);
                     return;
                 }
                 if (event.name === 'tool') {
                     appendToolActivity(data, assistantEl);
                     updateContextUsageIfPresent(data.contextUsage);
-                    updatePlanStatus(data.planState);
+                    updateStreamPlanStatus(data);
                     return;
                 }
                 if (event.name === 'system') {
                     appendSystemMessage(data, assistantEl);
                     updateContextUsageIfPresent(data.contextUsage);
-                    updatePlanStatus(data.planState);
+                    updateStreamPlanStatus(data);
                     return;
                 }
                 if (event.name === 'interrupt') {
                     appendPendingUserMessage(data.text || '');
                     updateContextUsageIfPresent(data.contextUsage);
-                    updatePlanStatus(data.planState);
+                    updateStreamPlanStatus(data);
                     return;
                 }
                 if (event.name === 'context') {
                     updateContextUsageIfPresent(data.contextUsage);
-                    updatePlanStatus(data.planState);
+                    updateStreamPlanStatus(data);
                     return;
                 }
                 if (event.name === 'interrupt') {
                     appendPendingUserMessage(data.text || '');
-                    updatePlanStatus(data.planState);
+                    updateStreamPlanStatus(data);
                     return;
                 }
                 if (event.name === 'done') {
                     updateStreamingAssistantMessage(assistantEl, data);
                     updateContextUsage(data.contextUsage);
-                    updatePlanStatus(data.planState);
+                    updateStreamPlanStatus(data);
                     completedConversationId = data.conversationId;
                     return;
                 }
