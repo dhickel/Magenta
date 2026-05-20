@@ -25,7 +25,7 @@ class SavedPlanChatServiceTest {
         assertThat(state.plan().kind()).isEqualTo(PlanKind.TASK_TEMPLATE);
         assertThat(state.plan().title()).isEqualTo("Named chat draft");
         assertThat(state.plan().planningTask()).isEqualTo("saved_plan_opening_questions");
-        assertThat(state.promptQuestion()).isEqualTo("What is the goal?");
+        assertThat(state.promptQuestion()).contains("runtime inputs");
     }
 
     @Test
@@ -41,10 +41,10 @@ class SavedPlanChatServiceTest {
         SavedPlanChatService.SavedPlanChatState state = service.create();
         String planId = state.plan().id();
 
-        assertThat(state.promptQuestion()).isEqualTo("What is the goal?");
-        state = service.answer(planId, "Prepare a weekly operations report.");
         assertThat(state.promptQuestion()).contains("runtime inputs");
         state = service.answer(planId, "week_start: string required\nsource_file: file_path optional");
+        assertThat(state.promptQuestion()).isEqualTo("What is the goal?");
+        state = service.answer(planId, "Prepare a weekly operations report.");
         assertThat(state.promptQuestion()).contains("high-level deliverables");
         state = service.answer(planId, "Markdown report\nUpdated management summary");
         assertThat(state.promptQuestion()).contains("structured outputs");
@@ -117,6 +117,7 @@ class SavedPlanChatServiceTest {
 
         assertThat(state.promptQuestion()).isEqualTo("What do you need to change in this plan?");
         assertThat(state.messages().getLast().text()).isEqualTo("What do you need to change in this plan?");
+        assertThat(service.state(approved.id()).promptQuestion()).isEqualTo("What do you need to change in this plan?");
     }
 
     @Test
@@ -137,11 +138,12 @@ class SavedPlanChatServiceTest {
         service.appendEditorSaveContext(before, after);
 
         List<PlanChatMessage> messages = chatRepository.findByPlanId(before.id());
-        assertThat(messages.getLast().role()).isEqualTo("user");
+        assertThat(messages.getLast().role()).isEqualTo("system");
         assertThat(messages.getLast().text())
             .contains("Saved editor updates:")
             .contains("goal changed")
             .contains("summary changed");
+        assertThat(service.state(before.id()).promptQuestion()).contains("runtime inputs");
     }
 
     @Test

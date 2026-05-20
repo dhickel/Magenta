@@ -20,8 +20,8 @@ public class SavedPlanChatService {
     private static final String MESSAGE_QUESTION = "What field should be updated?";
 
     private static final List<String> OPENING_QUESTIONS = List.of(
+        "Does this saved plan need runtime inputs? Include field names, types, required flags, array flags, schema/examples, or say \"no inputs\".",
         "What is the goal?",
-        "What specific runtime inputs should this saved plan accept? Include field names, types, required flags, array flags, schema/examples, or say \"no inputs\".",
         "What are the high-level deliverables? Outputs are asked next.",
         "What specific structured outputs should this saved plan produce for workflow chaining or downstream use? Include field names, types, required flags, array flags, schema/examples, or say \"no outputs\"."
     );
@@ -114,13 +114,14 @@ public class SavedPlanChatService {
         }
         String diff = editorDiff(before, after);
         if (StringUtils.hasText(diff)) {
-            repository.append(after.id(), "user", "Saved editor updates: " + diff);
+            repository.append(after.id(), "system", "Saved editor updates: " + diff);
         }
     }
 
     public SavedPlanChatState state(String planId) {
         PlanDefinition plan = planService.getTask(planId);
-        return new SavedPlanChatState(plan, repository.findByPlanId(planId), plan.currentQuestion());
+        List<PlanChatMessage> messages = repository.findByPlanId(planId);
+        return new SavedPlanChatState(plan, messages, promptQuestion(plan, messages));
     }
 
     public void deleteMessages(String planId) {
@@ -145,6 +146,29 @@ public class SavedPlanChatService {
         }
         PlanChatMessage last = messages.get(messages.size() - 1);
         return role.equalsIgnoreCase(last.role()) && text.equals(last.text());
+    }
+
+    private String promptQuestion(PlanDefinition plan, List<PlanChatMessage> messages) {
+        if (plan.hasPendingQuestion()) {
+            return plan.currentQuestion();
+        }
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            PlanChatMessage message = messages.get(i);
+            if (!"assistant".equalsIgnoreCase(message.role())) {
+                continue;
+            }
+            if (DRAFT_RESUME_QUESTION.equals(message.text())) {
+                return DRAFT_RESUME_QUESTION;
+            }
+            if (CHANGE_REQUEST_QUESTION.equals(message.text())) {
+                return CHANGE_REQUEST_QUESTION;
+            }
+            if (MESSAGE_QUESTION.equals(message.text())) {
+                return MESSAGE_QUESTION;
+            }
+            return null;
+        }
+        return null;
     }
 
     private String editorDiff(PlanDefinition before, PlanDefinition after) {
@@ -185,8 +209,8 @@ public class SavedPlanChatService {
     private PlanDefinition applyOpeningAnswer(PlanDefinition plan, int index, String answer) {
         String value = StringUtils.hasText(answer) ? answer.trim() : "";
         return switch (index) {
-            case 0 -> planService.saveTask(plan.withGoal(value));
-            case 1 -> planService.saveTask(plan.withInputs(parseFields(value, true)));
+            case 0 -> planService.saveTask(plan.withInputs(parseFields(value, true)));
+            case 1 -> planService.saveTask(plan.withGoal(value));
             case 2 -> planService.saveTask(plan.withDeliverables(parseLines(value)));
             case 3 -> planService.saveTask(plan.withOutputs(parseFields(value, false)));
             default -> plan;

@@ -60,33 +60,9 @@ document.addEventListener("DOMContentLoaded", () => {
         return trigger.closest("#plan-modal-container") !== null;
     }
 
-    function setActiveTab(tabName) {
-        page.querySelectorAll("[data-plan-tab]").forEach((button) => {
-            const active = button.dataset.planTab === tabName;
-            button.classList.toggle("active", active);
-            button.setAttribute("aria-selected", active ? "true" : "false");
-        });
-        page.querySelectorAll("[data-plan-tab-panel]").forEach((panel) => {
-            panel.classList.toggle("is-hidden", panel.dataset.planTabPanel !== tabName);
-        });
-        autosizeAll();
-    }
-
     page.addEventListener("input", (event) => {
         autosizeTextarea(event.target);
         markDirty(event.target);
-    });
-
-    page.addEventListener("click", (event) => {
-        const tab = event.target.closest("[data-plan-tab]");
-        if (!tab) {
-            return;
-        }
-        if (tab.hasAttribute("hx-get") || tab.hasAttribute("hx-post")) {
-            return;
-        }
-        event.preventDefault();
-        setActiveTab(tab.dataset.planTab);
     });
 
     document.body.addEventListener("htmx:beforeRequest", (event) => {

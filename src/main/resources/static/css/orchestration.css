@@ -1087,13 +1087,21 @@
     margin-bottom: 0.85rem;
 }
 
-.plan-tab-panel.is-hidden {
-    display: none;
-}
-
 .plan-editor-tabs {
     border-bottom: 1px solid #dde5ef;
     padding-bottom: 0.45rem;
+}
+
+.plan-editor-title {
+    margin: -0.25rem 0 0.15rem;
+    color: #5c6675;
+    font-weight: 700;
+}
+
+.plan-tab-window {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
 }
 
 #plan-advanced details {
@@ -1126,6 +1134,12 @@
 .plan-saved-chat .chat-module-transcript-region,
 .plan-saved-chat .chat-module-composer-region {
     display: contents;
+}
+
+.plan-saved-chat .chat-message-system {
+    background: #fff8e5;
+    border-color: #ead9a7;
+    color: #4b4126;
 }
 
 #plan-chat-history {

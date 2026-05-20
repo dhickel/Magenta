@@ -1749,8 +1749,21 @@ public class OrchestrationController {
         Div container = new Div().withClass("orch-panel plan-editor");
         container.withChild(Header.H2(isNew ? "New Plan" : "Plan Editor"));
         if (!isNew) {
+            container.withChild(new Paragraph(plan.title() != null ? plan.title() : "Untitled Plan")
+                .withClass("plan-editor-title"));
             container.withChild(planEditorTabs(planId, chatTab));
         }
+        if (chatTab) {
+            container.withChild(new Div()
+                .withClass("plan-tab-window")
+                .withAttribute("data-active-plan-tab", "chat")
+                .withChild(savedPlanChatPanel(plan)));
+            return container;
+        }
+
+        Div editorWindow = new Div()
+            .withClass("plan-tab-window")
+            .withAttribute("data-active-plan-tab", "editor");
 
         // Form for scalar fields - POST for new, PUT for existing
         Form form = Form.create();
@@ -1761,7 +1774,7 @@ public class OrchestrationController {
         }
         form.withHxTarget("#plan-editor-container");
         form.withHxSwap("innerHTML");
-        form.withClass(chatTab ? "plan-tab-panel is-hidden" : "plan-tab-panel");
+        form.withClass("plan-editor-form");
         form.withAttribute("data-plan-tab-panel", "editor");
 
         // Advanced metadata (hidden kind/status)
@@ -1900,18 +1913,12 @@ public class OrchestrationController {
                 .withAttribute("hx-swap", "innerHTML"));
         }
         form.withChild(actions);
-        container.withChild(form);
-        if (!isNew) {
-            container.withChild(new Div()
-                .withClass(chatTab ? "plan-tab-panel" : "plan-tab-panel is-hidden")
-                .withAttribute("data-plan-tab-panel", "chat")
-                .withChild(savedPlanChatPanel(plan)));
-        }
+        editorWindow.withChild(form);
 
         if (!isNew) {
             // Submit form container
-            container.withChild(new Div()
-                .withClass(chatTab ? "plan-tab-panel is-hidden" : "plan-tab-panel")
+            editorWindow.withChild(new Div()
+                .withClass("plan-editor-secondary")
                 .withAttribute("data-plan-tab-panel", "editor")
                 .withChild(new Div().withId("plan-submit-container"))
                 .withChild(sectionHeader("Recent Runs", "Latest saved plan/task executions."))
@@ -1922,6 +1929,7 @@ public class OrchestrationController {
                     .withChild(loadingPlaceholder())));
         }
 
+        container.withChild(editorWindow);
         return container;
     }
 

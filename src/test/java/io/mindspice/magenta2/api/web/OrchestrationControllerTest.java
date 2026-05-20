@@ -418,13 +418,17 @@ class OrchestrationControllerTest {
 
         String html = ctrl.createPlanChatEditor("Interview Draft");
 
-        assertThat(html).contains("value=\"Interview Draft\"");
+        assertThat(html).contains("Interview Draft");
         assertThat(html).contains("data-plan-tab=\"chat\"");
         assertThat(html).contains("aria-selected=\"true\"");
+        assertThat(html).contains("data-active-plan-tab=\"chat\"");
         assertThat(html).contains("chat-module-shell");
         assertThat(html).contains("data-sp-chat-conversation-id=\"plan:");
         assertThat(html).contains("plan-chat-history");
-        assertThat(html).contains("What is the goal?");
+        assertThat(html).contains("runtime inputs");
+        assertThat(html).doesNotContain("plan-editor-form");
+        assertThat(html).doesNotContain("hx-put=\"/plans/_editor/");
+        assertThat(html).doesNotContain("Recent Runs");
         assertThat(html).doesNotContain("chat-sessions");
     }
 
@@ -454,6 +458,8 @@ class OrchestrationControllerTest {
         assertThat(html).contains("Editing Details");
         assertThat(html).contains("Planning Chat");
         assertThat(html).contains("/plans/_editor/" + planId + "/planning-chat/start");
+        assertThat(html).contains("data-active-plan-tab=\"editor\"");
+        assertThat(html).doesNotContain("chat-module-shell");
 
         // Has Advanced section (collapsible)
         assertThat(html).contains("Advanced");
