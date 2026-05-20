@@ -63,6 +63,34 @@ class SavedPlanChatServiceTest {
     }
 
     @Test
+    void startWhileOpeningQuestionsArePendingKeepsCurrentScriptedQuestion() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        PlanRepository planRepository = new PlanRepository(jdbcTemplate, new ObjectMapper());
+        PlanService planService = new PlanService(
+            planRepository,
+            new ChatMemoryRepository(jdbcTemplate, new ObjectMapper())
+        );
+        PlanChatRepository chatRepository = new PlanChatRepository(jdbcTemplate);
+        SavedPlanChatService service = new SavedPlanChatService(planService, chatRepository);
+
+        SavedPlanChatService.SavedPlanChatState state = service.create("Tabbed draft");
+        String planId = state.plan().id();
+
+        state = service.start(planId, null);
+        assertThat(state.promptQuestion()).contains("runtime inputs");
+        assertThat(chatRepository.findByPlanId(planId))
+            .extracting(PlanChatMessage::text)
+            .containsExactly(state.promptQuestion());
+
+        state = service.answer(planId, "no inputs");
+        assertThat(state.promptQuestion()).isEqualTo("What is the goal?");
+
+        state = service.start(planId, null);
+        assertThat(state.promptQuestion()).isEqualTo("What is the goal?");
+        assertThat(chatRepository.findByPlanId(planId).getLast().text()).isEqualTo("What is the goal?");
+    }
+
+    @Test
     void startWithExistingDraftHistoryAppendsInstructionAndResumeQuestion() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         PlanRepository planRepository = new PlanRepository(jdbcTemplate, new ObjectMapper());
@@ -74,7 +102,10 @@ class SavedPlanChatServiceTest {
 
         SavedPlanChatService.SavedPlanChatState state = service.create();
         String planId = state.plan().id();
+        service.answer(planId, "no inputs");
         service.answer(planId, "Prepare weekly report");
+        service.answer(planId, "Markdown summary");
+        service.answer(planId, "no outputs");
 
         SavedPlanChatService.SavedPlanChatState resumed = service.start(
             planId,
@@ -90,6 +121,35 @@ class SavedPlanChatServiceTest {
             .isEqualTo("Any details you want to provide before continuing?");
         assertThat(resumed.promptQuestion()).isEqualTo("Any details you want to provide before continuing?");
         assertThat(resumed.plan().planningTask()).isEqualTo("saved_plan_resume_chat");
+    }
+
+    @Test
+    void answeringResumeQuestionDoesNotReuseOpeningInputParser() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        PlanRepository planRepository = new PlanRepository(jdbcTemplate, new ObjectMapper());
+        PlanService planService = new PlanService(
+            planRepository,
+            new ChatMemoryRepository(jdbcTemplate, new ObjectMapper())
+        );
+        SavedPlanChatService service = new SavedPlanChatService(planService, new PlanChatRepository(jdbcTemplate));
+
+        PlanDefinition draft = planService.saveTask(new PlanDefinition(
+            "existing-plan", PlanKind.TASK_TEMPLATE, PlanStatus.DRAFT,
+            "Draft", null, null, null,
+            List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+            List.of(), List.of(), WorkTypeProfile.CODING_CENTRIC.name(),
+            null, null, null, null,
+            List.of(), 0, 0, null, null, null, null
+        ));
+        SavedPlanChatService.SavedPlanChatState state = service.start(draft.id(), null);
+
+        state = service.answer(draft.id(), "Focus this on API validation, not UI work.");
+
+        PlanDefinition updated = planService.getTask(draft.id());
+        assertThat(updated.inputs()).isEmpty();
+        assertThat(updated.hasPendingQuestion()).isFalse();
+        assertThat(state.promptQuestion()).isEqualTo("What field should be updated?");
+        assertThat(state.messages().getLast().text()).isEqualTo("What field should be updated?");
     }
 
     @Test

@@ -207,7 +207,7 @@ class ChatControllerTest {
 
     @Test
     void streamPlanExecutionRejectsInvalidUuid() {
-        assertThatThrownBy(() -> chatController.streamPlanExecution("not-a-uuid"))
+        assertThatThrownBy(() -> chatController.streamPlanExecution("not-a-uuid", null))
             .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
                 assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
                 assertThat(exception.getReason()).contains("invalid UUID");
@@ -235,9 +235,20 @@ class ChatControllerTest {
 
     @Test
     void streamPlanExecutionBindsApprovedAnonymousPlan() {
-        SseEmitter emitter = chatController.streamPlanExecution(CONVERSATION_ID);
+        SseEmitter emitter = chatController.streamPlanExecution(CONVERSATION_ID, null);
 
         assertThat(emitter).isNotNull();
+    }
+
+    @Test
+    void streamPlanExecutionForwardsCleanContextRequest() {
+        SseEmitter emitter = chatController.streamPlanExecution(
+            CONVERSATION_ID,
+            new ChatController.PlanExecuteRequest(true)
+        );
+
+        assertThat(emitter).isNotNull();
+        assertThat(chatService.cleanStreamExecution).isTrue();
     }
 
     @Test
@@ -291,6 +302,7 @@ class ChatControllerTest {
         private ChatPlanState planState = ChatPlanState.normal();
         private boolean savedPlan;
         private boolean executed;
+        private boolean cleanStreamExecution;
         private boolean exited;
         private int newConversationIdCalls;
         private String title;
@@ -415,6 +427,14 @@ class ChatControllerTest {
         @Override
         public ResolvedChatRequest resolveSavedPlanExecution(String conversationId) {
             return new ResolvedChatRequest(conversationId, "Execute the saved plan.", "qwen3");
+        }
+
+        @Override
+        public ResolvedChatRequest resolveSavedPlanExecution(String conversationId, boolean clearContext) {
+            cleanStreamExecution = clearContext;
+            return clearContext
+                ? new ResolvedChatRequest(conversationId, "Execute the saved plan.", "qwen3").omittingStoredMessages()
+                : resolveSavedPlanExecution(conversationId);
         }
 
         @Override

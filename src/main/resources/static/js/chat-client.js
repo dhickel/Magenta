@@ -815,7 +815,7 @@
             const response = await fetch('/api/chat/stream', {
                 method: 'POST',
                 headers: {
-                    'Accept': 'text/event-stream',
+                    'Accept': 'text/event-stream, application/json',
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(payload)
@@ -1056,19 +1056,93 @@
             return;
         }
         requestInFlight = true;
-        setFormDisabled(true);
+        setFormBusy(true);
+        const assistantEl = appendStreamingAssistantMessage();
+        setStatus();
         try {
-            const data = await getJson('/api/chat/' + encodeURIComponent(conversationId) + '/plan/execute', {
+            const response = await fetch('/api/chat/' + encodeURIComponent(conversationId) + '/plan/execute/stream', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Accept': 'text/event-stream, application/json',
+                    'Content-Type': 'application/json'
+                },
                 body: JSON.stringify({ clearContext: Boolean(clearContext) })
             });
-            applyCommandResponse(data);
+
+            if (!response.ok) {
+                throw await responseError(response);
+            }
+
+            let completedConversationId = conversationId;
+            await readSse(response, async function(event) {
+                const data = event.data || {};
+                if (event.name === 'start') {
+                    activeTurnId = data.turnId || null;
+                    activeInterruptToken = data.interruptToken || null;
+                    syncModelSelection(data.model);
+                    updateStreamPlanStatus(data);
+                    completedConversationId = data.conversationId || conversationId;
+                    return;
+                }
+                if (event.name === 'chunk') {
+                    updateContextUsageIfPresent(data.contextUsage);
+                    updateStreamPlanStatus(data);
+                    updateStreamingAssistantMessage(assistantEl, data);
+                    return;
+                }
+                if (event.name === 'tool') {
+                    appendToolActivity(data, assistantEl);
+                    updateContextUsageIfPresent(data.contextUsage);
+                    updateStreamPlanStatus(data);
+                    return;
+                }
+                if (event.name === 'system') {
+                    appendSystemMessage(data, assistantEl);
+                    updateContextUsageIfPresent(data.contextUsage);
+                    updateStreamPlanStatus(data);
+                    return;
+                }
+                if (event.name === 'interrupt') {
+                    appendPendingUserMessage(data.text || '');
+                    updateContextUsageIfPresent(data.contextUsage);
+                    updateStreamPlanStatus(data);
+                    return;
+                }
+                if (event.name === 'context') {
+                    updateContextUsageIfPresent(data.contextUsage);
+                    updateStreamPlanStatus(data);
+                    return;
+                }
+                if (event.name === 'done') {
+                    updateStreamingAssistantMessage(assistantEl, data);
+                    updateContextUsage(data.contextUsage);
+                    updateStreamPlanStatus(data);
+                    completedConversationId = data.conversationId || completedConversationId;
+                    return;
+                }
+                if (event.name === 'error') {
+                    throw new Error(data.message || 'plan execution stream failed');
+                }
+            });
+
+            await loadHistory(completedConversationId);
             await loadSessions();
             setStatus();
+        } catch (error) {
+            removeStreamingAssistantMessage(assistantEl);
+            try {
+                await loadHistory(conversationId);
+                await loadSessions();
+            } catch (reloadError) {
+                // Keep the original execution error visible.
+            }
+            throw error;
         } finally {
             requestInFlight = false;
-            setFormDisabled(false);
+            activeTurnId = null;
+            activeInterruptToken = null;
+            setFormBusy(false);
+            sendNextQueuedMessage();
         }
     }
 

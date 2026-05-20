@@ -94,10 +94,14 @@ public class ChatController {
     }
 
     @PostMapping(value = "/{conversationId}/plan/execute/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter streamPlanExecution(@PathVariable String conversationId) {
+    public SseEmitter streamPlanExecution(
+        @PathVariable String conversationId,
+        @RequestBody(required = false) PlanExecuteRequest request
+    ) {
         requireValidUuid(conversationId);
         try {
-            ResolvedChatRequest resolvedRequest = chatService.resolveSavedPlanExecution(conversationId);
+            boolean clearContext = request != null && request.clearContext();
+            ResolvedChatRequest resolvedRequest = chatService.resolveSavedPlanExecution(conversationId, clearContext);
             return streamResolved(resolvedRequest, true);
         } catch (IllegalArgumentException | IllegalStateException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());

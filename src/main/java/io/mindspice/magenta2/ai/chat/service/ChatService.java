@@ -337,13 +337,6 @@ public class ChatService {
         }
     }
 
-    private ResolvedChatRequest withoutStoredMessages(ResolvedChatRequest request) {
-        if (chatMemoryRepository != null) {
-            chatMemoryRepository.saveAll(request.conversationId(), List.of());
-        }
-        return request;
-    }
-
     private String approvedPlanExecutionMessage(String conversationId, boolean cleanContext) {
         String markdown = planService.approvalMarkdown(conversationId);
         String files = "";
@@ -683,7 +676,7 @@ public class ChatService {
             model,
             null
         ).withoutTitleJob();
-        return clearContext ? withoutStoredMessages(request) : request;
+        return clearContext ? request.omittingStoredMessages() : request;
     }
 
     public void handlePlanExecutionStreamFinished(String conversationId) {
@@ -1121,11 +1114,14 @@ public class ChatService {
         List<Message> currentSystemInstructions = currentInstructions.stream()
             .filter(SystemMessage.class::isInstance)
             .toList();
+        List<Message> toolLoopInstructions = request.omitStoredMessages()
+            ? currentInstructions
+            : currentSystemInstructions;
         ToolCallingChatOptions options = toolOptions(request.model(), approvedTools);
         PlanMode mode = interactionMode(request.conversationId());
 
         ContextManagementAdvisor.PreparedPrompt preparedPrompt = contextManagementAdvisor.preparePrompt(
-            request.conversationId(), currentInstructions, request.model());
+            request.conversationId(), currentInstructions, request.model(), request.omitStoredMessages());
         Prompt prompt = new Prompt(preparedPrompt.messages(), options);
 
         if (logger.isDebugEnabled()) {
@@ -1142,7 +1138,7 @@ public class ChatService {
         turnAuditWriter.recordTurnStart(request);
 
         var s = new ToolLoopState(request, approvedTools, toolMessageConsumer,
-            activeTurn, mode, options, currentSystemInstructions);
+            activeTurn, mode, options, toolLoopInstructions);
         s.prompt = prompt;
         s.phase = TurnPhase.INVOKE_MODEL;
 
@@ -1272,7 +1268,7 @@ public class ChatService {
 
         ContextManagementAdvisor.ToolLoopPrompt checkpoint = contextManagementAdvisor.prepareToolLoopPrompt(
             s.request.conversationId(), s.activeToolMessages,
-            s.currentSystemInstructions, s.request.model());
+            s.currentSystemInstructions, s.request.model(), s.request.omitStoredMessages());
         s.activeToolMessages = new ArrayList<>(checkpoint.activeMessages());
         s.conversationHistory = new ArrayList<>(checkpoint.messages());
         s.prompt = new Prompt(s.conversationHistory, s.toolOptions);
@@ -1327,7 +1323,7 @@ public class ChatService {
             s.activeToolMessages.add(controlMessage);
             ContextManagementAdvisor.ToolLoopPrompt checkpoint = contextManagementAdvisor.prepareToolLoopPrompt(
                 s.request.conversationId(), s.activeToolMessages,
-                s.currentSystemInstructions, s.request.model());
+                s.currentSystemInstructions, s.request.model(), s.request.omitStoredMessages());
             turnAuditWriter.recordContextUsage(s.request.conversationId(), checkpoint.usage(), s.request.model());
             if (!checkpoint.toolUseAllowed()) {
                 throw new IllegalStateException(
@@ -1645,6 +1641,12 @@ public class ChatService {
         }
         ChatClient.ChatClientRequestSpec prompt = chatClient.prompt()
             .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, request.conversationId()));
+        if (request.omitStoredMessages()) {
+            prompt = prompt.advisors(advisorSpec -> advisorSpec.param(
+                ContextManagementAdvisor.OMIT_STORED_MESSAGES_KEY,
+                Boolean.TRUE
+            ));
+        }
 
         String systemPrompt = effectiveSystemPrompt(request);
         if (StringUtils.hasText(systemPrompt)) {

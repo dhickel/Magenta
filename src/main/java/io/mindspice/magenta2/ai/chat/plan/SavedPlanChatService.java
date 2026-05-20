@@ -55,6 +55,13 @@ public class SavedPlanChatService {
     public SavedPlanChatState start(String planId, String instruction) {
         PlanDefinition plan = planService.getTask(planId);
         List<PlanChatMessage> messages = repository.findByPlanId(plan.id());
+        if (plan.hasPendingQuestion()) {
+            String question = plan.currentQuestion();
+            if (messages.isEmpty() || !lastMessageIs(messages, "assistant", question)) {
+                repository.append(plan.id(), "assistant", question);
+            }
+            return state(plan.id());
+        }
         if (messages.isEmpty()) {
             String question = resumeQuestion(plan);
             PlanDefinition seeded = planService.saveTask(plan
@@ -79,6 +86,12 @@ public class SavedPlanChatService {
 
     public SavedPlanChatState answer(String planId, String answer) {
         PlanDefinition plan = planService.getTask(planId);
+        if (RESUME_TASK.equals(plan.planningTask()) && plan.hasPendingQuestion()) {
+            repository.append(plan.id(), "user", answer);
+            PlanDefinition updated = planService.saveTask(plan.withPendingQuestions(List.of(), 0));
+            repository.append(updated.id(), "assistant", MESSAGE_QUESTION);
+            return state(updated.id());
+        }
         if (!plan.hasPendingQuestion()) {
             repository.append(plan.id(), "user", answer);
             repository.append(plan.id(), "assistant", "What else should be changed in this saved plan?");

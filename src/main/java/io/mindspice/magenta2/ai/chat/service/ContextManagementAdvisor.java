@@ -38,6 +38,7 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
     private static final Logger log = LoggerFactory.getLogger(ContextManagementAdvisor.class);
 
     public static final String CONTEXT_USAGE_KEY = "magenta.contextUsage";
+    public static final String OMIT_STORED_MESSAGES_KEY = "magenta.omitStoredMessages";
     public static final String SUMMARY_PREFIX = "[[MAGENTA_CONTEXT_SUMMARY]]\n";
     public static final String NOTICE_PREFIX = "[[MAGENTA_CONTEXT_COMPACTED_NOTICE]] ";
     public static final String COMPACTION_NOTICE = "Context compacted to keep the conversation within the model window.";
@@ -208,31 +209,48 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
     }
 
     public PreparedPrompt preparePrompt(String conversationId, List<Message> currentInstructions, String model) {
+        return preparePrompt(conversationId, currentInstructions, model, false);
+    }
+
+    public PreparedPrompt preparePrompt(
+        String conversationId,
+        List<Message> currentInstructions,
+        String model,
+        boolean omitStoredMessages
+    ) {
         List<Message> storedMessages = chatMemoryRepository.findByConversationId(conversationId);
-        List<Message> truncatedMessages = truncateExpiredToolResults(storedMessages);
-        if (truncatedMessages != storedMessages) {
-            storedMessages = truncatedMessages;
-            chatMemoryRepository.saveAll(conversationId, storedMessages);
+        List<Message> promptStoredMessages = storedMessages;
+        if (!omitStoredMessages) {
+            List<Message> truncatedMessages = truncateExpiredToolResults(storedMessages);
+            if (truncatedMessages != storedMessages) {
+                storedMessages = truncatedMessages;
+                promptStoredMessages = truncatedMessages;
+                chatMemoryRepository.saveAll(conversationId, storedMessages);
+            }
+        } else {
+            promptStoredMessages = List.of();
         }
-        List<Message> promptMessages = buildPromptMessages(storedMessages, currentInstructions);
+        List<Message> promptMessages = buildPromptMessages(promptStoredMessages, currentInstructions);
         ContextUsage usage = estimateUsage(promptMessages, model);
         log.debug("preparePrompt conv={} tokens={}/{} ({:.0f}%) trigger={}", conversationId,
             usage.usedTokens(), usage.maxTokens(), usage.percentUsed(), usage.triggerTokens());
 
-        if (usage.usedTokens() > usage.triggerTokens()) {
+        if (!omitStoredMessages && usage.usedTokens() > usage.triggerTokens()) {
             log.info("Compacting context: conv={} tokens={} exceeds trigger={}", conversationId,
                 usage.usedTokens(), usage.triggerTokens());
             storedMessages = compact(conversationId, storedMessages, currentInstructions, model);
-            promptMessages = buildPromptMessages(storedMessages, currentInstructions);
+            promptStoredMessages = storedMessages;
+            promptMessages = buildPromptMessages(promptStoredMessages, currentInstructions);
             usage = estimateUsage(promptMessages, model);
             log.info("After compact: conv={} tokens={}/{} ({:.0f}%)", conversationId,
                 usage.usedTokens(), usage.maxTokens(), usage.percentUsed());
         }
-        if (usage.usedTokens() > usage.triggerTokens()) {
+        if (!omitStoredMessages && usage.usedTokens() > usage.triggerTokens()) {
             log.info("Trimming context: conv={} tokens={} exceeds trigger={}", conversationId,
                 usage.usedTokens(), usage.triggerTokens());
             storedMessages = trimToBudget(conversationId, storedMessages, currentInstructions, model);
-            promptMessages = buildPromptMessages(storedMessages, currentInstructions);
+            promptStoredMessages = storedMessages;
+            promptMessages = buildPromptMessages(promptStoredMessages, currentInstructions);
             usage = estimateUsage(promptMessages, model);
             log.info("After trim: conv={} tokens={}/{} ({:.0f}%)", conversationId,
                 usage.usedTokens(), usage.maxTokens(), usage.percentUsed());
@@ -263,35 +281,53 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
         List<Message> currentSystemInstructions,
         String model
     ) {
+        return prepareToolLoopPrompt(conversationId, activeMessages, currentSystemInstructions, model, false);
+    }
+
+    public ToolLoopPrompt prepareToolLoopPrompt(
+        String conversationId,
+        List<Message> activeMessages,
+        List<Message> currentSystemInstructions,
+        String model,
+        boolean omitStoredMessages
+    ) {
         List<Message> storedMessages = chatMemoryRepository.findByConversationId(conversationId);
-        List<Message> truncatedMessages = truncateExpiredToolResults(storedMessages);
-        if (truncatedMessages != storedMessages) {
-            storedMessages = truncatedMessages;
-            chatMemoryRepository.saveAll(conversationId, storedMessages);
+        List<Message> promptStoredMessages = storedMessages;
+        if (!omitStoredMessages) {
+            List<Message> truncatedMessages = truncateExpiredToolResults(storedMessages);
+            if (truncatedMessages != storedMessages) {
+                storedMessages = truncatedMessages;
+                promptStoredMessages = truncatedMessages;
+                chatMemoryRepository.saveAll(conversationId, storedMessages);
+            }
+        } else {
+            promptStoredMessages = List.of();
         }
 
         List<Message> active = new ArrayList<>(activeMessages == null ? List.of() : activeMessages);
-        List<Message> promptMessages = buildToolLoopPromptMessages(storedMessages, currentSystemInstructions, active);
+        List<Message> promptMessages = buildToolLoopPromptMessages(promptStoredMessages, currentSystemInstructions, active);
         ContextUsage usage = estimateUsage(promptMessages, model);
         log.debug("prepareToolLoopPrompt conv={} tokens={}/{} ({:.0f}%) trigger={}", conversationId,
             usage.usedTokens(), usage.maxTokens(), usage.percentUsed(), usage.triggerTokens());
         boolean compacted = false;
 
-        if (usage.usedTokens() > usage.triggerTokens()) {
+        if (!omitStoredMessages && usage.usedTokens() > usage.triggerTokens()) {
             log.info("Compacting context (tool loop): conv={} tokens={} exceeds trigger={}", conversationId,
                 usage.usedTokens(), usage.triggerTokens());
             storedMessages = compact(conversationId, storedMessages, activeSystemInstructions(currentSystemInstructions, active), model);
-            promptMessages = buildToolLoopPromptMessages(storedMessages, currentSystemInstructions, active);
+            promptStoredMessages = storedMessages;
+            promptMessages = buildToolLoopPromptMessages(promptStoredMessages, currentSystemInstructions, active);
             usage = estimateUsage(promptMessages, model);
             log.info("After compact: conv={} tokens={}/{} ({:.0f}%)", conversationId,
                 usage.usedTokens(), usage.maxTokens(), usage.percentUsed());
             compacted = true;
         }
-        if (usage.usedTokens() > usage.triggerTokens()) {
+        if (!omitStoredMessages && usage.usedTokens() > usage.triggerTokens()) {
             log.info("Trimming context (tool loop): conv={} tokens={} exceeds trigger={}", conversationId,
                 usage.usedTokens(), usage.triggerTokens());
             storedMessages = trimToBudget(conversationId, storedMessages, activeSystemInstructions(currentSystemInstructions, active), model);
-            promptMessages = buildToolLoopPromptMessages(storedMessages, currentSystemInstructions, active);
+            promptStoredMessages = storedMessages;
+            promptMessages = buildToolLoopPromptMessages(promptStoredMessages, currentSystemInstructions, active);
             usage = estimateUsage(promptMessages, model);
             log.info("After trim: conv={} tokens={}/{} ({:.0f}%)", conversationId,
                 usage.usedTokens(), usage.maxTokens(), usage.percentUsed());
@@ -300,7 +336,7 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
         if (usage.usedTokens() > usage.triggerTokens()) {
             log.info("Compacting active tool messages: conv={} tokens={}", conversationId, usage.usedTokens());
             active = compactActiveToolMessages(active);
-            promptMessages = buildToolLoopPromptMessages(storedMessages, currentSystemInstructions, active);
+            promptMessages = buildToolLoopPromptMessages(promptStoredMessages, currentSystemInstructions, active);
             usage = estimateUsage(promptMessages, model);
             log.info("After active compact: conv={} tokens={}/{} ({:.0f}%)", conversationId,
                 usage.usedTokens(), usage.maxTokens(), usage.percentUsed());
@@ -308,8 +344,8 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
         }
         if (usage.usedTokens() > usage.triggerTokens()) {
             log.info("Trimming active tool messages: conv={} tokens={}", conversationId, usage.usedTokens());
-            active = trimActiveToolMessages(active, storedMessages, currentSystemInstructions, model);
-            promptMessages = buildToolLoopPromptMessages(storedMessages, currentSystemInstructions, active);
+            active = trimActiveToolMessages(active, promptStoredMessages, currentSystemInstructions, model);
+            promptMessages = buildToolLoopPromptMessages(promptStoredMessages, currentSystemInstructions, active);
             usage = estimateUsage(promptMessages, model);
             log.info("After active trim: conv={} tokens={}/{} ({:.0f}%)", conversationId,
                 usage.usedTokens(), usage.maxTokens(), usage.percentUsed());
@@ -332,7 +368,14 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
     private PreparedRequest prepare(ChatClientRequest request) {
         String conversationId = conversationId(request.context());
         String model = modelName(request.prompt());
-        PreparedPrompt preparedPrompt = preparePrompt(conversationId, request.prompt().getInstructions(), model);
+        Map<String, Object> context = request.context() == null ? Map.of() : request.context();
+        boolean omitStoredMessages = Boolean.TRUE.equals(context.get(OMIT_STORED_MESSAGES_KEY));
+        PreparedPrompt preparedPrompt = preparePrompt(
+            conversationId,
+            request.prompt().getInstructions(),
+            model,
+            omitStoredMessages
+        );
         Prompt prompt = request.prompt().mutate()
             .messages(preparedPrompt.messages())
             .build();
@@ -492,6 +535,11 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
         if (currentSystemInstructions != null && planning) {
             currentSystemInstructions.stream()
                 .filter(SystemMessage.class::isInstance)
+                .forEach(promptMessages::add);
+        }
+        if (currentSystemInstructions != null) {
+            currentSystemInstructions.stream()
+                .filter(message -> !(message instanceof SystemMessage))
                 .forEach(promptMessages::add);
         }
         if (activeMessages != null) {

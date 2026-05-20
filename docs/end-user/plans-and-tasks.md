@@ -19,7 +19,7 @@ The page has:
 5. Save the plan.
 6. Add structured sections after the draft exists.
 
-Use **New Plan Chat** when you want Magenta to interview you and build a saved draft in `/plans`. Enter the draft name in the modal; Magenta creates the saved draft and opens the **Planning Chat** tab. This chat is plan-scoped and does not appear in the `/chat` session sidebar.
+Use **New Plan Chat** when you want Magenta to interview you and build a saved task draft in `/plans`. Enter the draft name in the modal; Magenta creates the saved draft and opens the **Planning Chat** tab. This chat is plan-scoped, does not appear in the `/chat` session sidebar, and is separate from anonymous in-chat planning.
 
 ## Structured Plan Sections
 
@@ -37,7 +37,7 @@ Inputs and outputs have a name, type, required flag, array flag, description, an
 
 ## Saved Plan Chat
 
-The embedded saved plan chat asks four opening questions for new chat drafts before any later model-backed planning behavior can run:
+The embedded saved plan chat asks four deterministic opening questions for new chat drafts before any later model-backed planning behavior can run:
 
 1. Whether the plan has runtime inputs, including field names, types, required flags, array flags, schemas, and examples, or “no inputs”.
 2. Goal.

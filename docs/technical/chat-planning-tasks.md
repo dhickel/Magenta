@@ -31,7 +31,7 @@ Streaming events are represented by `ChatStreamEvent` and sent over `/api/chat/s
 
 ## Anonymous Chat Planning
 
-The `/chat` planning path is anonymous and conversation-scoped. It uses `PlanMode` and `ChatPlanState` in `ai.chat.model` plus a `SESSION_PLAN` persisted through `ai.chat.plan`, but it is not a saved `/plans` definition and cannot be saved as a task template.
+The `/chat` planning path is anonymous in-chat planning. It is conversation-scoped, uses `PlanMode` and `ChatPlanState` in `ai.chat.model`, and persists a `SESSION_PLAN` keyed by the chat conversation id. It is not a saved `/plans` definition and cannot be saved or submitted as a task template.
 
 `PlanService` owns:
 
@@ -45,17 +45,17 @@ The `/chat` planning path is anonymous and conversation-scoped. It uses `PlanMod
 
 Anonymous plan prompts do not expose structured inputs or outputs. They focus on goal, assumptions, expected deliverables, ordered steps, and validation. Approval actions are continue planning, approve and execute with conversation context, approve and execute clean, and cancel.
 
-Anonymous execution installs a chat-scoped file context when there is no assignment context. File tools then resolve to the active chat file directory instead of a broad data-root fallback. Final anonymous execution messages are persisted as markdown files in that directory.
+Anonymous execution installs a chat-scoped file context when there is no assignment context. File tools then resolve to the active chat file directory instead of a broad data-root fallback. Final anonymous execution messages are persisted as markdown files in that directory. Clean execution is prompt-scoped: it omits stored chat messages from the model prompt for that run, while preserving the persisted transcript and appending the execution turn afterward.
 
 ## Saved Plan Chat
 
-Saved plan chat is separate from `/api/chat`, `ai_chat_memory`, and `ai_chat_session_metadata`. It is plan-scoped under `/api/plans` and stores messages in `plan_chat_messages`.
+Saved task planning happens in `/plans` and is separate from `/api/chat`, `ai_chat_memory`, and `ai_chat_session_metadata`. It is plan-scoped under `/api/plans`, stores messages in `plan_chat_messages`, and produces durable `TASK_TEMPLATE` definitions for later submission.
 
 `SavedPlanChatService` owns:
 
 - Creating a `TASK_TEMPLATE` draft directly for new saved plan chats.
 - Persisting plan-scoped chat messages.
-- Seeding four backend questions for goal, runtime inputs, high-level deliverables, and structured outputs.
+- Seeding four backend questions in a fixed order: runtime inputs, goal, high-level deliverables, and structured outputs.
 - Updating typed inputs, typed outputs, deliverables, assumptions, steps, and validation details on the saved draft.
 
 `PlanDefinition` is the durable plan contract for saved definitions. It contains title, summary, goal, notes, deliverables, structured inputs/outputs, assumptions, ordered steps, validation criteria, evidence, feedback, planning/execution model choices, settings overrides, pending questions, and conversation linkage.

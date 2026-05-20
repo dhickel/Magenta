@@ -34,6 +34,72 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ContextManagementAdvisorTest {
 
     @Test
+    void omitStoredMessagesBuildsCleanPromptWithoutDeletingStoredTranscript() {
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
+        ContextManagementAdvisor advisor = new ContextManagementAdvisor(
+            memoryRepository,
+            aiConfig(),
+            new SummaryRouter(new SummaryChatModel()),
+            new CharacterTokenEstimator(),
+            new ContextUsageTracker(),
+            new ToolTranscriptService(new ObjectMapper()),
+            null
+        );
+        memoryRepository.saveAll("conversation-1", List.of(
+            new UserMessage("older user request"),
+            new AssistantMessage("older assistant response")
+        ));
+
+        ContextManagementAdvisor.PreparedPrompt prompt = advisor.preparePrompt(
+            "conversation-1",
+            List.of(new SystemMessage("system"), new UserMessage("execute approved plan")),
+            "qwen3",
+            true
+        );
+
+        assertThat(prompt.messages()).extracting(Message::getText)
+            .containsExactly("system", "execute approved plan");
+        assertThat(memoryRepository.findByConversationId("conversation-1"))
+            .extracting(Message::getText)
+            .containsExactly("older user request", "older assistant response", "execute approved plan");
+    }
+
+    @Test
+    void omitStoredMessagesToolLoopKeepsCurrentExecutionInstruction() {
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
+        ContextManagementAdvisor advisor = new ContextManagementAdvisor(
+            memoryRepository,
+            aiConfig(),
+            new SummaryRouter(new SummaryChatModel()),
+            new CharacterTokenEstimator(),
+            new ContextUsageTracker(),
+            new ToolTranscriptService(new ObjectMapper()),
+            null
+        );
+        memoryRepository.saveAll("conversation-1", List.of(
+            new UserMessage("older user request"),
+            new AssistantMessage("older assistant response"),
+            new UserMessage("execute approved plan")
+        ));
+
+        ContextManagementAdvisor.ToolLoopPrompt prompt = advisor.prepareToolLoopPrompt(
+            "conversation-1",
+            List.of(new AssistantMessage("tool call"), new SystemMessage("tool result")),
+            List.of(new SystemMessage("system"), new UserMessage("execute approved plan")),
+            "qwen3",
+            true
+        );
+
+        assertThat(prompt.messages()).extracting(Message::getText)
+            .containsExactly("system", "execute approved plan", "tool call", "tool result");
+        assertThat(memoryRepository.findByConversationId("conversation-1"))
+            .extracting(Message::getText)
+            .containsExactly("older user request", "older assistant response", "execute approved plan");
+    }
+
+    @Test
     void compactionCarriesPreviousHiddenSummaryForward() {
         JdbcTemplate jdbcTemplate = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
         ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());

@@ -30,7 +30,7 @@ Security summary: alpha routes are currently open at the application layer. Requ
 | Route | Stream Purpose | Events |
 | --- | --- | --- |
 | `POST /api/chat/stream` | Live chat turn. | `start`, `chunk`, `tool`, `system`, `interrupt`, `context`, `done`, `error` |
-| `POST /api/chat/{conversationId}/plan/execute/stream` | Anonymous session plan execution stream. | Chat/plan execution events from `ChatController` |
+| `POST /api/chat/{conversationId}/plan/execute/stream` | Anonymous session plan execution stream. Accepts optional `clearContext=true`. | Chat/plan execution events from `ChatController` |
 | `POST /api/plans/{planId}/runs/stream` | Submit saved plan/task-like definition to an agent assignment. | `submitted`, `failed` |
 | `POST /api/tasks/{taskId}/runs/stream` | Submit saved task to an agent assignment. | `submitted`, `failed` |
 | `POST /api/workflows/{workflowId}/runs/stream` | Submit saved workflow to an agent assignment. | `submitted`, `failed` |

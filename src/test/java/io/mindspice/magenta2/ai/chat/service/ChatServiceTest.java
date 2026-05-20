@@ -74,6 +74,54 @@ class ChatServiceTest {
             .containsExactly("User planning request", "Assistant planning response");
     }
 
+    @Test
+    void resolvingCleanSavedPlanExecutionFlagsPromptContextWithoutClearingTranscriptRows() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        ChatSessionMetadataRepository metadataRepository = new ChatSessionMetadataRepository(jdbcTemplate);
+        PlanService planService = new PlanService(new PlanRepository(jdbcTemplate, objectMapper), memoryRepository);
+        ChatService chatService = new ChatService(
+            new RepositoryBackedChatMemory(memoryRepository),
+            memoryRepository,
+            metadataRepository,
+            null,
+            aiConfig(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            planService
+        );
+
+        memoryRepository.saveAll("conversation-1", List.of(
+            new UserMessage("User planning request"),
+            AssistantMessage.builder().content("Assistant planning response").build()
+        ));
+        planService.beginPlan("conversation-1");
+        planService.saveDraftPlan(
+            "conversation-1",
+            "Preserve chat history",
+            "Transcript Plan",
+            "Keep existing chat transcript rows.",
+            null,
+            List.of("Resolve saved plan execution"),
+            List.of("Existing transcript rows are present"),
+            List.of("History readback still contains the original user and assistant messages")
+        );
+        planService.approvePlan("conversation-1");
+
+        ResolvedChatRequest request = chatService.resolveSavedPlanExecution("conversation-1", true);
+
+        assertThat(request.omitStoredMessages()).isTrue();
+        assertThat(request.message()).contains("Approved anonymous plan");
+        assertThat(memoryRepository.findByConversationId("conversation-1"))
+            .extracting(message -> message.getText())
+            .containsExactly("User planning request", "Assistant planning response");
+    }
+
     private JdbcTemplate jdbcTemplate() {
         SingleConnectionDataSource dataSource = new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true);
         return new JdbcTemplate(dataSource);

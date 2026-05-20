@@ -11,7 +11,7 @@ Source: [`ChatController`](../../src/main/java/io/mindspice/magenta2/api/web/Cha
 - `POST /api/chat`: non-streaming chat turn from `ChatRequest.MsgRequest`.
 - `POST /api/chat/stream`: SSE chat turn.
 - `POST /api/chat/{conversationId}/plan/execute`: execute an approved anonymous session plan. Payload may set `clearContext=true` for clean execution.
-- `POST /api/chat/{conversationId}/plan/execute/stream`: SSE execution of the current anonymous session plan path.
+- `POST /api/chat/{conversationId}/plan/execute/stream`: SSE execution of the current anonymous session plan path. Payload may set `clearContext=true` for clean execution.
 - `POST /api/chat/turns/{turnId}/interrupt`: interrupt an active turn.
 - `GET /api/chat/sessions`, `GET /api/chat/{conversationId}/history`: session/history reads.
 - `PATCH /api/chat/{conversationId}/title`, `/favorite`, `/archive`: session metadata updates.

@@ -22,7 +22,7 @@ Use **Send** to submit a message. Enter sends the message; Shift+Enter inserts a
 
 ## Planning Mode
 
-Planning mode creates an anonymous session plan inside the current chat conversation. These plans are not saved to `/plans`, do not define structured inputs or outputs, and cannot be submitted to agents as saved definitions.
+Planning mode creates an anonymous in-chat session plan inside the current chat conversation. These plans are `SESSION_PLAN` records keyed by the chat conversation id. They are not saved to `/plans`, do not define structured runtime inputs or outputs, and cannot be submitted to agents as saved task definitions.
 
 To start planning:
 
@@ -43,7 +43,7 @@ When Magenta asks a planning question, answer it in the visible planning prompt.
 
 - **Continue Planning** keeps planning open when the draft is incomplete.
 - **Approve And Exec** executes the approved anonymous plan with the current conversation context.
-- **Approve And Exec Clean** executes the approved anonymous plan with only the approved plan instructions and the chat file directory context.
+- **Approve And Exec Clean** executes the approved anonymous plan with only the approved plan instructions and the chat file directory context. It does not delete the conversation transcript; it only omits prior chat messages from that execution prompt.
 - **Cancel** exits planning mode for that conversation.
 
 Anonymous chat execution writes chat-scoped files under the persistent chat file directory. If the final response is itself a deliverable, Magenta persists it as `final-message.md` or a collision-safe variant in that directory.
