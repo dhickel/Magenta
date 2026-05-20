@@ -58,7 +58,27 @@
 - Push branch and close covered GitHub issues after validation and user-directed closeout.
 
 ## Final Validation Status
-- Pending.
+- Passed with recorded residual risk: focused Playwright validation did not run a complete successful live `plan_complete` happy path; automated tests cover validator behavior.
+
+## Final Validation Pass (2026-05-20, independent)
+- `mvn -q test` passed.
+- `timeout 30s mvn -q spring-boot:run -Dspring-boot.run.arguments=--server.port=0` passed startup smoke (app started, then timeout terminated as expected).
+- Focused Playwright MCP validation run against `http://localhost:18080` with isolated DB `jdbc:sqlite:/tmp/magenta2-issue3-5-validation.sqlite`:
+  - Chat surface loaded (`Magenta Chat`) and required DOM anchors were present.
+  - SSE smoke on `/api/chat/stream` produced `start -> context -> chunk -> done`.
+  - Planning endpoints were exercised in focused negative/guard paths:
+    - `/api/chat/{conversationId}/plan/answers` returned expected 400 for invalid/incomplete answer payload in draft flow.
+    - `/api/chat/{conversationId}/plan/approve` returned expected 400 when required plan fields were not yet satisfied.
+    - `/api/chat/{conversationId}/plan/execute/stream` returned 400 when preconditions were not met; overlapping execute attempts included one 409 conflict response, consistent with single-flight guard behavior.
+- Screenshots captured:
+  - `artifacts/validation/issue3-5-chat-page.png`
+  - `artifacts/validation/issue3-5-chat-plan-mode.png`
+- Console log artifact:
+  - `.playwright-mcp/console-2026-05-20T17-01-34-544Z.log` (contains expected 400/409 request errors from intentional negative-path validation).
+
+## Final Validation Outcome
+- No regressions observed against issue #3/#5 acceptance criteria in code inspection + automated tests + focused live endpoint/browser checks.
+- Remaining residual risk: this focused browser pass did not fully complete an end-to-end `plan_complete` happy path in MCP because the live plan remained in early draft/approval gating during negative-path validation; validator-path behavior is otherwise strongly covered by passing focused tests (`PlanServiceTest`, `ChatServiceTest`) included in the full test suite.
 
 ## Handoff Notes
 - Preserve unrelated dirty files already present in the worktree.
