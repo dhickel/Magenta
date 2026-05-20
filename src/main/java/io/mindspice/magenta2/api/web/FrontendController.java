@@ -33,7 +33,7 @@ import java.util.List;
 public class FrontendController {
 
     private static final String APP_CSS = "/css/magenta.css?v=2";
-    private static final String CHAT_JS = "/js/chat-client.js?v=26";
+    private static final String CHAT_JS = "/js/chat-client.js?v=27";
 
     private final ChatService chatService;
     private final Component topNavBar;
@@ -107,7 +107,8 @@ public class FrontendController {
                     .withChild(chatToolbar())
                     .withChild(planStatus())
                     .withChild(ChatModuleRenderer.sessionChatModule())
-                    .withChild(tokenUsage())))
+                    .withChild(tokenUsage()))
+                .withChild(sessionFilesPanel()))
             .withChild(new Div().withId("chat-error").withAttribute("role", "status").withAttribute("aria-live", "polite"));
         return chatShell.renderWithContent(chatContent);
     }
@@ -124,6 +125,18 @@ public class FrontendController {
                         .withChild(Button.create("Archive").withAttribute("data-bulk-action", "archive"))
                         .withChild(Button.create("Favorite").withAttribute("data-bulk-action", "favorite"))))
                 .withChild(new HtmlTag("ul").withId("chat-session-list")));
+    }
+
+    private Component sessionFilesPanel() {
+        return new HtmlTag("aside")
+            .withId("chat-session-files")
+            .withClass("chat-files-panel")
+            .withChild(new Div().withClass("chat-files-header")
+                .withChild(new HtmlTag("span").withInnerText("Outputs")))
+            .withChild(new Div()
+                .withId("chat-session-files-body")
+                .withClass("chat-files-body")
+                .withInnerText("Select a chat to view outputs."));
     }
 
     private Component chatToolbar() {

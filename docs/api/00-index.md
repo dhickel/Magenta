@@ -8,7 +8,7 @@ Security summary: alpha routes are currently open at the application layer. Requ
 
 | Family | Purpose | Source |
 | --- | --- | --- |
-| `/api/chat` | Chat turns, SSE streaming, sessions, history, commands, interrupts, and anonymous conversation plan controls. | [`ChatController`](../../src/main/java/io/mindspice/magenta2/api/web/ChatController.java) |
+| `/api/chat` | Chat turns, SSE streaming, sessions, history, chat file listing/downloads, commands, interrupts, and anonymous conversation plan controls. | [`ChatController`](../../src/main/java/io/mindspice/magenta2/api/web/ChatController.java), [`ChatFileController`](../../src/main/java/io/mindspice/magenta2/api/web/ChatFileController.java) |
 | `/api/fragments` | HTMX chat transcript/session/planning fragments. | [`FrontendFragmentController`](../../src/main/java/io/mindspice/magenta2/api/web/FrontendFragmentController.java) |
 | `/api/plans` | Saved plan/task-like definitions, saved plan chat, submit-to-agent, and plan run reads. | [`PlanController`](../../src/main/java/io/mindspice/magenta2/api/web/PlanController.java) |
 | `/api/tasks` | Task definitions, chat-backed task drafts, draft approval, and task run reads/submission. | [`TaskController`](../../src/main/java/io/mindspice/magenta2/api/web/TaskController.java) |
@@ -40,7 +40,7 @@ The public plan/task/workflow stream routes acknowledge durable assignment submi
 
 ## Payload Anchors
 
-- Chat payloads: [`ChatRequest`](../../src/main/java/io/mindspice/magenta2/ai/chat/model/ChatRequest.java), [`ChatResponse`](../../src/main/java/io/mindspice/magenta2/ai/chat/model/ChatResponse.java), [`ChatStreamEvent`](../../src/main/java/io/mindspice/magenta2/ai/chat/model/ChatStreamEvent.java).
+- Chat payloads: [`ChatRequest`](../../src/main/java/io/mindspice/magenta2/ai/chat/model/ChatRequest.java), [`ChatResponse`](../../src/main/java/io/mindspice/magenta2/ai/chat/model/ChatResponse.java), [`ChatStreamEvent`](../../src/main/java/io/mindspice/magenta2/ai/chat/model/ChatStreamEvent.java), [`ChatFileListing`](../../src/main/java/io/mindspice/magenta2/ai/chat/model/ChatFileListing.java), [`ChatFileSummary`](../../src/main/java/io/mindspice/magenta2/ai/chat/model/ChatFileSummary.java).
 - Plans: [`PlanDefinition`](../../src/main/java/io/mindspice/magenta2/ai/chat/plan/PlanDefinition.java), [`PlanRun`](../../src/main/java/io/mindspice/magenta2/ai/chat/plan/PlanRun.java).
 - Tasks: [`TaskDefinition`](../../src/main/java/io/mindspice/magenta2/ai/chat/task/TaskDefinition.java), [`TaskDraft`](../../src/main/java/io/mindspice/magenta2/ai/chat/task/TaskDraft.java), [`TaskRun`](../../src/main/java/io/mindspice/magenta2/ai/chat/task/TaskRun.java).
 - Workflows: [`WorkflowDefinition`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workflow/WorkflowDefinition.java), [`WorkflowRun`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workflow/WorkflowRun.java), [`WorkflowValidator.ValidationResult`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workflow/WorkflowValidator.java).

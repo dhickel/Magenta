@@ -131,6 +131,7 @@ public class ChatService {
     private final RuntimeSettingsService runtimeSettingsService;
     private final AuditService auditService;
     private final RequestResolver requestResolver;
+    private final ChatFileService chatFileService;
     private final Set<String> toolUnsupportedModels = ConcurrentHashMap.newKeySet();
     private final Map<String, Semaphore> streamLocks = new ConcurrentHashMap<>();
 
@@ -153,6 +154,7 @@ public class ChatService {
             chatSessionMetadataRepository,
             chatMarkdownRenderer,
             aiConfig,
+            null,
             null,
             null,
             null,
@@ -209,6 +211,7 @@ public class ChatService {
             aiConfig != null && chatSessionMetadataRepository != null
                 ? new RequestResolver(aiConfig, chatSessionMetadataRepository, chatMemoryRepository, planService, null, null)
                 : null,
+            null,
             null
         );
     }
@@ -235,6 +238,7 @@ public class ChatService {
         @Autowired(required = false) RuntimeSettingsService runtimeSettingsService,
         @Autowired(required = false) AuditService auditService,
         @Autowired(required = false) RequestResolver requestResolver,
+        @Autowired(required = false) ChatFileService chatFileService,
         @Autowired(required = false) io.mindspice.magenta2.ai.chat.plan.WorkTypeProfileService workTypeProfileService
     ) {
         this.chatMemory = chatMemory;
@@ -257,6 +261,7 @@ public class ChatService {
         this.runtimeSettingsService = runtimeSettingsService;
         this.auditService = auditService;
         this.requestResolver = requestResolver;
+        this.chatFileService = chatFileService;
 
         // Initialize extracted turn components
         this.promptAssembler = new PromptContextAssembler(aiConfig, runtimeSettingsService, planService, taskService, workTypeProfileService);
@@ -1025,7 +1030,8 @@ public class ChatService {
             chatSessionMetadataRepository.isArchived(conversationId),
             chatSessionMetadataRepository.findUpdatedAt(conversationId).orElse(null),
             chatSessionMetadataRepository.findOrigin(conversationId).orElse(null),
-            chatSessionMetadataRepository.findAgentId(conversationId).orElse(null)
+            chatSessionMetadataRepository.findAgentId(conversationId).orElse(null),
+            chatFileService == null ? 0 : chatFileService.countFiles(conversationId)
         );
     }
 

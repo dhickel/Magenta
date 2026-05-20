@@ -44,7 +44,7 @@ HTMX routes should return server-rendered HTML fragments and preserve consistent
 
 Existing JavaScript is justified where persistent browser state, SSE, or client-side graph/editor interaction is simpler than pure HTMX.
 
-- `chat-client.js`: chat SSE, active stream state, incremental token rendering, interruption, and chat-specific browser behavior.
+- `chat-client.js`: chat SSE, active stream state, incremental token rendering, interruption, session-card rendering, selected-session output file refreshes, and chat-specific browser behavior.
 - shared shell helper(s): HTMX error-swap and small shell-level behavior that is simpler than reproducing in every page/module.
 - `orchestration/api.js` and `dom.js`: small shared helpers for operational islands.
 - `orchestration/dashboard.js`: dashboard refresh/poll style behavior.
@@ -54,6 +54,8 @@ Existing JavaScript is justified where persistent browser state, SSE, or client-
 - `orchestration/projects.js`: project detail interactions that coordinate fragment updates.
 
 Do not turn ordinary CRUD into a JavaScript transport surface. If an interaction can be a form plus HTMX target/swap cleanly, keep it HTMX.
+
+The chat outputs panel remains in `chat-client.js` because the `/chat` session list, active conversation state, and SSE completion refreshes are already JS-owned. Standard CRUD and operational UI interactions elsewhere remain HTMX-first.
 
 ## SimplyPages Reuse
 

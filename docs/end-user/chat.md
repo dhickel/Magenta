@@ -11,6 +11,7 @@ The chat page has:
 - A **Planning Model** dropdown for planning mode.
 - A session indicator showing the active conversation.
 - A plan status area with **View plan** details when planning is active.
+- An **Outputs** panel for files created in the selected chat.
 - A context usage bar.
 - A message composer.
 
@@ -19,6 +20,8 @@ The chat page has:
 Open `/chat` for a new or existing chat session. Select a prior session from the sidebar to continue it. The session list supports favorites, archives, deletion, and bulk actions.
 
 Use **Send** to submit a message. Enter sends the message; Shift+Enter inserts a newline.
+
+Sessions with chat-scoped files show an `Outputs: <n>` row in the session card. Selecting that session shows the files in the right-side **Outputs** panel with file type, name, relative path when useful, size, modified time, and a **Download** button. The panel lists ordinary chat files created under the chat's persistent file directory; it does not preview or edit file contents.
 
 ## Planning Mode
 

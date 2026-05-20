@@ -8,6 +8,7 @@
     let latestSessions = [];
     const selectedSessionIds = new Set();
     let lastPlanState = null;
+    let fileLoadConversationId = null;
 
     function byId(id) {
         return document.getElementById(id);
@@ -535,6 +536,10 @@
             const escapedTitle = escapeHtml(title);
             const shortId = shortConversationLabel(id);
             const escapedShortId = escapeHtml(shortId);
+            const outputCount = sessionOutputCount(session);
+            const outputsRow = outputCount > 0
+                ? '<div class="chat-session-output-row">Outputs: ' + outputCount.toLocaleString() + '</div>'
+                : '';
             const activeClass = id === activeId ? ' active' : '';
             const checked = selectedSessionIds.has(id) ? ' checked' : '';
             const checkbox = '<label class="chat-session-check" title="Select chat">'
@@ -563,7 +568,9 @@
                 + '</div></div>'
                 + '<a href="#" class="chat-session-title" data-switch-id="' + escaped + '">'
                 + '<span class="chat-session-title-label"><span class="chat-session-title-text">' + escapedTitle + '</span></span>'
-                + '</a></div></li>';
+                + '</a>'
+                + outputsRow
+                + '</div></li>';
         }).join('');
         syncSelectAllCheckbox();
 
@@ -587,6 +594,11 @@
             return String(session.title);
         }
         return session && session.conversationId ? 'Chat' : 'New chat';
+    }
+
+    function sessionOutputCount(session) {
+        const value = Number(session && session.outputCount ? session.outputCount : 0);
+        return Number.isFinite(value) && value > 0 ? value : 0;
     }
 
     function shortConversationLabel(conversationId) {
@@ -655,6 +667,7 @@
             renderHistory([]);
             updateContextUsage(null);
             updatePlanStatus(null);
+            clearSessionFiles();
         }
         await loadSessions();
     }
@@ -691,6 +704,7 @@
             renderHistory([]);
             updateContextUsage(null);
             updatePlanStatus(null);
+            clearSessionFiles();
         }
     }
 
@@ -734,6 +748,7 @@
                     renderHistory([]);
                     updateContextUsage(null);
                     updatePlanStatus(null);
+                    clearSessionFiles();
                 }
             }
         }
@@ -747,6 +762,7 @@
             renderHistory([]);
             updateContextUsage(null);
             updatePlanStatus(null);
+            clearSessionFiles();
             return;
         }
         const data = await getJson('/api/chat/' + encodeURIComponent(conversationId) + '/history');
@@ -755,7 +771,106 @@
         syncModelSelection(data.model);
         updateContextUsage(data.contextUsage);
         updatePlanStatus(data.planState);
+        await loadActiveFiles();
         return data;
+    }
+
+    function clearSessionFiles(message) {
+        fileLoadConversationId = null;
+        const body = byId('chat-session-files-body');
+        if (body) {
+            body.innerHTML = '<p class="chat-files-empty">' + escapeHtml(message || 'Select a chat to view outputs.') + '</p>';
+        }
+    }
+
+    async function loadActiveFiles() {
+        const conversationId = activeConversationId();
+        if (!conversationId) {
+            clearSessionFiles();
+            return;
+        }
+        const body = byId('chat-session-files-body');
+        if (!body) {
+            return;
+        }
+        fileLoadConversationId = conversationId;
+        try {
+            const listing = await getJson('/api/chat/' + encodeURIComponent(conversationId) + '/files');
+            if (fileLoadConversationId !== conversationId || activeConversationId() !== conversationId) {
+                return;
+            }
+            renderSessionFiles(listing);
+        } catch (error) {
+            if (fileLoadConversationId === conversationId && activeConversationId() === conversationId) {
+                body.innerHTML = '<p class="chat-files-empty">Unable to load outputs.</p>';
+            }
+        }
+    }
+
+    function renderSessionFiles(listing) {
+        const body = byId('chat-session-files-body');
+        if (!body) {
+            return;
+        }
+        const conversationId = listing && listing.conversationId ? String(listing.conversationId) : activeConversationId();
+        const files = listing && Array.isArray(listing.files) ? listing.files : [];
+        if (!conversationId) {
+            clearSessionFiles();
+            return;
+        }
+        if (files.length === 0) {
+            body.innerHTML = '<p class="chat-files-empty">No outputs for this chat.</p>';
+            return;
+        }
+        const truncated = listing && listing.truncated
+            ? '<p class="chat-files-note">Showing first ' + files.length.toLocaleString() + ' outputs.</p>'
+            : '';
+        body.innerHTML = truncated
+            + '<div class="chat-file-list">'
+            + files.map(function(file) {
+                const fileName = escapeHtml(file.fileName || file.relativePath || 'output');
+                const relativePath = escapeHtml(file.relativePath || file.fileName || '');
+                const format = escapeHtml(file.formatLabel || file.extension || 'file');
+                const meta = formatBytes(file.sizeBytes) + ' - ' + formatFileTime(file.lastModified);
+                const href = '/api/chat/' + encodeURIComponent(conversationId)
+                    + '/files/download?path=' + encodeURIComponent(file.relativePath || file.fileName || '');
+                return '<div class="chat-file-item">'
+                    + '<span class="chat-file-format">' + format + '</span>'
+                    + '<div class="chat-file-detail">'
+                    + '<div class="chat-file-name" title="' + relativePath + '">' + fileName + '</div>'
+                    + (relativePath && relativePath !== fileName ? '<div class="chat-file-path">' + relativePath + '</div>' : '')
+                    + '<div class="chat-file-meta">' + escapeHtml(meta) + '</div>'
+                    + '</div>'
+                    + '<div class="chat-file-actions"><a class="chat-file-download" href="' + href + '" download>Download</a></div>'
+                    + '</div>';
+            }).join('')
+            + '</div>';
+    }
+
+    function formatBytes(value) {
+        const bytes = Number(value || 0);
+        if (!Number.isFinite(bytes) || bytes <= 0) {
+            return '0 B';
+        }
+        const units = ['B', 'KB', 'MB', 'GB'];
+        let size = bytes;
+        let unitIndex = 0;
+        while (size >= 1024 && unitIndex < units.length - 1) {
+            size = size / 1024;
+            unitIndex += 1;
+        }
+        return (unitIndex === 0 ? size.toFixed(0) : size.toFixed(size >= 10 ? 1 : 2)) + ' ' + units[unitIndex];
+    }
+
+    function formatFileTime(value) {
+        if (!value) {
+            return 'unknown time';
+        }
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+            return 'unknown time';
+        }
+        return date.toLocaleString();
     }
 
     function pollConversationTitle(conversationId) {
@@ -885,6 +1000,7 @@
 
             await loadHistory(completedConversationId);
             await loadSessions();
+            await loadActiveFiles();
             pollConversationTitle(completedConversationId);
             setStatus();
         } catch (error) {
@@ -896,6 +1012,7 @@
                     await loadHistory(activeId);
                 }
                 await loadSessions();
+                await loadActiveFiles();
             } catch (reloadError) {
                 // Keep the original streaming error visible.
             }
@@ -994,6 +1111,7 @@
         renderSessions(data.sessions || data.conversationIds || []);
         updateContextUsage(data.contextUsage);
         updatePlanStatus(data.planState);
+        loadActiveFiles();
     }
 
     async function submitPlanningAnswer(form) {
@@ -1021,6 +1139,7 @@
             updatePlanStatus(data.planState);
             await loadHistory(data.conversationId || conversationId);
             await loadSessions();
+            await loadActiveFiles();
             setStatus();
         } finally {
             requestInFlight = false;
@@ -1127,12 +1246,14 @@
 
             await loadHistory(completedConversationId);
             await loadSessions();
+            await loadActiveFiles();
             setStatus();
         } catch (error) {
             removeStreamingAssistantMessage(assistantEl);
             try {
                 await loadHistory(conversationId);
                 await loadSessions();
+                await loadActiveFiles();
             } catch (reloadError) {
                 // Keep the original execution error visible.
             }
@@ -1160,6 +1281,7 @@
             updatePlanStatus(data);
             await loadHistory(conversationId);
             await loadSessions();
+            await loadActiveFiles();
             setStatus();
         } finally {
             requestInFlight = false;

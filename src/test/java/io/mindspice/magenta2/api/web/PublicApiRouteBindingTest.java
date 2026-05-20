@@ -72,6 +72,29 @@ class PublicApiRouteBindingTest {
             .andExpect(jsonPath("$.sessions").isArray());
 
         String conversationId = UUID.randomUUID().toString();
+        jdbcTemplate.update(
+            """
+                insert into ai_chat_memory (conversation_id, message_order, message_type, message_text)
+                values (?, 0, 'USER', 'route binding')
+                """,
+            conversationId
+        );
+        Path chatFile = Files.createDirectories(DATA_ROOT.resolve("chats/" + conversationId + "/files"))
+            .resolve("route.txt");
+        Files.writeString(chatFile, "route file");
+
+        mockMvc.perform(get("/api/chat/" + conversationId + "/files"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.conversationId").value(conversationId))
+            .andExpect(jsonPath("$.count").value(1))
+            .andExpect(jsonPath("$.files[0].relativePath").value("route.txt"));
+
+        mockMvc.perform(get("/api/chat/" + conversationId + "/files/download")
+                .param("path", "route.txt"))
+            .andExpect(status().isOk())
+            .andExpect(header().string("Content-Disposition", containsString("attachment")))
+            .andExpect(content().string("route file"));
+
         mockMvc.perform(post("/api/chat/" + conversationId + "/plan/execute"))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.error", containsString("No plan exists for this conversation")));

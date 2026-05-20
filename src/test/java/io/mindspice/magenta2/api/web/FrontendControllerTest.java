@@ -44,8 +44,13 @@ class FrontendControllerTest {
         assertThat(html).contains("id=\"magenta-chat-module\"");
         assertThat(html).contains("data-sp-chat=\"true\"");
         assertThat(html).contains("/api/fragments/chat/transcript");
-        assertThat(html).contains("/js/chat-client.js?v=26");
+        assertThat(html).contains("/js/chat-client.js?v=27");
         assertThat(html).contains("id=\"chat-planning-panel\"");
+        assertThat(html).contains("id=\"chat-session-files\"");
+        assertThat(html).contains("class=\"chat-files-panel\"");
+        assertThat(html).contains("id=\"chat-session-files-body\"");
+        assertThat(html).contains("Outputs");
+        assertThat(html).contains("Select a chat to view outputs.");
         assertThat(html).contains("class=\"chat-session-bulk-actions\"");
         assertThat(html).doesNotContain(".chat-session-hash-chip");
         assertThat(html).contains("id=\"chat-session-select-all\"");
@@ -90,6 +95,13 @@ class FrontendControllerTest {
         assertThat(js).contains("chat-session-inline-hash");
         assertThat(js).contains("chat-session-title-label");
         assertThat(js).contains("chat-session-title-text");
+        assertThat(js).contains("function loadActiveFiles()");
+        assertThat(js).contains("function renderSessionFiles(listing)");
+        assertThat(js).contains("/files/download?path=");
+        assertThat(js).contains("chat-session-output-row");
+        assertThat(js).contains("outputCount");
+        assertThat(js).contains("fileLoadConversationId");
+        assertThat(js).contains("clearSessionFiles();");
         assertThat(js).doesNotContain("chat-session-hash-chip");
         assertThat(js).contains("selectedSessionIds.clear();");
         assertThat(js).contains("Delete chat");

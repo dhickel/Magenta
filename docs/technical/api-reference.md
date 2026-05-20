@@ -6,7 +6,7 @@ In current alpha posture, routes are open at the application layer. Use controll
 
 ## Chat: `/api/chat`
 
-Source: [`ChatController`](../../src/main/java/io/mindspice/magenta2/api/web/ChatController.java), [`ChatRequest`](../../src/main/java/io/mindspice/magenta2/ai/chat/model/ChatRequest.java), [`ChatResponse`](../../src/main/java/io/mindspice/magenta2/ai/chat/model/ChatResponse.java), [`ChatStreamEvent`](../../src/main/java/io/mindspice/magenta2/ai/chat/model/ChatStreamEvent.java), [`ChatService`](../../src/main/java/io/mindspice/magenta2/ai/chat/service/ChatService.java).
+Source: [`ChatController`](../../src/main/java/io/mindspice/magenta2/api/web/ChatController.java), [`ChatFileController`](../../src/main/java/io/mindspice/magenta2/api/web/ChatFileController.java), [`ChatRequest`](../../src/main/java/io/mindspice/magenta2/ai/chat/model/ChatRequest.java), [`ChatResponse`](../../src/main/java/io/mindspice/magenta2/ai/chat/model/ChatResponse.java), [`ChatStreamEvent`](../../src/main/java/io/mindspice/magenta2/ai/chat/model/ChatStreamEvent.java), [`ChatService`](../../src/main/java/io/mindspice/magenta2/ai/chat/service/ChatService.java), [`ChatFileService`](../../src/main/java/io/mindspice/magenta2/ai/chat/service/ChatFileService.java).
 
 - `POST /api/chat`: non-streaming chat turn from `ChatRequest.MsgRequest`.
 - `POST /api/chat/stream`: SSE chat turn.
@@ -14,12 +14,16 @@ Source: [`ChatController`](../../src/main/java/io/mindspice/magenta2/api/web/Cha
 - `POST /api/chat/{conversationId}/plan/execute/stream`: SSE execution of the current anonymous session plan path. Payload may set `clearContext=true` for clean execution.
 - `POST /api/chat/turns/{turnId}/interrupt`: interrupt an active turn.
 - `GET /api/chat/sessions`, `GET /api/chat/{conversationId}/history`: session/history reads.
+- `GET /api/chat/{conversationId}/files`: list ordinary chat files from `chats/<conversationId>/files/` as `ChatFileListing`.
+- `GET /api/chat/{conversationId}/files/download?path=<relativePath>`: download one ordinary chat file as an attachment.
 - `PATCH /api/chat/{conversationId}/title`, `/favorite`, `/archive`: session metadata updates.
 - `POST /api/chat/commands`: command request using `ChatRequest.CmdRequest`.
 - `DELETE /api/chat/{conversationId}`: delete a conversation.
 - Plan controls under `/api/chat/{conversationId}/plan/*`: answer, approve, continue, cancel, execute, delete. Anonymous chat plans cannot be saved as task templates.
 
 SSE events are JSON events. Chat emits `start`, `chunk`, `tool`, `system`, `interrupt`, `context`, `done`, and `error` from `ChatStreamEvent`; the controller also emits plan-execution updates around anonymous plan execution.
+
+`GET /api/chat/sessions` includes `outputCount` on each session for regular files under that conversation's persistent chat file directory. Chat file listing and download routes require a UUID-shaped existing conversation id, expose only relative paths, reject traversal, and enforce the same 10 MB controller download limit used by output artifacts.
 
 Common errors: validation failures return `400`; missing sessions/plans generally return `404`; active-turn conflicts or invalid lifecycle operations return controller-specific conflict/error payloads.
 

@@ -89,23 +89,28 @@ public class FrontendFragmentController {
         String title = session.title() == null || session.title().isBlank()
             ? shortConversationLabel(session.conversationId())
             : session.title();
+        Div entry = new Div().withClass("chat-session-entry")
+            .withChild(new Div().withClass("chat-session-topline")
+                .withChild(new HtmlTag("span").withClass("chat-session-check")
+                    .withChild(new HtmlTag("input", true)
+                        .withAttribute("type", "checkbox")
+                        .withAttribute("data-bulk-select", session.conversationId())))
+                .withChild(new HtmlTag("a")
+                    .withClass("chat-session-title")
+                    .withAttribute("href", "/chat?conversationId=" + session.conversationId())
+                    .withChild(new HtmlTag("span").withClass("chat-session-title-label")
+                        .withChild(new HtmlTag("span").withClass("chat-session-title-text").withInnerText(title)))
+                    .withChild(new HtmlTag("span").withClass("chat-session-inline-hash").withInnerText(shortConversationLabel(session.conversationId()))))
+                .withChild(new Div().withClass("chat-session-actions")
+                    .withChild(new HtmlTag("button").withAttribute("type", "button").withAttribute("data-rename-id", session.conversationId()).withInnerText("R"))
+                    .withChild(new HtmlTag("button").withAttribute("type", "button").withAttribute("data-delete-id", session.conversationId()).withInnerText("D"))
+                    .withChild(new HtmlTag("button").withAttribute("type", "button").withAttribute("data-archive-id", session.conversationId()).withInnerText("A"))));
+        if (session.outputCount() > 0) {
+            entry.withChild(new Div().withClass("chat-session-output-row")
+                .withInnerText("Outputs: " + session.outputCount()));
+        }
         return new HtmlTag("li").withClass("chat-session-item")
-            .withChild(new Div().withClass("chat-session-entry")
-                .withChild(new Div().withClass("chat-session-topline")
-                    .withChild(new HtmlTag("span").withClass("chat-session-check")
-                        .withChild(new HtmlTag("input", true)
-                            .withAttribute("type", "checkbox")
-                            .withAttribute("data-bulk-select", session.conversationId())))
-                    .withChild(new HtmlTag("a")
-                        .withClass("chat-session-title")
-                        .withAttribute("href", "/chat?conversationId=" + session.conversationId())
-                        .withChild(new HtmlTag("span").withClass("chat-session-title-label")
-                            .withChild(new HtmlTag("span").withClass("chat-session-title-text").withInnerText(title)))
-                        .withChild(new HtmlTag("span").withClass("chat-session-inline-hash").withInnerText(shortConversationLabel(session.conversationId()))))
-                    .withChild(new Div().withClass("chat-session-actions")
-                        .withChild(new HtmlTag("button").withAttribute("type", "button").withAttribute("data-rename-id", session.conversationId()).withInnerText("R"))
-                        .withChild(new HtmlTag("button").withAttribute("type", "button").withAttribute("data-delete-id", session.conversationId()).withInnerText("D"))
-                        .withChild(new HtmlTag("button").withAttribute("type", "button").withAttribute("data-archive-id", session.conversationId()).withInnerText("A")))));
+            .withChild(entry);
     }
 
     private String shortConversationLabel(String conversationId) {

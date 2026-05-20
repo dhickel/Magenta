@@ -71,6 +71,12 @@ API routes:
 
 The controller limits inline content/downloads to 10 MB. Download resolves the real path and rejects files outside the output service data root. Text, JSON, and user-message artifacts are returned inline when safe; other artifacts direct callers to download.
 
+## Ordinary Chat Files
+
+Ordinary `/chat` conversations also have persistent chat-scoped files under `chats/<conversationId>/files/`. These files are created by chat file tools and anonymous chat plan execution context. They are not `run_output_artifacts`, are not indexed in the output artifact table, and are not moved into agent/job output directories.
+
+`ChatFileService` lists regular files recursively from that directory, returns relative-path descriptors, derives simple format labels from extensions, and resolves downloads through real-path confinement. `/api/chat/sessions` exposes `outputCount` for the session card, while `/api/chat/{conversationId}/files` and `/api/chat/{conversationId}/files/download?path=...` power the chat page outputs panel.
+
 ## Tool Boundaries
 
 Tool services are chat-facing capabilities registered through `ChatToolRegistry`.
