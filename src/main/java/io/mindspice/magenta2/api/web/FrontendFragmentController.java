@@ -107,7 +107,9 @@ public class FrontendFragmentController {
                     .withChild(new HtmlTag("button").withAttribute("type", "button").withAttribute("data-archive-id", session.conversationId()).withInnerText("A"))));
         if (session.outputCount() > 0) {
             entry.withChild(new Div().withClass("chat-session-output-row")
-                .withInnerText("Outputs: " + session.outputCount()));
+                .withChild(new HtmlTag("span")
+                    .withClass("chat-session-output-badge")
+                    .withInnerText(session.outputCount() + " Outputs")));
         }
         return new HtmlTag("li").withClass("chat-session-item")
             .withChild(entry);

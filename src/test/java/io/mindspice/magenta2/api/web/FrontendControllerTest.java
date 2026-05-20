@@ -4,6 +4,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
+import io.mindspice.magenta2.ai.chat.model.ChatSession;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
 import org.junit.jupiter.api.Test;
 
@@ -20,7 +21,7 @@ class FrontendControllerTest {
         FrontendController controller = new FrontendController(stubChatService());
         String html = controller.home(null, null);
 
-        assertThat(html).contains("/css/magenta.css?v=2");
+        assertThat(html).contains("/css/magenta.css?v=3");
         assertThat(html).doesNotContain("/js/alpha-security.js?v=1");
         assertThat(html).contains("Magenta Portal");
         assertThat(html).contains("/chat");
@@ -37,14 +38,14 @@ class FrontendControllerTest {
 
         String html = controller.chat(null, null, null, null);
 
-        assertThat(html).contains("/css/magenta.css?v=2");
+        assertThat(html).contains("/css/magenta.css?v=3");
         assertThat(html).doesNotContain("/js/alpha-security.js?v=1");
         assertThat(html).contains("id=\"chat-token-usage\"");
         assertThat(html).contains("id=\"chat-plan-evidence\"");
         assertThat(html).contains("id=\"magenta-chat-module\"");
         assertThat(html).contains("data-sp-chat=\"true\"");
         assertThat(html).contains("/api/fragments/chat/transcript");
-        assertThat(html).contains("/js/chat-client.js?v=27");
+        assertThat(html).contains("/js/chat-client.js?v=28");
         assertThat(html).contains("id=\"chat-planning-panel\"");
         assertThat(html).contains("id=\"chat-session-files\"");
         assertThat(html).contains("class=\"chat-files-panel\"");
@@ -99,6 +100,9 @@ class FrontendControllerTest {
         assertThat(js).contains("function renderSessionFiles(listing)");
         assertThat(js).contains("/files/download?path=");
         assertThat(js).contains("chat-session-output-row");
+        assertThat(js).contains("chat-session-output-badge");
+        assertThat(js).contains(" Outputs</span>");
+        assertThat(js).doesNotContain("Outputs: ' + outputCount");
         assertThat(js).contains("outputCount");
         assertThat(js).contains("fileLoadConversationId");
         assertThat(js).contains("clearSessionFiles();");
@@ -122,6 +126,37 @@ class FrontendControllerTest {
         assertThat(js).contains("data-transient-assistant");
         assertThat(js).contains("function clearPlanningPanel()");
         assertThat(js).contains("clearPlanningPanel();");
+    }
+
+    @Test
+    void chatSessionFragmentRendersOutputCountBadge() {
+        ChatService service = new StubChatService() {
+            @Override
+            public List<ChatSession> listSessions() {
+                return List.of(new ChatSession("conversation-1234", "Output Chat", null, false, false, null, null, null, 3));
+            }
+        };
+        FrontendFragmentController controller = new FrontendFragmentController(service);
+
+        String html = controller.chatSessions();
+
+        assertThat(html).contains("chat-session-output-row");
+        assertThat(html).contains("chat-session-output-badge");
+        assertThat(html).contains("3 Outputs");
+        assertThat(html).doesNotContain("Outputs: 3");
+    }
+
+    @Test
+    void chatStylesUseFullWidthPageAndNormalizedGrid() throws Exception {
+        String css = Files.readString(Path.of("src/main/resources/static/css/magenta.css"));
+
+        assertThat(css).contains(".mag-page,\n.orch-page {");
+        assertThat(css).contains(".chat-page {\n    box-sizing: border-box;\n    width: 100%;\n    max-width: none;");
+        assertThat(css).contains("grid-template-columns: minmax(14rem, 25fr) minmax(32rem, 60fr) minmax(14rem, 25fr);");
+        assertThat(css).contains(".chat-sessions details {\n    border: 1px solid var(--mg-border);");
+        assertThat(css).contains("width: 100%;");
+        assertThat(css).contains(".chat-session-output-badge");
+        assertThat(css).contains("@media (max-width: 1180px)");
     }
 
     private static class StubChatService extends ChatService {

@@ -19,9 +19,16 @@ body {
 }
 
 .mag-page,
-.orch-page,
-.chat-page {
+.orch-page {
     max-width: 1320px;
+    margin: 0 auto;
+    padding: 1rem;
+}
+
+.chat-page {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: none;
     margin: 0 auto;
     padding: 1rem;
 }
@@ -328,17 +335,23 @@ body {
 
 .chat-layout {
     display: grid;
-    grid-template-columns: 17.5rem minmax(0, 1fr) minmax(17rem, 22rem);
+    grid-template-columns: minmax(14rem, 25fr) minmax(32rem, 60fr) minmax(14rem, 25fr);
     gap: 1rem;
     align-items: start;
     min-height: 72vh;
+}
+
+.chat-sessions {
+    min-width: 0;
+    width: 100%;
 }
 
 .chat-sessions details {
     border: 1px solid var(--mg-border);
     border-radius: 8px;
     background: #ffffff;
-    width: 17.5rem;
+    box-sizing: border-box;
+    width: 100%;
     overflow: hidden;
 }
 
@@ -460,9 +473,22 @@ body {
 }
 
 .chat-session-output-row {
-    font-size: 0.76rem;
-    color: #405066;
+    display: flex;
+    align-items: center;
     line-height: 1.2;
+}
+
+.chat-session-output-badge {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid #8ec69a;
+    border-radius: 999px;
+    background: #e7f6ea;
+    color: var(--mg-ok);
+    padding: 0.16rem 0.48rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    white-space: nowrap;
 }
 
 .chat-main {
@@ -471,6 +497,8 @@ body {
 
 .chat-files-panel {
     min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
     border: 1px solid var(--mg-border);
     border-radius: 8px;
     background: #ffffff;
@@ -983,11 +1011,12 @@ body {
     padding: 0.45rem 0.55rem;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1180px) {
     .chat-layout {
         grid-template-columns: 1fr;
     }
 
+    .chat-sessions,
     .chat-sessions details {
         width: 100%;
     }

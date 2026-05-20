@@ -542,7 +542,7 @@
             const escapedShortId = escapeHtml(shortId);
             const outputCount = sessionOutputCount(session);
             const outputsRow = outputCount > 0
-                ? '<div class="chat-session-output-row">Outputs: ' + outputCount.toLocaleString() + '</div>'
+                ? '<div class="chat-session-output-row"><span class="chat-session-output-badge">' + outputCount.toLocaleString() + ' Outputs</span></div>'
                 : '';
             const activeClass = id === activeId ? ' active' : '';
             const checked = selectedSessionIds.has(id) ? ' checked' : '';
