@@ -23,6 +23,7 @@ import io.mindspice.magenta2.ai.chat.model.ChatStreamEvent;
 import io.mindspice.magenta2.ai.chat.service.AuditService;
 import io.mindspice.magenta2.ai.execution.ActiveTurnRegistry;
 import io.mindspice.magenta2.ai.execution.ActiveTurnRegistry.ActiveTurn;
+import io.mindspice.magenta2.ai.execution.ActiveTurnRegistry.PlanExecutionConflictException;
 import io.mindspice.magenta2.ai.execution.InterruptResult;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -99,17 +100,27 @@ public class ChatController {
         @RequestBody(required = false) PlanExecuteRequest request
     ) {
         requireValidUuid(conversationId);
+        ActiveTurn activeTurn = null;
         try {
+            activeTurn = activeTurnRegistry.registerPlanExecution(conversationId);
             boolean clearContext = request != null && request.clearContext();
             ResolvedChatRequest resolvedRequest = chatService.resolveSavedPlanExecution(conversationId, clearContext);
-            return streamResolved(resolvedRequest, true);
+            return streamResolved(resolvedRequest, true, activeTurn);
+        } catch (PlanExecutionConflictException exception) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, exception.getMessage());
         } catch (IllegalArgumentException | IllegalStateException exception) {
+            if (activeTurn != null) {
+                activeTurnRegistry.complete(activeTurn.turnId());
+            }
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
     }
 
     private SseEmitter streamResolved(ResolvedChatRequest resolvedRequest, boolean planExecution) {
-        ActiveTurn activeTurn = activeTurnRegistry.register(resolvedRequest.conversationId());
+        return streamResolved(resolvedRequest, planExecution, activeTurnRegistry.register(resolvedRequest.conversationId()));
+    }
+
+    private SseEmitter streamResolved(ResolvedChatRequest resolvedRequest, boolean planExecution, ActiveTurn activeTurn) {
         SseEmitter emitter = SseStreamLifecycle.createEmitter(
             planExecution ? planExecutionStreamTimeoutMillis : 0L
         );
@@ -150,6 +161,7 @@ public class ChatController {
                 )
             );
         } catch (Exception e) {
+            activeTurnRegistry.complete(activeTurn.turnId());
             emitter.completeWithError(e);
             return emitter;
         }
@@ -439,7 +451,9 @@ public class ChatController {
         @RequestBody(required = false) PlanExecuteRequest request
     ) {
         requireValidUuid(conversationId);
+        ActiveTurn activeTurn = null;
         try {
+            activeTurn = activeTurnRegistry.registerPlanExecution(conversationId);
             ChatResponse.MsgResponse response = chatService.executeSavedPlan(
                 conversationId,
                 request != null && request.clearContext()
@@ -454,8 +468,14 @@ public class ChatController {
                 chatService.planState(conversationId),
                 response.toolActivities()
             );
+        } catch (PlanExecutionConflictException exception) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, exception.getMessage());
         } catch (IllegalArgumentException | IllegalStateException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        } finally {
+            if (activeTurn != null) {
+                activeTurnRegistry.complete(activeTurn.turnId());
+            }
         }
     }
 

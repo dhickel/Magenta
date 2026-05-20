@@ -14,6 +14,7 @@ import io.mindspice.magenta2.ai.chat.model.ChatResponse;
 import io.mindspice.magenta2.ai.chat.model.ChatSession;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.chat.service.ResolvedChatRequest;
+import io.mindspice.magenta2.ai.execution.ActiveTurnRegistry;
 import io.mindspice.magenta2.ai.execution.ActiveTurnRegistry.ActiveTurn;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -234,10 +235,42 @@ class ChatControllerTest {
     }
 
     @Test
+    void executePlanRejectsOverlappingExecutionForSameConversation() {
+        chatService.savedPlan = true;
+        ActiveTurnRegistry turnRegistry = new ActiveTurnRegistry();
+        ActiveTurn activeTurn = turnRegistry.registerPlanExecution(CONVERSATION_ID);
+        ChatController controller = new ChatController(chatService, turnRegistry);
+
+        assertThatThrownBy(() -> controller.executePlan(CONVERSATION_ID))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+                assertThat(exception.getReason()).contains("Plan execution already active");
+            });
+        assertThat(chatService.executed).isFalse();
+
+        turnRegistry.complete(activeTurn.turnId());
+    }
+
+    @Test
     void streamPlanExecutionBindsApprovedAnonymousPlan() {
         SseEmitter emitter = chatController.streamPlanExecution(CONVERSATION_ID, null);
 
         assertThat(emitter).isNotNull();
+    }
+
+    @Test
+    void streamPlanExecutionRejectsOverlappingExecutionForSameConversationBeforeResolving() {
+        ActiveTurnRegistry turnRegistry = new ActiveTurnRegistry();
+        ActiveTurn activeTurn = turnRegistry.registerPlanExecution(CONVERSATION_ID);
+        ChatController controller = new ChatController(chatService, turnRegistry);
+
+        assertThatThrownBy(() -> controller.streamPlanExecution(CONVERSATION_ID, null))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+                assertThat(exception.getReason()).contains("Plan execution already active");
+            });
+
+        turnRegistry.complete(activeTurn.turnId());
     }
 
     @Test

@@ -49,6 +49,10 @@ Anonymous execution installs a chat-scoped file context when there is no assignm
 
 Anonymous execution completion is gated by `plan_complete`. `PlanCompletionService` records the latest execution report, checks per-criterion evidence coverage, asks the configured validator model to compare the approved plan, evidence, artifact contents, and proposed final message, and stores durable validation feedback. On pass, the plan becomes `COMPLETED` and the stored final message is the only trusted user-facing completion. On failure, remediation stays in the execution tool loop; if the model exhausts completion repair without a validator-passed `plan_complete`, `ChatService` marks the plan `NEEDS_REVIEW` and persists a controlled review message instead of ordinary assistant text.
 
+Anonymous execution is single-flight per conversation. `ActiveTurnRegistry` rejects a second saved-plan execution request for the same conversation while an execution turn is active, and the `/api/chat/{conversationId}/plan/execute` and `/api/chat/{conversationId}/plan/execute/stream` routes return `409 Conflict` before marking the plan executing.
+
+Tool-call argument JSON is preflight validated before Spring AI tool execution. If any tool call in a model batch has malformed argument JSON, none of the tools in that batch execute. Magenta persists and streams compact synthetic tool diagnostics, records audit detail for the rejected calls, adds a system control message telling the model which call failed parsing, and continues the tool loop so the model can retry. These recovered parser failures do not directly update plan status, execution evidence, or validation feedback.
+
 `NEEDS_REVIEW` is an execution-review state, not draft planning. `PlanService.mode(...)` resolves it as `NORMAL` while `ChatPlanState.status` remains `NEEDS_REVIEW`, so clients can show evidence and validation feedback without reinstalling PLAN-mode prompts, tools, or planning controls.
 
 ## Saved Plan Chat

@@ -4,6 +4,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.chat.model.ChatSession;
@@ -14,6 +16,8 @@ import io.mindspice.magenta2.ai.chat.repository.ChatMemoryRepository;
 import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
 import io.mindspice.magenta2.ai.chat.repository.RepositoryBackedChatMemory;
 import io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer;
+import io.mindspice.magenta2.ai.chat.tool.ChatToolRegistry;
+import io.mindspice.magenta2.ai.chat.tool.ToolTranscriptService;
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.ai.config.user.EndpointType;
@@ -21,12 +25,26 @@ import io.mindspice.magenta2.ai.config.user.ModelConfig;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.content.MediaContent;
+import org.springframework.ai.model.tool.ToolCallingChatOptions;
+import org.springframework.ai.model.tool.ToolCallingManager;
+import org.springframework.ai.ollama.api.OllamaChatOptions;
+import org.springframework.ai.tokenizer.TokenCountEstimator;
+import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.definition.DefaultToolDefinition;
+import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 class ChatServiceTest {
 
@@ -280,6 +298,63 @@ class ChatServiceTest {
             .isEqualTo(1);
     }
 
+    @Test
+    void malformedToolCallArgumentsAreReportedWithoutExecutingTools() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        ChatSessionMetadataRepository metadataRepository = new ChatSessionMetadataRepository(jdbcTemplate);
+        ToolTranscriptService transcriptService = new ToolTranscriptService(objectMapper);
+        ContextUsageTracker usageTracker = new ContextUsageTracker();
+        MalformedThenFinalChatModel chatModel = new MalformedThenFinalChatModel();
+        ToolCallingManager toolCallingManager = mock(ToolCallingManager.class);
+        ChatToolRegistry toolRegistry = new ChatToolRegistry(List.of(new SampleToolCallback()), List.of());
+        ChatModelRouter router = new TestChatModelRouter(chatModel);
+        AiConfig config = aiConfig(Path.of("."), List.of("sample_tool"));
+        ContextManagementAdvisor contextAdvisor = new ContextManagementAdvisor(
+            memoryRepository,
+            config,
+            router,
+            new CharacterTokenEstimator(),
+            usageTracker,
+            transcriptService,
+            null
+        );
+        ChatService chatService = new ChatService(
+            new RepositoryBackedChatMemory(memoryRepository),
+            memoryRepository,
+            metadataRepository,
+            new ChatMarkdownRenderer(),
+            config,
+            contextAdvisor,
+            usageTracker,
+            router,
+            toolCallingManager,
+            toolRegistry,
+            transcriptService,
+            null
+        );
+
+        var response = chatService.chat("conversation-1", "use the tool", "main");
+
+        assertThat(response.response()).isEqualTo("Recovered after diagnostic.");
+        assertThat(chatModel.prompts()).hasSize(2);
+        assertThat(chatModel.prompts().get(1)).contains("malformed JSON arguments");
+        assertThat(memoryRepository.findByConversationId("conversation-1"))
+            .extracting(Message::getText)
+            .anySatisfy(text -> assertThat(text).contains("Malformed tool-call arguments"))
+            .anySatisfy(text -> assertThat(text).contains("no tools in that batch were executed"))
+            .contains("Recovered after diagnostic.");
+        assertThat(response.toolActivities())
+            .singleElement()
+            .satisfies(activity -> {
+                assertThat(activity.toolName()).isEqualTo("sample_tool");
+                assertThat(activity.status()).isEqualTo("error");
+                assertThat(activity.summary()).contains("Malformed tool-call arguments");
+            });
+        verifyNoInteractions(toolCallingManager);
+    }
+
     private JdbcTemplate jdbcTemplate() {
         SingleConnectionDataSource dataSource = new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true);
         return new JdbcTemplate(dataSource);
@@ -290,6 +365,10 @@ class ChatServiceTest {
     }
 
     private AiConfig aiConfig(Path dataRoot) {
+        return aiConfig(dataRoot, List.of());
+    }
+
+    private AiConfig aiConfig(Path dataRoot, List<String> approvedTools) {
         return new AiConfig(
             "default-agent",
             "main",
@@ -300,7 +379,103 @@ class ChatServiceTest {
             dataRoot,
             null,
             Map.of("main", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 8192, null, null)),
-            Map.of("default-agent", new AgentConfig("main", "You are Magenta.", List.of()))
+            Map.of("default-agent", new AgentConfig("main", "You are Magenta.", approvedTools))
         );
+    }
+
+    private static final class MalformedThenFinalChatModel implements ChatModel {
+        private final AtomicInteger calls = new AtomicInteger();
+        private final List<String> prompts = new java.util.ArrayList<>();
+
+        @Override
+        public org.springframework.ai.chat.model.ChatResponse call(Prompt prompt) {
+            prompts.add(prompt.getInstructions().stream()
+                .map(Message::getText)
+                .collect(Collectors.joining("\n")));
+            if (calls.getAndIncrement() == 0) {
+                AssistantMessage toolCallMessage = AssistantMessage.builder()
+                    .content("")
+                    .toolCalls(List.of(new AssistantMessage.ToolCall(
+                        "call-1",
+                        "function",
+                        "sample_tool",
+                        "{\"path\":"
+                    )))
+                    .build();
+                return new org.springframework.ai.chat.model.ChatResponse(List.of(new Generation(toolCallMessage)));
+            }
+            return new org.springframework.ai.chat.model.ChatResponse(List.of(
+                new Generation(new AssistantMessage("Recovered after diagnostic."))
+            ));
+        }
+
+        List<String> prompts() {
+            return prompts;
+        }
+    }
+
+    private static final class TestChatModelRouter extends ChatModelRouter {
+        private final ChatModel chatModel;
+
+        TestChatModelRouter(ChatModel chatModel) {
+            super(null, null, null);
+            this.chatModel = chatModel;
+        }
+
+        @Override
+        public ChatModel chatModel(String model) {
+            return chatModel;
+        }
+
+        @Override
+        public ToolCallingChatOptions toolCallingOptions(String model) {
+            return OllamaChatOptions.builder().model("qwen3").build();
+        }
+
+        @Override
+        public ToolCallingChatOptions chatOptions(String model) {
+            return toolCallingOptions(model);
+        }
+    }
+
+    private static final class SampleToolCallback implements ToolCallback {
+        private final ToolDefinition definition = new DefaultToolDefinition(
+            "sample_tool",
+            "Sample test tool",
+            "{\"type\":\"object\"}"
+        );
+
+        @Override
+        public ToolDefinition getToolDefinition() {
+            return definition;
+        }
+
+        @Override
+        public String call(String toolInput) {
+            return "{\"ok\":true}";
+        }
+    }
+
+    private static final class CharacterTokenEstimator implements TokenCountEstimator {
+        @Override
+        public int estimate(String text) {
+            return text == null ? 0 : text.length();
+        }
+
+        @Override
+        public int estimate(MediaContent content) {
+            return content == null ? 0 : estimate(content.getText());
+        }
+
+        @Override
+        public int estimate(Iterable<MediaContent> contents) {
+            int total = 0;
+            if (contents != null) {
+                for (MediaContent content : contents) {
+                    total += estimate(content);
+                }
+            }
+            return total;
+        }
     }
 }

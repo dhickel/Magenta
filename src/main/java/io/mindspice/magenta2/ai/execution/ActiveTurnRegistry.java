@@ -16,10 +16,23 @@ import org.springframework.util.StringUtils;
 public class ActiveTurnRegistry {
     private final SecureRandom secureRandom = new SecureRandom();
     private final Map<String, ActiveTurn> activeTurns = new ConcurrentHashMap<>();
+    private final Map<String, String> activePlanExecutionsByConversationId = new ConcurrentHashMap<>();
 
     public ActiveTurn register(String conversationId) {
         String turnId = UUID.randomUUID().toString();
         ActiveTurn turn = new ActiveTurn(turnId, token(), conversationId);
+        activeTurns.put(turnId, turn);
+        return turn;
+    }
+
+    public ActiveTurn registerPlanExecution(String conversationId) {
+        String normalizedConversationId = normalizeConversationId(conversationId);
+        String turnId = UUID.randomUUID().toString();
+        ActiveTurn turn = new ActiveTurn(turnId, token(), normalizedConversationId);
+        String existingTurnId = activePlanExecutionsByConversationId.putIfAbsent(normalizedConversationId, turnId);
+        if (existingTurnId != null) {
+            throw new PlanExecutionConflictException(normalizedConversationId);
+        }
         activeTurns.put(turnId, turn);
         return turn;
     }
@@ -31,6 +44,7 @@ public class ActiveTurnRegistry {
     public void complete(String turnId) {
         if (StringUtils.hasText(turnId)) {
             activeTurns.remove(turnId);
+            activePlanExecutionsByConversationId.values().remove(turnId);
         }
     }
 
@@ -52,6 +66,19 @@ public class ActiveTurnRegistry {
         byte[] bytes = new byte[24];
         secureRandom.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    private String normalizeConversationId(String conversationId) {
+        if (!StringUtils.hasText(conversationId)) {
+            throw new IllegalArgumentException("conversationId is required");
+        }
+        return conversationId.trim();
+    }
+
+    public static final class PlanExecutionConflictException extends RuntimeException {
+        private PlanExecutionConflictException(String conversationId) {
+            super("Plan execution already active for conversation: " + conversationId);
+        }
     }
 
     public static final class ActiveTurn {

@@ -61,6 +61,33 @@ public class ToolTranscriptService {
         return entry;
     }
 
+    public ToolTranscriptEntry malformedArgumentsEntry(
+        String toolCallId,
+        String toolName,
+        String argumentsJson,
+        String parserMessage
+    ) {
+        String detail = "Tool was not executed because its arguments were not valid JSON.";
+        if (StringUtils.hasText(parserMessage)) {
+            detail += " Parser message: " + parserMessage.trim();
+        }
+        return new ToolTranscriptEntry(
+            UUID.randomUUID().toString(),
+            valueOrGenerated(toolCallId),
+            toolName,
+            summarizeArguments(argumentsJson),
+            storedArgumentText(argumentsJson),
+            "Malformed tool-call arguments; tool was not executed.",
+            preview(argumentsJson),
+            preview(detail),
+            storedResultText(detail),
+            "error",
+            Instant.now().toString(),
+            false,
+            false
+        );
+    }
+
     public SystemMessage message(ToolTranscriptEntry entry) {
         return new SystemMessage(FULL_PREFIX + serialize(entry));
     }

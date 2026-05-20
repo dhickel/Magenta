@@ -259,7 +259,7 @@ public class ChatService {
         this.agentJobService = agentJobService;
         this.turnCoordinator = turnCoordinator;
         this.auditRepository = auditRepository;
-        this.objectMapper = objectMapper;
+        this.objectMapper = objectMapper == null ? new ObjectMapper() : objectMapper;
         this.runtimeSettingsService = runtimeSettingsService;
         this.auditService = auditService;
         this.requestResolver = requestResolver;
@@ -1223,6 +1223,12 @@ public class ChatService {
             return;
         }
 
+        List<MalformedToolCall> malformedToolCalls = malformedToolCalls(s.response);
+        if (!malformedToolCalls.isEmpty()) {
+            handleMalformedToolCallArguments(s, malformedToolCalls);
+            return;
+        }
+
         phase(s.activeTurn, ActiveTurnPhase.TOOL_CALL);
         int promptMessageCount = s.prompt.getInstructions().size();
         ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(s.prompt, s.response);
@@ -1317,6 +1323,69 @@ public class ChatService {
             s.planCompletionDetected = true;
             s.phase = TurnPhase.EVALUATE;
             return;
+        }
+
+        s.phase = TurnPhase.INVOKE_MODEL;
+    }
+
+    private void handleMalformedToolCallArguments(ToolLoopState s, List<MalformedToolCall> malformedToolCalls) {
+        logger.warn(
+            "Rejected malformed tool-call arguments conv={} malformedCount={}",
+            s.request.conversationId(),
+            malformedToolCalls.size()
+        );
+
+        List<ChatMessage> pendingToolMessages = new ArrayList<>();
+        for (MalformedToolCall malformedToolCall : malformedToolCalls) {
+            ToolTranscriptEntry entry = toolTranscriptService.malformedArgumentsEntry(
+                malformedToolCall.id(),
+                malformedToolCall.name(),
+                malformedToolCall.arguments(),
+                malformedToolCall.parserMessage()
+            );
+            Message transcriptMessage = toolTranscriptService.message(entry);
+            s.messagesToPersist.add(transcriptMessage);
+            s.activeToolMessages.add(transcriptMessage);
+            ChatMessage toolMessage = toolMessage(transcriptMessage);
+            if (toolMessage.toolActivity() != null) {
+                s.toolActivities.add(toolMessage.toolActivity());
+            }
+            pendingToolMessages.add(toolMessage);
+            turnAuditWriter.recordToolExec(entry, s.request.conversationId(), s.request.model());
+        }
+
+        SystemMessage controlMessage = malformedToolCallControlMessage(malformedToolCalls);
+        s.messagesToPersist.add(controlMessage);
+        s.activeToolMessages.add(controlMessage);
+
+        ContextManagementAdvisor.ToolLoopPrompt checkpoint = contextManagementAdvisor.prepareToolLoopPrompt(
+            s.request.conversationId(), s.activeToolMessages,
+            s.currentSystemInstructions, s.request.model(), s.request.omitStoredMessages());
+        s.activeToolMessages = new ArrayList<>(checkpoint.activeMessages());
+        s.conversationHistory = new ArrayList<>(checkpoint.messages());
+        s.prompt = new Prompt(s.conversationHistory, s.toolOptions);
+
+        if (checkpoint.compacted() && !s.compactionNoticeEmitted) {
+            s.compactionNoticeEmitted = true;
+            if (!hasCompactionNotice(s.request.conversationId())) {
+                s.messagesToPersist.add(compactionNoticeMessage());
+            }
+            if (s.toolMessageConsumer != null) {
+                s.toolMessageConsumer.accept(systemMessage(ContextManagementAdvisor.COMPACTION_NOTICE));
+            }
+        }
+
+        if (!checkpoint.toolUseAllowed()) {
+            s.toolUseAbort = new ToolUseAbort(
+                "Context is too large to safely continue tool use after compaction.");
+            s.phase = TurnPhase.EVALUATE;
+            return;
+        }
+
+        turnAuditWriter.recordContextUsage(s.request.conversationId(), checkpoint.usage(), s.request.model());
+
+        if (s.toolMessageConsumer != null) {
+            pendingToolMessages.forEach(s.toolMessageConsumer);
         }
 
         s.phase = TurnPhase.INVOKE_MODEL;
@@ -1576,6 +1645,62 @@ public class ChatService {
 
     private SystemMessage invalidExecutionCompletionControlMessage(PlanMode mode) {
         return turnRepair.invalidExecutionCompletionControlMessage(mode);
+    }
+
+    private List<MalformedToolCall> malformedToolCalls(org.springframework.ai.chat.model.ChatResponse response) {
+        if (response == null || response.getResult() == null || response.getResult().getOutput() == null) {
+            return List.of();
+        }
+        List<MalformedToolCall> malformed = new ArrayList<>();
+        List<AssistantMessage.ToolCall> toolCalls = response.getResult().getOutput().getToolCalls();
+        for (AssistantMessage.ToolCall toolCall : toolCalls == null ? List.<AssistantMessage.ToolCall>of() : toolCalls) {
+            String arguments = toolCall.arguments();
+            if (!StringUtils.hasText(arguments)) {
+                malformed.add(new MalformedToolCall(
+                    toolCall.id(),
+                    toolCall.name(),
+                    arguments,
+                    "No argument JSON was provided."
+                ));
+                continue;
+            }
+            try {
+                objectMapper.readTree(arguments);
+            } catch (JsonProcessingException exception) {
+                malformed.add(new MalformedToolCall(
+                    toolCall.id(),
+                    toolCall.name(),
+                    arguments,
+                    exception.getOriginalMessage()
+                ));
+            }
+        }
+        return malformed;
+    }
+
+    private SystemMessage malformedToolCallControlMessage(List<MalformedToolCall> malformedToolCalls) {
+        String details = malformedToolCalls.stream()
+            .map(call -> "tool=" + valueOrUnknown(call.name())
+                + ", callId=" + valueOrUnknown(call.id())
+                + ", parser=" + compactParserMessage(call.parserMessage()))
+            .collect(java.util.stream.Collectors.joining("; "));
+        return new SystemMessage(
+            "One or more tool calls had malformed JSON arguments, so no tools in that batch were executed. "
+                + "Bad call details: " + details + ". "
+                + "Retry with valid JSON object arguments or choose the next action."
+        );
+    }
+
+    private String valueOrUnknown(String value) {
+        return StringUtils.hasText(value) ? value.trim() : "unknown";
+    }
+
+    private String compactParserMessage(String message) {
+        if (!StringUtils.hasText(message)) {
+            return "invalid JSON";
+        }
+        String compact = message.replaceAll("\\s+", " ").trim();
+        return compact.length() > 240 ? compact.substring(0, 240) + " [truncated]" : compact;
     }
 
     private List<ToolTranscriptEntry> toolTranscriptEntries(
@@ -1862,6 +1987,9 @@ public class ChatService {
     }
 
     private record ToolChatResult(ChatResponse.MsgResponse response, ChatMessage finalMessage) {
+    }
+
+    private record MalformedToolCall(String id, String name, String arguments, String parserMessage) {
     }
 
     private static final class ToolLoopState {
