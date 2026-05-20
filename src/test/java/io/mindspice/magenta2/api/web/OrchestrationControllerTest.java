@@ -15,6 +15,8 @@ import io.mindspice.magenta2.ai.chat.plan.PlanDefinition;
 import io.mindspice.magenta2.ai.chat.plan.PlanKind;
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
 import io.mindspice.magenta2.ai.chat.plan.PlanStatus;
+import io.mindspice.magenta2.ai.chat.plan.PlanChatRepository;
+import io.mindspice.magenta2.ai.chat.plan.SavedPlanChatService;
 import io.mindspice.magenta2.ai.chat.plan.WorkTypeProfile;
 import io.mindspice.magenta2.ai.chat.repository.AuditRepository;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
@@ -83,6 +85,11 @@ class OrchestrationControllerTest {
             @Override public T getObject() { return instance; }
             @Override public T getIfAvailable() { return instance; }
         };
+    }
+
+    private static JdbcTemplate jdbcTemplate() {
+        var dataSource = new SingleConnectionDataSource("jdbc:sqlite::memory:", true);
+        return new JdbcTemplate(dataSource);
     }
 
     private static OrchestrationController controller() {
@@ -311,13 +318,14 @@ class OrchestrationControllerTest {
 
         // Title is "Plans" (not "Plans & Tasks")
         assertThat(html).contains("Plans");
-        assertThat(html).contains("/js/orchestration/plans.js?v=3");
+        assertThat(html).contains("/js/orchestration/plans.js?v=4");
 
         // HTMX containers for plan list
         assertThat(html).contains("hx-get=\"/plans/_list\"");
-        assertThat(html).contains("hx-post=\"/plans/_editor/_draft\"");
+        assertThat(html).contains("hx-get=\"/plans/_editor/_name-modal?mode=editor\"");
         assertThat(html).contains("New Plan Chat");
-        assertThat(html).contains("hx-post=\"/plans/_editor/_planning-chat\"");
+        assertThat(html).contains("hx-get=\"/plans/_editor/_name-modal?mode=chat\"");
+        assertThat(html).contains("plan-modal-container");
 
         // No Run button, No Run panel, No run-plan
         assertThat(html).doesNotContain("run-plan");
@@ -380,6 +388,47 @@ class OrchestrationControllerTest {
     }
 
     @Test
+    void planNameModalRendersEditorAndChatTargets() {
+        OrchestrationController ctrl = controller();
+
+        String editorHtml = ctrl.planNameModal("editor");
+        String chatHtml = ctrl.planNameModal("chat");
+
+        assertThat(editorHtml).contains("plan-name-modal");
+        assertThat(editorHtml).contains("hx-post=\"/plans/_editor/_draft\"");
+        assertThat(editorHtml).contains("new-plan-title");
+        assertThat(chatHtml).contains("hx-post=\"/plans/_editor/_planning-chat\"");
+        assertThat(chatHtml).contains("Create Chat");
+    }
+
+    @Test
+    void namedDraftCreationOpensEditorTab() {
+        String html = controller().createDraftPlanEditor("Named Draft");
+
+        assertThat(html).contains("hx-swap-oob=\"innerHTML\"");
+        assertThat(html).contains("value=\"Named Draft\"");
+        assertThat(html).contains("data-plan-tab=\"editor\"");
+        assertThat(html).contains("aria-selected=\"true\"");
+    }
+
+    @Test
+    void namedPlanChatCreationOpensChatTabWithChatModuleStructure() {
+        StubPlanService planService = new StubPlanService();
+        OrchestrationController ctrl = controllerWithSavedPlanChat(planService);
+
+        String html = ctrl.createPlanChatEditor("Interview Draft");
+
+        assertThat(html).contains("value=\"Interview Draft\"");
+        assertThat(html).contains("data-plan-tab=\"chat\"");
+        assertThat(html).contains("aria-selected=\"true\"");
+        assertThat(html).contains("chat-module-shell");
+        assertThat(html).contains("data-sp-chat-conversation-id=\"plan:");
+        assertThat(html).contains("plan-chat-history");
+        assertThat(html).contains("What is the goal?");
+        assertThat(html).doesNotContain("chat-sessions");
+    }
+
+    @Test
     void planEditorFragmentForExistingPlanRendersAllSections() {
         String planId = "plan-abc";
         String html = controller().planEditor(planId);
@@ -402,7 +451,8 @@ class OrchestrationControllerTest {
         assertThat(html).contains("Save");
         assertThat(html).contains("Finalize Task");
         assertThat(html).contains("Submit to Agent");
-        assertThat(html).contains("Saved Plan Chat");
+        assertThat(html).contains("Editing Details");
+        assertThat(html).contains("Planning Chat");
         assertThat(html).contains("/plans/_editor/" + planId + "/planning-chat/start");
 
         // Has Advanced section (collapsible)
@@ -2134,6 +2184,15 @@ class OrchestrationControllerTest {
         );
     }
 
+    private OrchestrationController controllerWithSavedPlanChat(StubPlanService planService) {
+        OrchestrationController controller = controllerWithPlanService(planService);
+        controller.setSavedPlanChatServiceForTesting(new SavedPlanChatService(
+            planService,
+            new PlanChatRepository(jdbcTemplate())
+        ));
+        return controller;
+    }
+
     private OrchestrationController controllerWithAssignmentService(AssignmentService assignmentService) {
         return new OrchestrationController(
             new StubChatService(),
@@ -2363,8 +2422,16 @@ class OrchestrationControllerTest {
         }
 
         @Override public PlanDefinition saveTask(PlanDefinition task) {
-            this.storedPlan = task;
-            return task;
+            PlanDefinition saved = task.id() != null ? task : new PlanDefinition(
+                "saved-plan", task.kind(), task.status(), task.title(), task.summary(), task.goal(), task.notes(),
+                task.deliverables(), task.inputs(), task.outputs(), task.assumptions(), task.steps(),
+                task.validationCriteria(), task.executionEvidence(), task.validationFeedback(), task.promptProfile(),
+                task.planningModel(), task.executionModel(), task.settingsOverrideJson(), task.planningTask(),
+                task.pendingQuestions(), task.pendingQuestionIndex(), task.planStartMessageOrder(), task.finalMessage(),
+                task.conversationId(), task.createdAt(), task.updatedAt()
+            );
+            this.storedPlan = saved;
+            return saved;
         }
     }
 

@@ -1087,6 +1087,86 @@
     margin-bottom: 0.85rem;
 }
 
+.plan-tab-panel.is-hidden {
+    display: none;
+}
+
+.plan-editor-tabs {
+    border-bottom: 1px solid #dde5ef;
+    padding-bottom: 0.45rem;
+}
+
+#plan-advanced details {
+    width: 100%;
+    border: 1px solid #c9d3df;
+    border-radius: 8px;
+    background: #f8fafc;
+}
+
+#plan-advanced summary {
+    cursor: pointer;
+    padding: 0.65rem 0.75rem;
+    font-weight: 700;
+    color: #315d91;
+}
+
+#plan-advanced details > .orch-form-grid,
+#plan-advanced details > .orch-form-stack {
+    padding: 0 0.75rem 0.75rem;
+}
+
+.plan-saved-chat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+}
+
+.plan-saved-chat .chat-module,
+.plan-saved-chat .chat-module-shell,
+.plan-saved-chat .chat-module-transcript-region,
+.plan-saved-chat .chat-module-composer-region {
+    display: contents;
+}
+
+#plan-chat-history {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    min-height: 18rem;
+    max-height: 58vh;
+    overflow: auto;
+    border: 1px solid #d9e0ea;
+    border-radius: 8px;
+    background: #ffffff;
+    padding: 1rem;
+}
+
+#plan-chat-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.55rem;
+    align-items: end;
+}
+
+#plan-chat-prompt {
+    grid-column: 1 / -1;
+    color: #42526a;
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+#plan-chat-input {
+    min-height: 6rem;
+}
+
+#plan-modal-container:empty {
+    display: none;
+}
+
+#new-plan-title {
+    min-width: min(24rem, 100%);
+}
+
 .plan-continue-row {
     border-top: 1px solid #dde5ef;
     padding-top: 0.65rem;

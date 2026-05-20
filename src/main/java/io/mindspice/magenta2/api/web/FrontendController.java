@@ -9,20 +9,16 @@ import io.mindspice.simplypages.components.Div;
 import io.mindspice.simplypages.components.Header;
 import io.mindspice.simplypages.components.Paragraph;
 import io.mindspice.simplypages.components.TextNode;
-import io.mindspice.simplypages.components.chat.ChatTransportMode;
-import io.mindspice.simplypages.components.chat.ChatUiConfig;
 import io.mindspice.simplypages.components.display.Card;
 import io.mindspice.simplypages.components.forms.Button;
 import io.mindspice.simplypages.components.forms.Form;
 import io.mindspice.simplypages.components.forms.Select;
-import io.mindspice.simplypages.components.forms.TextArea;
 import io.mindspice.simplypages.components.navigation.Link;
 import io.mindspice.simplypages.core.Component;
 import io.mindspice.simplypages.core.HtmlTag;
 import io.mindspice.simplypages.layout.Column;
 import io.mindspice.simplypages.layout.Page;
 import io.mindspice.simplypages.layout.Row;
-import io.mindspice.simplypages.modules.ChatModule;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -110,32 +106,10 @@ public class FrontendController {
                 .withChild(new Div().withClass("chat-main")
                     .withChild(chatToolbar())
                     .withChild(planStatus())
-                    .withChild(chatModule())
+                    .withChild(ChatModuleRenderer.sessionChatModule())
                     .withChild(tokenUsage())))
             .withChild(new Div().withId("chat-error").withAttribute("role", "status").withAttribute("aria-live", "polite"));
         return chatShell.renderWithContent(chatContent);
-    }
-
-    private Component chatModule() {
-        return ChatModule.create()
-            .withModuleId("magenta-chat-module")
-            .withTranscript(new Div().withId("chat-history"))
-            .withComposer(new Div()
-                .withChild(new Div().withId("chat-planning-panel").withAttribute("aria-live", "polite"))
-                .withChild(Form.create().withId("chat-form")
-                    .withChild(TextArea.create("message").withId("chat-input").withRows(6)
-                        .withPlaceholder("Type a message (Enter to send, Shift+Enter newline)")
-                        .withAttribute("autocomplete", "off"))
-                    .withChild(Button.submit("Send"))))
-            .withUiConfig(new ChatUiConfig(
-                "new",
-                ChatTransportMode.SSE,
-                "/api/fragments/chat/transcript",
-                "/api/chat/stream",
-                "#chat-history",
-                "outerHTML",
-                null
-            ));
     }
 
     private Component sessionSidebar() {

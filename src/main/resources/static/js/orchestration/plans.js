@@ -1,4 +1,4 @@
-// plans.js — v3 HTMX-first plan editing.
+// plans.js — v4 HTMX-first plan editing.
 // All plan CRUD, field add/remove, list editing, submit-to-agent, and
 // continue-in-chat are handled via HTMX endpoints.
 //
@@ -25,14 +25,101 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     autosizeAll();
+    let editorDirty = false;
+
+    function markClean() {
+        editorDirty = false;
+        page.dataset.editorDirty = "false";
+    }
+
+    function markDirty(target) {
+        if (!target || !target.closest("[data-plan-tab-panel='editor']")) {
+            return;
+        }
+        editorDirty = true;
+        page.dataset.editorDirty = "true";
+    }
+
+    function requestWillReplaceEditor(requestTarget) {
+        if (!requestTarget) {
+            return false;
+        }
+        if (requestTarget.matches("#plan-editor-container")) {
+            return true;
+        }
+        return Boolean(requestTarget.closest("#plan-editor-container"));
+    }
+
+    function shouldBypassDirtyGuard(trigger) {
+        if (!trigger) {
+            return false;
+        }
+        if (trigger.closest("#plan-editor-container form")) {
+            return true;
+        }
+        return trigger.closest("#plan-modal-container") !== null;
+    }
+
+    function setActiveTab(tabName) {
+        page.querySelectorAll("[data-plan-tab]").forEach((button) => {
+            const active = button.dataset.planTab === tabName;
+            button.classList.toggle("active", active);
+            button.setAttribute("aria-selected", active ? "true" : "false");
+        });
+        page.querySelectorAll("[data-plan-tab-panel]").forEach((panel) => {
+            panel.classList.toggle("is-hidden", panel.dataset.planTabPanel !== tabName);
+        });
+        autosizeAll();
+    }
 
     page.addEventListener("input", (event) => {
         autosizeTextarea(event.target);
+        markDirty(event.target);
+    });
+
+    page.addEventListener("click", (event) => {
+        const tab = event.target.closest("[data-plan-tab]");
+        if (!tab) {
+            return;
+        }
+        if (tab.hasAttribute("hx-get") || tab.hasAttribute("hx-post")) {
+            return;
+        }
+        event.preventDefault();
+        setActiveTab(tab.dataset.planTab);
+    });
+
+    document.body.addEventListener("htmx:beforeRequest", (event) => {
+        if (!page.contains(event.detail.elt) || !editorDirty) {
+            return;
+        }
+        const target = event.detail.target;
+        if (!requestWillReplaceEditor(target) || shouldBypassDirtyGuard(event.detail.elt)) {
+            return;
+        }
+        const confirmed = window.confirm("You have unsaved plan edits. Continue without saving?");
+        if (!confirmed) {
+            event.preventDefault();
+        } else {
+            markClean();
+        }
     });
 
     document.body.addEventListener("htmx:afterSwap", (event) => {
         if (!page.contains(event.target)) {
             return;
+        }
+        if (event.target.id === "plan-editor-container") {
+            markClean();
+        }
+        if (event.target.id === "plan-editor-container" || event.target.id === "plan-modal-container") {
+            const modal = document.getElementById("plan-name-modal");
+            if (!modal && event.target.id === "plan-editor-container") {
+                const modalContainer = document.getElementById("plan-modal-container");
+                if (modalContainer) {
+                    modalContainer.innerHTML = "";
+                }
+            }
         }
         window.requestAnimationFrame(() => autosizeAll(event.target));
     });

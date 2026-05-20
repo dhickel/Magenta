@@ -86,6 +86,7 @@ import io.mindspice.simplypages.components.Div;
 import io.mindspice.simplypages.components.Header;
 import io.mindspice.simplypages.components.Paragraph;
 import io.mindspice.simplypages.components.TextNode;
+import io.mindspice.simplypages.components.display.Modal;
 import io.mindspice.simplypages.components.display.Table;
 import io.mindspice.simplypages.components.forms.Button;
 import io.mindspice.simplypages.components.forms.Form;
@@ -120,7 +121,7 @@ public class OrchestrationController {
     private static final String DASHBOARD_JS = "/js/orchestration/dashboard.js?v=5";
     private static final String AGENTS_JS = "/js/orchestration/agents.js?v=1";
     private static final String AGENT_CHAT_JS = "/js/orchestration/agent-chat.js?v=2";
-    private static final String PLANS_JS = "/js/orchestration/plans.js?v=3";
+    private static final String PLANS_JS = "/js/orchestration/plans.js?v=4";
     private static final String PROJECTS_JS = "/js/orchestration/projects.js?v=3";
     private static final ObjectMapper JSON = new ObjectMapper().findAndRegisterModules();
 
@@ -197,6 +198,10 @@ public class OrchestrationController {
         this.schedulesEnabled = schedulesEnabled;
         this.reactionsEnabled = reactionsEnabled;
         this.dashboardShell = createDashboardShell(null);
+    }
+
+    void setSavedPlanChatServiceForTesting(SavedPlanChatService savedPlanChatService) {
+        this.savedPlanChatService = savedPlanChatService;
     }
 
     private ShellTemplate createDashboardShell(String activePath) {
@@ -583,12 +588,12 @@ public class OrchestrationController {
                     .withChild(new Div().withClass("browser-sidebar-header")
                         .withChild(Button.create("New Plan")
                             .withClass("orch-primary")
-                            .withAttribute("hx-post", "/plans/_editor/_draft")
-                            .hxTarget("#plan-editor-container")
+                            .withAttribute("hx-get", "/plans/_editor/_name-modal?mode=editor")
+                            .hxTarget("#plan-modal-container")
                             .hxSwap("innerHTML"))
                         .withChild(Button.create("New Plan Chat")
-                            .withAttribute("hx-post", "/plans/_editor/_planning-chat")
-                            .hxTarget("#plan-editor-container")
+                            .withAttribute("hx-get", "/plans/_editor/_name-modal?mode=chat")
+                            .hxTarget("#plan-modal-container")
                             .hxSwap("innerHTML")
                             .withClass("orch-primary")
                             .withInnerText("New Plan Chat")))
@@ -609,6 +614,7 @@ public class OrchestrationController {
                 .withChild(new Div().withClass("browser-detail")
                     .withChild(new Div().withId("plan-editor-container")
                         .withChild(planEditorEmptyState()))))
+            .withChild(new Div().withId("plan-modal-container"))
             .withChild(moduleScript(PLANS_JS));
         return renderPage(body, "/plans");
     }
@@ -617,6 +623,10 @@ public class OrchestrationController {
         return new Div().withClass("orch-panel")
             .withChild(new Div().withClass("dashboard-empty")
                 .withInnerText("Select a plan from the list or create a new one."));
+    }
+
+    private String closePlanModal() {
+        return "<div id=\"plan-modal-container\" hx-swap-oob=\"innerHTML\"></div>";
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -701,12 +711,44 @@ public class OrchestrationController {
         return planEditorFragment(null).render();
     }
 
+    @GetMapping("/plans/_editor/_name-modal")
+    @ResponseBody
+    public String planNameModal(@RequestParam(value = "mode", defaultValue = "editor") String mode) {
+        boolean chatMode = "chat".equalsIgnoreCase(mode);
+        String endpoint = chatMode ? "/plans/_editor/_planning-chat" : "/plans/_editor/_draft";
+        Div body = new Div().withClass("orch-form-stack")
+            .withChild(new Paragraph(chatMode
+                ? "Name the saved plan chat draft before starting the planning interview."
+                : "Name the saved plan draft before opening the editor."))
+            .withChild(Form.create()
+                .withAttribute("hx-post", endpoint)
+                .withAttribute("hx-target", "#plan-editor-container")
+                .withAttribute("hx-swap", "innerHTML")
+                .withChild(label("Plan name", TextInput.create("title")
+                    .withId("new-plan-title")
+                    .withPlaceholder("Plan name")))
+                .withChild(new Div().withClass("tool-actions")
+                    .withChild(Button.create("Cancel")
+                        .withAttribute("type", "button")
+                        .withAttribute("onclick", "document.getElementById('plan-modal-container').innerHTML=''"))
+                    .withChild(Button.create(chatMode ? "Create Chat" : "Create Plan")
+                        .withClass("orch-primary")
+                        .withAttribute("type", "submit"))));
+        return Modal.create()
+            .withModalId("plan-name-modal")
+            .withTitle(chatMode ? "New Plan Chat" : "New Plan")
+            .withBody(body)
+            .showCloseButton(true)
+            .render();
+    }
+
     @PostMapping("/plans/_editor/_draft")
     @ResponseBody
-    public String createDraftPlanEditor() {
+    public String createDraftPlanEditor(@RequestParam(value = "title", required = false) String title) {
+        String resolvedTitle = StringUtils.hasText(title) ? title.trim() : "Untitled Plan";
         PlanDefinition created = planService.saveTask(new PlanDefinition(
             null, PlanKind.TASK_TEMPLATE, PlanStatus.DRAFT,
-            "Untitled Plan",
+            resolvedTitle,
             null,
             null,
             null,
@@ -725,17 +767,25 @@ public class OrchestrationController {
             null,
             null
         ));
-        return planEditorFragment(created).render();
+        return closePlanModal() + planEditorFragment(created, "editor").render();
+    }
+
+    public String createDraftPlanEditor() {
+        return createDraftPlanEditor(null);
     }
 
     @PostMapping("/plans/_editor/_planning-chat")
     @ResponseBody
-    public String createPlanChatEditor() {
+    public String createPlanChatEditor(@RequestParam(value = "title", required = false) String title) {
         if (savedPlanChatService == null) {
             return new Div().withClass("orch-status").withInnerText("Saved plan chat service is unavailable.").render();
         }
-        SavedPlanChatState state = savedPlanChatService.create();
-        return planEditorFragment(state.plan()).render();
+        SavedPlanChatState state = savedPlanChatService.create(title);
+        return closePlanModal() + planEditorFragment(state.plan(), "chat").render();
+    }
+
+    public String createPlanChatEditor() {
+        return createPlanChatEditor(null);
     }
 
     @GetMapping("/plans/_editor/{planId}")
@@ -759,7 +809,7 @@ public class OrchestrationController {
             return new Div().withClass("orch-status").withInnerText("Saved plan chat service is unavailable.").render();
         }
         SavedPlanChatState state = savedPlanChatService.start(planId, params.get("message"));
-        return planEditorFragment(state.plan()).render();
+        return planEditorFragment(state.plan(), "chat").render();
     }
 
     @PostMapping("/plans/_editor/{planId}/planning-chat/answers")
@@ -769,7 +819,28 @@ public class OrchestrationController {
             return new Div().withClass("orch-status").withInnerText("Saved plan chat service is unavailable.").render();
         }
         SavedPlanChatState state = savedPlanChatService.answer(planId, params.get("message"));
-        return planEditorFragment(state.plan()).render();
+        return planEditorFragment(state.plan(), "chat").render();
+    }
+
+    @GetMapping("/plans/_editor/{planId}/planning-chat/transcript")
+    @ResponseBody
+    public String planChatTranscript(@PathVariable String planId) {
+        if (savedPlanChatService == null) {
+            return new Div().withId("plan-chat-history")
+                .withClass("plan-chat-history")
+                .withChild(new Paragraph("Saved plan chat service is unavailable."))
+                .render();
+        }
+        SavedPlanChatState state = savedPlanChatService.state(planId);
+        Div transcript = new Div().withId("plan-chat-history").withClass("plan-chat-history");
+        if (state.messages().isEmpty()) {
+            transcript.withChild(new Paragraph("No saved plan chat messages yet."));
+        } else {
+            for (var message : state.messages()) {
+                transcript.withChild(ChatModuleRenderer.message(message.role(), message.text()));
+            }
+        }
+        return transcript.render();
     }
 
     @PostMapping("/plans/_editor")
@@ -836,7 +907,10 @@ public class OrchestrationController {
                 current.conversationId(),
                 current.createdAt(), current.updatedAt()
             );
-            planService.saveTask(updated);
+            PlanDefinition saved = planService.saveTask(updated);
+            if (savedPlanChatService != null) {
+                savedPlanChatService.appendEditorSaveContext(current, saved);
+            }
             return planEditorFragment(planService.getTask(planId)).render();
         } catch (IllegalStateException e) {
             return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
@@ -1664,11 +1738,19 @@ public class OrchestrationController {
     // ════════════════════════════════════════════════════════════════
 
     private Component planEditorFragment(PlanDefinition plan) {
+        return planEditorFragment(plan, "editor");
+    }
+
+    private Component planEditorFragment(PlanDefinition plan, String activeTab) {
         boolean isNew = plan == null;
         String planId = isNew ? null : plan.id();
+        boolean chatTab = !isNew && "chat".equalsIgnoreCase(activeTab);
 
         Div container = new Div().withClass("orch-panel plan-editor");
         container.withChild(Header.H2(isNew ? "New Plan" : "Plan Editor"));
+        if (!isNew) {
+            container.withChild(planEditorTabs(planId, chatTab));
+        }
 
         // Form for scalar fields - POST for new, PUT for existing
         Form form = Form.create();
@@ -1679,6 +1761,8 @@ public class OrchestrationController {
         }
         form.withHxTarget("#plan-editor-container");
         form.withHxSwap("innerHTML");
+        form.withClass(chatTab ? "plan-tab-panel is-hidden" : "plan-tab-panel");
+        form.withAttribute("data-plan-tab-panel", "editor");
 
         // Advanced metadata (hidden kind/status)
         form.withChild(new HtmlTag("input")
@@ -1818,32 +1902,50 @@ public class OrchestrationController {
         form.withChild(actions);
         container.withChild(form);
         if (!isNew) {
-            container.withChild(new Div().withClass("plan-continue-row")
-                .withChild(new HtmlTag("details")
-                    .withChild(new HtmlTag("summary").withInnerText("Saved Plan Chat"))
-                    .withChild(Form.create()
-                        .withAttribute("hx-post", "/plans/_editor/" + planId + "/planning-chat/start")
-                        .withAttribute("hx-target", "#plan-editor-container")
-                        .withAttribute("hx-swap", "innerHTML")
-                        .withChild(label("Optional instruction", TextArea.create("message")
-                            .withRows(2)
-                            .withPlaceholder("What should the saved plan chat revisit or change?")))
-                        .withChild(Button.create("Begin chat from this plan").withAttribute("type", "submit")))
-                    .withChild(savedPlanChatPanel(plan))));
+            container.withChild(new Div()
+                .withClass(chatTab ? "plan-tab-panel" : "plan-tab-panel is-hidden")
+                .withAttribute("data-plan-tab-panel", "chat")
+                .withChild(savedPlanChatPanel(plan)));
         }
 
         if (!isNew) {
             // Submit form container
-            container.withChild(new Div().withId("plan-submit-container"));
-            container.withChild(sectionHeader("Recent Runs", "Latest saved plan/task executions."));
-            container.withChild(new Div().withId("plan-runs-container")
-                .hxGet("/plans/_runs/" + planId)
-                .hxTrigger("load")
-                .hxSwap("innerHTML")
-                .withChild(loadingPlaceholder()));
+            container.withChild(new Div()
+                .withClass(chatTab ? "plan-tab-panel is-hidden" : "plan-tab-panel")
+                .withAttribute("data-plan-tab-panel", "editor")
+                .withChild(new Div().withId("plan-submit-container"))
+                .withChild(sectionHeader("Recent Runs", "Latest saved plan/task executions."))
+                .withChild(new Div().withId("plan-runs-container")
+                    .hxGet("/plans/_runs/" + planId)
+                    .hxTrigger("load")
+                    .hxSwap("innerHTML")
+                    .withChild(loadingPlaceholder())));
         }
 
         return container;
+    }
+
+    private Component planEditorTabs(String planId, boolean chatTab) {
+        return new Div().withClass("orch-tabs plan-editor-tabs")
+            .withAttribute("role", "tablist")
+            .withChild(Button.create("Editing Details")
+                .withAttribute("type", "button")
+                .withAttribute("role", "tab")
+                .withAttribute("aria-selected", chatTab ? "false" : "true")
+                .withAttribute("data-plan-tab", "editor")
+                .withAttribute("hx-get", "/plans/_editor/" + escapeAttr(planId))
+                .withAttribute("hx-target", "#plan-editor-container")
+                .withAttribute("hx-swap", "innerHTML")
+                .withClass(chatTab ? "" : "active"))
+            .withChild(Button.create("Planning Chat")
+                .withAttribute("type", "button")
+                .withAttribute("role", "tab")
+                .withAttribute("aria-selected", chatTab ? "true" : "false")
+                .withAttribute("data-plan-tab", "chat")
+                .withAttribute("hx-post", "/plans/_editor/" + escapeAttr(planId) + "/planning-chat/start")
+                .withAttribute("hx-target", "#plan-editor-container")
+                .withAttribute("hx-swap", "innerHTML")
+                .withClass(chatTab ? "active" : ""));
     }
 
     @GetMapping("/plans/_runs/{planId}")
@@ -1867,24 +1969,29 @@ public class OrchestrationController {
 
     private Component savedPlanChatPanel(PlanDefinition plan) {
         if (savedPlanChatService == null || plan == null) {
-            return new Div();
+            return new Div().withClass("orch-status").withInnerText("Saved plan chat service is unavailable.");
         }
         SavedPlanChatState state = savedPlanChatService.state(plan.id());
-        Div panel = new Div().withClass("orch-panel plan-saved-chat");
-        for (var message : state.messages()) {
-            panel.withChild(new Div().withClass("chat-message chat-message-" + message.role())
-                .withInnerText(message.text()));
+        Div transcript = new Div().withId("plan-chat-history").withClass("plan-chat-history");
+        if (state.messages().isEmpty()) {
+            transcript.withChild(new Paragraph("No saved plan chat messages yet."));
         }
-        Form form = Form.create();
-        form.withAttribute("hx-post", "/plans/_editor/" + plan.id() + "/planning-chat/answers");
-        form.withAttribute("hx-target", "#plan-editor-container");
-        form.withAttribute("hx-swap", "innerHTML");
-        form.withChild(label(state.promptQuestion() == null ? "Message" : state.promptQuestion(),
-            TextArea.create("message").withRows(3)));
-        form.withChild(Button.create(state.promptQuestion() == null ? "Send" : "Submit answer")
+        for (var message : state.messages()) {
+            transcript.withChild(ChatModuleRenderer.message(message.role(), message.text()));
+        }
+        Form composer = Form.create().withId("plan-chat-form");
+        composer.withAttribute("hx-post", "/plans/_editor/" + plan.id() + "/planning-chat/answers");
+        composer.withAttribute("hx-target", "#plan-editor-container");
+        composer.withAttribute("hx-swap", "innerHTML");
+        composer.withChild(new Div().withId("plan-chat-prompt").withAttribute("aria-live", "polite")
+            .withInnerText(state.promptQuestion() == null ? "Message" : state.promptQuestion()));
+        composer.withChild(TextArea.create("message").withId("plan-chat-input").withRows(6)
+            .withPlaceholder("Reply to the planning prompt")
+            .withAttribute("autocomplete", "off"));
+        composer.withChild(Button.create(state.promptQuestion() == null ? "Send" : "Submit answer")
             .withAttribute("type", "submit"));
-        panel.withChild(form);
-        return panel;
+        return new Div().withClass("plan-saved-chat")
+            .withChild(ChatModuleRenderer.embeddedPlanChatModule(plan.id(), transcript, composer));
     }
 
     // ── Section renderers ──

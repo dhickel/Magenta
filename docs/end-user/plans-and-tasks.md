@@ -7,18 +7,19 @@ Use `/plans` to create saved plan/task definitions and submit them to agents. In
 The page has:
 
 - A sidebar with **New Plan**, **New Plan Chat**, a filter box, and plan cards.
-- An editor panel for the selected plan.
+- A detail panel for the selected plan with **Editing Details** and **Planning Chat** tabs.
 - In-editor sections for scalar fields, deliverables, inputs, outputs, steps, validation criteria, assumptions, evidence, feedback, questions, model choices, and submission.
 
 ## Create A Plan
 
 1. Open `/plans`.
 2. Select **New Plan**.
-3. Fill **Title**, **Summary**, **Goal**, and **Notes**.
-4. Save the plan.
-5. Add structured sections after the draft exists.
+3. Enter the plan name in the modal.
+4. Fill **Summary**, **Goal**, and **Notes** in the **Editing Details** tab.
+5. Save the plan.
+6. Add structured sections after the draft exists.
 
-Use **New Plan Chat** when you want Magenta to interview you and build a saved draft in `/plans`. This chat is plan-scoped and does not appear in the `/chat` session sidebar.
+Use **New Plan Chat** when you want Magenta to interview you and build a saved draft in `/plans`. Enter the draft name in the modal; Magenta creates the saved draft and opens the **Planning Chat** tab. This chat is plan-scoped and does not appear in the `/chat` session sidebar.
 
 ## Structured Plan Sections
 
@@ -43,7 +44,9 @@ The embedded saved plan chat asks four opening questions for new drafts:
 3. High-level deliverables, with structured outputs handled separately.
 4. Specific structured outputs for workflow chaining or downstream use, or “no outputs”.
 
-Saved plan chat updates the selected saved draft. The manual editor remains authoritative for direct edits, and you can use **Begin chat from this plan** to continue plan-scoped discussion from an existing partial or complete definition.
+Saved plan chat updates the selected saved draft. The manual editor remains authoritative for direct edits. Open the **Planning Chat** tab on an existing draft to continue with “Any details you want to provide before continuing?” Open it on an approved plan to start from “What do you need to change in this plan?”
+
+When you save manual edits and the plan already has chat history, Magenta appends a concise context message to the saved plan chat describing the edited fields. This keeps the next chat turn aware of changes made outside the transcript.
 
 ## Models And Manager Type
 
