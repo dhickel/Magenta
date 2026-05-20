@@ -21,7 +21,7 @@ class FrontendControllerTest {
         FrontendController controller = new FrontendController(stubChatService());
         String html = controller.home(null, null);
 
-        assertThat(html).contains("/css/magenta.css?v=3");
+        assertThat(html).contains("/css/magenta.css?v=4");
         assertThat(html).doesNotContain("/js/alpha-security.js?v=1");
         assertThat(html).contains("Magenta Portal");
         assertThat(html).contains("/chat");
@@ -38,7 +38,7 @@ class FrontendControllerTest {
 
         String html = controller.chat(null, null, null, null);
 
-        assertThat(html).contains("/css/magenta.css?v=3");
+        assertThat(html).contains("/css/magenta.css?v=4");
         assertThat(html).doesNotContain("/js/alpha-security.js?v=1");
         assertThat(html).contains("id=\"chat-token-usage\"");
         assertThat(html).contains("id=\"chat-plan-evidence\"");

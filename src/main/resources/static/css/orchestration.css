@@ -244,6 +244,45 @@
     white-space: pre-wrap;
 }
 
+.chat-message-body,
+.planning-preview-document,
+.chat-thinking-body {
+    box-sizing: border-box;
+    max-width: 100%;
+}
+
+.chat-message-body ol,
+.chat-message-body ul,
+.planning-preview-document ol,
+.planning-preview-document ul,
+.chat-thinking-body ol,
+.chat-thinking-body ul {
+    margin: 0.55rem 0;
+    padding-left: 1.45rem;
+    list-style-position: outside;
+}
+
+.chat-message-body li,
+.planning-preview-document li,
+.chat-thinking-body li {
+    margin: 0.25rem 0;
+}
+
+.chat-message-body blockquote,
+.planning-preview-document blockquote,
+.chat-thinking-body blockquote {
+    margin: 0.65rem 0;
+    padding: 0.1rem 0 0.1rem 0.85rem;
+    border-left: 3px solid #d7e0ea;
+}
+
+.chat-message-body pre,
+.planning-preview-document pre,
+.chat-thinking-body pre {
+    max-width: 100%;
+    overflow-x: auto;
+}
+
 .chat-thinking,
 .chat-tool {
     margin-top: 0.6rem;

@@ -32,7 +32,7 @@ import java.util.List;
 @Controller
 public class FrontendController {
 
-    private static final String APP_CSS = "/css/magenta.css?v=3";
+    private static final String APP_CSS = "/css/magenta.css?v=4";
     private static final String CHAT_JS = "/js/chat-client.js?v=28";
 
     private final ChatService chatService;
