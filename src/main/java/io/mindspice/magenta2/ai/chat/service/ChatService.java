@@ -36,6 +36,7 @@ import io.mindspice.magenta2.ai.chat.model.ContextUsage;
 import io.mindspice.magenta2.ai.chat.plan.PlanDefinition;
 import io.mindspice.magenta2.ai.chat.model.PlanMode;
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
+import io.mindspice.magenta2.ai.chat.plan.PlanStatus;
 import io.mindspice.magenta2.ai.chat.plan.PlanToolContext;
 import io.mindspice.magenta2.ai.chat.plan.PlanToolExecutionContext;
 import io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer;
@@ -103,6 +104,7 @@ public class ChatService {
     public static final List<String> TASK_MODE_TOOLS = ToolAccessPolicy.TASK_MODE_TOOLS;
     private static final String EXECUTE_PLAN_MESSAGE = "Execute the saved plan now. Work through the plan directly and report the completed result.";
     private static final String EXECUTE_PLAN_CLEAN_MESSAGE = "Execute the approved anonymous chat plan now using only the approved plan instructions and the persistent chat file directory context. Do not rely on earlier chat transcript details unless they are present in the approved plan.";
+    private static final String PLAN_NEEDS_REVIEW_MESSAGE = "Plan execution needs review. Magenta could not verify completion through plan_complete after retrying. Review the saved execution evidence and validation feedback before trusting the result.";
     private static final String EXECUTE_TASK_MESSAGE = """
         Execute the reusable task now using the provided runtime inputs.
         Work through the declared task steps directly. You must call task_complete with outputValues keyed exactly by declared output name before any final completion answer.
@@ -636,9 +638,9 @@ public class ChatService {
             ChatResponse.MsgResponse response = chat(request);
             planService.recordFallbackExecutionEvidence(conversationId);
             if (planService.mode(conversationId) == PlanMode.EXECUTE_PLAN) {
-                planService.markCompleted(conversationId, response.response());
+                response = markPlanNeedsReviewResponse(response);
             }
-            if (persistFinalMessage) {
+            if (persistFinalMessage && isValidatedPlanCompletion(conversationId)) {
                 planService.persistChatFinalMessage(conversationId, response.response());
             }
             return new ChatResponse.MsgResponse(
@@ -692,12 +694,10 @@ public class ChatService {
         requirePlanService();
         planService.recordFallbackExecutionEvidence(conversationId);
         if (planService.mode(conversationId) == PlanMode.EXECUTE_PLAN) {
-            if (StringUtils.hasText(finalMessage)) {
-                planService.markCompleted(conversationId, finalMessage);
-                planService.persistChatFinalMessage(conversationId, finalMessage);
-            } else {
-                planService.markNeedsReview(conversationId);
-            }
+            planService.markNeedsReview(conversationId);
+            persistControlledReviewMessage(conversationId, finalMessage);
+        } else if (isValidatedPlanCompletion(conversationId)) {
+            planService.persistChatFinalMessage(conversationId, planService.finalMessage(conversationId));
         }
     }
 
@@ -1406,6 +1406,13 @@ public class ChatService {
                 s.response.getResult(), combinedThinking(s.thinkingParts));
         }
 
+        if (!s.planCompletionDetected && s.mode == PlanMode.EXECUTE_PLAN && planService != null
+            && planService.mode(s.request.conversationId()) == PlanMode.EXECUTE_PLAN) {
+            planService.recordFallbackExecutionEvidence(s.request.conversationId());
+            planService.markNeedsReview(s.request.conversationId());
+            finalAssistantMessage = new AssistantMessage(PLAN_NEEDS_REVIEW_MESSAGE);
+        }
+
         if (finalAssistantMessage != null) {
             s.messagesToPersist.add(finalAssistantMessage);
             turnAuditWriter.recordAssistantMessage(finalAssistantMessage, s.request);
@@ -1437,6 +1444,37 @@ public class ChatService {
         s.chatResponse = chatResponse;
         s.finalMessage = finalMessage;
         s.phase = TurnPhase.DONE;
+    }
+
+    private ChatResponse.MsgResponse markPlanNeedsReviewResponse(ChatResponse.MsgResponse response) {
+        planService.markNeedsReview(response.conversationId());
+        persistControlledReviewMessage(response.conversationId(), response.response());
+        return new ChatResponse.MsgResponse(
+            response.conversationId(),
+            response.model(),
+            PLAN_NEEDS_REVIEW_MESSAGE,
+            response.contextUsage(),
+            planState(response.conversationId()),
+            response.toolActivities()
+        );
+    }
+
+    private boolean isValidatedPlanCompletion(String conversationId) {
+        return planService.activePlan(conversationId)
+            .map(plan -> plan.status() == PlanStatus.COMPLETED)
+            .orElse(false);
+    }
+
+    private void persistControlledReviewMessage(String conversationId, String ordinaryResponse) {
+        List<Message> messages = new ArrayList<>(chatMemoryRepository.findByConversationId(conversationId));
+        if (!messages.isEmpty()) {
+            Message last = messages.get(messages.size() - 1);
+            if (last instanceof AssistantMessage && java.util.Objects.equals(last.getText(), ordinaryResponse)) {
+                messages.remove(messages.size() - 1);
+            }
+        }
+        messages.add(new AssistantMessage(PLAN_NEEDS_REVIEW_MESSAGE));
+        chatMemoryRepository.saveAll(conversationId, messages);
     }
 
     // ── End refactored toolChat ──

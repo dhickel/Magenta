@@ -128,8 +128,9 @@ public class PlanService {
         if (def.status() == PlanStatus.EXECUTING) {
             return PlanMode.EXECUTE_PLAN;
         }
-        if (def.status() == PlanStatus.APPROVED || def.status() == PlanStatus.COMPLETED
-            || def.status() == PlanStatus.SAVED_TASK || def.status() == PlanStatus.CANCELLED) {
+        if (def.status() == PlanStatus.APPROVED || def.status() == PlanStatus.NEEDS_REVIEW
+            || def.status() == PlanStatus.COMPLETED || def.status() == PlanStatus.SAVED_TASK
+            || def.status() == PlanStatus.CANCELLED) {
             return PlanMode.NORMAL;
         }
         return PlanMode.PLAN;
@@ -1102,7 +1103,8 @@ public class PlanService {
             return planExecutionInstructions(def);
         }
         if (def.kind() == PlanKind.SESSION_PLAN && def.status() != PlanStatus.APPROVED
-            && def.status() != PlanStatus.COMPLETED && def.status() != PlanStatus.CANCELLED) {
+            && def.status() != PlanStatus.NEEDS_REVIEW && def.status() != PlanStatus.COMPLETED
+            && def.status() != PlanStatus.CANCELLED) {
             return planningInstructions(def);
         }
         return "";

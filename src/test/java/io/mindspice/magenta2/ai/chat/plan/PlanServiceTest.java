@@ -101,6 +101,34 @@ class PlanServiceTest {
     }
 
     @Test
+    void needsReviewSessionPlanDoesNotResolveAsPlanModeOrReceivePlanningInstructions() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
+        PlanRepository planRepository = new PlanRepository(jdbcTemplate, new ObjectMapper());
+        PlanService service = new PlanService(planRepository, memoryRepository);
+
+        service.beginPlan("conversation-review");
+        service.saveDraftPlan(
+            "conversation-review",
+            "Validate completion gate",
+            "Review Plan",
+            "Exercise review state.",
+            null,
+            List.of("Review state"),
+            List.of("Fail validation"),
+            List.of("Requires validator approval")
+        );
+        service.markExecuting("conversation-review");
+        service.markNeedsReview("conversation-review");
+
+        assertThat(service.mode("conversation-review")).isEqualTo(io.mindspice.magenta2.ai.chat.model.PlanMode.NORMAL);
+        assertThat(service.runtimeInstructions("conversation-review"))
+            .doesNotContain("You are Magenta in PLAN mode")
+            .doesNotContain("Use the approved structured plan below as the execution source of truth")
+            .isEmpty();
+    }
+
+    @Test
     void anonymousBeginPlanQueuesThreeOpeningQuestions() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
@@ -154,6 +182,142 @@ class PlanServiceTest {
         assertThat(plan.executionEvidence())
             .contains("Evidence: Actual posts: 40")
             .contains("Unmet criterion: Sample at least 50 posts");
+    }
+
+    @Test
+    void failedCompletionValidationPersistsExplicitStatusAndCriterionRemediation() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        PlanRepository planRepository = new PlanRepository(jdbcTemplate, objectMapper);
+        PlanService service = new PlanService(planRepository, memoryRepository);
+        PlanCompletionService completionService = new PlanCompletionService(service, null, null, objectMapper);
+
+        service.beginPlan("conversation-validation");
+        service.saveDraftPlan(
+            "conversation-validation",
+            "Validate every criterion",
+            "Validation Plan",
+            "Exercise validation feedback.",
+            null,
+            List.of("Validated result"),
+            List.of("Collect evidence"),
+            List.of("Criterion A", "Criterion B")
+        );
+        service.markExecuting("conversation-validation");
+
+        String result = completionService.complete(
+            "conversation-validation",
+            "Only one criterion has evidence.",
+            List.of("Criterion: Criterion A | Evidence: proof"),
+            List.of(),
+            List.of(),
+            List.of(),
+            "Done"
+        );
+
+        PlanDefinition plan = service.activePlan("conversation-validation").orElseThrow();
+        assertThat(plan.status()).isEqualTo(PlanStatus.EXECUTING);
+        assertThat(result).contains("Plan validation failed");
+        assertThat(plan.validationFeedback())
+            .contains("Validator status: FAILED")
+            .anySatisfy(item -> assertThat(item)
+                .contains("Criterion [failed]: Criterion B")
+                .contains("Remediation: Call plan_complete again"));
+    }
+
+    @Test
+    void completionValidationFailsClosedForUnreadableArtifactPaths() throws Exception {
+        Path dataRoot = Files.createDirectories(tempDir.resolve("validator-data"));
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        PlanRepository planRepository = new PlanRepository(jdbcTemplate, objectMapper);
+        PlanService service = new PlanService(planRepository, memoryRepository);
+        PlanCompletionService completionService = new PlanCompletionService(
+            service,
+            null,
+            new AiConfig(null, null, null, null, dataRoot, null, null),
+            objectMapper
+        );
+
+        service.beginPlan("conversation-artifact-validation");
+        service.saveDraftPlan(
+            "conversation-artifact-validation",
+            "Validate artifact",
+            "Artifact Validation Plan",
+            "Exercise artifact validation.",
+            null,
+            List.of("Readable artifact"),
+            List.of("Collect evidence"),
+            List.of("Artifact path is readable")
+        );
+        service.markExecuting("conversation-artifact-validation");
+
+        String result = completionService.complete(
+            "conversation-artifact-validation",
+            "Evidence references a missing artifact.",
+            List.of("Criterion: Artifact path is readable | Evidence: missing.md should exist"),
+            List.of(),
+            List.of(),
+            List.of("missing.md"),
+            "Done"
+        );
+
+        PlanDefinition plan = service.activePlan("conversation-artifact-validation").orElseThrow();
+        assertThat(plan.status()).isEqualTo(PlanStatus.EXECUTING);
+        assertThat(result).contains("Plan validation failed");
+        assertThat(plan.validationFeedback())
+            .contains("Validator status: FAILED")
+            .anySatisfy(item -> assertThat(item)
+                .contains("Artifact 'missing.md' is not readable by the validator"));
+    }
+
+    @Test
+    void completionValidationFailsClosedForIncompleteValidatorSchema() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        PlanRepository planRepository = new PlanRepository(jdbcTemplate, objectMapper);
+        PlanService service = new PlanService(planRepository, memoryRepository);
+        PlanCompletionService completionService = new PlanCompletionService(service, null, null, objectMapper);
+
+        service.beginPlan("conversation-incomplete-validator");
+        service.saveDraftPlan(
+            "conversation-incomplete-validator",
+            "Validate schema",
+            "Validator Schema Plan",
+            "Exercise validator schema enforcement.",
+            null,
+            List.of("Validated result"),
+            List.of("Collect evidence"),
+            List.of("Criterion A")
+        );
+        service.markExecuting("conversation-incomplete-validator");
+        PlanDefinition plan = service.activePlan("conversation-incomplete-validator").orElseThrow();
+
+        PlanCompletionService.ValidationResult result = completionService.validateResponseForTesting(
+            plan,
+            "Done",
+            """
+                {
+                  "complete": true,
+                  "summary": "Looks complete.",
+                  "criteria": [
+                    {"criterion": "Validated result", "status": "passed"},
+                    {"criterion": "Criterion A", "status": "passed"}
+                  ],
+                  "findings": [],
+                  "remediationSteps": []
+                }
+                """
+        );
+
+        assertThat(result.complete()).isFalse();
+        assertThat(result.summary()).isEqualTo("Validator response did not match the required JSON schema.");
+        assertThat(result.findings())
+            .contains("Validator criteria[0] missing required key: evidence")
+            .contains("Validator criteria[1] missing required key: requiredRemediation");
     }
 
     @Test

@@ -110,10 +110,14 @@
         }
         const title = planState && planState.title ? String(planState.title) : (planState && planState.goal ? String(planState.goal) : 'Draft plan');
         const statusLabel = status ? status.toLowerCase() : 'active';
-        titleEl.textContent = mode === 'PLAN' ? 'Plan mode: ' + title : 'Plan: ' + title + ' (' + statusLabel + ')';
+        titleEl.textContent = status === 'NEEDS_REVIEW'
+            ? 'Plan needs review: ' + title
+            : (mode === 'PLAN' ? 'Plan mode: ' + title : 'Plan: ' + title + ' (' + statusLabel + ')');
         hintEl.textContent = mode === 'PLAN'
             ? 'Use the planning panel'
-            : (statusLabel === 'needs_review' ? 'Review execution evidence before trusting completion' : 'Saved execution plan');
+            : (statusLabel === 'needs_review'
+                ? 'Validation did not pass. Review the execution evidence and feedback.'
+                : 'Saved execution plan');
         const documentHtml = planState && planState.documentHtml ? String(planState.documentHtml) : '';
         documentBodyEl.innerHTML = documentHtml;
         documentEl.hidden = !documentHtml;
@@ -173,7 +177,7 @@
         }
         const mode = planState && planState.mode ? String(planState.mode) : 'NORMAL';
         const status = planState && planState.status ? String(planState.status) : '';
-        if (mode !== 'PLAN' && status !== 'APPROVED' && status !== 'SAVED_TASK') {
+        if (status === 'NEEDS_REVIEW' || (mode !== 'PLAN' && status !== 'APPROVED' && status !== 'SAVED_TASK')) {
             panel.classList.remove('active');
             panel.innerHTML = '';
             return;

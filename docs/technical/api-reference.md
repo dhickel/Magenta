@@ -21,7 +21,7 @@ Source: [`ChatController`](../../src/main/java/io/mindspice/magenta2/api/web/Cha
 - `DELETE /api/chat/{conversationId}`: delete a conversation.
 - Plan controls under `/api/chat/{conversationId}/plan/*`: answer, approve, continue, cancel, execute, delete. Anonymous chat plans cannot be saved as task templates.
 
-SSE events are JSON events. Chat emits `start`, `chunk`, `tool`, `system`, `interrupt`, `context`, `done`, and `error` from `ChatStreamEvent`; the controller also emits plan-execution updates around anonymous plan execution.
+SSE events are JSON events. Chat emits `start`, `chunk`, `tool`, `system`, `interrupt`, `context`, `done`, and `error` from `ChatStreamEvent`; the controller also emits plan-execution updates around anonymous plan execution. Anonymous plan execution reports `planState.status=COMPLETED` only after validator-gated `plan_complete` succeeds. If automatic completion repair is exhausted, `done.planState.status` is `NEEDS_REVIEW` and the response text is a controlled review notice, not the model's unvalidated completion text.
 
 `GET /api/chat/sessions` includes `outputCount` on each session for regular files under that conversation's persistent chat file directory. Chat file listing and download routes require a UUID-shaped existing conversation id, expose only relative paths, reject traversal, and enforce the same 10 MB controller download limit used by output artifacts.
 

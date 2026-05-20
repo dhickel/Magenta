@@ -13,10 +13,12 @@ import io.mindspice.magenta2.ai.chat.plan.PlanStatus;
 import io.mindspice.magenta2.ai.chat.repository.ChatMemoryRepository;
 import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
 import io.mindspice.magenta2.ai.chat.repository.RepositoryBackedChatMemory;
+import io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer;
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.ai.config.user.EndpointType;
 import io.mindspice.magenta2.ai.config.user.ModelConfig;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -126,6 +128,111 @@ class ChatServiceTest {
         assertThat(memoryRepository.findByConversationId("conversation-1"))
             .extracting(message -> message.getText())
             .containsExactly("User planning request", "Assistant planning response");
+    }
+
+    @Test
+    void streamExecutionFinalizationMarksStillExecutingPlanNeedsReviewInsteadOfCompleted() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        ChatSessionMetadataRepository metadataRepository = new ChatSessionMetadataRepository(jdbcTemplate);
+        PlanService planService = new PlanService(new PlanRepository(jdbcTemplate, objectMapper), memoryRepository);
+        ChatService chatService = new ChatService(
+            new RepositoryBackedChatMemory(memoryRepository),
+            memoryRepository,
+            metadataRepository,
+            null,
+            aiConfig(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            planService
+        );
+
+        memoryRepository.saveAll("conversation-1", List.of(new UserMessage("execute this")));
+        planService.beginPlan("conversation-1");
+        planService.saveDraftPlan(
+            "conversation-1",
+            "Gate completion",
+            "Completion Gate",
+            "Do not trust ordinary assistant text.",
+            null,
+            List.of("Validated result"),
+            List.of("Run work"),
+            List.of("plan_complete validates completion")
+        );
+        planService.markExecuting("conversation-1");
+        memoryRepository.saveAll("conversation-1", List.of(
+            new UserMessage("execute this"),
+            AssistantMessage.builder().content("Ordinary model completion").build()
+        ));
+
+        chatService.handlePlanExecutionStreamFinished("conversation-1", "Ordinary model completion");
+
+        assertThat(planService.activePlan("conversation-1").orElseThrow().status())
+            .isEqualTo(PlanStatus.NEEDS_REVIEW);
+        assertThat(planService.activePlan("conversation-1").orElseThrow().finalMessage()).isNull();
+        assertThat(memoryRepository.findByConversationId("conversation-1"))
+            .extracting(message -> message.getText())
+            .containsExactly(
+                "execute this",
+                "Plan execution needs review. Magenta could not verify completion through plan_complete after retrying. Review the saved execution evidence and validation feedback before trusting the result."
+            );
+    }
+
+    @Test
+    void streamExecutionFinalizationPersistsFinalArtifactOnlyAfterValidatedCompletion() throws Exception {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        ChatSessionMetadataRepository metadataRepository = new ChatSessionMetadataRepository(jdbcTemplate);
+        Path dataRoot = Files.createDirectories(tempDir.resolve("validated-stream-data"));
+        WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(aiConfig(dataRoot));
+        PlanService planService = new PlanService(
+            new PlanRepository(jdbcTemplate, objectMapper),
+            memoryRepository,
+            null,
+            new ChatMarkdownRenderer(),
+            directoryService,
+            null
+        );
+        ChatService chatService = new ChatService(
+            new RepositoryBackedChatMemory(memoryRepository),
+            memoryRepository,
+            metadataRepository,
+            null,
+            aiConfig(dataRoot),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            planService
+        );
+
+        planService.beginPlan("conversation-validated");
+        planService.saveDraftPlan(
+            "conversation-validated",
+            "Gate completion",
+            "Validated Completion",
+            "Persist only validator-approved final output.",
+            null,
+            List.of("Validated result"),
+            List.of("Run work"),
+            List.of("plan_complete validates completion")
+        );
+        planService.markExecuting("conversation-validated");
+        planService.markCompleted("conversation-validated", "Validated final message");
+
+        chatService.handlePlanExecutionStreamFinished("conversation-validated", "Validated final message");
+
+        Path finalMessage = dataRoot.resolve("chats/conversation-validated/files/final-message.md");
+        assertThat(finalMessage).exists();
+        assertThat(Files.readString(finalMessage)).isEqualTo("Validated final message\n");
     }
 
     @Test

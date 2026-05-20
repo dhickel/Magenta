@@ -36,6 +36,8 @@ Security summary: alpha routes are currently open at the application layer. Requ
 | `POST /api/workflows/{workflowId}/runs/stream` | Submit saved workflow to an agent assignment. | `submitted`, `failed` |
 | `POST /api/agents/{agentId}/chat/stream` | Agent-scoped side-panel chat. | `start`, `done`, `error` |
 
+Anonymous session plan execution reaches `COMPLETED` only after validator-gated `plan_complete` passes. If completion cannot be verified after retries, the final `done` event carries `planState.status=NEEDS_REVIEW` with review evidence/feedback available through normal history and plan state reloads.
+
 The public plan/task/workflow stream routes acknowledge durable assignment submission; they do not stream inline model execution.
 
 ## Payload Anchors

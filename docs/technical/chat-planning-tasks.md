@@ -45,7 +45,11 @@ The `/chat` planning path is anonymous in-chat planning. It is conversation-scop
 
 Anonymous plan prompts do not expose structured inputs or outputs. They focus on goal, assumptions, expected deliverables, ordered steps, and validation. Approval actions are continue planning, approve and execute with conversation context, approve and execute clean, and cancel.
 
-Anonymous execution installs a chat-scoped file context when there is no assignment context. File tools then resolve to the active chat file directory instead of a broad data-root fallback. Final anonymous execution messages are persisted as markdown files in that directory. Clean execution is prompt-scoped: it omits stored chat messages from the model prompt for that run, while preserving the persisted transcript and appending the execution turn afterward.
+Anonymous execution installs a chat-scoped file context when there is no assignment context. File tools then resolve to the active chat file directory instead of a broad data-root fallback. Validator-approved final anonymous execution messages are persisted as markdown files in that directory. Clean execution is prompt-scoped: it omits stored chat messages from the model prompt for that run, while preserving the persisted transcript and appending the execution turn afterward.
+
+Anonymous execution completion is gated by `plan_complete`. `PlanCompletionService` records the latest execution report, checks per-criterion evidence coverage, asks the configured validator model to compare the approved plan, evidence, artifact contents, and proposed final message, and stores durable validation feedback. On pass, the plan becomes `COMPLETED` and the stored final message is the only trusted user-facing completion. On failure, remediation stays in the execution tool loop; if the model exhausts completion repair without a validator-passed `plan_complete`, `ChatService` marks the plan `NEEDS_REVIEW` and persists a controlled review message instead of ordinary assistant text.
+
+`NEEDS_REVIEW` is an execution-review state, not draft planning. `PlanService.mode(...)` resolves it as `NORMAL` while `ChatPlanState.status` remains `NEEDS_REVIEW`, so clients can show evidence and validation feedback without reinstalling PLAN-mode prompts, tools, or planning controls.
 
 ## Saved Plan Chat
 

@@ -94,6 +94,14 @@ Plan submissions create agent assignments and may create task run records. The p
 - `/outputs` for artifacts.
 - `/jobs` when the plan runs as part of a job.
 
+## Anonymous Chat Plan Execution
+
+Anonymous `/chat` plans run inside the chat conversation instead of creating saved `/plans` runs. During execution, Magenta records evidence and validation feedback in the chat plan status area.
+
+Completion is validator-gated. The execution model must call `plan_complete` with evidence for each validation criterion and a proposed final message. Magenta then validates that evidence and any referenced artifacts before showing the final completion as trusted. If validation fails, the remediation remains internal execution feedback and the model must continue working or call `plan_complete` again.
+
+If automatic retries are exhausted, the plan becomes `NEEDS_REVIEW`. In that state the chat does not reopen planning controls or show **Cancel planning**. Review the execution evidence, validation feedback, and tool transcript before trusting or revising the result.
+
 ## Common Validation Failures
 
 - **Title is required**: every plan must have a title.
