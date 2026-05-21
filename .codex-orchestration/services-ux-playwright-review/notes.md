@@ -47,3 +47,4 @@
 ## Handoff Notes
 
 - Preserve unrelated dirty files. Do not stage screenshots or reports outside this lane unless they are explicit validation artifacts.
+- UX remediation worker applied a small CSS-only fix in `src/main/resources/static/css/orchestration.css`: mobile `.main-sidebar` now opens as a fixed viewport drawer, collapsed state translates it offscreen, and dashboard/operational tables gain mobile horizontal containment plus safer dense-cell wrapping.

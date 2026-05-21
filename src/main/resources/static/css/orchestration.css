@@ -465,6 +465,23 @@
 
     .main-container.has-sidebar > .main-sidebar {
         grid-area: auto;
+        position: fixed;
+        top: 0.75rem;
+        bottom: 0.75rem;
+        left: 0.75rem;
+        z-index: 1000;
+        box-sizing: border-box;
+        width: min(20rem, calc(100vw - 1.5rem));
+        max-height: calc(100vh - 1.5rem);
+        overflow-y: auto;
+        transform: translateX(0);
+        transition: transform 160ms ease;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .main-container.has-sidebar.sidebar-collapsed > .main-sidebar {
+        transform: translateX(calc(-100% - 1rem));
+        pointer-events: none;
     }
 
     .main-container.has-sidebar > .content-wrapper {
@@ -598,6 +615,7 @@
     background: #ffffff;
     padding: 0.85rem;
     box-shadow: 0 1px 2px rgba(32, 41, 54, 0.04);
+    min-width: 0;
 }
 
 .dashboard-section h2 {
@@ -689,6 +707,7 @@
 
 .dashboard-table {
     width: 100%;
+    min-width: 42rem;
     border-collapse: collapse;
     font-size: 0.84rem;
 }
@@ -707,6 +726,8 @@
     padding: 0.4rem 0.5rem;
     border-bottom: 1px solid #f0f3f7;
     vertical-align: middle;
+    overflow-wrap: anywhere;
+    word-break: normal;
 }
 
 .dashboard-table tr:hover td {
@@ -781,6 +802,22 @@
 
     .dashboard-card-grid {
         grid-template-columns: 1fr;
+    }
+
+    .dashboard-section:has(.dashboard-table),
+    .orch-panel:has(.dashboard-table) {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .dashboard-table {
+        width: max-content;
+        max-width: none;
+    }
+
+    .dashboard-table th,
+    .dashboard-table td {
+        padding: 0.55rem 0.6rem;
     }
 }
 
