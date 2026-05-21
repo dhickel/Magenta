@@ -24,11 +24,12 @@ Persistent state for this long-running orchestration effort. Use this file to re
   - Review E: testing strategy and risk mitigation.
 - Ran Planning Synthesis agent, which created the implementation plan, orchestration suite, review synthesis, and phase files.
 - Created planning synthesis commit: `0738b4a plan: synthesize workspace file refactor phases`.
+- Completed Phase 01 baseline characterization and committed it as `aee52fc test: characterize workspace file baseline`.
 
 ## Current Work
 
 - Workspace/file architecture refactor.
-- Current gate: Phase 01 commit.
+- Current gate: start Phase 02 effective workspace resolver.
 - Source implementation edits have not started. Phase 01 added/updated characterization tests and plan notes only.
 
 ## Current Plan Artifacts
@@ -69,4 +70,4 @@ Queued review/refactor focus:
 
 ## Next Action
 
-Commit Phase 01 characterization tests and notes, then start Phase 02 through a subagent.
+Start Phase 02 through a high-reasoning implementation subagent.
