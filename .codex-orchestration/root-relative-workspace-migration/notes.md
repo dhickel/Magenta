@@ -39,6 +39,7 @@
 - High-priority test gaps before implementation sign-off: isolated `/tmp` fresh-install SQLite/root behavior, root-relative helper stale absolute rejection, relative persisted path assertions for output/plan/workflow/job rows, seeded chat file carry-forward, and browser validation against an isolated root/database.
 - Phase 1 focused tests passed: `mvn -Dtest=ExternalAiConfigLoaderTest,MagentaRootConfigurationTest,AiUserConfigConfigurationTest test` (17 tests).
 - Phase 1 bounded startup smoke passed: app started with temp `--magenta.root.path=/tmp/magenta-phase1-smoke-1779380199373764712`, created `magenta.sqlite` and `root/`, then was stopped by `timeout` (exit 124 after successful startup).
+- Independent Phase 1 validation passed: `mvn -Dtest=ExternalAiConfigLoaderTest,MagentaRootConfigurationTest,AiUserConfigConfigurationTest test` (17 tests) and bounded startup smoke with temp root `/tmp/magenta-phase1-smoke-WCiG78`; `magenta.sqlite` and `root/` were created. Phase 1 may proceed to Phase 2.
 
 ## Remediation Notes
 
