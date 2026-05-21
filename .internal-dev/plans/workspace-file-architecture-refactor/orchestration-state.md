@@ -32,12 +32,13 @@ Persistent state for this long-running orchestration effort. Use this file to re
 - Committed Phase 03 as `4f59cb5 feat: route task outputs through effective workspace`.
 - Completed Phase 04 workflow waiting/resume, async context propagation, and durable workflow output implementation locally; no commit created by the phase implementation agent.
 - Completed Phase 04 validation through a dedicated validation agent.
+- Committed Phase 04 as `d1cc9f3 feat: route workflow outputs through effective workspace`.
 
 ## Current Work
 
 - Workspace/file architecture refactor.
-- Current gate: Phase 04 commit.
-- Phase 04 implementation and validation completed locally without a commit. Main orchestrator should commit, record the hash, then start Phase 05.
+- Current gate: Phase 05 implementation.
+- Phase 04 implementation and validation are committed. Main orchestrator should launch Phase 05 project API and owner-agent migration subplan.
 
 ## Current Plan Artifacts
 
@@ -77,7 +78,7 @@ Queued review/refactor focus:
 
 ## Next Action
 
-Commit Phase 04, record the hash, then launch Phase 05 project API and owner-agent migration subplan.
+Launch Phase 05 project API and owner-agent migration subplan.
 
 ## Phase 03 Local Validation
 

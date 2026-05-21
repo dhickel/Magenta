@@ -36,7 +36,7 @@ All review, planning, implementation, validation, remediation, documentation, an
 - Created Phase 01 commit: `aee52fc test: characterize workspace file baseline`.
 - Created Phase 02 commit: `961a6c8 feat: add effective workspace resolver`.
 - Created Phase 03 commit: `4f59cb5 feat: route task outputs through effective workspace`.
-- Phase 04 implementation and validation completed locally; awaiting main orchestrator commit.
+- Created Phase 04 commit: `d1cc9f3 feat: route workflow outputs through effective workspace`.
 
 ## Validation Results
 
@@ -94,6 +94,7 @@ All review, planning, implementation, validation, remediation, documentation, an
 - Phase 03 validation agent completed 2026-05-21: all requested validation commands passed. Phase 03 is ready for commit.
 - Phase 03 committed as `4f59cb5 feat: route task outputs through effective workspace`.
 - Phase 04 validation agent completed 2026-05-21: all requested validation commands passed. Phase 04 is ready for commit.
+- Phase 04 committed as `d1cc9f3 feat: route workflow outputs through effective workspace`.
 
 ## Phase 03 Implementation Notes - 2026-05-21
 
