@@ -19,7 +19,7 @@ All review, planning, implementation, validation, remediation, documentation, an
 
 ## Active Agents
 
-- None currently.
+- None.
 
 ## Completed Work
 
@@ -35,7 +35,7 @@ All review, planning, implementation, validation, remediation, documentation, an
 - Created planning synthesis commit: `0738b4a plan: synthesize workspace file refactor phases`.
 - Created Phase 01 commit: `aee52fc test: characterize workspace file baseline`.
 - Created Phase 02 commit: `961a6c8 feat: add effective workspace resolver`.
-- Phase 02 implementation completed locally; awaiting main orchestrator validation/commit.
+- Phase 03 implementation and validation completed locally; awaiting main orchestrator commit.
 
 ## Validation Results
 
@@ -51,6 +51,10 @@ All review, planning, implementation, validation, remediation, documentation, an
   - `mvn test -Dtest=WorkspacePathSegmentValidationTest,PlanServiceTest,PlanRepositoryTest,WorkspaceRepositorySchemaMigrationTest` -> PASS, 60 tests.
   - `mvn test -Dtest=PlanServiceTest,OutputArtifactServiceAttributionTest,WorkflowRunnerTest,OrchestrationRuntimeTest,WorkspaceRepositorySchemaMigrationTest,PublicApiRouteBindingTest` -> PASS, 109 tests.
   - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` -> application started successfully on ephemeral port `41141`; command exited `124` because `timeout` stopped the running server after startup.
+- Phase 03 validation passed:
+  - `mvn test -Dtest=PlanServiceTest,OutputArtifactServiceAttributionTest,AgentFileToolServiceTest,AgentShellToolServiceTest,WorkspacePathSegmentValidationTest` -> PASS, 115 tests.
+  - `mvn test -Dtest=PlanServiceTest,OutputArtifactServiceAttributionTest,AgentFileToolServiceTest,AgentShellToolServiceTest,WorkspacePathSegmentValidationTest,WorkflowRunnerTest,OrchestrationRuntimeTest,WorkspaceRepositorySchemaMigrationTest,PublicApiRouteBindingTest` -> PASS, 176 tests.
+  - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` -> application started successfully on ephemeral port `37317`; command exited `124` because `timeout` stopped the running server after startup.
 
 ## Remediation Notes
 
@@ -81,6 +85,75 @@ All review, planning, implementation, validation, remediation, documentation, an
 - Phase 01 committed as `aee52fc test: characterize workspace file baseline`.
 - Phase 02 validation completed 2026-05-21: all requested validation commands passed. Phase 02 is ready for commit.
 - Phase 02 committed as `961a6c8 feat: add effective workspace resolver`.
+- Phase 03 validation agent completed 2026-05-21: all requested validation commands passed. Phase 03 is ready for commit.
+
+## Phase 03 Implementation Notes - 2026-05-21
+
+Changed files:
+
+- `src/main/java/io/mindspice/magenta2/ai/chat/plan/PlanService.java`
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/runtime/OrchestrationTaskContext.java`
+- `src/main/java/io/mindspice/magenta2/ai/chat/tool/file/AgentFileToolService.java`
+- `src/main/java/io/mindspice/magenta2/ai/chat/tool/shell/AgentShellToolService.java`
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/OutputArtifactService.java`
+- `src/test/java/io/mindspice/magenta2/ai/chat/plan/PlanServiceTest.java`
+- `src/test/java/io/mindspice/magenta2/ai/chat/tool/file/AgentFileToolServiceTest.java`
+- `src/test/java/io/mindspice/magenta2/ai/chat/tool/shell/AgentShellToolServiceTest.java`
+- `src/test/java/io/mindspice/magenta2/ai/orchestration/workspaces/OutputArtifactServiceAttributionTest.java`
+- `.internal-dev/plans/workspace-file-architecture-refactor/agent-notes.md`
+- `.internal-dev/plans/workspace-file-architecture-refactor/orchestration-state.md`
+
+Implemented behavior:
+
+- Moved task/plan output selection onto `EffectiveWorkspaceResolver` plus `WorkspaceDirectoryService.taskOutput(...)` when the resolver is available.
+- Project-scoped task outputs now land under `projects/<projectId>/workspace/outputs/tasks/<taskId>/<runId>/`.
+- Agent-scoped task outputs now land under `agents/<agentId>/workspace/outputs/tasks/<taskId>/<runId>/`.
+- Preserved `PlanRun.tempWorkspacePath` under `runtime/task-runs/<runId>` and left existing terminal temp cleanup behavior intact.
+- Extended `OrchestrationTaskContext` with explicit `hostDurableWorkspacePath` and `hostRunPath` while retaining the legacy `hostWorkspacePath` as the run/assignment temp path for cleanup/link compatibility.
+- Alias contract chosen for active task contexts:
+  - `workspace/` -> effective durable workspace root.
+  - `work/` -> effective durable workspace `work/`.
+  - `outputs/` -> current run output directory.
+  - `run/` -> current run temp/execution directory.
+  - `scratch/` -> effective durable workspace `scratch/`.
+  - Existing `projects/<projectId>/...` compatibility remains through the materialized run-temp project link.
+- Added `OutputArtifactService.publishExistingFile(...)` as an explicit method-level output publishing path for existing files.
+- Gated loose artifact discovery behind a service-level compatibility policy, defaulting on for compatibility.
+- Added realpath confinement for loose discovery so the output directory must resolve under `dataRoot`, and discovered files must resolve under both `dataRoot` and the run output directory. Symlink escapes are skipped.
+- Preserved ordinary chat file behavior and data-root fallback behavior when no orchestration context is active.
+
+Coverage added or updated:
+
+- Updated Phase 01/02 task output placement assertions to require effective task output paths.
+- Added file and shell tool alias tests documenting `workspace/`, `work/`, `outputs/`, `run/`, and `scratch/`.
+- Added explicit output publishing coverage.
+- Added disabled loose discovery coverage.
+- Added loose discovery symlink escape coverage.
+- Kept chat-file exclusion coverage passing.
+
+Commands and results:
+
+- First focused pass: `mvn test -Dtest=PlanServiceTest,OutputArtifactServiceAttributionTest,AgentFileToolServiceTest,AgentShellToolServiceTest,WorkspacePathSegmentValidationTest` -> FAIL, 115 tests run, 2 old-assumption failures. Fixed missing resolver wiring in a project-scoped task test and updated old alias wording assertions.
+- Second focused pass: `mvn test -Dtest=PlanServiceTest,OutputArtifactServiceAttributionTest,AgentFileToolServiceTest,AgentShellToolServiceTest,WorkspacePathSegmentValidationTest` -> FAIL, 115 tests run, 1 remaining old alias wording assertion. Fixed assertion.
+- Final focused pass: `mvn test -Dtest=PlanServiceTest,OutputArtifactServiceAttributionTest,AgentFileToolServiceTest,AgentShellToolServiceTest,WorkspacePathSegmentValidationTest` -> PASS, 115 tests.
+- First broader regression pass: `mvn test -Dtest=PlanServiceTest,OutputArtifactServiceAttributionTest,AgentFileToolServiceTest,AgentShellToolServiceTest,WorkspacePathSegmentValidationTest,WorkflowRunnerTest,OrchestrationRuntimeTest,WorkspaceRepositorySchemaMigrationTest,PublicApiRouteBindingTest` -> FAIL, `PublicApiRouteBindingTest` Spring context failed because `OutputArtifactService` had multiple constructors and no selected autowire constructor. Added `@Autowired` to the compatibility-on constructor.
+- Final broader regression pass: `mvn test -Dtest=PlanServiceTest,OutputArtifactServiceAttributionTest,AgentFileToolServiceTest,AgentShellToolServiceTest,WorkspacePathSegmentValidationTest,WorkflowRunnerTest,OrchestrationRuntimeTest,WorkspaceRepositorySchemaMigrationTest,PublicApiRouteBindingTest` -> PASS, 176 tests.
+- Spring context smoke: `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` -> application started successfully on ephemeral port `34255`; command exited `124` because `timeout` stopped the running server after startup.
+
+Deferred planned work:
+
+- Phase 04 should move workflow output placement onto effective durable workflow output paths and handle workflow waiting/context propagation fixes.
+- Later phases should introduce a user-facing/tool-level explicit publish surface if needed; Phase 03 only added the method-level service API.
+- Later phases can move loose discovery from default compatibility-on to default-off after migration/configuration coverage is in place.
+- Package guide/docs/changelog updates and commit are left for the main orchestrator because this implementation agent was explicitly told not to edit docs outside the plan dir and not to commit.
+
+Blockers:
+
+- None.
+
+Ready state:
+
+- Phase 03 is ready for main validation. No commit was created by this implementation agent.
 
 ## Phase 01 Implementation Notes - 2026-05-21
 

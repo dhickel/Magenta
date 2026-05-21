@@ -379,6 +379,38 @@ class AgentShellToolServiceTest {
     }
 
     @Test
+    void activeTaskContextAliasesDurableWorkspaceRunTempAndCurrentOutputs() throws Exception {
+        Path durableWorkspace = Files.createDirectories(tempDir.resolve("projects/project-1/workspace"));
+        Path workDir = Files.createDirectories(durableWorkspace.resolve("work"));
+        Path scratchDir = Files.createDirectories(durableWorkspace.resolve("scratch"));
+        Path runWorkspace = Files.createDirectories(tempDir.resolve("runtime/task-runs/run-1"));
+        Path outputDir = Files.createDirectories(durableWorkspace.resolve("outputs/tasks/task-1/run-1"));
+
+        AiConfig aiConfig = new AiConfig(null, null, null, null, null, null, tempDir, null, null, null);
+        WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(aiConfig);
+        AgentShellToolService service = new AgentShellToolService(tempDir, List.of("pwd"), dirService);
+
+        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
+            "agent-1", "TestAgent", null, "project-1", "workspace-1", "TASK_RUN",
+            runWorkspace.toString(), outputDir.toString(), durableWorkspace.toString(), runWorkspace.toString()));
+
+        try {
+            assertThat(service.exec("pwd", "workspace", 5).stdout().trim())
+                .isEqualTo(durableWorkspace.toRealPath().toString());
+            assertThat(service.exec("pwd", "work", 5).stdout().trim())
+                .isEqualTo(workDir.toRealPath().toString());
+            assertThat(service.exec("pwd", "scratch", 5).stdout().trim())
+                .isEqualTo(scratchDir.toRealPath().toString());
+            assertThat(service.exec("pwd", "run", 5).stdout().trim())
+                .isEqualTo(runWorkspace.toRealPath().toString());
+            assertThat(service.exec("pwd", "outputs", 5).stdout().trim())
+                .isEqualTo(outputDir.toRealPath().toString());
+        } finally {
+            OrchestrationTaskContextHolder.clear();
+        }
+    }
+
+    @Test
     void resolvesOnlyCurrentProjectScopeInAssignmentContext() throws Exception {
         Path runWorkspace = Files.createDirectories(tempDir.resolve("runtime/task-runs/run-1"));
         Path outputDir = Files.createDirectories(tempDir.resolve("agents/agent-1/workspace/outputs/run-1"));

@@ -856,6 +856,10 @@ class PlanServiceTest {
             new AiConfig(null, null, null, null, dataRoot, null, null));
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         WorkspaceRepository workspaceRepository = new WorkspaceRepository(jdbcTemplate);
+        WorkspaceService workspaceService = new WorkspaceService(
+            workspaceRepository,
+            new AiConfig(null, null, null, null, dataRoot, null, null));
+        EffectiveWorkspaceResolver resolver = new EffectiveWorkspaceResolver(dirService, workspaceService);
         OutputArtifactService artifactService = new OutputArtifactService(
             workspaceRepository, dirService, new ObjectMapper().findAndRegisterModules());
 
@@ -863,7 +867,7 @@ class PlanServiceTest {
             new PlanRepository(jdbcTemplate, new ObjectMapper()),
             new ChatMemoryRepository(jdbcTemplate, new ObjectMapper()),
             null, new io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer(),
-            dirService, artifactService);
+            dirService, artifactService, resolver);
 
         // Create a task
         PlanDefinition task = service.saveTask(new PlanDefinition(
@@ -900,6 +904,10 @@ class PlanServiceTest {
             new AiConfig(null, null, null, null, dataRoot, null, null));
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         WorkspaceRepository workspaceRepository = new WorkspaceRepository(jdbcTemplate);
+        WorkspaceService workspaceService = new WorkspaceService(
+            workspaceRepository,
+            new AiConfig(null, null, null, null, dataRoot, null, null));
+        EffectiveWorkspaceResolver resolver = new EffectiveWorkspaceResolver(dirService, workspaceService);
         OutputArtifactService artifactService = new OutputArtifactService(
             workspaceRepository, dirService, new ObjectMapper().findAndRegisterModules());
 
@@ -907,7 +915,7 @@ class PlanServiceTest {
             new PlanRepository(jdbcTemplate, new ObjectMapper()),
             new ChatMemoryRepository(jdbcTemplate, new ObjectMapper()),
             null, new io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer(),
-            dirService, artifactService);
+            dirService, artifactService, resolver);
 
         PlanDefinition task = service.saveTask(new PlanDefinition(
             null, PlanKind.TASK_TEMPLATE, PlanStatus.APPROVED,
@@ -926,21 +934,25 @@ class PlanServiceTest {
             PlanRun run = service.startChatExecution("conversation-1", task.id(), Map.of(), context);
             OrchestrationTaskContext updated = OrchestrationTaskContextHolder.current();
 
-            assertThat(run.outputDirectory()).contains("agents/agent-1/workspace/outputs/");
+            Path projectWorkspace = dirService.projectWorkspace("project-1").toRealPath();
             assertThat(Path.of(run.outputDirectory()).toRealPath())
-                .isNotEqualTo(dirService.projectWorkspace("project-1").toRealPath());
+                .isEqualTo(projectWorkspace.resolve("outputs/tasks/" + task.id() + "/" + run.id()));
+            assertThat(Path.of(run.outputDirectory()).toRealPath())
+                .isNotEqualTo(dirService.agentWorkspaceRoot("agent-1").toRealPath());
             assertThat(updated.hostWorkspacePath()).isEqualTo(run.tempWorkspacePath());
             assertThat(updated.hostOutputPath()).isEqualTo(run.outputDirectory());
+            assertThat(updated.hostDurableWorkspacePath()).isEqualTo(projectWorkspace.toString());
+            assertThat(updated.hostRunPath()).isEqualTo(run.tempWorkspacePath());
             Path projectLink = Path.of(run.tempWorkspacePath()).resolve("projects/project-1");
             assertThat(Files.isSymbolicLink(projectLink)).isTrue();
-            assertThat(projectLink.toRealPath()).isEqualTo(dirService.projectWorkspace("project-1").toRealPath());
+            assertThat(projectLink.toRealPath()).isEqualTo(projectWorkspace);
         } finally {
             OrchestrationTaskContextHolder.clear();
         }
     }
 
     @Test
-    void startRunPersistsEffectiveWorkspaceIdWithoutMovingCurrentOutputDirectory() throws Exception {
+    void startRunUsesEffectiveWorkspaceTaskOutputDirectory() throws Exception {
         Path dataRoot = Files.createDirectories(tempDir.resolve("data-effective-workspace"));
         WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(
             new AiConfig(null, null, null, null, dataRoot, null, null));
@@ -975,9 +987,9 @@ class PlanServiceTest {
         var projectWorkspace = workspaceRepository.findByOwner(WorkspaceOwnerType.PROJECT, "project-1").orElseThrow();
         assertThat(projectRun.workspaceId()).isEqualTo(projectWorkspace.id());
         assertThat(projectRun.workspaceId()).isNotEqualTo("legacy-ws");
-        assertThat(projectRun.outputDirectory()).contains("agents/agent-1/workspace/outputs/");
         assertThat(Path.of(projectRun.outputDirectory()).toRealPath())
-            .isNotEqualTo(dirService.projectWorkspaceRoot("project-1").toRealPath());
+            .isEqualTo(dirService.projectWorkspaceRoot("project-1").toRealPath()
+                .resolve("outputs/tasks/" + task.id() + "/" + projectRun.id()));
         assertThat(Files.isDirectory(dataRoot.resolve("projects/project-1/workspace/work"))).isTrue();
         assertThat(Files.isDirectory(dataRoot.resolve("projects/project-1/workspace/outputs"))).isTrue();
         assertThat(Files.isDirectory(dataRoot.resolve("projects/project-1/workspace/runs"))).isTrue();
@@ -990,7 +1002,9 @@ class PlanServiceTest {
         var agentWorkspace = workspaceRepository.findByOwner(WorkspaceOwnerType.AGENT, "agent-2").orElseThrow();
         assertThat(agentRun.workspaceId()).isEqualTo(agentWorkspace.id());
         assertThat(agentRun.workspaceId()).isNotEqualTo("legacy-agent-ws");
-        assertThat(agentRun.outputDirectory()).contains("agents/agent-2/workspace/outputs/");
+        assertThat(Path.of(agentRun.outputDirectory()).toRealPath())
+            .isEqualTo(dirService.agentWorkspaceRoot("agent-2").toRealPath()
+                .resolve("outputs/tasks/" + task.id() + "/" + agentRun.id()));
         assertThat(planRepository.findRun(projectRun.id()).orElseThrow().workspaceId()).isEqualTo(projectWorkspace.id());
         assertThat(planRepository.findRun(agentRun.id()).orElseThrow().workspaceId()).isEqualTo(agentWorkspace.id());
     }

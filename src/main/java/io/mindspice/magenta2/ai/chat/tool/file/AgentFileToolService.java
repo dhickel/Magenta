@@ -387,7 +387,7 @@ public class AgentFileToolService {
 
     private FileScope resolveContextScope(OrchestrationTaskContext ctx, String requested) throws IOException {
         String normalized = normalizeContextRequest(requested);
-        if (StringUtils.hasText(ctx.hostWorkspacePath())) {
+        if (StringUtils.hasText(ctx.hostWorkspacePath()) || StringUtils.hasText(ctx.hostDurableWorkspacePath())) {
             return resolveAssignmentScope(ctx, normalized, requested);
         }
         if (ctx.hasAgentContext()) {
@@ -398,13 +398,13 @@ public class AgentFileToolService {
 
     private FileScope resolveAssignmentScope(OrchestrationTaskContext ctx, String normalized, String requested)
         throws IOException {
-        Path workspaceRoot = activeScopeRoot(ctx.hostWorkspacePath(), "active assignment workspace");
+        Path workspaceRoot = activeScopeRoot(contextWorkspacePath(ctx), "active durable workspace");
         if (isRootAlias(normalized, "workspace")) {
-            return new FileScope(workspaceRoot, "workspace", "active assignment workspace", "");
+            return new FileScope(workspaceRoot, "workspace", "active durable workspace", "");
         }
         if (normalized.startsWith("workspace/")) {
             return workspaceScope(workspaceRoot, normalized.substring("workspace/".length()), requested,
-                "active assignment workspace");
+                "active durable workspace");
         }
         if ("outputs".equals(normalized) || normalized.startsWith("outputs/")) {
             Path outputRoot = activeScopeRoot(ctx.hostOutputPath(), "active assignment output directory");
@@ -412,10 +412,28 @@ public class AgentFileToolService {
             rejectUnsafeRelativePath(remainder, "path escapes active assignment output directory: " + requested);
             return new FileScope(outputRoot, "outputs", "active assignment output directory", remainder);
         }
+        if ("run".equals(normalized) || normalized.startsWith("run/")) {
+            Path runRoot = activeScopeRoot(contextRunPath(ctx), "active run workspace");
+            String remainder = "run".equals(normalized) ? "" : normalized.substring("run/".length());
+            rejectUnsafeRelativePath(remainder, "path escapes active run workspace: " + requested);
+            return new FileScope(runRoot, "run", "active run workspace", remainder);
+        }
+        if ("work".equals(normalized) || normalized.startsWith("work/")) {
+            Path workRoot = durableChildScope(workspaceRoot, "work");
+            String remainder = "work".equals(normalized) ? "" : normalized.substring("work/".length());
+            rejectUnsafeRelativePath(remainder, "path escapes active durable work directory: " + requested);
+            return new FileScope(workRoot, "work", "active durable work directory", remainder);
+        }
+        if ("scratch".equals(normalized) || normalized.startsWith("scratch/")) {
+            Path scratchRoot = durableChildScope(workspaceRoot, "scratch");
+            String remainder = "scratch".equals(normalized) ? "" : normalized.substring("scratch/".length());
+            rejectUnsafeRelativePath(remainder, "path escapes active durable scratch directory: " + requested);
+            return new FileScope(scratchRoot, "scratch", "active durable scratch directory", remainder);
+        }
         if (normalized.startsWith("projects/")) {
             return resolveProjectScope(ctx, normalized, requested);
         }
-        return workspaceScope(workspaceRoot, normalized, requested, "active assignment workspace");
+        return workspaceScope(workspaceRoot, normalized, requested, "active durable workspace");
     }
 
     private FileScope resolveAgentScope(OrchestrationTaskContext ctx, String normalized, String requested)
@@ -505,6 +523,27 @@ public class AgentFileToolService {
         }
         if (!Files.isDirectory(real, LinkOption.NOFOLLOW_LINKS)) {
             throw new IllegalArgumentException(label + " is not a directory");
+        }
+        return real;
+    }
+
+    private String contextWorkspacePath(OrchestrationTaskContext ctx) {
+        return StringUtils.hasText(ctx.hostDurableWorkspacePath())
+            ? ctx.hostDurableWorkspacePath()
+            : ctx.hostWorkspacePath();
+    }
+
+    private String contextRunPath(OrchestrationTaskContext ctx) {
+        return StringUtils.hasText(ctx.hostRunPath())
+            ? ctx.hostRunPath()
+            : ctx.hostWorkspacePath();
+    }
+
+    private Path durableChildScope(Path workspaceRoot, String child) throws IOException {
+        Path resolved = Files.createDirectories(workspaceRoot.resolve(child).normalize());
+        Path real = resolved.toRealPath();
+        if (!real.startsWith(workspaceRoot)) {
+            throw new IllegalArgumentException("path escapes active durable workspace");
         }
         return real;
     }

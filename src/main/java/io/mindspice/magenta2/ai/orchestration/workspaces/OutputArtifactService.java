@@ -14,6 +14,7 @@ import java.util.UUID;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.chat.plan.PlanFieldType;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -35,13 +36,23 @@ public class OutputArtifactService {
     private final WorkspaceRepository repository;
     private final WorkspaceDirectoryService directoryService;
     private final ObjectMapper objectMapper;
+    private final boolean looseArtifactDiscoveryEnabled;
 
+    @Autowired
     public OutputArtifactService(WorkspaceRepository repository,
                                  WorkspaceDirectoryService directoryService,
                                  ObjectMapper objectMapper) {
+        this(repository, directoryService, objectMapper, true);
+    }
+
+    public OutputArtifactService(WorkspaceRepository repository,
+                                 WorkspaceDirectoryService directoryService,
+                                 ObjectMapper objectMapper,
+                                 boolean looseArtifactDiscoveryEnabled) {
         this.repository = repository;
         this.directoryService = directoryService;
         this.objectMapper = objectMapper;
+        this.looseArtifactDiscoveryEnabled = looseArtifactDiscoveryEnabled;
     }
 
     /**
@@ -200,8 +211,13 @@ public class OutputArtifactService {
      */
     public int discoverLooseArtifacts(String runId, String planId, Path outputDir,
                                        OutputArtifactContext context) throws IOException {
-        if (!Files.isDirectory(outputDir)) {
+        if (!looseArtifactDiscoveryEnabled || !Files.isDirectory(outputDir)) {
             return 0;
+        }
+        Path realDataRoot = directoryService.dataRoot().toRealPath();
+        Path realOutputDir = outputDir.toRealPath();
+        if (!realOutputDir.startsWith(realDataRoot)) {
+            throw new IllegalArgumentException("Output directory escapes data root: " + outputDir);
         }
         java.util.Set<String> registered = repository.findArtifactsByRunId(runId).stream()
             .map(RunOutputArtifact::fileName)
@@ -210,6 +226,10 @@ public class OutputArtifactService {
         int count = 0;
         try (var stream = Files.list(outputDir)) {
             for (Path file : stream.filter(Files::isRegularFile).toList()) {
+                Path realFile = file.toRealPath();
+                if (!realFile.startsWith(realDataRoot) || !realFile.startsWith(realOutputDir)) {
+                    continue;
+                }
                 String fileName = file.getFileName().toString();
                 if (registered.contains(fileName)) {
                     continue;
@@ -223,6 +243,48 @@ public class OutputArtifactService {
             }
         }
         return count;
+    }
+
+    /**
+     * Explicitly publish an existing file as a run output artifact. The source
+     * file must resolve under the configured data root. If it is not already in
+     * the run output directory, it is copied there before metadata is persisted.
+     */
+    public RunOutputArtifact publishExistingFile(String runId, String planId,
+                                                 String outputName, String artifactType,
+                                                 Path sourcePath, Path outputDir,
+                                                 OutputArtifactContext context) throws IOException {
+        requireId(runId, "runId");
+        requireId(planId, "planId");
+        requireId(outputName, "outputName");
+        if (sourcePath == null) {
+            throw new IllegalArgumentException("sourcePath is required");
+        }
+        if (outputDir == null) {
+            throw new IllegalArgumentException("outputDir is required");
+        }
+        Path realDataRoot = directoryService.dataRoot().toRealPath();
+        Path realSource = requireConfinedRealSourcePath(sourcePath, realDataRoot, outputName);
+        Path realOutputDir = Files.createDirectories(outputDir).toRealPath();
+        if (!realOutputDir.startsWith(realDataRoot)) {
+            throw new IllegalArgumentException("Output directory escapes data root: " + outputDir);
+        }
+
+        Path destination = realOutputDir.resolve(realSource.getFileName().toString()).normalize();
+        if (!destination.startsWith(realOutputDir)) {
+            throw new IllegalArgumentException("Published output path escapes output directory: " + sourcePath);
+        }
+        if (!realSource.startsWith(realOutputDir)) {
+            Files.copy(realSource, destination, StandardCopyOption.REPLACE_EXISTING);
+        } else {
+            destination = realSource;
+        }
+
+        String resolvedType = StringUtils.hasText(artifactType)
+            ? artifactType.trim()
+            : inferArtifactType(destination.getFileName().toString());
+        return saveArtifact(runId, planId, outputName, resolvedType,
+            destination.getFileName().toString(), destination.toString(), null, context);
     }
 
     private String inferArtifactType(String fileName) {

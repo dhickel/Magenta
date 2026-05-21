@@ -337,8 +337,9 @@ class OutputArtifactServiceAttributionTest {
     void discoversLooseArtifactsInOutputDirectory() throws Exception {
         JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
         WorkspaceRepository repository = new WorkspaceRepository(jdbc);
+        Path dataRoot = Files.createDirectories(tempDir.resolve("root4"));
         WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
-            new AiConfig(null, null, null, null, Files.createDirectories(tempDir.resolve("root4")), null, null)
+            new AiConfig(null, null, null, null, dataRoot, null, null)
         );
         OutputArtifactService service = new OutputArtifactService(
             repository,
@@ -346,7 +347,7 @@ class OutputArtifactServiceAttributionTest {
             new ObjectMapper().findAndRegisterModules()
         );
 
-        Path outputDir = Files.createDirectories(tempDir.resolve("outputs4"));
+        Path outputDir = Files.createDirectories(dataRoot.resolve("outputs4"));
         // Create loose files that weren't registered as outputs
         Files.writeString(outputDir.resolve("notes.md"), "# Notes");
         Files.writeString(outputDir.resolve("data.json"), "{\"key\": 1}");
@@ -366,8 +367,9 @@ class OutputArtifactServiceAttributionTest {
     void looseArtifactDiscoveryCurrentlyScansOnlyDirectOutputFiles() throws Exception {
         JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
         WorkspaceRepository repository = new WorkspaceRepository(jdbc);
+        Path dataRoot = Files.createDirectories(tempDir.resolve("root-shallow"));
         WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
-            new AiConfig(null, null, null, null, Files.createDirectories(tempDir.resolve("root-shallow")), null, null)
+            new AiConfig(null, null, null, null, dataRoot, null, null)
         );
         OutputArtifactService service = new OutputArtifactService(
             repository,
@@ -375,7 +377,7 @@ class OutputArtifactServiceAttributionTest {
             new ObjectMapper().findAndRegisterModules()
         );
 
-        Path outputDir = Files.createDirectories(tempDir.resolve("outputs-shallow"));
+        Path outputDir = Files.createDirectories(dataRoot.resolve("outputs-shallow"));
         Files.writeString(outputDir.resolve("direct.log"), "direct output");
         Files.writeString(outputDir.resolve("unknown.bin"), "binary-ish output");
         Path nested = Files.createDirectories(outputDir.resolve("nested"));
@@ -390,5 +392,92 @@ class OutputArtifactServiceAttributionTest {
             .containsExactlyInAnyOrder("direct.log", "unknown.bin");
         assertThat(artifacts).extracting(RunOutputArtifact::artifactType)
             .containsExactlyInAnyOrder("text", "file_path");
+    }
+
+    @Test
+    void looseArtifactDiscoveryCanBeDisabledByCompatibilityPolicy() throws Exception {
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
+        WorkspaceRepository repository = new WorkspaceRepository(jdbc);
+        Path dataRoot = Files.createDirectories(tempDir.resolve("root-disabled"));
+        WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
+            new AiConfig(null, null, null, null, dataRoot, null, null)
+        );
+        OutputArtifactService service = new OutputArtifactService(
+            repository,
+            directoryService,
+            new ObjectMapper().findAndRegisterModules(),
+            false
+        );
+
+        Path outputDir = Files.createDirectories(dataRoot.resolve("outputs-disabled"));
+        Files.writeString(outputDir.resolve("loose.txt"), "compat output");
+
+        int discovered = service.discoverLooseArtifacts(
+            "run-disabled", "plan-disabled", outputDir, OutputArtifactContext.EMPTY);
+
+        assertThat(discovered).isZero();
+        assertThat(repository.findArtifactsByRunId("run-disabled")).isEmpty();
+    }
+
+    @Test
+    void looseArtifactDiscoverySkipsSymlinkEscapes() throws Exception {
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
+        WorkspaceRepository repository = new WorkspaceRepository(jdbc);
+        Path dataRoot = Files.createDirectories(tempDir.resolve("root-loose-symlink"));
+        WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
+            new AiConfig(null, null, null, null, dataRoot, null, null)
+        );
+        OutputArtifactService service = new OutputArtifactService(
+            repository,
+            directoryService,
+            new ObjectMapper().findAndRegisterModules()
+        );
+
+        Path outputDir = Files.createDirectories(dataRoot.resolve("outputs-loose-symlink"));
+        Files.writeString(outputDir.resolve("safe.txt"), "safe output");
+        Files.createSymbolicLink(outputDir.resolve("outside.txt"), Files.writeString(tempDir.resolve("outside.txt"), "outside"));
+
+        int discovered = service.discoverLooseArtifacts(
+            "run-loose-symlink", "plan-loose-symlink", outputDir, OutputArtifactContext.EMPTY);
+
+        assertThat(discovered).isEqualTo(1);
+        assertThat(repository.findArtifactsByRunId("run-loose-symlink"))
+            .extracting(RunOutputArtifact::fileName)
+            .containsExactly("safe.txt");
+    }
+
+    @Test
+    void publishExistingFileCopiesAndRegistersExplicitOutput() throws Exception {
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
+        WorkspaceRepository repository = new WorkspaceRepository(jdbc);
+        Path dataRoot = Files.createDirectories(tempDir.resolve("root-publish"));
+        WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
+            new AiConfig(null, null, null, null, dataRoot, null, null)
+        );
+        OutputArtifactService service = new OutputArtifactService(
+            repository,
+            directoryService,
+            new ObjectMapper().findAndRegisterModules()
+        );
+
+        Path runDir = Files.createDirectories(dataRoot.resolve("runtime/task-runs/run-publish"));
+        Path source = Files.writeString(runDir.resolve("report.md"), "# report");
+        Path outputDir = Files.createDirectories(dataRoot.resolve("projects/project-1/workspace/outputs/tasks/task-1/run-publish"));
+
+        RunOutputArtifact artifact = service.publishExistingFile(
+            "run-publish",
+            "task-1",
+            "report",
+            null,
+            source,
+            outputDir,
+            new OutputArtifactContext("agent-1", null, "project-1", "workspace-1", "TASK_RUN")
+        );
+
+        assertThat(artifact.outputName()).isEqualTo("report");
+        assertThat(artifact.artifactType()).isEqualTo("user_message");
+        assertThat(artifact.projectId()).isEqualTo("project-1");
+        assertThat(Path.of(artifact.filePath())).isEqualTo(outputDir.resolve("report.md"));
+        assertThat(Files.readString(outputDir.resolve("report.md"))).isEqualTo("# report");
     }
 }

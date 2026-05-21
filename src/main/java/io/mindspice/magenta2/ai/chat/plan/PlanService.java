@@ -912,29 +912,34 @@ public class PlanService {
         String tempWorkspacePath = null;
         String outputDirectoryPath = null;
         String effectiveWorkspaceId = null;
+        String durableWorkspacePath = null;
         if (workspaceDirectoryService != null) {
             try {
                 Path tempDir = workspaceDirectoryService.taskTemp(runId);
                 tempWorkspacePath = tempDir.toRealPath().toString();
                 String slug = slugFromTitle(definition.title());
                 String agentId = context != null && context.hasAgentContext() ? context.agentId() : "system";
+                Path outputDir;
                 if (effectiveWorkspaceResolver != null) {
                     EffectiveWorkspace effectiveWorkspace = effectiveWorkspaceResolver.resolve(
                         agentId,
                         context == null ? null : context.projectId());
                     effectiveWorkspaceId = effectiveWorkspace.workspaceId();
+                    durableWorkspacePath = effectiveWorkspace.root().toRealPath().toString();
+                    outputDir = workspaceDirectoryService.taskOutput(effectiveWorkspace.root(), definition.id(), runId);
+                } else {
+                    outputDir = workspaceDirectoryService.agentOutput(agentId, slug, runId);
                 }
-                Path outputDir = workspaceDirectoryService.agentOutput(agentId, slug, runId);
                 Path realOutputDir = outputDir.toRealPath();
                 outputDirectoryPath = realOutputDir.toString();
                 effectiveContext = context == null
                     ? null
-                    : context.withPaths(tempWorkspacePath, outputDirectoryPath);
+                    : context.withExecutionPaths(durableWorkspacePath, outputDirectoryPath, tempWorkspacePath);
                 if (effectiveContext != null && OrchestrationTaskContextHolder.current() != null) {
                     OrchestrationTaskContextHolder.set(effectiveContext);
                 }
-                log.info("Allocated temp={} output={} agent={} for run={}",
-                    tempWorkspacePath, outputDirectoryPath, agentId, runId);
+                log.info("Allocated temp={} durableWorkspace={} output={} agent={} for run={}",
+                    tempWorkspacePath, durableWorkspacePath, outputDirectoryPath, agentId, runId);
             } catch (Exception e) {
                 return saveAllocationFailureRun(
                     runId, definition, cleanInputs, effectiveWorkspaceId,
@@ -1965,7 +1970,7 @@ Approved plan:
             if (discovered > 0) {
                 log.info("Discovered {} loose artifacts for run={}", discovered, run.id());
             }
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
             log.warn("Failed to scan for loose artifacts for run={}: {}", run.id(), e.getMessage());
         }
     }
@@ -2028,7 +2033,9 @@ Approved plan:
                 agentId,
                 taskContext.jobId(),
                 taskContext.projectId(),
-                taskContext.workspaceId(),
+                StringUtils.hasText(taskContext.workspaceId())
+                    ? taskContext.workspaceId()
+                    : run.workspaceId(),
                 StringUtils.hasText(taskContext.runType())
                     ? taskContext.runType()
                     : defaultRunType
@@ -2036,7 +2043,7 @@ Approved plan:
         }
         String agentId = resolveOutputAgentId(run);
         return new OutputArtifactContext(
-            agentId, null, null, null,
+            agentId, null, null, run.workspaceId(),
             defaultRunType
         );
     }
@@ -2105,19 +2112,20 @@ Approved plan:
         return """
             ## Filesystem Workspace Environment
 
-            You are executing on the host filesystem inside the agent workspace.
+            You are executing on the host filesystem inside the effective durable workspace.
             The following directories are available:
 
-            - workspace/ — your agent execution root (writable, persistent)
-            - workspace/outputs/ — the agent output root (writable, preserved permanently)
-            - workspace/scratch/ — agent-private temporary working space (writable)
-            - workspace/projects/ — linked project workspaces when a project lease is active
+            - workspace/ — the effective durable workspace root (project workspace when project-scoped, otherwise agent workspace)
+            - work/ — durable working files shared across runs in this workspace
+            - outputs/ — the current run's output directory (writable, preserved permanently)
+            - run/ — this run's temporary execution directory (cleaned after terminal completion unless retention is enabled)
+            - scratch/ — durable scratch space in the effective workspace
 
             ### Output Directory
 
             When completing a task, write or copy all required output files into the run-specific
-            output directory named by the execution prompt. Do not write deliverable files directly
-            to workspace/outputs unless the run-specific output directory is unavailable.
+            outputs/ directory. Do not write deliverable files directly to workspace/outputs unless
+            the run-specific output directory is unavailable.
 
             ### Python and Virtual Environments
 

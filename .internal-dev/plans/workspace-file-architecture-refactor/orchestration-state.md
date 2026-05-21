@@ -27,12 +27,14 @@ Persistent state for this long-running orchestration effort. Use this file to re
 - Completed Phase 01 baseline characterization and committed it as `aee52fc test: characterize workspace file baseline`.
 - Completed Phase 02 effective workspace resolver and run metadata implementation locally; no commit created by the phase implementation agent.
 - Committed Phase 02 as `961a6c8 feat: add effective workspace resolver`.
+- Completed Phase 03 task output routing, runtime alias, explicit publish, and loose-discovery confinement implementation locally; no commit created by the phase implementation agent.
+- Completed Phase 03 validation through a dedicated validation agent.
 
 ## Current Work
 
 - Workspace/file architecture refactor.
-- Current gate: start Phase 03 task/plan paths and outputs.
-- Phase 02 is complete and committed.
+- Current gate: Phase 03 commit.
+- Phase 03 implementation and validation completed locally without a commit. Main orchestrator should commit, record the hash, then start Phase 04.
 
 ## Current Plan Artifacts
 
@@ -72,4 +74,17 @@ Queued review/refactor focus:
 
 ## Next Action
 
-Start Phase 03 through a high-reasoning implementation subagent.
+Commit Phase 03, record the hash, then launch Phase 04 workflow execution subplan.
+
+## Phase 03 Local Validation
+
+- `mvn test -Dtest=PlanServiceTest,OutputArtifactServiceAttributionTest,AgentFileToolServiceTest,AgentShellToolServiceTest,WorkspacePathSegmentValidationTest` -> PASS, 115 tests after two remediation passes for old assertions.
+- `mvn test -Dtest=PlanServiceTest,OutputArtifactServiceAttributionTest,AgentFileToolServiceTest,AgentShellToolServiceTest,WorkspacePathSegmentValidationTest,WorkflowRunnerTest,OrchestrationRuntimeTest,WorkspaceRepositorySchemaMigrationTest,PublicApiRouteBindingTest` -> PASS, 176 tests after adding an explicit Spring autowire constructor selection for `OutputArtifactService`.
+- `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` -> application started on port `34255`; exited `124` because `timeout` stopped the server.
+
+## Phase 03 Validation Agent
+
+- `mvn test -Dtest=PlanServiceTest,OutputArtifactServiceAttributionTest,AgentFileToolServiceTest,AgentShellToolServiceTest,WorkspacePathSegmentValidationTest` -> PASS, 115 tests.
+- `mvn test -Dtest=PlanServiceTest,OutputArtifactServiceAttributionTest,AgentFileToolServiceTest,AgentShellToolServiceTest,WorkspacePathSegmentValidationTest,WorkflowRunnerTest,OrchestrationRuntimeTest,WorkspaceRepositorySchemaMigrationTest,PublicApiRouteBindingTest` -> PASS, 176 tests.
+- `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` -> application started on port `37317`; exited `124` because `timeout` stopped the server.
+- Sanity check confirmed runtime aliases, loose-discovery gating/confinement, and `publishExistingFile(...)` explicit publishing are present.

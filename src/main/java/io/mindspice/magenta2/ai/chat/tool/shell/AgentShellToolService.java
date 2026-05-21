@@ -138,7 +138,7 @@ public class AgentShellToolService {
      */
     private ResolvedWorkingDirectory resolveContextWorkingDirectory(OrchestrationTaskContext ctx, String workingDirectory)
         throws IOException {
-        if (StringUtils.hasText(ctx.hostWorkspacePath())) {
+        if (StringUtils.hasText(ctx.hostWorkspacePath()) || StringUtils.hasText(ctx.hostDurableWorkspacePath())) {
             return resolveAssignmentWorkingDirectory(ctx, workingDirectory);
         }
         if (ctx.hasAgentContext()) {
@@ -150,7 +150,7 @@ public class AgentShellToolService {
 
     private ResolvedWorkingDirectory resolveAssignmentWorkingDirectory(OrchestrationTaskContext ctx, String workingDirectory)
         throws IOException {
-        Path workspaceRoot = activeScopeRoot(ctx.hostWorkspacePath(), "active assignment workspace");
+        Path workspaceRoot = activeScopeRoot(contextWorkspacePath(ctx), "active durable workspace");
         String requested = StringUtils.hasText(workingDirectory) ? workingDirectory.trim() : "";
         String normalized = normalizeWorkspaceRequest(requested);
 
@@ -163,13 +163,34 @@ public class AgentShellToolService {
                 return new ResolvedWorkingDirectory(workspaceRoot, "workspace");
             }
         }
-        rejectUnsafeRelativePath(normalized, "Working directory escapes active assignment workspace: " + workingDirectory);
+        rejectUnsafeRelativePath(normalized, "Working directory escapes active durable workspace: " + workingDirectory);
 
         if ("outputs".equals(normalized) || normalized.startsWith("outputs/")) {
             Path outputRoot = activeScopeRoot(ctx.hostOutputPath(), "active assignment output directory");
             String remainder = "outputs".equals(normalized) ? "" : normalized.substring("outputs/".length());
             Path resolved = resolveScopedDirectory(outputRoot, remainder, workingDirectory);
             return new ResolvedWorkingDirectory(resolved, displayScoped("outputs", outputRoot, resolved));
+        }
+
+        if ("run".equals(normalized) || normalized.startsWith("run/")) {
+            Path runRoot = activeScopeRoot(contextRunPath(ctx), "active run workspace");
+            String remainder = "run".equals(normalized) ? "" : normalized.substring("run/".length());
+            Path resolved = resolveScopedDirectory(runRoot, remainder, workingDirectory);
+            return new ResolvedWorkingDirectory(resolved, displayScoped("run", runRoot, resolved));
+        }
+
+        if ("work".equals(normalized) || normalized.startsWith("work/")) {
+            Path workRoot = durableChildScope(workspaceRoot, "work");
+            String remainder = "work".equals(normalized) ? "" : normalized.substring("work/".length());
+            Path resolved = resolveScopedDirectory(workRoot, remainder, workingDirectory);
+            return new ResolvedWorkingDirectory(resolved, displayScoped("work", workRoot, resolved));
+        }
+
+        if ("scratch".equals(normalized) || normalized.startsWith("scratch/")) {
+            Path scratchRoot = durableChildScope(workspaceRoot, "scratch");
+            String remainder = "scratch".equals(normalized) ? "" : normalized.substring("scratch/".length());
+            Path resolved = resolveScopedDirectory(scratchRoot, remainder, workingDirectory);
+            return new ResolvedWorkingDirectory(resolved, displayScoped("scratch", scratchRoot, resolved));
         }
 
         if (normalized.startsWith("projects/")) {
@@ -458,6 +479,18 @@ public class AgentShellToolService {
         }
     }
 
+    private String contextWorkspacePath(OrchestrationTaskContext ctx) {
+        return StringUtils.hasText(ctx.hostDurableWorkspacePath())
+            ? ctx.hostDurableWorkspacePath()
+            : ctx.hostWorkspacePath();
+    }
+
+    private String contextRunPath(OrchestrationTaskContext ctx) {
+        return StringUtils.hasText(ctx.hostRunPath())
+            ? ctx.hostRunPath()
+            : ctx.hostWorkspacePath();
+    }
+
     private Path activeScopeRoot(String path, String label) throws IOException {
         if (!StringUtils.hasText(path)) {
             throw new IllegalStateException("Shell execution requires an " + label);
@@ -468,6 +501,15 @@ public class AgentShellToolService {
         }
         if (!Files.isDirectory(real, LinkOption.NOFOLLOW_LINKS)) {
             throw new IllegalArgumentException(label + " is not a directory");
+        }
+        return real;
+    }
+
+    private Path durableChildScope(Path workspaceRoot, String child) throws IOException {
+        Path resolved = Files.createDirectories(workspaceRoot.resolve(child).normalize());
+        Path real = resolved.toRealPath();
+        if (!real.startsWith(workspaceRoot)) {
+            throw new IllegalArgumentException("Working directory escapes active durable workspace");
         }
         return real;
     }
