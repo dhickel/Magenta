@@ -1,0 +1,63 @@
+{
+  "baseUrl": "http://localhost:18080",
+  "openResult": {
+    "clicked": true,
+    "rectClosed": {
+      "x": -324,
+      "y": 12,
+      "width": 320,
+      "height": 820,
+      "top": 12,
+      "right": -4,
+      "bottom": 832,
+      "left": -324
+    },
+    "stylesClosed": {
+      "position": "fixed",
+      "overflowY": "auto",
+      "transform": "matrix(1, 0, 0, 1, -336, 0)"
+    }
+  },
+  "reopenedState": {
+    "reopened": true,
+    "rectOpen": {
+      "x": 12,
+      "y": 12,
+      "width": 320,
+      "height": 820,
+      "top": 12,
+      "right": 332,
+      "bottom": 832,
+      "left": 12
+    },
+    "styles": {
+      "position": "fixed",
+      "overflowY": "auto",
+      "transform": "matrix(1, 0, 0, 1, 0, 0)"
+    }
+  },
+  "sidebarPostCheck": {
+    "exists": true,
+    "rect": {
+      "x": 12,
+      "y": 12,
+      "width": 320,
+      "height": 820,
+      "top": 12,
+      "right": 332,
+      "bottom": 832,
+      "left": 12
+    },
+    "scrollHeight": 818,
+    "clientHeight": 818,
+    "scrollability": false
+  },
+  "jobsOverflowCheck": {
+    "found": false,
+    "tables": []
+  },
+  "consoleCount": 0,
+  "consoleMessages": [],
+  "networkIssueCount": 0,
+  "networkEvents": []
+}

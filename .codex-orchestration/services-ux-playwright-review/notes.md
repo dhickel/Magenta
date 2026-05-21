@@ -48,3 +48,11 @@
 
 - Preserve unrelated dirty files. Do not stage screenshots or reports outside this lane unless they are explicit validation artifacts.
 - UX remediation worker applied a small CSS-only fix in `src/main/resources/static/css/orchestration.css`: mobile `.main-sidebar` now opens as a fixed viewport drawer, collapsed state translates it offscreen, and dashboard/operational tables gain mobile horizontal containment plus safer dense-cell wrapping.
+
+## 2026-05-21 Remediation Validation (commit `d1ec7bc`)
+
+- Validation-only Playwright pass executed against `http://localhost:18080` with isolated SQLite DB `/tmp/magenta2-services-ux-remediation-2026-05-21.sqlite?foreign_keys=true`.
+- Mobile sidebar close/open interaction now keeps drawer anchored near viewport top (`top=12px`, `position:fixed`, `overflow-y:auto`, open `x=12`, closed `x=-324`).
+- Mobile dashboard and jobs screens were rechecked with fresh screenshots; no obvious table clipping at card boundaries observed in this pass.
+- Browser console/network capture reported no console messages and no `>=400`/failed network requests during targeted checks.
+- Artifacts stored under `test-results/services-ux-playwright-remediation-2026-05-21/`.
