@@ -1,22 +1,33 @@
 package io.mindspice.magenta2.ai.orchestration.runtime;
 
-import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
+import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
+import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.EffectiveWorkspace;
 import io.mindspice.magenta2.ai.orchestration.workspaces.EffectiveWorkspaceResolver;
+import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact;
+import io.mindspice.magenta2.ai.orchestration.workspaces.Workspace;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceService;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.support.CronExpression;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -34,6 +45,11 @@ public class JobService {
     private final WorkflowService workflowService;
     private final EffectiveWorkspaceResolver effectiveWorkspaceResolver;
     private final OrchestrationRuntimeRepository runtimeRepository;
+    private final ObjectProvider<AssignmentService> assignmentServiceProvider;
+    private final AgentProfileService agentProfileService;
+    private final ProjectService projectService;
+    private final WorkspaceService workspaceService;
+    private final OutputArtifactService outputArtifactService;
 
     public JobService(JobRepository jobRepository,
                       WorkspaceDirectoryService workspaceDirectoryService,
@@ -50,19 +66,39 @@ public class JobService {
         this(jobRepository, workspaceDirectoryService, planService, workflowService, effectiveWorkspaceResolver, null);
     }
 
-    @Autowired
     public JobService(JobRepository jobRepository,
                       WorkspaceDirectoryService workspaceDirectoryService,
                       PlanService planService,
                       WorkflowService workflowService,
                       @Autowired(required = false) EffectiveWorkspaceResolver effectiveWorkspaceResolver,
                       @Autowired(required = false) OrchestrationRuntimeRepository runtimeRepository) {
+        this(jobRepository, workspaceDirectoryService, planService, workflowService, effectiveWorkspaceResolver,
+            runtimeRepository, null, null, null, null, null);
+    }
+
+    @Autowired
+    public JobService(JobRepository jobRepository,
+                      WorkspaceDirectoryService workspaceDirectoryService,
+                      PlanService planService,
+                      WorkflowService workflowService,
+                      @Autowired(required = false) EffectiveWorkspaceResolver effectiveWorkspaceResolver,
+                      @Autowired(required = false) OrchestrationRuntimeRepository runtimeRepository,
+                      @Autowired(required = false) ObjectProvider<AssignmentService> assignmentServiceProvider,
+                      @Autowired(required = false) AgentProfileService agentProfileService,
+                      @Autowired(required = false) ProjectService projectService,
+                      @Autowired(required = false) WorkspaceService workspaceService,
+                      @Autowired(required = false) OutputArtifactService outputArtifactService) {
         this.jobRepository = jobRepository;
         this.workspaceDirectoryService = workspaceDirectoryService;
         this.planService = planService;
         this.workflowService = workflowService;
         this.effectiveWorkspaceResolver = effectiveWorkspaceResolver;
         this.runtimeRepository = runtimeRepository;
+        this.assignmentServiceProvider = assignmentServiceProvider;
+        this.agentProfileService = agentProfileService;
+        this.projectService = projectService;
+        this.workspaceService = workspaceService;
+        this.outputArtifactService = outputArtifactService;
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -186,19 +222,22 @@ public class JobService {
     // ════════════════════════════════════════════════════════════════
 
     /**
-     * Creates and starts a new job run. Persistent job workspaces are opt-in;
-     * job output directories are always allocated under the effective durable
-     * workspace.
+     * Direct job run allocation is intentionally not available to public or
+     * scheduler paths. Create a JOB_RUN assignment and let the runner allocate
+     * the run after it owns the assignment lease.
      */
     public JobRun startRun(String jobId) {
-        return startRun(jobId, null, null, null);
+        throw new IllegalStateException("Job runs must be started from an assignment context");
     }
 
     public JobRun startRun(String jobId, String agentId, String projectId, String jobAssignmentId) {
+        if (!StringUtils.hasText(jobAssignmentId)) {
+            throw new IllegalStateException("Job runs require an assignment context");
+        }
         JobDefinition def = getDefinition(jobId);
         Instant now = Instant.now();
         String runId = UUID.randomUUID().toString();
-        String assignmentKey = firstText(jobAssignmentId, runId);
+        String assignmentKey = normalize(jobAssignmentId);
         String effectiveAgentId = firstText(agentId, def.ownerAgentId(), "system");
         String effectiveProjectId = firstText(projectId, def.projectId());
 
@@ -323,6 +362,23 @@ public class JobService {
         if (run.status().isTerminal()) {
             throw new IllegalStateException("Cannot cancel terminal job run: " + runId);
         }
+        if (StringUtils.hasText(run.jobAssignmentId()) && runtimeRepository != null) {
+            WorkAssignment assignment = runtimeRepository.findAssignment(run.jobAssignmentId()).orElse(null);
+            AssignmentService assignmentService = assignmentServiceProvider == null
+                ? null
+                : assignmentServiceProvider.getIfAvailable();
+            if (assignment != null && assignmentService != null && !assignment.status().isTerminal()) {
+                assignmentService.cancel(assignment.agentId(), assignment.id());
+            }
+        }
+        return cancelRunFromAssignment(runId);
+    }
+
+    JobRun cancelRunFromAssignment(String runId) {
+        JobRun run = getRun(runId);
+        if (run.status().isTerminal()) {
+            return run;
+        }
         return jobRepository.saveRun(new JobRun(
             run.id(), run.jobId(), run.jobAssignmentId(), run.workspaceId(), JobRunStatus.CANCELLED,
             run.workItemRuns(), run.workspacePath(), run.outputDir(),
@@ -341,6 +397,48 @@ public class JobService {
         return jobRepository.findRunsByJobId(jobId);
     }
 
+    public List<JobExecutionSummary> executionSummaries(String jobId) {
+        JobDefinition job = getDefinition(jobId);
+        List<WorkAssignment> assignments = runtimeRepository == null
+            ? List.of()
+            : runtimeRepository.findAssignmentsForJob(jobId);
+        Map<String, JobRun> runsByAssignment = new java.util.LinkedHashMap<>();
+        List<JobRun> unassignedRuns = new ArrayList<>();
+        for (JobRun run : listRuns(jobId)) {
+            if (StringUtils.hasText(run.jobAssignmentId())) {
+                runsByAssignment.put(run.jobAssignmentId(), run);
+            } else {
+                unassignedRuns.add(run);
+            }
+        }
+        List<JobExecutionSummary> summaries = new ArrayList<>();
+        for (WorkAssignment assignment : assignments) {
+            summaries.add(executionSummary(job, assignment, runsByAssignment.get(assignment.id())));
+        }
+        for (JobRun run : unassignedRuns) {
+            summaries.add(executionSummary(job, null, run));
+        }
+        summaries.sort(Comparator.comparing(JobExecutionSummary::queuedAt,
+            Comparator.nullsLast(Comparator.reverseOrder())));
+        return summaries;
+    }
+
+    public Optional<JobExecutionSummary> executionSummaryByAssignmentId(String assignmentId) {
+        WorkAssignment assignment = runtimeRepository == null
+            ? null
+            : runtimeRepository.findAssignment(assignmentId).orElse(null);
+        JobRun run = jobRepository.findRunByAssignmentId(assignmentId).orElse(null);
+        String jobId = assignment != null ? assignment.jobId() : run == null ? null : run.jobId();
+        if (!StringUtils.hasText(jobId)) {
+            return Optional.empty();
+        }
+        return Optional.of(executionSummary(getDefinition(jobId), assignment, run));
+    }
+
+    public Optional<JobExecutionSummary> latestExecutionSummary(String jobId) {
+        return executionSummaries(jobId).stream().findFirst();
+    }
+
     public List<String> outputRunIds(String jobId) {
         return listRuns(jobId).stream()
             .flatMap(run -> java.util.stream.Stream.concat(
@@ -349,6 +447,130 @@ public class JobService {
             ))
             .filter(runId -> runId != null && !runId.isBlank())
             .toList();
+    }
+
+    private JobExecutionSummary executionSummary(JobDefinition job, WorkAssignment assignment, JobRun run) {
+        String agentId = firstText(
+            assignment == null ? null : assignment.agentId(),
+            job.ownerAgentId()
+        );
+        AgentProfile agent = agent(agentId);
+        String projectId = firstText(
+            assignment == null ? null : assignment.projectId(),
+            job.projectId()
+        );
+        Project project = project(projectId);
+        String effectiveWorkspaceId = firstText(
+            assignment == null ? null : assignment.effectiveWorkspaceId(),
+            run == null ? null : run.workspaceId()
+        );
+        OutputStats outputStats = outputStats(run);
+        return new JobExecutionSummary(
+            job.id(),
+            job.title(),
+            job.status(),
+            assignment == null ? run == null ? null : run.jobAssignmentId() : assignment.id(),
+            assignment == null ? null : assignment.status(),
+            assignment == null ? null : assignment.assignmentType(),
+            assignment == null ? 0 : assignment.priority(),
+            assignment == null ? null : assignment.modelOverride(),
+            agentId,
+            agent == null ? null : agent.name(),
+            agent == null || agent.status() == null ? null : agent.status().name(),
+            projectId,
+            project == null ? null : project.name(),
+            firstText(assignment == null ? null : assignment.workspaceId(), job.workspaceId()),
+            effectiveWorkspaceId,
+            firstText(assignment == null ? null : assignment.effectiveWorkspaceKind(),
+                StringUtils.hasText(projectId) ? "PROJECT" : StringUtils.hasText(effectiveWorkspaceId) ? "AGENT" : null),
+            effectiveWorkspaceDisplayPath(effectiveWorkspaceId),
+            Boolean.TRUE.equals(job.persistentWorkspaceEnabled()),
+            Boolean.TRUE.equals(job.persistentWorkspaceEnabled())
+                ? assignment == null ? run == null ? null : run.jobAssignmentId() : assignment.id()
+                : null,
+            run == null ? null : run.workspacePath(),
+            StringUtils.hasText(run == null ? null : run.workspacePath()),
+            run == null ? null : run.id(),
+            run == null ? null : run.status(),
+            run == null ? null : run.outputDir(),
+            childRunIds(run),
+            outputStats.count(),
+            outputStats.latestAt(),
+            firstInstant(assignment == null ? null : assignment.createdAt(), run == null ? null : run.createdAt()),
+            firstInstant(assignment == null ? null : assignment.startedAt(), run == null ? null : run.startedAt()),
+            firstInstant(assignment == null ? null : assignment.completedAt(), run == null ? null : run.completedAt()),
+            latestInstant(assignment == null ? null : assignment.updatedAt(), run == null ? null : run.updatedAt())
+        );
+    }
+
+    private AgentProfile agent(String agentId) {
+        if (!StringUtils.hasText(agentId) || agentProfileService == null) {
+            return null;
+        }
+        try {
+            return agentProfileService.get(agentId);
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private Project project(String projectId) {
+        if (!StringUtils.hasText(projectId) || projectService == null) {
+            return null;
+        }
+        try {
+            return projectService.getProject(projectId);
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private String effectiveWorkspaceDisplayPath(String workspaceId) {
+        if (!StringUtils.hasText(workspaceId) || workspaceService == null) {
+            return null;
+        }
+        try {
+            Workspace workspace = workspaceService.get(workspaceId);
+            return workspace.rootRelativePath();
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private List<String> childRunIds(JobRun run) {
+        if (run == null || run.workItemRuns() == null) {
+            return List.of();
+        }
+        return run.workItemRuns().stream()
+            .map(JobWorkItemRun::runId)
+            .filter(StringUtils::hasText)
+            .distinct()
+            .toList();
+    }
+
+    private OutputStats outputStats(JobRun run) {
+        if (run == null || outputArtifactService == null) {
+            return new OutputStats(0, null);
+        }
+        LinkedHashSet<String> runIds = new LinkedHashSet<>();
+        if (StringUtils.hasText(run.id())) {
+            runIds.add(run.id());
+        }
+        if (run.workItemRuns() != null) {
+            run.workItemRuns().stream()
+                .map(JobWorkItemRun::runId)
+                .filter(StringUtils::hasText)
+                .forEach(runIds::add);
+        }
+        int count = 0;
+        Instant latest = null;
+        for (String runId : runIds) {
+            for (RunOutputArtifact artifact : outputArtifactService.artifactsForRun(runId)) {
+                count++;
+                latest = latestInstant(latest, artifact.createdAt());
+            }
+        }
+        return new OutputStats(count, latest);
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -397,20 +619,42 @@ public class JobService {
     }
 
     /**
-     * Finds recurrences due by the given time and fires a new run for each.
+     * Finds recurrences due by the given time and enqueues a JOB_RUN assignment
+     * for each due recurrence.
      */
-    public List<JobRun> fireDueRecurrences(Instant before) {
+    public List<WorkAssignment> fireDueRecurrences(Instant before) {
         List<JobRecurrence> dueList = jobRepository.findDueRecurrences(before);
-        List<JobRun> newRuns = new ArrayList<>();
+        List<WorkAssignment> assignments = new ArrayList<>();
+        AssignmentService assignmentService = assignmentServiceProvider == null
+            ? null
+            : assignmentServiceProvider.getIfAvailable();
+        if (assignmentService == null) {
+            throw new IllegalStateException("Job recurrence firing requires assignment services");
+        }
         for (JobRecurrence rec : dueList) {
             try {
-                JobRun run = startRun(rec.jobId());
-                newRuns.add(run);
+                JobDefinition job = getDefinition(rec.jobId());
+                WorkAssignment assignment = assignmentService.create(new AssignmentRequest(
+                    firstText(job.ownerAgentId(), "system"),
+                    job.id(),
+                    null,
+                    AssignmentType.JOB_RUN,
+                    0,
+                    job.model(),
+                    job.projectId(),
+                    job.workspaceId(),
+                    Map.of("jobId", job.id(), "recurrenceId", rec.id())
+                ));
+                assignments.add(assignment);
+                jobRepository.saveRecurrence(new JobRecurrence(
+                    rec.id(), rec.jobId(), rec.cronExpression(), rec.timezone(),
+                    nextFireTime(rec), rec.enabled(), rec.createdAt(), Instant.now()
+                ));
             } catch (Exception e) {
                 log.error("Failed to fire recurrence for job={}: {}", rec.jobId(), e.getMessage());
             }
         }
-        return newRuns;
+        return assignments;
     }
 
     // ── Helpers ──
@@ -540,6 +784,49 @@ public class JobService {
         );
     }
 
+    private Instant nextFireTime(JobRecurrence recurrence) {
+        CronExpression cron = CronExpression.parse(cronExpression(recurrence.cronExpression()));
+        ZoneId zoneId = StringUtils.hasText(recurrence.timezone())
+            ? ZoneId.of(recurrence.timezone().trim())
+            : ZoneId.systemDefault();
+        Instant after = recurrence.nextFireTime() == null ? Instant.now() : recurrence.nextFireTime();
+        ZonedDateTime next = cron.next(ZonedDateTime.ofInstant(after.plusMillis(1), zoneId));
+        if (next == null) {
+            return null;
+        }
+        return next.toInstant();
+    }
+
+    private String cronExpression(String value) {
+        String expression = value.trim();
+        return expression.split("\\s+").length == 5 ? "0 " + expression : expression;
+    }
+
+    private Instant firstInstant(Instant... values) {
+        if (values == null) {
+            return null;
+        }
+        for (Instant value : values) {
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private Instant latestInstant(Instant... values) {
+        Instant latest = null;
+        if (values == null) {
+            return null;
+        }
+        for (Instant value : values) {
+            if (value != null && (latest == null || value.isAfter(latest))) {
+                latest = value;
+            }
+        }
+        return latest;
+    }
+
     private String firstText(String... values) {
         if (values == null) {
             return null;
@@ -551,5 +838,8 @@ public class JobService {
             }
         }
         return null;
+    }
+
+    private record OutputStats(int count, Instant latestAt) {
     }
 }

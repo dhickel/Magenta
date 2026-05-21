@@ -10,6 +10,7 @@ import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentRequest;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentType;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobDefinition;
+import io.mindspice.magenta2.ai.orchestration.runtime.JobExecutionSummary;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobRecurrence;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobRun;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobService;
@@ -186,6 +187,23 @@ public class JobController {
     @GetMapping("/api/jobs/{jobId}/runs")
     public List<JobRun> listRuns(@PathVariable String jobId) {
         return jobService.listRuns(jobId);
+    }
+
+    @GetMapping("/api/jobs/{jobId}/execution-summaries")
+    public List<JobExecutionSummary> executionSummaries(@PathVariable String jobId) {
+        return jobService.executionSummaries(jobId);
+    }
+
+    @GetMapping("/api/jobs/{jobId}/latest-execution-summary")
+    public JobExecutionSummary latestExecutionSummary(@PathVariable String jobId) {
+        return jobService.latestExecutionSummary(jobId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No job executions found"));
+    }
+
+    @GetMapping("/api/job-assignments/{assignmentId}/execution-summary")
+    public JobExecutionSummary executionSummaryByAssignment(@PathVariable String assignmentId) {
+        return jobService.executionSummaryByAssignmentId(assignmentId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Job execution summary not found"));
     }
 
     @GetMapping("/api/job-runs/{runId}")

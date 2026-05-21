@@ -148,6 +148,15 @@ public class JobRepository {
         );
     }
 
+    public Optional<JobRun> findRunByAssignmentId(String assignmentId) {
+        if (!StringUtils.hasText(assignmentId)) return Optional.empty();
+        return jdbcTemplate.query(
+            "select * from job_runs where job_assignment_id = ? order by created_at desc limit 1",
+            rs -> rs.next() ? Optional.of(runFromRow(rs)) : Optional.empty(),
+            assignmentId
+        );
+    }
+
     public long countActiveRunsByJobId(String jobId) {
         Long count = jdbcTemplate.queryForObject(
             """

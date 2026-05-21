@@ -2385,6 +2385,9 @@ class OrchestrationControllerTest {
         }
         @Override public JobDefinition saveDefinition(JobDefinition def) { return def; }
         @Override public java.util.List<String> outputRunIds(String jobId) { return List.of(); }
+        @Override public java.util.List<io.mindspice.magenta2.ai.orchestration.runtime.JobExecutionSummary> executionSummaries(String jobId) {
+            return List.of();
+        }
         @Override public io.mindspice.magenta2.ai.orchestration.runtime.JobRun startRun(String jobId) {
             startRunCalls++;
             throw new AssertionError("Public job run routes must submit assignments");

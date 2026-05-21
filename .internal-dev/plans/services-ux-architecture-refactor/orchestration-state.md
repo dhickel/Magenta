@@ -26,6 +26,12 @@ Date: 2026-05-21
   - first-class assignment project/effective workspace columns, mapping, backfill, creation persistence, and execution-start repair.
   - assignment summary/read contract, active assignment queries, workspace-blocked requeue operations, and active project/job mutation guards.
   - minimal API conflict mapping for active mutation policy failures.
+- Phase 02 implementation completed locally:
+  - stable `JobExecutionSummary` read model links job definition, assignment, run, agent/project ids and names where available, compatibility workspace id, effective workspace context, persistent job workspace state, output directory/count/latest timestamp, child runs, and lifecycle timestamps.
+  - public/API and scheduler-style job execution paths now create assignments; direct job run allocation is guarded behind assignment context.
+  - legacy job recurrence firing now creates `JOB_RUN` assignments and advances next fire timestamps rather than creating job runs directly.
+  - assignment-owned cancellation now keeps assignment and job run status synchronized.
+  - job run HTMX fragment consumes summaries so assignment-pending/run-pending states can be displayed.
 
 ## Objective
 
@@ -127,3 +133,10 @@ Next recommended phase: start Phase 01 only. Do not start UI work until Phase 01
   - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` reached successful application startup before timeout shutdown.
 - Phase 01 remediation aligned `schema.sql` work assignment bootstrap with runtime assignment context columns: nullable `project_id`, `effective_workspace_id`, and `effective_workspace_kind`.
 - Phase 01 remediation validation passed: `mvn test -Dtest=WorkspaceRepositorySchemaMigrationTest,AssignmentContextServiceTest` and scoped `git diff --check`.
+- Phase 02 local validation passed:
+  - `mvn test -Dtest=JobServiceTest,JobRepositoryTest,OrchestrationRuntimeTest,AssignmentContextServiceTest`
+  - `mvn test -Dtest=JobControllerTest,PublicRunSubmissionControllerTest,OperationalUiContractControllerTest,AgentOrchestrationControllerTest` (`JobControllerTest` is not present; Maven ran the existing listed controller tests.)
+  - `mvn test -Dtest=WorkspaceRepositorySchemaMigrationTest,OutputArtifactServiceAttributionTest`
+  - `mvn test -Dtest=OrchestrationControllerTest`
+  - `git diff --check`
+  - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` reached successful application startup on port `43617`; command exited `124` because timeout stopped the running app.

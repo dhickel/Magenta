@@ -81,6 +81,20 @@
   - API controllers now map active mutation policy failures to 409 responses; no broader UI surface work was implemented.
 - Phase 01 remediation updated `schema.sql` work assignment bootstrap to include nullable `project_id`, `effective_workspace_id`, and `effective_workspace_kind` columns in the same position/type shape as `OrchestrationRuntimeRepository.ensureSchema()`.
 - Phase 01 remediation validation passed: `mvn test -Dtest=WorkspaceRepositorySchemaMigrationTest,AssignmentContextServiceTest` and scoped `git diff --check`.
+- Phase 02 implementation completed job execution read-model and assignment-routed execution work:
+  - Added `JobExecutionSummary` and job service/API summary reads by job, latest job execution, and assignment id.
+  - Job run allocation now requires assignment context; public job submit/start paths remain assignment-submission paths.
+  - Legacy job recurrence firing now enqueues `JOB_RUN` assignments and advances recurrence timestamps instead of allocating runs directly.
+  - Assignment-owned run cancellation now also routes through the owning assignment lifecycle and keeps job run status synchronized.
+  - Job run fragments now render assignment-aware summaries so pending assignments can appear before a run exists.
+  - Focused tests cover direct-run guard behavior, pending/run summary bridge state, recurrence assignment routing, per-assignment persistent job workspaces, and assignment-owned cancellation.
+- Phase 02 local validation passed:
+  - `mvn test -Dtest=JobServiceTest,JobRepositoryTest,OrchestrationRuntimeTest,AssignmentContextServiceTest`
+  - `mvn test -Dtest=JobControllerTest,PublicRunSubmissionControllerTest,OperationalUiContractControllerTest,AgentOrchestrationControllerTest` (`JobControllerTest` is not present; Maven ran the existing listed controller tests.)
+  - `mvn test -Dtest=WorkspaceRepositorySchemaMigrationTest,OutputArtifactServiceAttributionTest`
+  - `mvn test -Dtest=OrchestrationControllerTest`
+  - `git diff --check`
+  - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` reached successful startup on port `43617`; command exited `124` from timeout shutdown.
 
 ## Review Wave Synthesis Inputs
 

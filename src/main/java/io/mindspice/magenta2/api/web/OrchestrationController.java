@@ -41,6 +41,7 @@ import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentType;
 import io.mindspice.magenta2.ai.orchestration.runtime.EventReactionService;
 import io.mindspice.magenta2.ai.orchestration.runtime.EventType;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobDefinition;
+import io.mindspice.magenta2.ai.orchestration.runtime.JobExecutionSummary;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobRecurrence;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobRun;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobService;
@@ -4004,22 +4005,30 @@ public class OrchestrationController {
     @GetMapping("/jobs/_runs/{jobId}")
     @ResponseBody
     public String jobRunsFragment(@PathVariable String jobId) {
-        List<JobRun> runs = jobService.listRuns(jobId);
-        if (runs.isEmpty()) {
+        List<JobExecutionSummary> summaries = jobService.executionSummaries(jobId);
+        if (summaries.isEmpty()) {
             return new Div().withClass("dashboard-empty").withInnerText("No runs yet.").render();
         }
-        Table table = Table.create().withHeaders("Run", "Status", "Created", "Action").withClass("dashboard-table");
-        for (JobRun run : runs) {
-            Component action = run.status() != null && !run.status().isTerminal()
+        Table table = Table.create()
+            .withHeaders("Assignment", "Run", "Status", "Workspace", "Outputs", "Created", "Action")
+            .withClass("dashboard-table");
+        for (JobExecutionSummary summary : summaries) {
+            Component action = summary.jobRunStatus() != null && !summary.jobRunStatus().isTerminal()
                 ? Button.create("Cancel")
-                    .withAttribute("hx-post", "/jobs/_runs/" + run.id() + "/cancel")
+                    .withAttribute("hx-post", "/jobs/_runs/" + summary.jobRunId() + "/cancel")
                     .withAttribute("hx-target", "#job-runs-panel")
                     .withAttribute("hx-swap", "innerHTML")
                 : new HtmlTag("span").withInnerText("—");
+            String status = summary.jobRunStatus() != null
+                ? summary.jobRunStatus().name()
+                : summary.assignmentStatus() == null ? "RUN_PENDING" : "ASSIGNMENT_" + summary.assignmentStatus().name();
             table.addRow(
-                new HtmlTag("code").withInnerText(run.id()),
-                statusBadgeHtml(run.status() != null ? run.status().name() : "—"),
-                new HtmlTag("span").withInnerText(run.createdAt() != null ? formatSince(run.createdAt()) : "—"),
+                new HtmlTag("code").withInnerText(nn(summary.assignmentId())),
+                new HtmlTag("code").withInnerText(nn(summary.jobRunId())),
+                statusBadgeHtml(status),
+                new HtmlTag("span").withInnerText(nn(summary.effectiveWorkspaceDisplayPath())),
+                new HtmlTag("span").withInnerText(Integer.toString(summary.outputCount())),
+                new HtmlTag("span").withInnerText(summary.queuedAt() != null ? formatSince(summary.queuedAt()) : "—"),
                 action
             );
         }

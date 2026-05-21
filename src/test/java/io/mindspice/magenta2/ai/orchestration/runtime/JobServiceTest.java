@@ -10,10 +10,14 @@ import java.util.Map;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
+import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
+import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
+import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileStatus;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
@@ -27,15 +31,16 @@ class JobServiceTest {
 
     private JobService jobService;
     private JobRepository jobRepository;
+    private WorkspaceDirectoryService workspaceDirectoryService;
 
     @BeforeEach
     void setUp() throws IOException {
         Path dataRoot = Files.createDirectories(tempDir.resolve("data"));
         AiConfig aiConfig = new AiConfig(null, null, null, 10, dataRoot, Map.of(), Map.of());
-        WorkspaceDirectoryService wsDirService = new WorkspaceDirectoryService(aiConfig);
+        workspaceDirectoryService = new WorkspaceDirectoryService(aiConfig);
 
         jobRepository = repository();
-        jobService = new JobService(jobRepository, wsDirService, null, null);
+        jobService = new JobService(jobRepository, workspaceDirectoryService, null, null);
     }
 
     @Test
@@ -67,6 +72,20 @@ class JobServiceTest {
     }
 
     @Test
+    void directStartRunRequiresAssignmentContext() {
+        JobDefinition def = jobService.saveDefinition(
+            jobDef(null, "Guarded Runner", List.of(planItem("step", "plan-1", 0)))
+        );
+
+        assertThatThrownBy(() -> jobService.startRun(def.id()))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("assignment context");
+        assertThatThrownBy(() -> jobService.startRun(def.id(), "agent-1", null, null))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("assignment context");
+    }
+
+    @Test
     void startRunCreatesRunWithWorkItems() {
         JobDefinition def = jobService.saveDefinition(
             jobDef(null, "Runner", List.of(
@@ -75,7 +94,7 @@ class JobServiceTest {
             ))
         );
 
-        JobRun run = jobService.startRun(def.id());
+        JobRun run = jobService.startRun(def.id(), "agent-1", null, "assignment-run");
         assertThat(run.status()).isEqualTo(JobRunStatus.QUEUED);
         assertThat(run.workItemRuns()).hasSize(2);
         assertThat(run.workItemRuns().get(0).key()).isEqualTo("s1");
@@ -88,7 +107,7 @@ class JobServiceTest {
             jobDef(null, "Workspace Job", List.of(planItem("s1", "plan-1", 0)))
         );
 
-        JobRun run = jobService.startRun(def.id());
+        JobRun run = jobService.startRun(def.id(), "system", null, "assignment-output");
         assertThat(run.workspacePath()).isNull();
         assertThat(run.outputDir()).contains("agents/system/workspace/outputs/jobs");
         assertThat(run.outputDir()).contains(run.jobAssignmentId());
@@ -126,6 +145,42 @@ class JobServiceTest {
     }
 
     @Test
+    void executionSummaryBridgesPendingAssignmentAndCreatedRun() {
+        JdbcTemplate jdbc = jdbcTemplate();
+        JobRepository jobs = new JobRepository(jdbc, new ObjectMapper().registerModule(new JavaTimeModule()));
+        OrchestrationRuntimeRepository runtime = new OrchestrationRuntimeRepository(jdbc, new ObjectMapper());
+        JobService service = new JobService(jobs, workspaceDirectoryService, null, null, null, runtime);
+        JobDefinition def = service.saveDefinition(new JobDefinition(
+            "summary-job", "agent-1", "project-1", "workspace-compat", true, "READY",
+            "Summary Job", "Summary", List.of(planItem("s1", "plan-1", 0)),
+            null, "model-a", null, null, null
+        ));
+        WorkAssignment assignment = runtime.saveAssignment(new WorkAssignment(
+            "assignment-summary", "agent-1", def.id(), null, AssignmentType.JOB_RUN, 7,
+            OrchestrationStatus.QUEUED, "model-b", "workspace-compat",
+            "project-1", "workspace-effective", "PROJECT", 0,
+            Map.of(), Map.of("jobId", def.id()), Map.of(), Map.of(),
+            null, null, null, null, null, null, null
+        ));
+
+        JobExecutionSummary pending = service.executionSummaryByAssignmentId(assignment.id()).orElseThrow();
+        assertThat(pending.assignmentId()).isEqualTo("assignment-summary");
+        assertThat(pending.assignmentStatus()).isEqualTo(OrchestrationStatus.QUEUED);
+        assertThat(pending.jobRunId()).isNull();
+        assertThat(pending.effectiveWorkspaceId()).isEqualTo("workspace-effective");
+        assertThat(pending.persistentWorkspaceEnabled()).isTrue();
+        assertThat(pending.persistentJobWorkspacePresent()).isFalse();
+
+        JobRun run = service.startRun(def.id(), "agent-1", "project-1", assignment.id());
+        JobExecutionSummary running = service.executionSummaryByAssignmentId(assignment.id()).orElseThrow();
+        assertThat(running.jobRunId()).isEqualTo(run.id());
+        assertThat(running.jobRunStatus()).isEqualTo(JobRunStatus.QUEUED);
+        assertThat(running.outputDirectory()).contains("outputs/jobs/assignment-summary");
+        assertThat(running.persistentJobWorkspacePath()).contains("jobs/assignment-summary");
+        assertThat(running.persistentJobWorkspacePresent()).isTrue();
+    }
+
+    @Test
     void updateWorkItemComputesProgress() {
         JobDefinition def = jobService.saveDefinition(
             jobDef(null, "Progress Job", List.of(
@@ -134,7 +189,7 @@ class JobServiceTest {
             ))
         );
 
-        JobRun run = jobService.startRun(def.id());
+        JobRun run = jobService.startRun(def.id(), "agent-1", null, "assignment-progress");
         run = jobService.markRunning(run.id());
         assertThat(run.status()).isEqualTo(JobRunStatus.RUNNING);
 
@@ -159,7 +214,7 @@ class JobServiceTest {
             ))
         );
 
-        JobRun run = jobService.startRun(def.id());
+        JobRun run = jobService.startRun(def.id(), "agent-1", null, "assignment-fail");
         run = jobService.markRunning(run.id());
         run = jobService.updateWorkItemRun(run.id(), "a", "COMPLETED", "pr-1",
             Map.of(), null);
@@ -178,10 +233,19 @@ class JobServiceTest {
         Instant past = Instant.now().minusSeconds(3600);
         jobService.setRecurrence(def.id(), "0 9 * * *", "UTC", past);
 
-        List<JobRun> newRuns = jobService.fireDueRecurrences(Instant.now().plusSeconds(10));
-        assertThat(newRuns).hasSize(1);
-        assertThat(newRuns.get(0).jobId()).isEqualTo(def.id());
-        assertThat(newRuns.get(0).status()).isEqualTo(JobRunStatus.QUEUED);
+        OrchestrationRuntimeRepository runtime = new OrchestrationRuntimeRepository(jdbcTemplate(), new ObjectMapper());
+        AssignmentService assignmentService = new AssignmentService(
+            runtime, new TestAgentProfileService("system"), null, jobService);
+        JobService recurringService = new JobService(
+            jobRepository, workspaceDirectoryService, null, null, null, runtime, objectProvider(assignmentService),
+            null, null, null, null);
+
+        List<WorkAssignment> assignments = recurringService.fireDueRecurrences(Instant.now().plusSeconds(10));
+        assertThat(assignments).hasSize(1);
+        assertThat(assignments.getFirst().jobId()).isEqualTo(def.id());
+        assertThat(assignments.getFirst().assignmentType()).isEqualTo(AssignmentType.JOB_RUN);
+        assertThat(assignments.getFirst().status()).isEqualTo(OrchestrationStatus.QUEUED);
+        assertThat(recurringService.getRecurrence(def.id()).orElseThrow().nextFireTime()).isAfter(past);
     }
 
     @Test
@@ -190,11 +254,38 @@ class JobServiceTest {
             jobDef(null, "Cancel Job", List.of(planItem("s1", "plan-1", 0)))
         );
 
-        JobRun run = jobService.startRun(def.id());
+        JobRun run = jobService.startRun(def.id(), "agent-1", null, "assignment-cancel");
         run = jobService.markRunning(run.id());
 
         JobRun cancelled = jobService.cancelRun(run.id());
         assertThat(cancelled.status()).isEqualTo(JobRunStatus.CANCELLED);
+    }
+
+    @Test
+    void cancelAssignmentOwnedRunAlsoCancelsOwningAssignment() {
+        JdbcTemplate jdbc = jdbcTemplate();
+        JobRepository jobs = new JobRepository(jdbc, new ObjectMapper().registerModule(new JavaTimeModule()));
+        OrchestrationRuntimeRepository runtime = new OrchestrationRuntimeRepository(jdbc, new ObjectMapper());
+        JobService baseService = new JobService(jobs, workspaceDirectoryService, null, null, null, runtime);
+        AssignmentService assignmentService = new AssignmentService(
+            runtime, new TestAgentProfileService("agent-1"), null, baseService);
+        JobService service = new JobService(
+            jobs, workspaceDirectoryService, null, null, null, runtime, objectProvider(assignmentService),
+            null, null, null, null);
+        JobDefinition def = service.saveDefinition(jobDef("cancel-owned", "Cancel Owned", List.of(planItem("s1", "plan-1", 0))));
+        runtime.saveAssignment(new WorkAssignment(
+            "assignment-cancel-owned", "agent-1", def.id(), null, AssignmentType.JOB_RUN, 1,
+            OrchestrationStatus.QUEUED, null, null, null, null, null,
+            0, Map.of(), Map.of("jobId", def.id()), Map.of(), Map.of(),
+            null, null, null, null, null, null, null
+        ));
+        JobRun run = service.markRunning(service.startRun(def.id(), "agent-1", null, "assignment-cancel-owned").id());
+
+        JobRun cancelled = service.cancelRun(run.id());
+
+        assertThat(cancelled.status()).isEqualTo(JobRunStatus.CANCELLED);
+        assertThat(runtime.findAssignment("assignment-cancel-owned").orElseThrow().status())
+            .isEqualTo(OrchestrationStatus.CANCELLED);
     }
 
     @Test
@@ -248,6 +339,48 @@ class JobServiceTest {
     private JobWorkItem planItem(String key, String planId, int order) {
         return new JobWorkItem(key, JobWorkItemType.PLAN, planId, null,
             Map.of(), order, null, null);
+    }
+
+    private static ObjectProvider<AssignmentService> objectProvider(AssignmentService service) {
+        return new ObjectProvider<>() {
+            @Override
+            public AssignmentService getObject(Object... args) {
+                return service;
+            }
+
+            @Override
+            public AssignmentService getIfAvailable() {
+                return service;
+            }
+
+            @Override
+            public AssignmentService getIfUnique() {
+                return service;
+            }
+
+            @Override
+            public AssignmentService getObject() {
+                return service;
+            }
+        };
+    }
+
+    private static class TestAgentProfileService extends AgentProfileService {
+        private final String agentId;
+
+        TestAgentProfileService(String agentId) {
+            super(null, null, null);
+            this.agentId = agentId;
+        }
+
+        @Override
+        public AgentProfile get(String id) {
+            if (agentId.equals(id)) {
+                return new AgentProfile(id, "Agent " + id, AgentProfileStatus.ACTIVE,
+                    "main", "Prompt", List.of(), List.of(), true, null, null);
+            }
+            throw new IllegalStateException("Agent profile not found: " + id);
+        }
     }
 
     private JobRepository repository() {

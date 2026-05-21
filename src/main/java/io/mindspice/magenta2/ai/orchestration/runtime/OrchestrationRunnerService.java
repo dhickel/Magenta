@@ -439,6 +439,7 @@ public class OrchestrationRunnerService {
                 return current;
             }
             if (current.status() == OrchestrationStatus.CANCEL_REQUESTED) {
+                jobService.cancelRunFromAssignment(jobRun.id());
                 jobService.updateDefinitionStatus(job.id(), "CANCELLED");
                 return assignmentService.saveStatus(current, OrchestrationStatus.CANCELLED);
             }

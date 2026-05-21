@@ -74,6 +74,7 @@ class JobRepositoryTest {
         assertThat(found.jobId()).isEqualTo("job-2");
         assertThat(found.jobAssignmentId()).isEqualTo("assignment-1");
         assertThat(found.workspaceId()).isEqualTo("workspace-1");
+        assertThat(repo.findRunByAssignmentId("assignment-1")).contains(found);
     }
 
     @Test
