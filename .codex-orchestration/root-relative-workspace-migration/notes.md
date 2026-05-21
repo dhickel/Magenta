@@ -71,3 +71,5 @@
 - Preserve unrelated dirty work in the repo. Stage only files owned by this migration/refactor.
 - Implementation plan chooses new writes as data-root-relative, old absolute paths as current-root compatibility reads only, and no startup/import/admin repair in this pass.
 - Plan defines Magenta root default as `${user.home}/.magenta`, data root as `<magenta.root.path>/root`, and SQLite default as `<magenta.root.path>/magenta.sqlite`.
+- Phase 2 added `RootRelativePathService` in the workspace package. It stores slash-separated paths relative to the canonical `WorkspaceDirectoryService.dataRoot()`, resolves stored relative/current-root absolute values without requiring existence, rejects traversal and stale/outside-root absolute paths, and provides existence-specific file/directory helpers plus display resolution.
+- Phase 2 validation passed: `mvn -Dtest=RootRelativePathServiceTest test` (10 tests).
