@@ -24,8 +24,9 @@ class OutputArtifactServiceAttributionTest {
     void materializePreservesAttributionContext() throws Exception {
         JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
         WorkspaceRepository repository = new WorkspaceRepository(jdbc);
+        Path dataRoot = Files.createDirectories(tempDir.resolve("data"));
         WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
-            new AiConfig(null, null, null, null, Files.createDirectories(tempDir.resolve("data")), null, null)
+            new AiConfig(null, null, null, null, dataRoot, null, null)
         );
         OutputArtifactService service = new OutputArtifactService(
             repository,
@@ -33,7 +34,7 @@ class OutputArtifactServiceAttributionTest {
             new ObjectMapper().findAndRegisterModules()
         );
 
-        Path outputDir = Files.createDirectories(tempDir.resolve("outputs"));
+        Path outputDir = Files.createDirectories(dataRoot.resolve("outputs"));
         service.materialize(
             "run-1",
             "plan-1",
@@ -112,8 +113,9 @@ class OutputArtifactServiceAttributionTest {
         );
 
         RunOutputArtifact artifact = repository.findArtifactsByRunId("job-run-1").getFirst();
-        assertThat(Path.of(artifact.filePath()))
-            .startsWith(projectRoot.resolve("outputs/jobs/assignment-1/job-run-1"));
+        assertThat(artifact.filePath())
+            .startsWith("projects/project-1/workspace/outputs/jobs/assignment-1/job-run-1/");
+        assertThat(Path.of(artifact.filePath()).isAbsolute()).isFalse();
         assertThat(artifact.jobId()).isEqualTo("job-1");
         assertThat(artifact.jobAssignmentId()).isEqualTo("assignment-1");
         assertThat(artifact.jobRunId()).isEqualTo("job-run-1");
@@ -144,8 +146,8 @@ class OutputArtifactServiceAttributionTest {
 
         assertThat(first.fileName()).isEqualTo("summary.txt");
         assertThat(second.fileName()).isEqualTo("summary-2.txt");
-        assertThat(Files.readString(Path.of(first.filePath()))).isEqualTo("first");
-        assertThat(Files.readString(Path.of(second.filePath()))).isEqualTo("second");
+        assertThat(Files.readString(dataRoot.resolve(first.filePath()))).isEqualTo("first");
+        assertThat(Files.readString(dataRoot.resolve(second.filePath()))).isEqualTo("second");
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -183,7 +185,8 @@ class OutputArtifactServiceAttributionTest {
 
         assertThat(artifact.fileName()).isEqualTo("workspace-result.txt");
         assertThat(artifact.artifactType()).isEqualTo("file_path");
-        assertThat(Files.exists(Path.of(artifact.filePath()))).isTrue();
+        assertThat(artifact.filePath()).isEqualTo("outputs/workspace-result.txt");
+        assertThat(Files.exists(dataRoot.resolve(artifact.filePath()))).isTrue();
     }
 
     @Test
@@ -215,7 +218,8 @@ class OutputArtifactServiceAttributionTest {
         );
 
         assertThat(artifact.fileName()).isEqualTo("result.json");
-        assertThat(Path.of(artifact.filePath())).isEqualTo(outputDir.resolve("result.json"));
+        assertThat(artifact.filePath()).isEqualTo("my-task-run-123/result.json");
+        assertThat(dataRoot.resolve(artifact.filePath())).isEqualTo(outputDir.resolve("result.json"));
     }
 
     @Test
@@ -247,7 +251,8 @@ class OutputArtifactServiceAttributionTest {
         );
 
         assertThat(artifact.fileName()).isEqualTo("hello.txt");
-        assertThat(Files.exists(Path.of(artifact.filePath()))).isTrue();
+        assertThat(artifact.filePath()).isEqualTo("outputs2/hello.txt");
+        assertThat(Files.exists(dataRoot.resolve(artifact.filePath()))).isTrue();
     }
 
     @Test
@@ -281,17 +286,19 @@ class OutputArtifactServiceAttributionTest {
 
         Path artifactPath = Path.of(artifact.filePath());
         assertThat(artifact.fileName()).isEqualTo("result.txt");
-        assertThat(artifactPath).isEqualTo(outputDir.resolve("result.txt"));
-        assertThat(Files.readString(artifactPath)).isEqualTo("safe output");
-        assertThat(artifactPath).isNotEqualTo(source);
+        assertThat(artifact.filePath()).isEqualTo("agents/agent-1/workspace/outputs/run-copy/result.txt");
+        assertThat(dataRoot.resolve(artifactPath)).isEqualTo(outputDir.resolve("result.txt"));
+        assertThat(Files.readString(dataRoot.resolve(artifactPath))).isEqualTo("safe output");
+        assertThat(dataRoot.resolve(artifactPath)).isNotEqualTo(source);
     }
 
     @Test
     void rejectsAbsoluteFilePathOutsideDataRoot() throws Exception {
         JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
         WorkspaceRepository repository = new WorkspaceRepository(jdbc);
+        Path dataRoot = Files.createDirectories(tempDir.resolve("root3"));
         WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
-            new AiConfig(null, null, null, null, Files.createDirectories(tempDir.resolve("root3")), null, null)
+            new AiConfig(null, null, null, null, dataRoot, null, null)
         );
         OutputArtifactService service = new OutputArtifactService(
             repository,
@@ -299,7 +306,7 @@ class OutputArtifactServiceAttributionTest {
             new ObjectMapper().findAndRegisterModules()
         );
 
-        Path outputDir = Files.createDirectories(tempDir.resolve("outputs3"));
+        Path outputDir = Files.createDirectories(dataRoot.resolve("outputs3"));
 
         assertThatThrownBy(() ->
             service.materialize(
@@ -445,6 +452,8 @@ class OutputArtifactServiceAttributionTest {
         assertThat(artifacts).hasSize(2);
         assertThat(artifacts).extracting(RunOutputArtifact::fileName)
             .containsExactlyInAnyOrder("notes.md", "data.json");
+        assertThat(artifacts).extracting(RunOutputArtifact::filePath)
+            .containsExactlyInAnyOrder("outputs4/notes.md", "outputs4/data.json");
     }
 
     @Test
@@ -476,6 +485,8 @@ class OutputArtifactServiceAttributionTest {
             .containsExactlyInAnyOrder("direct.log", "unknown.bin");
         assertThat(artifacts).extracting(RunOutputArtifact::artifactType)
             .containsExactlyInAnyOrder("text", "file_path");
+        assertThat(artifacts).extracting(RunOutputArtifact::filePath)
+            .containsExactlyInAnyOrder("outputs-shallow/direct.log", "outputs-shallow/unknown.bin");
     }
 
     @Test
@@ -561,7 +572,7 @@ class OutputArtifactServiceAttributionTest {
         assertThat(artifact.outputName()).isEqualTo("report");
         assertThat(artifact.artifactType()).isEqualTo("user_message");
         assertThat(artifact.projectId()).isEqualTo("project-1");
-        assertThat(Path.of(artifact.filePath())).isEqualTo(outputDir.resolve("report.md"));
+        assertThat(artifact.filePath()).isEqualTo("projects/project-1/workspace/outputs/tasks/task-1/run-publish/report.md");
         assertThat(Files.readString(outputDir.resolve("report.md"))).isEqualTo("# report");
     }
 }

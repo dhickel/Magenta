@@ -2,6 +2,7 @@ package io.mindspice.magenta2.api.web;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -46,6 +47,8 @@ class OutputControllerTest {
                 "agent-1", "job-1", "assignment-1", "job-run-1",
                 "project-1", "workspace-1", "JOB_WORKFLOW_ITEM")
         );
+        assertThat(artifact.filePath()).isEqualTo("outputs-direct/summary.txt");
+        assertThat(Path.of(artifact.filePath()).isAbsolute()).isFalse();
 
         assertThat(controller.query(null, null, "assignment-1", null, null, null, null, null, null, null, 20))
             .extracting(RunOutputArtifact::id)
@@ -72,7 +75,98 @@ class OutputControllerTest {
             .containsEntry("jobAssignmentId", "assignment-1")
             .containsEntry("jobRunId", "job-run-1")
             .containsEntry("workspaceId", "workspace-1")
-            .containsEntry("runType", "JOB_WORKFLOW_ITEM");
+            .containsEntry("runType", "JOB_WORKFLOW_ITEM")
+            .containsEntry("content", "done");
+    }
+
+    @Test
+    void downloadReadsRelativeArtifactRows() throws Exception {
+        Services services = services();
+        OutputController controller = new OutputController(services.outputArtifactService(), services.jobService());
+        Path outputDir = Files.createDirectories(services.dataRoot().resolve("outputs-download"));
+        RunOutputArtifact artifact = services.outputArtifactService().materialize(
+            "run-download",
+            "plan-download",
+            "download",
+            PlanFieldType.STRING,
+            "download content",
+            outputDir,
+            OutputArtifactContext.EMPTY
+        );
+
+        ResponseEntity<?> response = controller.download(artifact.id());
+
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(response.getHeaders().getContentLength()).isEqualTo("download content".length());
+        assertThat(response.getHeaders().getContentDisposition().getFilename()).isEqualTo("download.txt");
+    }
+
+    @Test
+    void downloadReadsLegacyAbsoluteCurrentRootRows() throws Exception {
+        Services services = services();
+        OutputController controller = new OutputController(services.outputArtifactService(), services.jobService());
+        Path legacyFile = Files.writeString(
+            Files.createDirectories(services.dataRoot().resolve("legacy")).resolve("current.txt"),
+            "legacy download"
+        );
+        RunOutputArtifact artifact = services.workspaceRepository().saveArtifact(new RunOutputArtifact(
+            "legacy-download",
+            "run-legacy-download",
+            "plan-legacy-download",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "legacy",
+            "text",
+            "current.txt",
+            legacyFile.toString(),
+            null,
+            Instant.now()
+        ));
+
+        ResponseEntity<?> response = controller.download(artifact.id());
+
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(response.getHeaders().getContentLength()).isEqualTo("legacy download".length());
+        assertThat(response.getHeaders().getContentDisposition().getFilename()).isEqualTo("current.txt");
+    }
+
+    @Test
+    void downloadRejectsStaleAbsoluteOldRootRowsWithoutCreatingOldRootDirectories() throws Exception {
+        Services services = services();
+        OutputController controller = new OutputController(services.outputArtifactService(), services.jobService());
+        Path oldRoot = tempDir.resolve("old-root/root");
+        RunOutputArtifact artifact = services.workspaceRepository().saveArtifact(new RunOutputArtifact(
+            "stale-download",
+            "run-stale-download",
+            "plan-stale-download",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "stale",
+            "text",
+            "old.txt",
+            oldRoot.resolve("outputs/old.txt").toAbsolutePath().toString(),
+            null,
+            Instant.now()
+        ));
+
+        ResponseEntity<?> response = controller.download(artifact.id());
+
+        assertThat(response.getStatusCode().value()).isEqualTo(403);
+        assertThat(response.getBody()).isInstanceOf(Map.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = (Map<String, Object>) response.getBody();
+        assertThat(body.get("error").toString()).contains("stale or outside current data root");
+        assertThat(Files.notExists(oldRoot)).isTrue();
     }
 
     @Test
@@ -115,12 +209,13 @@ class OutputControllerTest {
             workspaceRepository, directoryService, mapper);
         JobService jobService = new JobService(
             new JobRepository(jdbcTemplate, mapper), directoryService, null, null);
-        return new Services(jobService, outputArtifactService, dataRoot);
+        return new Services(jobService, outputArtifactService, workspaceRepository, dataRoot);
     }
 
     private record Services(
         JobService jobService,
         OutputArtifactService outputArtifactService,
+        WorkspaceRepository workspaceRepository,
         Path dataRoot
     ) {
     }

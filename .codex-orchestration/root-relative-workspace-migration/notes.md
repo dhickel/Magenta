@@ -75,3 +75,9 @@
 - Plan defines Magenta root default as `${user.home}/.magenta`, data root as `<magenta.root.path>/root`, and SQLite default as `<magenta.root.path>/magenta.sqlite`.
 - Phase 2 added `RootRelativePathService` in the workspace package. It stores slash-separated paths relative to the canonical `WorkspaceDirectoryService.dataRoot()`, resolves stored relative/current-root absolute values without requiring existence, rejects traversal and stale/outside-root absolute paths, and provides existence-specific file/directory helpers plus display resolution.
 - Phase 2 validation passed: `mvn -Dtest=RootRelativePathServiceTest test` (10 tests).
+- Phase 3 implemented root-relative output artifact storage:
+  - `OutputArtifactService` now stores new artifact `file_path` values through `RootRelativePathService` for materialized text/json/user_message/file_path outputs, loose discovery, and publish-existing-file.
+  - Artifact content/download path access is centralized through service resolution, supporting relative rows and legacy absolute rows under the current data root while rejecting stale/outside-root absolute rows.
+  - `AgentWorkspaceStatusService` resolves artifact paths through the output service for byte counts so relative rows do not crash or undercount.
+  - Focused validation passed: `mvn -Dtest=OutputArtifactServiceAttributionTest,OutputArtifactPathSemanticsTest,OutputControllerTest test` (25 tests).
+  - Bounded startup smoke passed: app started with isolated `/tmp` `magenta.root.path` and was stopped by `timeout 30s` after successful startup.

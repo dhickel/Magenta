@@ -130,27 +130,8 @@ public class OutputController {
     public ResponseEntity<?> download(@PathVariable String artifactId) {
         try {
             RunOutputArtifact artifact = outputArtifactService.getArtifact(artifactId);
-            String filePath = artifact.filePath();
-            if (!StringUtils.hasText(filePath)) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(Map.of("error", "Artifact has no file path"));
-            }
-            Path path = Path.of(filePath).normalize().toRealPath();
-
-            // Path confinement
-            if (!path.startsWith(outputArtifactService.dataRoot())) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of("error", "Artifact path escapes data root"));
-            }
-            if (Files.isDirectory(path)) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("error", "Artifact is a directory"));
-            }
+            Path path = outputArtifactService.resolveArtifactFile(artifact, MAX_CONTENT_BYTES);
             long size = Files.size(path);
-            if (size > MAX_CONTENT_BYTES) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("error", "Artifact file too large: " + size + " bytes"));
-            }
 
             String fileName = artifact.fileName() != null ? artifact.fileName() : path.getFileName().toString();
             MediaType mediaType = resolveMediaType(fileName);
@@ -163,7 +144,16 @@ public class OutputController {
                 .contentLength(size)
                 .body(resource);
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            String message = e.getMessage() == null ? "" : e.getMessage();
+            HttpStatus status = HttpStatus.NOT_FOUND;
+            if (message.contains("too large") || message.contains("directory")) {
+                status = HttpStatus.BAD_REQUEST;
+            } else if (message.contains("escapes data root")
+                || message.contains("outside current data root")
+                || message.contains("stale")) {
+                status = HttpStatus.FORBIDDEN;
+            }
+            return ResponseEntity.status(status)
                 .body(Map.of("error", e.getMessage()));
         } catch (IOException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

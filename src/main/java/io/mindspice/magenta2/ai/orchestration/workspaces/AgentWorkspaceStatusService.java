@@ -108,7 +108,7 @@ public class AgentWorkspaceStatusService {
             outputBytes = artifacts.stream()
                 .mapToLong(a -> {
                     try {
-                        Path artifactPath = Path.of(a.filePath());
+                        Path artifactPath = outputArtifactService.resolveArtifactFile(a);
                         return Files.exists(artifactPath) ? Files.size(artifactPath) : 0;
                     } catch (Exception ignored) {
                         return 0;

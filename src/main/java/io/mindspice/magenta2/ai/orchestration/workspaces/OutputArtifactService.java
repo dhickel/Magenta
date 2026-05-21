@@ -36,22 +36,40 @@ import org.springframework.util.StringUtils;
 public class OutputArtifactService {
     private final WorkspaceRepository repository;
     private final WorkspaceDirectoryService directoryService;
+    private final RootRelativePathService rootRelativePathService;
     private final ObjectMapper objectMapper;
     private final boolean looseArtifactDiscoveryEnabled;
 
     @Autowired
     public OutputArtifactService(WorkspaceRepository repository,
                                  WorkspaceDirectoryService directoryService,
+                                 RootRelativePathService rootRelativePathService,
                                  ObjectMapper objectMapper) {
-        this(repository, directoryService, objectMapper, true);
+        this(repository, directoryService, rootRelativePathService, objectMapper, true);
+    }
+
+    public OutputArtifactService(WorkspaceRepository repository,
+                                 WorkspaceDirectoryService directoryService,
+                                 ObjectMapper objectMapper) {
+        this(repository, directoryService, new RootRelativePathService(directoryService), objectMapper, true);
     }
 
     public OutputArtifactService(WorkspaceRepository repository,
                                  WorkspaceDirectoryService directoryService,
                                  ObjectMapper objectMapper,
                                  boolean looseArtifactDiscoveryEnabled) {
+        this(repository, directoryService, new RootRelativePathService(directoryService), objectMapper,
+            looseArtifactDiscoveryEnabled);
+    }
+
+    public OutputArtifactService(WorkspaceRepository repository,
+                                 WorkspaceDirectoryService directoryService,
+                                 RootRelativePathService rootRelativePathService,
+                                 ObjectMapper objectMapper,
+                                 boolean looseArtifactDiscoveryEnabled) {
         this.repository = repository;
         this.directoryService = directoryService;
+        this.rootRelativePathService = rootRelativePathService;
         this.objectMapper = objectMapper;
         this.looseArtifactDiscoveryEnabled = looseArtifactDiscoveryEnabled;
     }
@@ -87,13 +105,13 @@ public class OutputArtifactService {
             throw new IllegalArgumentException("Output value is null for output: " + outputName);
         }
 
-        Files.createDirectories(outputDir);
+        Path realOutputDir = requireConfinedOutputDirectory(outputDir);
 
         return switch (outputType) {
-            case FILE_PATH -> materializeFilePath(runId, planId, outputName, value, outputDir, context);
-            case USER_MESSAGE -> materializeUserMessage(runId, planId, outputName, value, outputDir, context);
-            case JSON -> materializeJson(runId, planId, outputName, value, outputDir, context);
-            case STRING, NUMBER -> materializeText(runId, planId, outputName, value, outputDir, context);
+            case FILE_PATH -> materializeFilePath(runId, planId, outputName, value, realOutputDir, context);
+            case USER_MESSAGE -> materializeUserMessage(runId, planId, outputName, value, realOutputDir, context);
+            case JSON -> materializeJson(runId, planId, outputName, value, realOutputDir, context);
+            case STRING, NUMBER -> materializeText(runId, planId, outputName, value, realOutputDir, context);
         };
     }
 
@@ -174,33 +192,53 @@ public class OutputArtifactService {
      */
     public String loadContent(String artifactId, long maxBytes) throws IOException {
         RunOutputArtifact artifact = getArtifact(artifactId);
+        return Files.readString(resolveArtifactFile(artifact, maxBytes));
+    }
+
+    public Path resolveArtifactFile(String artifactId) {
+        return resolveArtifactFile(getArtifact(artifactId));
+    }
+
+    public Path resolveArtifactFile(String artifactId, long maxBytes) throws IOException {
+        return resolveArtifactFile(getArtifact(artifactId), maxBytes);
+    }
+
+    public Path resolveArtifactFile(RunOutputArtifact artifact) {
+        if (artifact == null) {
+            throw new IllegalArgumentException("artifact is required");
+        }
         String filePath = artifact.filePath();
         if (!StringUtils.hasText(filePath)) {
-            throw new IllegalArgumentException("Artifact has no file path: " + artifactId);
+            throw new IllegalArgumentException("Artifact has no file path: " + artifact.id());
         }
-        Path path = Path.of(filePath).normalize().toRealPath();
+        Path resolved = rootRelativePathService.resolve(filePath);
+        Path path;
+        try {
+            path = resolved.toRealPath();
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Artifact file does not exist: " + filePath, e);
+        }
 
-        // Confinement: must be under data root
-        Path dataRoot = directoryService.dataRoot();
-        if (!path.startsWith(dataRoot)) {
+        if (!path.startsWith(directoryService.dataRoot())) {
             throw new IllegalArgumentException("Artifact path escapes data root: " + filePath);
         }
-
         if (Files.isDirectory(path)) {
             throw new IllegalArgumentException("Artifact is a directory, not a file: " + filePath);
         }
-
         if (!Files.isRegularFile(path)) {
             throw new IllegalArgumentException("Artifact file does not exist: " + filePath);
         }
+        return path;
+    }
 
+    public Path resolveArtifactFile(RunOutputArtifact artifact, long maxBytes) throws IOException {
+        Path path = resolveArtifactFile(artifact);
         long size = Files.size(path);
         if (size > maxBytes) {
             throw new IllegalArgumentException(
                 "Artifact file too large: " + size + " bytes (max " + maxBytes + ")");
         }
-
-        return Files.readString(path);
+        return path;
     }
 
     /**
@@ -238,7 +276,7 @@ public class OutputArtifactService {
                 // Register the file directly as a discovered artifact
                 String artifactType = inferArtifactType(fileName);
                 saveArtifact(runId, planId, "discovered_" + sanitizeOutputName(fileName),
-                    artifactType, fileName, file.toString(), null, context);
+                    artifactType, fileName, file, null, context);
                 count++;
                 registered.add(fileName);
             }
@@ -286,7 +324,7 @@ public class OutputArtifactService {
             ? artifactType.trim()
             : inferArtifactType(destination.getFileName().toString());
         return saveArtifact(runId, planId, outputName, resolvedType,
-            destination.getFileName().toString(), destination.toString(), null, context);
+            destination.getFileName().toString(), destination, null, context);
     }
 
     private String inferArtifactType(String fileName) {
@@ -354,7 +392,7 @@ public class OutputArtifactService {
 
         return saveArtifact(runId, planId, outputName, "file_path",
             destPath.getFileName().toString(),
-            destPath.toString(), null, context);
+            destPath, null, context);
     }
 
     private Path requireConfinedRealSourcePath(Path sourcePath, Path realDataRoot, String outputName) throws IOException {
@@ -428,7 +466,7 @@ public class OutputArtifactService {
         Path filePath = writeStringToUniqueFile(outputDir, fileName, content);
 
         return saveArtifact(runId, planId, outputName, "user_message",
-            filePath.getFileName().toString(), filePath.toString(), null, context);
+            filePath.getFileName().toString(), filePath, null, context);
     }
 
     private RunOutputArtifact materializeJson(String runId, String planId,
@@ -449,7 +487,7 @@ public class OutputArtifactService {
         Path filePath = writeStringToUniqueFile(outputDir, fileName, jsonContent);
 
         return saveArtifact(runId, planId, outputName, "json",
-            filePath.getFileName().toString(), filePath.toString(), jsonContent, context);
+            filePath.getFileName().toString(), filePath, jsonContent, context);
     }
 
     private RunOutputArtifact materializeText(String runId, String planId,
@@ -461,17 +499,18 @@ public class OutputArtifactService {
         Path filePath = writeStringToUniqueFile(outputDir, fileName, content);
 
         return saveArtifact(runId, planId, outputName, "text",
-            filePath.getFileName().toString(), filePath.toString(), null, context);
+            filePath.getFileName().toString(), filePath, null, context);
     }
 
     // ── Helpers ──
 
     private RunOutputArtifact saveArtifact(String runId, String planId,
                                             String outputName, String artifactType,
-                                            String fileName, String filePath,
+                                            String fileName, Path filePath,
                                             String contentJson,
                                             OutputArtifactContext context) {
         OutputArtifactContext resolvedContext = context == null ? OutputArtifactContext.EMPTY : context;
+        String storedFilePath = rootRelativePathService.store(filePath);
         return repository.saveArtifact(new RunOutputArtifact(
             UUID.randomUUID().toString(),
             runId,
@@ -486,10 +525,22 @@ public class OutputArtifactService {
             outputName,
             artifactType,
             fileName,
-            filePath,
+            storedFilePath,
             contentJson,
             Instant.now()
         ));
+    }
+
+    private Path requireConfinedOutputDirectory(Path outputDir) throws IOException {
+        if (outputDir == null) {
+            throw new IllegalArgumentException("outputDir is required");
+        }
+        Path realDataRoot = directoryService.dataRoot().toRealPath();
+        Path realOutputDir = Files.createDirectories(outputDir).toRealPath();
+        if (!realOutputDir.startsWith(realDataRoot)) {
+            throw new IllegalArgumentException("Output directory escapes data root: " + outputDir);
+        }
+        return realOutputDir;
     }
 
     private void requireId(String value, String label) {
