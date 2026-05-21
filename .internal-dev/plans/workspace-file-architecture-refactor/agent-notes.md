@@ -34,6 +34,7 @@ All review, planning, implementation, validation, remediation, documentation, an
 - Review B completed read-only task/plan and workflow execution divergence review.
 - Created planning synthesis commit: `0738b4a plan: synthesize workspace file refactor phases`.
 - Created Phase 01 commit: `aee52fc test: characterize workspace file baseline`.
+- Created Phase 02 commit: `961a6c8 feat: add effective workspace resolver`.
 - Phase 02 implementation completed locally; awaiting main orchestrator validation/commit.
 
 ## Validation Results
@@ -79,6 +80,7 @@ All review, planning, implementation, validation, remediation, documentation, an
 - Phase 01 validation completed 2026-05-21: all requested validation commands passed. Phase 01 is ready for commit.
 - Phase 01 committed as `aee52fc test: characterize workspace file baseline`.
 - Phase 02 validation completed 2026-05-21: all requested validation commands passed. Phase 02 is ready for commit.
+- Phase 02 committed as `961a6c8 feat: add effective workspace resolver`.
 
 ## Phase 01 Implementation Notes - 2026-05-21
 

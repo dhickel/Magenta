@@ -26,12 +26,13 @@ Persistent state for this long-running orchestration effort. Use this file to re
 - Created planning synthesis commit: `0738b4a plan: synthesize workspace file refactor phases`.
 - Completed Phase 01 baseline characterization and committed it as `aee52fc test: characterize workspace file baseline`.
 - Completed Phase 02 effective workspace resolver and run metadata implementation locally; no commit created by the phase implementation agent.
+- Committed Phase 02 as `961a6c8 feat: add effective workspace resolver`.
 
 ## Current Work
 
 - Workspace/file architecture refactor.
-- Current gate: Phase 02 commit.
-- Phase 02 added effective workspace resolution, shared workspace layout helpers, work-unit output helper paths, and compatible `PlanRun.workspaceId` persistence while preserving current task/plan output placement.
+- Current gate: start Phase 03 task/plan paths and outputs.
+- Phase 02 is complete and committed.
 
 ## Current Plan Artifacts
 
@@ -71,4 +72,4 @@ Queued review/refactor focus:
 
 ## Next Action
 
-Commit Phase 02, then start Phase 03 through a high-reasoning implementation subagent.
+Start Phase 03 through a high-reasoning implementation subagent.
