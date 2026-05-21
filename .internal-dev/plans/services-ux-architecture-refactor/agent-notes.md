@@ -12,7 +12,7 @@
 
 ## Active Agents
 
-- Advanced plan synthesis pending.
+- None.
 
 ## Completed Work
 
@@ -69,7 +69,19 @@
 
 ## Final Validation Status
 
-- Pending.
+- Phase 05 documentation closeout completed by the closeout documentation agent.
+- Final remediation addressed the xhigh runtime/UX blockers and stale selector test.
+- Final full validation after remediation passed:
+  - `git diff --check`
+  - focused selector/job/orchestration validation suites.
+  - targeted assignment/job/project/output/workspace/controller/runtime suites.
+  - full `mvn test` with 644 passing tests.
+  - bounded Spring startup smoke on ephemeral port `44913`.
+- Focused selector browser revalidation passed for `/jobs` and `/projects` after selector context namespacing; screenshots/logs were captured under `test-results/phase05-selector-revalidation/` and intentionally not committed.
+- Project member-control browser validation remains partial because the fresh new-project form state does not expose member-add controls; controller tests cover membership controls.
+- Final xhigh re-review conditionally passed after remediation; the remaining recurrence de-dupe concern is recorded as a future multi-runner scheduler claim/lock design.
+- Root `AGENTS.md` and `src/main/java/io/mindspice/magenta2/api/web/AGENTS.md` were intentionally skipped because they had unrelated dirty changes before this pass.
+- No out-of-scope bugs were found during documentation closeout.
 
 ## Handoff Notes
 
@@ -129,6 +141,13 @@
   - `mvn test -Dtest=PublicApiRouteBindingTest`
   - `git diff --check`
   - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` reached successful application startup on port `37261`; command exited `124` because timeout stopped the running app.
+- Phase 05 documentation closeout completed:
+  - Updated technical/API/end-user docs for assignment project/effective workspace context, compatibility workspace semantics, job execution summaries, assignment-routed recurrence/start behavior, output provenance filters, project/job UX controls, membership controls, persistent job workspace UI, active mutation guards, and validation expectations.
+  - Added `.internal-dev/changelogs/2026-05-21-services-ux-architecture-refactor.md`.
+  - Added `.internal-dev/changelogs/2026-05-21-services-ux-architecture-technical.md`.
+  - Added `.internal-dev/knowledge/services-ux-architecture-rules.md`.
+  - Did not modify Java production/test files.
+  - Did not stage or commit.
 
 ## Review Wave Synthesis Inputs
 
@@ -137,3 +156,11 @@
 - Frontend/API reviews agree project/job UI controls are missing or misleading: project-scoped agent submit, job project/workspace routing, persistent job workspace toggle/status, project membership controls, output provenance, and run-to-output navigation.
 - Risk review requires assignment-routed execution and clear mutation policy before expanding project/job UI controls, so implementation must avoid direct execution paths that bypass workspace leasing.
 - Playwright validation is required for changed `/projects`, `/jobs`, `/outputs`, and submit-flow surfaces.
+
+## Final Remediation Notes
+
+- Final remediation persisted the initial `JOB_RUN` assignment checkpoint immediately after run allocation/reuse and before job item execution, so resumed assignments have durable `jobRunId`, `jobAssignmentId`, workspace, and output directory state before the first child run starts.
+- `JobService.startRun(jobId, agentId, projectId, assignmentId)` now reuses the existing run for an assignment instead of allocating duplicates; job execution summary assembly also prefers the newest run per assignment if duplicate rows already exist.
+- Entity selector context is now namespaced as `selectorContext.*` in hidden inputs and selector URLs. Selector controllers strip that namespace into lookup context, preventing hidden context values such as a job owner `agentId` from overwriting business fields like the selected submit agent.
+- Focused regressions cover selector context namespacing, the previously failing selector hook expectation, job submit where job owner differs from selected submit agent, single-run reuse, deterministic summary behavior with duplicate assignment runs, and assignment resume after preallocated run before first item checkpoint.
+- Recurrence de-dupe was not broadened in this patch. Residual assumption: recurrence firing remains safe for the current single-runner scheduler model; multi-runner recurrence de-dupe needs a deliberate scheduler claim/lock design rather than a narrow service patch.

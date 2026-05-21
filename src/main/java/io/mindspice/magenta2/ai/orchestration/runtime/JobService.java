@@ -235,9 +235,16 @@ public class JobService {
             throw new IllegalStateException("Job runs require an assignment context");
         }
         JobDefinition def = getDefinition(jobId);
+        String assignmentKey = normalize(jobAssignmentId);
+        JobRun existingRun = jobRepository.findRunByAssignmentId(assignmentKey).orElse(null);
+        if (existingRun != null) {
+            if (!def.id().equals(existingRun.jobId())) {
+                throw new IllegalStateException("Assignment already owns a run for a different job: " + assignmentKey);
+            }
+            return existingRun;
+        }
         Instant now = Instant.now();
         String runId = UUID.randomUUID().toString();
-        String assignmentKey = normalize(jobAssignmentId);
         String effectiveAgentId = firstText(agentId, def.ownerAgentId(), "system");
         String effectiveProjectId = firstText(projectId, def.projectId());
 
@@ -404,9 +411,9 @@ public class JobService {
             : runtimeRepository.findAssignmentsForJob(jobId);
         Map<String, JobRun> runsByAssignment = new java.util.LinkedHashMap<>();
         List<JobRun> unassignedRuns = new ArrayList<>();
-        for (JobRun run : listRuns(jobId)) {
+        for (JobRun run : sortedRuns(jobId)) {
             if (StringUtils.hasText(run.jobAssignmentId())) {
-                runsByAssignment.put(run.jobAssignmentId(), run);
+                runsByAssignment.putIfAbsent(run.jobAssignmentId(), run);
             } else {
                 unassignedRuns.add(run);
             }
@@ -427,7 +434,12 @@ public class JobService {
         WorkAssignment assignment = runtimeRepository == null
             ? null
             : runtimeRepository.findAssignment(assignmentId).orElse(null);
-        JobRun run = jobRepository.findRunByAssignmentId(assignmentId).orElse(null);
+        JobRun run = assignment != null && StringUtils.hasText(assignment.jobId())
+            ? sortedRuns(assignment.jobId()).stream()
+                .filter(candidate -> assignmentId.equals(candidate.jobAssignmentId()))
+                .findFirst()
+                .orElse(null)
+            : jobRepository.findRunByAssignmentId(assignmentId).orElse(null);
         String jobId = assignment != null ? assignment.jobId() : run == null ? null : run.jobId();
         if (!StringUtils.hasText(jobId)) {
             return Optional.empty();
@@ -446,6 +458,14 @@ public class JobService {
                 run.workItemRuns().stream().map(JobWorkItemRun::runId)
             ))
             .filter(runId -> runId != null && !runId.isBlank())
+            .toList();
+    }
+
+    private List<JobRun> sortedRuns(String jobId) {
+        return listRuns(jobId).stream()
+            .sorted(Comparator
+                .comparing(JobRun::createdAt, Comparator.nullsLast(Comparator.reverseOrder()))
+                .thenComparing(JobRun::id, Comparator.nullsLast(Comparator.reverseOrder())))
             .toList();
     }
 
@@ -579,7 +599,7 @@ public class JobService {
 
     /**
      * Sets or updates a cron-based recurrence for a job.
-     * A new run is created each time the cron fires.
+     * A JOB_RUN assignment is enqueued each time the cron fires.
      */
     public JobRecurrence setRecurrence(String jobId, String cronExpression,
                                         String timezone, Instant nextFireTime) {

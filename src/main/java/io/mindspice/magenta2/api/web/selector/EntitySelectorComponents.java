@@ -14,6 +14,7 @@ import org.springframework.util.StringUtils;
 
 @Service
 public class EntitySelectorComponents {
+    static final String CONTEXT_PARAM_PREFIX = "selectorContext.";
 
     public Component selector(EntitySelectorConfig config, EntityOption current) {
         String rootId = rootId(config.kind(), config.name());
@@ -31,7 +32,7 @@ public class EntitySelectorComponents {
             if (StringUtils.hasText(entry.getValue())) {
                 root.withChild(new HtmlTag("input", true)
                     .withAttribute("type", "hidden")
-                    .withAttribute("name", entry.getKey())
+                    .withAttribute("name", contextParamName(entry.getKey()))
                     .withAttribute("value", entry.getValue()));
             }
         }
@@ -94,7 +95,7 @@ public class EntitySelectorComponents {
             }
             for (Map.Entry<String, String> entry : contextParams.entrySet()) {
                 if (StringUtils.hasText(entry.getValue())) {
-                    url += "&" + enc(entry.getKey()) + "=" + enc(entry.getValue());
+                    url += "&" + enc(contextParamName(entry.getKey())) + "=" + enc(entry.getValue());
                 }
             }
             HtmlTag row = new HtmlTag("button")
@@ -160,10 +161,14 @@ public class EntitySelectorComponents {
         }
         for (Map.Entry<String, String> entry : config.contextParams().entrySet()) {
             if (StringUtils.hasText(entry.getValue())) {
-                url += "&" + enc(entry.getKey()) + "=" + enc(entry.getValue());
+                url += "&" + enc(contextParamName(entry.getKey())) + "=" + enc(entry.getValue());
             }
         }
         return url;
+    }
+
+    private String contextParamName(String key) {
+        return CONTEXT_PARAM_PREFIX + (key == null ? "" : key);
     }
 
     private String rootId(EntityKind kind, String name) {

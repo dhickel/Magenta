@@ -57,6 +57,8 @@ Output rows show output name, artifact type, run, provenance context, creation t
 
 The inline content pane loads up to the configured content limit and also offers download.
 
+Output filters are discovery and debugging controls in the current alpha posture. They do not enforce project or agent permissions by themselves. Chat conversation files remain separate from orchestration output artifacts and are listed from the chat page instead.
+
 ## Settings
 
 Open `/settings` to edit runtime defaults.

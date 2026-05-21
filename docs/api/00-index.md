@@ -47,7 +47,10 @@ The public plan/task/workflow stream routes acknowledge durable assignment submi
 - Tasks: [`TaskDefinition`](../../src/main/java/io/mindspice/magenta2/ai/chat/task/TaskDefinition.java), [`TaskDraft`](../../src/main/java/io/mindspice/magenta2/ai/chat/task/TaskDraft.java), [`TaskRun`](../../src/main/java/io/mindspice/magenta2/ai/chat/task/TaskRun.java).
 - Workflows: [`WorkflowDefinition`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workflow/WorkflowDefinition.java), [`WorkflowRun`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workflow/WorkflowRun.java), [`WorkflowValidator.ValidationResult`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workflow/WorkflowValidator.java).
 - Runtime assignments/jobs/projects: [`WorkAssignment`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/runtime/WorkAssignment.java), [`JobDefinition`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/runtime/JobDefinition.java), [`Project`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/runtime/Project.java).
+- Job execution summaries: [`JobExecutionSummary`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/runtime/JobExecutionSummary.java).
 - Workspaces/outputs: [`Workspace`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/Workspace.java), [`WorkspaceLease`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/WorkspaceLease.java), [`RunOutputArtifact`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/RunOutputArtifact.java).
+
+Assignment-returning submit routes expose first-class project/effective workspace context. `projectId` selects project workspace execution; `workspaceId` is compatibility metadata. Output query routes expose direct attribution filters for agent, job, job assignment, job run, project, workspace, plan/workflow id, run id, run type, artifact type, and limit.
 
 ## Error Conventions
 

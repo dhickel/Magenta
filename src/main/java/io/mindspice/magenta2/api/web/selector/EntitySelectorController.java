@@ -91,9 +91,12 @@ public class EntitySelectorController {
     private Map<String, String> context(Map<String, String> params) {
         Map<String, String> context = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : params.entrySet()) {
-            if (!List.of("q", "name", "id", "value", "label", "placeholder", "required", "limit", "current",
-                    "includeUnavailable").contains(entry.getKey()) && StringUtils.hasText(entry.getValue())) {
-                context.put(entry.getKey(), entry.getValue());
+            if (entry.getKey().startsWith(EntitySelectorComponents.CONTEXT_PARAM_PREFIX)
+                && StringUtils.hasText(entry.getValue())) {
+                context.put(
+                    entry.getKey().substring(EntitySelectorComponents.CONTEXT_PARAM_PREFIX.length()),
+                    entry.getValue()
+                );
             }
         }
         return context;

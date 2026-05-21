@@ -62,6 +62,8 @@ Controllers: `AgentProfileController`, agent editor fragments in `OrchestrationC
 Sources: [`ai/orchestration/runtime`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/runtime).
 
 - `AssignmentService` owns durable assignment creation, queue reads, history reads, lifecycle transitions, history purge, assignment diagnostics, transcript lookup, conversation links, and lease/progress fields.
+- Assignment creation persists first-class `projectId`, effective workspace id/kind, and compatibility `workspaceId`; `AssignmentService.AssignmentSummary` exposes that context for UI/API consumers.
+- Assignment service helpers own active project/job mutation checks and workspace-blocked requeue operations so controllers do not reason over raw queue rows.
 - `OrchestrationRunnerService` executes queued assignment boundaries for task, workflow, and job work. It resolves project-scoped work through the effective workspace rule, preserves waiting workflow assignments for resume, and does not attempt token-level resume; durable state resumes at task/workflow/job item boundaries.
 - `OrchestrationRunService` provides run-facing helpers for assignment execution paths.
 - `OrchestrationRuntimeRepository` owns runtime queue, schedules, reactions, direct-line inbox, events, legacy orchestration jobs, and compatibility columns.
@@ -78,6 +80,8 @@ Sources: [`JobService`](../../src/main/java/io/mindspice/magenta2/ai/orchestrati
 
 - `JobService` owns user-facing job definitions, ordered work items, run records, recurrence, cancellation, and output run id lookup.
 - Public job run routes submit `JOB_RUN` assignments through `AssignmentService`; job execution is coordinated by `OrchestrationRunnerService`.
+- `JobExecutionSummary` is the read model for job run/operator context. It ties job definition, assignment, run, agent/project, effective workspace, compatibility workspace metadata, persistent job workspace, child runs, and output counts together.
+- Recurrence/start paths enqueue assignments; direct run allocation is guarded for assignment-owned execution.
 - Jobs can opt into persistent per-assignment workspace under the effective durable workspace. Job outputs are stored under `outputs/jobs/<assignmentId>/<jobRunId>` and artifacts carry assignment/run attribution.
 - Jobs can be empty `DRAFT` definitions so the UI can save metadata before items are added.
 
@@ -91,6 +95,7 @@ Sources: [`ProjectService`](../../src/main/java/io/mindspice/magenta2/ai/orchest
 
 - `ProjectService` owns durable project CRUD, project membership, project events, project workspace summary, and release requests for project workspace leases.
 - Projects are shared workspace and visibility records, not executable work units. `ownerAgentId` is nullable legacy compatibility metadata.
+- Project membership controls are service-guarded. Removing a member or deleting a project can fail when active assignments or leases still reference that project/member context.
 - Project workspaces and links are delegated to workspace services.
 
 Tables: `projects`, `project_agent_memberships`, `project_events`, `workspaces`, `workspace_leases`.

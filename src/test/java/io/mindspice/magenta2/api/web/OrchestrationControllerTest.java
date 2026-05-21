@@ -817,6 +817,30 @@ class OrchestrationControllerTest {
         assertThat(html).contains("Compatibility Workspace");
         assertThat(html).contains("name=\"projectId\"");
         assertThat(html).contains("name=\"workspaceId\"");
+        assertThat(html).contains("name=\"selectorContext.agentId\"");
+    }
+
+    @Test
+    void jobSubmitUsesSelectedAgentWhenSelectorContextCarriesJobOwner() {
+        StubAssignmentService assignmentService = new StubAssignmentService();
+        OrchestrationController ctrl = controller(
+            true,
+            true,
+            new StubScheduleService(),
+            new StubEventReactionService(),
+            new StubJobService(),
+            assignmentService
+        );
+
+        String html = ctrl.submitJob("job-abc", Map.of(
+            "agentId", "agent-2",
+            "selectorContext.agentId", "agent-1",
+            "priority", "8"
+        ));
+
+        assertThat(html).contains("Assignment Created");
+        assertThat(assignmentService.lastRequest.agentId()).isEqualTo("agent-2");
+        assertThat(assignmentService.lastRequest.priority()).isEqualTo(8);
     }
 
     @Test
@@ -2473,12 +2497,21 @@ class OrchestrationControllerTest {
     private static class StubAgentProfileService extends AgentProfileService {
         StubAgentProfileService() { super(null, null, null); }
         @Override public java.util.List<AgentProfile> list() {
-            return List.of(new AgentProfile("agent-1", "Test Agent", AgentProfileStatus.ACTIVE,
-                "qwen3", "You are helpful.", List.of(), List.of(), false, null, null));
+            return List.of(
+                new AgentProfile("agent-1", "Test Agent", AgentProfileStatus.ACTIVE,
+                    "qwen3", "You are helpful.", List.of(), List.of(), false, null, null),
+                new AgentProfile("agent-2", "Submit Agent", AgentProfileStatus.ACTIVE,
+                    "qwen3", "You are helpful.", List.of(), List.of(), false, null, null)
+            );
         }
         @Override public AgentProfile get(String id) {
             if ("agent-1".equals(id)) {
                 return new AgentProfile("agent-1", "Test Agent", AgentProfileStatus.ACTIVE,
+                    "qwen3", "You are helpful.", List.of(), List.of(), false,
+                    java.time.Instant.ofEpochSecond(1000000), java.time.Instant.ofEpochSecond(2000000));
+            }
+            if ("agent-2".equals(id)) {
+                return new AgentProfile("agent-2", "Submit Agent", AgentProfileStatus.ACTIVE,
                     "qwen3", "You are helpful.", List.of(), List.of(), false,
                     java.time.Instant.ofEpochSecond(1000000), java.time.Instant.ofEpochSecond(2000000));
             }

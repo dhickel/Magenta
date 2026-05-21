@@ -56,7 +56,7 @@ Source packages: [`ai/orchestration/agents`](../../src/main/java/io/mindspice/ma
 
 - `agent_profiles`: durable agent profiles with name, status, default model, system prompt, approved tools JSON, shell allowlist JSON, direct-line flag, and timestamps.
 - `orchestration_jobs` and `orchestration_job_items`: legacy/runtime orchestration job records used by runtime internals.
-- `work_assignments`: durable assignment queue. Fields include agent id, job/job item ids, assignment type, priority, status, model override, compatibility workspace id, project id in input JSON, current item index, checkpoint/input/output/evidence JSON, error, lease owner/expires, progress/heartbeat timestamps, lifecycle timestamps.
+- `work_assignments`: durable assignment queue. Fields include agent id, job/job item ids, assignment type, priority, status, model override, compatibility workspace id, first-class project id, effective workspace id/kind, current item index, checkpoint/input/output/evidence JSON, error, lease owner/expires, progress/heartbeat timestamps, lifecycle timestamps.
 - `assignment_conversation_links`: durable mapping from assignment ids to chat conversation ids so transcripts remain visible even if checkpoint output is incomplete.
 - `agent_inbox_messages`: runtime direct-line agent/operator inbox messages with read/handled flags.
 - `agent_schedules` and `schedule_firings`: cron-like assignment scheduling and de-duplication of due firings.
@@ -65,7 +65,8 @@ Source packages: [`ai/orchestration/agents`](../../src/main/java/io/mindspice/ma
 
 Compatibility notes:
 
-- `OrchestrationRuntimeRepository` creates runtime tables and can add retry/continue fields to job items and progress/heartbeat fields to work assignments.
+- `OrchestrationRuntimeRepository` creates runtime tables and can add retry/continue fields to job items plus project/effective-workspace/progress/heartbeat fields to work assignments.
+- New assignments keep `input_json.projectId` for compatibility, but first-class `project_id` is the assignment context source for new UI/API reads.
 - Runtime direct-line inbox and workflow approval inbox use different tables and lifecycle models.
 
 ## User-Facing Jobs
@@ -82,6 +83,7 @@ Compatibility notes:
 - Public job definitions can be saved as empty `DRAFT` rows before items are added.
 - Persistent job workspace is opt-in and assignment-scoped under `<effective-workspace>/jobs/<assignmentId>`.
 - Job outputs are stored under `<effective-workspace>/outputs/jobs/<assignmentId>/<jobRunId>`.
+- Job execution summaries are service read models, not separate tables. They join job definition, assignment, run, workspace, project/agent labels, child run ids, and output counts.
 
 ## Projects
 

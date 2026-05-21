@@ -23,12 +23,16 @@ Core fields:
 
 - `agent_id`, optional `job_id` and `job_item_id`.
 - `assignment_type`: task, workflow, job, or other runtime work type.
-- `priority`, `status`, `model_override`, `project_id` in assignment input, and compatibility `workspace_id`.
+- `priority`, `status`, `model_override`, first-class `project_id`, compatibility `workspace_id`, `effective_workspace_id`, and `effective_workspace_kind`.
 - `current_item_index`, `checkpoint_json`, input/output/evidence JSON.
 - `error_text`, lease owner/expires, progress/heartbeat timestamps.
 - Created, updated, started, completed timestamps.
 
 `AssignmentService` owns creation, queue reads, retained history reads, lifecycle transitions, deletion, purge, diagnostics, transcript lookup, and assignment-to-conversation links.
+
+`projectId` selects project-scoped execution and the project workspace. `workspaceId` remains compatibility metadata for older callers and UI references; it is not interpreted as project context. New assignments persist first-class project/effective workspace fields and still keep `input.projectId` for compatibility with older records and consumers.
+
+`AssignmentService.AssignmentSummary` is the UI-facing read model for queue/history/project context. It exposes assignment id, agent/job ids, status, `projectId`, compatibility `workspaceId`, effective workspace id/kind/display path, workspace blocker details, linked run ids, and lifecycle timestamps.
 
 ## Queue Lifecycle
 
@@ -42,6 +46,8 @@ Assignments enter the queue through API or runtime triggers:
 Status values are represented by `OrchestrationStatus`. Lifecycle controls include cancel, pause, resume, guarded delete, retained history purge, diagnostics, transcript fragments, and force-interrupt from the operational UI.
 
 The runtime stores retained terminal history separately from active queue reads. History can be purged by age through assignment history APIs and settings.
+
+Assignments waiting on project workspace leases can be requeued after the blocking lease clears through assignment service/operator actions. The UI should show the blocker rather than implying lease release is immediate.
 
 ## Leases and Progress
 
@@ -71,6 +77,12 @@ There are two job-related schemas:
 Current public job APIs use `JobDefinition` and `JobWorkItem`. Public job execution submits `AssignmentType.JOB_RUN`. Job items can reference tasks or workflows, include model override and priority, and persist retry count plus continue-on-failure policy.
 
 User-facing jobs can opt into persistent per-assignment workspace with `persistentWorkspaceEnabled`. When enabled, job workspace state lives under the effective workspace at `jobs/<assignmentId>`. Job outputs live under `outputs/jobs/<assignmentId>/<jobRunId>` and output artifacts carry job assignment/run attribution. The compatibility `workspaceId` field remains available on definitions and submissions.
+
+`JobExecutionSummary` is the stable read model for operator views. It bridges job definition, assignment id/status, agent/project labels, compatibility workspace id, effective workspace id/kind/path, persistent job workspace state/path, job run id/status, child run ids, output directory/count, and lifecycle timestamps. It covers both the pending gap after assignment creation and the later state after a `job_runs` row exists.
+
+Job recurrence/start behavior is assignment-routed. Recurrence firing enqueues `JOB_RUN` assignments and advances recurrence timestamps; direct job run allocation is reserved for assignment-owned runner execution.
+
+The alpha mutation policy is conservative. Project deletion and membership removal are blocked while active work references the project or member agent. Job deletion and execution-affecting edits, including item changes, project/default agent, recurrence, model, and persistent workspace flag changes, are blocked while non-terminal job assignments or runs exist. Label-only edits remain allowed where services permit them.
 
 ## Inboxes
 

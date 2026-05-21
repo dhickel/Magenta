@@ -89,4 +89,6 @@ When selector behavior is reused across pages, prefer the shared selector compon
 
 For UI changes, validate against a running app with focused Playwright checks on the changed target. For documentation-only work, safe validation is limited to link/file inventory, source-reference checks, and whitespace checks.
 
-During UI review, explicitly check that JavaScript use is justified and that standard CRUD remains HTMX-first.
+For project/job/output/assignment UX changes, Playwright validation should inspect the changed `/projects`, `/jobs`, `/outputs`, plan submit, workflow submit, and agent submit/history surfaces with screenshots. Use isolated runtime data when possible, capture console/network diagnostics, and treat blocked browser validation as an explicit blocker unless the user approves a fallback.
+
+During UI review, explicitly check that JavaScript use is justified, standard CRUD remains HTMX-first, labels distinguish `projectId` from compatibility `workspaceId`, and provenance fields fit without hiding primary actions.

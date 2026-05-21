@@ -432,6 +432,12 @@ public class OrchestrationRunnerService {
             "jobOutputDir", nullableText(jobRun.outputDir()),
             "workspaceId", nullableText(jobRun.workspaceId())
         )), outputs, evidence);
+        current = assignmentService.saveIfLeaseOwner(current, leaseOwner);
+        if (current.status() == OrchestrationStatus.CANCEL_REQUESTED) {
+            jobService.cancelRunFromAssignment(jobRun.id());
+            jobService.updateDefinitionStatus(job.id(), "CANCELLED");
+            return assignmentService.saveStatus(current, OrchestrationStatus.CANCELLED);
+        }
         int start = Math.max(assignment.currentItemIndex(), integer(assignment.checkpoint().get("nextItemIndex"), 0));
         for (int i = start; i < items.size(); i++) {
             current = assignmentService.get(current.id());
@@ -498,8 +504,8 @@ public class OrchestrationRunnerService {
                 ? jobService.markRunning(existing.id())
                 : existing;
         }
-        return jobService.markRunning(jobService.startRun(
-            job.id(), assignment.agentId(), projectId, assignment.id()).id());
+        JobRun run = jobService.startRun(job.id(), assignment.agentId(), projectId, assignment.id());
+        return run.status() == JobRunStatus.QUEUED ? jobService.markRunning(run.id()) : run;
     }
 
     private void installJobWorkspaceContext(JobRun jobRun) {

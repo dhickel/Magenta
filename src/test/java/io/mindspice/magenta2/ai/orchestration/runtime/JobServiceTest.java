@@ -102,6 +102,19 @@ class JobServiceTest {
     }
 
     @Test
+    void startRunReusesExistingRunForAssignment() {
+        JobDefinition def = jobService.saveDefinition(
+            jobDef(null, "Reuse Runner", List.of(planItem("step", "plan-1", 0)))
+        );
+
+        JobRun first = jobService.startRun(def.id(), "agent-1", null, "assignment-reuse");
+        JobRun second = jobService.startRun(def.id(), "agent-1", null, "assignment-reuse");
+
+        assertThat(second.id()).isEqualTo(first.id());
+        assertThat(jobService.listRuns(def.id())).hasSize(1);
+    }
+
+    @Test
     void startRunDefaultsToNoPersistentWorkspaceAndWritesJobOutputUnderEffectiveWorkspace() {
         JobDefinition def = jobService.saveDefinition(
             jobDef(null, "Workspace Job", List.of(planItem("s1", "plan-1", 0)))
@@ -178,6 +191,40 @@ class JobServiceTest {
         assertThat(running.outputDirectory()).contains("outputs/jobs/assignment-summary");
         assertThat(running.persistentJobWorkspacePath()).contains("jobs/assignment-summary");
         assertThat(running.persistentJobWorkspacePresent()).isTrue();
+    }
+
+    @Test
+    void executionSummaryUsesNewestRunWhenDuplicateAssignmentRunsExist() {
+        JdbcTemplate jdbc = jdbcTemplate();
+        JobRepository jobs = new JobRepository(jdbc, new ObjectMapper().registerModule(new JavaTimeModule()));
+        OrchestrationRuntimeRepository runtime = new OrchestrationRuntimeRepository(jdbc, new ObjectMapper());
+        JobService service = new JobService(jobs, workspaceDirectoryService, null, null, null, runtime);
+        JobDefinition def = service.saveDefinition(jobDef("duplicate-summary", "Duplicate Summary", List.of()));
+        WorkAssignment assignment = runtime.saveAssignment(new WorkAssignment(
+            "assignment-duplicate-summary", "agent-1", def.id(), null, AssignmentType.JOB_RUN, 7,
+            OrchestrationStatus.QUEUED, null, null, null, null, null, 0,
+            Map.of(), Map.of("jobId", def.id()), Map.of(), Map.of(),
+            null, null, null, null, null, null, null
+        ));
+        jobs.saveRun(new JobRun(
+            "run-old", def.id(), assignment.id(), null, JobRunStatus.FAILED,
+            List.of(), null, "/out/old", null, null,
+            Instant.parse("2026-05-21T10:00:00Z"), Instant.parse("2026-05-21T10:00:00Z"),
+            null, null
+        ));
+        jobs.saveRun(new JobRun(
+            "run-new", def.id(), assignment.id(), null, JobRunStatus.RUNNING,
+            List.of(), null, "/out/new", null, null,
+            Instant.parse("2026-05-21T11:00:00Z"), Instant.parse("2026-05-21T11:00:00Z"),
+            null, null
+        ));
+
+        JobExecutionSummary summary = service.executionSummaryByAssignmentId(assignment.id()).orElseThrow();
+
+        assertThat(summary.jobRunId()).isEqualTo("run-new");
+        assertThat(summary.jobRunStatus()).isEqualTo(JobRunStatus.RUNNING);
+        assertThat(service.executionSummaries(def.id())).hasSize(1);
+        assertThat(service.executionSummaries(def.id()).getFirst().jobRunId()).isEqualTo("run-new");
     }
 
     @Test

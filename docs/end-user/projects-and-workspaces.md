@@ -32,7 +32,7 @@ Select a project from the sidebar. You can update:
 - Manager type.
 - Default model.
 
-Deleting a project is destructive. Confirm the project is no longer referenced by active jobs or outputs before deleting it.
+Deleting a project is destructive. Magenta blocks deletion while active assignments, leases, jobs, or runs still reference the project. Confirm the project is no longer active before deleting it.
 
 ## Workspace Section
 
@@ -52,7 +52,7 @@ If a lease is active, the UI may show **Request release after current turn**. Th
 
 The project network section shows linked agents. The agents section lists assigned members and roles, and provides HTMX controls to add a member, choose a role, or remove a member.
 
-Membership removal is guarded while that agent has active assignments or holds the active project workspace lease.
+Membership removal is guarded while that agent has active assignments or holds the active project workspace lease. If removal fails, let the active work complete, cancel it, or requeue workspace-blocked assignments after the lease clears.
 
 ## Active Jobs And Outputs
 

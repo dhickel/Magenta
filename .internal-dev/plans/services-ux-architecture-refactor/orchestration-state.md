@@ -43,6 +43,11 @@ Date: 2026-05-21
   - job editor exposes persistent workspace configuration, and job run panels render `JobExecutionSummary` fields for assignment/run, agent/project, effective workspace, persistent job workspace, output directory, and output counts.
   - project UI copy emphasizes shared workspace/membership, adds HTMX membership add/remove controls backed by service guards, and project active job links navigate to `/jobs/{jobId}`.
   - assignment queue/history/diagnostics, output side panels, dashboard active work, and selector context plumbing were updated for project/workspace attribution.
+- Phase 05 documentation closeout completed locally:
+  - docs now describe first-class assignment project/effective workspace context, `projectId` versus compatibility `workspaceId`, job execution summaries, assignment-routed job recurrence/start behavior, output provenance filters, project/job controls, project membership controls, persistent job workspace UI, active mutation guards, and validation expectations.
+  - closeout changelogs and reusable knowledge note were added under `.internal-dev`.
+  - no Java production/test files were changed.
+  - no bug reports were created because no out-of-scope bugs were found.
 
 ## Objective
 
@@ -120,10 +125,10 @@ Next recommended phase: start Phase 01 only. Do not start UI work until Phase 01
 
 ## Agent Roster
 
-- Backend services review: `019e497a-ef84-7900-92fa-0c6c0858a5db` (`Hubble`).
-- Frontend/UX review: `019e497b-1e66-7e90-95d3-709e47c457f5` (`Lagrange`).
-- Integration/API review: `019e497b-456f-7541-9ef8-1c5195cfbc61` (`Feynman`).
-- Risk/testing review: `019e497b-771e-7442-9598-61d64c65eef2` (`Kierkegaard`).
+- Backend services review: `019e497a-ef84-7900-92fa-0c6c0858a5db` (`Hubble`) - completed.
+- Frontend/UX review: `019e497b-1e66-7e90-95d3-709e47c457f5` (`Lagrange`) - completed.
+- Integration/API review: `019e497b-456f-7541-9ef8-1c5195cfbc61` (`Feynman`) - completed.
+- Risk/testing review: `019e497b-771e-7442-9598-61d64c65eef2` (`Kierkegaard`) - completed.
 
 ## Validation Log
 
@@ -161,6 +166,9 @@ Next recommended phase: start Phase 01 only. Do not start UI work until Phase 01
   - Spring startup smoke on ephemeral port.
   - Focused browser validation of dashboard, projects, jobs, outputs, plans, workflows, agents, and agent detail surfaces, with screenshots/logs under `test-results/` and intentionally not committed.
 - Phase 04 commit: `5c6aff1 feat: align project and job operator ux`.
+- Phase 05 documentation closeout validation passed:
+  - `git diff --check -- docs .internal-dev/changelogs .internal-dev/knowledge .internal-dev/plans/services-ux-architecture-refactor`
+  - Focused doc-adjacent route/API tests were not run because this pass changed documentation and internal artifacts only.
 - Phase 01 local validation passed:
   - `mvn test -Dtest=AssignmentContextServiceTest,ProjectServiceTest,JobServiceTest`
   - `mvn test -Dtest=PublicRunSubmissionControllerTest,OperationalUiContractControllerTest,AgentOrchestrationControllerTest,ProjectServiceTest,OrchestrationRuntimeTest`
@@ -192,3 +200,28 @@ Next recommended phase: start Phase 01 only. Do not start UI work until Phase 01
   - `mvn test -Dtest=PublicApiRouteBindingTest`
   - `git diff --check`
   - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` reached successful application startup on port `37261`; command exited `124` because timeout stopped the running app.
+
+## Final Remediation State
+
+- Final gate remediation completed locally without committing.
+- Job run allocation is now assignment-idempotent through `JobService.startRun(...)`; resumed assignments reuse the existing run for the assignment instead of creating a duplicate.
+- `OrchestrationRunnerService` now saves the initial job-run checkpoint before any job item execution starts, closing the crash/resume gap between run allocation and first item checkpoint.
+- Job execution summaries deterministically collapse duplicate assignment runs by selecting the newest run per assignment in service read-model assembly.
+- Selector context values are carried as `selectorContext.*` parameters and stripped only by selector endpoints, so selector context cannot overwrite form business fields.
+- Recurrence duplicate prevention remains scoped to the current single-runner assumption. A multi-runner scheduler needs a future explicit recurrence claim/lock design.
+- Final remediation validation:
+  - `mvn test -Dtest=EntitySelectorComponentsTest,EntitySelectorControllerTest,OrchestrationControllerTest`
+  - `mvn test -Dtest=JobServiceTest,JobRepositoryTest,OrchestrationRuntimeTest,AssignmentContextServiceTest`
+  - `mvn test -Dtest=OperationalUiContractControllerTest,PublicRunSubmissionControllerTest,AgentOrchestrationControllerTest`
+- Final revalidation after remediation passed:
+  - `git diff --check`
+  - `mvn test -Dtest=EntitySelectorComponentsTest,EntitySelectorControllerTest,OrchestrationControllerTest`
+  - `mvn test -Dtest=JobServiceTest,JobRepositoryTest,OrchestrationRuntimeTest,AssignmentContextServiceTest`
+  - `mvn test -Dtest=OperationalUiContractControllerTest,PublicRunSubmissionControllerTest,AgentOrchestrationControllerTest`
+  - `mvn test -Dtest=AssignmentContextServiceTest,JobServiceTest,JobRepositoryTest,ProjectServiceTest,OutputArtifactServiceAttributionTest,WorkspaceRepositoryAttributionTest,WorkspaceRepositorySchemaMigrationTest,WorkspacePathSegmentValidationTest`
+  - `mvn test -Dtest=PublicApiRouteBindingTest,PublicRunSubmissionControllerTest,OperationalUiContractControllerTest,AgentOrchestrationControllerTest,OrchestrationControllerTest,OutputControllerTest`
+  - `mvn test -Dtest=OrchestrationRuntimeTest,WorkflowRunnerTest,WorkflowRepositoryTest,PlanServiceTest,TaskStreamSupportTest`
+  - `mvn test` with 644 passing tests.
+  - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` reached successful startup on port `44913`; timeout exit `124` was expected.
+- Focused selector browser revalidation passed for `/jobs` and `/projects` after selector context namespacing. Artifacts are under `test-results/phase05-selector-revalidation/` and are intentionally not committed.
+- Final xhigh re-review found no remaining prior runtime blockers after remediation. It noted the recurrence de-dupe residual risk and one stale recurrence comment, which was corrected before closeout.

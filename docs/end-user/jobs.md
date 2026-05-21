@@ -76,6 +76,8 @@ The submit form shows the job's saved project, compatibility workspace, and pers
 
 Job outputs are written under the effective workspace at `outputs/jobs/<assignmentId>/<jobRunId>`. When persistent workspace is enabled, durable job working files are kept separately at `jobs/<assignmentId>`. Multiple assignments of the same job definition do not share that persistent workspace.
 
+Recurring jobs also start by creating job assignments. Use the run panel to confirm the assignment id and job run id after a recurrence fires.
+
 ## Runs, Cancellation, Outputs, Events
 
 The job detail panels show:
@@ -86,6 +88,8 @@ The job detail panels show:
 
 Use **Cancel** for a non-terminal run when you want Magenta to stop work. Use `/outputs` to browse and download artifacts across jobs, agents, projects, and runs.
 
+While a job has active assignments or non-terminal runs, execution-affecting edits are blocked. This includes item changes, deletion, project/default agent changes, recurrence changes, default model changes, and persistent workspace setting changes. Label-only edits such as title and summary may still be allowed.
+
 ## Common Errors
 
 - **Title is required**: fill the job title before saving.
@@ -94,6 +98,7 @@ Use **Cancel** for a non-terminal run when you want Magenta to stop work. Use `/
 - **Missing required bindings**: add each required plan input to bindings JSON.
 - **Invalid JSON** or ignored bindings: bindings must be a JSON object.
 - **Job not found**: the job was deleted or the page is stale.
+- **Active work is using this job**: wait for work to finish, cancel the run, or retry after active assignments clear before making execution-affecting edits.
 
 ## Alpha Limits
 

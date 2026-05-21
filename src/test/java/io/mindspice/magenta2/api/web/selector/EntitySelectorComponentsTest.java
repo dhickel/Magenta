@@ -20,11 +20,26 @@ class EntitySelectorComponentsTest {
 
         assertThat(html).contains("class=\"entity-selector");
         assertThat(html).contains("name=\"workspaceId\"");
-        assertThat(html).contains("hx-get=\"/selectors/workspace/options?name=workspaceId&amp;required=false\"");
+        assertThat(html).contains("hx-get=\"/selectors/workspace/options?name=workspaceId&amp;required=false");
         assertThat(html).contains("hx-trigger=\"keyup changed delay:300ms, focus\"");
         assertThat(html).contains("hx-include=\"closest .entity-selector\"");
         assertThat(html).contains("/selectors/workspace/validate?name=workspaceId&amp;required=false");
         assertThat(html).contains("Selected: Workspace One");
+    }
+
+    @Test
+    void selectorContextInputsAndUrlsAreNamespaced() {
+        String html = components.selector(
+            new EntitySelectorConfig("agentId", EntityKind.AGENT, null,
+                "Agent", "agent", true, Map.of("agentId", "owner-agent", "projectId", "project-1")),
+            null
+        ).render();
+
+        assertThat(html).contains("name=\"agentId\"");
+        assertThat(html).contains("name=\"selectorContext.agentId\" value=\"owner-agent\"");
+        assertThat(html).contains("name=\"selectorContext.projectId\" value=\"project-1\"");
+        assertThat(html).contains("selectorContext.agentId=owner-agent");
+        assertThat(html).contains("selectorContext.projectId=project-1");
     }
 
     @Test
@@ -49,5 +64,15 @@ class EntitySelectorComponentsTest {
         assertThat(html).contains("hx-target=\"#entity-selector-job-jobId\"");
         assertThat(html).contains("Nightly Job");
         assertThat(html).contains("job-1");
+    }
+
+    @Test
+    void optionsCarryNamespacedContextToSelectedFragment() {
+        String html = components.options(EntityKind.JOB, "jobId", true, List.of(
+            new EntityOption("job", "job-1", "Nightly Job", "2 items", "DRAFT", true)
+        ), Map.of("agentId", "agent-1"), "Job", "job").render();
+
+        assertThat(html).contains("selectorContext.agentId=agent-1");
+        assertThat(html).doesNotContain("&amp;agentId=agent-1");
     }
 }
