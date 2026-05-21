@@ -125,6 +125,14 @@ Next recommended phase: start Phase 01 only. Do not start UI work until Phase 01
   - `git diff --check`
   - Spring startup smoke on ephemeral port.
 - Phase 01 commit: `0a92caa feat: add first-class assignment workspace context`.
+- Phase 02 implementation and validation passed:
+  - `mvn test -Dtest=JobServiceTest,JobRepositoryTest,OrchestrationRuntimeTest,AssignmentContextServiceTest`
+  - `mvn test -Dtest=PublicRunSubmissionControllerTest,OperationalUiContractControllerTest,AgentOrchestrationControllerTest,OrchestrationControllerTest`
+  - `mvn test -Dtest=WorkspaceRepositorySchemaMigrationTest,OutputArtifactServiceAttributionTest`
+  - `git diff --check`
+  - Spring startup smoke on ephemeral port.
+  - Focused browser validation of `/jobs` and the job editor runs panel, with screenshots captured under `test-results/` and intentionally not committed.
+- Phase 02 commit: `ca6c0c5 feat: add job execution summaries`.
 - Phase 01 local validation passed:
   - `mvn test -Dtest=AssignmentContextServiceTest,ProjectServiceTest,JobServiceTest`
   - `mvn test -Dtest=PublicRunSubmissionControllerTest,OperationalUiContractControllerTest,AgentOrchestrationControllerTest,ProjectServiceTest,OrchestrationRuntimeTest`
