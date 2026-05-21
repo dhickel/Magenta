@@ -16,16 +16,18 @@
 
 ## Active Agents
 
-- None yet.
+- `019e4b3e-e6dc-75d3-bb93-de99a204a4c6` / Sartre: high-reasoning planning agent. Scope: write `.internal-dev/plans/root-relative-workspace-migration/implementation-plan.md` and append concise notes here.
 
 ## Completed Work
 
 - Created branch `root-relative-workspace-migration`.
 - Created shared orchestration notes.
+- Created beginning commit `6473c48` (`chore: start root-relative workspace migration`).
+- Planning agent created `.internal-dev/plans/root-relative-workspace-migration/implementation-plan.md`.
 
 ## Validation Results
 
-- None yet.
+- Planning artifact only; no production code validation run.
 
 ## Remediation Notes
 
@@ -51,3 +53,5 @@
 ## Handoff Notes
 
 - Preserve unrelated dirty work in the repo. Stage only files owned by this migration/refactor.
+- Implementation plan chooses new writes as data-root-relative, old absolute paths as current-root compatibility reads only, and no startup/import/admin repair in this pass.
+- Plan defines Magenta root default as `${user.home}/.magenta`, data root as `<magenta.root.path>/root`, and SQLite default as `<magenta.root.path>/magenta.sqlite`.
