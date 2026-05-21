@@ -70,6 +70,7 @@ import io.mindspice.magenta2.ai.chat.tool.file.AgentFileToolService;
 import io.mindspice.magenta2.ai.execution.MagentaWorkExecutor;
 import io.mindspice.magenta2.ai.execution.MagentaWorkKind;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.EffectiveWorkspaceResolver;
 import io.mindspice.magenta2.ai.orchestration.workspaces.Workspace;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLease;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLeaseService;
@@ -79,6 +80,18 @@ import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceRepository;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceOwnerType;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
+import io.mindspice.magenta2.ai.orchestration.workflow.InboxService;
+import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowDefinition;
+import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowNode;
+import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowNodeRunStatus;
+import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowNodeType;
+import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowRepository;
+import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowRoute;
+import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowRouteType;
+import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowRun;
+import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowRunStatus;
+import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowRunner;
+import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.ObjectProvider;
@@ -1022,6 +1035,100 @@ class OrchestrationRuntimeTest {
         assertThat(result.output()).containsKey("conversationIds");
         assertThat(repository.findAssignmentConversationIds("assignment-task"))
             .containsExactly(result.output().get("conversationId").toString());
+    }
+
+    @Test
+    void workflowAssignmentWaitingStatusRemainsResumableAndReusesOriginalRun() throws Exception {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+        AiConfig aiConfig = aiConfig();
+        WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(aiConfig);
+        WorkspaceRepository workspaceRepository = new WorkspaceRepository(jdbcTemplate);
+        WorkspaceService workspaceService = new WorkspaceService(workspaceRepository, aiConfig);
+        EffectiveWorkspaceResolver effectiveWorkspaceResolver = new EffectiveWorkspaceResolver(directoryService, workspaceService);
+        OutputArtifactService outputArtifactService = new OutputArtifactService(workspaceRepository, directoryService, objectMapper);
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, objectMapper);
+        AgentProfileService agentService = agentService(jdbcTemplate, aiConfig);
+        AgentProfile agent = agentService.create(new AgentProfile(
+            "agent-1", "Agent 1", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of(), true, null, null
+        ));
+        RuntimeSettingsService settingsService = new RuntimeSettingsService(
+            new RuntimeSettingsRepository(jdbcTemplate), aiConfig, agentService);
+        AssignmentService assignmentService = new AssignmentService(repository, agentService, settingsService, null);
+        WorkflowRepository workflowRepository = new WorkflowRepository(jdbcTemplate, objectMapper);
+        PlanService planService = new PlanService(new PlanRepository(jdbcTemplate, objectMapper),
+            new ChatMemoryRepository(jdbcTemplate, objectMapper));
+        InboxService workflowInboxService = new InboxService(workflowRepository, objectMapper);
+        WorkflowRunner workflowRunner = new WorkflowRunner(
+            workflowRepository, planService, workflowInboxService, directoryService, outputArtifactService,
+            effectiveWorkspaceResolver
+        );
+        WorkflowService workflowService = new WorkflowService(workflowRepository, planService, workflowRunner);
+        OrchestrationRunnerService runner = new OrchestrationRunnerService(
+            repository, assignmentService, null, null, workflowService, null, null, null,
+            agentService, outputArtifactService, null, null, null, directoryService,
+            new MagentaWorkExecutor(Map.of(
+                MagentaWorkKind.BACKGROUND_JOB, new MagentaWorkExecutor.LaneSettings("test-bg-", 1, 10)
+            )),
+            300,
+            60
+        );
+        WorkflowNode gate = new WorkflowNode("gate", WorkflowNodeType.USER_APPROVAL, null,
+            "gate", null, List.of(), List.of(), Map.of(), false, List.of(), "approve?", null);
+        WorkflowNode approved = new WorkflowNode("approved", WorkflowNodeType.FINAL_OUTPUT, null,
+            "approved", null, List.of(), List.of(), Map.of(), false, List.of(), "approved", null);
+        WorkflowNode rejected = new WorkflowNode("rejected", WorkflowNodeType.FINAL_OUTPUT, null,
+            "rejected", null, List.of(), List.of(), Map.of(), false, List.of(), "rejected", null);
+        WorkflowDefinition workflow = workflowService.saveDefinitionValidated(new WorkflowDefinition(
+            null, 2, "Assignment Waiting Workflow", "", 1,
+            List.of(gate, approved, rejected),
+            List.of(
+                new WorkflowRoute("approved-route", "gate", null, "approved", null,
+                    WorkflowRouteType.CONTROL, "APPROVED"),
+                new WorkflowRoute("rejected-route", "gate", null, "rejected", null,
+                    WorkflowRouteType.CONTROL, "REJECTED")
+            ),
+            Map.of(), null, null
+        ));
+        repository.saveAssignment(new WorkAssignment(
+            "assignment-workflow-wait", agent.id(), null, null, AssignmentType.WORKFLOW_RUN, 1,
+            OrchestrationStatus.QUEUED, null, null, 0,
+            Map.of(), Map.of("workflowId", workflow.id()), Map.of(), Map.of(),
+            null, null, null, null, null, null, null
+        ));
+
+        WorkAssignment waiting = runner.runAssignment("assignment-workflow-wait");
+
+        assertThat(waiting.status()).as(waiting.errorText()).isEqualTo(OrchestrationStatus.WAITING);
+        String workflowRunId = waiting.checkpoint().get("workflowRunId").toString();
+        WorkflowRun waitingRun = workflowService.getRun(workflowRunId);
+        assertThat(waitingRun.status()).isEqualTo(WorkflowRunStatus.WAITING);
+        assertThat(Files.isDirectory(Path.of(waitingRun.workspacePath()))).isTrue();
+        assertThat(Files.isDirectory(Path.of(waitingRun.outputDir()))).isTrue();
+        String messageId = waitingRun.nodeRuns().stream()
+            .filter(node -> node.nodeKey().equals("gate"))
+            .findFirst()
+            .orElseThrow()
+            .outputValues()
+            .get("messageId")
+            .toString();
+
+        workflowInboxService.respondUserApproval(messageId, true, "yes");
+        assignmentService.resume(agent.id(), waiting.id());
+        WorkAssignment completed = runner.runAssignment(waiting.id());
+
+        assertThat(completed.status()).isEqualTo(OrchestrationStatus.COMPLETED);
+        assertThat(completed.checkpoint().get("workflowRunId")).isEqualTo(workflowRunId);
+        WorkflowRun completedRun = workflowService.getRun(workflowRunId);
+        assertThat(completedRun.status()).isEqualTo(WorkflowRunStatus.COMPLETED);
+        assertThat(completedRun.nodeRuns()).anySatisfy(node -> {
+            assertThat(node.nodeKey()).isEqualTo("approved");
+            assertThat(node.status()).isEqualTo(WorkflowNodeRunStatus.COMPLETED);
+        });
+        assertThat(Path.of(completedRun.outputDir()))
+            .startsWith(directoryService.dataRoot().resolve("agents/agent-1/workspace/outputs/workflows"));
+        assertThat(Files.isDirectory(Path.of(completedRun.workspacePath()))).isTrue();
     }
 
     @Test

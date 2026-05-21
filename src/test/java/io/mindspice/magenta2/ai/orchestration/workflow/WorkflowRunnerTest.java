@@ -5,10 +5,12 @@ import io.mindspice.magenta2.ai.chat.plan.*;
 import io.mindspice.magenta2.ai.chat.repository.ChatMemoryRepository;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
+import io.mindspice.magenta2.ai.orchestration.workspaces.EffectiveWorkspaceResolver;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceRepository;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -36,6 +38,7 @@ class WorkflowRunnerTest {
     private WorkflowService workflowService;
     private InboxService inboxService;
     private OutputArtifactService outputArtifactService;
+    private WorkspaceDirectoryService workspaceDirectoryService;
 
     @TempDir
     Path tempDir;
@@ -51,17 +54,23 @@ class WorkflowRunnerTest {
 
         Path dataRoot = tempDir.resolve("data");
         java.nio.file.Files.createDirectories(dataRoot);
-        WorkspaceDirectoryService workspaceDirectoryService = new WorkspaceDirectoryService(
+        workspaceDirectoryService = new WorkspaceDirectoryService(
             new io.mindspice.magenta2.ai.config.user.AiConfig(
                 null, null, null, null, dataRoot, null, null));
 
+        WorkspaceRepository workspaceRepository = new WorkspaceRepository(jdbcTemplate);
         outputArtifactService = new OutputArtifactService(
-            new WorkspaceRepository(jdbcTemplate), workspaceDirectoryService, mapper);
+            workspaceRepository, workspaceDirectoryService, mapper);
+        EffectiveWorkspaceResolver effectiveWorkspaceResolver = new EffectiveWorkspaceResolver(
+            workspaceDirectoryService,
+            new WorkspaceService(workspaceRepository, new io.mindspice.magenta2.ai.config.user.AiConfig(
+                null, null, null, null, dataRoot, null, null))
+        );
 
         WorkflowRepository workflowRepository = new WorkflowRepository(jdbcTemplate, mapper);
         inboxService = new InboxService(workflowRepository, mapper);
         workflowRunner = new WorkflowRunner(workflowRepository, planService,
-            inboxService, workspaceDirectoryService, outputArtifactService);
+            inboxService, workspaceDirectoryService, outputArtifactService, effectiveWorkspaceResolver);
         workflowService = new WorkflowService(workflowRepository, planService, workflowRunner);
     }
 
@@ -353,7 +362,7 @@ class WorkflowRunnerTest {
     }
 
     @Test
-    void finalOutputsCurrentlyMaterializeIntoWorkflowTempDirectory() throws Exception {
+    void finalOutputsMaterializeIntoDurableWorkflowOutputDirectory() throws Exception {
         WorkflowNode finalNode = new WorkflowNode(
             "final",
             WorkflowNodeType.FINAL_OUTPUT,
@@ -377,15 +386,27 @@ class WorkflowRunnerTest {
         WorkflowRun finished = pollForTerminal(run.id());
 
         assertThat(finished.status()).isEqualTo(WorkflowRunStatus.COMPLETED);
-        assertThat(finished.outputDir()).isEqualTo(finished.workspacePath());
+        assertThat(Path.of(finished.workspacePath()))
+            .startsWith(workspaceDirectoryService.dataRoot().resolve("runtime").resolve("workflow-runs"));
+        assertThat(finished.outputDir()).isNotEqualTo(finished.workspacePath());
+        assertThat(Path.of(finished.outputDir()))
+            .startsWith(workspaceDirectoryService.dataRoot()
+                .resolve("agents/system/workspace/outputs/workflows")
+                .resolve(def.id())
+                .resolve(finished.id()));
         assertThat(finished.artifactIds()).hasSize(1);
         RunOutputArtifact artifact = outputArtifactService.getArtifact(finished.artifactIds().getFirst());
         assertThat(Path.of(artifact.filePath()).toRealPath())
-            .startsWith(Path.of(finished.workspacePath()).toRealPath());
+            .startsWith(Path.of(finished.outputDir()).toRealPath());
+
+        workspaceDirectoryService.deleteTempDir(Path.of(finished.workspacePath()));
+        assertThat(Files.exists(Path.of(finished.workspacePath()))).isFalse();
+        assertThat(Files.isDirectory(Path.of(finished.outputDir()))).isTrue();
+        assertThat(Files.isRegularFile(Path.of(artifact.filePath()))).isTrue();
     }
 
     @Test
-    void taskNodesCurrentlyDoNotInheritCallerOrchestrationContextAcrossAsyncExecution() throws Exception {
+    void taskNodesInheritCallerOrchestrationContextAcrossAsyncExecution() throws Exception {
         PlanDefinition task = task("context", List.of(), List.of(field("status", PlanFieldType.STRING, true)));
         WorkflowNode node = taskNode("context-node", task.id());
         WorkflowDefinition def = workflowService.saveDefinitionValidated(new WorkflowDefinition(
@@ -409,7 +430,15 @@ class WorkflowRunnerTest {
             WorkflowRun finished = pollForTerminal(run.id());
 
             assertThat(finished.status()).isEqualTo(WorkflowRunStatus.COMPLETED);
-            assertThat(contextSeenByTaskNode.get()).isNull();
+            OrchestrationTaskContext seen = contextSeenByTaskNode.get();
+            assertThat(seen).isNotNull();
+            assertThat(seen.agentId()).isEqualTo("agent-1");
+            assertThat(seen.projectId()).isEqualTo("project-1");
+            assertThat(seen.hostWorkspacePath()).isEqualTo(finished.workspacePath());
+            assertThat(seen.hostRunPath()).isEqualTo(finished.workspacePath());
+            assertThat(seen.hostOutputPath()).isEqualTo(finished.outputDir());
+            assertThat(seen.hostDurableWorkspacePath())
+                .isEqualTo(workspaceDirectoryService.dataRoot().resolve("projects/project-1/workspace").toString());
         } finally {
             OrchestrationTaskContextHolder.clear();
         }
@@ -439,8 +468,9 @@ class WorkflowRunnerTest {
 
         WorkflowRun run = workflowService.startRun(def.id());
         WorkflowRun waiting = pollForWaiting(run.id());
-        assertThat(waiting.outputDir()).isEqualTo(waiting.workspacePath());
+        assertThat(waiting.outputDir()).isNotEqualTo(waiting.workspacePath());
         assertThat(Files.isDirectory(Path.of(waiting.workspacePath()))).isTrue();
+        assertThat(Files.isDirectory(Path.of(waiting.outputDir()))).isTrue();
         String messageId = String.valueOf(waiting.nodeRuns().stream()
             .filter(n -> n.nodeKey().equals("gate"))
             .findFirst().orElseThrow().outputValues().get("messageId"));

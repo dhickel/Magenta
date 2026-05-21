@@ -366,8 +366,8 @@ public class OrchestrationRunnerService {
 
     private WorkAssignment runWorkflow(WorkAssignment assignment) {
         String workflowId = text(assignment.input().get("workflowId"), null);
-        WorkflowRun workflowRun = workflowService.runSynchronously(
-            workflowId, assignmentService.resolveModel(assignment, null), assignmentConversationObserver(assignment));
+        String model = assignmentService.resolveModel(assignment, null);
+        WorkflowRun workflowRun = resumeOrStartWorkflow(assignment, workflowId, model);
         backfillWorkflowRunAttribution(workflowRun, assignment, "WORKFLOW_RUN");
         WorkAssignment current = assignmentService.get(assignment.id());
         if (current.status() == OrchestrationStatus.CANCEL_REQUESTED) {
@@ -381,7 +381,22 @@ public class OrchestrationRunnerService {
         if (workflowRun.status() == WorkflowRunStatus.COMPLETED) {
             return complete(checkpointed(current, current.currentItemIndex(), checkpoint, output, output), output, output);
         }
+        if (workflowRun.status() == WorkflowRunStatus.WAITING) {
+            return waiting(checkpointed(current, current.currentItemIndex(), checkpoint, output, output));
+        }
         return fail(checkpointed(current, current.currentItemIndex(), checkpoint, output, output), workflowRun.errorText());
+    }
+
+    private WorkflowRun resumeOrStartWorkflow(WorkAssignment assignment, String workflowId, String model) {
+        String existingRunId = text(assignment.checkpoint().get("workflowRunId"), null);
+        if (StringUtils.hasText(existingRunId)) {
+            WorkflowRun existing = workflowService.getRun(existingRunId);
+            if (existing.status() == WorkflowRunStatus.WAITING) {
+                return workflowService.resumeRunSynchronously(existingRunId, model, assignmentConversationObserver(assignment));
+            }
+            return existing;
+        }
+        return workflowService.runSynchronously(workflowId, model, assignmentConversationObserver(assignment));
     }
 
     private WorkAssignment runJob(WorkAssignment assignment) {
@@ -636,6 +651,13 @@ public class OrchestrationRunnerService {
         ), leaseOwner);
     }
 
+    private WorkAssignment waiting(WorkAssignment assignment) {
+        return assignmentService.saveIfLeaseOwner(assignmentService.copy(
+            assignment, OrchestrationStatus.WAITING, assignment.currentItemIndex(), assignment.checkpoint(),
+            assignment.output(), assignment.evidence(), null, null, null, null
+        ), leaseOwner);
+    }
+
     private WorkAssignment cancel(WorkAssignment assignment) {
         return assignmentService.saveIfLeaseOwner(assignmentService.copy(
             assignment, OrchestrationStatus.CANCELLED, assignment.currentItemIndex(), assignment.checkpoint(),
@@ -695,10 +717,11 @@ public class OrchestrationRunnerService {
     }
 
     private void backfillWorkflowRunAttribution(WorkflowRun workflowRun, WorkAssignment assignment, String runType) {
-        if (outputArtifactService == null || workflowRun == null || workflowRun.nodeRuns().isEmpty()) {
+        if (outputArtifactService == null || workflowRun == null) {
             return;
         }
         OutputArtifactContext context = outputContextFor(assignment, runType);
+        outputArtifactService.backfillAttribution(workflowRun.id(), context);
         for (WorkflowNodeRun nodeRun : workflowRun.nodeRuns()) {
             Object taskRunId = nodeRun.outputValues().get("taskRunId");
             if (taskRunId instanceof String id && StringUtils.hasText(id)) {

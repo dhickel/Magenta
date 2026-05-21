@@ -5,6 +5,11 @@ import io.mindspice.magenta2.ai.chat.plan.PlanFieldType;
 import io.mindspice.magenta2.ai.chat.plan.PlanRun;
 import io.mindspice.magenta2.ai.chat.plan.PlanRunStatus;
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
+import io.mindspice.magenta2.ai.orchestration.workspaces.EffectiveWorkspace;
+import io.mindspice.magenta2.ai.orchestration.workspaces.EffectiveWorkspaceResolver;
+import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactContext;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
@@ -31,6 +36,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * Deterministic workflow v2 runner with parallel fan-out execution.
@@ -44,6 +50,7 @@ public class WorkflowRunner {
     private final InboxService inboxService;
     private final WorkspaceDirectoryService workspaceDirectoryService;
     private final OutputArtifactService outputArtifactService;
+    private final EffectiveWorkspaceResolver effectiveWorkspaceResolver;
     private final WorkflowTaskExecutor workflowTaskExecutor;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
@@ -53,7 +60,16 @@ public class WorkflowRunner {
                           InboxService inboxService,
                           WorkspaceDirectoryService workspaceDirectoryService,
                           OutputArtifactService outputArtifactService) {
-        this(repository, planService, inboxService, workspaceDirectoryService, outputArtifactService, null);
+        this(repository, planService, inboxService, workspaceDirectoryService, outputArtifactService, null, null);
+    }
+
+    public WorkflowRunner(WorkflowRepository repository, PlanService planService,
+                          InboxService inboxService,
+                          WorkspaceDirectoryService workspaceDirectoryService,
+                          OutputArtifactService outputArtifactService,
+                          EffectiveWorkspaceResolver effectiveWorkspaceResolver) {
+        this(repository, planService, inboxService, workspaceDirectoryService, outputArtifactService,
+            effectiveWorkspaceResolver, null);
     }
 
     @Autowired
@@ -61,12 +77,14 @@ public class WorkflowRunner {
                           InboxService inboxService,
                           WorkspaceDirectoryService workspaceDirectoryService,
                           OutputArtifactService outputArtifactService,
+                          @Autowired(required = false) EffectiveWorkspaceResolver effectiveWorkspaceResolver,
                           ObjectProvider<WorkflowTaskExecutor> workflowTaskExecutorProvider) {
         this.repository = repository;
         this.planService = planService;
         this.inboxService = inboxService;
         this.workspaceDirectoryService = workspaceDirectoryService;
         this.outputArtifactService = outputArtifactService;
+        this.effectiveWorkspaceResolver = effectiveWorkspaceResolver;
         this.workflowTaskExecutor = workflowTaskExecutorProvider == null ? null : workflowTaskExecutorProvider.getIfAvailable();
     }
 
@@ -84,10 +102,20 @@ public class WorkflowRunner {
     }
 
     public WorkflowRun startRun(WorkflowDefinition definition, String modelOverride) {
+        return createRun(definition, modelOverride, true);
+    }
+
+    private WorkflowRun createRun(WorkflowDefinition definition, String modelOverride, boolean submitAsync) {
         String runId = UUID.randomUUID().toString();
         Instant now = Instant.now();
 
         Path workspacePath = workspaceDirectoryService.workflowTemp(runId);
+        Path outputPath = workflowOutputPath(
+            definition.id(),
+            runId,
+            OrchestrationTaskContextHolder.current(),
+            workspacePath
+        );
         List<WorkflowNodeRun> nodeRuns = definition.nodes().stream()
             .map(node -> new WorkflowNodeRun(
                 node.key(), node.type(), WorkflowNodeRunStatus.PENDING,
@@ -102,7 +130,7 @@ public class WorkflowRunner {
             0,
             nodeRuns,
             workspacePath.toString(),
-            workspacePath.toString(),
+            outputPath.toString(),
             definition,
             Map.of(),
             List.of(),
@@ -114,12 +142,34 @@ public class WorkflowRunner {
             null
         ));
 
-        WorkflowRun initial = run;
-        executor.submit(() -> executeSafely(initial, modelOverride));
+        if (submitAsync) {
+            WorkflowRun initial = run;
+            OrchestrationTaskContext asyncContext = executionContextFor(initial, OrchestrationTaskContextHolder.current());
+            executor.submit(() -> runWithContext(asyncContext, () -> {
+                executeSafely(initial, modelOverride);
+                return null;
+            }));
+        }
         return run;
     }
 
     public WorkflowRun resumeRun(WorkflowRun run) {
+        WorkflowRun resumed = prepareResume(run);
+        OrchestrationTaskContext asyncContext = executionContextFor(resumed, OrchestrationTaskContextHolder.current());
+        executor.submit(() -> runWithContext(asyncContext, () -> {
+            executeSafely(resumed, null);
+            return null;
+        }));
+        return resumed;
+    }
+
+    public WorkflowRun resumeRunSynchronously(WorkflowRun run, String modelOverride, WorkflowExecutionObserver observer) {
+        WorkflowRun resumed = prepareResume(run);
+        executeFromCheckpoint(resumed, null, modelOverride, observer == null ? WorkflowExecutionObserver.NOOP : observer);
+        return repository.findRun(run.id()).orElse(resumed);
+    }
+
+    private WorkflowRun prepareResume(WorkflowRun run) {
         WorkflowNodeRun waitingNode = findWaitingNode(run);
         if (waitingNode == null) {
             throw new IllegalStateException("No waiting node found in run: " + run.id());
@@ -164,7 +214,6 @@ public class WorkflowRunner {
         ));
 
         inboxService.markHandled(messageId);
-        executor.submit(() -> executeSafely(resumed, null));
         return resumed;
     }
 
@@ -177,7 +226,7 @@ public class WorkflowRunner {
     }
 
     public WorkflowRun runSynchronously(WorkflowDefinition definition, String modelOverride, WorkflowExecutionObserver observer) {
-        WorkflowRun run = startRun(definition, modelOverride);
+        WorkflowRun run = createRun(definition, modelOverride, false);
         run = repository.findRun(run.id()).orElse(run);
         executeFromCheckpoint(run, null, modelOverride, observer == null ? WorkflowExecutionObserver.NOOP : observer);
         return repository.findRun(run.id()).orElse(run);
@@ -205,6 +254,22 @@ public class WorkflowRunner {
     }
 
     private void executeFromCheckpoint(
+        WorkflowRun run,
+        Consumer<String> sseEventCallback,
+        String modelOverride,
+        WorkflowExecutionObserver observer
+    ) {
+        OrchestrationTaskContext previousContext = OrchestrationTaskContextHolder.current();
+        OrchestrationTaskContext executionContext = executionContextFor(run, previousContext);
+        setOrClearContext(executionContext);
+        try {
+            doExecuteFromCheckpoint(run, sseEventCallback, modelOverride, observer);
+        } finally {
+            setOrClearContext(previousContext);
+        }
+    }
+
+    private void doExecuteFromCheckpoint(
         WorkflowRun run,
         Consumer<String> sseEventCallback,
         String modelOverride,
@@ -263,10 +328,11 @@ public class WorkflowRunner {
             }
             run = persistState(run, nodeRuns, WorkflowRunStatus.RUNNING, run.finalOutputs(), run.artifactIds(), null, null, false);
             WorkflowRun runSnapshot = run;
+            OrchestrationTaskContext asyncContext = OrchestrationTaskContextHolder.current();
 
             List<CompletableFuture<NodeExecutionResult>> futures = batch.stream()
-                .map(node -> CompletableFuture.supplyAsync(() -> executeNode(
-                    node, def, outputsByNode, runSnapshot, modelOverride, observer), executor))
+                .map(node -> CompletableFuture.supplyAsync(withContext(asyncContext, () -> executeNode(
+                    node, def, outputsByNode, runSnapshot, modelOverride, observer)), executor))
                 .toList();
 
             List<NodeExecutionResult> results = futures.stream().map(CompletableFuture::join).toList();
@@ -490,7 +556,7 @@ public class WorkflowRunner {
 
     private Map<String, Object> executeLogNode(WorkflowNode node, Map<String, Object> inputs, WorkflowRun run) {
         try {
-            Path outputDir = workspaceDirectoryService.workflowTemp(run.id());
+            Path outputDir = outputPathFor(run);
             for (Map.Entry<String, Object> entry : inputs.entrySet()) {
                 outputArtifactService.materialize(
                     run.id(),
@@ -498,7 +564,8 @@ public class WorkflowRunner {
                     node.key() + "_" + entry.getKey(),
                     PlanFieldType.STRING,
                     entry.getValue(),
-                    outputDir
+                    outputDir,
+                    outputContext()
                 );
             }
         } catch (Exception e) {
@@ -560,7 +627,7 @@ public class WorkflowRunner {
         if (finalOutputs.isEmpty()) {
             return List.of();
         }
-        Path outputDir = workspaceDirectoryService.workflowTemp(run.id());
+        Path outputDir = outputPathFor(run);
         List<String> artifactIds = new ArrayList<>();
         for (Map.Entry<String, Object> entry : finalOutputs.entrySet()) {
             try {
@@ -571,7 +638,8 @@ public class WorkflowRunner {
                     entry.getKey(),
                     type,
                     entry.getValue(),
-                    outputDir
+                    outputDir,
+                    outputContext()
                 );
                 artifactIds.add(artifact.id());
             } catch (IOException e) {
@@ -629,6 +697,106 @@ public class WorkflowRunner {
             terminal ? Instant.now() : null
         ));
         return persisted;
+    }
+
+    private Path workflowOutputPath(
+        String workflowId,
+        String runId,
+        OrchestrationTaskContext context,
+        Path fallbackTempPath
+    ) {
+        if (effectiveWorkspaceResolver == null) {
+            return fallbackTempPath;
+        }
+        String agentId = context != null && StringUtils.hasText(context.agentId())
+            ? context.agentId()
+            : "system";
+        EffectiveWorkspace workspace = effectiveWorkspaceResolver.resolve(
+            agentId,
+            context == null ? null : context.projectId()
+        );
+        return workspaceDirectoryService.workflowOutput(workspace.root(), workflowId, runId);
+    }
+
+    private Path outputPathFor(WorkflowRun run) {
+        if (StringUtils.hasText(run.outputDir())) {
+            return Path.of(run.outputDir());
+        }
+        return workspaceDirectoryService.workflowTemp(run.id());
+    }
+
+    private OrchestrationTaskContext executionContextFor(WorkflowRun run, OrchestrationTaskContext base) {
+        String runPath = StringUtils.hasText(run.workspacePath()) ? run.workspacePath() : null;
+        String outputPath = StringUtils.hasText(run.outputDir()) ? run.outputDir() : null;
+        String durableWorkspacePath = base == null ? null : base.hostDurableWorkspacePath();
+        if (!StringUtils.hasText(durableWorkspacePath)) {
+            durableWorkspacePath = inferDurableWorkspacePath(run);
+        }
+        if (base != null) {
+            return base.withExecutionPaths(durableWorkspacePath, outputPath, runPath);
+        }
+        if (!StringUtils.hasText(runPath) && !StringUtils.hasText(outputPath)) {
+            return null;
+        }
+        return new OrchestrationTaskContext(
+            null, null, null, null, null, "WORKFLOW_RUN",
+            runPath, outputPath, durableWorkspacePath, runPath
+        );
+    }
+
+    private String inferDurableWorkspacePath(WorkflowRun run) {
+        if (!StringUtils.hasText(run.outputDir())) {
+            return null;
+        }
+        Path outputPath = Path.of(run.outputDir()).toAbsolutePath().normalize();
+        Path workflowIdDir = outputPath.getParent();
+        Path workflowsDir = workflowIdDir == null ? null : workflowIdDir.getParent();
+        Path outputsDir = workflowsDir == null ? null : workflowsDir.getParent();
+        Path workspaceRoot = outputsDir == null ? null : outputsDir.getParent();
+        if (workspaceRoot == null
+            || outputsDir.getFileName() == null
+            || workflowsDir.getFileName() == null
+            || !"outputs".equals(outputsDir.getFileName().toString())
+            || !"workflows".equals(workflowsDir.getFileName().toString())) {
+            return null;
+        }
+        return workspaceRoot.toString();
+    }
+
+    private OutputArtifactContext outputContext() {
+        OrchestrationTaskContext context = OrchestrationTaskContextHolder.current();
+        if (context == null) {
+            return OutputArtifactContext.EMPTY;
+        }
+        return new OutputArtifactContext(
+            context.agentId(),
+            context.jobId(),
+            context.projectId(),
+            context.workspaceId(),
+            StringUtils.hasText(context.runType()) ? context.runType() : "WORKFLOW_RUN"
+        );
+    }
+
+    private <T> Supplier<T> withContext(OrchestrationTaskContext context, Supplier<T> supplier) {
+        return () -> runWithContext(context, supplier);
+    }
+
+    private <T> T runWithContext(OrchestrationTaskContext context, Supplier<T> supplier) {
+        OrchestrationTaskContext previous = OrchestrationTaskContextHolder.current();
+        setOrClearContext(context);
+        try {
+            return supplier.get();
+        } finally {
+            setOrClearContext(previous);
+        }
+    }
+
+    private void setOrClearContext(OrchestrationTaskContext context) {
+        if (context == null) {
+            OrchestrationTaskContextHolder.clear();
+        } else {
+            OrchestrationTaskContextHolder.set(context);
+        }
     }
 
     private int currentNodeIndex(List<WorkflowNodeRun> runs) {

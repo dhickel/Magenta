@@ -30,12 +30,14 @@ Persistent state for this long-running orchestration effort. Use this file to re
 - Completed Phase 03 task output routing, runtime alias, explicit publish, and loose-discovery confinement implementation locally; no commit created by the phase implementation agent.
 - Completed Phase 03 validation through a dedicated validation agent.
 - Committed Phase 03 as `4f59cb5 feat: route task outputs through effective workspace`.
+- Completed Phase 04 workflow waiting/resume, async context propagation, and durable workflow output implementation locally; no commit created by the phase implementation agent.
+- Completed Phase 04 validation through a dedicated validation agent.
 
 ## Current Work
 
 - Workspace/file architecture refactor.
-- Current gate: Phase 04 implementation.
-- Phase 03 implementation and validation are committed. Main orchestrator should launch Phase 04 workflow execution subplan.
+- Current gate: Phase 04 commit.
+- Phase 04 implementation and validation completed locally without a commit. Main orchestrator should commit, record the hash, then start Phase 05.
 
 ## Current Plan Artifacts
 
@@ -75,7 +77,7 @@ Queued review/refactor focus:
 
 ## Next Action
 
-Launch Phase 04 workflow execution subplan.
+Commit Phase 04, record the hash, then launch Phase 05 project API and owner-agent migration subplan.
 
 ## Phase 03 Local Validation
 
@@ -89,3 +91,27 @@ Launch Phase 04 workflow execution subplan.
 - `mvn test -Dtest=PlanServiceTest,OutputArtifactServiceAttributionTest,AgentFileToolServiceTest,AgentShellToolServiceTest,WorkspacePathSegmentValidationTest,WorkflowRunnerTest,OrchestrationRuntimeTest,WorkspaceRepositorySchemaMigrationTest,PublicApiRouteBindingTest` -> PASS, 176 tests.
 - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` -> application started on port `37317`; exited `124` because `timeout` stopped the server.
 - Sanity check confirmed runtime aliases, loose-discovery gating/confinement, and `publishExistingFile(...)` explicit publishing are present.
+
+## Phase 04 Local Validation
+
+- `mvn test -Dtest=WorkflowRunnerTest` -> PASS, 13 tests.
+- `mvn test -Dtest=OrchestrationRuntimeTest` -> PASS, 36 tests.
+- First requested focused pass: `mvn test -Dtest=WorkflowRunnerTest,OrchestrationRuntimeTest,OutputArtifactServiceAttributionTest` -> FAIL, 63 tests run, 1 failure in the new assignment waiting/resume regression. Root cause was duplicate async plus synchronous workflow execution in `WorkflowRunner.runSynchronously`; fixed by creating synchronous runs without auto-submitting them to the workflow executor.
+- Reproducer after fix: `mvn test -Dtest=WorkflowRunnerTest,OrchestrationRuntimeTest#workflowAssignmentWaitingStatusRemainsResumableAndReusesOriginalRun` -> PASS, 14 tests.
+- Final requested focused pass: `mvn test -Dtest=WorkflowRunnerTest,OrchestrationRuntimeTest,OutputArtifactServiceAttributionTest` -> PASS, 63 tests.
+- Final broader regression pass: `mvn test -Dtest=PlanServiceTest,WorkflowRunnerTest,OrchestrationRuntimeTest,WorkspaceRepositorySchemaMigrationTest,PublicApiRouteBindingTest` -> PASS, 99 tests.
+- `git diff --check` -> PASS.
+- `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` -> application started on port `34077`; exited `124` because `timeout` stopped the server.
+
+## Phase 04 Ready State
+
+- Implementation is ready for main validation and commit.
+- No blockers.
+
+## Phase 04 Validation Agent
+
+- `git diff --check` for Phase 04 files -> PASS.
+- `mvn test -Dtest=WorkflowRunnerTest,OrchestrationRuntimeTest,OutputArtifactServiceAttributionTest` -> PASS, 63 tests.
+- `mvn test -Dtest=PlanServiceTest,WorkflowRunnerTest,OrchestrationRuntimeTest,WorkspaceRepositorySchemaMigrationTest,PublicApiRouteBindingTest` -> PASS, 99 tests.
+- `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` -> application started on port `33571`; exited `124` because `timeout` stopped the server.
+- Sanity check confirmed waiting assignment mapping, same-run workflow resume, async context propagation/restoration, durable workflow output placement, and terminal cleanup safety.

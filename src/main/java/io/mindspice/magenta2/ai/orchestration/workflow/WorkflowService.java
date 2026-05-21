@@ -109,6 +109,14 @@ public class WorkflowService {
         return workflowRunner.resumeRun(run);
     }
 
+    public WorkflowRun resumeRunSynchronously(String runId, String modelOverride, WorkflowExecutionObserver observer) {
+        WorkflowRun run = getRun(runId);
+        if (run.status() != WorkflowRunStatus.WAITING) {
+            throw new IllegalStateException("Workflow run is not waiting: " + runId + " (status: " + run.status().wireName() + ")");
+        }
+        return workflowRunner.resumeRunSynchronously(run, modelOverride, observer);
+    }
+
     public WorkflowRun runSynchronously(String workflowId) {
         return runSynchronously(workflowId, null);
     }

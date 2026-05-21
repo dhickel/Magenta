@@ -36,6 +36,7 @@ All review, planning, implementation, validation, remediation, documentation, an
 - Created Phase 01 commit: `aee52fc test: characterize workspace file baseline`.
 - Created Phase 02 commit: `961a6c8 feat: add effective workspace resolver`.
 - Created Phase 03 commit: `4f59cb5 feat: route task outputs through effective workspace`.
+- Phase 04 implementation and validation completed locally; awaiting main orchestrator commit.
 
 ## Validation Results
 
@@ -55,6 +56,11 @@ All review, planning, implementation, validation, remediation, documentation, an
   - `mvn test -Dtest=PlanServiceTest,OutputArtifactServiceAttributionTest,AgentFileToolServiceTest,AgentShellToolServiceTest,WorkspacePathSegmentValidationTest` -> PASS, 115 tests.
   - `mvn test -Dtest=PlanServiceTest,OutputArtifactServiceAttributionTest,AgentFileToolServiceTest,AgentShellToolServiceTest,WorkspacePathSegmentValidationTest,WorkflowRunnerTest,OrchestrationRuntimeTest,WorkspaceRepositorySchemaMigrationTest,PublicApiRouteBindingTest` -> PASS, 176 tests.
   - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` -> application started successfully on ephemeral port `37317`; command exited `124` because `timeout` stopped the running server after startup.
+- Phase 04 validation passed:
+  - `git diff --check` for Phase 04 files -> PASS.
+  - `mvn test -Dtest=WorkflowRunnerTest,OrchestrationRuntimeTest,OutputArtifactServiceAttributionTest` -> PASS, 63 tests.
+  - `mvn test -Dtest=PlanServiceTest,WorkflowRunnerTest,OrchestrationRuntimeTest,WorkspaceRepositorySchemaMigrationTest,PublicApiRouteBindingTest` -> PASS, 99 tests.
+  - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` -> application started successfully on ephemeral port `33571`; command exited `124` because `timeout` stopped the running server after startup.
 
 ## Remediation Notes
 
@@ -87,6 +93,7 @@ All review, planning, implementation, validation, remediation, documentation, an
 - Phase 02 committed as `961a6c8 feat: add effective workspace resolver`.
 - Phase 03 validation agent completed 2026-05-21: all requested validation commands passed. Phase 03 is ready for commit.
 - Phase 03 committed as `4f59cb5 feat: route task outputs through effective workspace`.
+- Phase 04 validation agent completed 2026-05-21: all requested validation commands passed. Phase 04 is ready for commit.
 
 ## Phase 03 Implementation Notes - 2026-05-21
 
@@ -155,6 +162,60 @@ Blockers:
 Ready state:
 
 - Phase 03 is ready for main validation. No commit was created by this implementation agent.
+
+## Phase 04 Implementation Notes - 2026-05-21
+
+Changed files:
+
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/workflow/WorkflowRunner.java`
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/workflow/WorkflowService.java`
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/runtime/OrchestrationRunnerService.java`
+- `src/test/java/io/mindspice/magenta2/ai/orchestration/workflow/WorkflowRunnerTest.java`
+- `src/test/java/io/mindspice/magenta2/ai/orchestration/OrchestrationRuntimeTest.java`
+- `.internal-dev/plans/workspace-file-architecture-refactor/agent-notes.md`
+- `.internal-dev/plans/workspace-file-architecture-refactor/orchestration-state.md`
+
+Implemented behavior:
+
+- Workflow runs now keep temp execution state under `runtime/workflow-runs/<runId>` while durable workflow artifacts materialize under `outputs/workflows/<workflowId>/<runId>` in the resolver-selected effective workspace.
+- Direct workflow runs without an active orchestration context use the `system` agent durable workspace; assignment-backed runs use the current assignment agent/project context.
+- Workflow task-node futures explicitly receive the active `OrchestrationTaskContextHolder` context and restore/clear the worker thread context in `finally`.
+- Workflow execution wraps the run with path-aware context so resume and task nodes use the original workflow run temp path and output path.
+- Assignment-backed workflows map workflow `WAITING` to assignment `WAITING`, persist the workflow run id in checkpoint/output, and resume the original waiting workflow run instead of starting a second run.
+- Workflow synchronous execution no longer also submits the same run to the async executor, removing a duplicate-run persistence race found during validation.
+- Workflow artifact attribution now backfills artifacts materialized directly by the workflow run as well as child task-run artifacts.
+- Waiting workflow temp directories remain present, and focused coverage confirms deleting workflow temp does not remove durable output artifacts.
+
+Coverage added or updated:
+
+- Updated workflow output placement assertions from temp-only to durable output paths.
+- Updated async task-node context characterization to require propagated context and workflow run/output paths.
+- Added assignment-backed workflow waiting/resume regression coverage that verifies the assignment remains `WAITING`, resumes to `COMPLETED`, and reuses the same workflow run id.
+- Preserved waiting temp retention coverage and added durable-output survival coverage after temp cleanup.
+
+Commands and results:
+
+- `mvn test -Dtest=WorkflowRunnerTest` -> PASS, 13 tests.
+- `mvn test -Dtest=OrchestrationRuntimeTest` -> PASS, 36 tests.
+- First requested focused pass: `mvn test -Dtest=WorkflowRunnerTest,OrchestrationRuntimeTest,OutputArtifactServiceAttributionTest` -> FAIL, 63 tests run, 1 failure in the new assignment waiting/resume regression. Root cause was existing `WorkflowRunner.runSynchronously` duplicate execution: `startRun` submitted async execution while synchronous execution also ran the same workflow, causing concurrent workflow node-run persistence and a failed assignment in combined test ordering.
+- Reproducer after fix: `mvn test -Dtest=WorkflowRunnerTest,OrchestrationRuntimeTest#workflowAssignmentWaitingStatusRemainsResumableAndReusesOriginalRun` -> PASS, 14 tests.
+- Final requested focused pass: `mvn test -Dtest=WorkflowRunnerTest,OrchestrationRuntimeTest,OutputArtifactServiceAttributionTest` -> PASS, 63 tests.
+- Final broader regression pass: `mvn test -Dtest=PlanServiceTest,WorkflowRunnerTest,OrchestrationRuntimeTest,WorkspaceRepositorySchemaMigrationTest,PublicApiRouteBindingTest` -> PASS, 99 tests.
+- `git diff --check` -> PASS.
+- Spring context smoke: `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` -> application started successfully on ephemeral port `34077`; command exited `124` because `timeout` stopped the running server after startup.
+
+Deferred planned work:
+
+- No Phase 04 blockers remain.
+- Later phases still own project owner-agent migration, job persistent workspace policy, public project/job UX, broader workflow UX/API cleanup, and docs/changelog outside this plan directory.
+
+Blockers:
+
+- None.
+
+Ready state:
+
+- Phase 04 is ready for main validation and commit. No commit was created by this implementation agent.
 
 ## Phase 01 Implementation Notes - 2026-05-21
 
