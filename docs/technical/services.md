@@ -23,6 +23,8 @@ Controllers: `ChatController`, `FrontendFragmentController`, agent chat parts of
 Sources: [`ai/chat/plan`](../../src/main/java/io/mindspice/magenta2/ai/chat/plan).
 
 - `PlanService` owns plan definition CRUD, session plan state, pending questions, approval/continue/cancel lifecycle, task-template saving, plan runs, output materialization, execution evidence, and validation feedback.
+- `SavedPlanChatService` owns plan-scoped saved plan chat state, opening question collection, saved-plan model turn handoff, and transcript notices for manual editor saves.
+- `SavedPlanPlanningModelClient` runs saved-plan planning model turns with plan-id-scoped saved-plan tools, without using `/api/chat` conversation memory or chat session metadata.
 - `PlanCompletionService` inspects plan completeness and validation criteria.
 - `WorkTypeProfileService` maps structured work type profile values and legacy prompt profile values.
 - `PlanRepository` persists `plan_definitions` and `plan_runs`, and snapshots definitions at run start so later edits do not rewrite run history.

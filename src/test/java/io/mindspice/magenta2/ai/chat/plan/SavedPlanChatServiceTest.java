@@ -18,7 +18,7 @@ class SavedPlanChatServiceTest {
             planRepository,
             new ChatMemoryRepository(jdbcTemplate, new ObjectMapper())
         );
-        SavedPlanChatService service = new SavedPlanChatService(planService, new PlanChatRepository(jdbcTemplate));
+        SavedPlanChatService service = new SavedPlanChatService(planService, new PlanChatRepository(jdbcTemplate), null);
 
         SavedPlanChatService.SavedPlanChatState state = service.create("Named chat draft");
 
@@ -29,14 +29,16 @@ class SavedPlanChatServiceTest {
     }
 
     @Test
-    void savedPlanChatSeedsQuestionsAndWritesTypedInputsOutputs() {
+    void savedPlanChatStoresOpeningAnswersAsSeedContextWithoutDirectFieldCopies() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         PlanRepository planRepository = new PlanRepository(jdbcTemplate, new ObjectMapper());
         PlanService planService = new PlanService(
             planRepository,
             new ChatMemoryRepository(jdbcTemplate, new ObjectMapper())
         );
-        SavedPlanChatService service = new SavedPlanChatService(planService, new PlanChatRepository(jdbcTemplate));
+        CapturingModelClient modelClient = new CapturingModelClient();
+        SavedPlanChatService service = new SavedPlanChatService(
+            planService, new PlanChatRepository(jdbcTemplate), modelClient);
 
         SavedPlanChatService.SavedPlanChatState state = service.create();
         String planId = state.plan().id();
@@ -53,13 +55,21 @@ class SavedPlanChatServiceTest {
         PlanDefinition plan = planService.getTask(planId);
         assertThat(plan.kind()).isEqualTo(PlanKind.TASK_TEMPLATE);
         assertThat(plan.title()).isEqualTo("New Plan Chat");
-        assertThat(plan.goal()).isEqualTo("Prepare a weekly operations report.");
-        assertThat(plan.inputs()).extracting(PlanFieldDefinition::name)
-            .containsExactly("week_start", "source_file");
-        assertThat(plan.outputs()).extracting(PlanFieldDefinition::name)
-            .containsExactly("report_markdown", "metrics_json");
-        assertThat(plan.deliverables()).containsExactly("Markdown report", "Updated management summary");
+        assertThat(plan.goal()).isNull();
+        assertThat(plan.inputs()).isEmpty();
+        assertThat(plan.outputs()).isEmpty();
+        assertThat(plan.deliverables()).isEmpty();
         assertThat(service.state(planId).messages()).hasSizeGreaterThanOrEqualTo(8);
+        assertThat(modelClient.calls).hasSize(1);
+        assertThat(modelClient.calls.getFirst().systemPrompt())
+            .contains("Opening answers and chat messages are seed context, not final field values")
+            .contains("Current planning task: synthesize_saved_plan_seed");
+        assertThat(modelClient.calls.getFirst().userMessage())
+            .contains("Labeled opening answers")
+            .contains("Question: What is the goal?")
+            .contains("Answer: Prepare a weekly operations report.")
+            .contains("not final field values")
+            .contains("must not be copied directly");
     }
 
     @Test
@@ -71,7 +81,7 @@ class SavedPlanChatServiceTest {
             new ChatMemoryRepository(jdbcTemplate, new ObjectMapper())
         );
         PlanChatRepository chatRepository = new PlanChatRepository(jdbcTemplate);
-        SavedPlanChatService service = new SavedPlanChatService(planService, chatRepository);
+        SavedPlanChatService service = new SavedPlanChatService(planService, chatRepository, null);
 
         SavedPlanChatService.SavedPlanChatState state = service.create("Tabbed draft");
         String planId = state.plan().id();
@@ -98,7 +108,9 @@ class SavedPlanChatServiceTest {
             planRepository,
             new ChatMemoryRepository(jdbcTemplate, new ObjectMapper())
         );
-        SavedPlanChatService service = new SavedPlanChatService(planService, new PlanChatRepository(jdbcTemplate));
+        CapturingModelClient modelClient = new CapturingModelClient();
+        SavedPlanChatService service = new SavedPlanChatService(
+            planService, new PlanChatRepository(jdbcTemplate), modelClient);
 
         SavedPlanChatService.SavedPlanChatState state = service.create();
         String planId = state.plan().id();
@@ -116,11 +128,11 @@ class SavedPlanChatServiceTest {
         assertThat(messages.get(messages.size() - 2).role()).isEqualTo("user");
         assertThat(messages.get(messages.size() - 2).text())
             .isEqualTo("goal updated; outputs updated");
-        assertThat(messages.get(messages.size() - 1).role()).isEqualTo("assistant");
-        assertThat(messages.get(messages.size() - 1).text())
-            .isEqualTo("Any details you want to provide before continuing?");
-        assertThat(resumed.promptQuestion()).isEqualTo("Any details you want to provide before continuing?");
-        assertThat(resumed.plan().planningTask()).isEqualTo("saved_plan_resume_chat");
+        assertThat(messages.getLast().role()).isEqualTo("assistant");
+        assertThat(messages.getLast().text())
+            .isEqualTo("What detail should Magenta clarify or refine before this saved plan is ready for approval?");
+        assertThat(modelClient.calls).hasSize(2);
+        assertThat(modelClient.calls.getLast().userMessage()).contains("goal updated; outputs updated");
     }
 
     @Test
@@ -131,7 +143,9 @@ class SavedPlanChatServiceTest {
             planRepository,
             new ChatMemoryRepository(jdbcTemplate, new ObjectMapper())
         );
-        SavedPlanChatService service = new SavedPlanChatService(planService, new PlanChatRepository(jdbcTemplate));
+        CapturingModelClient modelClient = new CapturingModelClient();
+        SavedPlanChatService service = new SavedPlanChatService(
+            planService, new PlanChatRepository(jdbcTemplate), modelClient);
 
         PlanDefinition draft = planService.saveTask(new PlanDefinition(
             "existing-plan", PlanKind.TASK_TEMPLATE, PlanStatus.DRAFT,
@@ -147,9 +161,13 @@ class SavedPlanChatServiceTest {
 
         PlanDefinition updated = planService.getTask(draft.id());
         assertThat(updated.inputs()).isEmpty();
-        assertThat(updated.hasPendingQuestion()).isFalse();
-        assertThat(state.promptQuestion()).isEqualTo("What field should be updated?");
-        assertThat(state.messages().getLast().text()).isEqualTo("What field should be updated?");
+        assertThat(updated.hasPendingQuestion()).isTrue();
+        assertThat(state.promptQuestion()).isEqualTo("What detail should Magenta clarify or refine before this saved plan is ready for approval?");
+        assertThat(state.messages().getLast().text()).isEqualTo("What detail should Magenta clarify or refine before this saved plan is ready for approval?");
+        assertThat(modelClient.calls).hasSize(1);
+        assertThat(modelClient.calls.getFirst().userMessage())
+            .contains("Question: Any details you want to provide before continuing?")
+            .contains("Answer: Focus this on API validation, not UI work.");
     }
 
     @Test
@@ -160,7 +178,7 @@ class SavedPlanChatServiceTest {
             planRepository,
             new ChatMemoryRepository(jdbcTemplate, new ObjectMapper())
         );
-        SavedPlanChatService service = new SavedPlanChatService(planService, new PlanChatRepository(jdbcTemplate));
+        SavedPlanChatService service = new SavedPlanChatService(planService, new PlanChatRepository(jdbcTemplate), null);
 
         PlanDefinition approved = planService.saveTask(new PlanDefinition(
             "approved-plan", PlanKind.TASK_TEMPLATE, PlanStatus.APPROVED,
@@ -189,11 +207,14 @@ class SavedPlanChatServiceTest {
             new ChatMemoryRepository(jdbcTemplate, new ObjectMapper())
         );
         PlanChatRepository chatRepository = new PlanChatRepository(jdbcTemplate);
-        SavedPlanChatService service = new SavedPlanChatService(planService, chatRepository);
+        CapturingModelClient modelClient = new CapturingModelClient();
+        SavedPlanChatService service = new SavedPlanChatService(planService, chatRepository, modelClient);
 
         SavedPlanChatService.SavedPlanChatState state = service.create("Context plan");
         PlanDefinition before = state.plan();
-        PlanDefinition after = before.withGoal("Updated goal").withSummary("Updated summary");
+        PlanDefinition after = before.withGoal("Updated goal")
+            .withSummary("Updated summary")
+            .withDeliverables(List.of("Updated deliverable"));
 
         service.appendEditorSaveContext(before, after);
 
@@ -202,8 +223,43 @@ class SavedPlanChatServiceTest {
         assertThat(messages.getLast().text())
             .contains("Saved editor updates:")
             .contains("goal changed")
-            .contains("summary changed");
+            .contains("summary changed")
+            .contains("deliverables changed");
         assertThat(service.state(before.id()).promptQuestion()).contains("runtime inputs");
+
+        service.start(before.id(), "Use the edited goal and summary.");
+
+        assertThat(modelClient.calls).hasSize(1);
+        assertThat(modelClient.calls.getFirst().userMessage())
+            .contains("Recent saved-plan chat transcript")
+            .contains("Saved editor updates:")
+            .contains("goal changed")
+            .contains("summary changed")
+            .contains("deliverables changed");
+    }
+
+    @Test
+    void savedPlanReadyForApprovalAcceptsDeliverableOnlyDraft() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        PlanRepository planRepository = new PlanRepository(jdbcTemplate, new ObjectMapper());
+        PlanService planService = new PlanService(
+            planRepository,
+            new ChatMemoryRepository(jdbcTemplate, new ObjectMapper())
+        );
+        PlanDefinition draft = planService.saveTask(new PlanDefinition(
+            "deliverable-only-plan", PlanKind.TASK_TEMPLATE, PlanStatus.DRAFT,
+            "Deliverable Only", null, "Prepare a written report.", null,
+            List.of("Written report"), List.of(), List.of(), List.of(),
+            List.of(new PlanStep(1, "Draft and review the report.")),
+            List.of("Report content has been reviewed."),
+            List.of(), List.of(), WorkTypeProfile.CODING_CENTRIC.name(),
+            null, null, null, "approval_readiness",
+            List.of(), 0, 0, null, null, null, null
+        ));
+
+        PlanDefinition ready = planService.markSavedTaskReadyForApproval(draft.id());
+
+        assertThat(ready.status()).isEqualTo(PlanStatus.READY_FOR_APPROVAL);
     }
 
     @Test
@@ -214,7 +270,7 @@ class SavedPlanChatServiceTest {
             planRepository,
             new ChatMemoryRepository(jdbcTemplate, new ObjectMapper())
         );
-        SavedPlanChatService service = new SavedPlanChatService(planService, new PlanChatRepository(jdbcTemplate));
+        SavedPlanChatService service = new SavedPlanChatService(planService, new PlanChatRepository(jdbcTemplate), null);
 
         PlanDefinition draft = planService.saveTask(new PlanDefinition(
             "existing-plan", PlanKind.TASK_TEMPLATE, PlanStatus.DRAFT,
@@ -235,5 +291,17 @@ class SavedPlanChatServiceTest {
     private JdbcTemplate jdbcTemplate() {
         var dataSource = new SingleConnectionDataSource("jdbc:sqlite::memory:", true);
         return new JdbcTemplate(dataSource);
+    }
+
+    private static class CapturingModelClient implements SavedPlanModelClient {
+        private final List<ModelCall> calls = new java.util.ArrayList<>();
+
+        @Override
+        public void runTurn(String planId, String model, String systemPrompt, String userMessage) {
+            calls.add(new ModelCall(planId, model, systemPrompt, userMessage));
+        }
+    }
+
+    private record ModelCall(String planId, String model, String systemPrompt, String userMessage) {
     }
 }

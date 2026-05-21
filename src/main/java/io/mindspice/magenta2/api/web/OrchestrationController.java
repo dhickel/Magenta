@@ -919,6 +919,14 @@ public class OrchestrationController {
         }
     }
 
+    private PlanDefinition savePlanEditorChange(PlanDefinition before, PlanDefinition updated) {
+        PlanDefinition saved = planService.saveTask(updated);
+        if (savedPlanChatService != null) {
+            savedPlanChatService.appendEditorSaveContext(before, saved);
+        }
+        return saved;
+    }
+
     @PostMapping("/plans/_editor/{planId}/finalize")
     @ResponseBody
     public String finalizePlanEditor(@PathVariable String planId) {
@@ -997,7 +1005,7 @@ public class OrchestrationController {
                     current.planningTask(), current.pendingQuestions(), current.pendingQuestionIndex(),
                     current.planStartMessageOrder(), current.finalMessage(), current.conversationId(),
                     current.createdAt(), current.updatedAt());
-            planService.saveTask(updated);
+            savePlanEditorChange(current, updated);
             return isInput ? planInputsSection(planService.getTask(planId)).render()
                            : planOutputsSection(planService.getTask(planId)).render();
         } catch (Exception e) {
@@ -1077,7 +1085,7 @@ public class OrchestrationController {
                     current.planningTask(), current.pendingQuestions(), current.pendingQuestionIndex(),
                     current.planStartMessageOrder(), current.finalMessage(), current.conversationId(),
                     current.createdAt(), current.updatedAt());
-            planService.saveTask(updated);
+            savePlanEditorChange(current, updated);
             PlanDefinition reloaded = planService.getTask(planId);
             return isInput ? planInputsSection(reloaded).render()
                            : planOutputsSection(reloaded).render();
@@ -1115,7 +1123,7 @@ public class OrchestrationController {
                     current.planningTask(), current.pendingQuestions(), current.pendingQuestionIndex(),
                     current.planStartMessageOrder(), current.finalMessage(), current.conversationId(),
                     current.createdAt(), current.updatedAt());
-            planService.saveTask(updated);
+            savePlanEditorChange(current, updated);
             return isInput ? planInputsSection(planService.getTask(planId)).render()
                            : planOutputsSection(planService.getTask(planId)).render();
         } catch (Exception e) {
@@ -1325,7 +1333,7 @@ public class OrchestrationController {
                 }
                 default -> throw new IllegalArgumentException("Unknown section: " + section);
             };
-            planService.saveTask(updated);
+            savePlanEditorChange(current, updated);
             return listSectionHtml(planService.getTask(planId), section).render();
         } catch (Exception e) {
             return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
@@ -1395,7 +1403,7 @@ public class OrchestrationController {
                 }
                 default -> throw new IllegalArgumentException("Unknown section: " + section);
             };
-            planService.saveTask(updated);
+            savePlanEditorChange(current, updated);
             return listSectionHtml(planService.getTask(planId), section).render();
         } catch (Exception e) {
             return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
@@ -1425,7 +1433,7 @@ public class OrchestrationController {
                 }
                 default -> throw new IllegalArgumentException("Unknown section: " + section);
             };
-            planService.saveTask(updated);
+            savePlanEditorChange(current, updated);
             return listSectionHtml(planService.getTask(planId), section).render();
         } catch (Exception e) {
             return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
@@ -1606,7 +1614,7 @@ public class OrchestrationController {
                 current.planningTask(), current.pendingQuestions(), current.pendingQuestionIndex(),
                 current.planStartMessageOrder(), current.finalMessage(), current.conversationId(),
                 current.createdAt(), current.updatedAt());
-            planService.saveTask(updated);
+            savePlanEditorChange(current, updated);
             return planStepsSection(planService.getTask(planId)).render();
         } catch (Exception e) {
             return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();

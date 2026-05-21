@@ -51,12 +51,12 @@ Source: [`PlanController`](../../src/main/java/io/mindspice/magenta2/api/web/Pla
 - `GET /api/plans/{planId}/runs`, `GET /api/plans/runs/{runId}`: run reads.
 - `POST /api/plans/{planId}/runs/stream`: SSE submit-to-agent path.
 - `POST /api/plans/planning-chats`: create a saved draft and start a saved plan chat.
-- `POST /api/plans/{planId}/planning-chat/start`: seed or restart the saved plan chat for an existing plan.
-- `POST /api/plans/{planId}/planning-chat/answers`: answer saved plan chat opening questions.
-- `POST /api/plans/{planId}/planning-chat/messages`: append saved plan chat messages.
+- `POST /api/plans/{planId}/planning-chat/start`: seed or restart the saved plan chat for an existing plan, or pass a supplied instruction into the saved-plan model turn.
+- `POST /api/plans/{planId}/planning-chat/answers`: answer saved plan chat opening or follow-up questions. After opening questions complete, answers are passed to the saved-plan model as seed context instead of copied directly into fields.
+- `POST /api/plans/{planId}/planning-chat/messages`: append a saved plan chat message and run the saved-plan model turn.
 - `GET /api/plans/{planId}/planning-chat`: read saved plan chat state and messages.
 
-Create/update payloads include title, summary, goal, notes, deliverables, inputs, outputs, assumptions, steps, validation criteria, work type/prompt profile, planning model, and execution model. `PlanRunRequest` accepts input values, conversation id, agent id, job id, workspace id, model override, and priority. Saved plan chat input/output questions collect field name, type, required flag, array flag, description, examples, and optional schema.
+Create/update payloads include title, summary, goal, notes, deliverables, inputs, outputs, assumptions, steps, validation criteria, work type/prompt profile, planning model, and execution model. `PlanRunRequest` accepts input values, conversation id, agent id, job id, workspace id, model override, and priority. Saved plan chat input/output questions collect initial user context; the saved-plan model synthesizes typed field definitions with name, type, required flag, array flag, description, examples, and optional schema through plan-scoped tools.
 
 `runs/stream` emits `submitted` with assignment metadata or `failed`. It does not stream inline model output.
 

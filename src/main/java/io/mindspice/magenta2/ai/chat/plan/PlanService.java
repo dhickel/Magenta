@@ -612,6 +612,81 @@ public class PlanService {
         ));
     }
 
+    public PlanDefinition updateSavedTaskFields(String planId, String title, String summary, String goal) {
+        PlanDefinition task = requireSavedTaskDraft(planId, "saved_plan_update_fields");
+        return saveTask(task
+            .withTitle(choose(title, task.title()))
+            .withSummary(choose(summary, task.summary()))
+            .withGoal(choose(goal, task.goal())));
+    }
+
+    public PlanDefinition setSavedTaskPlanningTask(String planId, String planningTask) {
+        PlanDefinition task = requireSavedTaskDraft(planId, "saved_plan_set_task");
+        String normalizedTask = normalizePlanningTask(planningTask);
+        if (normalizedTask == null) {
+            throw new IllegalArgumentException("saved_plan_set_task requires a current task");
+        }
+        return saveTask(task.withPlanningTask(normalizedTask));
+    }
+
+    public PlanDefinition putSavedTaskTextItem(String planId, String section, Integer key, String text) {
+        PlanDefinition task = requireSavedTaskDraft(planId, "saved_plan_put_item");
+        int itemKey = requirePositiveKey(key);
+        String normalizedText = normalize(text);
+        if (normalizedText == null) {
+            throw new IllegalArgumentException("saved_plan_put_item requires text");
+        }
+        PlanSection planSection = PlanSection.fromToolName(section);
+        if (planSection == PlanSection.INPUT || planSection == PlanSection.OUTPUT) {
+            throw new IllegalArgumentException("saved_plan_put_item requires field details for input and output sections");
+        }
+        return saveTask(withSection(task, planSection, itemKey, normalizedText, null, false));
+    }
+
+    public PlanDefinition putSavedTaskFieldItem(String planId, String section, Integer key, PlanFieldDefinition field) {
+        PlanDefinition task = requireSavedTaskDraft(planId, "saved_plan_put_item");
+        PlanSection planSection = PlanSection.fromToolName(section);
+        if (planSection != PlanSection.INPUT && planSection != PlanSection.OUTPUT) {
+            throw new IllegalArgumentException("saved_plan_put_item field details are only valid for input and output sections");
+        }
+        PlanFieldDefinition cleanField = cleanField(field);
+        if (cleanField == null) {
+            throw new IllegalArgumentException("saved_plan_put_item requires a named input or output");
+        }
+        return saveTask(withSection(task, planSection, requirePositiveKey(key), null, cleanField, false));
+    }
+
+    public PlanDefinition deleteSavedTaskItem(String planId, String section, Integer key) {
+        PlanDefinition task = requireSavedTaskDraft(planId, "saved_plan_delete_item");
+        return saveTask(withSection(task, PlanSection.fromToolName(section), requirePositiveKey(key), null, null, true));
+    }
+
+    public PlanDefinition askSavedTaskQuestions(String planId, List<String> questions) {
+        PlanDefinition task = requireSavedTaskDraft(planId, "saved_plan_ask_user_questions");
+        List<String> cleanQuestions = cleanList(questions);
+        if (cleanQuestions.isEmpty()) {
+            throw new IllegalArgumentException("saved_plan_ask_user_questions requires at least one question");
+        }
+        if (cleanQuestions.size() > MAX_QUEUED_QUESTIONS) {
+            throw new IllegalArgumentException("saved_plan_ask_user_questions accepts at most five questions");
+        }
+        return saveTask(task
+            .withPlanningTask("saved_plan_clarification_questions")
+            .withPendingQuestions(cleanQuestions, 0));
+    }
+
+    public PlanDefinition markSavedTaskReadyForApproval(String planId) {
+        PlanDefinition task = requireSavedTaskDraft(planId, "saved_plan_ready_for_approval");
+        if (task.hasPendingQuestion()) {
+            throw new IllegalStateException("saved_plan_ready_for_approval requires all queued questions to be answered");
+        }
+        validateSavedPlanComplete(task, "saved_plan_ready_for_approval");
+        return saveTask(task
+            .withStatus(PlanStatus.READY_FOR_APPROVAL)
+            .withPlanningTask("approval")
+            .withPendingQuestions(List.of(), 0));
+    }
+
     /**
      * Finalize a task template: validate completeness and set status to APPROVED.
      * Only DRAFT and READY_FOR_APPROVAL tasks can be finalized.
@@ -1368,6 +1443,14 @@ Approved plan:
         return draft;
     }
 
+    private PlanDefinition requireSavedTaskDraft(String planId, String action) {
+        PlanDefinition task = getTask(planId);
+        if (task.kind() != PlanKind.TASK_TEMPLATE || task.status() == PlanStatus.APPROVED) {
+            throw new IllegalStateException(action + " is available only for draft saved plans");
+        }
+        return task;
+    }
+
     private PlanDefinition saveTaskDraft(PlanDefinition draft) {
         return planRepository.saveDefinition(draft);
     }
@@ -1453,6 +1536,24 @@ Approved plan:
         }
         if (draft.outputs().isEmpty()) {
             throw new IllegalArgumentException(action + " requires at least one named output");
+        }
+        if (draft.steps().isEmpty()) {
+            throw new IllegalArgumentException(action + " requires at least one step");
+        }
+        if (draft.validationCriteria().isEmpty()) {
+            throw new IllegalArgumentException(action + " requires at least one validation criterion");
+        }
+    }
+
+    private void validateSavedPlanComplete(PlanDefinition draft, String action) {
+        if (!StringUtils.hasText(draft.title())) {
+            throw new IllegalArgumentException(action + " requires a title");
+        }
+        if (!StringUtils.hasText(draft.goal())) {
+            throw new IllegalArgumentException(action + " requires a goal");
+        }
+        if (draft.outputs().isEmpty() && draft.deliverables().isEmpty()) {
+            throw new IllegalArgumentException(action + " requires at least one named output or deliverable");
         }
         if (draft.steps().isEmpty()) {
             throw new IllegalArgumentException(action + " requires at least one step");

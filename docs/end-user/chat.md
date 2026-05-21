@@ -53,7 +53,7 @@ Anonymous chat execution writes chat-scoped files under the persistent chat file
 
 ## Saved Plan Chat
 
-Saved plan authoring happens in `/plans`. **New Plan Chat** creates a saved draft there and starts a plan-scoped chat that collects explicit inputs, deliverables, and structured outputs for downstream use. It does not use the `/chat` session list or `/api/chat` session architecture.
+Saved plan authoring happens in `/plans`. **New Plan Chat** creates a saved draft there and starts a plan-scoped chat that collects opening answers, gives them to the planning model as seed context, and then continues with model-led follow-up questions until the saved plan is ready to review. It does not use the `/chat` session list or `/api/chat` session architecture.
 
 ## Session Management
 

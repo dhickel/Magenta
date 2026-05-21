@@ -37,16 +37,18 @@ Inputs and outputs have a name, type, required flag, array flag, description, an
 
 ## Saved Plan Chat
 
-The embedded saved plan chat asks four deterministic opening questions for new chat drafts before any later model-backed planning behavior can run:
+The embedded saved plan chat starts new chat drafts with four opening questions:
 
 1. Whether the plan has runtime inputs, including field names, types, required flags, array flags, schemas, and examples, or “no inputs”.
 2. Goal.
 3. High-level deliverables, with structured outputs handled separately.
 4. Specific structured outputs for workflow chaining or downstream use, or “no outputs”.
 
-Saved plan chat updates the selected saved draft. The manual editor remains authoritative for direct edits. Open the **Planning Chat** tab on an existing draft to continue with “Any details you want to provide before continuing?” Open it on an approved plan to start from “What do you need to change in this plan?”
+After those answers are collected, Magenta gives them to the planning model as seed context. The model synthesizes concise plan fields, updates the selected saved draft through saved-plan tools, and asks follow-up questions until the plan is clear enough for approval. Opening answers are not copied directly into input names, deliverables, or outputs.
 
-When you save manual edits and the plan already has chat history, Magenta appends a concise context message to the saved plan chat describing the edited fields. This keeps the next chat turn aware of changes made outside the transcript without treating the edit notice as an answer to the current prompt.
+Saved plan chat updates the selected saved draft. The manual editor remains authoritative for direct edits. Open the **Planning Chat** tab on an existing draft to continue from the current plan state. Open it on an approved plan to start from “What do you need to change in this plan?”
+
+When you save manual edits and the plan already has chat history, Magenta appends a concise context message to the saved plan chat describing the edited fields or sections. This keeps the next chat turn aware of changes made outside the transcript without treating the edit notice as an answer to the current prompt.
 
 ## Models And Manager Type
 

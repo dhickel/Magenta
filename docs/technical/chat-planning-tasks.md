@@ -64,7 +64,11 @@ Saved task planning happens in `/plans` and is separate from `/api/chat`, `ai_ch
 - Creating a `TASK_TEMPLATE` draft directly for new saved plan chats.
 - Persisting plan-scoped chat messages.
 - Seeding four backend questions in a fixed order: runtime inputs, goal, high-level deliverables, and structured outputs.
-- Updating typed inputs, typed outputs, deliverables, assumptions, steps, and validation details on the saved draft.
+- Passing the opening answers to a plan-id-scoped saved-plan model turn as seed context, not final field values.
+- Continuing saved-plan chat turns through saved-plan-specific tools that update typed inputs, typed outputs, deliverables, assumptions, steps, and validation details on the saved draft.
+- Enforcing saved-plan planning terminal states: either queued follow-up questions or a draft marked ready for approval.
+
+Saved plan model turns do not use `/api/chat`, `ai_chat_memory`, or `ai_chat_session_metadata`. They use `plan_chat_messages`, the current `PlanDefinition`, and saved-plan-specific tool callbacks scoped by plan id.
 
 `PlanDefinition` is the durable plan contract for saved definitions. It contains title, summary, goal, notes, deliverables, structured inputs/outputs, assumptions, ordered steps, validation criteria, evidence, feedback, planning/execution model choices, settings overrides, pending questions, and conversation linkage.
 
