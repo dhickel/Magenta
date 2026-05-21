@@ -1,6 +1,8 @@
 package io.mindspice.magenta2.core.config;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
@@ -48,16 +50,48 @@ public class MagentaRootConfiguration {
         }
 
         String location = url.substring(SQLITE_PREFIX.length());
+        String query = null;
         int queryIndex = location.indexOf('?');
         if (queryIndex >= 0) {
+            query = location.substring(queryIndex + 1);
             location = location.substring(0, queryIndex);
         }
         if (!StringUtils.hasText(location)
             || ":memory:".equals(location)
-            || location.startsWith("file:")) {
+            || isSqliteMemoryUri(location, query)) {
             return Optional.empty();
         }
+        if (location.startsWith("file:")) {
+            return sqliteFileUriPath(location);
+        }
         return Optional.of(Path.of(location));
+    }
+
+    private static boolean isSqliteMemoryUri(String location, String query) {
+        return "file::memory:".equals(location)
+            || (location.startsWith("file:") && query != null && query.matches("(^|.*&)mode=memory($|&.*)"));
+    }
+
+    private static Optional<Path> sqliteFileUriPath(String location) {
+        String fileSpec = location.substring("file:".length());
+        if (!StringUtils.hasText(fileSpec) || ":memory:".equals(fileSpec)) {
+            return Optional.empty();
+        }
+        if (fileSpec.startsWith("//")) {
+            try {
+                URI uri = new URI(location);
+                String host = uri.getHost();
+                if (StringUtils.hasText(host) && !"localhost".equalsIgnoreCase(host)) {
+                    return Optional.empty();
+                }
+                return StringUtils.hasText(uri.getPath())
+                    ? Optional.of(Path.of(uri.getPath()))
+                    : Optional.empty();
+            } catch (URISyntaxException exception) {
+                return Optional.empty();
+            }
+        }
+        return Optional.of(Path.of(fileSpec));
     }
 
     static final class SqliteDataSourceParentDirectoryInitializer

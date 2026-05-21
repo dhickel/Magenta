@@ -58,7 +58,7 @@ class WorkspaceServicePathTest {
     }
 
     @Test
-    void existingAbsoluteCurrentRootPathLinkSeededDirectlyRemainsReadableWithoutRewrite() throws Exception {
+    void existingAbsoluteCurrentRootPathLinkSeededDirectlyListsAsRootRelativeWithoutRewrite() throws Exception {
         TestContext context = context();
         Workspace workspace = context.service().agentWorkspace("agent-1", "Agent One");
         String absoluteTarget = context.dataRoot().resolve("agents/agent-1/workspace/legacy-docs").toString();
@@ -76,9 +76,45 @@ class WorkspaceServicePathTest {
 
         List<WorkspaceLink> links = context.service().links(workspace.id());
 
-        assertThat(links).extracting(WorkspaceLink::target).containsExactly(absoluteTarget);
+        assertThat(links).extracting(WorkspaceLink::target)
+            .containsExactly("agents/agent-1/workspace/legacy-docs");
         assertThat(context.repository().findLink("legacy-link")).get().extracting(WorkspaceLink::target)
             .isEqualTo(absoluteTarget);
+    }
+
+    @Test
+    void existingAbsoluteOutsideRootPathLinkSeededDirectlyIsFilteredFromLinks() throws Exception {
+        TestContext context = context();
+        Workspace workspace = context.service().agentWorkspace("agent-1", "Agent One");
+        context.repository().saveLink(new WorkspaceLink(
+            "current-link",
+            workspace.id(),
+            "Current Docs",
+            WorkspaceLinkType.PATH,
+            "agents/agent-1/workspace/docs",
+            true,
+            false,
+            null,
+            null
+        ));
+        context.repository().saveLink(new WorkspaceLink(
+            "stale-link",
+            workspace.id(),
+            "Stale Docs",
+            WorkspaceLinkType.PATH,
+            tempDir.resolve("old-root/docs").toString(),
+            true,
+            false,
+            null,
+            null
+        ));
+
+        List<WorkspaceLink> links = context.service().links(workspace.id());
+
+        assertThat(links).extracting(WorkspaceLink::id).containsExactly("current-link");
+        assertThat(links).extracting(WorkspaceLink::target)
+            .containsExactly("agents/agent-1/workspace/docs");
+        assertThat(context.repository().findLink("stale-link")).isPresent();
     }
 
     @Test

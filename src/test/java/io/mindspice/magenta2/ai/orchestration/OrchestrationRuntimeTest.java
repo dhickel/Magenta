@@ -82,6 +82,7 @@ import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceRepository;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceOwnerType;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.RootRelativePathService;
 import io.mindspice.magenta2.ai.orchestration.workflow.InboxService;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowDefinition;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowNode;
@@ -454,6 +455,10 @@ class OrchestrationRuntimeTest {
 
     private ModelConfig model(String remoteName) {
         return new ModelConfig(remoteName, "http://localhost:11434", EndpointType.OLLAMA, 4096, 0, null);
+    }
+
+    private Path resolveStored(WorkspaceDirectoryService directoryService, String value) {
+        return directoryService.dataRoot().resolve(value.replace('\\', '/')).normalize();
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -1111,8 +1116,10 @@ class OrchestrationRuntimeTest {
         String workflowRunId = waiting.checkpoint().get("workflowRunId").toString();
         WorkflowRun waitingRun = workflowService.getRun(workflowRunId);
         assertThat(waitingRun.status()).isEqualTo(WorkflowRunStatus.WAITING);
-        assertThat(Files.isDirectory(Path.of(waitingRun.workspacePath()))).isTrue();
-        assertThat(Files.isDirectory(Path.of(waitingRun.outputDir()))).isTrue();
+        assertThat(waitingRun.workspacePath()).startsWith("runtime/workflow-runs/");
+        assertThat(waitingRun.outputDir()).startsWith("agents/agent-1/workspace/outputs/workflows/");
+        assertThat(Files.isDirectory(resolveStored(directoryService, waitingRun.workspacePath()))).isTrue();
+        assertThat(Files.isDirectory(resolveStored(directoryService, waitingRun.outputDir()))).isTrue();
         String messageId = waitingRun.nodeRuns().stream()
             .filter(node -> node.nodeKey().equals("gate"))
             .findFirst()
@@ -1147,9 +1154,9 @@ class OrchestrationRuntimeTest {
             assertThat(node.nodeKey()).isEqualTo("approved");
             assertThat(node.status()).isEqualTo(WorkflowNodeRunStatus.COMPLETED);
         });
-        assertThat(Path.of(completedRun.outputDir()))
+        assertThat(resolveStored(directoryService, completedRun.outputDir()))
             .startsWith(directoryService.dataRoot().resolve("agents/agent-1/workspace/outputs/workflows"));
-        assertThat(Files.isDirectory(Path.of(completedRun.workspacePath()))).isTrue();
+        assertThat(Files.isDirectory(resolveStored(directoryService, completedRun.workspacePath()))).isTrue();
     }
 
     @Test
@@ -1323,10 +1330,14 @@ class OrchestrationRuntimeTest {
         JobRun firstRun = jobService.getRun(first.checkpoint().get("jobRunId").toString());
         JobRun secondRun = jobService.getRun(second.checkpoint().get("jobRunId").toString());
         Path projectWorkspace = directoryService.projectWorkspace(project.id()).toRealPath();
-        assertThat(Path.of(firstRun.workspacePath())).isEqualTo(projectWorkspace.resolve("jobs/assignment-job-a"));
-        assertThat(Path.of(secondRun.workspacePath())).isEqualTo(projectWorkspace.resolve("jobs/assignment-job-b"));
-        assertThat(firstRun.outputDir()).contains("projects/" + project.id() + "/workspace/outputs/jobs/assignment-job-a");
-        assertThat(secondRun.outputDir()).contains("projects/" + project.id() + "/workspace/outputs/jobs/assignment-job-b");
+        assertThat(firstRun.workspacePath()).isEqualTo("projects/" + project.id() + "/workspace/jobs/assignment-job-a");
+        assertThat(secondRun.workspacePath()).isEqualTo("projects/" + project.id() + "/workspace/jobs/assignment-job-b");
+        assertThat(resolveStored(directoryService, firstRun.workspacePath()))
+            .isEqualTo(projectWorkspace.resolve("jobs/assignment-job-a"));
+        assertThat(resolveStored(directoryService, secondRun.workspacePath()))
+            .isEqualTo(projectWorkspace.resolve("jobs/assignment-job-b"));
+        assertThat(firstRun.outputDir()).startsWith("projects/" + project.id() + "/workspace/outputs/jobs/assignment-job-a");
+        assertThat(secondRun.outputDir()).startsWith("projects/" + project.id() + "/workspace/outputs/jobs/assignment-job-b");
         assertThat(firstRun.workspacePath()).isNotEqualTo(secondRun.workspacePath());
     }
 
@@ -1380,6 +1391,7 @@ class OrchestrationRuntimeTest {
         OrchestrationRunnerService runner = new OrchestrationRunnerService(
             repository, assignmentService, jobService, null, null, chatService, null, eventService,
             agentService, null, null, null, null, directoryService,
+            new RootRelativePathService(directoryService),
             new MagentaWorkExecutor(Map.of(
                 MagentaWorkKind.BACKGROUND_JOB, new MagentaWorkExecutor.LaneSettings("test-bg-", 1, 10)
             )),

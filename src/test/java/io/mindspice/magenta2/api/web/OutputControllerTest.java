@@ -184,7 +184,7 @@ class OutputControllerTest {
             "legacy",
             PlanFieldType.STRING,
             "legacy output",
-            Path.of(run.outputDir()),
+            services.dataRoot().resolve(run.outputDir()),
             OutputArtifactContext.EMPTY
         );
 

@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import io.mindspice.magenta2.ai.config.user.AiConfig;
@@ -80,7 +81,10 @@ public class WorkspaceService {
 
     public List<WorkspaceLink> links(String workspaceId) {
         get(workspaceId);
-        return repository.links(workspaceId);
+        return repository.links(workspaceId).stream()
+            .map(this::normalizeListedLink)
+            .flatMap(Optional::stream)
+            .toList();
     }
 
     public List<WorkspaceLease> activeLeases(String workspaceId) {
@@ -204,6 +208,28 @@ public class WorkspaceService {
             throw new IllegalArgumentException("workspace link target escapes data root");
         }
         return rootRelativePathService.store(resolved);
+    }
+
+    private Optional<WorkspaceLink> normalizeListedLink(WorkspaceLink link) {
+        if (link == null || link.linkType() != WorkspaceLinkType.PATH) {
+            return Optional.ofNullable(link);
+        }
+        try {
+            String target = rootRelativePathService.store(rootRelativePathService.resolve(link.target()));
+            return Optional.of(new WorkspaceLink(
+                link.id(),
+                link.workspaceId(),
+                link.label(),
+                link.linkType(),
+                target,
+                link.readable(),
+                link.writable(),
+                link.createdAt(),
+                link.updatedAt()
+            ));
+        } catch (IllegalArgumentException ignored) {
+            return Optional.empty();
+        }
     }
 
     private Path confined(String relativePath) {

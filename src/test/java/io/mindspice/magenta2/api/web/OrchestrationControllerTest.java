@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.ai.chat.plan.PlanDefinition;
 import io.mindspice.magenta2.ai.chat.plan.PlanKind;
@@ -61,6 +62,7 @@ import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLink;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLinkType;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceRepository;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
 import io.mindspice.magenta2.api.web.selector.EntityLookupService;
 import io.mindspice.magenta2.api.web.selector.EntitySelectorComponents;
 import org.junit.jupiter.api.Test;
@@ -2535,7 +2537,14 @@ class OrchestrationControllerTest {
     }
 
     private static class StubOutputArtifactService extends OutputArtifactService {
-        StubOutputArtifactService() { super(null, null, null); }
+        StubOutputArtifactService() {
+            this(outputArtifactDeps());
+        }
+
+        private StubOutputArtifactService(OutputArtifactDeps deps) {
+            super(deps.repository(), deps.directoryService(), deps.objectMapper());
+        }
+
         @Override public io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact getArtifact(String artifactId) {
             return new io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact(
                 artifactId, "run-1", "plan-abc", "agent-1", "job-abc", null, null, "TASK_RUN",
@@ -2549,6 +2558,28 @@ class OrchestrationControllerTest {
             String r, String p, String t, Integer l) { return List.of(); }
         @Override public java.util.List<io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact> query(
             io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactQuery query) { return List.of(); }
+    }
+
+    private static OutputArtifactDeps outputArtifactDeps() {
+        try {
+            Path dataRoot = Files.createTempDirectory("orch-controller-output");
+            WorkspaceDirectoryService directories = new WorkspaceDirectoryService(new AiConfig(
+                null, null, null, null, null, 10, dataRoot, null, Map.of(), Map.of()
+            ));
+            WorkspaceRepository repository = new WorkspaceRepository(new JdbcTemplate(
+                new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true)
+            ));
+            return new OutputArtifactDeps(repository, directories, new ObjectMapper());
+        } catch (Exception exception) {
+            throw new RuntimeException("Failed to create output artifact test dependencies", exception);
+        }
+    }
+
+    private record OutputArtifactDeps(
+        WorkspaceRepository repository,
+        WorkspaceDirectoryService directoryService,
+        ObjectMapper objectMapper
+    ) {
     }
 
     private static class StubAgentWorkspaceStatusService extends AgentWorkspaceStatusService {

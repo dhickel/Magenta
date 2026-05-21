@@ -36,6 +36,8 @@ Projects are shared durable workspace and visibility abstractions. They are not 
 - `workspaces` has owner type/id, root relative path, display name, metadata JSON, and timestamps.
 - `workspace_links` has workspace id, label, link type, target, readable/writable flags, and timestamps.
 
+New `PATH` links are stored as data-root-relative paths. Listing links normalizes legacy absolute targets under the current data root to the same representation and omits stale absolute targets outside the current root.
+
 API routes:
 
 - `GET /api/workspaces`

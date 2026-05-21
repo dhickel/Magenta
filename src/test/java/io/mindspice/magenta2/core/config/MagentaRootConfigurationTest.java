@@ -87,6 +87,20 @@ class MagentaRootConfigurationTest {
     }
 
     @Test
+    void createsParentDirectoryForFileBackedSqliteUriForms(@TempDir Path tempDir) throws Exception {
+        Path absoluteDb = tempDir.resolve("uri-absolute").resolve("magenta.sqlite");
+        Path localDb = tempDir.resolve("uri-localhost").resolve("magenta.sqlite");
+
+        MagentaRootConfiguration.createSqliteParentDirectory(
+            "jdbc:sqlite:file:" + absoluteDb + "?mode=rwc&foreign_keys=true");
+        MagentaRootConfiguration.createSqliteParentDirectory(
+            "jdbc:sqlite:file://localhost" + localDb + "?mode=rwc&foreign_keys=true");
+
+        assertThat(absoluteDb.getParent()).isDirectory();
+        assertThat(localDb.getParent()).isDirectory();
+    }
+
+    @Test
     void preservesOperatorFileBackedDatasourceOverride(@TempDir Path tempDir) throws Exception {
         Path db = tempDir.resolve("operator").resolve("override.sqlite");
         String url = "jdbc:sqlite:" + db + "?foreign_keys=true";

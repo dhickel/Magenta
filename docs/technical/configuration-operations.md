@@ -116,7 +116,7 @@ Agent execution uses filesystem-backed workspaces and host shell tools. `applica
 
 Workspace directories are confined under the configured data root by `WorkspaceDirectoryService`. Output downloads and artifact materialization also enforce data-root confinement.
 
-New Magenta-owned persisted path columns store data-root-relative values. Legacy absolute values under the current configured data root are read for compatibility. Stale absolute values from an old root are not rewritten and fail when an operation tries to use that path.
+New Magenta-owned persisted path columns store data-root-relative values. Legacy absolute values under the current configured data root are read for compatibility and may be displayed as data-root-relative values. Stale absolute values from an old root are not rewritten and fail, or are omitted from listings, when an operation tries to use that path.
 
 ## Schedules and Recurrence
 

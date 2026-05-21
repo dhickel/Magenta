@@ -159,7 +159,7 @@ class OperationalUiContractControllerTest {
         inboxService.createApprovalMessage(InboxMessageToType.USER, null, "agent-1", "Approve?", "run-1", 0);
         outputService.materialize(
             "run-1", "plan-1", "summary", PlanFieldType.STRING, "done",
-            Files.createDirectories(tempDir.resolve("outputs"))
+            Files.createDirectories(directoryService.dataRoot().resolve("outputs"))
         );
 
         DashboardController.DashboardSummary summary = controller.summary();

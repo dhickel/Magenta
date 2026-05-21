@@ -1,6 +1,8 @@
 package io.mindspice.magenta2.api.web;
 
 import java.lang.reflect.Proxy;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -9,11 +11,13 @@ import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.chat.plan.PlanDefinition;
 import io.mindspice.magenta2.ai.chat.plan.PlanKind;
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
 import io.mindspice.magenta2.ai.chat.plan.PlanStatus;
 import io.mindspice.magenta2.ai.chat.task.TaskService;
+import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileStatus;
@@ -29,7 +33,11 @@ import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowDefinition;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowService;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowValidator;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceRepository;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -392,8 +400,34 @@ class PublicRunSubmissionControllerTest {
 
     private static class StubOutputArtifactService extends OutputArtifactService {
         StubOutputArtifactService() {
-            super(null, null, null);
+            this(outputArtifactDeps());
         }
+
+        private StubOutputArtifactService(OutputArtifactDeps deps) {
+            super(deps.repository(), deps.directoryService(), deps.objectMapper());
+        }
+    }
+
+    private static OutputArtifactDeps outputArtifactDeps() {
+        try {
+            Path dataRoot = Files.createTempDirectory("public-run-output");
+            WorkspaceDirectoryService directories = new WorkspaceDirectoryService(new AiConfig(
+                null, null, null, null, null, 10, dataRoot, null, Map.of(), Map.of()
+            ));
+            WorkspaceRepository repository = new WorkspaceRepository(new JdbcTemplate(
+                new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true)
+            ));
+            return new OutputArtifactDeps(repository, directories, new ObjectMapper());
+        } catch (Exception exception) {
+            throw new RuntimeException("Failed to create output artifact test dependencies", exception);
+        }
+    }
+
+    private record OutputArtifactDeps(
+        WorkspaceRepository repository,
+        WorkspaceDirectoryService directoryService,
+        ObjectMapper objectMapper
+    ) {
     }
 
     private static class StubAgentProfileService extends AgentProfileService {

@@ -104,7 +104,7 @@ public class JobService {
         this.outputArtifactService = outputArtifactService;
         this.rootRelativePathService = rootRelativePathService != null
             ? rootRelativePathService
-            : new RootRelativePathService(workspaceDirectoryService);
+            : workspaceDirectoryService == null ? null : new RootRelativePathService(workspaceDirectoryService);
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -600,7 +600,7 @@ public class JobService {
     }
 
     private String storePath(Path path) {
-        return rootRelativePathService.store(path);
+        return rootRelativePathService == null ? path.toString() : rootRelativePathService.store(path);
     }
 
     // ════════════════════════════════════════════════════════════════
