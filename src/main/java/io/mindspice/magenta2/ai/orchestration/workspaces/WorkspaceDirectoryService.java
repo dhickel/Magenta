@@ -29,6 +29,7 @@ import org.springframework.util.StringUtils;
  *   <li>Workflow temp: {@code data/runtime/workflow-runs/{runId}}</li>
  *   <li>Job workspace: {@code data/jobs/{jobId}/workspace}</li>
  *   <li>Job outputs: {@code data/jobs/{jobId}/outputs/{slug}-{runId}/}</li>
+ *   <li>Persistent job assignment workspace: {@code <effective-workspace>/jobs/{assignmentId}}</li>
  *   <li>Project workspace: {@code data/projects/{projectId}/workspace}</li>
  * </ul>
  */
@@ -117,6 +118,11 @@ public class WorkspaceDirectoryService {
         requireId(jobAssignmentId, "jobAssignmentId");
         requireId(runId, "runId");
         return ensureDir(confinedWorkspaceChild(outputsDir(workspaceRoot), "jobs", jobAssignmentId, runId));
+    }
+
+    public Path jobAssignmentWorkspace(Path workspaceRoot, String jobAssignmentId) {
+        requireId(jobAssignmentId, "jobAssignmentId");
+        return ensureDir(confinedWorkspaceChild(workspaceRoot, "jobs", jobAssignmentId));
     }
 
     /**

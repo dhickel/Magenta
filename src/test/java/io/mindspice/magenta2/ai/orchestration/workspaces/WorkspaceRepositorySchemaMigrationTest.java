@@ -44,7 +44,8 @@ class WorkspaceRepositorySchemaMigrationTest {
         List<String> artifactColumns = columns(jdbc, "run_output_artifacts");
 
         assertThat(planRunColumns).contains("temp_workspace_path");
-        assertThat(artifactColumns).contains("agent_id", "job_id", "project_id", "workspace_id", "run_type");
+        assertThat(artifactColumns).contains(
+            "agent_id", "job_id", "job_assignment_id", "job_run_id", "project_id", "workspace_id", "run_type");
         assertThat(foreignKeyTargets(jdbc, "run_output_artifacts")).doesNotContain("plan_runs");
         assertThat(indexes(jdbc, "run_output_artifacts"))
             .contains(
@@ -133,6 +134,8 @@ class WorkspaceRepositorySchemaMigrationTest {
         assertThat(tableExists(jdbc, "orchestration_job_items")).isTrue();
         assertThat(tableExists(jdbc, "job_definitions")).isTrue();
         assertThat(tableExists(jdbc, "job_runs")).isTrue();
+        assertThat(columns(jdbc, "job_definitions")).contains("persistent_workspace_enabled");
+        assertThat(columns(jdbc, "job_runs")).contains("job_assignment_id", "workspace_id");
     }
 
     @Test

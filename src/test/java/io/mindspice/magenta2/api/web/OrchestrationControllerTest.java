@@ -2368,7 +2368,7 @@ class OrchestrationControllerTest {
         private int startRunCalls;
 
         private static final JobDefinition STUB_JOB = new JobDefinition(
-            "job-abc", "agent-1", null, null, "DRAFT",
+            "job-abc", "agent-1", null, null, false, "DRAFT",
             "Test Job", "A test job", List.of(),
             "CODING_CENTRIC", null, null, null, null
         );

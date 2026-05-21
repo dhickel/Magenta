@@ -10,6 +10,8 @@ import java.util.Map;
  *
  * @param id             unique run identifier
  * @param jobId          parent job definition id
+ * @param jobAssignmentId assignment/run owner used for persistent job workspace isolation
+ * @param workspaceId    effective durable workspace id
  * @param status         current run status
  * @param workItemRuns   ordered list of per-item run state
  * @param workspacePath  job workspace path on disk
@@ -24,6 +26,8 @@ import java.util.Map;
 public record JobRun(
     String id,
     String jobId,
+    String jobAssignmentId,
+    String workspaceId,
     JobRunStatus status,
     List<JobWorkItemRun> workItemRuns,
     String workspacePath,
@@ -35,6 +39,24 @@ public record JobRun(
     Instant startedAt,
     Instant completedAt
 ) {
+    public JobRun(
+        String id,
+        String jobId,
+        JobRunStatus status,
+        List<JobWorkItemRun> workItemRuns,
+        String workspacePath,
+        String outputDir,
+        String finalMessage,
+        String errorText,
+        Instant createdAt,
+        Instant updatedAt,
+        Instant startedAt,
+        Instant completedAt
+    ) {
+        this(id, jobId, null, null, status, workItemRuns, workspacePath, outputDir,
+            finalMessage, errorText, createdAt, updatedAt, startedAt, completedAt);
+    }
+
     public boolean isTerminal() {
         return status != null && status.isTerminal();
     }

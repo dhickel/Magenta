@@ -367,14 +367,17 @@ public class WorkspaceRepository {
         jdbcTemplate.update(
             """
                 insert into run_output_artifacts (
-                    id, run_id, plan_id, agent_id, job_id, project_id, workspace_id, run_type,
+                    id, run_id, plan_id, agent_id, job_id, job_assignment_id, job_run_id,
+                    project_id, workspace_id, run_type,
                     output_name, artifact_type,
                     file_name, file_path, content_json, created_at
                 )
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict(id) do update set
                     agent_id = excluded.agent_id,
                     job_id = excluded.job_id,
+                    job_assignment_id = excluded.job_assignment_id,
+                    job_run_id = excluded.job_run_id,
                     project_id = excluded.project_id,
                     workspace_id = excluded.workspace_id,
                     run_type = excluded.run_type,
@@ -389,6 +392,8 @@ public class WorkspaceRepository {
             artifact.planId(),
             artifact.agentId(),
             artifact.jobId(),
+            artifact.jobAssignmentId(),
+            artifact.jobRunId(),
             artifact.projectId(),
             artifact.workspaceId(),
             artifact.runType(),
@@ -482,6 +487,8 @@ public class WorkspaceRepository {
                 set
                     agent_id = coalesce(agent_id, ?),
                     job_id = coalesce(job_id, ?),
+                    job_assignment_id = coalesce(job_assignment_id, ?),
+                    job_run_id = coalesce(job_run_id, ?),
                     project_id = coalesce(project_id, ?),
                     workspace_id = coalesce(workspace_id, ?),
                     run_type = coalesce(run_type, ?)
@@ -489,6 +496,8 @@ public class WorkspaceRepository {
                 """,
             context.agentId(),
             context.jobId(),
+            context.jobAssignmentId(),
+            context.jobRunId(),
             context.projectId(),
             context.workspaceId(),
             context.runType(),
@@ -562,6 +571,8 @@ public class WorkspaceRepository {
             rs.getString("plan_id"),
             rs.getString("agent_id"),
             rs.getString("job_id"),
+            getNullable(rs, "job_assignment_id"),
+            getNullable(rs, "job_run_id"),
             rs.getString("project_id"),
             rs.getString("workspace_id"),
             rs.getString("run_type"),
@@ -572,6 +583,14 @@ public class WorkspaceRepository {
             rs.getString("content_json"),
             instant(rs.getString("created_at"))
         );
+    }
+
+    private String getNullable(ResultSet rs, String column) throws SQLException {
+        try {
+            return rs.getString(column);
+        } catch (SQLException ignored) {
+            return null;
+        }
     }
 
     private void ensureSchema() {
@@ -642,6 +661,8 @@ public class WorkspaceRepository {
                 plan_id text not null,
                 agent_id text,
                 job_id text,
+                job_assignment_id text,
+                job_run_id text,
                 project_id text,
                 workspace_id text,
                 run_type text,
@@ -655,6 +676,8 @@ public class WorkspaceRepository {
             """);
         addColumnIfMissing("run_output_artifacts", "agent_id", "alter table run_output_artifacts add column agent_id text");
         addColumnIfMissing("run_output_artifacts", "job_id", "alter table run_output_artifacts add column job_id text");
+        addColumnIfMissing("run_output_artifacts", "job_assignment_id", "alter table run_output_artifacts add column job_assignment_id text");
+        addColumnIfMissing("run_output_artifacts", "job_run_id", "alter table run_output_artifacts add column job_run_id text");
         addColumnIfMissing("run_output_artifacts", "project_id", "alter table run_output_artifacts add column project_id text");
         addColumnIfMissing("workspace_leases", "release_requested",
             "alter table workspace_leases add column release_requested integer not null default 0");
@@ -746,6 +769,8 @@ public class WorkspaceRepository {
                 plan_id text not null,
                 agent_id text,
                 job_id text,
+                job_assignment_id text,
+                job_run_id text,
                 project_id text,
                 workspace_id text,
                 run_type text,
@@ -759,11 +784,11 @@ public class WorkspaceRepository {
             """);
         jdbcTemplate.execute("""
             insert into run_output_artifacts_migrated (
-                id, run_id, plan_id, agent_id, job_id, project_id, workspace_id,
-                run_type, output_name, artifact_type, file_name, file_path,
+                id, run_id, plan_id, agent_id, job_id, job_assignment_id, job_run_id,
+                project_id, workspace_id, run_type, output_name, artifact_type, file_name, file_path,
                 content_json, created_at
             )
-            select id, run_id, plan_id, agent_id, job_id, project_id, workspace_id,
+            select id, run_id, plan_id, agent_id, job_id, null, null, project_id, workspace_id,
                 run_type, output_name, artifact_type, file_name, file_path,
                 content_json, created_at
             from run_output_artifacts

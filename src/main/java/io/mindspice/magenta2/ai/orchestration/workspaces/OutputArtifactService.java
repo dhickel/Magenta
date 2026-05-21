@@ -478,6 +478,8 @@ public class OutputArtifactService {
             planId,
             resolvedContext.agentId(),
             resolvedContext.jobId(),
+            resolvedContext.jobAssignmentId(),
+            resolvedContext.jobRunId(),
             resolvedContext.projectId(),
             resolvedContext.workspaceId(),
             resolvedContext.runType(),

@@ -407,12 +407,20 @@ public class OrchestrationRunnerService {
         String jobId = StringUtils.hasText(assignment.jobId()) ? assignment.jobId() : text(assignment.input().get("jobId"), null);
         JobDefinition job = jobService.getDefinition(jobId);
         jobService.updateDefinitionStatus(job.id(), "RUNNING");
-        JobRun jobRun = jobService.markRunning(jobService.startRun(job.id()).id());
+        String projectId = resolveProjectId(assignment);
+        JobRun jobRun = resumeOrStartJobRun(assignment, job, projectId);
         List<JobWorkItem> items = job.items();
         Map<String, Object> outputs = new LinkedHashMap<>(assignment.output());
         Map<String, Object> evidence = new LinkedHashMap<>(assignment.evidence());
+        WorkAssignment current = checkpointed(assignment, assignment.currentItemIndex(), mergeCheckpoint(assignment.checkpoint(), Map.of(
+            "jobId", job.id(),
+            "jobRunId", jobRun.id(),
+            "jobAssignmentId", jobRun.jobAssignmentId(),
+            "jobWorkspacePath", nullableText(jobRun.workspacePath()),
+            "jobOutputDir", nullableText(jobRun.outputDir()),
+            "workspaceId", nullableText(jobRun.workspaceId())
+        )), outputs, evidence);
         int start = Math.max(assignment.currentItemIndex(), integer(assignment.checkpoint().get("nextItemIndex"), 0));
-        WorkAssignment current = assignment;
         for (int i = start; i < items.size(); i++) {
             current = assignmentService.get(current.id());
             if (current.status() == OrchestrationStatus.INTERRUPTED) {
@@ -424,7 +432,7 @@ public class OrchestrationRunnerService {
             }
             JobWorkItem item = items.get(i);
             jobRun = jobService.updateWorkItemRun(jobRun.id(), item.key(), "RUNNING", null, Map.of(), null);
-            JobItemResult itemResult = runJobItem(current, assignment, item);
+            JobItemResult itemResult = runJobItem(current, assignment, item, jobRun.id());
             outputs.put(item.key(), itemResult.output());
             evidence.put(item.key(), itemResult.evidence());
             if (!itemResult.succeeded()) {
@@ -469,7 +477,19 @@ public class OrchestrationRunnerService {
         return complete(current, outputs, evidence);
     }
 
-    private JobItemResult runJobItem(WorkAssignment assignment, WorkAssignment current, JobWorkItem item) {
+    private JobRun resumeOrStartJobRun(WorkAssignment assignment, JobDefinition job, String projectId) {
+        String existingRunId = text(assignment.checkpoint().get("jobRunId"), null);
+        if (StringUtils.hasText(existingRunId)) {
+            JobRun existing = jobService.getRun(existingRunId);
+            return existing.status() == JobRunStatus.QUEUED
+                ? jobService.markRunning(existing.id())
+                : existing;
+        }
+        return jobService.markRunning(jobService.startRun(
+            job.id(), assignment.agentId(), projectId, assignment.id()).id());
+    }
+
+    private JobItemResult runJobItem(WorkAssignment assignment, WorkAssignment current, JobWorkItem item, String jobRunId) {
         try {
             JobItemOutput output = switch (item.type()) {
                 case PLAN -> {
@@ -479,7 +499,7 @@ public class OrchestrationRunnerService {
                     TaskExecution taskExecution = runTaskThroughModel(item.planId(), item.inputBindings(), assignment,
                         assignmentService.resolveModel(current, item));
                     TaskRun run = taskExecution.run();
-                    backfillTaskRunAttribution(run.id(), assignment, "JOB_PLAN_ITEM");
+                    backfillTaskRunAttribution(run.id(), assignment, "JOB_PLAN_ITEM", jobRunId);
                     yield new JobItemOutput(run.id(), mergeConversationOutput(
                         Map.of("planRunId", run.id(), "outputValues", run.outputValues()),
                         taskExecution.conversationId()));
@@ -494,7 +514,7 @@ public class OrchestrationRunnerService {
                     if (run.status() != WorkflowRunStatus.COMPLETED) {
                         throw new IllegalStateException("Workflow job item failed: " + run.errorText());
                     }
-                    backfillWorkflowRunAttribution(run, assignment, "JOB_WORKFLOW_ITEM");
+                    backfillWorkflowRunAttribution(run, assignment, "JOB_WORKFLOW_ITEM", jobRunId);
                     WorkAssignment latest = assignmentService.get(assignment.id());
                     yield new JobItemOutput(run.id(), mergeConversationOutput(
                         Map.of("workflowRunId", run.id(), "finalOutputs", finalOutputs(run)),
@@ -709,22 +729,34 @@ public class OrchestrationRunnerService {
         return StringUtils.hasText(text) ? text : fallback;
     }
 
+    private String nullableText(String value) {
+        return StringUtils.hasText(value) ? value : "";
+    }
+
     private Duration secondsOrDefault(long seconds, Duration fallback) {
         return seconds > 0 ? Duration.ofSeconds(seconds) : fallback;
     }
 
     private void backfillTaskRunAttribution(String taskRunId, WorkAssignment assignment, String runType) {
+        backfillTaskRunAttribution(taskRunId, assignment, runType, null);
+    }
+
+    private void backfillTaskRunAttribution(String taskRunId, WorkAssignment assignment, String runType, String jobRunId) {
         if (outputArtifactService == null || !StringUtils.hasText(taskRunId)) {
             return;
         }
-        outputArtifactService.backfillAttribution(taskRunId, outputContextFor(assignment, runType));
+        outputArtifactService.backfillAttribution(taskRunId, outputContextFor(assignment, runType, jobRunId));
     }
 
     private void backfillWorkflowRunAttribution(WorkflowRun workflowRun, WorkAssignment assignment, String runType) {
+        backfillWorkflowRunAttribution(workflowRun, assignment, runType, null);
+    }
+
+    private void backfillWorkflowRunAttribution(WorkflowRun workflowRun, WorkAssignment assignment, String runType, String jobRunId) {
         if (outputArtifactService == null || workflowRun == null) {
             return;
         }
-        OutputArtifactContext context = outputContextFor(assignment, runType);
+        OutputArtifactContext context = outputContextFor(assignment, runType, jobRunId);
         outputArtifactService.backfillAttribution(workflowRun.id(), context);
         for (WorkflowNodeRun nodeRun : workflowRun.nodeRuns()) {
             Object taskRunId = nodeRun.outputValues().get("taskRunId");
@@ -746,6 +778,10 @@ public class OrchestrationRunnerService {
     }
 
     private OutputArtifactContext outputContextFor(WorkAssignment assignment, String runType) {
+        return outputContextFor(assignment, runType, null);
+    }
+
+    private OutputArtifactContext outputContextFor(WorkAssignment assignment, String runType, String jobRunId) {
         String projectId = text(assignment.input().get("projectId"), null);
         String jobId = assignment.jobId();
         if (!StringUtils.hasText(jobId)) {
@@ -761,6 +797,8 @@ public class OrchestrationRunnerService {
         return new OutputArtifactContext(
             assignment.agentId(),
             jobId,
+            StringUtils.hasText(jobId) ? assignment.id() : null,
+            jobRunId,
             projectId,
             assignment.workspaceId(),
             runType

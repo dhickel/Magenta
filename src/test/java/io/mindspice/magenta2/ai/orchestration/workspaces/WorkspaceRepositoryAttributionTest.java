@@ -35,7 +35,8 @@ class WorkspaceRepositoryAttributionTest {
         Set<String> columns = jdbc.queryForList("select name from pragma_table_info('run_output_artifacts')", String.class)
             .stream()
             .collect(Collectors.toSet());
-        assertThat(columns).contains("agent_id", "job_id", "project_id", "workspace_id", "run_type");
+        assertThat(columns).contains(
+            "agent_id", "job_id", "job_assignment_id", "job_run_id", "project_id", "workspace_id", "run_type");
     }
 
     @Test
@@ -47,6 +48,8 @@ class WorkspaceRepositoryAttributionTest {
             "plan-1",
             "agent-1",
             "job-1",
+            "assignment-1",
+            "job-run-1",
             "project-1",
             "workspace-1",
             "TASK_RUN",
@@ -86,6 +89,8 @@ class WorkspaceRepositoryAttributionTest {
             null,
             null,
             null,
+            null,
+            null,
             "summary",
             "text",
             "summary.txt",
@@ -96,13 +101,15 @@ class WorkspaceRepositoryAttributionTest {
 
         int updated = repository.backfillArtifactAttribution(
             "run-1",
-            new OutputArtifactContext("agent-1", "job-1", "project-1", "workspace-1", "TASK_RUN")
+            new OutputArtifactContext("agent-1", "job-1", "assignment-1", "job-run-1", "project-1", "workspace-1", "TASK_RUN")
         );
         assertThat(updated).isEqualTo(1);
 
         RunOutputArtifact artifact = repository.findArtifactsByRunId("run-1").get(0);
         assertThat(artifact.agentId()).isEqualTo("agent-1");
         assertThat(artifact.jobId()).isEqualTo("job-1");
+        assertThat(artifact.jobAssignmentId()).isEqualTo("assignment-1");
+        assertThat(artifact.jobRunId()).isEqualTo("job-run-1");
         assertThat(artifact.projectId()).isEqualTo("project-1");
         assertThat(artifact.workspaceId()).isEqualTo("workspace-1");
         assertThat(artifact.runType()).isEqualTo("TASK_RUN");

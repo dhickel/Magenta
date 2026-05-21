@@ -3480,6 +3480,7 @@ public class OrchestrationController {
                 nn(params.get("ownerAgentId")),
                 nn(params.get("projectId")),
                 null, // workspaceId - auto-managed
+                "true".equalsIgnoreCase(params.get("persistentWorkspaceEnabled")),
                 "DRAFT",
                 title,
                 nn(params.get("summary")),
@@ -3510,6 +3511,9 @@ public class OrchestrationController {
                 params.containsKey("ownerAgentId") ? nn(params.get("ownerAgentId")) : current.ownerAgentId(),
                 params.containsKey("projectId") ? nn(params.get("projectId")) : current.projectId(),
                 current.workspaceId(),
+                params.containsKey("persistentWorkspaceEnabled")
+                    ? "true".equalsIgnoreCase(params.get("persistentWorkspaceEnabled"))
+                    : current.persistentWorkspaceEnabled(),
                 params.containsKey("status") ? nn(params.get("status")) : current.status(),
                 params.containsKey("title") ? nn(params.get("title")) : current.title(),
                 params.containsKey("summary") ? nn(params.get("summary")) : current.summary(),

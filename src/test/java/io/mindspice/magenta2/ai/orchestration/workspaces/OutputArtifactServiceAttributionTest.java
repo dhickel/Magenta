@@ -41,12 +41,16 @@ class OutputArtifactServiceAttributionTest {
             PlanFieldType.STRING,
             "done",
             outputDir,
-            new OutputArtifactContext("agent-1", "job-1", "project-1", "workspace-1", "TASK_RUN")
+            new OutputArtifactContext(
+                "agent-1", "job-1", "assignment-1", "job-run-1",
+                "project-1", "workspace-1", "TASK_RUN")
         );
 
         RunOutputArtifact artifact = repository.findArtifactsByRunId("run-1").get(0);
         assertThat(artifact.agentId()).isEqualTo("agent-1");
         assertThat(artifact.jobId()).isEqualTo("job-1");
+        assertThat(artifact.jobAssignmentId()).isEqualTo("assignment-1");
+        assertThat(artifact.jobRunId()).isEqualTo("job-run-1");
         assertThat(artifact.projectId()).isEqualTo("project-1");
         assertThat(artifact.workspaceId()).isEqualTo("workspace-1");
         assertThat(artifact.runType()).isEqualTo("TASK_RUN");
@@ -62,6 +66,43 @@ class OutputArtifactServiceAttributionTest {
         assertThat(service.query(OutputArtifactQuery.of(null, null, null, "workspace-1", null, null, null, 10)))
             .extracting(RunOutputArtifact::id)
             .containsExactly(artifact.id());
+    }
+
+    @Test
+    void projectScopedJobOutputUsesAssignmentPathAndJobRunAttribution() throws Exception {
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
+        Path dataRoot = Files.createDirectories(tempDir.resolve("project-job-output"));
+        WorkspaceRepository repository = new WorkspaceRepository(jdbc);
+        WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
+            new AiConfig(null, null, null, null, dataRoot, null, null)
+        );
+        OutputArtifactService service = new OutputArtifactService(
+            repository,
+            directoryService,
+            new ObjectMapper().findAndRegisterModules()
+        );
+        Path projectRoot = directoryService.projectWorkspaceRoot("project-1");
+        Path outputDir = directoryService.jobAssignmentOutput(projectRoot, "assignment-1", "job-run-1");
+
+        service.materialize(
+            "job-run-1",
+            "job-1",
+            "summary",
+            PlanFieldType.STRING,
+            "done",
+            outputDir,
+            new OutputArtifactContext(
+                "agent-1", "job-1", "assignment-1", "job-run-1",
+                "project-1", "workspace-1", "JOB_RUN")
+        );
+
+        RunOutputArtifact artifact = repository.findArtifactsByRunId("job-run-1").getFirst();
+        assertThat(Path.of(artifact.filePath()))
+            .startsWith(projectRoot.resolve("outputs/jobs/assignment-1/job-run-1"));
+        assertThat(artifact.jobId()).isEqualTo("job-1");
+        assertThat(artifact.jobAssignmentId()).isEqualTo("assignment-1");
+        assertThat(artifact.jobRunId()).isEqualTo("job-run-1");
+        assertThat(artifact.projectId()).isEqualTo("project-1");
     }
 
     // ════════════════════════════════════════════════════════════════

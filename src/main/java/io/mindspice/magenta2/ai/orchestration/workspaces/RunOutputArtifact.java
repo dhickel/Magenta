@@ -12,6 +12,8 @@ public record RunOutputArtifact(
     String planId,
     String agentId,
     String jobId,
+    String jobAssignmentId,
+    String jobRunId,
     String projectId,
     String workspaceId,
     String runType,
@@ -22,4 +24,23 @@ public record RunOutputArtifact(
     String contentJson,
     Instant createdAt
 ) {
+    public RunOutputArtifact(
+        String id,
+        String runId,
+        String planId,
+        String agentId,
+        String jobId,
+        String projectId,
+        String workspaceId,
+        String runType,
+        String outputName,
+        String artifactType,
+        String fileName,
+        String filePath,
+        String contentJson,
+        Instant createdAt
+    ) {
+        this(id, runId, planId, agentId, jobId, null, null, projectId, workspaceId, runType,
+            outputName, artifactType, fileName, filePath, contentJson, createdAt);
+    }
 }

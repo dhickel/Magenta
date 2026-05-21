@@ -38,6 +38,7 @@ All review, planning, implementation, validation, remediation, documentation, an
 - Created Phase 03 commit: `4f59cb5 feat: route task outputs through effective workspace`.
 - Created Phase 04 commit: `d1cc9f3 feat: route workflow outputs through effective workspace`.
 - Created Phase 05 commit: `f2aaa1d feat: make project context explicit for submissions`.
+- Phase 06 implementation and validation completed locally; awaiting main orchestrator commit.
 
 ## Validation Results
 
@@ -69,6 +70,12 @@ All review, planning, implementation, validation, remediation, documentation, an
   - `mvn test -Dtest=ProjectServiceTest,ProjectRepositoryTest,WorkspaceRepositorySchemaMigrationTest,PublicApiRouteBindingTest,OrchestrationControllerTest,OperationalUiContractControllerTest,AgentOrchestrationControllerTest,PublicRunSubmissionControllerTest,TaskStreamSupportTest,PlanServiceTest,WorkflowRunnerTest,OrchestrationRuntimeTest` -> PASS, 256 tests.
   - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` -> application started successfully on ephemeral port `34423`; command exited `124` because `timeout` stopped the running server after startup.
   - Playwright UI re-validation against `http://localhost:18080` -> PASS. Ownerless project creation refreshed the list; `/projects` uses shared workspace/membership copy and `Initial Agent`; plan submit still shows Project and Workspace fields.
+- Phase 06 validation passed:
+  - `git diff --check` for Phase 06 files -> PASS.
+  - `mvn test -Dtest=JobServiceTest,JobRepositoryTest,OrchestrationRuntimeTest,WorkspacePathSegmentValidationTest,WorkspaceRepositorySchemaMigrationTest,OutputArtifactServiceAttributionTest` -> PASS, 87 tests.
+  - `mvn test -Dtest=PublicApiRouteBindingTest,OrchestrationControllerTest,OperationalUiContractControllerTest,PublicRunSubmissionControllerTest` -> PASS, 114 tests.
+  - `mvn test -Dtest=JobServiceTest,JobRepositoryTest,OrchestrationRuntimeTest,WorkspacePathSegmentValidationTest,WorkspaceRepositorySchemaMigrationTest,OutputArtifactServiceAttributionTest,PlanServiceTest,WorkflowRunnerTest,PublicApiRouteBindingTest` -> PASS, 144 tests.
+  - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` -> application started successfully on ephemeral port `39931`; command exited `124` because `timeout` stopped the running server after startup.
 
 ## Remediation Notes
 
@@ -107,6 +114,7 @@ All review, planning, implementation, validation, remediation, documentation, an
 - Phase 05 initial Playwright validation found project UI copy/list-refresh blockers; remediation completed.
 - Phase 05 Playwright re-validation completed 2026-05-21: project UI and plan submit checks passed. Phase 05 is ready for commit.
 - Phase 05 committed as `f2aaa1d feat: make project context explicit for submissions`.
+- Phase 06 validation agent completed 2026-05-21: all requested validation commands passed. Phase 06 is ready for commit.
 
 ## Phase 03 Implementation Notes - 2026-05-21
 
@@ -357,3 +365,69 @@ Blockers:
 Ready state:
 
 - Phase 05 UI remediation is ready for focused Playwright re-validation of `/projects` ownerless create/list refresh and project copy/label semantics.
+
+## Phase 06 Implementation Notes - 2026-05-21
+
+Changed files:
+
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/runtime/JobDefinition.java`
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/runtime/JobRepository.java`
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/runtime/JobRun.java`
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/runtime/JobService.java`
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/runtime/OrchestrationRunnerService.java`
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/WorkspaceDirectoryService.java`
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/OutputArtifactContext.java`
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/OutputArtifactService.java`
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/RunOutputArtifact.java`
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/WorkspaceRepository.java`
+- `src/main/java/io/mindspice/magenta2/api/web/JobController.java`
+- `src/main/java/io/mindspice/magenta2/api/web/OrchestrationController.java`
+- `src/main/resources/schema.sql`
+- Focused tests under `OrchestrationRuntimeTest`, job repository/service tests, workspace path/schema/attribution tests, and API compatibility tests.
+
+Implemented behavior:
+
+- Added additive `JobDefinition.persistentWorkspaceEnabled`; default/null remains false for compatibility.
+- Added `job_definitions.persistent_workspace_enabled` migration/default and persisted the policy through repository saves.
+- Job runs now persist `jobAssignmentId` and effective `workspaceId` where available.
+- `JobService.startRun(jobId, agentId, projectId, assignmentId)` resolves the effective durable workspace, always allocates job output under `outputs/jobs/<assignmentId-or-runId>/<jobRunId>/`, and allocates a persistent job workspace under `jobs/<assignmentId-or-runId>/` only when explicitly enabled.
+- Assignment-backed job runs pass the work assignment id as the isolation key, so two assignments of the same definition cannot share a persistent job workspace by default.
+- Project-scoped jobs use project effective durable workspace; agent-scoped jobs use agent effective durable workspace.
+- Job assignment execution reuses a checkpointed `jobRunId` on resume instead of allocating a second job run for the same assignment.
+- Output artifact context/rows now support additive `jobAssignmentId` and `jobRunId` attribution while preserving older constructors and query compatibility.
+- Job output lookup includes the job run id as well as child item run ids.
+- Legacy `OrchestrationJobService` / `orchestration_jobs` was left intact as the compatibility surface; this phase did not delete or migrate it because there is still no proof all callers have moved to `JobService` / `job_definitions`.
+
+Coverage added or updated:
+
+- Default job runs do not allocate persistent workspaces.
+- Opt-in persistent job workspaces are assignment-isolated.
+- Project-scoped job runs allocate persistent workspace and outputs under the project durable workspace.
+- Runtime assignment coverage verifies two assignments of the same project-scoped job definition use separate persistent workspace/output paths.
+- Output artifact coverage verifies project-scoped job output path and job assignment/run attribution.
+- Schema migration coverage includes the new job policy/run columns and output artifact attribution columns.
+- API/controller compatibility tests compile and pass with additive record fields.
+
+Commands and results:
+
+- Initial focused compile/test slice failed on record constructor compatibility; added overloads for additive `JobDefinition` and `RunOutputArtifact` fields.
+- `mvn test -Dtest=JobServiceTest,JobRepositoryTest,WorkspacePathSegmentValidationTest,OutputArtifactServiceAttributionTest,WorkspaceRepositoryAttributionTest -DskipTests=false` -> PASS, 48 tests.
+- `mvn test -Dtest=JobServiceTest,JobRepositoryTest,OrchestrationRuntimeTest,WorkspacePathSegmentValidationTest,WorkspaceRepositorySchemaMigrationTest,OutputArtifactServiceAttributionTest` -> PASS, 87 tests.
+- `mvn test -Dtest=PublicApiRouteBindingTest,OrchestrationControllerTest,OperationalUiContractControllerTest,PublicRunSubmissionControllerTest` -> PASS, 114 tests.
+- `mvn test -Dtest=JobServiceTest,JobRepositoryTest,OrchestrationRuntimeTest,WorkspacePathSegmentValidationTest,WorkspaceRepositorySchemaMigrationTest,OutputArtifactServiceAttributionTest,PlanServiceTest,WorkflowRunnerTest,PublicApiRouteBindingTest` -> PASS, 144 tests.
+- `git diff --check` -> PASS.
+- `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` -> application started successfully on port `35907`; command exited `124` because `timeout` stopped the running server.
+
+Blockers:
+
+- None.
+
+Deferred work:
+
+- Job UI has a backend-compatible `persistentWorkspaceEnabled` field but no dedicated UX pass was done in this phase.
+- Legacy `OrchestrationJobService` / `orchestration_jobs` remains for a later proven migration/deprecation plan.
+- Docs/changelog outside the plan directory were intentionally not updated because this phase agent was instructed to stay inside the plan-state files and not commit.
+
+Ready state:
+
+- Phase 06 implementation is ready for main orchestrator validation and commit. No commit was created by this implementation agent.

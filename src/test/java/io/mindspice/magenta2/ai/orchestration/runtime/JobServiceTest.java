@@ -83,16 +83,46 @@ class JobServiceTest {
     }
 
     @Test
-    void startRunAllocatesWorkspaceAndOutputDir() {
+    void startRunDefaultsToNoPersistentWorkspaceAndWritesJobOutputUnderEffectiveWorkspace() {
         JobDefinition def = jobService.saveDefinition(
             jobDef(null, "Workspace Job", List.of(planItem("s1", "plan-1", 0)))
         );
 
         JobRun run = jobService.startRun(def.id());
-        assertThat(run.workspacePath()).contains(def.id());
-        assertThat(run.workspacePath()).contains("workspace");
-        assertThat(run.outputDir()).contains(def.id());
-        assertThat(run.outputDir()).contains("outputs");
+        assertThat(run.workspacePath()).isNull();
+        assertThat(run.outputDir()).contains("agents/system/workspace/outputs/jobs");
+        assertThat(run.outputDir()).contains(run.jobAssignmentId());
+        assertThat(run.outputDir()).contains(run.id());
+    }
+
+    @Test
+    void persistentJobWorkspaceIsExplicitAndAssignmentIsolated() {
+        JobDefinition def = jobService.saveDefinition(new JobDefinition(
+            null, "agent-1", null, null, true, "Persistent Job", "Summary",
+            List.of(planItem("s1", "plan-1", 0)), null, null, null, null, null
+        ));
+
+        JobRun first = jobService.startRun(def.id(), "agent-1", null, "assignment-a");
+        JobRun second = jobService.startRun(def.id(), "agent-1", null, "assignment-b");
+
+        assertThat(first.workspacePath()).contains("agents/agent-1/workspace/jobs/assignment-a");
+        assertThat(second.workspacePath()).contains("agents/agent-1/workspace/jobs/assignment-b");
+        assertThat(first.workspacePath()).isNotEqualTo(second.workspacePath());
+        assertThat(first.outputDir()).contains("agents/agent-1/workspace/outputs/jobs/assignment-a");
+        assertThat(second.outputDir()).contains("agents/agent-1/workspace/outputs/jobs/assignment-b");
+    }
+
+    @Test
+    void projectScopedJobUsesProjectEffectiveDurableWorkspace() {
+        JobDefinition def = jobService.saveDefinition(new JobDefinition(
+            null, "agent-1", "project-1", null, true, "Project Job", "Summary",
+            List.of(planItem("s1", "plan-1", 0)), null, null, null, null, null
+        ));
+
+        JobRun run = jobService.startRun(def.id(), "agent-1", "project-1", "assignment-project");
+
+        assertThat(run.workspacePath()).contains("projects/project-1/workspace/jobs/assignment-project");
+        assertThat(run.outputDir()).contains("projects/project-1/workspace/outputs/jobs/assignment-project");
     }
 
     @Test

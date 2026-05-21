@@ -88,7 +88,7 @@ public class JobController {
         try {
             return jobService.saveDefinition(new JobDefinition(
                 jobId, definition.ownerAgentId(), definition.projectId(),
-                definition.workspaceId(), definition.status(),
+                definition.workspaceId(), definition.persistentWorkspaceEnabled(), definition.status(),
                 definition.title(), definition.summary(),
                 definition.items(), definition.promptProfile(),
                 definition.model(), definition.settingsOverrideJson(),

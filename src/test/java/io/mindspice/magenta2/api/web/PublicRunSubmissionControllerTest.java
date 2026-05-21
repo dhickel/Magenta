@@ -368,6 +368,7 @@ class PublicRunSubmissionControllerTest {
                     "agent-1",
                     null,
                     "workspace-1",
+                    false,
                     "DRAFT",
                     "Job",
                     null,

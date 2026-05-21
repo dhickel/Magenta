@@ -188,6 +188,8 @@ class WorkspacePathSegmentValidationTest {
             .isEqualTo(root.resolve("outputs/workflows/workflow-1/run-2"));
         assertThat(service.jobAssignmentOutput(root, "assignment-1", "run-3"))
             .isEqualTo(root.resolve("outputs/jobs/assignment-1/run-3"));
+        assertThat(service.jobAssignmentWorkspace(root, "assignment-1"))
+            .isEqualTo(root.resolve("jobs/assignment-1"));
 
         assertThatThrownBy(() -> service.taskOutput(root, "tasks/escape", "run-1"))
             .isInstanceOf(IllegalArgumentException.class)
@@ -198,6 +200,9 @@ class WorkspacePathSegmentValidationTest {
         assertThatThrownBy(() -> service.jobAssignmentOutput(root, "assignment-1", "run\\bad"))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("runId");
+        assertThatThrownBy(() -> service.jobAssignmentWorkspace(root, "../assignment"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("jobAssignmentId");
     }
 
     private WorkspaceService workspaceService() throws Exception {

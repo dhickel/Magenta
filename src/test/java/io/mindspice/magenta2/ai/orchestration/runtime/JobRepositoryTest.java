@@ -31,8 +31,21 @@ class JobRepositoryTest {
 
         JobDefinition found = repo.findDefinition("job-1").orElseThrow();
         assertThat(found.title()).isEqualTo("Test Job");
+        assertThat(found.persistentWorkspaceEnabled()).isFalse();
         assertThat(found.items()).hasSize(1);
         assertThat(found.items().get(0).key()).isEqualTo("step1");
+    }
+
+    @Test
+    void savesPersistentWorkspacePolicyOnDefinition() {
+        JobRepository repo = repository();
+        repo.saveDefinition(new JobDefinition(
+            "job-persistent", "agent-1", null, null, true, "Persistent Job", "Summary",
+            List.of(), null, null, null, Instant.now(), Instant.now()
+        ));
+
+        JobDefinition found = repo.findDefinition("job-persistent").orElseThrow();
+        assertThat(found.persistentWorkspaceEnabled()).isTrue();
     }
 
     @Test
@@ -51,7 +64,7 @@ class JobRepositoryTest {
         JobRepository repo = repository();
         repo.saveDefinition(jobDef("job-2", "Run Job", List.of(planItem("s1", "plan-3", 0))));
 
-        JobRun run = new JobRun("run-1", "job-2", JobRunStatus.QUEUED,
+        JobRun run = new JobRun("run-1", "job-2", "assignment-1", "workspace-1", JobRunStatus.QUEUED,
             List.of(), "/ws/job-2", "/out/job-2", null, null,
             Instant.now(), Instant.now(), null, null);
         repo.saveRun(run);
@@ -59,6 +72,8 @@ class JobRepositoryTest {
         JobRun found = repo.findRun("run-1").orElseThrow();
         assertThat(found.status()).isEqualTo(JobRunStatus.QUEUED);
         assertThat(found.jobId()).isEqualTo("job-2");
+        assertThat(found.jobAssignmentId()).isEqualTo("assignment-1");
+        assertThat(found.workspaceId()).isEqualTo("workspace-1");
     }
 
     @Test

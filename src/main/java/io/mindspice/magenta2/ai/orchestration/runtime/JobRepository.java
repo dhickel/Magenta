@@ -76,15 +76,16 @@ public class JobRepository {
         jdbcTemplate.update(
             """
                 insert into job_definitions (
-                    id, owner_agent_id, project_id, workspace_id, status,
+                    id, owner_agent_id, project_id, workspace_id, persistent_workspace_enabled, status,
                     title, summary, items_json, prompt_profile,
                     model, settings_override_json, created_at, updated_at
                 )
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict(id) do update set
                     owner_agent_id = excluded.owner_agent_id,
                     project_id = excluded.project_id,
                     workspace_id = excluded.workspace_id,
+                    persistent_workspace_enabled = excluded.persistent_workspace_enabled,
                     status = excluded.status,
                     title = excluded.title,
                     summary = excluded.summary,
@@ -95,6 +96,7 @@ public class JobRepository {
                     updated_at = excluded.updated_at
                 """,
             def.id(), def.ownerAgentId(), def.projectId(), def.workspaceId(),
+            Boolean.TRUE.equals(def.persistentWorkspaceEnabled()) ? 1 : 0,
             def.status(), def.title(), def.summary(),
             json(def.items()), def.promptProfile(),
             def.model(), def.settingsOverrideJson(),
@@ -153,12 +155,14 @@ public class JobRepository {
         jdbcTemplate.update(
             """
                 insert into job_runs (
-                    id, job_id, status, work_item_runs_json,
+                    id, job_id, job_assignment_id, workspace_id, status, work_item_runs_json,
                     workspace_path, output_dir, final_message, error_text,
                     created_at, updated_at, started_at, completed_at
                 )
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict(id) do update set
+                    job_assignment_id = excluded.job_assignment_id,
+                    workspace_id = excluded.workspace_id,
                     status = excluded.status,
                     work_item_runs_json = excluded.work_item_runs_json,
                     workspace_path = excluded.workspace_path,
@@ -169,7 +173,7 @@ public class JobRepository {
                     started_at = excluded.started_at,
                     completed_at = excluded.completed_at
                 """,
-            run.id(), run.jobId(), run.status().name(),
+            run.id(), run.jobId(), run.jobAssignmentId(), run.workspaceId(), run.status().name(),
             json(run.workItemRuns()),
             run.workspacePath(), run.outputDir(),
             run.finalMessage(), run.errorText(),
@@ -238,6 +242,7 @@ public class JobRepository {
             getNullable(rs, "owner_agent_id"),
             getNullable(rs, "project_id"),
             getNullable(rs, "workspace_id"),
+            getBoolean(rs, "persistent_workspace_enabled"),
             getNullable(rs, "status"),
             rs.getString("title"),
             rs.getString("summary"),
@@ -254,6 +259,8 @@ public class JobRepository {
         return new JobRun(
             rs.getString("id"),
             rs.getString("job_id"),
+            getNullable(rs, "job_assignment_id"),
+            getNullable(rs, "workspace_id"),
             JobRunStatus.valueOf(rs.getString("status")),
             read(rs.getString("work_item_runs_json"), ITEM_RUN_LIST, List.of()),
             rs.getString("workspace_path"),
@@ -315,6 +322,14 @@ public class JobRepository {
         }
     }
 
+    private boolean getBoolean(ResultSet rs, String column) throws SQLException {
+        try {
+            return rs.getInt(column) != 0;
+        } catch (SQLException ignored) {
+            return false;
+        }
+    }
+
     // ── Schema bootstrapping ──
 
     private void ensureTables() {
@@ -324,6 +339,7 @@ public class JobRepository {
                 owner_agent_id text,
                 project_id text,
                 workspace_id text,
+                persistent_workspace_enabled integer not null default 0,
                 status text,
                 title text not null,
                 summary text,
@@ -348,6 +364,9 @@ public class JobRepository {
         if (!definitionColumns.contains("workspace_id")) {
             jdbcTemplate.execute("alter table job_definitions add column workspace_id text");
         }
+        if (!definitionColumns.contains("persistent_workspace_enabled")) {
+            jdbcTemplate.execute("alter table job_definitions add column persistent_workspace_enabled integer not null default 0");
+        }
         if (!definitionColumns.contains("status")) {
             jdbcTemplate.execute("alter table job_definitions add column status text");
         }
@@ -355,6 +374,8 @@ public class JobRepository {
             create table if not exists job_runs (
                 id text primary key,
                 job_id text not null,
+                job_assignment_id text,
+                workspace_id text,
                 status text not null,
                 work_item_runs_json text not null,
                 workspace_path text,
@@ -368,6 +389,16 @@ public class JobRepository {
                 foreign key (job_id) references job_definitions(id) on delete cascade
             )
             """);
+        List<String> runColumns = jdbcTemplate.queryForList(
+            "select name from pragma_table_info('job_runs')",
+            String.class
+        );
+        if (!runColumns.contains("job_assignment_id")) {
+            jdbcTemplate.execute("alter table job_runs add column job_assignment_id text");
+        }
+        if (!runColumns.contains("workspace_id")) {
+            jdbcTemplate.execute("alter table job_runs add column workspace_id text");
+        }
         jdbcTemplate.execute("""
             create table if not exists job_recurrences (
                 id text primary key,

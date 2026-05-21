@@ -5,7 +5,8 @@ import java.util.List;
 
 /**
  * Defines a durable job that coordinates multiple work items (plans or workflows).
- * Jobs own a persistent workspace and route child outputs into the job output directory.
+ * Jobs can opt into a persistent per-assignment workspace and route child
+ * outputs into the effective durable workspace.
  *
  * @param id              unique identifier
  * @param title           human-readable title
@@ -22,6 +23,7 @@ public record JobDefinition(
     String ownerAgentId,
     String projectId,
     String workspaceId,
+    Boolean persistentWorkspaceEnabled,
     String status,
     String title,
     String summary,
@@ -34,6 +36,10 @@ public record JobDefinition(
 ) {
     public JobDefinition(
         String id,
+        String ownerAgentId,
+        String projectId,
+        String workspaceId,
+        String status,
         String title,
         String summary,
         List<JobWorkItem> items,
@@ -43,7 +49,41 @@ public record JobDefinition(
         Instant createdAt,
         Instant updatedAt
     ) {
-        this(id, null, null, null, null, title, summary, items,
+        this(id, ownerAgentId, projectId, workspaceId, false, status, title, summary, items,
+            promptProfile, model, settingsOverrideJson, createdAt, updatedAt);
+    }
+
+    public JobDefinition(
+        String id,
+        String ownerAgentId,
+        String projectId,
+        String workspaceId,
+        Boolean persistentWorkspaceEnabled,
+        String title,
+        String summary,
+        List<JobWorkItem> items,
+        String promptProfile,
+        String model,
+        String settingsOverrideJson,
+        Instant createdAt,
+        Instant updatedAt
+    ) {
+        this(id, ownerAgentId, projectId, workspaceId, persistentWorkspaceEnabled, null, title, summary, items,
+            promptProfile, model, settingsOverrideJson, createdAt, updatedAt);
+    }
+
+    public JobDefinition(
+        String id,
+        String title,
+        String summary,
+        List<JobWorkItem> items,
+        String promptProfile,
+        String model,
+        String settingsOverrideJson,
+        Instant createdAt,
+        Instant updatedAt
+    ) {
+        this(id, null, null, null, false, null, title, summary, items,
             promptProfile, model, settingsOverrideJson, createdAt, updatedAt);
     }
 }
