@@ -44,6 +44,8 @@
 - Independent Phase 2 validation passed: `mvn -Dtest=RootRelativePathServiceTest test` (10 tests). Phase 2 may proceed to Phase 3.
 - Phase 3 focused tests passed: `mvn -Dtest=OutputArtifactServiceAttributionTest,OutputArtifactPathSemanticsTest,OutputControllerTest test` (25 tests) plus a bounded isolated-root startup smoke from the implementation worker.
 - Independent Phase 3 validation passed: `mvn -Dtest=OutputArtifactServiceAttributionTest,OutputArtifactPathSemanticsTest,OutputControllerTest test` (25 tests). Phase 3 may proceed to Phase 4.
+- Phase 4 focused tests passed: `mvn -Dtest=PlanServiceTest,WorkflowRunnerTest,JobServiceTest test` (75 tests) plus bounded startup smoke with isolated `/tmp` root from the implementation worker.
+- Independent Phase 4 validation passed: `mvn -Dtest=PlanServiceTest,WorkflowRunnerTest,JobServiceTest test` (75 tests). Phase 4 may proceed to Phase 5.
 
 ## Remediation Notes
 
