@@ -35,7 +35,7 @@ All review, planning, implementation, validation, remediation, documentation, an
 - Created planning synthesis commit: `0738b4a plan: synthesize workspace file refactor phases`.
 - Created Phase 01 commit: `aee52fc test: characterize workspace file baseline`.
 - Created Phase 02 commit: `961a6c8 feat: add effective workspace resolver`.
-- Phase 03 implementation and validation completed locally; awaiting main orchestrator commit.
+- Created Phase 03 commit: `4f59cb5 feat: route task outputs through effective workspace`.
 
 ## Validation Results
 
@@ -86,6 +86,7 @@ All review, planning, implementation, validation, remediation, documentation, an
 - Phase 02 validation completed 2026-05-21: all requested validation commands passed. Phase 02 is ready for commit.
 - Phase 02 committed as `961a6c8 feat: add effective workspace resolver`.
 - Phase 03 validation agent completed 2026-05-21: all requested validation commands passed. Phase 03 is ready for commit.
+- Phase 03 committed as `4f59cb5 feat: route task outputs through effective workspace`.
 
 ## Phase 03 Implementation Notes - 2026-05-21
 

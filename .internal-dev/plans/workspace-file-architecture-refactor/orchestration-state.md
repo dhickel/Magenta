@@ -29,12 +29,13 @@ Persistent state for this long-running orchestration effort. Use this file to re
 - Committed Phase 02 as `961a6c8 feat: add effective workspace resolver`.
 - Completed Phase 03 task output routing, runtime alias, explicit publish, and loose-discovery confinement implementation locally; no commit created by the phase implementation agent.
 - Completed Phase 03 validation through a dedicated validation agent.
+- Committed Phase 03 as `4f59cb5 feat: route task outputs through effective workspace`.
 
 ## Current Work
 
 - Workspace/file architecture refactor.
-- Current gate: Phase 03 commit.
-- Phase 03 implementation and validation completed locally without a commit. Main orchestrator should commit, record the hash, then start Phase 04.
+- Current gate: Phase 04 implementation.
+- Phase 03 implementation and validation are committed. Main orchestrator should launch Phase 04 workflow execution subplan.
 
 ## Current Plan Artifacts
 
@@ -74,7 +75,7 @@ Queued review/refactor focus:
 
 ## Next Action
 
-Commit Phase 03, record the hash, then launch Phase 04 workflow execution subplan.
+Launch Phase 04 workflow execution subplan.
 
 ## Phase 03 Local Validation
 
