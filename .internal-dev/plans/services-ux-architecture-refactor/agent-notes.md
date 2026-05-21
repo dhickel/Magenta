@@ -23,6 +23,14 @@
 - Frontend/UX review completed: `.internal-dev/plans/services-ux-architecture-refactor/review-frontend-ux.md`.
 - Integration/API review completed: `.internal-dev/plans/services-ux-architecture-refactor/review-integration-api.md`.
 - Risk/testing review completed: `.internal-dev/plans/services-ux-architecture-refactor/review-risk-testing.md`.
+- Advanced plan synthesis completed:
+  - `.internal-dev/plans/services-ux-architecture-refactor/review-synthesis.md`
+  - `.internal-dev/plans/services-ux-architecture-refactor/implementation-plan.md`
+  - `.internal-dev/plans/services-ux-architecture-refactor/phase-01-service-contracts.md`
+  - `.internal-dev/plans/services-ux-architecture-refactor/phase-02-job-execution-read-model.md`
+  - `.internal-dev/plans/services-ux-architecture-refactor/phase-03-output-provenance.md`
+  - `.internal-dev/plans/services-ux-architecture-refactor/phase-04-project-job-ux.md`
+  - `.internal-dev/plans/services-ux-architecture-refactor/phase-05-validation-closeout.md`
 
 ## Validation Results
 
@@ -30,7 +38,17 @@
 
 ## Remediation Notes
 
-- Pending.
+- Planning synthesis chose conservative service-first sequencing:
+  1. assignment/service contracts and mutation policy.
+  2. job assignment/run bridge and assignment-routed job execution.
+  3. output provenance and query/display contracts.
+  4. project/job/operator UI.
+  5. validation, docs, `.internal-dev`, and final review closeout.
+- Key policy decisions captured in the plan:
+  - `projectId` selects the effective durable workspace; `workspaceId` remains compatibility metadata.
+  - all user-facing execution must enter through assignments and runner leases.
+  - active project/job destructive or execution-affecting mutations are blocked while non-terminal work references that state.
+  - output direct attribution is the primary contract; fallback remains compatibility only.
 
 ## Blockers
 
@@ -48,6 +66,7 @@
 
 - The first wave should be read-only and should identify divergence between current backend services, frontend/UX, and the project/job/workspace architecture.
 - Agents must append concise findings here before finishing.
+- Next recommended implementation phase is Phase 01: service contracts and assignment context. Do not begin UI changes until Phase 01 service/API context and mutation policy are implemented and validated.
 
 ## Review Wave Synthesis Inputs
 

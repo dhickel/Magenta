@@ -14,7 +14,14 @@ Date: 2026-05-21
   - `.internal-dev/plans/services-ux-architecture-refactor/review-frontend-ux.md`
   - `.internal-dev/plans/services-ux-architecture-refactor/review-integration-api.md`
   - `.internal-dev/plans/services-ux-architecture-refactor/review-risk-testing.md`
-- Advanced plan synthesis is next.
+- Advanced plan synthesis completed. Generated artifacts:
+  - `.internal-dev/plans/services-ux-architecture-refactor/review-synthesis.md`
+  - `.internal-dev/plans/services-ux-architecture-refactor/implementation-plan.md`
+  - `.internal-dev/plans/services-ux-architecture-refactor/phase-01-service-contracts.md`
+  - `.internal-dev/plans/services-ux-architecture-refactor/phase-02-job-execution-read-model.md`
+  - `.internal-dev/plans/services-ux-architecture-refactor/phase-03-output-provenance.md`
+  - `.internal-dev/plans/services-ux-architecture-refactor/phase-04-project-job-ux.md`
+  - `.internal-dev/plans/services-ux-architecture-refactor/phase-05-validation-closeout.md`
 
 ## Objective
 
@@ -52,6 +59,28 @@ Review and align Magenta's backend services, frontend surfaces, and integration 
 7. xhigh final architecture/code/UX review.
 8. Remediation loops if the review or validation fails.
 9. Documentation, `.internal-dev`, changelog, and final commit closeout.
+
+## Synthesized Plan Summary
+
+Implementation order is service/API first, UI last:
+
+1. Phase 01: service contracts and assignment context.
+2. Phase 02: job execution read model and assignment-routed execution.
+3. Phase 03: output provenance.
+4. Phase 04: project, job, and operator UX.
+5. Phase 05: validation and closeout.
+
+Key decisions:
+
+- `projectId` is first-class assignment state and selects the effective durable workspace.
+- `workspaceId` is retained only as compatibility metadata and is not interchangeable with `projectId`.
+- user-facing task, workflow, and job execution must route through `WorkAssignment` and runner lease semantics.
+- jobs remain hybrid abstractions: definition plus assignment plus run plus optional per-assignment persistent workspace.
+- active project/job destructive or execution-affecting mutations are blocked while non-terminal work references that state.
+- direct output artifact attribution is the primary contract; route-level fallback remains compatibility behavior only.
+- Playwright validation is mandatory for changed UI surfaces and must run in a subagent.
+
+Next recommended phase: start Phase 01 only. Do not start UI work until Phase 01 contracts, validation, mutation policy, and workspace-blocked requeue behavior are implemented.
 
 ## Commit Policy
 
