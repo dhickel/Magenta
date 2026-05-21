@@ -19,6 +19,7 @@ import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.EffectiveWorkspace;
 import io.mindspice.magenta2.ai.orchestration.workspaces.EffectiveWorkspaceResolver;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.RootRelativePathService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact;
 import io.mindspice.magenta2.ai.orchestration.workspaces.Workspace;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
@@ -50,6 +51,7 @@ public class JobService {
     private final ProjectService projectService;
     private final WorkspaceService workspaceService;
     private final OutputArtifactService outputArtifactService;
+    private final RootRelativePathService rootRelativePathService;
 
     public JobService(JobRepository jobRepository,
                       WorkspaceDirectoryService workspaceDirectoryService,
@@ -73,7 +75,7 @@ public class JobService {
                       @Autowired(required = false) EffectiveWorkspaceResolver effectiveWorkspaceResolver,
                       @Autowired(required = false) OrchestrationRuntimeRepository runtimeRepository) {
         this(jobRepository, workspaceDirectoryService, planService, workflowService, effectiveWorkspaceResolver,
-            runtimeRepository, null, null, null, null, null);
+            runtimeRepository, null, null, null, null, null, null);
     }
 
     @Autowired
@@ -87,7 +89,8 @@ public class JobService {
                       @Autowired(required = false) AgentProfileService agentProfileService,
                       @Autowired(required = false) ProjectService projectService,
                       @Autowired(required = false) WorkspaceService workspaceService,
-                      @Autowired(required = false) OutputArtifactService outputArtifactService) {
+                      @Autowired(required = false) OutputArtifactService outputArtifactService,
+                      @Autowired(required = false) RootRelativePathService rootRelativePathService) {
         this.jobRepository = jobRepository;
         this.workspaceDirectoryService = workspaceDirectoryService;
         this.planService = planService;
@@ -99,6 +102,9 @@ public class JobService {
         this.projectService = projectService;
         this.workspaceService = workspaceService;
         this.outputArtifactService = outputArtifactService;
+        this.rootRelativePathService = rootRelativePathService != null
+            ? rootRelativePathService
+            : new RootRelativePathService(workspaceDirectoryService);
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -257,11 +263,11 @@ public class JobService {
             if (Boolean.TRUE.equals(def.persistentWorkspaceEnabled())) {
                 Path wsPath = workspaceDirectoryService.jobAssignmentWorkspace(
                     effectiveWorkspace.root(), assignmentKey);
-                workspacePath = wsPath.toRealPath().toString();
+                workspacePath = storePath(wsPath.toRealPath());
             }
             Path outPath = workspaceDirectoryService.jobAssignmentOutput(
                 effectiveWorkspace.root(), assignmentKey, runId);
-            outputDir = outPath.toRealPath().toString();
+            outputDir = storePath(outPath.toRealPath());
             log.info("Allocated persistentJobWorkspace={} output={} agent={} project={} assignment={} for job run={}",
                 workspacePath, outputDir, effectiveAgentId, effectiveProjectId, assignmentKey, runId);
         } catch (Exception e) {
@@ -591,6 +597,10 @@ public class JobService {
             }
         }
         return new OutputStats(count, latest);
+    }
+
+    private String storePath(Path path) {
+        return rootRelativePathService.store(path);
     }
 
     // ════════════════════════════════════════════════════════════════

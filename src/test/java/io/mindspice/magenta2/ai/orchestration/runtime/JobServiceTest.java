@@ -13,6 +13,7 @@ import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileStatus;
+import io.mindspice.magenta2.ai.orchestration.workspaces.RootRelativePathService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -122,9 +123,10 @@ class JobServiceTest {
 
         JobRun run = jobService.startRun(def.id(), "system", null, "assignment-output");
         assertThat(run.workspacePath()).isNull();
-        assertThat(run.outputDir()).contains("agents/system/workspace/outputs/jobs");
+        assertStoredRelative(run.outputDir(), "agents/system/workspace/outputs/jobs/");
         assertThat(run.outputDir()).contains(run.jobAssignmentId());
         assertThat(run.outputDir()).contains(run.id());
+        assertThat(Files.isDirectory(resolveStored(run.outputDir()))).isTrue();
     }
 
     @Test
@@ -137,11 +139,13 @@ class JobServiceTest {
         JobRun first = jobService.startRun(def.id(), "agent-1", null, "assignment-a");
         JobRun second = jobService.startRun(def.id(), "agent-1", null, "assignment-b");
 
-        assertThat(first.workspacePath()).contains("agents/agent-1/workspace/jobs/assignment-a");
-        assertThat(second.workspacePath()).contains("agents/agent-1/workspace/jobs/assignment-b");
+        assertStoredRelative(first.workspacePath(), "agents/agent-1/workspace/jobs/assignment-a");
+        assertStoredRelative(second.workspacePath(), "agents/agent-1/workspace/jobs/assignment-b");
         assertThat(first.workspacePath()).isNotEqualTo(second.workspacePath());
-        assertThat(first.outputDir()).contains("agents/agent-1/workspace/outputs/jobs/assignment-a");
-        assertThat(second.outputDir()).contains("agents/agent-1/workspace/outputs/jobs/assignment-b");
+        assertStoredRelative(first.outputDir(), "agents/agent-1/workspace/outputs/jobs/assignment-a");
+        assertStoredRelative(second.outputDir(), "agents/agent-1/workspace/outputs/jobs/assignment-b");
+        assertThat(Files.isDirectory(resolveStored(first.workspacePath()))).isTrue();
+        assertThat(Files.isDirectory(resolveStored(second.workspacePath()))).isTrue();
     }
 
     @Test
@@ -153,8 +157,61 @@ class JobServiceTest {
 
         JobRun run = jobService.startRun(def.id(), "agent-1", "project-1", "assignment-project");
 
-        assertThat(run.workspacePath()).contains("projects/project-1/workspace/jobs/assignment-project");
-        assertThat(run.outputDir()).contains("projects/project-1/workspace/outputs/jobs/assignment-project");
+        assertStoredRelative(run.workspacePath(), "projects/project-1/workspace/jobs/assignment-project");
+        assertStoredRelative(run.outputDir(), "projects/project-1/workspace/outputs/jobs/assignment-project");
+        assertThat(Files.isDirectory(resolveStored(run.workspacePath()))).isTrue();
+        assertThat(Files.isDirectory(resolveStored(run.outputDir()))).isTrue();
+    }
+
+    @Test
+    void jobWorkspaceContextReceivesResolvedHostPath() {
+        JobDefinition def = jobService.saveDefinition(new JobDefinition(
+            null, "agent-1", null, null, true, "Persistent Job", "Summary",
+            List.of(planItem("s1", "plan-1", 0)), null, null, null, null, null
+        ));
+        JobRun run = jobService.startRun(def.id(), "agent-1", null, "assignment-context");
+        OrchestrationRuntimeRepository runtime = new OrchestrationRuntimeRepository(jdbcTemplate(), new ObjectMapper());
+        AssignmentService assignmentService = new AssignmentService(
+            runtime, new TestAgentProfileService("agent-1"), null, jobService);
+        OrchestrationRunnerService runner = new OrchestrationRunnerService(
+            runtime, assignmentService, jobService, null, null, null, null, null,
+            null, null, null, null, null, workspaceDirectoryService,
+            new RootRelativePathService(workspaceDirectoryService), null, 300, 60);
+
+        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
+            "agent-1", "Agent 1", def.id(), null, null, "JOB_RUN", null, null));
+        try {
+            runner.installJobWorkspaceContext(run);
+            OrchestrationTaskContext current = OrchestrationTaskContextHolder.current();
+            assertThat(current.jobRunId()).isEqualTo(run.id());
+            assertThat(current.hostJobWorkspacePath()).isEqualTo(resolveStored(run.workspacePath()).toString());
+            assertThat(Path.of(current.hostJobWorkspacePath()).isAbsolute()).isTrue();
+        } finally {
+            OrchestrationTaskContextHolder.clear();
+        }
+    }
+
+    @Test
+    void executionSummaryLeavesStaleAbsoluteJobPathsDisplayOnlyAndDoesNotMutateOldRoot() throws Exception {
+        JobDefinition def = jobService.saveDefinition(
+            jobDef("stale-summary", "Stale Summary", List.of())
+        );
+        Path oldRoot = Files.createDirectories(tempDir.resolve("old-root/root"));
+        Path oldWorkspace = Files.createDirectories(oldRoot.resolve("agents/agent-1/workspace/jobs/assignment-old"));
+        Path oldOutput = Files.createDirectories(oldRoot.resolve("agents/agent-1/workspace/outputs/jobs/assignment-old/run-old"));
+        jobRepository.saveRun(new JobRun(
+            "run-stale", def.id(), "assignment-old", null, JobRunStatus.RUNNING,
+            List.of(), oldWorkspace.toString(), oldOutput.toString(), null, null,
+            Instant.now(), Instant.now(), null, null
+        ));
+
+        JobExecutionSummary summary = jobService.executionSummaryByAssignmentId("assignment-old").orElseThrow();
+
+        assertThat(summary.persistentJobWorkspacePath()).isEqualTo(oldWorkspace.toString());
+        assertThat(summary.outputDirectory()).isEqualTo(oldOutput.toString());
+        try (var stream = Files.list(oldOutput)) {
+            assertThat(stream).isEmpty();
+        }
     }
 
     @Test
@@ -190,6 +247,8 @@ class JobServiceTest {
         assertThat(running.jobRunStatus()).isEqualTo(JobRunStatus.QUEUED);
         assertThat(running.outputDirectory()).contains("outputs/jobs/assignment-summary");
         assertThat(running.persistentJobWorkspacePath()).contains("jobs/assignment-summary");
+        assertThat(Path.of(running.outputDirectory()).isAbsolute()).isFalse();
+        assertThat(Path.of(running.persistentJobWorkspacePath()).isAbsolute()).isFalse();
         assertThat(running.persistentJobWorkspacePresent()).isTrue();
     }
 
@@ -285,7 +344,7 @@ class JobServiceTest {
             runtime, new TestAgentProfileService("system"), null, jobService);
         JobService recurringService = new JobService(
             jobRepository, workspaceDirectoryService, null, null, null, runtime, objectProvider(assignmentService),
-            null, null, null, null);
+            null, null, null, null, null);
 
         List<WorkAssignment> assignments = recurringService.fireDueRecurrences(Instant.now().plusSeconds(10));
         assertThat(assignments).hasSize(1);
@@ -318,7 +377,7 @@ class JobServiceTest {
             runtime, new TestAgentProfileService("agent-1"), null, baseService);
         JobService service = new JobService(
             jobs, workspaceDirectoryService, null, null, null, runtime, objectProvider(assignmentService),
-            null, null, null, null);
+            null, null, null, null, null);
         JobDefinition def = service.saveDefinition(jobDef("cancel-owned", "Cancel Owned", List.of(planItem("s1", "plan-1", 0))));
         runtime.saveAssignment(new WorkAssignment(
             "assignment-cancel-owned", "agent-1", def.id(), null, AssignmentType.JOB_RUN, 1,
@@ -438,5 +497,17 @@ class JobServiceTest {
     private JdbcTemplate jdbcTemplate() {
         SingleConnectionDataSource ds = new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true);
         return new JdbcTemplate(ds);
+    }
+
+    private void assertStoredRelative(String value, String expectedPrefix) {
+        assertThat(value).isNotBlank();
+        assertThat(Path.of(value).isAbsolute()).isFalse();
+        assertThat(value).startsWith(expectedPrefix);
+        assertThat(value).doesNotContain(workspaceDirectoryService.dataRoot().toString());
+        assertThat(value).doesNotContain("\\");
+    }
+
+    private Path resolveStored(String value) {
+        return workspaceDirectoryService.dataRoot().resolve(value.replace('\\', '/')).normalize();
     }
 }

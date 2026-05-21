@@ -11,6 +11,7 @@ import io.mindspice.magenta2.ai.orchestration.workspaces.EffectiveWorkspace;
 import io.mindspice.magenta2.ai.orchestration.workspaces.EffectiveWorkspaceResolver;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactContext;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.RootRelativePathService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
 import org.slf4j.Logger;
@@ -52,6 +53,7 @@ public class WorkflowRunner {
     private final OutputArtifactService outputArtifactService;
     private final EffectiveWorkspaceResolver effectiveWorkspaceResolver;
     private final WorkflowTaskExecutor workflowTaskExecutor;
+    private final RootRelativePathService rootRelativePathService;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     private volatile TaskNodeExecutor taskNodeExecutor;
@@ -60,7 +62,7 @@ public class WorkflowRunner {
                           InboxService inboxService,
                           WorkspaceDirectoryService workspaceDirectoryService,
                           OutputArtifactService outputArtifactService) {
-        this(repository, planService, inboxService, workspaceDirectoryService, outputArtifactService, null, null);
+        this(repository, planService, inboxService, workspaceDirectoryService, outputArtifactService, null, null, null);
     }
 
     public WorkflowRunner(WorkflowRepository repository, PlanService planService,
@@ -69,7 +71,7 @@ public class WorkflowRunner {
                           OutputArtifactService outputArtifactService,
                           EffectiveWorkspaceResolver effectiveWorkspaceResolver) {
         this(repository, planService, inboxService, workspaceDirectoryService, outputArtifactService,
-            effectiveWorkspaceResolver, null);
+            effectiveWorkspaceResolver, null, null);
     }
 
     @Autowired
@@ -78,7 +80,8 @@ public class WorkflowRunner {
                           WorkspaceDirectoryService workspaceDirectoryService,
                           OutputArtifactService outputArtifactService,
                           @Autowired(required = false) EffectiveWorkspaceResolver effectiveWorkspaceResolver,
-                          ObjectProvider<WorkflowTaskExecutor> workflowTaskExecutorProvider) {
+                          ObjectProvider<WorkflowTaskExecutor> workflowTaskExecutorProvider,
+                          @Autowired(required = false) RootRelativePathService rootRelativePathService) {
         this.repository = repository;
         this.planService = planService;
         this.inboxService = inboxService;
@@ -86,6 +89,9 @@ public class WorkflowRunner {
         this.outputArtifactService = outputArtifactService;
         this.effectiveWorkspaceResolver = effectiveWorkspaceResolver;
         this.workflowTaskExecutor = workflowTaskExecutorProvider == null ? null : workflowTaskExecutorProvider.getIfAvailable();
+        this.rootRelativePathService = rootRelativePathService != null
+            ? rootRelativePathService
+            : new RootRelativePathService(workspaceDirectoryService);
     }
 
     @FunctionalInterface
@@ -131,8 +137,8 @@ public class WorkflowRunner {
             WorkflowRunStatus.RUNNING,
             0,
             nodeRuns,
-            workspacePath.toString(),
-            outputPath.toString(),
+            storePath(workspacePath),
+            storePath(outputPath),
             attribution.agentId(),
             attribution.jobId(),
             attribution.jobAssignmentId(),
@@ -462,7 +468,7 @@ public class WorkflowRunner {
         }
 
         String planRunId = UUID.randomUUID().toString();
-        PlanRun planRun = taskNodeExecutor.execute(node.planId(), planRunId, inputs, run.workspacePath());
+        PlanRun planRun = taskNodeExecutor.execute(node.planId(), planRunId, inputs, resolveStoredPath(run.workspacePath()).toString());
         if (planRun.status() == PlanRunStatus.FAILED || planRun.status() == PlanRunStatus.NEEDS_REVIEW) {
             throw new IllegalStateException("Task node '" + node.key() + "' failed with status " + planRun.status().name());
         }
@@ -742,14 +748,14 @@ public class WorkflowRunner {
 
     private Path outputPathFor(WorkflowRun run) {
         if (StringUtils.hasText(run.outputDir())) {
-            return Path.of(run.outputDir());
+            return resolveStoredPath(run.outputDir());
         }
         return workspaceDirectoryService.workflowTemp(run.id());
     }
 
     private OrchestrationTaskContext executionContextFor(WorkflowRun run, OrchestrationTaskContext base) {
-        String runPath = StringUtils.hasText(run.workspacePath()) ? run.workspacePath() : null;
-        String outputPath = StringUtils.hasText(run.outputDir()) ? run.outputDir() : null;
+        String runPath = StringUtils.hasText(run.workspacePath()) ? resolveStoredPath(run.workspacePath()).toString() : null;
+        String outputPath = StringUtils.hasText(run.outputDir()) ? resolveStoredPath(run.outputDir()).toString() : null;
         String durableWorkspacePath = base == null ? null : base.hostDurableWorkspacePath();
         if (!StringUtils.hasText(durableWorkspacePath)) {
             durableWorkspacePath = inferDurableWorkspacePath(run);
@@ -770,7 +776,7 @@ public class WorkflowRunner {
         if (!StringUtils.hasText(run.outputDir())) {
             return null;
         }
-        Path outputPath = Path.of(run.outputDir()).toAbsolutePath().normalize();
+        Path outputPath = resolveStoredPath(run.outputDir()).toAbsolutePath().normalize();
         Path workflowIdDir = outputPath.getParent();
         Path workflowsDir = workflowIdDir == null ? null : workflowIdDir.getParent();
         Path outputsDir = workflowsDir == null ? null : workflowsDir.getParent();
@@ -783,6 +789,14 @@ public class WorkflowRunner {
             return null;
         }
         return workspaceRoot.toString();
+    }
+
+    private String storePath(Path path) {
+        return rootRelativePathService.store(path);
+    }
+
+    private Path resolveStoredPath(String storedPath) {
+        return rootRelativePathService.resolve(storedPath);
     }
 
     private OutputArtifactContext outputContext() {

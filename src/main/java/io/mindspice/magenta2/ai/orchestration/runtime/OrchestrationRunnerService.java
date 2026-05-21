@@ -30,6 +30,7 @@ import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowRunStatus;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactContext;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.RootRelativePathService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.Workspace;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLease;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLeaseService;
@@ -66,6 +67,7 @@ public class OrchestrationRunnerService {
     private final WorkspaceService workspaceService;
     private final WorkspaceLeaseService workspaceLeaseService;
     private final WorkspaceDirectoryService workspaceDirectoryService;
+    private final RootRelativePathService rootRelativePathService;
     private final AgentProfileService agentProfileService;
 
     private final MagentaWorkExecutor executor;
@@ -91,7 +93,7 @@ public class OrchestrationRunnerService {
     ) {
         this(
             repository, assignmentService, jobService, taskService, workflowService, null, inboxService,
-            eventService, null, null, null, null, null, null, executor,
+            eventService, null, null, null, null, null, null, null, executor,
             DEFAULT_LEASE_DURATION.toSeconds(), DEFAULT_HEARTBEAT_INTERVAL.toSeconds()
         );
     }
@@ -112,6 +114,7 @@ public class OrchestrationRunnerService {
         @Autowired(required = false) WorkspaceService workspaceService,
         @Autowired(required = false) WorkspaceLeaseService workspaceLeaseService,
         @Autowired(required = false) WorkspaceDirectoryService workspaceDirectoryService,
+        @Autowired(required = false) RootRelativePathService rootRelativePathService,
         MagentaWorkExecutor executor,
         @Value("${magenta.orchestration.lease-seconds:300}") long leaseSeconds,
         @Value("${magenta.orchestration.heartbeat-seconds:60}") long heartbeatSeconds
@@ -130,6 +133,7 @@ public class OrchestrationRunnerService {
         this.workspaceService = workspaceService;
         this.workspaceLeaseService = workspaceLeaseService;
         this.workspaceDirectoryService = workspaceDirectoryService;
+        this.rootRelativePathService = rootRelativePathService;
         this.executor = executor;
         this.leaseDuration = secondsOrDefault(leaseSeconds, DEFAULT_LEASE_DURATION);
         this.heartbeatInterval = secondsOrDefault(heartbeatSeconds, DEFAULT_HEARTBEAT_INTERVAL);
@@ -145,11 +149,37 @@ public class OrchestrationRunnerService {
         ChatService chatService,
         InboxService inboxService,
         OrchestrationEventService eventService,
+        AgentProfileService agentProfileService,
+        OutputArtifactService outputArtifactService,
+        ProjectService projectService,
+        WorkspaceService workspaceService,
+        WorkspaceLeaseService workspaceLeaseService,
+        WorkspaceDirectoryService workspaceDirectoryService,
+        MagentaWorkExecutor executor,
+        long leaseSeconds,
+        long heartbeatSeconds
+    ) {
+        this(
+            repository, assignmentService, jobService, taskService, workflowService, chatService, inboxService,
+            eventService, agentProfileService, outputArtifactService, projectService, workspaceService,
+            workspaceLeaseService, workspaceDirectoryService, null, executor, leaseSeconds, heartbeatSeconds
+        );
+    }
+
+    public OrchestrationRunnerService(
+        OrchestrationRuntimeRepository repository,
+        AssignmentService assignmentService,
+        JobService jobService,
+        TaskService taskService,
+        WorkflowService workflowService,
+        ChatService chatService,
+        InboxService inboxService,
+        OrchestrationEventService eventService,
         MagentaWorkExecutor executor
     ) {
         this(
             repository, assignmentService, jobService, taskService, workflowService, chatService, inboxService,
-            eventService, null, null, null, null, null, null, executor,
+            eventService, null, null, null, null, null, null, null, executor,
             DEFAULT_LEASE_DURATION.toSeconds(), DEFAULT_HEARTBEAT_INTERVAL.toSeconds()
         );
     }
@@ -508,16 +538,23 @@ public class OrchestrationRunnerService {
         return run.status() == JobRunStatus.QUEUED ? jobService.markRunning(run.id()) : run;
     }
 
-    private void installJobWorkspaceContext(JobRun jobRun) {
+    void installJobWorkspaceContext(JobRun jobRun) {
         OrchestrationTaskContext context = OrchestrationTaskContextHolder.current();
         if (context == null || jobRun == null) {
             return;
         }
         OrchestrationTaskContext updated = context.withJobRun(jobRun.jobAssignmentId(), jobRun.id());
         if (StringUtils.hasText(jobRun.workspacePath())) {
-            updated = updated.withJobWorkspacePath(jobRun.workspacePath());
+            updated = updated.withJobWorkspacePath(resolveStoredPath(jobRun.workspacePath()));
         }
         OrchestrationTaskContextHolder.set(updated);
+    }
+
+    private String resolveStoredPath(String storedPath) {
+        if (rootRelativePathService != null) {
+            return rootRelativePathService.resolve(storedPath).toString();
+        }
+        return java.nio.file.Path.of(storedPath).normalize().toString();
     }
 
     private JobItemResult runJobItem(WorkAssignment assignment, WorkAssignment current, JobWorkItem item, String jobRunId) {

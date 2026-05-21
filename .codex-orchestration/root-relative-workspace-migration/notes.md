@@ -83,3 +83,10 @@
   - `AgentWorkspaceStatusService` resolves artifact paths through the output service for byte counts so relative rows do not crash or undercount.
   - Focused validation passed: `mvn -Dtest=OutputArtifactServiceAttributionTest,OutputArtifactPathSemanticsTest,OutputControllerTest test` (25 tests).
   - Bounded startup smoke passed: app started with isolated `/tmp` `magenta.root.path` and was stopped by `timeout 30s` after successful startup.
+- Phase 4 implemented root-relative run workspace/output path storage:
+  - New `plan_runs.output_directory` and `plan_runs.temp_workspace_path` values are stored data-root-relative; plan materialization, loose artifact discovery, temp cleanup, and output attribution resolve through `RootRelativePathService`.
+  - New `workflow_runs.workspace_path` and `workflow_runs.output_dir` values are stored data-root-relative; execution/resume contexts and legacy task-node executor handoff receive resolved host paths.
+  - New `job_runs.workspace_path` and `job_runs.output_dir` values are stored data-root-relative; job runtime context resolves the persistent job workspace before installing it.
+  - Assignment checkpoint JSON now retains the stored job path values (relative for new runs, legacy absolute for old rows) as display/resume metadata; runtime context installation resolves through the helper before exposing `hostJobWorkspacePath`.
+  - Focused validation passed: `mvn -Dtest=PlanServiceTest,WorkflowRunnerTest,JobServiceTest test` (75 tests).
+  - Bounded startup smoke passed with isolated root `/tmp/magenta-phase4-smoke-py4dbq`; app started on an ephemeral port and was stopped by `timeout 30s` (exit 124 after successful startup).

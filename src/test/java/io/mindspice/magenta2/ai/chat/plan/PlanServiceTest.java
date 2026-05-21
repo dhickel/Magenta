@@ -886,15 +886,16 @@ class PlanServiceTest {
 
         assertThat(run.outputDirectory())
             .isNotNull()
-            .contains("agents/agent-1/workspace/outputs/");
-        assertThat(Files.isDirectory(Path.of(run.outputDirectory()))).isTrue();
+            .startsWith("agents/agent-1/workspace/outputs/");
+        assertStoredRelative(run.outputDirectory(), dataRoot, "agents/agent-1/workspace/outputs/");
+        assertThat(Files.isDirectory(resolveStored(dataRoot, run.outputDirectory()))).isTrue();
         // Verify it's NOT under system
         assertThat(run.outputDirectory()).doesNotContain("agents/system");
 
         // Verify temp workspace path is stored
         assertThat(run.tempWorkspacePath())
             .isNotNull()
-            .contains("runtime/task-runs/" + run.id());
+            .isEqualTo("runtime/task-runs/" + run.id());
     }
 
     @Test
@@ -935,15 +936,17 @@ class PlanServiceTest {
             OrchestrationTaskContext updated = OrchestrationTaskContextHolder.current();
 
             Path projectWorkspace = dirService.projectWorkspace("project-1").toRealPath();
-            assertThat(Path.of(run.outputDirectory()).toRealPath())
+            Path resolvedOutput = resolveStored(dataRoot, run.outputDirectory()).toRealPath();
+            Path resolvedTemp = resolveStored(dataRoot, run.tempWorkspacePath()).toRealPath();
+            assertThat(resolvedOutput)
                 .isEqualTo(projectWorkspace.resolve("outputs/tasks/" + task.id() + "/" + run.id()));
-            assertThat(Path.of(run.outputDirectory()).toRealPath())
+            assertThat(resolvedOutput)
                 .isNotEqualTo(dirService.agentWorkspaceRoot("agent-1").toRealPath());
-            assertThat(updated.hostWorkspacePath()).isEqualTo(run.tempWorkspacePath());
-            assertThat(updated.hostOutputPath()).isEqualTo(run.outputDirectory());
+            assertThat(updated.hostWorkspacePath()).isEqualTo(resolvedTemp.toString());
+            assertThat(updated.hostOutputPath()).isEqualTo(resolvedOutput.toString());
             assertThat(updated.hostDurableWorkspacePath()).isEqualTo(projectWorkspace.toString());
-            assertThat(updated.hostRunPath()).isEqualTo(run.tempWorkspacePath());
-            Path projectLink = Path.of(run.tempWorkspacePath()).resolve("projects/project-1");
+            assertThat(updated.hostRunPath()).isEqualTo(resolvedTemp.toString());
+            Path projectLink = resolvedTemp.resolve("projects/project-1");
             assertThat(Files.isSymbolicLink(projectLink)).isTrue();
             assertThat(projectLink.toRealPath()).isEqualTo(projectWorkspace);
         } finally {
@@ -987,7 +990,8 @@ class PlanServiceTest {
         var projectWorkspace = workspaceRepository.findByOwner(WorkspaceOwnerType.PROJECT, "project-1").orElseThrow();
         assertThat(projectRun.workspaceId()).isEqualTo(projectWorkspace.id());
         assertThat(projectRun.workspaceId()).isNotEqualTo("legacy-ws");
-        assertThat(Path.of(projectRun.outputDirectory()).toRealPath())
+        assertStoredRelative(projectRun.outputDirectory(), dataRoot, "projects/project-1/workspace/outputs/tasks/");
+        assertThat(resolveStored(dataRoot, projectRun.outputDirectory()).toRealPath())
             .isEqualTo(dirService.projectWorkspaceRoot("project-1").toRealPath()
                 .resolve("outputs/tasks/" + task.id() + "/" + projectRun.id()));
         assertThat(Files.isDirectory(dataRoot.resolve("projects/project-1/workspace/work"))).isTrue();
@@ -1002,7 +1006,8 @@ class PlanServiceTest {
         var agentWorkspace = workspaceRepository.findByOwner(WorkspaceOwnerType.AGENT, "agent-2").orElseThrow();
         assertThat(agentRun.workspaceId()).isEqualTo(agentWorkspace.id());
         assertThat(agentRun.workspaceId()).isNotEqualTo("legacy-agent-ws");
-        assertThat(Path.of(agentRun.outputDirectory()).toRealPath())
+        assertStoredRelative(agentRun.outputDirectory(), dataRoot, "agents/agent-2/workspace/outputs/tasks/");
+        assertThat(resolveStored(dataRoot, agentRun.outputDirectory()).toRealPath())
             .isEqualTo(dirService.agentWorkspaceRoot("agent-2").toRealPath()
                 .resolve("outputs/tasks/" + task.id() + "/" + agentRun.id()));
         assertThat(planRepository.findRun(projectRun.id()).orElseThrow().workspaceId()).isEqualTo(projectWorkspace.id());
@@ -1040,8 +1045,9 @@ class PlanServiceTest {
 
         assertThat(run.outputDirectory())
             .isNotNull()
-            .contains("agents/system/workspace/outputs/");
-        assertThat(Files.isDirectory(Path.of(run.outputDirectory()))).isTrue();
+            .startsWith("agents/system/workspace/outputs/");
+        assertStoredRelative(run.outputDirectory(), dataRoot, "agents/system/workspace/outputs/");
+        assertThat(Files.isDirectory(resolveStored(dataRoot, run.outputDirectory()))).isTrue();
     }
 
     @Test
@@ -1252,10 +1258,12 @@ class PlanServiceTest {
         PlanRun run = service.startRun(task.id(), Map.of("result", "ok"));
         String tempPath = run.tempWorkspacePath();
         assertThat(tempPath).isNotNull();
-        assertThat(Files.isDirectory(Path.of(tempPath))).isTrue();
+        assertStoredRelative(tempPath, dataRoot, "runtime/task-runs/");
+        Path resolvedTemp = resolveStored(dataRoot, tempPath);
+        assertThat(Files.isDirectory(resolvedTemp)).isTrue();
 
         // Create a loose file in the output dir
-        Path outputDir = Path.of(run.outputDirectory());
+        Path outputDir = resolveStored(dataRoot, run.outputDirectory());
         Files.writeString(outputDir.resolve("extra.txt"), "loose content");
 
         // Complete the run
@@ -1263,12 +1271,87 @@ class PlanServiceTest {
 
         assertThat(completed.status()).isEqualTo(PlanRunStatus.COMPLETED);
         // Temp directory should be cleaned
-        assertThat(Files.exists(Path.of(tempPath))).isFalse();
+        assertThat(Files.exists(resolvedTemp)).isFalse();
         // Loose artifact should be discovered
         List<?> artifacts = artifactService.artifactsForRun(run.id()).stream()
             .filter(a -> a.fileName().equals("extra.txt"))
             .toList();
         assertThat(artifacts).hasSize(1);
+    }
+
+    @Test
+    void completeRunSupportsLegacyAbsoluteCurrentRootPaths() throws Exception {
+        Path dataRoot = Files.createDirectories(tempDir.resolve("data-legacy-current"));
+        WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(
+            new AiConfig(null, null, null, null, dataRoot, null, null));
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        WorkspaceRepository workspaceRepository = new WorkspaceRepository(jdbcTemplate);
+        OutputArtifactService artifactService = new OutputArtifactService(
+            workspaceRepository, dirService, new ObjectMapper().findAndRegisterModules());
+        PlanRepository planRepository = new PlanRepository(jdbcTemplate, new ObjectMapper());
+        PlanService service = new PlanService(
+            planRepository,
+            new ChatMemoryRepository(jdbcTemplate, new ObjectMapper()),
+            null, new io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer(),
+            dirService, artifactService);
+        PlanDefinition task = service.saveTask(new PlanDefinition(
+            null, PlanKind.TASK_TEMPLATE, PlanStatus.APPROVED,
+            "Legacy Current Task", "Do it.", "Goal.", null,
+            List.of(), List.of(),
+            List.of(new PlanFieldDefinition("result", PlanFieldType.STRING, false, "Result", true, null)),
+            List.of(), List.of(new PlanStep(1, "Do it.")), List.of("Result present."),
+            List.of(), List.of(), null, null, null, null,
+            null, List.of(), 0, 0, null, null, null, null));
+
+        PlanRun run = service.startRun(task.id(), Map.of());
+        Path outputDir = resolveStored(dataRoot, run.outputDirectory()).toRealPath();
+        Path tempDir = resolveStored(dataRoot, run.tempWorkspacePath()).toRealPath();
+        jdbcTemplate.update("update plan_runs set output_directory = ?, temp_workspace_path = ? where id = ?",
+            outputDir.toString(), tempDir.toString(), run.id());
+
+        PlanRun completed = service.completeRun(run.id(), Map.of("result", "done"), "Done", List.of());
+
+        assertThat(completed.status()).isEqualTo(PlanRunStatus.COMPLETED);
+        assertThat(Files.exists(tempDir)).isFalse();
+        assertThat(artifactService.artifactsForRun(run.id())).hasSize(1);
+    }
+
+    @Test
+    void staleOldRootAbsolutePlanOutputPathFailsWithoutMutatingOldRoot() throws Exception {
+        Path dataRoot = Files.createDirectories(tempDir.resolve("data-stale-current"));
+        Path oldRoot = Files.createDirectories(tempDir.resolve("old-root/root"));
+        Path oldOutput = Files.createDirectories(oldRoot.resolve("agents/system/workspace/outputs/tasks/old/run"));
+        WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(
+            new AiConfig(null, null, null, null, dataRoot, null, null));
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        WorkspaceRepository workspaceRepository = new WorkspaceRepository(jdbcTemplate);
+        OutputArtifactService artifactService = new OutputArtifactService(
+            workspaceRepository, dirService, new ObjectMapper().findAndRegisterModules());
+        PlanRepository planRepository = new PlanRepository(jdbcTemplate, new ObjectMapper());
+        PlanService service = new PlanService(
+            planRepository,
+            new ChatMemoryRepository(jdbcTemplate, new ObjectMapper()),
+            null, new io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer(),
+            dirService, artifactService);
+        PlanDefinition task = service.saveTask(new PlanDefinition(
+            null, PlanKind.TASK_TEMPLATE, PlanStatus.APPROVED,
+            "Stale Task", "Do it.", "Goal.", null,
+            List.of(), List.of(),
+            List.of(new PlanFieldDefinition("result", PlanFieldType.STRING, false, "Result", true, null)),
+            List.of(), List.of(new PlanStep(1, "Do it.")), List.of("Result present."),
+            List.of(), List.of(), null, null, null, null,
+            null, List.of(), 0, 0, null, null, null, null));
+
+        PlanRun run = service.startRun(task.id(), Map.of());
+        jdbcTemplate.update("update plan_runs set output_directory = ? where id = ?",
+            oldOutput.toString(), run.id());
+
+        assertThatThrownBy(() -> service.completeRun(run.id(), Map.of("result", "done"), "Done", List.of()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("stale or outside current data root");
+        try (var stream = Files.list(oldOutput)) {
+            assertThat(stream).isEmpty();
+        }
     }
 
     @Test
@@ -1397,6 +1480,18 @@ class PlanServiceTest {
         service.recordPromptAnswer(conversationId, "Goal", null);
         service.recordPromptAnswer(conversationId, "Guidance", null);
         service.recordPromptAnswer(conversationId, "Deliverables", null);
+    }
+
+    private void assertStoredRelative(String value, Path dataRoot, String expectedPrefix) {
+        assertThat(value).isNotBlank();
+        assertThat(Path.of(value).isAbsolute()).isFalse();
+        assertThat(value).startsWith(expectedPrefix);
+        assertThat(value).doesNotContain(dataRoot.toString());
+        assertThat(value).doesNotContain("\\");
+    }
+
+    private Path resolveStored(Path dataRoot, String value) {
+        return dataRoot.resolve(value.replace('\\', '/')).normalize();
     }
 
     private static final class CapturingPlanCompletionValidator implements PlanCompletionValidator {

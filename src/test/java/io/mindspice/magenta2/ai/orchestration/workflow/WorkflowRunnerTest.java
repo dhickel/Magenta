@@ -389,23 +389,28 @@ class WorkflowRunnerTest {
         WorkflowRun finished = pollForTerminal(run.id());
 
         assertThat(finished.status()).isEqualTo(WorkflowRunStatus.COMPLETED);
-        assertThat(Path.of(finished.workspacePath()))
+        assertStoredRelative(finished.workspacePath(), "runtime/workflow-runs/");
+        Path resolvedWorkspace = resolveStored(finished.workspacePath());
+        assertThat(resolvedWorkspace)
             .startsWith(workspaceDirectoryService.dataRoot().resolve("runtime").resolve("workflow-runs"));
         assertThat(finished.outputDir()).isNotEqualTo(finished.workspacePath());
-        assertThat(Path.of(finished.outputDir()))
+        assertStoredRelative(finished.outputDir(), "agents/system/workspace/outputs/workflows/");
+        Path resolvedOutput = resolveStored(finished.outputDir());
+        assertThat(resolvedOutput)
             .startsWith(workspaceDirectoryService.dataRoot()
                 .resolve("agents/system/workspace/outputs/workflows")
                 .resolve(def.id())
                 .resolve(finished.id()));
         assertThat(finished.artifactIds()).hasSize(1);
         RunOutputArtifact artifact = outputArtifactService.getArtifact(finished.artifactIds().getFirst());
-        assertThat(Path.of(artifact.filePath()).toRealPath())
-            .startsWith(Path.of(finished.outputDir()).toRealPath());
+        assertStoredRelative(artifact.filePath(), "agents/system/workspace/outputs/workflows/");
+        assertThat(resolveStored(artifact.filePath()).toRealPath())
+            .startsWith(resolvedOutput.toRealPath());
 
-        workspaceDirectoryService.deleteTempDir(Path.of(finished.workspacePath()));
-        assertThat(Files.exists(Path.of(finished.workspacePath()))).isFalse();
-        assertThat(Files.isDirectory(Path.of(finished.outputDir()))).isTrue();
-        assertThat(Files.isRegularFile(Path.of(artifact.filePath()))).isTrue();
+        workspaceDirectoryService.deleteTempDir(resolvedWorkspace);
+        assertThat(Files.exists(resolvedWorkspace)).isFalse();
+        assertThat(Files.isDirectory(resolvedOutput)).isTrue();
+        assertThat(Files.isRegularFile(resolveStored(artifact.filePath()))).isTrue();
     }
 
     @Test
@@ -488,9 +493,11 @@ class WorkflowRunnerTest {
             assertThat(seen).isNotNull();
             assertThat(seen.agentId()).isEqualTo("agent-1");
             assertThat(seen.projectId()).isEqualTo("project-1");
-            assertThat(seen.hostWorkspacePath()).isEqualTo(finished.workspacePath());
-            assertThat(seen.hostRunPath()).isEqualTo(finished.workspacePath());
-            assertThat(seen.hostOutputPath()).isEqualTo(finished.outputDir());
+            assertStoredRelative(finished.workspacePath(), "runtime/workflow-runs/");
+            assertStoredRelative(finished.outputDir(), "projects/project-1/workspace/outputs/workflows/");
+            assertThat(seen.hostWorkspacePath()).isEqualTo(resolveStored(finished.workspacePath()).toString());
+            assertThat(seen.hostRunPath()).isEqualTo(resolveStored(finished.workspacePath()).toString());
+            assertThat(seen.hostOutputPath()).isEqualTo(resolveStored(finished.outputDir()).toString());
             assertThat(seen.hostDurableWorkspacePath())
                 .isEqualTo(workspaceDirectoryService.dataRoot().resolve("projects/project-1/workspace").toString());
         } finally {
@@ -537,7 +544,8 @@ class WorkflowRunnerTest {
                 .get("childRunId")
                 .toString();
             PlanRun childRun = planService.getRun(childRunId);
-            assertThat(Path.of(childRun.outputDirectory()))
+            assertStoredRelative(childRun.outputDirectory(), "projects/project-1/workspace/outputs/tasks/");
+            assertThat(resolveStored(childRun.outputDirectory()))
                 .startsWith(workspaceDirectoryService.dataRoot()
                     .resolve("projects/project-1/workspace/outputs/tasks"));
             assertThat(childRun.workspaceId()).isNotBlank();
@@ -571,8 +579,10 @@ class WorkflowRunnerTest {
         WorkflowRun run = workflowService.startRun(def.id());
         WorkflowRun waiting = pollForWaiting(run.id());
         assertThat(waiting.outputDir()).isNotEqualTo(waiting.workspacePath());
-        assertThat(Files.isDirectory(Path.of(waiting.workspacePath()))).isTrue();
-        assertThat(Files.isDirectory(Path.of(waiting.outputDir()))).isTrue();
+        assertStoredRelative(waiting.workspacePath(), "runtime/workflow-runs/");
+        assertStoredRelative(waiting.outputDir(), "agents/system/workspace/outputs/workflows/");
+        assertThat(Files.isDirectory(resolveStored(waiting.workspacePath()))).isTrue();
+        assertThat(Files.isDirectory(resolveStored(waiting.outputDir()))).isTrue();
         String messageId = String.valueOf(waiting.nodeRuns().stream()
             .filter(n -> n.nodeKey().equals("gate"))
             .findFirst().orElseThrow().outputValues().get("messageId"));
@@ -621,6 +631,80 @@ class WorkflowRunnerTest {
         assertThat(finished.status()).isEqualTo(WorkflowRunStatus.COMPLETED);
         assertThat(nodeStatus(finished, "approved")).isEqualTo(WorkflowNodeRunStatus.SKIPPED);
         assertThat(nodeStatus(finished, "rejected")).isEqualTo(WorkflowNodeRunStatus.COMPLETED);
+    }
+
+    @Test
+    void resumeSupportsLegacyAbsoluteCurrentRootWorkflowPaths() throws Exception {
+        PlanDefinition branchTask = task("legacy-current", List.of(), List.of(field("status", PlanFieldType.STRING, true)));
+        WorkflowNode gate = new WorkflowNode("gate", WorkflowNodeType.USER_APPROVAL, null,
+            "gate", null, List.of(), List.of(), Map.of(), false, List.of(), "approve?", null);
+        WorkflowNode approved = taskNode("approved", branchTask.id());
+        WorkflowNode rejected = taskNode("rejected", branchTask.id());
+        WorkflowDefinition def = workflowService.saveDefinitionValidated(new WorkflowDefinition(
+            null, 2, "Legacy Current Resume", "", 2,
+            List.of(gate, approved, rejected),
+            List.of(
+                new WorkflowRoute("c1", "gate", null, "approved", null, WorkflowRouteType.CONTROL, "APPROVED"),
+                new WorkflowRoute("c2", "gate", null, "rejected", null, WorkflowRouteType.CONTROL, "REJECTED")
+            ),
+            Map.of(), null, null
+        ));
+        workflowRunner.setTaskNodeExecutor((planId, planRunId, inputs, workspacePath) -> {
+            assertThat(Path.of(workspacePath).isAbsolute()).isTrue();
+            return completedPlanRun(planRunId, planId, inputs, Map.of("status", "ok"));
+        });
+
+        WorkflowRun waiting = pollForWaiting(workflowService.startRun(def.id()).id());
+        Path workspacePath = resolveStored(waiting.workspacePath()).toRealPath();
+        Path outputDir = resolveStored(waiting.outputDir()).toRealPath();
+        jdbcTemplate.update("update workflow_runs set workspace_path = ?, output_dir = ? where id = ?",
+            workspacePath.toString(), outputDir.toString(), waiting.id());
+        String messageId = String.valueOf(waiting.nodeRuns().stream()
+            .filter(n -> n.nodeKey().equals("gate"))
+            .findFirst().orElseThrow().outputValues().get("messageId"));
+
+        inboxService.respondUserApproval(messageId, true, "yes");
+        WorkflowRun finished = workflowService.resumeRunSynchronously(waiting.id(), null, WorkflowExecutionObserver.NOOP);
+
+        assertThat(finished.status()).isEqualTo(WorkflowRunStatus.COMPLETED);
+        assertThat(outputArtifactService.artifactsForRun(finished.id())).isNotEmpty();
+    }
+
+    @Test
+    void staleOldRootAbsoluteWorkflowOutputPathFailsWithoutMutatingOldRoot() throws Exception {
+        PlanDefinition branchTask = task("stale-output", List.of(), List.of(field("status", PlanFieldType.STRING, true)));
+        WorkflowNode gate = new WorkflowNode("gate", WorkflowNodeType.USER_APPROVAL, null,
+            "gate", null, List.of(), List.of(), Map.of(), false, List.of(), "approve?", null);
+        WorkflowNode approved = taskNode("approved", branchTask.id());
+        WorkflowNode rejected = taskNode("rejected", branchTask.id());
+        WorkflowDefinition def = workflowService.saveDefinitionValidated(new WorkflowDefinition(
+            null, 2, "Stale Resume", "", 2,
+            List.of(gate, approved, rejected),
+            List.of(
+                new WorkflowRoute("c1", "gate", null, "approved", null, WorkflowRouteType.CONTROL, "APPROVED"),
+                new WorkflowRoute("c2", "gate", null, "rejected", null, WorkflowRouteType.CONTROL, "REJECTED")
+            ),
+            Map.of(), null, null
+        ));
+        workflowRunner.setTaskNodeExecutor((planId, planRunId, inputs, workspacePath) ->
+            completedPlanRun(planRunId, planId, inputs, Map.of("status", "ok")));
+        Path oldOutput = Files.createDirectories(tempDir.resolve("old-root/root/agents/system/workspace/outputs/workflows/old/run"));
+
+        WorkflowRun waiting = pollForWaiting(workflowService.startRun(def.id()).id());
+        jdbcTemplate.update("update workflow_runs set output_dir = ? where id = ?",
+            oldOutput.toString(), waiting.id());
+        String messageId = String.valueOf(waiting.nodeRuns().stream()
+            .filter(n -> n.nodeKey().equals("gate"))
+            .findFirst().orElseThrow().outputValues().get("messageId"));
+
+        inboxService.respondUserApproval(messageId, true, "yes");
+
+        assertThatThrownBy(() -> workflowService.resumeRunSynchronously(waiting.id(), null, WorkflowExecutionObserver.NOOP))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("stale or outside current data root");
+        try (var stream = Files.list(oldOutput)) {
+            assertThat(stream).isEmpty();
+        }
     }
 
     private WorkflowNode simpleFinalNode(String key) {
@@ -703,6 +787,18 @@ class WorkflowRunnerTest {
             Thread.sleep(50);
         }
         throw new IllegalStateException("Run did not complete: " + runId);
+    }
+
+    private void assertStoredRelative(String value, String expectedPrefix) {
+        assertThat(value).isNotBlank();
+        assertThat(Path.of(value).isAbsolute()).isFalse();
+        assertThat(value).startsWith(expectedPrefix);
+        assertThat(value).doesNotContain(workspaceDirectoryService.dataRoot().toString());
+        assertThat(value).doesNotContain("\\");
+    }
+
+    private Path resolveStored(String value) {
+        return workspaceDirectoryService.dataRoot().resolve(value.replace('\\', '/')).normalize();
     }
 
     private WorkflowNodeRunStatus nodeStatus(WorkflowRun run, String nodeKey) {
