@@ -11,7 +11,9 @@ import org.springframework.util.StringUtils;
  * Tool implementations use this context to resolve working directories.
  * The legacy {@code hostWorkspacePath} field is retained as the active
  * run/assignment workspace path; {@code hostDurableWorkspacePath} is the
- * effective durable workspace root exposed as {@code workspace/}.
+ * effective durable workspace root exposed as {@code workspace/}. When a job
+ * has an opt-in persistent workspace, {@code hostJobWorkspacePath} is exposed
+ * through the {@code job/} alias.
  */
 public record OrchestrationTaskContext(
     String agentId,
@@ -23,10 +25,11 @@ public record OrchestrationTaskContext(
     String hostWorkspacePath,
     String hostOutputPath,
     String hostDurableWorkspacePath,
-    String hostRunPath
+    String hostRunPath,
+    String hostJobWorkspacePath
 ) {
     public static final OrchestrationTaskContext EMPTY = new OrchestrationTaskContext(
-        null, null, null, null, null, null, null, null, null, null);
+        null, null, null, null, null, null, null, null, null, null, null);
 
     public OrchestrationTaskContext(
         String agentId,
@@ -39,7 +42,23 @@ public record OrchestrationTaskContext(
         String hostOutputPath
     ) {
         this(agentId, agentName, jobId, projectId, workspaceId, runType,
-            hostWorkspacePath, hostOutputPath, null, hostWorkspacePath);
+            hostWorkspacePath, hostOutputPath, null, hostWorkspacePath, null);
+    }
+
+    public OrchestrationTaskContext(
+        String agentId,
+        String agentName,
+        String jobId,
+        String projectId,
+        String workspaceId,
+        String runType,
+        String hostWorkspacePath,
+        String hostOutputPath,
+        String hostDurableWorkspacePath,
+        String hostRunPath
+    ) {
+        this(agentId, agentName, jobId, projectId, workspaceId, runType,
+            hostWorkspacePath, hostOutputPath, hostDurableWorkspacePath, hostRunPath, null);
     }
 
     public OrchestrationTaskContext {
@@ -53,6 +72,7 @@ public record OrchestrationTaskContext(
         hostOutputPath = normalize(hostOutputPath);
         hostDurableWorkspacePath = normalize(hostDurableWorkspacePath);
         hostRunPath = normalize(hostRunPath);
+        hostJobWorkspacePath = normalize(hostJobWorkspacePath);
     }
 
     public boolean hasAgentContext() {
@@ -72,7 +92,8 @@ public record OrchestrationTaskContext(
     public OrchestrationTaskContext withPaths(String hostWorkspacePath, String hostOutputPath) {
         return new OrchestrationTaskContext(
             agentId, agentName, jobId, projectId, workspaceId, runType,
-            hostWorkspacePath, hostOutputPath, hostDurableWorkspacePath, hostWorkspacePath
+            hostWorkspacePath, hostOutputPath, hostDurableWorkspacePath, hostWorkspacePath,
+            hostJobWorkspacePath
         );
     }
 
@@ -83,7 +104,16 @@ public record OrchestrationTaskContext(
     ) {
         return new OrchestrationTaskContext(
             agentId, agentName, jobId, projectId, workspaceId, runType,
-            hostRunPath, hostOutputPath, hostDurableWorkspacePath, hostRunPath
+            hostRunPath, hostOutputPath, hostDurableWorkspacePath, hostRunPath,
+            hostJobWorkspacePath
+        );
+    }
+
+    public OrchestrationTaskContext withJobWorkspacePath(String hostJobWorkspacePath) {
+        return new OrchestrationTaskContext(
+            agentId, agentName, jobId, projectId, workspaceId, runType,
+            hostWorkspacePath, hostOutputPath, hostDurableWorkspacePath, hostRunPath,
+            hostJobWorkspacePath
         );
     }
 }

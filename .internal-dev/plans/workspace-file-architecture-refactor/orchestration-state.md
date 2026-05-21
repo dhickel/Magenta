@@ -44,7 +44,7 @@ Persistent state for this long-running orchestration effort. Use this file to re
 
 - Workspace/file architecture refactor.
 - Current gate: Phase 07 integration and closeout.
-- Phase 06 implementation and validation are committed. Main orchestrator should launch Phase 07 integration, docs, final review, remediation, and closeout subplan.
+- Phase 07 closeout documentation agent has updated public docs, package guides, changelogs, reusable knowledge, and closeout state. Final validation and xhigh review remain pending.
 
 ## Current Plan Artifacts
 
@@ -84,7 +84,7 @@ Queued review/refactor focus:
 
 ## Next Action
 
-Run main Phase 06 validation review and commit if accepted.
+Run Phase 07 final validation and xhigh architecture/code review. Do not archive plan artifacts until the user agrees the whole refactor is complete.
 
 ## Phase 03 Local Validation
 
@@ -187,3 +187,58 @@ Run main Phase 06 validation review and commit if accepted.
 - `mvn test -Dtest=JobServiceTest,JobRepositoryTest,OrchestrationRuntimeTest,WorkspacePathSegmentValidationTest,WorkspaceRepositorySchemaMigrationTest,OutputArtifactServiceAttributionTest,PlanServiceTest,WorkflowRunnerTest,PublicApiRouteBindingTest` -> PASS, 144 tests.
 - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` -> application started on port `39931`; exited `124` because `timeout` stopped the server.
 - Sanity check confirmed opt-in/default-false persistent job workspaces, assignment-isolated job workspace paths, effective project/agent job outputs, additive job assignment/run output attribution, and legacy `OrchestrationJobService` preservation.
+
+## Phase 07 Closeout Documentation
+
+- Updated technical docs for effective workspace resolution, runtime aliases, output paths, loose discovery compatibility, workflow waiting/resume, job persistent workspace policy, and additive API/payload behavior.
+- Updated end-user docs for project shared workspace semantics, plan/task/workflow project submission behavior, and job output/persistent workspace behavior.
+- Updated relevant package guides under `ai/orchestration`, `ai/orchestration/workspaces`, `ai/chat/plan`, and `ai/chat/tool`.
+- Added normal changelog: `.internal-dev/changelogs/2026-05-21-workspace-file-architecture-refactor.md`.
+- Added technical closeout artifact: `.internal-dev/changelogs/2026-05-21-workspace-file-architecture-technical.md`.
+- Added reusable knowledge note: `.internal-dev/knowledge/workspace-file-architecture-rules.md`.
+- Did not edit root `AGENTS.md` or `src/main/java/io/mindspice/magenta2/api/web/AGENTS.md` because both have unrelated dirty changes and were explicitly excluded.
+- No out-of-scope bugs found and no GitHub Issues created.
+- Docs validation passed: `git diff --check` for Phase 07 touched files.
+- Focused sanity validation passed: `mvn test -Dtest=PublicApiRouteBindingTest,WorkspacePathSegmentValidationTest` -> PASS, 16 tests.
+
+## Final XHigh Remediation
+
+- Fixed waiting assignment lease semantics: normal queue polling and lease acquisition no longer treat `WAITING` as recoverable/runnable.
+- Preserved explicit resume and narrowed inbox-message event resume to `WAIT_FOR_MESSAGE` assignments only; waiting workflow approval assignments require approval response plus explicit resume.
+- Added job persistent workspace context propagation through `OrchestrationTaskContext.hostJobWorkspacePath`.
+- Added `job/` alias support to file and shell tools for active persistent job workspaces.
+- Fixed workflow `DELEGATION` child plan runs to start with the active orchestration context.
+- Corrected output docs to describe current public `GET /api/outputs` filters accurately.
+
+Validation passed:
+
+- `mvn test -Dtest=OrchestrationRuntimeTest,WorkflowRunnerTest,AgentFileToolServiceTest,AgentShellToolServiceTest,PlanServiceTest,OutputArtifactServiceAttributionTest` -> PASS, 160 tests.
+- `mvn test -Dtest=PublicApiRouteBindingTest,WorkspacePathSegmentValidationTest` -> PASS, 16 tests.
+- `mvn test -Dtest=JobServiceTest,JobRepositoryTest,WorkspaceRepositorySchemaMigrationTest` -> PASS, 26 tests.
+- `git diff --check` -> PASS.
+- `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` -> app started on ephemeral port `38121`; exited `124` because `timeout` stopped the server.
+
+Final remediation status:
+
+- No blockers found.
+- Ready for final validation/xhigh re-review.
+- No commit created by the remediation worker.
+
+## Final Validation And Re-Review
+
+- Final validation agent reran `git diff --check`, the targeted workspace/orchestration/tool suites, full `mvn test`, and Spring startup smoke. All passed.
+- Final xhigh re-review found no blocking issues. It confirmed the earlier blockers were remediated:
+  - `WAITING` assignments are no longer leased by ordinary polling or stale recovery.
+  - Inbox-event auto-resume is limited to `WAIT_FOR_MESSAGE`.
+  - Persistent job workspace context now flows into file/shell `job/` aliases.
+  - Workflow delegation child plan runs preserve active orchestration context.
+  - Public output docs now match current `GET /api/outputs` filters.
+- Non-blocking sharp edge retained for future review: explicit operator resume can still attempt a workflow approval assignment before an approval response exists; the workflow guard rejects it. A later service/UI guard would improve ergonomics.
+- Non-blocking documentation nit about internal output attribution wording was corrected before closeout commit.
+- Workspace file architecture refactor is ready for final closeout commit.
+
+## Queued Next Orchestration
+
+- After the workspace file architecture closeout commit, begin a second orchestration suite for services/frontend/UX integration.
+- Scope to review and align how projects and jobs are displayed, assigned to agents, submitted through services, and represented in the UI against the architecture documented in this plan.
+- Use the same gated process: review agents, planning synthesis, risk/testing review, implementation phases with validation gates, xhigh final review, documentation/changelog closeout, and commits.

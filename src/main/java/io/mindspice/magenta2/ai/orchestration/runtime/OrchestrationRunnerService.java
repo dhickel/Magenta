@@ -409,6 +409,7 @@ public class OrchestrationRunnerService {
         jobService.updateDefinitionStatus(job.id(), "RUNNING");
         String projectId = resolveProjectId(assignment);
         JobRun jobRun = resumeOrStartJobRun(assignment, job, projectId);
+        installJobWorkspaceContext(jobRun);
         List<JobWorkItem> items = job.items();
         Map<String, Object> outputs = new LinkedHashMap<>(assignment.output());
         Map<String, Object> evidence = new LinkedHashMap<>(assignment.evidence());
@@ -487,6 +488,14 @@ public class OrchestrationRunnerService {
         }
         return jobService.markRunning(jobService.startRun(
             job.id(), assignment.agentId(), projectId, assignment.id()).id());
+    }
+
+    private void installJobWorkspaceContext(JobRun jobRun) {
+        OrchestrationTaskContext context = OrchestrationTaskContextHolder.current();
+        if (context == null || jobRun == null || !StringUtils.hasText(jobRun.workspacePath())) {
+            return;
+        }
+        OrchestrationTaskContextHolder.set(context.withJobWorkspacePath(jobRun.workspacePath()));
     }
 
     private JobItemResult runJobItem(WorkAssignment assignment, WorkAssignment current, JobWorkItem item, String jobRunId) {

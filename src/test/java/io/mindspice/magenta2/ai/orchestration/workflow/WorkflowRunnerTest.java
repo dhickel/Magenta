@@ -2,6 +2,7 @@ package io.mindspice.magenta2.ai.orchestration.workflow;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.chat.plan.*;
+import io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer;
 import io.mindspice.magenta2.ai.chat.repository.ChatMemoryRepository;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
@@ -50,7 +51,6 @@ class WorkflowRunnerTest {
 
         PlanRepository planRepository = new PlanRepository(jdbcTemplate, mapper);
         ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, mapper);
-        planService = new PlanService(planRepository, memoryRepository);
 
         Path dataRoot = tempDir.resolve("data");
         java.nio.file.Files.createDirectories(dataRoot);
@@ -66,6 +66,9 @@ class WorkflowRunnerTest {
             new WorkspaceService(workspaceRepository, new io.mindspice.magenta2.ai.config.user.AiConfig(
                 null, null, null, null, dataRoot, null, null))
         );
+        planService = new PlanService(
+            planRepository, memoryRepository, null, new ChatMarkdownRenderer(),
+            workspaceDirectoryService, outputArtifactService, effectiveWorkspaceResolver);
 
         WorkflowRepository workflowRepository = new WorkflowRepository(jdbcTemplate, mapper);
         inboxService = new InboxService(workflowRepository, mapper);
@@ -439,6 +442,54 @@ class WorkflowRunnerTest {
             assertThat(seen.hostOutputPath()).isEqualTo(finished.outputDir());
             assertThat(seen.hostDurableWorkspacePath())
                 .isEqualTo(workspaceDirectoryService.dataRoot().resolve("projects/project-1/workspace").toString());
+        } finally {
+            OrchestrationTaskContextHolder.clear();
+        }
+    }
+
+    @Test
+    void delegationChildRunUsesActiveEffectiveWorkspaceContext() throws Exception {
+        PlanDefinition childTask = task("delegated", List.of(), List.of());
+        WorkflowNode delegation = new WorkflowNode(
+            "delegate",
+            WorkflowNodeType.DELEGATION,
+            childTask.id(),
+            "delegate",
+            null,
+            List.of(),
+            List.of(),
+            Map.of(),
+            false,
+            List.of(),
+            null,
+            null
+        );
+        WorkflowDefinition def = workflowService.saveDefinitionValidated(new WorkflowDefinition(
+            null, 2, "Delegation Context", "", 1,
+            List.of(delegation), List.of(), Map.of(), null, null
+        ));
+
+        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
+            "agent-1", "Agent 1", "job-1", "project-1", "workspace-1", "WORKFLOW_RUN",
+            null, null
+        ));
+        try {
+            WorkflowRun run = workflowService.startRun(def.id());
+            WorkflowRun finished = pollForTerminal(run.id());
+
+            assertThat(finished.status()).isEqualTo(WorkflowRunStatus.COMPLETED);
+            String childRunId = finished.nodeRuns().stream()
+                .filter(node -> node.nodeKey().equals("delegate"))
+                .findFirst()
+                .orElseThrow()
+                .outputValues()
+                .get("childRunId")
+                .toString();
+            PlanRun childRun = planService.getRun(childRunId);
+            assertThat(Path.of(childRun.outputDirectory()))
+                .startsWith(workspaceDirectoryService.dataRoot()
+                    .resolve("projects/project-1/workspace/outputs/tasks"));
+            assertThat(childRun.workspaceId()).isNotBlank();
         } finally {
             OrchestrationTaskContextHolder.clear();
         }

@@ -23,7 +23,7 @@ Compatibility notes:
 Source package: [`ai/chat/plan`](../../src/main/java/io/mindspice/magenta2/ai/chat/plan). Task-facing records live in [`ai/chat/task`](../../src/main/java/io/mindspice/magenta2/ai/chat/task).
 
 - `plan_definitions`: unified saved plan/task definitions. It stores kind, status, title, summary, goal, notes, deliverables, inputs, outputs, assumptions, steps, validation criteria, execution evidence, validation feedback, prompt/work profile, planning/execution model, settings overrides, planning task text, pending questions/index, plan start order, final message, conversation id, and timestamps.
-- `plan_runs`: execution history for saved definitions. It snapshots the full definition, input/output values, workspace/output paths, evidence, validation feedback, deliverable evidence, final/error messages, status, and timestamps.
+- `plan_runs`: execution history for saved definitions. It snapshots the full definition, input/output values, effective workspace/output paths, temp workspace path, evidence, validation feedback, deliverable evidence, final/error messages, status, and timestamps.
 
 Important invariants:
 
@@ -31,14 +31,16 @@ Important invariants:
 - Task templates use UUID ids and may carry conversation id for draft tracking.
 - Saved plan chats are keyed by saved `plan_id`; anonymous `/chat` planning remains keyed by conversation id and does not use `plan_chat_messages`.
 - Runs snapshot definitions at start time so later edits do not change historical run meaning.
-- `PlanRepository` adds `plan_runs.temp_workspace_path` for warm databases.
+- Project-scoped runs use the project workspace as the effective durable workspace; agent-scoped runs use the agent workspace.
+- Task outputs are stored under `<effective-workspace>/outputs/tasks/<taskId>/<runId>/`.
+- `PlanRepository` adds `plan_runs.temp_workspace_path`, output path, workspace, and project compatibility columns for warm databases as needed.
 
 ## Workflows
 
 Source package: [`ai/orchestration/workflow`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workflow).
 
 - `workflow_definitions`: v2 workflow definitions with schema version, title, summary, max concurrency, nodes JSON, routes JSON, UI layout JSON, and timestamps.
-- `workflow_runs`: workflow execution records with current node index, denormalized node runs JSON, workspace/output paths, workflow snapshot JSON, final outputs, artifact ids, final/error messages, status, and timestamps.
+- `workflow_runs`: workflow execution records with current node index, denormalized node runs JSON, temp workspace path, durable output path, workflow snapshot JSON, final outputs, artifact ids, final/error messages, status, and timestamps.
 - `workflow_node_runs`: queryable per-node run rows denormalized from `workflow_runs.node_runs_json`.
 - `inbox_messages`: workflow-owned inbox messages for user approvals, workflow agent approvals, notifications, and run-output delivery.
 
@@ -46,6 +48,7 @@ Compatibility notes:
 
 - `WorkflowRepository` adds schema version, max concurrency, UI layout, node/route JSON, run output fields, current node index, node run JSON, workspace/output fields, snapshot, final/error messages, and timestamps when missing.
 - Workflow inbox messages are intentionally separate from runtime direct-line agent inbox messages.
+- Workflow durable outputs are stored under `<effective-workspace>/outputs/workflows/<workflowId>/<runId>/`; runtime execution state stays under workflow temp space and remains available while a run is `WAITING`.
 
 ## Agents, Assignments, Runtime Jobs, Inbox, Schedules, Reactions
 
@@ -53,7 +56,7 @@ Source packages: [`ai/orchestration/agents`](../../src/main/java/io/mindspice/ma
 
 - `agent_profiles`: durable agent profiles with name, status, default model, system prompt, approved tools JSON, shell allowlist JSON, direct-line flag, and timestamps.
 - `orchestration_jobs` and `orchestration_job_items`: legacy/runtime orchestration job records used by runtime internals.
-- `work_assignments`: durable assignment queue. Fields include agent id, job/job item ids, assignment type, priority, status, model override, workspace id, current item index, checkpoint/input/output/evidence JSON, error, lease owner/expires, progress/heartbeat timestamps, lifecycle timestamps.
+- `work_assignments`: durable assignment queue. Fields include agent id, job/job item ids, assignment type, priority, status, model override, compatibility workspace id, project id in input JSON, current item index, checkpoint/input/output/evidence JSON, error, lease owner/expires, progress/heartbeat timestamps, lifecycle timestamps.
 - `assignment_conversation_links`: durable mapping from assignment ids to chat conversation ids so transcripts remain visible even if checkpoint output is incomplete.
 - `agent_inbox_messages`: runtime direct-line agent/operator inbox messages with read/handled flags.
 - `agent_schedules` and `schedule_firings`: cron-like assignment scheduling and de-duplication of due firings.
@@ -69,24 +72,26 @@ Compatibility notes:
 
 Source package: [`ai/orchestration/runtime`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/runtime).
 
-- `job_definitions`: user-facing jobs with owner agent, project, workspace, status, title, summary, ordered `items_json`, prompt profile, model, settings override JSON, and timestamps.
-- `job_runs`: execution records with work item run JSON, workspace/output paths, final/error messages, status, and timestamps.
+- `job_definitions`: user-facing jobs with owner agent runtime hint, project, compatibility workspace, `persistent_workspace_enabled`, status, title, summary, ordered `items_json`, prompt profile, model, settings override JSON, and timestamps.
+- `job_runs`: execution records with job assignment id, effective workspace id, work item run JSON, optional persistent job workspace path, output path, final/error messages, status, and timestamps.
 - `job_recurrences`: one recurrence per job, with cron expression, timezone, next fire time, enabled flag, and timestamps.
 
 Compatibility notes:
 
-- `JobRepository` can add owner agent, project, workspace, and status columns to older `job_definitions`.
+- `JobRepository` can add owner agent, project, workspace, persistent workspace, assignment id, and status columns to older job tables.
 - Public job definitions can be saved as empty `DRAFT` rows before items are added.
+- Persistent job workspace is opt-in and assignment-scoped under `<effective-workspace>/jobs/<assignmentId>`.
+- Job outputs are stored under `<effective-workspace>/outputs/jobs/<assignmentId>/<jobRunId>`.
 
 ## Projects
 
 Source package: [`ai/orchestration/runtime`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/runtime).
 
-- `projects`: project metadata, owner agent, optional git repo URL, prompt profile, model, settings override JSON, and timestamps.
+- `projects`: project metadata, nullable legacy owner agent id, optional git repo URL, prompt profile, model, settings override JSON, and timestamps.
 - `project_agent_memberships`: unique project/agent membership rows with roles.
 - `project_events`: append-only project event log.
 
-Project services also coordinate with workspace tables for project workspace summaries and release requests.
+Projects are shared workspace and visibility records, not executable work units. Project services also coordinate with workspace tables for project workspace summaries and release requests.
 
 ## Workspaces, Leases, Links, Outputs
 
@@ -95,7 +100,7 @@ Source package: [`ai/orchestration/workspaces`](../../src/main/java/io/mindspice
 - `workspaces`: owner type/id, root relative path, display name, metadata JSON, and timestamps.
 - `workspace_links`: labeled readable/writable links from a workspace to external targets.
 - `workspace_leases`: writable/read leases with holder, mode, expiry, release request flag, released timestamp, and timestamps.
-- `run_output_artifacts`: output artifact metadata including run id, plan id, optional agent/job/project/workspace ids, run type, output name, artifact type, file name/path, content JSON, and timestamp.
+- `run_output_artifacts`: output artifact metadata including run id, plan id, optional agent/job/job-assignment/job-run/project/workspace ids, run type, output name, artifact type, file name/path, content JSON, and timestamp.
 
 Important constraints:
 

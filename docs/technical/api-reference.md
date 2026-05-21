@@ -56,7 +56,7 @@ Source: [`PlanController`](../../src/main/java/io/mindspice/magenta2/api/web/Pla
 - `POST /api/plans/{planId}/planning-chat/messages`: append a saved plan chat message and run the saved-plan model turn.
 - `GET /api/plans/{planId}/planning-chat`: read saved plan chat state and messages.
 
-Create/update payloads include title, summary, goal, notes, deliverables, inputs, outputs, assumptions, steps, validation criteria, work type/prompt profile, planning model, and execution model. `PlanRunRequest` accepts input values, conversation id, agent id, job id, workspace id, model override, and priority. Saved plan chat input/output questions collect initial user context; the saved-plan model synthesizes typed field definitions with name, type, required flag, array flag, description, examples, and optional schema through plan-scoped tools.
+Create/update payloads include title, summary, goal, notes, deliverables, inputs, outputs, assumptions, steps, validation criteria, work type/prompt profile, planning model, and execution model. `PlanRunRequest` accepts input values, conversation id, agent id, job id, explicit `projectId`, compatibility `workspaceId`, model override, and priority. `SubmitRequest` accepts agent id, model override, priority, `projectId`, and `workspaceId`. Saved plan chat input/output questions collect initial user context; the saved-plan model synthesizes typed field definitions with name, type, required flag, array flag, description, examples, and optional schema through plan-scoped tools.
 
 `runs/stream` emits `submitted` with assignment metadata or `failed`. It does not stream inline model output.
 
@@ -71,7 +71,7 @@ Source: [`TaskController`](../../src/main/java/io/mindspice/magenta2/api/web/Tas
 - `GET /api/tasks/{taskId}/runs`, `GET /api/tasks/runs/{runId}`: run reads.
 - `POST /api/tasks/{taskId}/runs/stream`: SSE submit-to-agent path.
 
-Task create/update payloads carry title, summary, goal, notes, input/output descriptions, structured fields, assumptions, steps, and validation criteria. `runs/stream` emits `submitted` or `failed`.
+Task create/update payloads carry title, summary, goal, notes, input/output descriptions, structured fields, assumptions, steps, and validation criteria. `TaskRunRequest` accepts input values, conversation id, agent id, job id, explicit `projectId`, compatibility `workspaceId`, model override, and priority. `runs/stream` emits `submitted` or `failed`.
 
 ## Workflows: `/api/workflows`, `/api/workflow-runs`, `/api/users/inbox`
 
@@ -86,7 +86,7 @@ Source: [`WorkflowController`](../../src/main/java/io/mindspice/magenta2/api/web
 - `POST /api/workflow-runs/{runId}/resume`: resume paused approval/waiting runs through `WorkflowService`.
 - `GET /api/users/inbox`, `POST /api/users/inbox/{messageId}/respond`: workflow-owned user approval inbox.
 
-Workflow definitions include schema version, title, summary, max concurrency, nodes, routes, and UI layout.
+Workflow definitions include schema version, title, summary, max concurrency, nodes, routes, and UI layout. `WorkflowRunRequest` accepts agent id, job id, explicit `projectId`, compatibility `workspaceId`, model override, and priority. Waiting workflow assignments remain `WAITING` and resumable instead of being treated as failed only because the workflow run is nonterminal.
 
 ## Jobs: `/api/jobs`, `/api/job-runs`
 
@@ -100,7 +100,7 @@ Source: [`JobController`](../../src/main/java/io/mindspice/magenta2/api/web/JobC
 - `GET /api/jobs/{jobId}/outputs`, `GET /api/jobs/{jobId}/events`: derived output/event views.
 - `POST /api/jobs/{jobId}/recurrence`, `GET /api/jobs/{jobId}/recurrence`: recurrence configuration.
 
-Job item payloads reference task or workflow ids, model override, priority, retry count, continue-on-failure, and config JSON.
+Job definitions include owner agent, optional project, compatibility workspace id, `persistentWorkspaceEnabled`, status, title, summary, items, prompt profile, model, and settings override JSON. `JobRunRequest` accepts agent id, model override, explicit `projectId`, compatibility `workspaceId`, and priority. Job item payloads reference task or workflow ids, model override, priority, retry count, continue-on-failure, and config JSON.
 
 ## Agents: `/api/agents` and `/api/agents/{agentId}`
 
@@ -130,7 +130,7 @@ Source: [`ProjectController`](../../src/main/java/io/mindspice/magenta2/api/web/
 - `GET /api/projects/{projectId}/network`, `GET /api/projects/{projectId}/events`.
 - `GET /api/projects/{projectId}/workspace`, `POST /api/projects/{projectId}/workspace/release`.
 
-Create accepts `name`/`description` or legacy-compatible `title`/`summary`, plus owner agent and git repo URL. Workspace release can return `409` when a lease cannot be released immediately.
+Create accepts `name`/`description` or legacy-compatible `title`/`summary`, plus nullable legacy `ownerAgentId` and git repo URL. Projects are shared workspace and visibility records, not executable work units. Workspace release can return `409` when a lease cannot be released immediately.
 
 ## Workspaces: `/api/workspaces`
 
@@ -153,7 +153,7 @@ Source: [`OutputController`](../../src/main/java/io/mindspice/magenta2/api/web/O
 - `GET /api/outputs/{artifactId}/content`: return metadata plus text/json/user-message content when safe.
 - `GET /api/outputs/{artifactId}/download`: download a confined file under the data root.
 
-Content/download enforce a 10 MB limit in the controller. Download resolves real paths and rejects paths outside the output service data root.
+Output artifacts can carry agent, job, job assignment, job run, project, workspace, run type, and work-unit attribution. Content/download enforce a 10 MB limit in the controller. Download resolves real paths and rejects paths outside the output service data root.
 
 ## Dashboard, Runtime, Settings, Models
 

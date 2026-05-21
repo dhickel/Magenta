@@ -78,12 +78,12 @@ Finalize changes the plan status from draft to approved. It does not execute the
 1. Open an existing plan.
 2. Select **Submit to Agent**.
 3. Choose an agent.
-4. Optionally choose a model override and workspace.
+4. Optionally choose a project, model override, and compatibility workspace.
 5. Set priority.
 6. Fill runtime inputs generated from the plan's input definitions.
 7. Submit.
 
-The workspace field uses a searchable selector where available. The agent field in the plan submit panel may still be a plain dropdown. Do not copy opaque workspace IDs if the selector is visible; type a workspace label, owner, path, or ID and choose the matching option.
+The project field controls where durable files and outputs belong. If a project is selected, the run uses the project workspace. If no project is selected, it uses the executing agent workspace. The workspace field remains for compatibility and uses a searchable selector where available. The agent field in the plan submit panel may still be a plain dropdown.
 
 After submit, Magenta creates an assignment. Open the linked agent page and use the queue, diagnostics, transcript, history, workspace, and outputs tabs to follow execution.
 
@@ -95,6 +95,8 @@ Plan submissions create agent assignments and may create task run records. The p
 - The agent **History** tab for terminal assignments, diagnostics, and transcripts.
 - `/outputs` for artifacts.
 - `/jobs` when the plan runs as part of a job.
+
+Task output artifacts are written under the effective workspace at `outputs/tasks/<taskId>/<runId>`. Ordinary chat files remain separate from these output artifacts.
 
 ## Anonymous Chat Plan Execution
 

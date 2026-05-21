@@ -7,7 +7,7 @@ Use `/jobs` to define ordered work made from plans and workflows, configure opti
 The page has:
 
 - A sidebar with **New Job**, an agent filter, and job rows.
-- An editor for title, summary, owner, project, status, manager type, and default model.
+- An editor for title, summary, owner agent, project, optional persistent workspace, status, manager type, and default model.
 - Ordered items for plans and workflows.
 - Recurrence settings.
 - Run, output, and event panels.
@@ -19,10 +19,13 @@ The page has:
 3. Fill **Title** and **Summary**.
 4. Choose an **Owner Agent**.
 5. Choose an optional **Project**.
-6. Set **Status**, **Manager Type**, and **Default Model**.
-7. Save.
+6. Enable persistent workspace only when each assignment should keep durable job working files.
+7. Set **Status**, **Manager Type**, and **Default Model**.
+8. Save.
 
 The project field is selector-backed where available. The owner agent field is currently a plain agent dropdown in the job editor.
+
+Jobs run through an agent. If a project is selected, job outputs and project-facing task/workflow item outputs use the project workspace. Otherwise they use the agent workspace.
 
 ## Add Ordered Items
 
@@ -66,10 +69,12 @@ Save recurrence from the job editor. Recurrence config does not prove the schedu
 
 Saved jobs expose two operational actions:
 
-- **Start Run** creates a job assignment using the job owner or the first active agent.
+- **Start Run** creates a job assignment using the job owner agent or the first active agent.
 - **Submit to Agent** opens a form where you choose the agent and priority before submitting.
 
 The submit form's agent field is currently a plain dropdown. If you need a specific agent, choose it explicitly.
+
+Job outputs are written under the effective workspace at `outputs/jobs/<assignmentId>/<jobRunId>`. When persistent workspace is enabled, durable job working files are kept separately at `jobs/<assignmentId>`. Multiple assignments of the same job definition do not share that persistent workspace.
 
 ## Runs, Cancellation, Outputs, Events
 

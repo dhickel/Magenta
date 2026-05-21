@@ -35,6 +35,8 @@ import io.mindspice.magenta2.ai.orchestration.runtime.JobRepository;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobRun;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobRunStatus;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobService;
+import io.mindspice.magenta2.ai.orchestration.runtime.JobWorkItem;
+import io.mindspice.magenta2.ai.orchestration.runtime.JobWorkItemType;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationEvent;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationEventService;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationJob;
@@ -1119,6 +1121,20 @@ class OrchestrationRuntimeTest {
             .get("messageId")
             .toString();
 
+        assertThat(runner.runNextSynchronously()).isNull();
+        assertThat(repository.findAssignment(waiting.id()).orElseThrow().status())
+            .isEqualTo(OrchestrationStatus.WAITING);
+        assertThat(repository.acquireLease(waiting.id(), "poller", Instant.now().plusSeconds(300)))
+            .isEmpty();
+        new OrchestrationEventService(repository, assignmentService, true).publish(
+            EventType.INBOX_MESSAGE_RECEIVED,
+            "INBOX_MESSAGE",
+            "message-unrelated",
+            Map.of("toAgentId", agent.id(), "messageId", "message-unrelated", "messageType", "direct")
+        );
+        assertThat(repository.findAssignment(waiting.id()).orElseThrow().status())
+            .isEqualTo(OrchestrationStatus.WAITING);
+
         workflowInboxService.respondUserApproval(messageId, true, "yes");
         assignmentService.resume(agent.id(), waiting.id());
         WorkAssignment completed = runner.runAssignment(waiting.id());
@@ -1315,6 +1331,77 @@ class OrchestrationRuntimeTest {
     }
 
     @Test
+    void persistentJobWorkspacePathIsAvailableInChildTaskContext() throws Exception {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        AiConfig aiConfig = aiConfig();
+        WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(aiConfig);
+        WorkspaceRepository workspaceRepository = new WorkspaceRepository(jdbcTemplate);
+        WorkspaceService workspaceService = new WorkspaceService(workspaceRepository, aiConfig);
+        EffectiveWorkspaceResolver resolver = new EffectiveWorkspaceResolver(directoryService, workspaceService);
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, objectMapper);
+        AgentProfileService agentService = agentService(jdbcTemplate, aiConfig);
+        AgentProfile agent = agentService.create(new AgentProfile(
+            "agent-job-context", "Job Context Agent", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of(), true, null, null
+        ));
+        JobService jobService = new JobService(
+            new JobRepository(jdbcTemplate, objectMapper), directoryService, null, null, resolver);
+        JobDefinition job = jobService.saveDefinition(new JobDefinition(
+            "job-context", agent.id(), null, null, true, "READY",
+            "Job Context", "summary",
+            List.of(new JobWorkItem(
+                "task", JobWorkItemType.PLAN, "task-context", null, Map.of(), 0, null, null)),
+            null, null, null, null, null
+        ));
+        RuntimeSettingsService settingsService = new RuntimeSettingsService(
+            new RuntimeSettingsRepository(jdbcTemplate), aiConfig, agentService);
+        AssignmentService assignmentService = new AssignmentService(repository, agentService, settingsService, jobService);
+        OrchestrationEventService eventService = new OrchestrationEventService(repository, assignmentService, true);
+        AtomicReference<String> jobWorkspaceSeen = new AtomicReference<>();
+        ChatService chatService = new ChatService(null, null, null, null, null) {
+            @Override
+            public TaskExecutionResult executeTaskBlocking(
+                String taskId,
+                Map<String, Object> inputValues,
+                String conversationId,
+                String modelOverride
+            ) {
+                OrchestrationTaskContext context = OrchestrationTaskContextHolder.current();
+                jobWorkspaceSeen.set(context == null ? null : context.hostJobWorkspacePath());
+                TaskRun run = new TaskRun(
+                    "task-run-context", taskId, TaskRunStatus.COMPLETED, inputValues, Map.of("ok", true),
+                    null, List.of("evidence"), List.of(), "done", null,
+                    Instant.now(), Instant.now(), Instant.now(), Instant.now()
+                );
+                return new TaskExecutionResult(conversationId, run, null);
+            }
+        };
+        OrchestrationRunnerService runner = new OrchestrationRunnerService(
+            repository, assignmentService, jobService, null, null, chatService, null, eventService,
+            agentService, null, null, null, null, directoryService,
+            new MagentaWorkExecutor(Map.of(
+                MagentaWorkKind.BACKGROUND_JOB, new MagentaWorkExecutor.LaneSettings("test-bg-", 1, 10)
+            )),
+            300,
+            60
+        );
+        repository.saveAssignment(new WorkAssignment(
+            "assignment-job-context", agent.id(), job.id(), null, AssignmentType.JOB_RUN, 1,
+            OrchestrationStatus.QUEUED, null, null, 0,
+            Map.of(), Map.of("jobId", job.id()), Map.of(), Map.of(),
+            null, null, null, null, null, null, null
+        ));
+
+        WorkAssignment result = runner.runAssignment("assignment-job-context");
+
+        assertThat(result.status()).as(result.errorText()).isEqualTo(OrchestrationStatus.COMPLETED);
+        assertThat(jobWorkspaceSeen.get()).isNotBlank();
+        assertThat(Path.of(jobWorkspaceSeen.get()))
+            .isEqualTo(directoryService.agentWorkspace(agent.id()).resolve("jobs/assignment-job-context").toRealPath());
+    }
+
+    @Test
     void assignmentTranscriptUsesCheckpointDurableAndLegacyConversationLinks() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         ObjectMapper objectMapper = new ObjectMapper();
@@ -1480,6 +1567,37 @@ class OrchestrationRuntimeTest {
         assertThat(resumed.status()).isEqualTo(OrchestrationStatus.QUEUED);
         assertThat(interrupted.status()).isEqualTo(OrchestrationStatus.INTERRUPTED);
         assertThat(interrupted.errorText()).contains("stuck worker");
+    }
+
+    @Test
+    void inboxMessageEventResumesOnlyWaitForMessageAssignments() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, new ObjectMapper());
+        AgentProfileService agentService = agentService(jdbcTemplate, aiConfig());
+        AgentProfile agent = agentService.create(new AgentProfile(
+            "agent-1", "Agent 1", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of(), true, null, null
+        ));
+        AssignmentService assignmentService = new AssignmentService(repository, agentService, null, null);
+        OrchestrationEventService eventService = new OrchestrationEventService(repository, assignmentService, true);
+        repository.saveAssignment(new WorkAssignment(
+            "wait-message", agent.id(), null, null, AssignmentType.WAIT_FOR_MESSAGE, 1,
+            OrchestrationStatus.WAITING, null, null, 0,
+            Map.of(), Map.of(), Map.of(), Map.of(), null, null, null, null, null, null, null
+        ));
+        repository.saveAssignment(new WorkAssignment(
+            "wait-workflow", agent.id(), null, null, AssignmentType.WORKFLOW_RUN, 1,
+            OrchestrationStatus.WAITING, null, null, 0,
+            Map.of(), Map.of(), Map.of(), Map.of(), null, null, null, null, null, null, null
+        ));
+
+        eventService.publish(EventType.INBOX_MESSAGE_RECEIVED, "INBOX_MESSAGE", "message-1",
+            Map.of("toAgentId", agent.id(), "messageId", "message-1", "messageType", "direct"));
+
+        assertThat(repository.findAssignment("wait-message").orElseThrow().status())
+            .isEqualTo(OrchestrationStatus.QUEUED);
+        assertThat(repository.findAssignment("wait-workflow").orElseThrow().status())
+            .isEqualTo(OrchestrationStatus.WAITING);
     }
 
     @Test

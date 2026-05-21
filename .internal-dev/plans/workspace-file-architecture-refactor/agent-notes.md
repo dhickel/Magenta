@@ -19,7 +19,7 @@ All review, planning, implementation, validation, remediation, documentation, an
 
 ## Active Agents
 
-- None.
+- Phase 07 Closeout Docs: documentation, changelog, technical changelog, knowledge notes, and closeout state.
 
 ## Completed Work
 
@@ -432,3 +432,139 @@ Deferred work:
 Ready state:
 
 - Phase 06 implementation is ready for main orchestrator validation and commit. No commit was created by this implementation agent.
+
+## Phase 07 Closeout Documentation Notes - 2026-05-21
+
+Changed files:
+
+- `docs/technical/workspaces-tools-outputs.md`
+- `docs/technical/orchestration-runtime.md`
+- `docs/technical/data-model.md`
+- `docs/technical/api-reference.md`
+- `docs/technical/chat-planning-tasks.md`
+- `docs/technical/workflow-engine.md`
+- `docs/technical/services.md`
+- `docs/end-user/projects-and-workspaces.md`
+- `docs/end-user/jobs.md`
+- `docs/end-user/plans-and-tasks.md`
+- `docs/end-user/workflows.md`
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/AGENTS.md`
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/AGENTS.md`
+- `src/main/java/io/mindspice/magenta2/ai/chat/plan/AGENTS.md`
+- `src/main/java/io/mindspice/magenta2/ai/chat/tool/AGENTS.md`
+- `.internal-dev/changelogs/2026-05-21-workspace-file-architecture-refactor.md`
+- `.internal-dev/changelogs/2026-05-21-workspace-file-architecture-technical.md`
+- `.internal-dev/knowledge/workspace-file-architecture-rules.md`
+- `.internal-dev/plans/workspace-file-architecture-refactor/agent-notes.md`
+- `.internal-dev/plans/workspace-file-architecture-refactor/orchestration-state.md`
+
+Documented behavior:
+
+- Projects are durable shared workspace/visibility records; `ownerAgentId` is nullable legacy compatibility metadata.
+- Effective workspace is project workspace with `projectId`, otherwise executing agent workspace.
+- Direct task/plan/workflow/job submissions can carry explicit `projectId`; `workspaceId` remains compatibility metadata.
+- Task outputs, workflow outputs, and job outputs use the new effective workspace paths.
+- Runtime aliases are `workspace/`, `work/`, `outputs/`, `run/`, and `scratch/`.
+- Loose artifact discovery is compatibility-gated/confined and explicit publishing is the target path.
+- Workflow `WAITING` remains resumable and async task-node context propagation is expected.
+- Jobs have opt-in per-assignment persistent workspaces and job assignment/run output attribution.
+- Chat files remain separate from output artifacts.
+
+Package guide decision:
+
+- Updated closest relevant package guides for `ai/orchestration`, `ai/orchestration/workspaces`, `ai/chat/plan`, and `ai/chat/tool` because the refactor changed package-level path, runtime, output, and alias responsibilities.
+- Did not edit root `AGENTS.md` or `src/main/java/io/mindspice/magenta2/api/web/AGENTS.md` because they had unrelated dirty changes and were explicitly excluded.
+
+Validation:
+
+- Documentation/package-guide stale-term check passed for old project owner/output phrasing.
+- `git diff --check` for files touched by Phase 07 -> PASS.
+- `mvn test -Dtest=PublicApiRouteBindingTest,WorkspacePathSegmentValidationTest` -> PASS, 16 tests.
+- Broader code validation and xhigh review remain owned by the final validation agent.
+
+Blockers:
+
+- None found.
+
+Out-of-scope bugs:
+
+- None found during closeout documentation work.
+
+Ready state:
+
+- Phase 07 documentation artifacts are ready for final validation/xhigh review handoff.
+
+## Final XHigh Remediation Notes - 2026-05-21
+
+Changed files:
+
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/runtime/OrchestrationRuntimeRepository.java`
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/runtime/OrchestrationEventService.java`
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/runtime/OrchestrationTaskContext.java`
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/runtime/OrchestrationRunnerService.java`
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/workflow/WorkflowRunner.java`
+- `src/main/java/io/mindspice/magenta2/ai/chat/tool/file/AgentFileToolService.java`
+- `src/main/java/io/mindspice/magenta2/ai/chat/tool/shell/AgentShellToolService.java`
+- `src/test/java/io/mindspice/magenta2/ai/orchestration/OrchestrationRuntimeTest.java`
+- `src/test/java/io/mindspice/magenta2/ai/orchestration/workflow/WorkflowRunnerTest.java`
+- `src/test/java/io/mindspice/magenta2/ai/chat/tool/file/AgentFileToolServiceTest.java`
+- `src/test/java/io/mindspice/magenta2/ai/chat/tool/shell/AgentShellToolServiceTest.java`
+- `docs/technical/workspaces-tools-outputs.md`
+- `src/main/java/io/mindspice/magenta2/ai/chat/tool/AGENTS.md`
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/AGENTS.md`
+- `.internal-dev/changelogs/2026-05-21-workspace-file-architecture-technical.md`
+- `.internal-dev/knowledge/workspace-file-architecture-rules.md`
+- `.internal-dev/plans/workspace-file-architecture-refactor/agent-notes.md`
+- `.internal-dev/plans/workspace-file-architecture-refactor/orchestration-state.md`
+
+Implemented remediation:
+
+- Normal queue leasing and stale recovery no longer pick `WAITING` assignments. `WAITING` assignments become runnable only after explicit resume paths move them back to `QUEUED`.
+- Inbox-message event auto-resume is narrowed to `WAIT_FOR_MESSAGE` assignments. Waiting workflow approval assignments are not resumed by unrelated inbox events.
+- Added regression coverage that an unanswered approval workflow assignment remains `WAITING`, is not acquired by direct lease or queue polling, is not resumed by unrelated inbox-message events, and still completes after approval response plus explicit resume.
+- Added `hostJobWorkspacePath` to `OrchestrationTaskContext` with backward-compatible constructors and path-preserving helpers.
+- Assignment-backed jobs install the opt-in persistent job workspace path into the active orchestration context before child plan/workflow items run.
+- File and shell tools now support `job/` when a persistent job workspace exists, while preserving `workspace/`, `work/`, `outputs/`, `run/`, and `scratch/`.
+- Workflow `DELEGATION` nodes now call `PlanService.startRun(...)` with the active orchestration context so child plan runs use the active project/agent effective workspace.
+- Corrected output docs to state that public `GET /api/outputs` currently exposes `agentId`, `jobId`, `projectId`, `runId`, `type`, and `limit`; broader attribution remains service/internal metadata unless separately exposed.
+
+Validation:
+
+- Initial focused remediation run failed once because the new persistent-job-workspace context test omitted an event service fixture. Fixed the test fixture.
+- `mvn test -Dtest=OrchestrationRuntimeTest,WorkflowRunnerTest,AgentFileToolServiceTest,AgentShellToolServiceTest` -> PASS, 107 tests before event-service narrowing.
+- `mvn test -Dtest=OrchestrationRuntimeTest` -> PASS, 39 tests after event-service narrowing.
+- `mvn test -Dtest=OrchestrationRuntimeTest,WorkflowRunnerTest,AgentFileToolServiceTest,AgentShellToolServiceTest,PlanServiceTest,OutputArtifactServiceAttributionTest` -> PASS, 160 tests.
+- `mvn test -Dtest=PublicApiRouteBindingTest,WorkspacePathSegmentValidationTest` -> PASS, 16 tests.
+- Additional targeted regression: `mvn test -Dtest=JobServiceTest,JobRepositoryTest,WorkspaceRepositorySchemaMigrationTest` -> PASS, 26 tests.
+- `git diff --check` -> PASS.
+- `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` -> application started on port `38121`; exited `124` because `timeout` stopped the running server.
+
+Blockers:
+
+- None found.
+
+Ready state:
+
+- Final remediation is ready for final validation/xhigh re-review. No commit was created by this remediation worker.
+
+## Final Validation And XHigh Re-Review - 2026-05-21
+
+Final validation:
+
+- `git diff --check` excluding unrelated dirty files -> PASS.
+- Targeted remediation/workspace suite -> PASS.
+- Full `mvn test` -> PASS, 616 tests.
+- Spring startup smoke -> PASS; app started on an ephemeral port and was stopped by `timeout`.
+- Sanity checks confirmed `WAITING` leasing behavior, `job/` alias support, workflow delegation context propagation, and corrected public output filter documentation.
+
+Final xhigh re-review:
+
+- No blocker findings.
+- Confirmed all previous xhigh blockers were fixed.
+- Noted one future hardening candidate: explicit manual resume of a workflow approval can still be attempted before the approval exists; existing workflow guard rejects that path.
+- Noted one documentation nit in `docs/technical/workspaces-tools-outputs.md`; corrected before closeout commit.
+
+Closeout state:
+
+- Workspace file architecture refactor is ready for final scoped commit.
+- Next queued orchestration after commit: services/frontend/UX integration review and refactor for project/job display, assignment, submission, and architecture alignment.

@@ -15,12 +15,12 @@ The projects page has:
 1. Open `/projects`.
 2. Select **New Project**.
 3. Fill **Name**.
-4. Choose an **Owner Agent**.
+4. Optionally choose an **Initial Agent**.
 5. Optionally fill description and Git repo URL.
 6. Choose manager type and default model if needed.
 7. Save.
 
-The owner agent field is currently a plain agent dropdown in the project editor. Job and settings pages have selector-backed entity fields in some related areas, but project ownership itself may still be chosen from a dropdown.
+Projects are shared workspaces, not executable work units. The initial agent field is compatibility metadata and can be blank. Add agents as members when they need to work with the project.
 
 ## Edit A Project
 
@@ -38,7 +38,7 @@ Deleting a project is destructive. Confirm the project is no longer referenced b
 
 For existing projects, the workspace section shows:
 
-- Owner.
+- Initial agent, when legacy metadata exists.
 - Root kind.
 - Display path.
 - Member/link count.
@@ -50,7 +50,7 @@ If a lease is active, the UI may show **Release workspace after current turn**. 
 
 ## Project Network And Memberships
 
-The project network section shows the owner and linked agents. The agents section lists assigned members and roles.
+The project network section shows linked agents. The agents section lists assigned members and roles.
 
 Membership editing is limited in the current UI. If you need membership changes that are not exposed by the project page, use the relevant API or future UI once implemented.
 
@@ -62,14 +62,19 @@ Use `/jobs` for job editing and `/outputs` for full artifact filtering, inline v
 
 ## Workspace Relationship To Agents And Jobs
 
-Projects provide a shared context and workspace relationship. Agents execute assignments and may mount or link project workspaces depending on runtime state. Jobs can be associated with projects and produce outputs that appear under project filters.
+Projects provide shared context and a durable workspace. Agents execute assignments. When a task, workflow, or job submission includes a project, the project workspace is the effective durable workspace for files and outputs. Without a project, the executing agent workspace is used.
+
+Project-scoped outputs appear under project filters and are written under the project workspace:
+
+- Tasks: `outputs/tasks/<taskId>/<runId>`
+- Workflows: `outputs/workflows/<workflowId>/<runId>`
+- Jobs: `outputs/jobs/<assignmentId>/<jobRunId>`
 
 Workspace leases indicate active ownership or use. A lease is an orchestration/runtime coordination record; it is not the same thing as a container, though container-backed execution may use the workspace while the lease is held.
 
 ## Common Errors
 
 - **Name is required**: every project needs a name.
-- **Owner agent is required**: create or choose an owner agent.
 - **No agents exist**: create an agent before creating a project.
 - **Project not found**: the project was deleted or the page is stale.
 - **Workspace: ...**: workspace summary failed; inspect runtime configuration or logs.
@@ -77,4 +82,4 @@ Workspace leases indicate active ownership or use. A lease is an orchestration/r
 
 ## Alpha Limits
 
-Project CRUD is available, but membership editing and deep workspace operations are still limited in the UI. Some project summary panels display raw owner, member, lease, run, or job IDs for traceability. Searchable selectors are used in related job/project fields where available, but exact workspace and lease diagnostics may still require reading displayed IDs.
+Project CRUD is available, but membership editing and deep workspace operations are still limited in the UI. Some project summary panels display raw member, lease, run, or job IDs for traceability. Searchable selectors are used in related job/project fields where available, but exact workspace and lease diagnostics may still require reading displayed IDs.

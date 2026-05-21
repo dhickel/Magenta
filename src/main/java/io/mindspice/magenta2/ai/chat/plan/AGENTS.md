@@ -9,6 +9,8 @@ This package owns anonymous chat plan state, saved execution plan/task definitio
 - Provide the standalone plan-mode system prompt and compact execution-mode runtime instructions.
 - Keep plan lifecycle operations explicit and driven by commands or planning-specific API actions.
 - Keep plan state separate from transient chat history and generic todo tracking.
+- For saved plan/task execution, use effective workspace behavior from orchestration services: `projectId` selects project durable workspace, otherwise agent workspace, while `workspaceId` remains compatibility metadata.
+- Task outputs belong under `outputs/tasks/<taskId>/<runId>` in the effective workspace and should be explicitly materialized or published.
 - Prefer keyed item mutations for draft sections so model tool calls add, replace, or delete one plan element at a time.
 
 ### Change guidance

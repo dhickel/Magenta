@@ -104,7 +104,7 @@ Plan runs and task runs preserve execution history:
 - `PlanRun` stores input values, output values, definition snapshot, workspace/output paths, evidence, validation feedback, deliverable evidence, final/error messages, status, and timestamps.
 - `TaskRun` stores task-specific run state and is used by task execution paths.
 
-Runs snapshot their definitions so edits after execution do not rewrite historical meaning. Outputs are materialized through workspace/output services and indexed in `run_output_artifacts`.
+Runs snapshot their definitions so edits after execution do not rewrite historical meaning. Durable output paths are resolved through the effective workspace rule: project workspace when `projectId` is present, otherwise the executing agent workspace. Task outputs are stored under `outputs/tasks/<taskId>/<runId>` and indexed in `run_output_artifacts`.
 
 ## Submit-To-Agent Semantics
 
@@ -115,6 +115,8 @@ Public plan/task run routes now submit durable assignments:
 - `POST /api/tasks/{taskId}/runs/stream`
 
 The controller resolves an active agent when no `agentId` is supplied, defaults priority to `9`, builds `AssignmentRequest`, and calls `AssignmentService.create` with `AssignmentType.TASK_RUN`. The SSE stream returns `submitted` or `failed` and then completes.
+
+Submission payloads can carry explicit `projectId` and compatibility `workspaceId`. `projectId` controls effective durable workspace selection; `workspaceId` is retained for compatibility metadata.
 
 Actual execution is handled later by orchestration runner services. This keeps HTTP request handling short and makes queued work observable/cancellable.
 

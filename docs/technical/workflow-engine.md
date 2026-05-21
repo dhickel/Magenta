@@ -63,6 +63,8 @@ Validation is exposed at:
 
 Runs persist in `workflow_runs`; per-node rows persist in `workflow_node_runs`.
 
+Workflow execution uses separate runtime temp and durable output paths. Temp execution state stays under runtime workflow-run space, while final durable outputs are written under the effective workspace at `outputs/workflows/<workflowId>/<runId>`.
+
 ## Submission and Execution
 
 Public API submission routes do not run workflows inline:
@@ -85,6 +87,7 @@ They validate the saved definition, resolve/default an active agent, and create 
 - Handling approval/wait nodes and resume policy.
 - Capturing node outputs and final outputs.
 - Recording artifact ids from materialized outputs.
+- Propagating orchestration task context into async task-node execution.
 - Marking terminal status and errors.
 
 `WorkflowExecutionObserver` provides observation hooks for execution events.
@@ -101,9 +104,11 @@ Routes:
 
 Approval messages store response JSON, responded timestamp, handled timestamp, and metadata such as workflow run id. `ResumePolicy` controls how waiting nodes continue.
 
+Assignment-backed workflow runs preserve `WAITING` assignment status while waiting for approval or resume. Resuming continues the original workflow run instead of starting a replacement run.
+
 ## Output Mapping
 
-Workflow final outputs are stored in `workflow_runs.final_outputs_json`. Output artifacts materialized during runs are stored in `run_output_artifacts` and referenced by `artifact_ids_json`.
+Workflow final outputs are stored in `workflow_runs.final_outputs_json`. Output artifacts materialized during runs are stored under the effective workspace output path, indexed in `run_output_artifacts`, and referenced by `artifact_ids_json`.
 
 Task nodes can produce task output artifacts via the task/plan execution path. The workflow runner gathers relevant output values and artifact ids into the workflow run record.
 

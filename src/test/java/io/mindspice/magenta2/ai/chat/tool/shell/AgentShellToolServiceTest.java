@@ -383,6 +383,7 @@ class AgentShellToolServiceTest {
         Path durableWorkspace = Files.createDirectories(tempDir.resolve("projects/project-1/workspace"));
         Path workDir = Files.createDirectories(durableWorkspace.resolve("work"));
         Path scratchDir = Files.createDirectories(durableWorkspace.resolve("scratch"));
+        Path jobDir = Files.createDirectories(durableWorkspace.resolve("jobs/assignment-1"));
         Path runWorkspace = Files.createDirectories(tempDir.resolve("runtime/task-runs/run-1"));
         Path outputDir = Files.createDirectories(durableWorkspace.resolve("outputs/tasks/task-1/run-1"));
 
@@ -392,7 +393,8 @@ class AgentShellToolServiceTest {
 
         OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
             "agent-1", "TestAgent", null, "project-1", "workspace-1", "TASK_RUN",
-            runWorkspace.toString(), outputDir.toString(), durableWorkspace.toString(), runWorkspace.toString()));
+            runWorkspace.toString(), outputDir.toString(), durableWorkspace.toString(), runWorkspace.toString(),
+            jobDir.toString()));
 
         try {
             assertThat(service.exec("pwd", "workspace", 5).stdout().trim())
@@ -401,6 +403,8 @@ class AgentShellToolServiceTest {
                 .isEqualTo(workDir.toRealPath().toString());
             assertThat(service.exec("pwd", "scratch", 5).stdout().trim())
                 .isEqualTo(scratchDir.toRealPath().toString());
+            assertThat(service.exec("pwd", "job", 5).stdout().trim())
+                .isEqualTo(jobDir.toRealPath().toString());
             assertThat(service.exec("pwd", "run", 5).stdout().trim())
                 .isEqualTo(runWorkspace.toRealPath().toString());
             assertThat(service.exec("pwd", "outputs", 5).stdout().trim())

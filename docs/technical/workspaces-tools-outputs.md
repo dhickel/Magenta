@@ -7,17 +7,27 @@ Workspace and output behavior is owned by [`ai/orchestration/workspaces`](../../
 Workspace paths are confined under the configured data root managed by `WorkspaceDirectoryService`. The current layout includes:
 
 - Agent workspace root: `agents/<id>/workspace/`
-- Agent outputs: `agents/<id>/workspace/outputs/<slug>-<runId>/`
+- Project workspace root: `projects/<projectId>/workspace/`
+- Effective workspace shared directories: `work/`, `outputs/`, `runs/`, `scratch/`, and `jobs/`.
+- Task outputs: `<effective-workspace>/outputs/tasks/<taskId>/<runId>/`
+- Workflow outputs: `<effective-workspace>/outputs/workflows/<workflowId>/<runId>/`
+- Job outputs: `<effective-workspace>/outputs/jobs/<assignmentId>/<jobRunId>/`
+- Opt-in persistent job workspaces: `<effective-workspace>/jobs/<assignmentId>/`
 - Agent project links: `agents/<id>/workspace/projects/<projectId>`
 - Agent scratch: `agents/<id>/workspace/scratch/`
-- Task temp directories.
-- Workflow temp directories.
+- Task temp directories under runtime task-run space.
+- Workflow temp directories under `runtime/workflow-runs/<runId>/`.
 - Persistent chat files: `chats/<conversationId>/files/`
-- Job workspaces.
-- Project workspaces.
-- Agent/job output directories.
 
 Legacy `agents/<id>/home` and `agents/<id>/outputs` directories are deprecated. `WorkspaceDirectoryService` can migrate warm data roots into the current `workspace/` layout when old directories exist and new counterparts do not.
+
+`EffectiveWorkspaceResolver` centralizes durable workspace selection:
+
+- If `projectId` is present, the project workspace is the effective durable workspace.
+- Otherwise, the executing agent workspace is the effective durable workspace.
+- `workspaceId` is retained as compatibility metadata and is not interpreted as a project id.
+
+Projects are shared durable workspace and visibility abstractions. They are not executable work units, and `ownerAgentId` is nullable legacy compatibility metadata.
 
 ## Workspace Records and Links
 
@@ -57,7 +67,7 @@ Workspace leases are separate from assignment queue leases in `work_assignments`
 Artifacts include:
 
 - Run id and plan id.
-- Optional agent id, job id, project id, workspace id, and run type.
+- Optional agent id, job id, job assignment id, job run id, project id, workspace id, and run type.
 - Output name and artifact type.
 - File name and absolute file path.
 - Optional content JSON.
@@ -68,6 +78,8 @@ API routes:
 - `GET /api/outputs`
 - `GET /api/outputs/{artifactId}/content`
 - `GET /api/outputs/{artifactId}/download`
+
+`GET /api/outputs` currently accepts `agentId`, `jobId`, `projectId`, `runId`, `type`, and `limit`. Output rows also store workspace, plan, job assignment, and job run attribution for internal correlation and future filtering work, but those fields are not all exposed as public query parameters on this route yet.
 
 The controller limits inline content/downloads to 10 MB. Download resolves the real path and rejects files outside the output service data root. Text, JSON, and user-message artifacts are returned inline when safe; other artifacts direct callers to download.
 
@@ -94,6 +106,17 @@ Shell tools:
 - Resolve working directories, enforce command allowlists, capture bounded stdout/stderr, and report exit status.
 - Per-agent allowlists come from durable profiles seeded from file config. Wildcard shell command allowance requires the explicit unsafe file-config override.
 
+During task, workflow, or job execution, file and shell tools resolve runtime aliases from the active orchestration context:
+
+- `workspace/`: effective durable workspace root.
+- `work/`: effective workspace `work/`.
+- `outputs/`: current run output directory.
+- `run/`: current run temp/execution directory.
+- `scratch/`: effective workspace `scratch/`.
+- `job/`: current persistent job workspace, only when the active job assignment/run has one.
+
+Project-scoped runs therefore expose project files through `workspace/`, while agent-scoped runs expose the agent workspace. Existing project-link access under `projects/<projectId>/...` remains compatibility support for older prompts and run contexts.
+
 Web tools:
 
 - Source: [`AgentWebToolService`](../../src/main/java/io/mindspice/magenta2/ai/chat/tool/web/AgentWebToolService.java).
@@ -117,12 +140,15 @@ Controllers and settings pages should not accept arbitrary tool execution; they 
 Typical task/plan/workflow output flow:
 
 1. Execution service produces structured output values and optional file paths.
-2. Workspace directory service provides a run output directory.
-3. `OutputArtifactService` copies or writes materialized content into that output directory.
-4. Metadata is inserted into `run_output_artifacts`.
-5. Output APIs and operational pages query by run, agent, job, project, workspace, or type.
+2. The effective workspace resolver selects the project workspace when `projectId` is present, otherwise the executing agent workspace.
+3. Workspace directory service provides a work-unit output directory under `outputs/tasks/...`, `outputs/workflows/...`, or `outputs/jobs/...`.
+4. `OutputArtifactService` copies or writes materialized content into that output directory.
+5. Metadata is inserted into `run_output_artifacts`.
+6. Output services and operational pages use run, agent, job, project, workspace, plan, job assignment, job run, or type attribution as needed. Public `GET /api/outputs` exposes the filtered subset documented above.
 
 Temp workspaces can be cleaned up on terminal run states, but output directories persist.
+
+Loose artifact discovery exists only as compatibility behavior. It is gated by service policy, confined by real paths under the configured data root and expected run output directory, and should not be used as the primary contract for new work. New code should publish explicit outputs through output materialization or `OutputArtifactService.publishExistingFile(...)`.
 
 ## Temp Retention
 
@@ -132,3 +158,5 @@ Temp workspaces can be cleaned up on terminal run states, but output directories
 - `false`: delete temp directories only after clean completion.
 
 When validation or output materialization detects missing required output, missing referenced file deliverables, or missing final-message deliverables, Magenta keeps the temp directory and marks the run for review instead of silently completing it. Persistent chat files are separate from temp work and are never auto-deleted by this cleanup path.
+
+Waiting workflow runs keep their runtime temp directory so approval and resume state remains available. Durable output directories and persistent job workspaces are not deleted by run temp cleanup.

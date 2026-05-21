@@ -63,7 +63,9 @@ public class OrchestrationEventService {
             if (StringUtils.hasText(agentId)) {
                 var waitingAssignments = repository.findWaitingAssignmentsForAgent(agentId);
                 for (var assignment : waitingAssignments) {
-                    assignmentService.resume(assignment.id());
+                    if (assignment.assignmentType() == AssignmentType.WAIT_FOR_MESSAGE) {
+                        assignmentService.resume(assignment.id());
+                    }
                 }
             }
         }

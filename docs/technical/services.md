@@ -62,7 +62,7 @@ Controllers: `AgentProfileController`, agent editor fragments in `OrchestrationC
 Sources: [`ai/orchestration/runtime`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/runtime).
 
 - `AssignmentService` owns durable assignment creation, queue reads, history reads, lifecycle transitions, history purge, assignment diagnostics, transcript lookup, conversation links, and lease/progress fields.
-- `OrchestrationRunnerService` executes queued assignment boundaries for task, workflow, and job work. It does not attempt token-level resume; durable state resumes at task/workflow/job item boundaries.
+- `OrchestrationRunnerService` executes queued assignment boundaries for task, workflow, and job work. It resolves project-scoped work through the effective workspace rule, preserves waiting workflow assignments for resume, and does not attempt token-level resume; durable state resumes at task/workflow/job item boundaries.
 - `OrchestrationRunService` provides run-facing helpers for assignment execution paths.
 - `OrchestrationRuntimeRepository` owns runtime queue, schedules, reactions, direct-line inbox, events, legacy orchestration jobs, and compatibility columns.
 - `InboxService` in `runtime` owns direct-line agent/operator inbox messages in `agent_inbox_messages`.
@@ -78,6 +78,7 @@ Sources: [`JobService`](../../src/main/java/io/mindspice/magenta2/ai/orchestrati
 
 - `JobService` owns user-facing job definitions, ordered work items, run records, recurrence, cancellation, and output run id lookup.
 - Public job run routes submit `JOB_RUN` assignments through `AssignmentService`; job execution is coordinated by `OrchestrationRunnerService`.
+- Jobs can opt into persistent per-assignment workspace under the effective durable workspace. Job outputs are stored under `outputs/jobs/<assignmentId>/<jobRunId>` and artifacts carry assignment/run attribution.
 - Jobs can be empty `DRAFT` definitions so the UI can save metadata before items are added.
 
 Tables: `job_definitions`, `job_runs`, `job_recurrences`, `run_output_artifacts`, plus assignment tables when submitted.
@@ -89,6 +90,7 @@ Controllers: `JobController` and `/jobs` fragments in `OrchestrationController`.
 Sources: [`ProjectService`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/runtime/ProjectService.java), [`ProjectRepository`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/runtime/ProjectRepository.java).
 
 - `ProjectService` owns durable project CRUD, project membership, project events, project workspace summary, and release requests for project workspace leases.
+- Projects are shared workspace and visibility records, not executable work units. `ownerAgentId` is nullable legacy compatibility metadata.
 - Project workspaces and links are delegated to workspace services.
 
 Tables: `projects`, `project_agent_memberships`, `project_events`, `workspaces`, `workspace_leases`.
@@ -101,7 +103,7 @@ Sources: [`ai/orchestration/workflow`](../../src/main/java/io/mindspice/magenta2
 
 - `WorkflowService` owns definition CRUD, validation, run records, resume operations, and repository coordination.
 - `WorkflowValidator` enforces v2 routed graph rules, required node references, and validation warnings/errors.
-- `WorkflowRunner` executes workflow nodes, routes, approval waits, output mappings, and task node delegation.
+- `WorkflowRunner` executes workflow nodes, routes, approval waits, output mappings, durable output materialization, and task node delegation with propagated orchestration context.
 - `WorkflowTaskExecutor` bridges workflow task nodes into task execution.
 - `InboxService` in `workflow` owns workflow/user approval messages in `inbox_messages`.
 
@@ -115,9 +117,10 @@ Sources: [`ai/orchestration/workspaces`](../../src/main/java/io/mindspice/magent
 
 - `WorkspaceService` owns workspace records and links.
 - `WorkspaceDirectoryService` owns data-root-confined path creation and legacy agent directory migration.
+- `EffectiveWorkspaceResolver` chooses the project workspace when `projectId` is present, otherwise the executing agent workspace.
 - `WorkspaceLeaseService` owns exclusive writable lease acquisition, extension, release request, expiry reconciliation, and release completion.
 - `AgentWorkspaceStatusService` builds agent workspace health/status views.
-- `OutputArtifactService` materializes run outputs into output directories, records artifact metadata, queries artifacts, and loads content.
+- `OutputArtifactService` materializes explicit run outputs into effective workspace output directories, records artifact metadata, queries artifacts, loads content, and keeps loose discovery behind compatibility gating and confinement.
 
 Tables: `workspaces`, `workspace_links`, `workspace_leases`, `run_output_artifacts`.
 

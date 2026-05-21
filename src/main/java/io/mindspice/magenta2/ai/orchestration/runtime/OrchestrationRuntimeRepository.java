@@ -388,14 +388,13 @@ public class OrchestrationRuntimeRepository {
         return jdbcTemplate.query(
             """
                 select * from work_assignments
-                where status in (?, ?, ?)
+                where status in (?, ?)
                 order by priority desc, created_at asc
                 limit ?
                 """,
             (rs, rowNum) -> toAssignment(rs),
             OrchestrationStatus.QUEUED.name(),
             OrchestrationStatus.INTERRUPTED.name(),
-            OrchestrationStatus.WAITING.name(),
             limit
         );
     }
@@ -435,12 +434,12 @@ public class OrchestrationRuntimeRepository {
                     last_progress_at = coalesce(last_progress_at, ?),
                     last_heartbeat_at = ?,
                     updated_at = ?
-                where id = ? and status in (?, ?, ?) and (lease_expires_at is null or lease_expires_at <= ?)
+                where id = ? and status in (?, ?) and (lease_expires_at is null or lease_expires_at <= ?)
                 """,
             OrchestrationStatus.RUNNING.name(), leaseOwner, leaseExpiresAt.toString(),
             now.toString(), now.toString(), now.toString(), now.toString(),
             assignmentId, OrchestrationStatus.QUEUED.name(), OrchestrationStatus.INTERRUPTED.name(),
-            OrchestrationStatus.WAITING.name(), now.toString()
+            now.toString()
         );
         return updated == 0 ? Optional.empty() : findAssignment(assignmentId);
     }

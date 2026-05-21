@@ -179,6 +179,13 @@ public class AgentShellToolService {
             return new ResolvedWorkingDirectory(resolved, displayScoped("run", runRoot, resolved));
         }
 
+        if ("job".equals(normalized) || normalized.startsWith("job/")) {
+            Path jobRoot = activeScopeRoot(ctx.hostJobWorkspacePath(), "active job workspace");
+            String remainder = "job".equals(normalized) ? "" : normalized.substring("job/".length());
+            Path resolved = resolveScopedDirectory(jobRoot, remainder, workingDirectory);
+            return new ResolvedWorkingDirectory(resolved, displayScoped("job", jobRoot, resolved));
+        }
+
         if ("work".equals(normalized) || normalized.startsWith("work/")) {
             Path workRoot = durableChildScope(workspaceRoot, "work");
             String remainder = "work".equals(normalized) ? "" : normalized.substring("work/".length());

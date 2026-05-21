@@ -23,7 +23,7 @@ Core fields:
 
 - `agent_id`, optional `job_id` and `job_item_id`.
 - `assignment_type`: task, workflow, job, or other runtime work type.
-- `priority`, `status`, `model_override`, `workspace_id`.
+- `priority`, `status`, `model_override`, `project_id` in assignment input, and compatibility `workspace_id`.
 - `current_item_index`, `checkpoint_json`, input/output/evidence JSON.
 - `error_text`, lease owner/expires, progress/heartbeat timestamps.
 - Created, updated, started, completed timestamps.
@@ -54,10 +54,12 @@ Workspace writable leases are a separate concept in `workspace_leases`; see [Wor
 `OrchestrationRunnerService` executes assignment work at durable boundaries:
 
 - Task assignments execute through task/chat execution services.
-- Workflow assignments execute through `WorkflowRunner`.
+- Workflow assignments execute through `WorkflowRunner`, preserving `WAITING` assignment state for resumable approval/wait runs.
 - Job assignments execute ordered job items and can continue/fail based on item policy.
 
 The runtime does not attempt token-level or partial model response resume. Durable recovery is at task, workflow, and job item boundaries using assignment checkpoints and run records.
+
+Every assignment resolves one effective durable workspace before execution: project workspace when `projectId` is present, otherwise the executing agent workspace. Runtime temp directories remain separate from durable outputs.
 
 ## Jobs
 
@@ -67,6 +69,8 @@ There are two job-related schemas:
 - Runtime legacy/internal `orchestration_jobs` and `orchestration_job_items`, owned by `OrchestrationRuntimeRepository`.
 
 Current public job APIs use `JobDefinition` and `JobWorkItem`. Public job execution submits `AssignmentType.JOB_RUN`. Job items can reference tasks or workflows, include model override and priority, and persist retry count plus continue-on-failure policy.
+
+User-facing jobs can opt into persistent per-assignment workspace with `persistentWorkspaceEnabled`. When enabled, job workspace state lives under the effective workspace at `jobs/<assignmentId>`. Job outputs live under `outputs/jobs/<assignmentId>/<jobRunId>` and output artifacts carry job assignment/run attribution. The compatibility `workspaceId` field remains available on definitions and submissions.
 
 ## Inboxes
 
@@ -95,7 +99,7 @@ Reactions match event type and optional filter JSON, then apply an action type s
 
 `ProjectService` owns projects, memberships, events, and project workspace summaries.
 
-Projects are durable wrappers around owner agent, git repo metadata, prompt/model/settings overrides, memberships, and project event history. They integrate with workspace services for project workspace roots and lease release requests.
+Projects are durable shared workspace, membership, and visibility abstractions. They are not executable work units and no longer require a permanent owner agent. `ownerAgentId` remains a nullable legacy compatibility field on project records and create payloads. Work executes through an agent with optional `projectId`; project-scoped work uses the project workspace as the effective durable workspace.
 
 ## Runtime Settings
 

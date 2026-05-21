@@ -513,7 +513,7 @@ public class WorkflowRunner {
     private Map<String, Object> executeDelegationNode(WorkflowNode node, Map<String, Object> inputs) {
         Map<String, Object> outputs = new LinkedHashMap<>();
         if (StringUtils.hasText(node.planId())) {
-            PlanRun childRun = planService.startRun(node.planId(), inputs);
+            PlanRun childRun = planService.startRun(node.planId(), inputs, OrchestrationTaskContextHolder.current());
             PlanRun completed = planService.completeRun(childRun.id(), Map.of(), "Delegated run completed", List.of());
             outputs.put("childRunId", completed.id());
             outputs.put("childStatus", completed.status().name());

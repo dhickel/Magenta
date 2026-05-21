@@ -418,6 +418,12 @@ public class AgentFileToolService {
             rejectUnsafeRelativePath(remainder, "path escapes active run workspace: " + requested);
             return new FileScope(runRoot, "run", "active run workspace", remainder);
         }
+        if ("job".equals(normalized) || normalized.startsWith("job/")) {
+            Path jobRoot = activeScopeRoot(ctx.hostJobWorkspacePath(), "active job workspace");
+            String remainder = "job".equals(normalized) ? "" : normalized.substring("job/".length());
+            rejectUnsafeRelativePath(remainder, "path escapes active job workspace: " + requested);
+            return new FileScope(jobRoot, "job", "active job workspace", remainder);
+        }
         if ("work".equals(normalized) || normalized.startsWith("work/")) {
             Path workRoot = durableChildScope(workspaceRoot, "work");
             String remainder = "work".equals(normalized) ? "" : normalized.substring("work/".length());

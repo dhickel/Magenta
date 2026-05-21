@@ -61,14 +61,16 @@ Validation catches structural graph errors and type compatibility issues. A grap
 1. Open a saved workflow.
 2. Select **Submit to Agent**.
 3. Choose an active agent.
-4. Optionally choose a model override and workspace.
+4. Optionally choose a project, model override, and compatibility workspace.
 5. Submit.
 
-The workspace field is selector-backed where available. The agent choice may still be a plain dropdown in this form. If no agent is selected, the UI may fall back to the first active agent; choose explicitly when the result matters.
+The project field controls the durable workspace for workflow outputs. If a project is selected, outputs belong to the project workspace. If no project is selected, outputs belong to the executing agent workspace. The workspace field remains for compatibility and is selector-backed where available. The agent choice may still be a plain dropdown in this form. If no agent is selected, the UI may fall back to the first active agent; choose explicitly when the result matters.
 
 ## Runs And Waiting Work
 
 The **Recent Runs** table shows workflow run ID, status, current node, start time, and action. Runs in `WAITING` state can be resumed from the table when the workflow runtime allows it. Approval and wait messages may also appear in `/inbox`.
+
+Workflow temp state is kept while a run is waiting so resume can continue the same run. Durable workflow outputs are written under the effective workspace at `outputs/workflows/<workflowId>/<runId>`.
 
 ## Common Errors
 
