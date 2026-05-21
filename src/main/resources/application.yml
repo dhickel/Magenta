@@ -6,6 +6,8 @@ app:
     config-path: ./config/ai-config.example.json
 
 magenta:
+  root:
+    path: ${user.home}/.magenta
   features:
     schedules-enabled: true
     reactions-enabled: true
@@ -21,7 +23,7 @@ spring:
       chain:
         enabled: true
   datasource:
-    url: jdbc:sqlite:./chat-memory.db?foreign_keys=true
+    url: jdbc:sqlite:${magenta.root.path}/magenta.sqlite?foreign_keys=true
     driver-class-name: org.sqlite.JDBC
   sql:
     init:

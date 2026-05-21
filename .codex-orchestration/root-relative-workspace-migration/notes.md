@@ -24,12 +24,21 @@
 - Created shared orchestration notes.
 - Created beginning commit `6473c48` (`chore: start root-relative workspace migration`).
 - Planning agent created `.internal-dev/plans/root-relative-workspace-migration/implementation-plan.md`.
+- Phase 1 implemented root defaults and SQLite placement:
+  - Added `magenta.root.path` default `${user.home}/.magenta`.
+  - Moved default SQLite URL to `${magenta.root.path}/magenta.sqlite?foreign_keys=true`.
+  - Added early SQLite parent-directory creation for plain file-backed SQLite URLs while ignoring in-memory and URI memory URLs.
+  - Resolved/defaulted `AiConfig.dataRoot` before workspace/tool beans: missing -> `<magenta.root.path>/root`, relative -> `<magenta.root.path>/<relative>`, absolute unchanged.
+  - Kept prompt files resolved relative to the AI config file directory.
+  - Updated `config/ai-config.example.json` to omit host-specific `dataRoot` and replace real-looking credentials.
 
 ## Validation Results
 
 - Planning artifact only; no production code validation run.
 - R3 test-design review completed: `.internal-dev/reviews/2026-05-21-root-relative-testing-review.md`.
 - High-priority test gaps before implementation sign-off: isolated `/tmp` fresh-install SQLite/root behavior, root-relative helper stale absolute rejection, relative persisted path assertions for output/plan/workflow/job rows, seeded chat file carry-forward, and browser validation against an isolated root/database.
+- Phase 1 focused tests passed: `mvn -Dtest=ExternalAiConfigLoaderTest,MagentaRootConfigurationTest,AiUserConfigConfigurationTest test` (17 tests).
+- Phase 1 bounded startup smoke passed: app started with temp `--magenta.root.path=/tmp/magenta-phase1-smoke-1779380199373764712`, created `magenta.sqlite` and `root/`, then was stopped by `timeout` (exit 124 after successful startup).
 
 ## Remediation Notes
 
