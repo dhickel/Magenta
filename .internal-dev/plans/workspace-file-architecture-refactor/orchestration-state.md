@@ -33,12 +33,15 @@ Persistent state for this long-running orchestration effort. Use this file to re
 - Completed Phase 04 workflow waiting/resume, async context propagation, and durable workflow output implementation locally; no commit created by the phase implementation agent.
 - Completed Phase 04 validation through a dedicated validation agent.
 - Committed Phase 04 as `d1cc9f3 feat: route workflow outputs through effective workspace`.
+- Completed Phase 05 project owner-agent compatibility, explicit project submission context, and project UI remediation locally; no commit created by phase implementation/remediation agents.
+- Completed Phase 05 backend/API validation and Playwright UI validation through dedicated validation agents.
+- Committed Phase 05 as `f2aaa1d feat: make project context explicit for submissions`.
 
 ## Current Work
 
 - Workspace/file architecture refactor.
-- Current gate: Phase 05 commit.
-- Phase 05 implementation, UI remediation, backend/API validation, and Playwright UI validation completed locally without a commit. Main orchestrator should commit, record the hash, then start Phase 06.
+- Current gate: Phase 06 implementation.
+- Phase 05 implementation, remediation, and validation are committed. Main orchestrator should launch Phase 06 job workspace policy subplan.
 
 ## Current Plan Artifacts
 
@@ -78,7 +81,7 @@ Queued review/refactor focus:
 
 ## Next Action
 
-Commit Phase 05, record the hash, then launch Phase 06 job workspace policy subplan.
+Launch Phase 06 job workspace policy subplan.
 
 ## Phase 03 Local Validation
 

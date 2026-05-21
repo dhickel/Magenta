@@ -37,7 +37,7 @@ All review, planning, implementation, validation, remediation, documentation, an
 - Created Phase 02 commit: `961a6c8 feat: add effective workspace resolver`.
 - Created Phase 03 commit: `4f59cb5 feat: route task outputs through effective workspace`.
 - Created Phase 04 commit: `d1cc9f3 feat: route workflow outputs through effective workspace`.
-- Phase 05 implementation, remediation, backend validation, and Playwright UI validation completed locally; awaiting main orchestrator commit.
+- Created Phase 05 commit: `f2aaa1d feat: make project context explicit for submissions`.
 
 ## Validation Results
 
@@ -106,6 +106,7 @@ All review, planning, implementation, validation, remediation, documentation, an
 - Phase 05 backend/API validation agent completed 2026-05-21: all requested validation commands passed.
 - Phase 05 initial Playwright validation found project UI copy/list-refresh blockers; remediation completed.
 - Phase 05 Playwright re-validation completed 2026-05-21: project UI and plan submit checks passed. Phase 05 is ready for commit.
+- Phase 05 committed as `f2aaa1d feat: make project context explicit for submissions`.
 
 ## Phase 03 Implementation Notes - 2026-05-21
 
