@@ -48,6 +48,8 @@
 - Independent Phase 4 validation passed: `mvn -Dtest=PlanServiceTest,WorkflowRunnerTest,JobServiceTest test` (75 tests). Phase 4 may proceed to Phase 5.
 - Phase 5 focused tests passed: `mvn -Dtest=WorkspaceServicePathTest,WorkspaceControllerTest,WorkspaceRepositorySchemaMigrationTest test` (18 tests) plus bounded isolated-root startup smoke from the implementation worker.
 - Independent Phase 5 validation passed: `mvn -Dtest=WorkspaceServicePathTest,WorkspaceControllerTest,WorkspaceRepositorySchemaMigrationTest test` (18 tests). Phase 5 may proceed to Phase 6.
+- Phase 6 focused tests passed: `mvn -Dtest=ChatFileServiceTest,ChatFileControllerTest,ChatServiceTest,PublicApiRouteBindingTest test` (24 tests).
+- Independent Phase 6 validation passed: same 24-test chat/API suite and `git diff --check HEAD~1..HEAD`. Phase 6 may proceed to closeout/UX remediation.
 - Phase 5 focused tests passed: `mvn -Dtest=WorkspaceServicePathTest,WorkspaceControllerTest,WorkspaceRepositorySchemaMigrationTest test` (18 tests).
 - Phase 5 bounded startup smoke passed with isolated root `/tmp/magenta-phase5-smoke-2384505`; app started on ephemeral port 38965 and was stopped by `timeout 30s` (exit 124 after successful startup).
 
