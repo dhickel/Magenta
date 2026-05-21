@@ -235,7 +235,7 @@ Final remediation status:
   - Public output docs now match current `GET /api/outputs` filters.
 - Non-blocking sharp edge retained for future review: explicit operator resume can still attempt a workflow approval assignment before an approval response exists; the workflow guard rejects it. A later service/UI guard would improve ergonomics.
 - Non-blocking documentation nit about internal output attribution wording was corrected before closeout commit.
-- Workspace file architecture refactor is ready for final closeout commit.
+- Workspace file architecture refactor closeout commit: `3f447ae chore: close workspace file architecture refactor`.
 
 ## Queued Next Orchestration
 

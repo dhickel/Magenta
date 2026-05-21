@@ -566,5 +566,5 @@ Final xhigh re-review:
 
 Closeout state:
 
-- Workspace file architecture refactor is ready for final scoped commit.
+- Workspace file architecture refactor closeout commit: `3f447ae chore: close workspace file architecture refactor`.
 - Next queued orchestration after commit: services/frontend/UX integration review and refactor for project/job display, assignment, submission, and architecture alignment.
