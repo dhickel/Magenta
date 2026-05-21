@@ -12,11 +12,17 @@
 
 ## Active Agents
 
-- Pending initial read-only review agents.
+- Advanced plan synthesis pending.
 
 ## Completed Work
 
 - Created second-suite branch and initial orchestration notes.
+- Setup commit: `7e63626 plan: start services ux architecture refactor`.
+- Launched initial high-reasoning read-oriented review group.
+- Backend services review completed: `.internal-dev/plans/services-ux-architecture-refactor/review-backend-services.md`.
+- Frontend/UX review completed: `.internal-dev/plans/services-ux-architecture-refactor/review-frontend-ux.md`.
+- Integration/API review completed: `.internal-dev/plans/services-ux-architecture-refactor/review-integration-api.md`.
+- Risk/testing review completed: `.internal-dev/plans/services-ux-architecture-refactor/review-risk-testing.md`.
 
 ## Validation Results
 
@@ -42,3 +48,11 @@
 
 - The first wave should be read-only and should identify divergence between current backend services, frontend/UX, and the project/job/workspace architecture.
 - Agents must append concise findings here before finishing.
+
+## Review Wave Synthesis Inputs
+
+- Backend/API reviews agree that assignment `projectId` and effective workspace context need first-class durable/read-model treatment instead of living only in assignment input JSON.
+- Backend/API reviews agree jobs need a stable bridge read model that ties job definition, assignment id, job run id, agent, project, workspace, persistent workspace status, and outputs together.
+- Frontend/API reviews agree project/job UI controls are missing or misleading: project-scoped agent submit, job project/workspace routing, persistent job workspace toggle/status, project membership controls, output provenance, and run-to-output navigation.
+- Risk review requires assignment-routed execution and clear mutation policy before expanding project/job UI controls, so implementation must avoid direct execution paths that bypass workspace leasing.
+- Playwright validation is required for changed `/projects`, `/jobs`, `/outputs`, and submit-flow surfaces.
