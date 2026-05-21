@@ -111,6 +111,14 @@ Next recommended phase: start Phase 01 only. Do not start UI work until Phase 01
 ## Validation Log
 
 - Review wave was read-oriented; no source validation was expected. Review artifacts and notes passed `git diff --check`.
+- Phase 01 implementation and remediation validation passed:
+  - `mvn test -Dtest=AssignmentContextServiceTest,ProjectServiceTest,JobServiceTest`
+  - `mvn test -Dtest=PublicRunSubmissionControllerTest,OperationalUiContractControllerTest,AgentOrchestrationControllerTest,ProjectServiceTest,OrchestrationRuntimeTest`
+  - `mvn test -Dtest=WorkspaceLeaseServiceTest,WorkspaceRepositoryAttributionTest,WorkspaceRepositorySchemaMigrationTest,WorkspacePathSegmentValidationTest`
+  - `mvn test -Dtest=WorkspaceRepositorySchemaMigrationTest,AssignmentContextServiceTest`
+  - `git diff --check`
+  - Spring startup smoke on ephemeral port.
+- Phase 01 commit: `0a92caa feat: add first-class assignment workspace context`.
 - Phase 01 local validation passed:
   - `mvn test -Dtest=AssignmentContextServiceTest,ProjectServiceTest,JobServiceTest`
   - `mvn test -Dtest=PublicRunSubmissionControllerTest,OperationalUiContractControllerTest,AgentOrchestrationControllerTest,ProjectServiceTest,OrchestrationRuntimeTest`

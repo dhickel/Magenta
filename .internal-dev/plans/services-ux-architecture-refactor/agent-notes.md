@@ -23,6 +23,7 @@
 - Frontend/UX review completed: `.internal-dev/plans/services-ux-architecture-refactor/review-frontend-ux.md`.
 - Integration/API review completed: `.internal-dev/plans/services-ux-architecture-refactor/review-integration-api.md`.
 - Risk/testing review completed: `.internal-dev/plans/services-ux-architecture-refactor/review-risk-testing.md`.
+- Phase 01 committed: `0a92caa feat: add first-class assignment workspace context`.
 - Advanced plan synthesis completed:
   - `.internal-dev/plans/services-ux-architecture-refactor/review-synthesis.md`
   - `.internal-dev/plans/services-ux-architecture-refactor/implementation-plan.md`
