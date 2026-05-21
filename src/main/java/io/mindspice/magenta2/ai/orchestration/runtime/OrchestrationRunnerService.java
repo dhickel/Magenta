@@ -133,7 +133,9 @@ public class OrchestrationRunnerService {
         this.workspaceService = workspaceService;
         this.workspaceLeaseService = workspaceLeaseService;
         this.workspaceDirectoryService = workspaceDirectoryService;
-        this.rootRelativePathService = rootRelativePathService;
+        this.rootRelativePathService = rootRelativePathService != null
+            ? rootRelativePathService
+            : workspaceDirectoryService == null ? null : new RootRelativePathService(workspaceDirectoryService);
         this.executor = executor;
         this.leaseDuration = secondsOrDefault(leaseSeconds, DEFAULT_LEASE_DURATION);
         this.heartbeatInterval = secondsOrDefault(heartbeatSeconds, DEFAULT_HEARTBEAT_INTERVAL);

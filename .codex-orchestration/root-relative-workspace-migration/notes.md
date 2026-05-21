@@ -77,7 +77,20 @@
 
 ## Final Validation Status
 
-- Not started.
+- Full validation after remediation commit `d4975ea` passed:
+  - `git diff --check`
+  - `mvn test` (`Tests run: 687, Failures: 0, Errors: 0, Skipped: 0`)
+  - bounded isolated-root startup smoke with `<temp-root>/magenta.sqlite` and `<temp-root>/root`
+  - Playwright remediation artifacts present under `test-results/services-ux-playwright-remediation-2026-05-21/`
+- Final architecture review completed: `.internal-dev/reviews/2026-05-21-root-relative-final-architecture-review.md`.
+- Post-remediation architecture review completed: `.internal-dev/reviews/2026-05-21-root-relative-post-remediation-review.md`.
+  - No high or medium blockers remain.
+  - Low runner fallback gotcha was remediated by synthesizing `RootRelativePathService` from `WorkspaceDirectoryService` when available.
+- Final post-hardening validation passed:
+  - `git diff --check`
+  - `mvn -Dtest=JobServiceTest,OrchestrationRuntimeTest test` (`Tests run: 60, Failures: 0, Errors: 0, Skipped: 0`)
+  - `mvn test` (`Tests run: 687, Failures: 0, Errors: 0, Skipped: 0`)
+  - bounded isolated-root startup smoke with successful app startup before `timeout` exit 124
 
 ## Handoff Notes
 

@@ -176,7 +176,7 @@ class JobServiceTest {
         OrchestrationRunnerService runner = new OrchestrationRunnerService(
             runtime, assignmentService, jobService, null, null, null, null, null,
             null, null, null, null, null, workspaceDirectoryService,
-            new RootRelativePathService(workspaceDirectoryService), null, 300, 60);
+            null, null, 300, 60);
 
         OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
             "agent-1", "Agent 1", def.id(), null, null, "JOB_RUN", null, null));
