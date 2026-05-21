@@ -267,7 +267,7 @@ class OrchestrationRuntimeTest {
     }
 
     @Test
-    void hardDeletePurgesRuntimeJobAndProjectAgentReferences() throws Exception {
+    void hardDeletePurgesRuntimeJobReferencesAndClearsLegacyProjectOwner() throws Exception {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         ObjectMapper objectMapper = new ObjectMapper();
         AiConfig aiConfig = aiConfig();
@@ -396,11 +396,16 @@ class OrchestrationRuntimeTest {
         )).isEqualTo(0);
         assertThat(projectRepository.findByOwnerAgent("agent-1")).isEmpty();
         assertThat(projectRepository.findMembershipsByAgent("agent-1")).isEmpty();
+        Project retainedProject = projectRepository.findById("project-owned").orElseThrow();
+        assertThat(retainedProject.ownerAgentId()).isNull();
+        assertThat(projectRepository.findMembershipsByProject("project-owned"))
+            .extracting(ProjectAgentMembership::agentId)
+            .containsExactly("agent-2");
         assertThat(jdbcTemplate.queryForObject(
             "select count(*) from project_events where project_id = ?",
             Integer.class,
             "project-owned"
-        )).isEqualTo(0);
+        )).isEqualTo(1);
     }
 
     private AgentProfileService agentService(JdbcTemplate jdbcTemplate, AiConfig aiConfig) {

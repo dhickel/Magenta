@@ -159,7 +159,7 @@ class AgentOrchestrationControllerTest {
         );
 
         assertThatThrownBy(() -> controller.assign("agent-1", new AgentOrchestrationController.AgentAssignmentCreateRequest(
-            null, null, null, 0, null, null, java.util.Map.of()
+            null, null, null, 0, null, null, null, java.util.Map.of()
         ))).isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
             assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         });
@@ -174,7 +174,7 @@ class AgentOrchestrationControllerTest {
         );
 
         WorkAssignment result = controller.assign("agent-1", new AgentOrchestrationController.AgentAssignmentCreateRequest(
-            null, null, AssignmentType.TASK_RUN, 0, null, null, java.util.Map.of()
+            null, null, AssignmentType.TASK_RUN, 0, null, null, null, java.util.Map.of()
         ));
 
         assertThat(result).isNotNull();
@@ -191,7 +191,7 @@ class AgentOrchestrationControllerTest {
         );
 
         controller.assign("agent-from-path", new AgentOrchestrationController.AgentAssignmentCreateRequest(
-            null, null, AssignmentType.REPORT, 0, null, null, java.util.Map.of()
+            null, null, AssignmentType.REPORT, 0, null, null, null, java.util.Map.of()
         ));
 
         assertThat(assignmentService.receivedAgentId).isEqualTo("agent-from-path");

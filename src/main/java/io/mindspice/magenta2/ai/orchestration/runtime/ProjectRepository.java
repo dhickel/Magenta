@@ -96,15 +96,7 @@ public class ProjectRepository {
             return;
         }
         jdbcTemplate.update("delete from project_agent_memberships where agent_id = ?", agentId);
-        jdbcTemplate.update(
-            "delete from project_events where project_id in (select id from projects where owner_agent_id = ?)",
-            agentId
-        );
-        jdbcTemplate.update(
-            "delete from project_agent_memberships where project_id in (select id from projects where owner_agent_id = ?)",
-            agentId
-        );
-        jdbcTemplate.update("delete from projects where owner_agent_id = ?", agentId);
+        jdbcTemplate.update("update projects set owner_agent_id = null where owner_agent_id = ?", agentId);
     }
 
     // ── ProjectAgentMembership ──
@@ -235,12 +227,19 @@ public class ProjectRepository {
     // ── Schema bootstrapping ──
 
     private void ensureTables() {
+        createProjectsTable();
+        migrateNullableOwnerAgentId();
+        createMembershipsTable();
+        createEventsTable();
+    }
+
+    private void createProjectsTable() {
         jdbcTemplate.execute("""
             create table if not exists projects (
                 id text primary key,
                 name text not null,
                 description text,
-                owner_agent_id text not null,
+                owner_agent_id text,
                 git_repo_url text,
                 prompt_profile text,
                 model text,
@@ -249,6 +248,9 @@ public class ProjectRepository {
                 updated_at text not null
             )
             """);
+    }
+
+    private void createMembershipsTable() {
         jdbcTemplate.execute("""
             create table if not exists project_agent_memberships (
                 id text primary key,
@@ -263,6 +265,9 @@ public class ProjectRepository {
             create unique index if not exists idx_project_membership_unique
                 on project_agent_memberships (project_id, agent_id)
             """);
+    }
+
+    private void createEventsTable() {
         jdbcTemplate.execute("""
             create table if not exists project_events (
                 id text primary key,
@@ -273,5 +278,71 @@ public class ProjectRepository {
                 foreign key (project_id) references projects(id) on delete cascade
             )
             """);
+    }
+
+    private void migrateNullableOwnerAgentId() {
+        if (!tableExists("projects") || !ownerAgentIdIsRequired()) {
+            return;
+        }
+        boolean hasMemberships = tableExists("project_agent_memberships");
+        boolean hasEvents = tableExists("project_events");
+        jdbcTemplate.execute("pragma foreign_keys = off");
+        try {
+            if (hasMemberships) {
+                jdbcTemplate.execute("alter table project_agent_memberships rename to project_agent_memberships_owner_migration");
+            }
+            if (hasEvents) {
+                jdbcTemplate.execute("alter table project_events rename to project_events_owner_migration");
+            }
+            jdbcTemplate.execute("alter table projects rename to projects_owner_migration");
+            createProjectsTable();
+            jdbcTemplate.execute("""
+                insert into projects (
+                    id, name, description, owner_agent_id, git_repo_url,
+                    prompt_profile, model, settings_override_json, created_at, updated_at
+                )
+                select id, name, description, owner_agent_id, git_repo_url,
+                    prompt_profile, model, settings_override_json, created_at, updated_at
+                from projects_owner_migration
+                """);
+            jdbcTemplate.execute("drop table projects_owner_migration");
+            if (hasMemberships) {
+                createMembershipsTable();
+                jdbcTemplate.execute("""
+                    insert into project_agent_memberships (id, project_id, agent_id, role, joined_at)
+                    select id, project_id, agent_id, role, joined_at
+                    from project_agent_memberships_owner_migration
+                    """);
+                jdbcTemplate.execute("drop table project_agent_memberships_owner_migration");
+            }
+            if (hasEvents) {
+                createEventsTable();
+                jdbcTemplate.execute("""
+                    insert into project_events (id, project_id, type, payload_json, created_at)
+                    select id, project_id, type, payload_json, created_at
+                    from project_events_owner_migration
+                    """);
+                jdbcTemplate.execute("drop table project_events_owner_migration");
+            }
+        } finally {
+            jdbcTemplate.execute("pragma foreign_keys = on");
+        }
+    }
+
+    private boolean ownerAgentIdIsRequired() {
+        Integer required = jdbcTemplate.query(
+            "select \"notnull\" from pragma_table_info('projects') where name = 'owner_agent_id'",
+            rs -> rs.next() ? rs.getInt(1) : 0
+        );
+        return required != null && required == 1;
+    }
+
+    private boolean tableExists(String tableName) {
+        Integer count = jdbcTemplate.queryForObject(
+            "select count(*) from sqlite_master where type = 'table' and name = ?",
+            Integer.class,
+            tableName
+        );
+        return count != null && count > 0;
     }
 }

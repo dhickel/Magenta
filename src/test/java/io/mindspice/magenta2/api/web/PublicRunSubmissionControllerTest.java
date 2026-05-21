@@ -53,6 +53,7 @@ class PublicRunSubmissionControllerTest {
             "conversation-1",
             null,
             null,
+            "project-1",
             "workspace-1",
             "model-a",
             null
@@ -61,6 +62,7 @@ class PublicRunSubmissionControllerTest {
         assertThat(assignmentService.lastRequest.assignmentType()).isEqualTo(AssignmentType.TASK_RUN);
         assertThat(assignmentService.lastRequest.agentId()).isEqualTo("agent-1");
         assertThat(assignmentService.lastRequest.priority()).isEqualTo(9);
+        assertThat(assignmentService.lastRequest.projectId()).isEqualTo("project-1");
         assertThat(assignmentService.lastRequest.workspaceId()).isEqualTo("workspace-1");
         assertThat(assignmentService.lastRequest.modelOverride()).isEqualTo("model-a");
         assertThat(assignmentService.lastRequest.input()).containsEntry("taskId", "plan-1");
@@ -80,6 +82,7 @@ class PublicRunSubmissionControllerTest {
         SseEmitter emitter = controller.streamRun("plan-1", new PlanController.PlanRunRequest(
             Map.of("prompt", "ship it"),
             "conversation-1",
+            null,
             null,
             null,
             "workspace-1",
@@ -109,6 +112,7 @@ class PublicRunSubmissionControllerTest {
             null,
             null,
             null,
+            null,
             null
         ));
         CapturedSse captured = initializeEmitter(emitter);
@@ -134,6 +138,7 @@ class PublicRunSubmissionControllerTest {
             null,
             null,
             "job-1",
+            "project-1",
             null,
             null,
             null
@@ -142,6 +147,7 @@ class PublicRunSubmissionControllerTest {
         assertThat(assignmentService.lastRequest.assignmentType()).isEqualTo(AssignmentType.TASK_RUN);
         assertThat(assignmentService.lastRequest.agentId()).isEqualTo("agent-1");
         assertThat(assignmentService.lastRequest.jobId()).isEqualTo("job-1");
+        assertThat(assignmentService.lastRequest.projectId()).isEqualTo("project-1");
         assertThat(assignmentService.lastRequest.priority()).isEqualTo(9);
         assertThat(assignmentService.lastRequest.input()).containsEntry("taskId", "plan-1");
         assertThat(assignmentService.lastRequest.input()).containsEntry("inputValues", Map.of("prompt", "ship it"));
@@ -160,6 +166,7 @@ class PublicRunSubmissionControllerTest {
         WorkAssignment assignment = controller.startRun("workflow-1", new WorkflowController.WorkflowRunRequest(
             null,
             null,
+            "project-1",
             "workspace-1",
             null,
             null
@@ -168,6 +175,7 @@ class PublicRunSubmissionControllerTest {
         assertThat(assignment.assignmentType()).isEqualTo(AssignmentType.WORKFLOW_RUN);
         assertThat(assignment.priority()).isEqualTo(9);
         assertThat(assignmentService.lastRequest.agentId()).isEqualTo("agent-1");
+        assertThat(assignmentService.lastRequest.projectId()).isEqualTo("project-1");
         assertThat(assignmentService.lastRequest.workspaceId()).isEqualTo("workspace-1");
         assertThat(assignmentService.lastRequest.input()).containsEntry("workflowId", "workflow-1");
     }
@@ -208,6 +216,7 @@ class PublicRunSubmissionControllerTest {
 
         WorkAssignment assignment = controller.submitToAgent("plan-1", new PlanController.SubmitRequest(
             "agent-1",
+            null,
             null,
             null,
             null

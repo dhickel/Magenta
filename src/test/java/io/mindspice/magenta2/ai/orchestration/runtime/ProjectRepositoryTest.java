@@ -25,6 +25,17 @@ class ProjectRepositoryTest {
     }
 
     @Test
+    void savesProjectWithoutOwnerAgent() {
+        ProjectRepository repo = repository();
+
+        repo.save(project("proj-ownerless", "Ownerless", null));
+
+        Project found = repo.findById("proj-ownerless").orElseThrow();
+        assertThat(found.ownerAgentId()).isNull();
+        assertThat(repo.findByOwnerAgent("agent-missing")).isEmpty();
+    }
+
+    @Test
     void findsByOwnerAgent() {
         ProjectRepository repo = repository();
         repo.save(project("proj-2", "Beta", "agent-2"));
@@ -108,6 +119,45 @@ class ProjectRepositoryTest {
 
         assertThat(repo.findById("proj-10")).isEmpty();
         assertThat(repo.isMember("proj-10", "agent-z")).isFalse();
+    }
+
+    @Test
+    void migratesLegacyRequiredOwnerAgentColumnToNullable() {
+        SingleConnectionDataSource ds = new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true);
+        JdbcTemplate jdbc = new JdbcTemplate(ds);
+        jdbc.execute("""
+            create table projects (
+                id text primary key,
+                name text not null,
+                description text,
+                owner_agent_id text not null,
+                git_repo_url text,
+                prompt_profile text,
+                model text,
+                settings_override_json text,
+                created_at text not null,
+                updated_at text not null
+            )
+            """);
+        String now = Instant.now().toString();
+        jdbc.update("""
+            insert into projects (
+                id, name, description, owner_agent_id, git_repo_url,
+                prompt_profile, model, settings_override_json, created_at, updated_at
+            )
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, "legacy-project", "Legacy", null, "agent-legacy", null, null, null, null, now, now);
+
+        ProjectRepository repo = new ProjectRepository(jdbc, new ObjectMapper());
+        repo.save(project("new-ownerless", "New Ownerless", null));
+
+        assertThat(repo.findById("legacy-project").orElseThrow().ownerAgentId()).isEqualTo("agent-legacy");
+        assertThat(repo.findById("new-ownerless").orElseThrow().ownerAgentId()).isNull();
+        Integer required = jdbc.query(
+            "select \"notnull\" from pragma_table_info('projects') where name = 'owner_agent_id'",
+            rs -> rs.next() ? rs.getInt(1) : 1
+        );
+        assertThat(required).isZero();
     }
 
     // ── Helpers ──

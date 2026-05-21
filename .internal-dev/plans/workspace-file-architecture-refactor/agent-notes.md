@@ -37,6 +37,7 @@ All review, planning, implementation, validation, remediation, documentation, an
 - Created Phase 02 commit: `961a6c8 feat: add effective workspace resolver`.
 - Created Phase 03 commit: `4f59cb5 feat: route task outputs through effective workspace`.
 - Created Phase 04 commit: `d1cc9f3 feat: route workflow outputs through effective workspace`.
+- Phase 05 implementation, remediation, backend validation, and Playwright UI validation completed locally; awaiting main orchestrator commit.
 
 ## Validation Results
 
@@ -61,6 +62,13 @@ All review, planning, implementation, validation, remediation, documentation, an
   - `mvn test -Dtest=WorkflowRunnerTest,OrchestrationRuntimeTest,OutputArtifactServiceAttributionTest` -> PASS, 63 tests.
   - `mvn test -Dtest=PlanServiceTest,WorkflowRunnerTest,OrchestrationRuntimeTest,WorkspaceRepositorySchemaMigrationTest,PublicApiRouteBindingTest` -> PASS, 99 tests.
   - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` -> application started successfully on ephemeral port `33571`; command exited `124` because `timeout` stopped the running server after startup.
+- Phase 05 validation passed:
+  - `git diff --check` for Phase 05 files -> PASS.
+  - `mvn test -Dtest=ProjectServiceTest,ProjectRepositoryTest,WorkspaceRepositorySchemaMigrationTest` -> PASS, 23 tests.
+  - `mvn test -Dtest=PublicApiRouteBindingTest,OrchestrationControllerTest,OperationalUiContractControllerTest,AgentOrchestrationControllerTest,PublicRunSubmissionControllerTest,TaskStreamSupportTest` -> PASS, 147 tests.
+  - `mvn test -Dtest=ProjectServiceTest,ProjectRepositoryTest,WorkspaceRepositorySchemaMigrationTest,PublicApiRouteBindingTest,OrchestrationControllerTest,OperationalUiContractControllerTest,AgentOrchestrationControllerTest,PublicRunSubmissionControllerTest,TaskStreamSupportTest,PlanServiceTest,WorkflowRunnerTest,OrchestrationRuntimeTest` -> PASS, 256 tests.
+  - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` -> application started successfully on ephemeral port `34423`; command exited `124` because `timeout` stopped the running server after startup.
+  - Playwright UI re-validation against `http://localhost:18080` -> PASS. Ownerless project creation refreshed the list; `/projects` uses shared workspace/membership copy and `Initial Agent`; plan submit still shows Project and Workspace fields.
 
 ## Remediation Notes
 
@@ -95,6 +103,9 @@ All review, planning, implementation, validation, remediation, documentation, an
 - Phase 03 committed as `4f59cb5 feat: route task outputs through effective workspace`.
 - Phase 04 validation agent completed 2026-05-21: all requested validation commands passed. Phase 04 is ready for commit.
 - Phase 04 committed as `d1cc9f3 feat: route workflow outputs through effective workspace`.
+- Phase 05 backend/API validation agent completed 2026-05-21: all requested validation commands passed.
+- Phase 05 initial Playwright validation found project UI copy/list-refresh blockers; remediation completed.
+- Phase 05 Playwright re-validation completed 2026-05-21: project UI and plan submit checks passed. Phase 05 is ready for commit.
 
 ## Phase 03 Implementation Notes - 2026-05-21
 
@@ -311,3 +322,37 @@ Blockers:
 Ready state:
 
 - Phase 02 is ready for main orchestrator validation. No commit was created by this implementation agent.
+
+## Phase 05 UI Remediation Notes - 2026-05-21
+
+Changed files:
+
+- `src/main/java/io/mindspice/magenta2/api/web/OrchestrationController.java`
+- `src/test/java/io/mindspice/magenta2/api/web/OrchestrationControllerTest.java`
+- `.internal-dev/plans/workspace-file-architecture-refactor/agent-notes.md`
+- `.internal-dev/plans/workspace-file-architecture-refactor/orchestration-state.md`
+
+Implemented behavior:
+
+- Reworded the `/projects` shell and deprecated `/projects/{projectId}` shell copy from owner-agent tracking to shared project workspace, membership, and context language.
+- Changed the project editor compatibility field label from `Owner Agent` to `Initial Agent` while preserving the submitted form field name `ownerAgentId`.
+- Reworded visible project workspace/network metadata from owner language to initial-agent/membership language.
+- Project create and update responses now return the editor fragment plus an HTMX out-of-band `#project-list` refresh, so ownerless project creation visibly updates the sidebar list without custom JavaScript.
+- Added explicit project-created/project-saved status text in successful editor responses.
+
+Coverage updated:
+
+- `OrchestrationControllerTest` now asserts the new `/projects` copy, the `Initial Agent` label with backward-compatible `ownerAgentId`, and ownerless create responses that include an OOB project list refresh containing the created project.
+
+Commands and results:
+
+- `mvn test -Dtest=OrchestrationControllerTest,OperationalUiContractControllerTest` -> PASS, 97 tests.
+- `mvn test -Dtest=PublicApiRouteBindingTest,OrchestrationControllerTest,OperationalUiContractControllerTest,PublicRunSubmissionControllerTest` -> PASS, 114 tests.
+
+Blockers:
+
+- None. Playwright re-validation was not run by this remediation worker and should be run next by the dedicated validation flow.
+
+Ready state:
+
+- Phase 05 UI remediation is ready for focused Playwright re-validation of `/projects` ownerless create/list refresh and project copy/label semantics.

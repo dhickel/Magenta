@@ -99,7 +99,7 @@ public final class WorkflowStreamSupport {
             return new OrchestrationRunContext(null, null, null, null, null);
         }
         return new OrchestrationRunContext(
-            request.agentId(), request.jobId(), request.workspaceId(),
+            request.agentId(), request.jobId(), request.projectId(), request.workspaceId(),
             request.modelOverride(), request.priority()
         );
     }

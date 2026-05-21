@@ -108,6 +108,7 @@ class PublicApiRouteBindingTest {
     void planRoutesBindDtosAndSubmittedSseEvent() throws Exception {
         String agentId = createAgent();
         String planId = createPlan("Route Plan");
+        String projectId = createProject(agentId);
 
         mockMvc.perform(get("/api/plans"))
             .andExpect(status().isOk())
@@ -121,7 +122,11 @@ class PublicApiRouteBindingTest {
         MvcResult stream = mockMvc.perform(post("/api/plans/" + planId + "/runs/stream")
                 .contentType(MediaType.APPLICATION_JSON)
                 .accept(MediaType.TEXT_EVENT_STREAM)
-                .content(json(Map.of("agentId", agentId))))
+                .content(json(Map.of(
+                    "agentId", agentId,
+                    "projectId", projectId,
+                    "workspaceId", "legacy-workspace-1"
+                ))))
             .andExpect(request().asyncStarted())
             .andReturn();
 
@@ -132,6 +137,20 @@ class PublicApiRouteBindingTest {
             .andExpect(content().string(containsString("\"event\":\"submitted\"")))
             .andExpect(content().string(containsString("\"taskId\":\"" + planId + "\"")))
             .andExpect(content().string(containsString("\"priority\":9")));
+
+        Map<String, Object> assignmentRow = jdbcTemplate.queryForMap(
+            """
+                select workspace_id, input_json
+                from work_assignments
+                where assignment_type = 'TASK_RUN'
+                  and input_json like ?
+                order by created_at desc
+                limit 1
+                """,
+            "%" + planId + "%"
+        );
+        assertThat(assignmentRow).containsEntry("workspace_id", "legacy-workspace-1");
+        assertThat((String) assignmentRow.get("input_json")).contains(projectId);
     }
 
     @Test

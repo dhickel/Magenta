@@ -55,6 +55,7 @@ final class AssignmentTemplateParser {
             assignmentType(values.get("assignmentType"), defaultType),
             integer(values.get("priority"), 0),
             text(values.get("modelOverride")),
+            text(values.get("projectId")),
             text(values.get("workspaceId")),
             input
         );

@@ -17,9 +17,7 @@ import org.springframework.util.StringUtils;
 
 /**
  * Manages projects, agent memberships, and project-network gating.
- * Every project has exactly one owner agent. Agents in the same project
- * can message each other through inboxes; agents outside the project
- * network are blocked from project-scoped messaging.
+ * Legacy project owners are preserved as nullable compatibility metadata.
  */
 @Service
 public class ProjectService {
@@ -71,20 +69,19 @@ public class ProjectService {
         if (!StringUtils.hasText(name)) {
             throw new IllegalArgumentException("Project name is required");
         }
-        if (!StringUtils.hasText(ownerAgentId)) {
-            throw new IllegalArgumentException("Owner agent ID is required");
-        }
         String id = UUID.randomUUID().toString();
         Instant now = Instant.now();
+        String legacyOwnerAgentId = normalize(ownerAgentId);
 
         Project project = new Project(
-            id, name.trim(), normalize(description), ownerAgentId,
+            id, name.trim(), normalize(description), legacyOwnerAgentId,
             normalize(gitRepoUrl), null, null, null, now, now
         );
         Project saved = projectRepository.save(project);
 
-        // Auto-add owner as first member with "owner" role
-        addAgent(saved.id(), ownerAgentId, "owner", now);
+        if (StringUtils.hasText(legacyOwnerAgentId)) {
+            addAgent(saved.id(), legacyOwnerAgentId, "owner", now);
+        }
 
         // Ensure project workspace directory exists
         try {
@@ -99,7 +96,7 @@ public class ProjectService {
             log.error("Failed to create project workspace for project={}: {}", id, e.getMessage());
         }
 
-        log.info("Created project {} owned by agent {}", id, ownerAgentId);
+        log.info("Created project {} with legacy owner agent {}", id, legacyOwnerAgentId);
         return saved;
     }
 
@@ -141,18 +138,18 @@ public class ProjectService {
     private ProjectAgentMembership addAgent(String projectId, String agentId,
                                              String role, Instant joinedAt) {
         getProject(projectId); // validate exists
+        if (!StringUtils.hasText(agentId)) {
+            throw new IllegalArgumentException("Agent ID is required");
+        }
         String membershipId = UUID.randomUUID().toString();
         String effectiveRole = StringUtils.hasText(role) ? role : "member";
         return projectRepository.saveMembership(new ProjectAgentMembership(
-            membershipId, projectId, agentId, effectiveRole, joinedAt
+            membershipId, projectId, agentId.trim(), effectiveRole, joinedAt
         ));
     }
 
     public void removeAgent(String projectId, String agentId) {
-        Project project = getProject(projectId);
-        if (project.ownerAgentId().equals(agentId)) {
-            throw new IllegalArgumentException("Cannot remove the project owner agent");
-        }
+        getProject(projectId);
         projectRepository.deleteMembership(projectId, agentId);
     }
 

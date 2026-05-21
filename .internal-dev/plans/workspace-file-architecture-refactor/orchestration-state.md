@@ -37,8 +37,8 @@ Persistent state for this long-running orchestration effort. Use this file to re
 ## Current Work
 
 - Workspace/file architecture refactor.
-- Current gate: Phase 05 implementation.
-- Phase 04 implementation and validation are committed. Main orchestrator should launch Phase 05 project API and owner-agent migration subplan.
+- Current gate: Phase 05 commit.
+- Phase 05 implementation, UI remediation, backend/API validation, and Playwright UI validation completed locally without a commit. Main orchestrator should commit, record the hash, then start Phase 06.
 
 ## Current Plan Artifacts
 
@@ -78,7 +78,7 @@ Queued review/refactor focus:
 
 ## Next Action
 
-Launch Phase 05 project API and owner-agent migration subplan.
+Commit Phase 05, record the hash, then launch Phase 06 job workspace policy subplan.
 
 ## Phase 03 Local Validation
 
@@ -116,3 +116,33 @@ Launch Phase 05 project API and owner-agent migration subplan.
 - `mvn test -Dtest=PlanServiceTest,WorkflowRunnerTest,OrchestrationRuntimeTest,WorkspaceRepositorySchemaMigrationTest,PublicApiRouteBindingTest` -> PASS, 99 tests.
 - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` -> application started on port `33571`; exited `124` because `timeout` stopped the server.
 - Sanity check confirmed waiting assignment mapping, same-run workflow resume, async context propagation/restoration, durable workflow output placement, and terminal cleanup safety.
+
+## Phase 05 UI Remediation
+
+- Updated project UI semantics in `OrchestrationController` to describe projects as shared workspaces with membership/context rather than owner-agent wrappers.
+- Kept project form submission backward-compatible by preserving `ownerAgentId` while relabeling it as `Initial Agent`.
+- Successful project create/update responses now include editor feedback and an HTMX OOB `#project-list` refresh so ownerless creation is visible in the sidebar.
+- Added focused `OrchestrationControllerTest` coverage for new copy, label compatibility, and ownerless create list refresh response.
+- Validation passed:
+  - `mvn test -Dtest=OrchestrationControllerTest,OperationalUiContractControllerTest` -> PASS, 97 tests.
+  - `mvn test -Dtest=PublicApiRouteBindingTest,OrchestrationControllerTest,OperationalUiContractControllerTest,PublicRunSubmissionControllerTest` -> PASS, 114 tests.
+- No blockers. Ready for dedicated Phase 05 Playwright re-validation.
+
+## Phase 05 Validation Agent
+
+- `git diff --check` for Phase 05 files -> PASS.
+- `mvn test -Dtest=ProjectServiceTest,ProjectRepositoryTest,WorkspaceRepositorySchemaMigrationTest` -> PASS, 23 tests.
+- `mvn test -Dtest=PublicApiRouteBindingTest,OrchestrationControllerTest,OperationalUiContractControllerTest,AgentOrchestrationControllerTest,PublicRunSubmissionControllerTest,TaskStreamSupportTest` -> PASS, 147 tests.
+- `mvn test -Dtest=ProjectServiceTest,ProjectRepositoryTest,WorkspaceRepositorySchemaMigrationTest,PublicApiRouteBindingTest,OrchestrationControllerTest,OperationalUiContractControllerTest,AgentOrchestrationControllerTest,PublicRunSubmissionControllerTest,TaskStreamSupportTest,PlanServiceTest,WorkflowRunnerTest,OrchestrationRuntimeTest` -> PASS, 256 tests.
+- `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` -> application started on port `34423`; exited `124` because `timeout` stopped the server.
+
+## Phase 05 Playwright Validation
+
+- Initial Playwright validation against `http://localhost:18080` found blockers: project UI still used owner-agent copy and ownerless creation did not visibly refresh the project list.
+- Remediation updated project copy, relabeled the compatibility field as `Initial Agent`, and added HTMX OOB project-list refresh on create/update.
+- Playwright re-validation against `http://localhost:18080` -> PASS:
+  - Ownerless project creation succeeded with no initial agent selected.
+  - New project appeared in the sidebar/list after submit.
+  - Project details showed `Initial agent: -` and `Members: 0`.
+  - `/plans` submit panel still showed Project and Workspace fields.
+  - Screenshot captured as `phase05-projects-revalidation.png` for internal review; screenshots are not part of the phase commit.

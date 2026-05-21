@@ -186,6 +186,7 @@ public class PlanController {
                 AssignmentType.TASK_RUN,
                 request.priority() != null ? request.priority() : PUBLIC_SUBMIT_PRIORITY,
                 normalize(request.modelOverride()),
+                normalize(request.projectId()),
                 request.workspaceId(),
                 Map.of("taskId", planId)
             ));
@@ -304,6 +305,7 @@ public class PlanController {
                 AssignmentType.TASK_RUN,
                 request == null || request.priority() == null ? PUBLIC_SUBMIT_PRIORITY : request.priority(),
                 normalize(request == null ? null : request.modelOverride()),
+                normalize(request == null ? null : request.projectId()),
                 normalize(request == null ? null : request.workspaceId()),
                 taskRunInput(planId, request)
             ));
@@ -364,6 +366,7 @@ public class PlanController {
         String conversationId,
         String agentId,
         String jobId,
+        String projectId,
         String workspaceId,
         String modelOverride,
         Integer priority
@@ -374,6 +377,7 @@ public class PlanController {
         String agentId,
         String modelOverride,
         Integer priority,
+        String projectId,
         String workspaceId
     ) {
     }

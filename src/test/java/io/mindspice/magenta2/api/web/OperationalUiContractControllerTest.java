@@ -66,15 +66,15 @@ class OperationalUiContractControllerTest {
     }
 
     @Test
-    void projectCreateWithoutOwnerAgentReturnsClearBadRequest() throws IOException {
+    void projectCreateWithoutOwnerAgentUsesOwnerlessCompatibilityContract() throws IOException {
         ProjectController controller = projectController();
 
-        assertThatThrownBy(() -> controller.create(new ProjectController.CreateProjectRequest(
+        var project = controller.create(new ProjectController.CreateProjectRequest(
             "No Owner", "", null, null, "", null
-        )))
-            .isInstanceOf(ResponseStatusException.class)
-            .extracting(error -> ((ResponseStatusException) error).getStatusCode())
-            .isEqualTo(HttpStatus.BAD_REQUEST);
+        ));
+
+        assertThat(project.ownerAgentId()).isNull();
+        assertThat(controller.workspace(project.id()).ownerAgentId()).isNull();
     }
 
     @Test

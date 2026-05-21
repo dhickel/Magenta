@@ -64,6 +64,19 @@ class WorkspaceRepositorySchemaMigrationTest {
     }
 
     @Test
+    void schemaSqlCreatesProjectsWithNullableLegacyOwnerAgent() throws Exception {
+        JdbcTemplate jdbc = jdbc();
+
+        applySchema(jdbc);
+
+        Integer required = jdbc.query(
+            "select \"notnull\" from pragma_table_info('projects') where name = 'owner_agent_id'",
+            rs -> rs.next() ? rs.getInt(1) : 1
+        );
+        assertThat(required).isZero();
+    }
+
+    @Test
     void schemaSqlCreatesCurrentInboxOwnershipShape() throws Exception {
         JdbcTemplate jdbc = jdbc();
 

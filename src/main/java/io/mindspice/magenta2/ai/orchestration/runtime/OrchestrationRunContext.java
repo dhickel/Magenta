@@ -5,20 +5,32 @@ import org.springframework.util.StringUtils;
 public record OrchestrationRunContext(
     String agentId,
     String jobId,
+    String projectId,
     String workspaceId,
     String modelOverride,
     Integer priority
 ) {
+    public OrchestrationRunContext(
+        String agentId,
+        String jobId,
+        String workspaceId,
+        String modelOverride,
+        Integer priority
+    ) {
+        this(agentId, jobId, null, workspaceId, modelOverride, priority);
+    }
+
     public OrchestrationRunContext {
         agentId = normalize(agentId);
         jobId = normalize(jobId);
+        projectId = normalize(projectId);
         workspaceId = normalize(workspaceId);
         modelOverride = normalize(modelOverride);
     }
 
     public boolean hasContext() {
-        return StringUtils.hasText(agentId) || StringUtils.hasText(jobId) || StringUtils.hasText(workspaceId)
-            || StringUtils.hasText(modelOverride) || priority != null;
+        return StringUtils.hasText(agentId) || StringUtils.hasText(jobId) || StringUtils.hasText(projectId)
+            || StringUtils.hasText(workspaceId) || StringUtils.hasText(modelOverride) || priority != null;
     }
 
     private static String normalize(String value) {

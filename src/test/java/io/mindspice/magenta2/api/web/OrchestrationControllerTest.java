@@ -194,6 +194,31 @@ class OrchestrationControllerTest {
         );
     }
 
+    private static OrchestrationController controllerWithProjectService(ProjectService projectService) {
+        return new OrchestrationController(
+            new StubChatService(),
+            projectService,
+            new StubJobService(),
+            new StubAgentProfileService(),
+            new StubInboxService(),
+            new StubRuntimeInboxService(),
+            new StubOutputArtifactService(),
+            new StubRuntimeSettingsService(),
+            workspaceService(),
+            emptyProvider(),
+            new StubPlanService(),
+            new StubAssignmentService(),
+            new StubScheduleService(),
+            new StubEventReactionService(),
+            new StubWorkflowService(),
+            selectorLookup(),
+            new EntitySelectorComponents(),
+            emptyProvider(),
+            true,
+            true
+        );
+    }
+
     private static OrchestrationController controllerWithRuntimeSettingsService(RuntimeSettingsService runtimeSettingsService) {
         return new OrchestrationController(
             new StubChatService(),
@@ -790,6 +815,8 @@ class OrchestrationControllerTest {
         assertThat(html).contains("hx-get=\"/projects/_list\"");
         assertThat(html).contains("hx-get=\"/projects/_editor/_new\"");
         assertThat(html).contains("project-editor-container");
+        assertThat(html).contains("Shared project workspaces for durable context, membership, and cross-agent visibility.");
+        assertThat(html).doesNotContain("Top-level tracking and data-space wrappers with owner agents.");
 
         // No JS data-action handlers
         assertThat(html).doesNotContain("data-action=\"create-project\"");
@@ -811,7 +838,9 @@ class OrchestrationControllerTest {
         // Has detail sections
         assertThat(html).contains("Name");
         assertThat(html).contains("Description");
-        assertThat(html).contains("Owner Agent");
+        assertThat(html).contains("Initial Agent");
+        assertThat(html).contains("name=\"ownerAgentId\"");
+        assertThat(html).doesNotContain("Owner Agent");
         assertThat(html).contains("Git Repo URL");
         assertThat(html).contains("Manager Type");
 
@@ -826,6 +855,24 @@ class OrchestrationControllerTest {
     }
 
     @Test
+    void projectCreateWithoutOwnerReturnsEditorAndRefreshesProjectList() {
+        StubProjectService projectService = new StubProjectService();
+        String html = controllerWithProjectService(projectService).createProject(Map.of(
+            "name", "Ownerless Project",
+            "description", "Shared context",
+            "gitRepoUrl", ""
+        ));
+
+        assertThat(html).contains("Project created.");
+        assertThat(html).contains("Project: Ownerless Project");
+        assertThat(html).contains("hx-swap-oob=\"innerHTML\"");
+        assertThat(html).contains("id=\"project-list\"");
+        assertThat(html).contains("Ownerless Project");
+        assertThat(html).contains("Shared context");
+        assertThat(html).doesNotContain("No projects.");
+    }
+
+    @Test
     void projectDetailPagePreloadsEditorViaHtmx() {
         String html = controller().projectDetail("proj-xyz");
 
@@ -833,6 +880,8 @@ class OrchestrationControllerTest {
         assertThat(html).contains("hx-get=\"/projects/_editor/proj-xyz\"");
         assertThat(html).contains("hx-get=\"/projects/_list\"");
         assertThat(html).contains("project-editor-container");
+        assertThat(html).contains("Shared project workspaces for durable context, membership, and cross-agent visibility.");
+        assertThat(html).doesNotContain("Top-level tracking and data-space wrappers with owner agents.");
 
         // No JS data-action handlers
         assertThat(html).doesNotContain("data-action=\"save-project\"");
@@ -2277,27 +2326,37 @@ class OrchestrationControllerTest {
             "proj-xyz", "Test Project", "A test project",
             "agent-1", null, null, null, null, null, null
         );
+        private final List<Project> projects = new ArrayList<>(List.of(STUB_PROJECT));
 
         StubProjectService() { super(null, null); }
-        @Override public java.util.List<Project> listProjects() { return List.of(STUB_PROJECT); }
+        @Override public java.util.List<Project> listProjects() { return List.copyOf(projects); }
         @Override public Project getProject(String id) {
-            if ("proj-xyz".equals(id)) return STUB_PROJECT;
+            for (Project project : projects) {
+                if (project.id().equals(id)) return project;
+            }
             throw new IllegalArgumentException("Project not found: " + id);
         }
         @Override public Project createProject(String name, String desc, String owner, String git) {
-            return new Project("new-proj", name, desc, owner, git, null, null, null, null, null);
+            Project created = new Project("new-proj", name, desc, owner == null || owner.isBlank() ? null : owner,
+                git, null, null, null, null, null);
+            projects.add(created);
+            return created;
         }
         @Override public Project updateProject(String id, String name, String desc, String git,
                                                 String pp, String model, String soj) {
-            return new Project(id,
-                name != null ? name : STUB_PROJECT.name(),
-                desc != null ? desc : STUB_PROJECT.description(),
-                STUB_PROJECT.ownerAgentId(),
-                git != null ? git : STUB_PROJECT.gitRepoUrl(),
-                pp != null ? pp : STUB_PROJECT.promptProfile(),
-                model != null ? model : STUB_PROJECT.model(),
-                soj != null ? soj : STUB_PROJECT.settingsOverrideJson(),
-                STUB_PROJECT.createdAt(), STUB_PROJECT.updatedAt());
+            Project current = getProject(id);
+            Project updated = new Project(id,
+                name != null ? name : current.name(),
+                desc != null ? desc : current.description(),
+                current.ownerAgentId(),
+                git != null ? git : current.gitRepoUrl(),
+                pp != null ? pp : current.promptProfile(),
+                model != null ? model : current.model(),
+                soj != null ? soj : current.settingsOverrideJson(),
+                current.createdAt(), current.updatedAt());
+            projects.removeIf(project -> project.id().equals(id));
+            projects.add(updated);
+            return updated;
         }
         @Override public java.util.List<ProjectAgentMembership> listMembers(String projectId) { return List.of(); }
         @Override public ProjectWorkspaceSummary workspaceSummary(String projectId) {

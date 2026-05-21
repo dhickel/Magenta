@@ -189,6 +189,7 @@ public class TaskController {
                 AssignmentType.TASK_RUN,
                 request == null || request.priority() == null ? PUBLIC_SUBMIT_PRIORITY : request.priority(),
                 normalize(request == null ? null : request.modelOverride()),
+                normalize(request == null ? null : request.projectId()),
                 normalize(request == null ? null : request.workspaceId()),
                 taskRunInput(taskId, request)
             ));
@@ -260,6 +261,7 @@ public class TaskController {
         String conversationId,
         String agentId,
         String jobId,
+        String projectId,
         String workspaceId,
         String modelOverride,
         Integer priority

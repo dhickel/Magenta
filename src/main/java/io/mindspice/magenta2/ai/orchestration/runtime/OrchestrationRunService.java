@@ -58,6 +58,7 @@ public class OrchestrationRunService {
             type,
             effective.priority(),
             effective.modelOverride(),
+            effective.projectId(),
             workspaceId,
             input
         ));

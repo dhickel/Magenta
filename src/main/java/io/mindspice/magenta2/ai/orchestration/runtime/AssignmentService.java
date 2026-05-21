@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -80,7 +81,7 @@ public class AssignmentService {
         if (StringUtils.hasText(request.jobId())) {
             jobService.getDefinition(request.jobId());
         }
-        Map<String, Object> input = request.input() == null ? Map.of() : request.input();
+        Map<String, Object> input = inputWithProjectContext(request);
         AssignmentTemplateParser.validate(new AssignmentRequest(
             request.agentId(),
             request.jobId(),
@@ -88,6 +89,7 @@ public class AssignmentService {
             request.assignmentType(),
             request.priority(),
             request.modelOverride(),
+            request.projectId(),
             request.workspaceId(),
             input
         ));
@@ -535,6 +537,17 @@ public class AssignmentService {
 
     private String normalize(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    private Map<String, Object> inputWithProjectContext(AssignmentRequest request) {
+        Map<String, Object> input = request.input() == null ? Map.of() : request.input();
+        String projectId = firstText(request.projectId(), text(input.get("projectId")));
+        if (!StringUtils.hasText(projectId)) {
+            return input;
+        }
+        Map<String, Object> merged = new LinkedHashMap<>(input);
+        merged.put("projectId", projectId.trim());
+        return merged;
     }
 
     public record LinkedRunStatus(String type, String id, String parentId, String status, String errorText) {

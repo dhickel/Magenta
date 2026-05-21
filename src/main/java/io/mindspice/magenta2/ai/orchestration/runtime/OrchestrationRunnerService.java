@@ -314,6 +314,10 @@ public class OrchestrationRunnerService {
     }
 
     private String resolveProjectId(WorkAssignment assignment) {
+        String projectId = text(assignment.input().get("projectId"), null);
+        if (StringUtils.hasText(projectId)) {
+            return projectId;
+        }
         String jobId = assignment.jobId();
         if (!StringUtils.hasText(jobId)) {
             jobId = text(assignment.input().get("jobId"), null);
@@ -742,12 +746,12 @@ public class OrchestrationRunnerService {
     }
 
     private OutputArtifactContext outputContextFor(WorkAssignment assignment, String runType) {
-        String projectId = null;
+        String projectId = text(assignment.input().get("projectId"), null);
         String jobId = assignment.jobId();
         if (!StringUtils.hasText(jobId)) {
             jobId = text(assignment.input().get("jobId"), null);
         }
-        if (StringUtils.hasText(jobId)) {
+        if (!StringUtils.hasText(projectId) && StringUtils.hasText(jobId)) {
             try {
                 projectId = jobService.getDefinition(jobId).projectId();
             } catch (RuntimeException ignored) {

@@ -1656,12 +1656,14 @@ public class OrchestrationController {
             int priority = 9;
             try { priority = Integer.parseInt(params.getOrDefault("priority", "9")); } catch (NumberFormatException ignored) {}
             validateSelectedEntity(EntityKind.MODEL, params.get("modelOverride"), false, "Model Override");
+            validateSelectedEntity(EntityKind.PROJECT, params.get("projectId"), false, "Project");
             validateSelectedEntity(EntityKind.WORKSPACE, params.get("workspaceId"), false, "Workspace");
             Map<String, Object> inputValues = parsePlanInputValues(plan, params);
             WorkAssignment assignment = assignmentService.create(new AssignmentRequest(
                 agentId, null, null, AssignmentType.TASK_RUN,
                 priority,
                 nn(params.get("modelOverride")),
+                nn(params.get("projectId")),
                 nn(params.get("workspaceId")),
                 Map.of("taskId", planId, "inputValues", inputValues)
             ));
@@ -2207,6 +2209,8 @@ public class OrchestrationController {
                 "modelOverride", null, chatService.availableModels())))
             .withChild(label("Priority", TextInput.number("priority")
                 .withValue("9").withMin("0").withMax("100")))
+            .withChild(entitySelector("projectId", EntityKind.PROJECT, null,
+                "Project", "optional project context", false))
             .withChild(entitySelector("workspaceId", EntityKind.WORKSPACE, null,
                 "Workspace", "optional workspace", false)));
 
@@ -2700,11 +2704,13 @@ public class OrchestrationController {
             int priority = 9;
             try { priority = Integer.parseInt(params.getOrDefault("priority", "9")); } catch (NumberFormatException ignored) {}
             validateSelectedEntity(EntityKind.MODEL, params.get("modelOverride"), false, "Model Override");
+            validateSelectedEntity(EntityKind.PROJECT, params.get("projectId"), false, "Project");
             validateSelectedEntity(EntityKind.WORKSPACE, params.get("workspaceId"), false, "Workspace");
             WorkAssignment assignment = assignmentService.create(new AssignmentRequest(
                 agentId, null, null, AssignmentType.WORKFLOW_RUN,
                 priority,
                 nn(params.get("modelOverride")),
+                nn(params.get("projectId")),
                 nn(params.get("workspaceId")),
                 Map.of("workflowId", workflowId)
             ));
@@ -3276,6 +3282,8 @@ public class OrchestrationController {
                 "modelOverride", null, chatService.availableModels())))
             .withChild(label("Priority", TextInput.number("priority")
                 .withValue("9").withMin("0").withMax("100")))
+            .withChild(entitySelector("projectId", EntityKind.PROJECT, null,
+                "Project", "optional project context", false))
             .withChild(entitySelector("workspaceId", EntityKind.WORKSPACE, null,
                 "Workspace", "optional workspace", false)));
 
@@ -3721,6 +3729,7 @@ public class OrchestrationController {
                 AssignmentType.JOB_RUN,
                 parseIntOrDefault(params.get("priority"), 9),
                 nn(params.get("modelOverride")),
+                job.projectId(),
                 job.workspaceId(),
                 Map.of("jobId", jobId)
             );
@@ -4037,6 +4046,7 @@ public class OrchestrationController {
                 AssignmentType.JOB_RUN,
                 9,
                 nn(job.model()),
+                job.projectId(),
                 job.workspaceId(),
                 Map.of("jobId", jobId)
             ));
@@ -4199,7 +4209,7 @@ public class OrchestrationController {
             .withId("projects-page")
             .withAttribute("data-orchestration-page", "projects")
             .withChild(Header.H1("Projects"))
-            .withChild(new Paragraph("Top-level tracking and data-space wrappers with owner agents."))
+            .withChild(new Paragraph("Shared project workspaces for durable context, membership, and cross-agent visibility."))
             .withChild(new Div().withClass("browser-layout browser-layout-wide")
                 .withChild(new Div().withClass("browser-sidebar")
                     .withChild(new Div().withClass("browser-sidebar-header")
@@ -4249,6 +4259,10 @@ public class OrchestrationController {
         return list.render();
     }
 
+    private String projectListOobFragment() {
+        return "<div id=\"project-list\" hx-swap-oob=\"innerHTML\">" + projectsListFragment() + "</div>";
+    }
+
     // ── Project HTMX partials ──
 
     @GetMapping("/projects/_editor/_new")
@@ -4281,19 +4295,10 @@ public class OrchestrationController {
                     .withChild(new Div().withClass("orch-status").withInnerText("Name is required."))
                     .render();
             }
-            String ownerAgentId = params.getOrDefault("ownerAgentId", "").trim();
-            if (ownerAgentId.isBlank()) {
-                return new Div().withClass("orch-panel")
-                    .withChild(new Div().withClass("orch-status")
-                        .withInnerText("Owner agent is required. " +
-                            (agentProfileService.list().isEmpty() ?
-                                "No agents exist — create an agent first." : "")))
-                    .render();
-            }
             Project created = projectService.createProject(
-                name, nn(params.get("description")), ownerAgentId,
+                name, nn(params.get("description")), nn(params.get("ownerAgentId")),
                 nn(params.get("gitRepoUrl")));
-            return projectEditorFragment(created).render();
+            return projectEditorFragment(created, "Project created.").render() + projectListOobFragment();
         } catch (Exception e) {
             return new Div().withClass("orch-panel")
                 .withChild(new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()))
@@ -4314,7 +4319,7 @@ public class OrchestrationController {
                 params.containsKey("model") ? nn(params.get("model")) : null,
                 null // settingsOverrideJson
             );
-            return projectEditorFragment(updated).render();
+            return projectEditorFragment(updated, "Project saved.").render() + projectListOobFragment();
         } catch (Exception e) {
             return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
         }
@@ -4425,12 +4430,19 @@ public class OrchestrationController {
     // ── Project editor rendering ──
 
     private Component projectEditorFragment(Project project) {
+        return projectEditorFragment(project, null);
+    }
+
+    private Component projectEditorFragment(Project project, String statusMessage) {
         boolean isNew = project == null;
         String projectId = isNew ? null : project.id();
 
         Div container = new Div().withClass("orch-panel project-editor");
         container.withChild(Header.H2(isNew ? "New Project" : "Project: " +
             (project.name() != null ? project.name() : project.id())));
+        if (StringUtils.hasText(statusMessage)) {
+            container.withChild(new Div().withClass("orch-status").withInnerText(statusMessage));
+        }
 
         Form form = Form.create();
         if (isNew) {
@@ -4448,7 +4460,7 @@ public class OrchestrationController {
             .withChild(label("Description", TextArea.create("description")
                 .withId("project-description").withRows(3)
                 .withValue(isNew ? "" : nn(project.description()))))
-            .withChild(label("Owner Agent", agentSelect("ownerAgentId",
+            .withChild(label("Initial Agent", agentSelect("ownerAgentId",
                 isNew ? "" : nn(project.ownerAgentId())).withId("project-owner-agent")))
             .withChild(label("Git Repo URL", TextInput.create("gitRepoUrl")
                 .withId("project-git-url")
@@ -4469,7 +4481,7 @@ public class OrchestrationController {
                 form.withChild(new Div().withId("project-workspace-section")
                     .withChild(new Div().withClass("orch-meta")
                         .withChild(new HtmlTag("span").withInnerText(
-                            "Owner: " + (ws.ownerAgentId() != null ? ws.ownerAgentId() : "—")))
+                            "Initial agent: " + (ws.ownerAgentId() != null ? ws.ownerAgentId() : "—")))
                         .withChild(new HtmlTag("span").withInnerText(
                             "Kind: " + (ws.rootKind() != null ? ws.rootKind() : "—")))
                         .withChild(new HtmlTag("span").withInnerText(
@@ -4495,7 +4507,7 @@ public class OrchestrationController {
                         .withInnerText("Workspace: " + e.getMessage())));
             }
 
-            form.withChild(sectionHeader("Project Network", "Owner and linked agents around this project."));
+            form.withChild(sectionHeader("Project Network", "Linked agents and membership context for this project."));
             form.withChild(new Div().withId("project-network-section")
                 .hxGet("/projects/_detail/" + projectId + "/network")
                 .hxTrigger("load")
@@ -4561,7 +4573,8 @@ public class OrchestrationController {
         Project project = projectService.getProject(projectId);
         List<ProjectAgentMembership> members = projectService.listMembers(projectId);
         Div panel = new Div().withClass("orch-meta");
-        panel.withChild(new HtmlTag("span").withInnerText("Owner: " + nn(project.ownerAgentId())));
+        panel.withChild(new HtmlTag("span").withInnerText(
+            "Initial agent: " + (project.ownerAgentId() != null ? project.ownerAgentId() : "—")));
         panel.withChild(new HtmlTag("span").withInnerText("Members: " + members.size()));
         for (ProjectAgentMembership member : members) {
             panel.withChild(new HtmlTag("span").withInnerText(
@@ -4587,7 +4600,7 @@ public class OrchestrationController {
             .withId("projects-page")
             .withAttribute("data-orchestration-page", "projects")
             .withChild(Header.H1("Projects"))
-            .withChild(new Paragraph("Top-level tracking and data-space wrappers with owner agents."))
+            .withChild(new Paragraph("Shared project workspaces for durable context, membership, and cross-agent visibility."))
             .withChild(new Div().withClass("browser-layout browser-layout-wide")
                 .withChild(new Div().withClass("browser-sidebar")
                     .withChild(new Div().withClass("browser-sidebar-header")
@@ -6957,6 +6970,7 @@ public class OrchestrationController {
             WorkAssignment created = assignmentService.create(new AssignmentRequest(
                 agentId, jobId, null, type, priority,
                 modelOverride.isBlank() ? null : modelOverride.trim(),
+                null,
                 null, input
             ));
 

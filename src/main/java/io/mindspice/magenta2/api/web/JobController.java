@@ -158,6 +158,7 @@ public class JobController {
                 AssignmentType.JOB_RUN,
                 request == null || request.priority() == null ? PUBLIC_SUBMIT_PRIORITY : request.priority(),
                 normalize(request == null ? null : request.modelOverride(), job.model()),
+                normalize(request == null ? null : request.projectId(), job.projectId()),
                 normalize(request == null ? null : request.workspaceId(), job.workspaceId()),
                 Map.of("jobId", jobId)
             ));
@@ -246,6 +247,7 @@ public class JobController {
     public record JobRunRequest(
         String agentId,
         String modelOverride,
+        String projectId,
         String workspaceId,
         Integer priority
     ) {}

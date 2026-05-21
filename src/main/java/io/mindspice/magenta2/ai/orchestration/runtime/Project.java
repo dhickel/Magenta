@@ -3,8 +3,8 @@ package io.mindspice.magenta2.ai.orchestration.runtime;
 import java.time.Instant;
 
 /**
- * A project is a durable data-space and tracking wrapper with one owner agent.
- * Projects can link a git repository and own a persistent workspace.
+ * A project is a durable data-space, membership, and visibility wrapper.
+ * ownerAgentId is retained as a nullable legacy compatibility field.
  */
 public record Project(
     String id,

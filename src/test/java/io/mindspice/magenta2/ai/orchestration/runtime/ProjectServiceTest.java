@@ -31,14 +31,15 @@ class ProjectServiceTest {
     }
 
     @Test
-    void projectMustHaveOwnerAgent() {
-        assertThatThrownBy(() -> projectService.createProject("Test", "desc", null, null))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("Owner agent ID is required");
+    void projectCanBeCreatedWithoutOwnerAgent() {
+        Project project = projectService.createProject("Test", "desc", null, null);
+
+        assertThat(project.ownerAgentId()).isNull();
+        assertThat(projectService.listMembers(project.id())).isEmpty();
     }
 
     @Test
-    void ownerAgentIsAutoAddedAsMember() {
+    void legacyOwnerAgentIsAutoAddedAsMember() {
         Project project = projectService.createProject("My Project", "desc", "agent-1", null);
         List<ProjectAgentMembership> members = projectService.listMembers(project.id());
         assertThat(members).hasSize(1);
@@ -59,12 +60,13 @@ class ProjectServiceTest {
     }
 
     @Test
-    void cannotRemoveOwnerAgent() {
+    void legacyOwnerMembershipCanBeRemoved() {
         Project project = projectService.createProject("Test", "desc", "agent-owner", null);
 
-        assertThatThrownBy(() -> projectService.removeAgent(project.id(), "agent-owner"))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("Cannot remove the project owner agent");
+        projectService.removeAgent(project.id(), "agent-owner");
+
+        assertThat(projectService.listMembers(project.id())).isEmpty();
+        assertThat(projectService.getProject(project.id()).ownerAgentId()).isEqualTo("agent-owner");
     }
 
     @Test

@@ -138,6 +138,7 @@ public class AgentOrchestrationController {
                 request.assignmentType(),
                 request.priority(),
                 request.modelOverride(),
+                request.projectId(),
                 request.workspaceId(),
                 request.input()
             ));
@@ -401,6 +402,7 @@ public class AgentOrchestrationController {
         @NotNull AssignmentType assignmentType,
         Integer priority,
         String modelOverride,
+        String projectId,
         String workspaceId,
         Map<String, Object> input
     ) {

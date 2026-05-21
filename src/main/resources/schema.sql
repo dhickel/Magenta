@@ -562,7 +562,7 @@ create table if not exists projects (
     id text primary key,
     name text not null,
     description text,
-    owner_agent_id text not null,
+    owner_agent_id text,
     git_repo_url text,
     prompt_profile text,
     model text,

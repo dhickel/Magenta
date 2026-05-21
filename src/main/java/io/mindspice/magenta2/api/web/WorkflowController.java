@@ -120,6 +120,7 @@ public class WorkflowController {
                 AssignmentType.WORKFLOW_RUN,
                 request == null || request.priority() == null ? PUBLIC_SUBMIT_PRIORITY : request.priority(),
                 normalize(request == null ? null : request.modelOverride()),
+                normalize(request == null ? null : request.projectId()),
                 normalize(request == null ? null : request.workspaceId()),
                 Map.of("workflowId", workflowId)
             ));
@@ -236,6 +237,7 @@ public class WorkflowController {
     public record WorkflowRunRequest(
         String agentId,
         String jobId,
+        String projectId,
         String workspaceId,
         String modelOverride,
         Integer priority
