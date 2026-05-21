@@ -1,0 +1,141 @@
+package io.mindspice.magenta2.ai.orchestration.workspaces;
+
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+
+import io.mindspice.magenta2.ai.config.user.AiConfig;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+class WorkspaceServicePathTest {
+    @TempDir
+    Path tempDir;
+
+    @Test
+    void deterministicWorkspaceRootsRemainStable() throws Exception {
+        TestContext context = context();
+
+        Workspace agent = context.service().agentWorkspace("agent-1", "Agent One");
+        Workspace project = context.service().projectWorkspace("project-1", "Project One");
+        Workspace job = context.service().jobWorkspace("job-1", "Job One");
+
+        assertThat(agent.rootRelativePath()).isEqualTo("agents/agent-1/workspace");
+        assertThat(project.rootRelativePath()).isEqualTo("projects/project-1/workspace");
+        assertThat(job.rootRelativePath()).isEqualTo("jobs/job-1");
+    }
+
+    @Test
+    void newPathLinkWithRelativeTargetPersistsDataRootRelativeTarget() throws Exception {
+        TestContext context = context();
+        Workspace workspace = context.service().agentWorkspace("agent-1", "Agent One");
+
+        WorkspaceLink saved = context.service().addLink(workspace.id(), link(workspace.id(), WorkspaceLinkType.PATH, "docs"));
+
+        assertThat(saved.target()).isEqualTo("agents/agent-1/workspace/docs");
+        assertThat(Path.of(saved.target()).isAbsolute()).isFalse();
+        assertThat(saved.target()).doesNotContain(context.dataRoot().toString());
+    }
+
+    @Test
+    void newPathLinkWithAbsoluteCurrentRootTargetPersistsDataRootRelativeTarget() throws Exception {
+        TestContext context = context();
+        Workspace workspace = context.service().agentWorkspace("agent-1", "Agent One");
+        Path target = context.dataRoot().resolve("agents/agent-1/workspace/docs");
+
+        WorkspaceLink saved = context.service().addLink(
+            workspace.id(),
+            link(workspace.id(), WorkspaceLinkType.PATH, target.toString())
+        );
+
+        assertThat(saved.target()).isEqualTo("agents/agent-1/workspace/docs");
+        assertThat(Path.of(saved.target()).isAbsolute()).isFalse();
+    }
+
+    @Test
+    void existingAbsoluteCurrentRootPathLinkSeededDirectlyRemainsReadableWithoutRewrite() throws Exception {
+        TestContext context = context();
+        Workspace workspace = context.service().agentWorkspace("agent-1", "Agent One");
+        String absoluteTarget = context.dataRoot().resolve("agents/agent-1/workspace/legacy-docs").toString();
+        context.repository().saveLink(new WorkspaceLink(
+            "legacy-link",
+            workspace.id(),
+            "Legacy Docs",
+            WorkspaceLinkType.PATH,
+            absoluteTarget,
+            true,
+            false,
+            null,
+            null
+        ));
+
+        List<WorkspaceLink> links = context.service().links(workspace.id());
+
+        assertThat(links).extracting(WorkspaceLink::target).containsExactly(absoluteTarget);
+        assertThat(context.repository().findLink("legacy-link")).get().extracting(WorkspaceLink::target)
+            .isEqualTo(absoluteTarget);
+    }
+
+    @Test
+    void absoluteOutsideRootPathLinkTargetIsRejected() throws Exception {
+        TestContext context = context();
+        Workspace workspace = context.service().agentWorkspace("agent-1", "Agent One");
+        String outside = tempDir.resolve("outside/docs").toString();
+
+        assertThatThrownBy(() -> context.service().addLink(
+            workspace.id(),
+            link(workspace.id(), WorkspaceLinkType.PATH, outside)
+        ))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("escapes data root");
+    }
+
+    @Test
+    void relativeTraversalPathLinkTargetIsRejected() throws Exception {
+        TestContext context = context();
+        Workspace workspace = context.service().agentWorkspace("agent-1", "Agent One");
+
+        assertThatThrownBy(() -> context.service().addLink(
+            workspace.id(),
+            link(workspace.id(), WorkspaceLinkType.PATH, "../../outside")
+        ))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("escapes data root");
+    }
+
+    @Test
+    void nonPathLinkTargetRemainsUnchanged() throws Exception {
+        TestContext context = context();
+        Workspace workspace = context.service().agentWorkspace("agent-1", "Agent One");
+        String target = "https://example.test/repo.git";
+
+        WorkspaceLink saved = context.service().addLink(
+            workspace.id(),
+            link(workspace.id(), WorkspaceLinkType.REPOSITORY, target)
+        );
+
+        assertThat(saved.target()).isEqualTo(target);
+    }
+
+    private TestContext context() throws Exception {
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
+        WorkspaceRepository repository = new WorkspaceRepository(jdbc);
+        Path dataRoot = tempDir.resolve("data");
+        AiConfig aiConfig = new AiConfig(null, null, null, null, null, 10, dataRoot, null, Map.of(), Map.of());
+        WorkspaceDirectoryService directories = new WorkspaceDirectoryService(aiConfig);
+        WorkspaceService service = new WorkspaceService(repository, aiConfig, new RootRelativePathService(directories));
+        return new TestContext(dataRoot.toRealPath(), repository, service);
+    }
+
+    private WorkspaceLink link(String workspaceId, WorkspaceLinkType type, String target) {
+        return new WorkspaceLink(null, workspaceId, "Link", type, target, true, false, null, null);
+    }
+
+    private record TestContext(Path dataRoot, WorkspaceRepository repository, WorkspaceService service) {
+    }
+}

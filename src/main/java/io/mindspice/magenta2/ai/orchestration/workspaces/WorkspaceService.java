@@ -11,6 +11,7 @@ import java.util.UUID;
 
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.core.util.PlainPathSegmentValidator;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -21,14 +22,25 @@ public class WorkspaceService {
     private static final int MAX_LIST_LIMIT = 200;
 
     private final WorkspaceRepository repository;
+    private final RootRelativePathService rootRelativePathService;
     private final Path dataRoot;
 
-    public WorkspaceService(WorkspaceRepository repository, AiConfig aiConfig) throws IOException {
+    @Autowired
+    public WorkspaceService(
+        WorkspaceRepository repository,
+        AiConfig aiConfig,
+        RootRelativePathService rootRelativePathService
+    ) throws IOException {
         this.repository = repository;
+        this.rootRelativePathService = rootRelativePathService;
         if (aiConfig == null || aiConfig.dataRoot() == null) {
             throw new IllegalArgumentException("AI config dataRoot is required for workspaces");
         }
         this.dataRoot = Files.createDirectories(aiConfig.dataRoot()).toRealPath();
+    }
+
+    public WorkspaceService(WorkspaceRepository repository, AiConfig aiConfig) throws IOException {
+        this(repository, aiConfig, new RootRelativePathService(new WorkspaceDirectoryService(aiConfig)));
     }
 
     public Workspace get(String id) {
@@ -82,13 +94,13 @@ public class WorkspaceService {
             throw new IllegalArgumentException("workspace link label is required");
         }
         WorkspaceLinkType type = link.linkType() == null ? WorkspaceLinkType.PATH : link.linkType();
-        validateLinkTarget(workspace, type, link.target());
+        String target = normalizeLinkTarget(workspace, type, link.target());
         return repository.saveLink(new WorkspaceLink(
             StringUtils.hasText(link.id()) ? link.id() : UUID.randomUUID().toString(),
             workspaceId,
             link.label(),
             type,
-            link.target(),
+            target,
             link.readable(),
             link.writable(),
             null,
@@ -167,18 +179,31 @@ public class WorkspaceService {
         ));
     }
 
-    private void validateLinkTarget(Workspace workspace, WorkspaceLinkType type, String target) {
+    private String normalizeLinkTarget(Workspace workspace, WorkspaceLinkType type, String target) {
         if (!StringUtils.hasText(target)) {
             throw new IllegalArgumentException("workspace link target is required");
         }
-        if (type == WorkspaceLinkType.PATH) {
-            Path path = Path.of(target);
-            Path root = confined(workspace.rootRelativePath());
-            Path resolved = path.isAbsolute() ? path.normalize() : root.resolve(path).normalize();
-            if (!resolved.startsWith(dataRoot)) {
-                throw new IllegalArgumentException("workspace link target escapes data root");
-            }
+        if (type != WorkspaceLinkType.PATH) {
+            return target;
         }
+
+        Path path = Path.of(target.replace('\\', '/'));
+        Path resolved;
+        if (path.isAbsolute()) {
+            resolved = path.normalize();
+        } else {
+            for (Path segment : path) {
+                if ("..".equals(segment.toString())) {
+                    throw new IllegalArgumentException("workspace link target escapes data root");
+                }
+            }
+            Path root = confined(workspace.rootRelativePath());
+            resolved = root.resolve(path).normalize();
+        }
+        if (!resolved.startsWith(dataRoot)) {
+            throw new IllegalArgumentException("workspace link target escapes data root");
+        }
+        return rootRelativePathService.store(resolved);
     }
 
     private Path confined(String relativePath) {

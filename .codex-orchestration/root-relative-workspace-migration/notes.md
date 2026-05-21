@@ -46,6 +46,8 @@
 - Independent Phase 3 validation passed: `mvn -Dtest=OutputArtifactServiceAttributionTest,OutputArtifactPathSemanticsTest,OutputControllerTest test` (25 tests). Phase 3 may proceed to Phase 4.
 - Phase 4 focused tests passed: `mvn -Dtest=PlanServiceTest,WorkflowRunnerTest,JobServiceTest test` (75 tests) plus bounded startup smoke with isolated `/tmp` root from the implementation worker.
 - Independent Phase 4 validation passed: `mvn -Dtest=PlanServiceTest,WorkflowRunnerTest,JobServiceTest test` (75 tests). Phase 4 may proceed to Phase 5.
+- Phase 5 focused tests passed: `mvn -Dtest=WorkspaceServicePathTest,WorkspaceControllerTest,WorkspaceRepositorySchemaMigrationTest test` (18 tests).
+- Phase 5 bounded startup smoke passed with isolated root `/tmp/magenta-phase5-smoke-2384505`; app started on ephemeral port 38965 and was stopped by `timeout 30s` (exit 124 after successful startup).
 
 ## Remediation Notes
 
@@ -92,3 +94,9 @@
   - Assignment checkpoint JSON now retains the stored job path values (relative for new runs, legacy absolute for old rows) as display/resume metadata; runtime context installation resolves through the helper before exposing `hostJobWorkspacePath`.
   - Focused validation passed: `mvn -Dtest=PlanServiceTest,WorkflowRunnerTest,JobServiceTest test` (75 tests).
   - Bounded startup smoke passed with isolated root `/tmp/magenta-phase4-smoke-py4dbq`; app started on an ephemeral port and was stopped by `timeout 30s` (exit 124 after successful startup).
+- Phase 5 implemented root-relative workspace PATH link target storage:
+  - `WorkspaceService.addLink` now resolves relative PATH link targets against the workspace root, rejects relative traversal and absolute outside-root targets, and persists new PATH links through `RootRelativePathService` as data-root-relative slash paths.
+  - Non-PATH workspace link targets remain unchanged, and directly seeded legacy absolute current-root PATH links are still listed without rewrite.
+  - Agent and project workspace root rows remain `agents/<agentId>/workspace` and `projects/<projectId>/workspace`; the existing `WorkspaceService.jobWorkspace` `jobs/<jobId>` compatibility behavior remains unchanged.
+  - Focused validation passed: `mvn -Dtest=WorkspaceServicePathTest,WorkspaceControllerTest,WorkspaceRepositorySchemaMigrationTest test` (18 tests).
+  - Bounded startup smoke passed with isolated root `/tmp/magenta-phase5-smoke-2384505`; app started on an ephemeral port and was stopped by `timeout 30s` (exit 124 after successful startup).
