@@ -149,11 +149,11 @@ Source: [`WorkspaceController`](../../src/main/java/io/mindspice/magenta2/api/we
 
 Source: [`OutputController`](../../src/main/java/io/mindspice/magenta2/api/web/OutputController.java), [`OutputArtifactService`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/OutputArtifactService.java).
 
-- `GET /api/outputs?agentId=&jobId=&projectId=&runId=&type=&limit=`: query output artifacts.
+- `GET /api/outputs?agentId=&jobId=&jobAssignmentId=&jobRunId=&projectId=&workspaceId=&runId=&planId=&runType=&type=&limit=`: query output artifacts.
 - `GET /api/outputs/{artifactId}/content`: return metadata plus text/json/user-message content when safe.
 - `GET /api/outputs/{artifactId}/download`: download a confined file under the data root.
 
-Output artifacts can carry agent, job, job assignment, job run, project, workspace, run type, and work-unit attribution. Content/download enforce a 10 MB limit in the controller. Download resolves real paths and rejects paths outside the output service data root.
+Output artifacts can carry agent, job, job assignment, job run, project, workspace, run type, and work-unit attribution. Direct stored attribution is used for the expanded filters; job route fallback remains a compatibility bridge only when no direct-only filters are supplied. Content/download enforce a 10 MB limit in the controller. Download resolves real paths and rejects paths outside the output service data root.
 
 ## Dashboard, Runtime, Settings, Models
 

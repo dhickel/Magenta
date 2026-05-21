@@ -79,7 +79,9 @@ API routes:
 - `GET /api/outputs/{artifactId}/content`
 - `GET /api/outputs/{artifactId}/download`
 
-`GET /api/outputs` currently accepts `agentId`, `jobId`, `projectId`, `runId`, `type`, and `limit`. Output rows also store workspace, plan, job assignment, and job run attribution for internal correlation and future filtering work, but those fields are not all exposed as public query parameters on this route yet.
+`GET /api/outputs` accepts `agentId`, `jobId`, `jobAssignmentId`, `jobRunId`, `projectId`, `workspaceId`, `runId`, `planId`, `runType`, `type`, and `limit`. Direct stored attribution is the primary query contract; job output fallback through known job run ids remains compatibility behavior only when direct-only filters are not supplied.
+
+When materialized output filenames collide in the same output directory, `OutputArtifactService` writes or copies the later artifact with a stable numeric suffix instead of overwriting the existing file.
 
 The controller limits inline content/downloads to 10 MB. Download resolves the real path and rejects files outside the output service data root. Text, JSON, and user-message artifacts are returned inline when safe; other artifacts direct callers to download.
 

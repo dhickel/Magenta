@@ -32,6 +32,12 @@ Date: 2026-05-21
   - legacy job recurrence firing now creates `JOB_RUN` assignments and advances next fire timestamps rather than creating job runs directly.
   - assignment-owned cancellation now keeps assignment and job run status synchronized.
   - job run HTMX fragment consumes summaries so assignment-pending/run-pending states can be displayed.
+- Phase 03 implementation completed locally:
+  - output artifact query contracts now expose direct filters for workspace, plan/workflow id, job assignment, job run, and run type.
+  - task/workflow output materialization receives first-class assignment/job-run attribution and effective workspace id through runner context.
+  - workflow runs persist nullable output/context attribution fields for agent, job, assignment, job run, project, workspace, and run type.
+  - output API/detail and `/outputs` fragments surface direct provenance while keeping job fallback as compatibility-only behavior.
+  - duplicate output filenames are materialized with stable suffixes instead of overwriting files.
 
 ## Objective
 
@@ -148,3 +154,12 @@ Next recommended phase: start Phase 01 only. Do not start UI work until Phase 01
   - `mvn test -Dtest=OrchestrationControllerTest`
   - `git diff --check`
   - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` reached successful application startup on port `43617`; command exited `124` because timeout stopped the running app.
+- Phase 03 local validation passed:
+  - `mvn test -Dtest=OutputArtifactServiceAttributionTest,WorkspaceRepositoryAttributionTest,WorkspaceRepositorySchemaMigrationTest,WorkspacePathSegmentValidationTest`
+  - `mvn test -Dtest=PublicApiRouteBindingTest,OutputControllerTest,OperationalUiContractControllerTest`
+  - `mvn test -Dtest=OrchestrationRuntimeTest,WorkflowRunnerTest,JobServiceTest,AssignmentContextServiceTest`
+  - `mvn test -Dtest=WorkflowRepositoryTest,PlanServiceTest,WorkflowStreamSupportTest,TaskStreamSupportTest` (`WorkflowStreamSupportTest` is not present; Maven ran the existing listed tests.)
+  - `mvn test -Dtest=OutputArtifactServiceAttributionTest,OutputControllerTest`
+  - `mvn test -Dtest=OrchestrationRuntimeTest`
+  - `git diff --check`
+  - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` reached successful application startup on port `42229`; command exited `124` because timeout stopped the running app.

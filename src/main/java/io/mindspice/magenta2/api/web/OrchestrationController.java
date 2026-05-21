@@ -3791,7 +3791,8 @@ public class OrchestrationController {
     @ResponseBody
     public String jobOutputsFragment(@PathVariable String jobId) {
         try {
-            List<RunOutputArtifact> artifacts = queryOutputs(null, jobId, null, null, null, 40);
+            List<RunOutputArtifact> artifacts = queryOutputs(
+                null, jobId, null, null, null, null, null, null, null, null, 40);
             if (artifacts.isEmpty()) {
                 return new Div().withClass("dashboard-empty")
                     .withInnerText("No outputs.").render();
@@ -4419,7 +4420,8 @@ public class OrchestrationController {
     @ResponseBody
     public String projectOutputsFragment(@PathVariable String projectId) {
         try {
-            List<RunOutputArtifact> artifacts = queryOutputs(null, null, projectId, null, null, 40);
+            List<RunOutputArtifact> artifacts = queryOutputs(
+                null, null, null, null, projectId, null, null, null, null, null, 40);
             if (artifacts.isEmpty()) {
                 return new Div().withClass("dashboard-empty")
                     .withInnerText("No recent outputs.").render();
@@ -4815,16 +4817,22 @@ public class OrchestrationController {
     public String outputsListFragment(
         @RequestParam(value = "agentId", required = false) String agentId,
         @RequestParam(value = "jobId", required = false) String jobId,
+        @RequestParam(value = "jobAssignmentId", required = false) String jobAssignmentId,
+        @RequestParam(value = "jobRunId", required = false) String jobRunId,
         @RequestParam(value = "projectId", required = false) String projectId,
+        @RequestParam(value = "workspaceId", required = false) String workspaceId,
         @RequestParam(value = "runId", required = false) String runId,
+        @RequestParam(value = "planId", required = false) String planId,
+        @RequestParam(value = "runType", required = false) String runType,
         @RequestParam(value = "type", required = false) String type
     ) {
-        List<RunOutputArtifact> artifacts = queryOutputs(agentId, jobId, projectId, runId, type, 100);
+        List<RunOutputArtifact> artifacts = queryOutputs(
+            agentId, jobId, jobAssignmentId, jobRunId, projectId, workspaceId, runId, planId, runType, type, 100);
         if (artifacts.isEmpty()) {
             return new Div().withClass("dashboard-empty").withInnerText("No outputs found.").render();
         }
         Table table = Table.create().withClass("dashboard-table")
-            .withHeaders("Output", "Type", "Run", "Plan", "Created", "");
+            .withHeaders("Output", "Type", "Run", "Context", "Created", "");
         for (RunOutputArtifact artifact : artifacts) {
             boolean canView = "text".equals(artifact.artifactType())
                 || "json".equals(artifact.artifactType())
@@ -4833,7 +4841,7 @@ public class OrchestrationController {
                 new HtmlTag("span").withInnerText(artifact.outputName() != null ? artifact.outputName() : "output"),
                 new HtmlTag("span").withInnerText(artifact.artifactType() != null ? artifact.artifactType() : "—"),
                 new HtmlTag("span").withInnerText(artifact.runId() != null ? artifact.runId() : "—"),
-                new HtmlTag("span").withInnerText(artifact.planId() != null ? artifact.planId() : "—"),
+                outputContextCell(artifact),
                 new HtmlTag("span").withInnerText(artifact.createdAt() != null ? formatSince(artifact.createdAt()) : "—"),
                 canView
                     ? new HtmlTag("a")
@@ -4868,6 +4876,14 @@ public class OrchestrationController {
             panel.withChild(Header.H2(artifact.outputName() != null ? artifact.outputName() : "Output"));
             panel.withChild(new Div().withClass("orch-meta")
                 .withChild(new HtmlTag("span").withInnerText("Type: " + nn(artifact.artifactType())))
+                .withChild(new HtmlTag("span").withInnerText("Run type: " + nn(artifact.runType())))
+                .withChild(new HtmlTag("span").withInnerText("Agent: " + nn(artifact.agentId())))
+                .withChild(new HtmlTag("span").withInnerText("Project: " + nn(artifact.projectId())))
+                .withChild(new HtmlTag("span").withInnerText("Workspace: " + nn(artifact.workspaceId())))
+                .withChild(new HtmlTag("span").withInnerText("Job: " + nn(artifact.jobId())))
+                .withChild(new HtmlTag("span").withInnerText("Job assignment: " + nn(artifact.jobAssignmentId())))
+                .withChild(new HtmlTag("span").withInnerText("Job run: " + nn(artifact.jobRunId())))
+                .withChild(new HtmlTag("span").withInnerText("Plan/workflow: " + nn(artifact.planId())))
                 .withChild(new HtmlTag("span").withInnerText("File: " + nn(artifact.fileName())))
                 .withChild(new HtmlTag("span").withInnerText("Created: " + (artifact.createdAt() != null ? formatSince(artifact.createdAt()) : "—"))));
             panel.withChild(new HtmlTag("a")
@@ -4901,26 +4917,72 @@ public class OrchestrationController {
             .withChild(entitySelector("agentId", EntityKind.AGENT, null, "Agent", "all agents", false))
             .withChild(entitySelector("jobId", EntityKind.JOB, null, "Job", "all jobs", false))
             .withChild(entitySelector("projectId", EntityKind.PROJECT, null, "Project", "all projects", false))
+            .withChild(TextInput.create("workspaceId").withPlaceholder("workspace ID"))
+            .withChild(TextInput.create("planId").withPlaceholder("plan/workflow ID"))
+            .withChild(TextInput.create("jobAssignmentId").withPlaceholder("job assignment ID"))
+            .withChild(TextInput.create("jobRunId").withPlaceholder("job run ID"))
             .withChild(TextInput.create("runId").withPlaceholder("run ID"))
+            .withChild(TextInput.create("runType").withPlaceholder("run type"))
             .withChild(type)
             .withChild(Button.create("Browse").withClass("orch-primary").withAttribute("type", "submit"));
         form.withChild(toolbar);
         return form;
     }
 
-    private List<RunOutputArtifact> queryOutputs(String agentId, String jobId, String projectId, String runId, String type, int limit) {
+    private HtmlTag outputContextCell(RunOutputArtifact artifact) {
+        String context = java.util.stream.Stream.of(
+                label("plan", artifact.planId()),
+                label("agent", artifact.agentId()),
+                label("project", artifact.projectId()),
+                label("workspace", artifact.workspaceId()),
+                label("job", artifact.jobId()),
+                label("assignment", artifact.jobAssignmentId()),
+                label("job run", artifact.jobRunId()),
+                label("run type", artifact.runType())
+            )
+            .filter(StringUtils::hasText)
+            .collect(java.util.stream.Collectors.joining(" / "));
+        return new HtmlTag("span").withInnerText(StringUtils.hasText(context) ? context : "—");
+    }
+
+    private String label(String label, String value) {
+        return StringUtils.hasText(value) ? label + ": " + value : null;
+    }
+
+    private List<RunOutputArtifact> queryOutputs(
+        String agentId,
+        String jobId,
+        String jobAssignmentId,
+        String jobRunId,
+        String projectId,
+        String workspaceId,
+        String runId,
+        String planId,
+        String runType,
+        String type,
+        int limit
+    ) {
         OutputArtifactQuery query = OutputArtifactQuery.of(
             agentId,
             jobId,
+            jobAssignmentId,
+            jobRunId,
             projectId,
-            null,
+            workspaceId,
             runId,
-            null,
+            planId,
+            runType,
             type,
             limit
         );
         List<RunOutputArtifact> direct = outputArtifactService.query(query);
-        if (!direct.isEmpty() || StringUtils.hasText(runId)) {
+        if (!direct.isEmpty()
+            || StringUtils.hasText(runId)
+            || StringUtils.hasText(planId)
+            || StringUtils.hasText(workspaceId)
+            || StringUtils.hasText(jobAssignmentId)
+            || StringUtils.hasText(jobRunId)
+            || StringUtils.hasText(runType)) {
             return direct;
         }
         if (StringUtils.hasText(jobId)) {
@@ -6157,7 +6219,8 @@ public class OrchestrationController {
         Div panel = new Div();
         panel.withChild(Header.H2("Recent Outputs"));
 
-        List<RunOutputArtifact> outputs = queryOutputs(agentId, null, null, null, null, 20);
+        List<RunOutputArtifact> outputs = queryOutputs(
+            agentId, null, null, null, null, null, null, null, null, null, 20);
         if (outputs.isEmpty()) {
             panel.withChild(new Div().withClass("dashboard-empty").withInnerText("No recent outputs."));
             return panel.render();

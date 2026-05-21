@@ -185,7 +185,7 @@ class OperationalUiContractControllerTest {
         var services = jobServices();
         OutputController controller = new OutputController(services.outputArtifactService(), services.jobService());
 
-        assertThat(controller.query(null, "missing", null, null, null, 20)).isEmpty();
+        assertThat(controller.query(null, "missing", null, null, null, null, null, null, null, null, 20)).isEmpty();
     }
 
     private ProjectController projectController() throws IOException {

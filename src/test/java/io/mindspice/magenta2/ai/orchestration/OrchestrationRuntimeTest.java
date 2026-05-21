@@ -1402,6 +1402,78 @@ class OrchestrationRuntimeTest {
     }
 
     @Test
+    void nonPersistentJobWorkspaceStillProvidesChildTaskJobAttributionContext() throws Exception {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        AiConfig aiConfig = aiConfig();
+        WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(aiConfig);
+        WorkspaceRepository workspaceRepository = new WorkspaceRepository(jdbcTemplate);
+        WorkspaceService workspaceService = new WorkspaceService(workspaceRepository, aiConfig);
+        EffectiveWorkspaceResolver resolver = new EffectiveWorkspaceResolver(directoryService, workspaceService);
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate, objectMapper);
+        AgentProfileService agentService = agentService(jdbcTemplate, aiConfig);
+        AgentProfile agent = agentService.create(new AgentProfile(
+            "agent-job-attribution", "Job Attribution Agent", AgentProfileStatus.ACTIVE, "main", "Prompt",
+            List.of(), List.of(), true, null, null
+        ));
+        JobService jobService = new JobService(
+            new JobRepository(jdbcTemplate, objectMapper), directoryService, null, null, resolver);
+        JobDefinition job = jobService.saveDefinition(new JobDefinition(
+            "job-attribution", agent.id(), null, null, false, "READY",
+            "Job Attribution", "summary",
+            List.of(new JobWorkItem(
+                "task", JobWorkItemType.PLAN, "task-attribution", null, Map.of(), 0, null, null)),
+            null, null, null, null, null
+        ));
+        RuntimeSettingsService settingsService = new RuntimeSettingsService(
+            new RuntimeSettingsRepository(jdbcTemplate), aiConfig, agentService);
+        AssignmentService assignmentService = new AssignmentService(repository, agentService, settingsService, jobService);
+        OrchestrationEventService eventService = new OrchestrationEventService(repository, assignmentService, true);
+        AtomicReference<OrchestrationTaskContext> contextSeen = new AtomicReference<>();
+        ChatService chatService = new ChatService(null, null, null, null, null) {
+            @Override
+            public TaskExecutionResult executeTaskBlocking(
+                String taskId,
+                Map<String, Object> inputValues,
+                String conversationId,
+                String modelOverride
+            ) {
+                contextSeen.set(OrchestrationTaskContextHolder.current());
+                TaskRun run = new TaskRun(
+                    "task-run-attribution", taskId, TaskRunStatus.COMPLETED, inputValues, Map.of("ok", true),
+                    null, List.of("evidence"), List.of(), "done", null,
+                    Instant.now(), Instant.now(), Instant.now(), Instant.now()
+                );
+                return new TaskExecutionResult(conversationId, run, null);
+            }
+        };
+        OrchestrationRunnerService runner = new OrchestrationRunnerService(
+            repository, assignmentService, jobService, null, null, chatService, null, eventService,
+            agentService, null, null, null, null, directoryService,
+            new MagentaWorkExecutor(Map.of(
+                MagentaWorkKind.BACKGROUND_JOB, new MagentaWorkExecutor.LaneSettings("test-bg-", 1, 10)
+            )),
+            300,
+            60
+        );
+        repository.saveAssignment(new WorkAssignment(
+            "assignment-job-attribution", agent.id(), job.id(), null, AssignmentType.JOB_RUN, 1,
+            OrchestrationStatus.QUEUED, null, null, 0,
+            Map.of(), Map.of("jobId", job.id()), Map.of(), Map.of(),
+            null, null, null, null, null, null, null
+        ));
+
+        WorkAssignment result = runner.runAssignment("assignment-job-attribution");
+
+        assertThat(result.status()).as(result.errorText()).isEqualTo(OrchestrationStatus.COMPLETED);
+        OrchestrationTaskContext context = contextSeen.get();
+        assertThat(context).isNotNull();
+        assertThat(context.jobAssignmentId()).isEqualTo("assignment-job-attribution");
+        assertThat(context.jobRunId()).isNotBlank();
+        assertThat(context.hostJobWorkspacePath()).isNull();
+    }
+
+    @Test
     void assignmentTranscriptUsesCheckpointDurableAndLegacyConversationLinks() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         ObjectMapper objectMapper = new ObjectMapper();

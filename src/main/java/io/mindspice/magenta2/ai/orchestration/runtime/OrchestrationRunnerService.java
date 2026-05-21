@@ -267,7 +267,7 @@ public class OrchestrationRunnerService {
             profile != null ? profile.name() : null,
             leased.jobId(),
             projectId,
-            leased.workspaceId(),
+            firstText(leased.effectiveWorkspaceId(), leased.workspaceId()),
             leased.assignmentType().name(),
             null, // hostWorkspacePath — resolved by PlanService during startRun
             null  // hostOutputPath — resolved by PlanService during startRun
@@ -504,10 +504,14 @@ public class OrchestrationRunnerService {
 
     private void installJobWorkspaceContext(JobRun jobRun) {
         OrchestrationTaskContext context = OrchestrationTaskContextHolder.current();
-        if (context == null || jobRun == null || !StringUtils.hasText(jobRun.workspacePath())) {
+        if (context == null || jobRun == null) {
             return;
         }
-        OrchestrationTaskContextHolder.set(context.withJobWorkspacePath(jobRun.workspacePath()));
+        OrchestrationTaskContext updated = context.withJobRun(jobRun.jobAssignmentId(), jobRun.id());
+        if (StringUtils.hasText(jobRun.workspacePath())) {
+            updated = updated.withJobWorkspacePath(jobRun.workspacePath());
+        }
+        OrchestrationTaskContextHolder.set(updated);
     }
 
     private JobItemResult runJobItem(WorkAssignment assignment, WorkAssignment current, JobWorkItem item, String jobRunId) {
@@ -750,6 +754,18 @@ public class OrchestrationRunnerService {
         return StringUtils.hasText(text) ? text : fallback;
     }
 
+    private String firstText(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            if (StringUtils.hasText(value)) {
+                return value.trim();
+            }
+        }
+        return null;
+    }
+
     private String nullableText(String value) {
         return StringUtils.hasText(value) ? value : "";
     }
@@ -803,7 +819,7 @@ public class OrchestrationRunnerService {
     }
 
     private OutputArtifactContext outputContextFor(WorkAssignment assignment, String runType, String jobRunId) {
-        String projectId = text(assignment.input().get("projectId"), null);
+        String projectId = firstText(assignment.projectId(), text(assignment.input().get("projectId"), null));
         String jobId = assignment.jobId();
         if (!StringUtils.hasText(jobId)) {
             jobId = text(assignment.input().get("jobId"), null);
@@ -821,7 +837,7 @@ public class OrchestrationRunnerService {
             StringUtils.hasText(jobId) ? assignment.id() : null,
             jobRunId,
             projectId,
-            assignment.workspaceId(),
+            firstText(assignment.effectiveWorkspaceId(), assignment.workspaceId()),
             runType
         );
     }

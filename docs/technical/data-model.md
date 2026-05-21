@@ -40,7 +40,7 @@ Important invariants:
 Source package: [`ai/orchestration/workflow`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workflow).
 
 - `workflow_definitions`: v2 workflow definitions with schema version, title, summary, max concurrency, nodes JSON, routes JSON, UI layout JSON, and timestamps.
-- `workflow_runs`: workflow execution records with current node index, denormalized node runs JSON, temp workspace path, durable output path, workflow snapshot JSON, final outputs, artifact ids, final/error messages, status, and timestamps.
+- `workflow_runs`: workflow execution records with current node index, denormalized node runs JSON, temp workspace path, durable output path, nullable agent/job/job-assignment/job-run/project/workspace/run-type attribution, workflow snapshot JSON, final outputs, artifact ids, final/error messages, status, and timestamps.
 - `workflow_node_runs`: queryable per-node run rows denormalized from `workflow_runs.node_runs_json`.
 - `inbox_messages`: workflow-owned inbox messages for user approvals, workflow agent approvals, notifications, and run-output delivery.
 

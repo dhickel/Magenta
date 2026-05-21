@@ -110,12 +110,14 @@ public class WorkflowRunner {
         Instant now = Instant.now();
 
         Path workspacePath = workspaceDirectoryService.workflowTemp(runId);
+        OrchestrationTaskContext currentContext = OrchestrationTaskContextHolder.current();
         Path outputPath = workflowOutputPath(
             definition.id(),
             runId,
-            OrchestrationTaskContextHolder.current(),
+            currentContext,
             workspacePath
         );
+        OutputArtifactContext attribution = outputContext(currentContext);
         List<WorkflowNodeRun> nodeRuns = definition.nodes().stream()
             .map(node -> new WorkflowNodeRun(
                 node.key(), node.type(), WorkflowNodeRunStatus.PENDING,
@@ -131,6 +133,13 @@ public class WorkflowRunner {
             nodeRuns,
             workspacePath.toString(),
             outputPath.toString(),
+            attribution.agentId(),
+            attribution.jobId(),
+            attribution.jobAssignmentId(),
+            attribution.jobRunId(),
+            attribution.projectId(),
+            attribution.workspaceId(),
+            attribution.runType(),
             definition,
             Map.of(),
             List.of(),
@@ -207,7 +216,10 @@ public class WorkflowRunner {
         WorkflowRun resumed = repository.saveRun(new WorkflowRun(
             run.id(), run.workflowId(), WorkflowRunStatus.RUNNING,
             Math.max(0, index), updatedRuns,
-            run.workspacePath(), run.outputDir(), run.workflowSnapshot(),
+            run.workspacePath(), run.outputDir(),
+            run.agentId(), run.jobId(), run.jobAssignmentId(), run.jobRunId(),
+            run.projectId(), run.workspaceId(), run.runType(),
+            run.workflowSnapshot(),
             run.finalOutputs(), run.artifactIds(),
             run.finalMessage(), run.errorText(),
             run.createdAt(), Instant.now(), run.startedAt(), null
@@ -241,7 +253,10 @@ public class WorkflowRunner {
             repository.saveRun(new WorkflowRun(
                 current.id(), current.workflowId(), WorkflowRunStatus.FAILED,
                 current.currentNodeIndex(), current.nodeRuns(),
-                current.workspacePath(), current.outputDir(), current.workflowSnapshot(),
+                current.workspacePath(), current.outputDir(),
+                current.agentId(), current.jobId(), current.jobAssignmentId(), current.jobRunId(),
+                current.projectId(), current.workspaceId(), current.runType(),
+                current.workflowSnapshot(),
                 current.finalOutputs(), current.artifactIds(),
                 current.finalMessage(), e.getMessage(),
                 current.createdAt(), Instant.now(), current.startedAt(), Instant.now()
@@ -686,6 +701,13 @@ public class WorkflowRunner {
             orderedRuns,
             base.workspacePath(),
             base.outputDir(),
+            base.agentId(),
+            base.jobId(),
+            base.jobAssignmentId(),
+            base.jobRunId(),
+            base.projectId(),
+            base.workspaceId(),
+            base.runType(),
             base.workflowSnapshot(),
             finalOutputs,
             artifactIds,
@@ -765,12 +787,18 @@ public class WorkflowRunner {
 
     private OutputArtifactContext outputContext() {
         OrchestrationTaskContext context = OrchestrationTaskContextHolder.current();
+        return outputContext(context);
+    }
+
+    private OutputArtifactContext outputContext(OrchestrationTaskContext context) {
         if (context == null) {
             return OutputArtifactContext.EMPTY;
         }
         return new OutputArtifactContext(
             context.agentId(),
             context.jobId(),
+            context.jobAssignmentId(),
+            context.jobRunId(),
             context.projectId(),
             context.workspaceId(),
             StringUtils.hasText(context.runType()) ? context.runType() : "WORKFLOW_RUN"

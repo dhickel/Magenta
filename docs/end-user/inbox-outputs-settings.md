@@ -40,12 +40,17 @@ Filters:
 - Agent.
 - Job.
 - Project.
+- Workspace ID.
+- Plan/workflow ID.
+- Job assignment ID.
+- Job run ID.
 - Run ID.
+- Run type.
 - Type.
 
-Agent, job, and project filters are currently plain dropdowns. **Run ID** remains manual because exact run filtering is intentional. Type options include `file_path`, `user_message`, `json`, and `text`.
+Agent, job, and project filters are currently plain dropdowns. Exact ID filters remain manual because they are intended for operator debugging. Type options include `file_path`, `user_message`, `json`, and `text`.
 
-Output rows show output name, artifact type, run, plan, creation time, and an action:
+Output rows show output name, artifact type, run, provenance context, creation time, and an action:
 
 - **View** for text, JSON, and user-message artifacts.
 - **Download** for binary or file-path artifacts.

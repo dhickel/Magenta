@@ -96,6 +96,22 @@
   - `mvn test -Dtest=OrchestrationControllerTest`
   - `git diff --check`
   - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` reached successful startup on port `43617`; command exited `124` from timeout shutdown.
+- Phase 03 implementation completed output provenance work:
+  - Output artifact queries now support direct filters for `workspaceId`, `planId`, `jobAssignmentId`, `jobRunId`, and `runType` alongside existing agent/job/project/run/type filters.
+  - Task and workflow output materialization now receives job assignment/run attribution through `OrchestrationTaskContext`; runner attribution uses first-class assignment `projectId` and effective workspace id where available.
+  - Workflow runs now persist nullable agent/job/job-assignment/job-run/project/workspace/run-type attribution for output/context views.
+  - Output API/detail and `/outputs` HTMX fragments expose the expanded provenance fields; route-level job fallback remains compatibility-only and is bypassed for direct attribution filters.
+  - Materialized output filenames are collision-safe within a service instance via create-new writes/copies with stable numeric suffixes.
+  - Chat files remain separate from output artifacts; no chat-file indexing behavior was changed.
+- Phase 03 local validation passed:
+  - `mvn test -Dtest=OutputArtifactServiceAttributionTest,WorkspaceRepositoryAttributionTest,WorkspaceRepositorySchemaMigrationTest,WorkspacePathSegmentValidationTest`
+  - `mvn test -Dtest=PublicApiRouteBindingTest,OutputControllerTest,OperationalUiContractControllerTest`
+  - `mvn test -Dtest=OrchestrationRuntimeTest,WorkflowRunnerTest,JobServiceTest,AssignmentContextServiceTest`
+  - `mvn test -Dtest=WorkflowRepositoryTest,PlanServiceTest,WorkflowStreamSupportTest,TaskStreamSupportTest` (`WorkflowStreamSupportTest` is not present; Maven ran the existing listed tests.)
+  - `mvn test -Dtest=OutputArtifactServiceAttributionTest,OutputControllerTest`
+  - `mvn test -Dtest=OrchestrationRuntimeTest`
+  - `git diff --check`
+  - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` reached successful application startup on port `42229`; command exited `124` because timeout stopped the running app.
 
 ## Review Wave Synthesis Inputs
 

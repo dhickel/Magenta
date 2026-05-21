@@ -1123,7 +1123,7 @@ class PlanServiceTest {
 
         OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
             "explicit-agent", "ExplicitAgent", "job-1", "project-1", "workspace-1",
-            "WORKFLOW_RUN", null, null));
+            "WORKFLOW_RUN", null, null).withJobRun("assignment-1", "job-run-1"));
         try {
             service.completeRun(run.id(), Map.of("result", "done"), "Done", List.of());
         } finally {
@@ -1133,6 +1133,8 @@ class PlanServiceTest {
         RunOutputArtifact artifact = artifactService.artifactsForRun(run.id()).get(0);
         assertThat(artifact.agentId()).isEqualTo("explicit-agent");
         assertThat(artifact.jobId()).isEqualTo("job-1");
+        assertThat(artifact.jobAssignmentId()).isEqualTo("assignment-1");
+        assertThat(artifact.jobRunId()).isEqualTo("job-run-1");
         assertThat(artifact.projectId()).isEqualTo("project-1");
         assertThat(artifact.workspaceId()).isEqualTo("workspace-1");
         assertThat(artifact.runType()).isEqualTo("WORKFLOW_RUN");

@@ -409,6 +409,57 @@ class WorkflowRunnerTest {
     }
 
     @Test
+    void workflowOutputsCarryDirectAssignmentAttribution() throws Exception {
+        WorkflowNode finalNode = new WorkflowNode(
+            "final",
+            WorkflowNodeType.FINAL_OUTPUT,
+            null,
+            "Final",
+            null,
+            List.of(new WorkflowPort("message", PlanFieldType.STRING, false, false, null)),
+            List.of(),
+            Map.of(),
+            false,
+            List.of(),
+            "final message",
+            null
+        );
+        WorkflowDefinition def = workflowService.saveDefinitionValidated(new WorkflowDefinition(
+            null, 2, "Attributed Workflow", "", 1,
+            List.of(finalNode), List.of(), Map.of(), null, null
+        ));
+
+        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
+            "agent-1", "Agent 1", "job-1", "project-1", "workspace-effective-1", "JOB_WORKFLOW_ITEM",
+            null, null
+        ).withJobRun("assignment-1", "job-run-1"));
+        try {
+            WorkflowRun run = workflowService.startRun(def.id());
+            WorkflowRun finished = pollForTerminal(run.id());
+
+            assertThat(finished.status()).isEqualTo(WorkflowRunStatus.COMPLETED);
+            assertThat(finished.agentId()).isEqualTo("agent-1");
+            assertThat(finished.jobId()).isEqualTo("job-1");
+            assertThat(finished.jobAssignmentId()).isEqualTo("assignment-1");
+            assertThat(finished.jobRunId()).isEqualTo("job-run-1");
+            assertThat(finished.projectId()).isEqualTo("project-1");
+            assertThat(finished.workspaceId()).isEqualTo("workspace-effective-1");
+            assertThat(finished.runType()).isEqualTo("JOB_WORKFLOW_ITEM");
+
+            RunOutputArtifact artifact = outputArtifactService.getArtifact(finished.artifactIds().getFirst());
+            assertThat(artifact.agentId()).isEqualTo("agent-1");
+            assertThat(artifact.jobId()).isEqualTo("job-1");
+            assertThat(artifact.jobAssignmentId()).isEqualTo("assignment-1");
+            assertThat(artifact.jobRunId()).isEqualTo("job-run-1");
+            assertThat(artifact.projectId()).isEqualTo("project-1");
+            assertThat(artifact.workspaceId()).isEqualTo("workspace-effective-1");
+            assertThat(artifact.runType()).isEqualTo("JOB_WORKFLOW_ITEM");
+        } finally {
+            OrchestrationTaskContextHolder.clear();
+        }
+    }
+
+    @Test
     void taskNodesInheritCallerOrchestrationContextAcrossAsyncExecution() throws Exception {
         PlanDefinition task = task("context", List.of(), List.of(field("status", PlanFieldType.STRING, true)));
         WorkflowNode node = taskNode("context-node", task.id());

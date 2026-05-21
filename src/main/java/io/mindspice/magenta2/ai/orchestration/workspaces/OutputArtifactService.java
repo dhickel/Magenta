@@ -2,10 +2,11 @@ package io.mindspice.magenta2.ai.orchestration.workspaces;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -72,10 +73,10 @@ public class OutputArtifactService {
         return materialize(runId, planId, outputName, outputType, value, outputDir, OutputArtifactContext.EMPTY);
     }
 
-    public RunOutputArtifact materialize(String runId, String planId,
-                                         String outputName, PlanFieldType outputType,
-                                         Object value, Path outputDir,
-                                         OutputArtifactContext context) throws IOException {
+    public synchronized RunOutputArtifact materialize(String runId, String planId,
+                                                      String outputName, PlanFieldType outputType,
+                                                      Object value, Path outputDir,
+                                                      OutputArtifactContext context) throws IOException {
         requireId(runId, "runId");
         requireId(planId, "planId");
         requireId(outputName, "outputName");
@@ -250,10 +251,10 @@ public class OutputArtifactService {
      * file must resolve under the configured data root. If it is not already in
      * the run output directory, it is copied there before metadata is persisted.
      */
-    public RunOutputArtifact publishExistingFile(String runId, String planId,
-                                                 String outputName, String artifactType,
-                                                 Path sourcePath, Path outputDir,
-                                                 OutputArtifactContext context) throws IOException {
+    public synchronized RunOutputArtifact publishExistingFile(String runId, String planId,
+                                                              String outputName, String artifactType,
+                                                              Path sourcePath, Path outputDir,
+                                                              OutputArtifactContext context) throws IOException {
         requireId(runId, "runId");
         requireId(planId, "planId");
         requireId(outputName, "outputName");
@@ -270,12 +271,13 @@ public class OutputArtifactService {
             throw new IllegalArgumentException("Output directory escapes data root: " + outputDir);
         }
 
-        Path destination = realOutputDir.resolve(realSource.getFileName().toString()).normalize();
+        String fileName = realSource.getFileName().toString();
+        Path destination = realOutputDir.resolve(fileName).normalize();
         if (!destination.startsWith(realOutputDir)) {
             throw new IllegalArgumentException("Published output path escapes output directory: " + sourcePath);
         }
         if (!realSource.startsWith(realOutputDir)) {
-            Files.copy(realSource, destination, StandardCopyOption.REPLACE_EXISTING);
+            destination = copyToUniqueDestination(realSource, realOutputDir, fileName);
         } else {
             destination = realSource;
         }
@@ -341,12 +343,13 @@ public class OutputArtifactService {
         // Use actual filename; add output name prefix only for collision avoidance
         Path destPath = outputDir.resolve(fileName);
         boolean sourceEqualsDest = sourceEqualsDestination(sourcePath, realSourcePath, destPath);
-        if (!sourceEqualsDest && Files.exists(destPath, LinkOption.NOFOLLOW_LINKS)) {
-            destPath = outputDir.resolve(sanitize(outputName) + "_" + fileName);
+        if (sourceEqualsDest && artifactFileNameExists(runId, fileName)) {
+            destPath = copyToUniqueDestination(realSourcePath, outputDir, sanitize(outputName) + "_" + fileName);
+            sourceEqualsDest = false;
         }
 
         if (!sourceEqualsDest) {
-            Files.copy(realSourcePath, destPath, StandardCopyOption.REPLACE_EXISTING);
+            destPath = copyToUniqueDestination(realSourcePath, outputDir, destPath.getFileName().toString());
         }
 
         return saveArtifact(runId, planId, outputName, "file_path",
@@ -421,12 +424,11 @@ public class OutputArtifactService {
                                                        Path outputDir,
                                                        OutputArtifactContext context) throws IOException {
         String fileName = sanitize(outputName) + ".md";
-        Path filePath = outputDir.resolve(fileName);
         String content = value.toString();
-        Files.writeString(filePath, content);
+        Path filePath = writeStringToUniqueFile(outputDir, fileName, content);
 
         return saveArtifact(runId, planId, outputName, "user_message",
-            fileName, filePath.toString(), null, context);
+            filePath.getFileName().toString(), filePath.toString(), null, context);
     }
 
     private RunOutputArtifact materializeJson(String runId, String planId,
@@ -434,7 +436,6 @@ public class OutputArtifactService {
                                                 Path outputDir,
                                                 OutputArtifactContext context) throws IOException {
         String fileName = sanitize(outputName) + ".json";
-        Path filePath = outputDir.resolve(fileName);
         String jsonContent;
         try {
             jsonContent = value instanceof String
@@ -445,10 +446,10 @@ public class OutputArtifactService {
             throw new IllegalArgumentException(
                 "Output '" + outputName + "' is not valid JSON: " + e.getMessage(), e);
         }
-        Files.writeString(filePath, jsonContent);
+        Path filePath = writeStringToUniqueFile(outputDir, fileName, jsonContent);
 
         return saveArtifact(runId, planId, outputName, "json",
-            fileName, filePath.toString(), jsonContent, context);
+            filePath.getFileName().toString(), filePath.toString(), jsonContent, context);
     }
 
     private RunOutputArtifact materializeText(String runId, String planId,
@@ -456,12 +457,11 @@ public class OutputArtifactService {
                                                 Path outputDir,
                                                 OutputArtifactContext context) throws IOException {
         String fileName = sanitize(outputName) + ".txt";
-        Path filePath = outputDir.resolve(fileName);
         String content = value.toString();
-        Files.writeString(filePath, content);
+        Path filePath = writeStringToUniqueFile(outputDir, fileName, content);
 
         return saveArtifact(runId, planId, outputName, "text",
-            fileName, filePath.toString(), null, context);
+            filePath.getFileName().toString(), filePath.toString(), null, context);
     }
 
     // ── Helpers ──
@@ -500,5 +500,56 @@ public class OutputArtifactService {
 
     private String sanitize(String value) {
         return value.replaceAll("[^a-zA-Z0-9_.-]", "_").replaceAll("_+", "_");
+    }
+
+    private boolean artifactFileNameExists(String runId, String fileName) {
+        return repository.findArtifactsByRunId(runId).stream()
+            .map(RunOutputArtifact::fileName)
+            .anyMatch(fileName::equals);
+    }
+
+    private Path writeStringToUniqueFile(Path outputDir, String desiredFileName, String content) throws IOException {
+        IOException lastError = null;
+        Path normalizedOutputDir = outputDir.toAbsolutePath().normalize();
+        for (int attempt = 0; attempt < 1_000; attempt++) {
+            Path candidate = outputDir.resolve(uniqueFileName(desiredFileName, attempt)).normalize();
+            if (!candidate.toAbsolutePath().normalize().startsWith(normalizedOutputDir)) {
+                throw new IllegalArgumentException("Output path escapes output directory: " + desiredFileName);
+            }
+            try {
+                return Files.writeString(candidate, content, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+            } catch (FileAlreadyExistsException e) {
+                lastError = e;
+            }
+        }
+        throw new IOException("Could not allocate unique output file for " + desiredFileName, lastError);
+    }
+
+    private Path copyToUniqueDestination(Path source, Path outputDir, String desiredFileName) throws IOException {
+        IOException lastError = null;
+        Path normalizedOutputDir = outputDir.toAbsolutePath().normalize();
+        for (int attempt = 0; attempt < 1_000; attempt++) {
+            Path candidate = outputDir.resolve(uniqueFileName(desiredFileName, attempt)).normalize();
+            if (!candidate.toAbsolutePath().normalize().startsWith(normalizedOutputDir)) {
+                throw new IllegalArgumentException("Output path escapes output directory: " + desiredFileName);
+            }
+            try {
+                Files.copy(source, candidate);
+                return candidate;
+            } catch (FileAlreadyExistsException e) {
+                lastError = e;
+            }
+        }
+        throw new IOException("Could not allocate unique output file for " + desiredFileName, lastError);
+    }
+
+    private String uniqueFileName(String fileName, int attempt) {
+        if (attempt == 0) {
+            return fileName;
+        }
+        int dot = fileName.lastIndexOf('.');
+        String base = dot > 0 ? fileName.substring(0, dot) : fileName;
+        String ext = dot > 0 ? fileName.substring(dot) : "";
+        return base + "-" + (attempt + 1) + ext;
     }
 }

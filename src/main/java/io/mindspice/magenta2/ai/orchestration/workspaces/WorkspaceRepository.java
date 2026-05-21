@@ -452,6 +452,14 @@ public class WorkspaceRepository {
             sql.append(" and job_id = ?");
             args.add(effectiveQuery.jobId());
         }
+        if (StringUtils.hasText(effectiveQuery.jobAssignmentId())) {
+            sql.append(" and job_assignment_id = ?");
+            args.add(effectiveQuery.jobAssignmentId());
+        }
+        if (StringUtils.hasText(effectiveQuery.jobRunId())) {
+            sql.append(" and job_run_id = ?");
+            args.add(effectiveQuery.jobRunId());
+        }
         if (StringUtils.hasText(effectiveQuery.projectId())) {
             sql.append(" and project_id = ?");
             args.add(effectiveQuery.projectId());
@@ -467,6 +475,10 @@ public class WorkspaceRepository {
         if (StringUtils.hasText(effectiveQuery.planId())) {
             sql.append(" and plan_id = ?");
             args.add(effectiveQuery.planId());
+        }
+        if (StringUtils.hasText(effectiveQuery.runType())) {
+            sql.append(" and run_type = ?");
+            args.add(effectiveQuery.runType());
         }
         if (StringUtils.hasText(effectiveQuery.artifactType())) {
             sql.append(" and artifact_type = ?");

@@ -67,10 +67,22 @@ class WorkspaceRepositoryAttributionTest {
         assertThat(repository.findArtifacts(OutputArtifactQuery.of(null, "job-1", null, null, null, null, null, 10)))
             .extracting(RunOutputArtifact::id)
             .containsExactly(artifact.id());
+        assertThat(repository.findArtifacts(OutputArtifactQuery.of(null, null, "assignment-1", null, null, null, null, null, null, null, 10)))
+            .extracting(RunOutputArtifact::id)
+            .containsExactly(artifact.id());
+        assertThat(repository.findArtifacts(OutputArtifactQuery.of(null, null, null, "job-run-1", null, null, null, null, null, null, 10)))
+            .extracting(RunOutputArtifact::id)
+            .containsExactly(artifact.id());
         assertThat(repository.findArtifacts(OutputArtifactQuery.of(null, null, "project-1", null, null, null, null, 10)))
             .extracting(RunOutputArtifact::id)
             .containsExactly(artifact.id());
         assertThat(repository.findArtifacts(OutputArtifactQuery.of(null, null, null, "workspace-1", null, null, null, 10)))
+            .extracting(RunOutputArtifact::id)
+            .containsExactly(artifact.id());
+        assertThat(repository.findArtifacts(OutputArtifactQuery.of(null, null, null, null, null, null, null, "plan-1", null, null, 10)))
+            .extracting(RunOutputArtifact::id)
+            .containsExactly(artifact.id());
+        assertThat(repository.findArtifacts(OutputArtifactQuery.of(null, null, null, null, null, null, null, null, "TASK_RUN", null, 10)))
             .extracting(RunOutputArtifact::id)
             .containsExactly(artifact.id());
         assertThat(repository.findArtifacts(OutputArtifactQuery.of("missing", null, null, null, null, null, null, 10)))

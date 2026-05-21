@@ -2032,6 +2032,8 @@ Approved plan:
             return new OutputArtifactContext(
                 agentId,
                 taskContext.jobId(),
+                taskContext.jobAssignmentId(),
+                taskContext.jobRunId(),
                 taskContext.projectId(),
                 StringUtils.hasText(taskContext.workspaceId())
                     ? taskContext.workspaceId()

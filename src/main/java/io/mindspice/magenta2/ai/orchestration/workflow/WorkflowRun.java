@@ -18,6 +18,13 @@ public record WorkflowRun(
     List<WorkflowNodeRun> nodeRuns,
     String workspacePath,
     String outputDir,
+    String agentId,
+    String jobId,
+    String jobAssignmentId,
+    String jobRunId,
+    String projectId,
+    String workspaceId,
+    String runType,
     WorkflowDefinition workflowSnapshot,
     Map<String, Object> finalOutputs,
     List<String> artifactIds,
@@ -44,6 +51,30 @@ public record WorkflowRun(
         artifactIds = artifactIds == null ? List.of() : List.copyOf(artifactIds);
     }
 
+    public WorkflowRun(
+        String id,
+        String workflowId,
+        WorkflowRunStatus status,
+        int currentNodeIndex,
+        List<WorkflowNodeRun> nodeRuns,
+        String workspacePath,
+        String outputDir,
+        WorkflowDefinition workflowSnapshot,
+        Map<String, Object> finalOutputs,
+        List<String> artifactIds,
+        String finalMessage,
+        String errorText,
+        Instant createdAt,
+        Instant updatedAt,
+        Instant startedAt,
+        Instant completedAt
+    ) {
+        this(id, workflowId, status, currentNodeIndex, nodeRuns, workspacePath, outputDir,
+            null, null, null, null, null, null, null,
+            workflowSnapshot, finalOutputs, artifactIds, finalMessage, errorText,
+            createdAt, updatedAt, startedAt, completedAt);
+    }
+
     /**
      * Compatibility constructor for old run rows/callers.
      */
@@ -65,7 +96,7 @@ public record WorkflowRun(
         Instant completedAt
     ) {
         this(id, workflowId, status, currentNodeIndex, nodeRuns,
-            workspacePath, outputDir, workflowSnapshot,
+            workspacePath, outputDir, null, null, null, null, null, null, null, workflowSnapshot,
             Map.of(), List.of(), finalMessage, errorText,
             createdAt, updatedAt, startedAt, completedAt);
     }

@@ -96,5 +96,57 @@ class WorkflowRepositoryTest {
         assertThat(migrated.currentNodeIndex()).isZero();
         assertThat(migrated.nodeRuns()).isEmpty();
         assertThat(migrated.updatedAt()).isEqualTo(migrated.createdAt());
+        assertThat(columns(jdbcTemplate, "workflow_runs")).contains(
+            "agent_id", "job_id", "job_assignment_id", "job_run_id", "project_id", "workspace_id", "run_type");
+    }
+
+    @Test
+    void persistsWorkflowRunAttribution() {
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(
+            new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true)
+        );
+        WorkflowRepository repository = new WorkflowRepository(jdbcTemplate, new ObjectMapper());
+        WorkflowDefinition definition = repository.saveDefinition(new WorkflowDefinition(
+            "workflow-1", 2, "Workflow", "", 1, java.util.List.of(), java.util.List.of(), java.util.Map.of(), null, null
+        ));
+
+        repository.saveRun(new WorkflowRun(
+            "run-1",
+            definition.id(),
+            WorkflowRunStatus.COMPLETED,
+            0,
+            java.util.List.of(),
+            "/tmp/work",
+            "/tmp/out",
+            "agent-1",
+            "job-1",
+            "assignment-1",
+            "job-run-1",
+            "project-1",
+            "workspace-1",
+            "JOB_WORKFLOW_ITEM",
+            definition,
+            java.util.Map.of("result", "ok"),
+            java.util.List.of("artifact-1"),
+            "done",
+            null,
+            null,
+            null,
+            null,
+            null
+        ));
+
+        WorkflowRun run = repository.findRun("run-1").orElseThrow();
+        assertThat(run.agentId()).isEqualTo("agent-1");
+        assertThat(run.jobId()).isEqualTo("job-1");
+        assertThat(run.jobAssignmentId()).isEqualTo("assignment-1");
+        assertThat(run.jobRunId()).isEqualTo("job-run-1");
+        assertThat(run.projectId()).isEqualTo("project-1");
+        assertThat(run.workspaceId()).isEqualTo("workspace-1");
+        assertThat(run.runType()).isEqualTo("JOB_WORKFLOW_ITEM");
+    }
+
+    private java.util.List<String> columns(JdbcTemplate jdbcTemplate, String table) {
+        return jdbcTemplate.queryForList("select name from pragma_table_info('" + table + "')", String.class);
     }
 }

@@ -40,22 +40,36 @@ public class OutputController {
     @GetMapping("/api/outputs")
     public List<RunOutputArtifact> query(@RequestParam(required = false) String agentId,
                                          @RequestParam(required = false) String jobId,
+                                         @RequestParam(required = false) String jobAssignmentId,
+                                         @RequestParam(required = false) String jobRunId,
                                          @RequestParam(required = false) String projectId,
+                                         @RequestParam(required = false) String workspaceId,
                                          @RequestParam(required = false) String runId,
+                                         @RequestParam(required = false) String planId,
+                                         @RequestParam(required = false) String runType,
                                          @RequestParam(required = false) String type,
                                          @RequestParam(required = false) Integer limit) {
         OutputArtifactQuery query = OutputArtifactQuery.of(
             agentId,
             jobId,
+            jobAssignmentId,
+            jobRunId,
             projectId,
-            null,
+            workspaceId,
             runId,
-            null,
+            planId,
+            runType,
             type,
             limit
         );
         List<RunOutputArtifact> direct = outputArtifactService.query(query);
-        if (!direct.isEmpty() || StringUtils.hasText(runId)) {
+        if (!direct.isEmpty()
+            || StringUtils.hasText(runId)
+            || StringUtils.hasText(planId)
+            || StringUtils.hasText(workspaceId)
+            || StringUtils.hasText(jobAssignmentId)
+            || StringUtils.hasText(jobRunId)
+            || StringUtils.hasText(runType)) {
             return direct;
         }
         if (StringUtils.hasText(jobId)) {
@@ -81,6 +95,15 @@ public class OutputController {
             result.put("artifactType", artifact.artifactType());
             result.put("fileName", artifact.fileName());
             result.put("createdAt", artifact.createdAt() != null ? artifact.createdAt().toString() : null);
+            result.put("runId", artifact.runId());
+            result.put("planId", artifact.planId());
+            result.put("agentId", artifact.agentId());
+            result.put("jobId", artifact.jobId());
+            result.put("jobAssignmentId", artifact.jobAssignmentId());
+            result.put("jobRunId", artifact.jobRunId());
+            result.put("projectId", artifact.projectId());
+            result.put("workspaceId", artifact.workspaceId());
+            result.put("runType", artifact.runType());
 
             // Load text content where safe (text, json, markdown)
             String type = artifact.artifactType();

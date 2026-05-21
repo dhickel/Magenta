@@ -66,6 +66,21 @@ class OutputArtifactServiceAttributionTest {
         assertThat(service.query(OutputArtifactQuery.of(null, null, null, "workspace-1", null, null, null, 10)))
             .extracting(RunOutputArtifact::id)
             .containsExactly(artifact.id());
+        assertThat(service.query(OutputArtifactQuery.of(null, null, "assignment-1", null, null, null, null, null, null, null, 10)))
+            .extracting(RunOutputArtifact::id)
+            .containsExactly(artifact.id());
+        assertThat(service.query(OutputArtifactQuery.of(null, null, null, "job-run-1", null, null, null, null, null, null, 10)))
+            .extracting(RunOutputArtifact::id)
+            .containsExactly(artifact.id());
+        assertThat(service.query(OutputArtifactQuery.of(null, null, null, null, null, null, null, "plan-1", null, null, 10)))
+            .extracting(RunOutputArtifact::id)
+            .containsExactly(artifact.id());
+        assertThat(service.query(OutputArtifactQuery.of(null, null, null, null, null, null, "run-1", null, null, null, 10)))
+            .extracting(RunOutputArtifact::id)
+            .containsExactly(artifact.id());
+        assertThat(service.query(OutputArtifactQuery.of(null, null, null, null, null, null, null, null, "TASK_RUN", null, 10)))
+            .extracting(RunOutputArtifact::id)
+            .containsExactly(artifact.id());
     }
 
     @Test
@@ -103,6 +118,34 @@ class OutputArtifactServiceAttributionTest {
         assertThat(artifact.jobAssignmentId()).isEqualTo("assignment-1");
         assertThat(artifact.jobRunId()).isEqualTo("job-run-1");
         assertThat(artifact.projectId()).isEqualTo("project-1");
+    }
+
+    @Test
+    void materializeUsesUniqueFileNamesForDuplicateOutputNames() throws Exception {
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
+        Path dataRoot = Files.createDirectories(tempDir.resolve("collision-root"));
+        WorkspaceRepository repository = new WorkspaceRepository(jdbc);
+        WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
+            new AiConfig(null, null, null, null, dataRoot, null, null)
+        );
+        OutputArtifactService service = new OutputArtifactService(
+            repository,
+            directoryService,
+            new ObjectMapper().findAndRegisterModules()
+        );
+        Path outputDir = Files.createDirectories(dataRoot.resolve("outputs-collision"));
+
+        RunOutputArtifact first = service.materialize(
+            "run-collision", "plan-collision", "summary", PlanFieldType.STRING, "first", outputDir,
+            OutputArtifactContext.EMPTY);
+        RunOutputArtifact second = service.materialize(
+            "run-collision", "plan-collision", "summary", PlanFieldType.STRING, "second", outputDir,
+            OutputArtifactContext.EMPTY);
+
+        assertThat(first.fileName()).isEqualTo("summary.txt");
+        assertThat(second.fileName()).isEqualTo("summary-2.txt");
+        assertThat(Files.readString(Path.of(first.filePath()))).isEqualTo("first");
+        assertThat(Files.readString(Path.of(second.filePath()))).isEqualTo("second");
     }
 
     // ════════════════════════════════════════════════════════════════

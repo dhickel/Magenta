@@ -5,10 +5,13 @@ import org.springframework.util.StringUtils;
 public record OutputArtifactQuery(
     String agentId,
     String jobId,
+    String jobAssignmentId,
+    String jobRunId,
     String projectId,
     String workspaceId,
     String runId,
     String planId,
+    String runType,
     String artifactType,
     int limit
 ) {
@@ -18,10 +21,13 @@ public record OutputArtifactQuery(
     public OutputArtifactQuery {
         agentId = normalize(agentId);
         jobId = normalize(jobId);
+        jobAssignmentId = normalize(jobAssignmentId);
+        jobRunId = normalize(jobRunId);
         projectId = normalize(projectId);
         workspaceId = normalize(workspaceId);
         runId = normalize(runId);
         planId = normalize(planId);
+        runType = normalize(runType);
         artifactType = normalize(artifactType);
         limit = normalizeLimit(limit);
     }
@@ -34,7 +40,22 @@ public record OutputArtifactQuery(
                                          String planId,
                                          String artifactType,
                                          Integer limit) {
-        return new OutputArtifactQuery(agentId, jobId, projectId, workspaceId, runId, planId, artifactType,
+        return of(agentId, jobId, null, null, projectId, workspaceId, runId, planId, null, artifactType, limit);
+    }
+
+    public static OutputArtifactQuery of(String agentId,
+                                         String jobId,
+                                         String jobAssignmentId,
+                                         String jobRunId,
+                                         String projectId,
+                                         String workspaceId,
+                                         String runId,
+                                         String planId,
+                                         String runType,
+                                         String artifactType,
+                                         Integer limit) {
+        return new OutputArtifactQuery(agentId, jobId, jobAssignmentId, jobRunId, projectId, workspaceId,
+            runId, planId, runType, artifactType,
             limit == null ? DEFAULT_LIMIT : limit);
     }
 

@@ -19,6 +19,8 @@ public record OrchestrationTaskContext(
     String agentId,
     String agentName,
     String jobId,
+    String jobAssignmentId,
+    String jobRunId,
     String projectId,
     String workspaceId,
     String runType,
@@ -29,7 +31,7 @@ public record OrchestrationTaskContext(
     String hostJobWorkspacePath
 ) {
     public static final OrchestrationTaskContext EMPTY = new OrchestrationTaskContext(
-        null, null, null, null, null, null, null, null, null, null, null);
+        null, null, null, null, null, null, null, null, null, null, null, null, null);
 
     public OrchestrationTaskContext(
         String agentId,
@@ -41,7 +43,7 @@ public record OrchestrationTaskContext(
         String hostWorkspacePath,
         String hostOutputPath
     ) {
-        this(agentId, agentName, jobId, projectId, workspaceId, runType,
+        this(agentId, agentName, jobId, null, null, projectId, workspaceId, runType,
             hostWorkspacePath, hostOutputPath, null, hostWorkspacePath, null);
     }
 
@@ -57,14 +59,33 @@ public record OrchestrationTaskContext(
         String hostDurableWorkspacePath,
         String hostRunPath
     ) {
-        this(agentId, agentName, jobId, projectId, workspaceId, runType,
+        this(agentId, agentName, jobId, null, null, projectId, workspaceId, runType,
             hostWorkspacePath, hostOutputPath, hostDurableWorkspacePath, hostRunPath, null);
+    }
+
+    public OrchestrationTaskContext(
+        String agentId,
+        String agentName,
+        String jobId,
+        String projectId,
+        String workspaceId,
+        String runType,
+        String hostWorkspacePath,
+        String hostOutputPath,
+        String hostDurableWorkspacePath,
+        String hostRunPath,
+        String hostJobWorkspacePath
+    ) {
+        this(agentId, agentName, jobId, null, null, projectId, workspaceId, runType,
+            hostWorkspacePath, hostOutputPath, hostDurableWorkspacePath, hostRunPath, hostJobWorkspacePath);
     }
 
     public OrchestrationTaskContext {
         agentId = normalize(agentId);
         agentName = normalize(agentName);
         jobId = normalize(jobId);
+        jobAssignmentId = normalize(jobAssignmentId);
+        jobRunId = normalize(jobRunId);
         projectId = normalize(projectId);
         workspaceId = normalize(workspaceId);
         runType = normalize(runType);
@@ -81,6 +102,8 @@ public record OrchestrationTaskContext(
 
     public boolean hasContext() {
         return StringUtils.hasText(agentId) || StringUtils.hasText(jobId)
+            || StringUtils.hasText(jobAssignmentId)
+            || StringUtils.hasText(jobRunId)
             || StringUtils.hasText(projectId)
             || StringUtils.hasText(workspaceId);
     }
@@ -91,7 +114,7 @@ public record OrchestrationTaskContext(
 
     public OrchestrationTaskContext withPaths(String hostWorkspacePath, String hostOutputPath) {
         return new OrchestrationTaskContext(
-            agentId, agentName, jobId, projectId, workspaceId, runType,
+            agentId, agentName, jobId, jobAssignmentId, jobRunId, projectId, workspaceId, runType,
             hostWorkspacePath, hostOutputPath, hostDurableWorkspacePath, hostWorkspacePath,
             hostJobWorkspacePath
         );
@@ -103,7 +126,7 @@ public record OrchestrationTaskContext(
         String hostRunPath
     ) {
         return new OrchestrationTaskContext(
-            agentId, agentName, jobId, projectId, workspaceId, runType,
+            agentId, agentName, jobId, jobAssignmentId, jobRunId, projectId, workspaceId, runType,
             hostRunPath, hostOutputPath, hostDurableWorkspacePath, hostRunPath,
             hostJobWorkspacePath
         );
@@ -111,7 +134,15 @@ public record OrchestrationTaskContext(
 
     public OrchestrationTaskContext withJobWorkspacePath(String hostJobWorkspacePath) {
         return new OrchestrationTaskContext(
-            agentId, agentName, jobId, projectId, workspaceId, runType,
+            agentId, agentName, jobId, jobAssignmentId, jobRunId, projectId, workspaceId, runType,
+            hostWorkspacePath, hostOutputPath, hostDurableWorkspacePath, hostRunPath,
+            hostJobWorkspacePath
+        );
+    }
+
+    public OrchestrationTaskContext withJobRun(String jobAssignmentId, String jobRunId) {
+        return new OrchestrationTaskContext(
+            agentId, agentName, jobId, jobAssignmentId, jobRunId, projectId, workspaceId, runType,
             hostWorkspacePath, hostOutputPath, hostDurableWorkspacePath, hostRunPath,
             hostJobWorkspacePath
         );

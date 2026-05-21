@@ -72,6 +72,13 @@ public class WorkflowRepository {
                 node_runs_json text not null,
                 workspace_path text,
                 output_dir text,
+                agent_id text,
+                job_id text,
+                job_assignment_id text,
+                job_run_id text,
+                project_id text,
+                workspace_id text,
+                run_type text,
                 workflow_snapshot_json text not null,
                 final_outputs_json text not null default '{}',
                 artifact_ids_json text not null default '[]',
@@ -95,6 +102,20 @@ public class WorkflowRepository {
         try { jdbcTemplate.execute("alter table workflow_runs add column workspace_path text"); }
         catch (Exception ignored) { }
         try { jdbcTemplate.execute("alter table workflow_runs add column output_dir text"); }
+        catch (Exception ignored) { }
+        try { jdbcTemplate.execute("alter table workflow_runs add column agent_id text"); }
+        catch (Exception ignored) { }
+        try { jdbcTemplate.execute("alter table workflow_runs add column job_id text"); }
+        catch (Exception ignored) { }
+        try { jdbcTemplate.execute("alter table workflow_runs add column job_assignment_id text"); }
+        catch (Exception ignored) { }
+        try { jdbcTemplate.execute("alter table workflow_runs add column job_run_id text"); }
+        catch (Exception ignored) { }
+        try { jdbcTemplate.execute("alter table workflow_runs add column project_id text"); }
+        catch (Exception ignored) { }
+        try { jdbcTemplate.execute("alter table workflow_runs add column workspace_id text"); }
+        catch (Exception ignored) { }
+        try { jdbcTemplate.execute("alter table workflow_runs add column run_type text"); }
         catch (Exception ignored) { }
         try { jdbcTemplate.execute("alter table workflow_runs add column workflow_snapshot_json text"); }
         catch (Exception ignored) { }
@@ -210,7 +231,9 @@ public class WorkflowRepository {
         return jdbcTemplate.query(
             """
                 select id, workflow_id, status, current_node_index, node_runs_json,
-                       workspace_path, output_dir, workflow_snapshot_json,
+                       workspace_path, output_dir,
+                       agent_id, job_id, job_assignment_id, job_run_id, project_id, workspace_id, run_type,
+                       workflow_snapshot_json,
                        final_outputs_json, artifact_ids_json,
                        final_message, error_text,
                        created_at, updated_at, started_at, completed_at
@@ -225,7 +248,9 @@ public class WorkflowRepository {
         return jdbcTemplate.query(
             """
                 select id, workflow_id, status, current_node_index, node_runs_json,
-                       workspace_path, output_dir, workflow_snapshot_json,
+                       workspace_path, output_dir,
+                       agent_id, job_id, job_assignment_id, job_run_id, project_id, workspace_id, run_type,
+                       workflow_snapshot_json,
                        final_outputs_json, artifact_ids_json,
                        final_message, error_text,
                        created_at, updated_at, started_at, completed_at
@@ -244,17 +269,26 @@ public class WorkflowRepository {
             """
                 insert into workflow_runs (
                     id, workflow_id, status, current_node_index, node_runs_json,
-                    workspace_path, output_dir, workflow_snapshot_json,
+                    workspace_path, output_dir,
+                    agent_id, job_id, job_assignment_id, job_run_id, project_id, workspace_id, run_type,
+                    workflow_snapshot_json,
                     final_outputs_json, artifact_ids_json,
                     final_message, error_text,
                     created_at, updated_at, started_at, completed_at
-                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict(id) do update set
                     status = excluded.status,
                     current_node_index = excluded.current_node_index,
                     node_runs_json = excluded.node_runs_json,
                     workspace_path = excluded.workspace_path,
                     output_dir = excluded.output_dir,
+                    agent_id = excluded.agent_id,
+                    job_id = excluded.job_id,
+                    job_assignment_id = excluded.job_assignment_id,
+                    job_run_id = excluded.job_run_id,
+                    project_id = excluded.project_id,
+                    workspace_id = excluded.workspace_id,
+                    run_type = excluded.run_type,
                     workflow_snapshot_json = excluded.workflow_snapshot_json,
                     final_outputs_json = excluded.final_outputs_json,
                     artifact_ids_json = excluded.artifact_ids_json,
@@ -265,7 +299,9 @@ public class WorkflowRepository {
                     completed_at = excluded.completed_at
                 """,
             run.id(), run.workflowId(), run.status().wireName(), run.currentNodeIndex(),
-            json(run.nodeRuns()), run.workspacePath(), run.outputDir(), json(run.workflowSnapshot()),
+            json(run.nodeRuns()), run.workspacePath(), run.outputDir(),
+            run.agentId(), run.jobId(), run.jobAssignmentId(), run.jobRunId(), run.projectId(), run.workspaceId(), run.runType(),
+            json(run.workflowSnapshot()),
             json(run.finalOutputs()), json(run.artifactIds()),
             run.finalMessage(), run.errorText(),
             createdAt.toString(), updatedAt.toString(),
@@ -273,7 +309,9 @@ public class WorkflowRepository {
         );
         saveNodeRuns(run.id(), run.nodeRuns());
         return new WorkflowRun(run.id(), run.workflowId(), run.status(), run.currentNodeIndex(),
-            run.nodeRuns(), run.workspacePath(), run.outputDir(), run.workflowSnapshot(),
+            run.nodeRuns(), run.workspacePath(), run.outputDir(),
+            run.agentId(), run.jobId(), run.jobAssignmentId(), run.jobRunId(), run.projectId(), run.workspaceId(), run.runType(),
+            run.workflowSnapshot(),
             run.finalOutputs(), run.artifactIds(), run.finalMessage(), run.errorText(),
             createdAt, updatedAt, run.startedAt(), run.completedAt());
     }
@@ -417,6 +455,13 @@ public class WorkflowRepository {
             parseNodeRunList(rs.getString("node_runs_json")),
             rs.getString("workspace_path"),
             rs.getString("output_dir"),
+            rs.getString("agent_id"),
+            rs.getString("job_id"),
+            rs.getString("job_assignment_id"),
+            rs.getString("job_run_id"),
+            rs.getString("project_id"),
+            rs.getString("workspace_id"),
+            rs.getString("run_type"),
             parseDefinition(rs.getString("workflow_snapshot_json")),
             parseValueMap(rs.getString("final_outputs_json")),
             parseStringList(rs.getString("artifact_ids_json")),
