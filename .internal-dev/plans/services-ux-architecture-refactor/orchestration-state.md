@@ -153,6 +153,14 @@ Next recommended phase: start Phase 01 only. Do not start UI work until Phase 01
   - Spring startup smoke on ephemeral port.
   - Focused browser validation of `/outputs`, with screenshots/JSON captured under `test-results/phase03-outputs-validation/` and intentionally not committed.
 - Phase 03 commit: `47877a9 feat: expose output provenance filters`.
+- Phase 04 implementation and validation passed:
+  - `mvn test -Dtest=OperationalUiContractControllerTest,OrchestrationControllerTest,PublicRunSubmissionControllerTest,AgentOrchestrationControllerTest`
+  - `mvn test -Dtest=ProjectServiceTest,JobServiceTest,AssignmentContextServiceTest,OutputControllerTest`
+  - `mvn test -Dtest=PublicApiRouteBindingTest`
+  - `git diff --check`
+  - Spring startup smoke on ephemeral port.
+  - Focused browser validation of dashboard, projects, jobs, outputs, plans, workflows, agents, and agent detail surfaces, with screenshots/logs under `test-results/` and intentionally not committed.
+- Phase 04 commit: `5c6aff1 feat: align project and job operator ux`.
 - Phase 01 local validation passed:
   - `mvn test -Dtest=AssignmentContextServiceTest,ProjectServiceTest,JobServiceTest`
   - `mvn test -Dtest=PublicRunSubmissionControllerTest,OperationalUiContractControllerTest,AgentOrchestrationControllerTest,ProjectServiceTest,OrchestrationRuntimeTest`
