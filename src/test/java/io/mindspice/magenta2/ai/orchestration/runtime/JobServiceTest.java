@@ -197,6 +197,47 @@ class JobServiceTest {
         assertThat(cancelled.status()).isEqualTo(JobRunStatus.CANCELLED);
     }
 
+    @Test
+    void activeJobAssignmentBlocksExecutionAffectingEditsAndDeleteButAllowsLabels() throws IOException {
+        JdbcTemplate jdbc = jdbcTemplate();
+        AiConfig aiConfig = new AiConfig(null, null, null, 10, tempDir.resolve("active-job"), Map.of(), Map.of());
+        WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(aiConfig);
+        JobRepository jobs = new JobRepository(jdbc, new ObjectMapper().registerModule(new JavaTimeModule()));
+        OrchestrationRuntimeRepository runtime = new OrchestrationRuntimeRepository(jdbc, new ObjectMapper());
+        JobService service = new JobService(jobs, directoryService, null, null, null, runtime);
+        JobDefinition definition = service.saveDefinition(jobDef("active-job", "Active Job", List.of(planItem("s1", "plan-1", 0))));
+        runtime.saveAssignment(new WorkAssignment(
+            "assignment-job-active", "agent-1", definition.id(), null, AssignmentType.JOB_RUN, 1,
+            OrchestrationStatus.QUEUED, null, null, null, null, null,
+            0, Map.of(), Map.of("jobId", definition.id()), Map.of(), Map.of(),
+            null, null, null, null, null, null, null
+        ));
+
+        JobDefinition labelOnly = new JobDefinition(
+            definition.id(), definition.ownerAgentId(), definition.projectId(), definition.workspaceId(),
+            definition.persistentWorkspaceEnabled(), definition.status(), "Renamed", "New summary",
+            definition.items(), definition.promptProfile(), definition.model(), definition.settingsOverrideJson(),
+            definition.createdAt(), definition.updatedAt()
+        );
+        assertThat(service.saveDefinition(labelOnly).title()).isEqualTo("Renamed");
+
+        JobDefinition executionEdit = new JobDefinition(
+            definition.id(), "agent-2", definition.projectId(), definition.workspaceId(),
+            definition.persistentWorkspaceEnabled(), definition.status(), "Renamed", "New summary",
+            definition.items(), definition.promptProfile(), definition.model(), definition.settingsOverrideJson(),
+            definition.createdAt(), definition.updatedAt()
+        );
+        assertThatThrownBy(() -> service.saveDefinition(executionEdit))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("active assignments or runs");
+        assertThatThrownBy(() -> service.addItem(definition.id(), planItem("s2", "plan-2", 1)))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("active assignments or runs");
+        assertThatThrownBy(() -> service.deleteDefinition(definition.id()))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("active assignments or runs");
+    }
+
     // ── Helpers ──
 
     private JobDefinition jobDef(String id, String title, List<JobWorkItem> items) {
@@ -210,8 +251,12 @@ class JobServiceTest {
     }
 
     private JobRepository repository() {
-        SingleConnectionDataSource ds = new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true);
         ObjectMapper mapper = new ObjectMapper().registerModule(new JavaTimeModule());
-        return new JobRepository(new JdbcTemplate(ds), mapper);
+        return new JobRepository(jdbcTemplate(), mapper);
+    }
+
+    private JdbcTemplate jdbcTemplate() {
+        SingleConnectionDataSource ds = new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true);
+        return new JdbcTemplate(ds);
     }
 }

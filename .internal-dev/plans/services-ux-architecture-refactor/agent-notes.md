@@ -34,7 +34,12 @@
 
 ## Validation Results
 
-- Pending.
+- Phase 01 local validation:
+  - `mvn test -Dtest=AssignmentContextServiceTest,ProjectServiceTest,JobServiceTest` passed.
+  - `mvn test -Dtest=PublicRunSubmissionControllerTest,OperationalUiContractControllerTest,AgentOrchestrationControllerTest,ProjectServiceTest,OrchestrationRuntimeTest` passed.
+  - `mvn test -Dtest=WorkspaceLeaseServiceTest,WorkspaceRepositoryAttributionTest,WorkspaceRepositorySchemaMigrationTest,WorkspacePathSegmentValidationTest` passed.
+  - `git diff --check` passed.
+  - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` started the Spring Boot context successfully on port `39211`; command exited `124` because the timeout stopped the running app after successful startup.
 
 ## Remediation Notes
 
@@ -67,6 +72,14 @@
 - The first wave should be read-only and should identify divergence between current backend services, frontend/UX, and the project/job/workspace architecture.
 - Agents must append concise findings here before finishing.
 - Next recommended implementation phase is Phase 01: service contracts and assignment context. Do not begin UI changes until Phase 01 service/API context and mutation policy are implemented and validated.
+- Phase 01 implementation completed service-side assignment context:
+  - `WorkAssignment` and `work_assignments` now carry first-class `projectId`, `effectiveWorkspaceId`, and `effectiveWorkspaceKind`, with legacy `input_json.projectId` backfill.
+  - Assignment creation persists first-class project/effective workspace context, keeps `projectId` in input JSON, and does not acquire workspace write leases.
+  - Runner execution repairs missing effective workspace context at lease start and reads first-class `projectId` before legacy input JSON.
+  - Assignment summaries, active assignment queries, workspace-blocked requeue helpers, and project/job active mutation guards are available for later API/UI phases.
+  - API controllers now map active mutation policy failures to 409 responses; no broader UI surface work was implemented.
+- Phase 01 remediation updated `schema.sql` work assignment bootstrap to include nullable `project_id`, `effective_workspace_id`, and `effective_workspace_kind` columns in the same position/type shape as `OrchestrationRuntimeRepository.ensureSchema()`.
+- Phase 01 remediation validation passed: `mvn test -Dtest=WorkspaceRepositorySchemaMigrationTest,AssignmentContextServiceTest` and scoped `git diff --check`.
 
 ## Review Wave Synthesis Inputs
 

@@ -33,12 +33,21 @@ public class JobService {
     private final PlanService planService;
     private final WorkflowService workflowService;
     private final EffectiveWorkspaceResolver effectiveWorkspaceResolver;
+    private final OrchestrationRuntimeRepository runtimeRepository;
 
     public JobService(JobRepository jobRepository,
                       WorkspaceDirectoryService workspaceDirectoryService,
                       PlanService planService,
                       WorkflowService workflowService) {
-        this(jobRepository, workspaceDirectoryService, planService, workflowService, null);
+        this(jobRepository, workspaceDirectoryService, planService, workflowService, null, null);
+    }
+
+    public JobService(JobRepository jobRepository,
+                      WorkspaceDirectoryService workspaceDirectoryService,
+                      PlanService planService,
+                      WorkflowService workflowService,
+                      EffectiveWorkspaceResolver effectiveWorkspaceResolver) {
+        this(jobRepository, workspaceDirectoryService, planService, workflowService, effectiveWorkspaceResolver, null);
     }
 
     @Autowired
@@ -46,12 +55,14 @@ public class JobService {
                       WorkspaceDirectoryService workspaceDirectoryService,
                       PlanService planService,
                       WorkflowService workflowService,
-                      @Autowired(required = false) EffectiveWorkspaceResolver effectiveWorkspaceResolver) {
+                      @Autowired(required = false) EffectiveWorkspaceResolver effectiveWorkspaceResolver,
+                      @Autowired(required = false) OrchestrationRuntimeRepository runtimeRepository) {
         this.jobRepository = jobRepository;
         this.workspaceDirectoryService = workspaceDirectoryService;
         this.planService = planService;
         this.workflowService = workflowService;
         this.effectiveWorkspaceResolver = effectiveWorkspaceResolver;
+        this.runtimeRepository = runtimeRepository;
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -93,6 +104,9 @@ public class JobService {
         }
         Instant now = Instant.now();
         Instant createdAt = def.createdAt() == null ? now : def.createdAt();
+        jobRepository.findDefinition(id)
+            .filter(existing -> jobExecutionAffectingChanged(existing, def, items))
+            .ifPresent(existing -> requireJobExecutionMutationAllowed(id));
         return jobRepository.saveDefinition(new JobDefinition(
             id,
             normalize(def.ownerAgentId()),
@@ -112,6 +126,7 @@ public class JobService {
     }
 
     public JobWorkItem addItem(String jobId, JobWorkItem item) {
+        requireJobExecutionMutationAllowed(jobId);
         JobDefinition definition = getDefinition(jobId);
         JobWorkItem normalized = normalizeItem(item, definition.items().size());
         List<JobWorkItem> items = new ArrayList<>(definition.items());
@@ -121,6 +136,7 @@ public class JobService {
     }
 
     public JobWorkItem updateItem(String jobId, String itemKey, JobWorkItem item) {
+        requireJobExecutionMutationAllowed(jobId);
         JobDefinition definition = getDefinition(jobId);
         List<JobWorkItem> items = new ArrayList<>(definition.items());
         for (int i = 0; i < items.size(); i++) {
@@ -135,6 +151,7 @@ public class JobService {
     }
 
     public void deleteItem(String jobId, String itemKey) {
+        requireJobExecutionMutationAllowed(jobId);
         JobDefinition definition = getDefinition(jobId);
         List<JobWorkItem> items = new ArrayList<>(definition.items());
         boolean removed = items.removeIf(item -> item.key().equals(itemKey));
@@ -159,6 +176,7 @@ public class JobService {
     }
 
     public void deleteDefinition(String id) {
+        requireJobDeletionAllowed(id);
         jobRepository.deleteRecurrence(id);
         jobRepository.deleteDefinition(id);
     }
@@ -344,6 +362,7 @@ public class JobService {
     public JobRecurrence setRecurrence(String jobId, String cronExpression,
                                         String timezone, Instant nextFireTime) {
         getDefinition(jobId); // validate exists
+        requireJobExecutionMutationAllowed(jobId);
         if (!StringUtils.hasText(cronExpression)) {
             throw new IllegalArgumentException("cronExpression is required");
         }
@@ -366,6 +385,7 @@ public class JobService {
     }
 
     public void disableRecurrence(String jobId) {
+        requireJobExecutionMutationAllowed(jobId);
         JobRecurrence existing = jobRepository.findRecurrence(jobId)
             .orElseThrow(() -> new IllegalArgumentException("No recurrence for job: " + jobId));
         jobRepository.saveRecurrence(new JobRecurrence(
@@ -448,6 +468,41 @@ public class JobService {
     private boolean isTerminalStatus(String status) {
         return "COMPLETED".equals(status) || "FAILED".equals(status)
             || "CANCELLED".equals(status);
+    }
+
+    public void requireJobDeletionAllowed(String jobId) {
+        if (hasActiveJobWork(jobId)) {
+            throw new IllegalStateException("Job has active assignments or runs and cannot be deleted: " + jobId);
+        }
+    }
+
+    public void requireJobExecutionMutationAllowed(String jobId) {
+        if (hasActiveJobWork(jobId)) {
+            throw new IllegalStateException(
+                "Job has active assignments or runs; execution-affecting edits must wait for active work to finish: "
+                + jobId);
+        }
+    }
+
+    public boolean hasActiveJobWork(String jobId) {
+        long activeAssignments = runtimeRepository == null ? 0 : runtimeRepository.countActiveAssignmentsForJob(jobId);
+        long activeRuns = jobRepository.countActiveRunsByJobId(jobId);
+        return activeAssignments > 0 || activeRuns > 0;
+    }
+
+    private boolean jobExecutionAffectingChanged(JobDefinition existing, JobDefinition incoming, List<JobWorkItem> incomingItems) {
+        return !same(existing.ownerAgentId(), incoming.ownerAgentId())
+            || !same(existing.projectId(), incoming.projectId())
+            || !same(existing.workspaceId(), incoming.workspaceId())
+            || Boolean.TRUE.equals(existing.persistentWorkspaceEnabled()) != Boolean.TRUE.equals(incoming.persistentWorkspaceEnabled())
+            || !same(existing.promptProfile(), incoming.promptProfile())
+            || !same(existing.model(), incoming.model())
+            || !same(existing.settingsOverrideJson(), incoming.settingsOverrideJson())
+            || !existing.items().equals(orderedItems(incomingItems));
+    }
+
+    private boolean same(String left, String right) {
+        return java.util.Objects.equals(normalize(left), normalize(right));
     }
 
     private String slug(String title) {

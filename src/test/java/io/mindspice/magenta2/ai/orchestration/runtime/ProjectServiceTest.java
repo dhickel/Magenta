@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -70,6 +71,28 @@ class ProjectServiceTest {
     }
 
     @Test
+    void activeProjectAssignmentBlocksDeleteAndMembershipRemoval() {
+        JdbcTemplate jdbc = jdbcTemplate();
+        ProjectRepository projects = new ProjectRepository(jdbc, new ObjectMapper());
+        OrchestrationRuntimeRepository runtime = new OrchestrationRuntimeRepository(jdbc, new ObjectMapper());
+        ProjectService service = new ProjectService(projects, null, null, null, runtime);
+        Project project = service.createProject("Active", "desc", "agent-active", null);
+        runtime.saveAssignment(new WorkAssignment(
+            "assignment-active", "agent-active", null, null, AssignmentType.REPORT, 1,
+            OrchestrationStatus.RUNNING, null, null, project.id(), null, null,
+            0, Map.of(), Map.of("projectId", project.id()), Map.of(), Map.of(),
+            null, "lease-owner", Instant.now().plusSeconds(60), null, null, Instant.now(), null
+        ));
+
+        assertThatThrownBy(() -> service.deleteProject(project.id()))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("active assignments");
+        assertThatThrownBy(() -> service.removeAgent(project.id(), "agent-active"))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("active assignments");
+    }
+
+    @Test
     void projectNetworkGatesMessaging() {
         Project project = projectService.createProject("Net", "desc", "agent-a", null);
         projectService.addAgent(project.id(), "agent-b", "member");
@@ -108,7 +131,11 @@ class ProjectServiceTest {
     }
 
     private ProjectRepository repository() {
+        return new ProjectRepository(jdbcTemplate(), new ObjectMapper());
+    }
+
+    private JdbcTemplate jdbcTemplate() {
         SingleConnectionDataSource ds = new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true);
-        return new ProjectRepository(new JdbcTemplate(ds), new ObjectMapper());
+        return new JdbcTemplate(ds);
     }
 }

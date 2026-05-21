@@ -28,10 +28,19 @@ public class ProjectService {
     private final WorkspaceService workspaceService;
     private final WorkspaceLeaseService workspaceLeaseService;
     private final OrchestrationRuntimeRepository runtimeRepository;
+    private final JobRepository jobRepository;
 
     public ProjectService(ProjectRepository projectRepository,
                           WorkspaceDirectoryService workspaceDirectoryService) {
-        this(projectRepository, workspaceDirectoryService, null, null, null);
+        this(projectRepository, workspaceDirectoryService, null, null, null, null);
+    }
+
+    public ProjectService(ProjectRepository projectRepository,
+                          WorkspaceDirectoryService workspaceDirectoryService,
+                          WorkspaceService workspaceService,
+                          WorkspaceLeaseService workspaceLeaseService,
+                          OrchestrationRuntimeRepository runtimeRepository) {
+        this(projectRepository, workspaceDirectoryService, workspaceService, workspaceLeaseService, runtimeRepository, null);
     }
 
     @Autowired
@@ -39,12 +48,14 @@ public class ProjectService {
                           WorkspaceDirectoryService workspaceDirectoryService,
                           WorkspaceService workspaceService,
                           WorkspaceLeaseService workspaceLeaseService,
-                          OrchestrationRuntimeRepository runtimeRepository) {
+                          OrchestrationRuntimeRepository runtimeRepository,
+                          @Autowired(required = false) JobRepository jobRepository) {
         this.projectRepository = projectRepository;
         this.workspaceDirectoryService = workspaceDirectoryService;
         this.workspaceService = workspaceService;
         this.workspaceLeaseService = workspaceLeaseService;
         this.runtimeRepository = runtimeRepository;
+        this.jobRepository = jobRepository;
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -121,6 +132,7 @@ public class ProjectService {
     public void deleteProject(String id) {
         // verify it exists
         getProject(id);
+        requireProjectDeletionAllowed(id);
         projectRepository.delete(id);
     }
 
@@ -150,6 +162,7 @@ public class ProjectService {
 
     public void removeAgent(String projectId, String agentId) {
         getProject(projectId);
+        requireProjectMembershipRemovalAllowed(projectId, agentId);
         projectRepository.deleteMembership(projectId, agentId);
     }
 
@@ -253,6 +266,47 @@ public class ProjectService {
         }
         var workspace = workspaceService.projectWorkspace(projectId, project.name());
         return workspaceLeaseService.requestGracefulRelease(workspace.id());
+    }
+
+    public void requireProjectDeletionAllowed(String projectId) {
+        if (runtimeRepository != null && runtimeRepository.countActiveAssignmentsForProject(projectId) > 0) {
+            throw new IllegalStateException("Project has active assignments and cannot be deleted: " + projectId);
+        }
+        WorkspaceLease lease = activeProjectLease(projectId);
+        if (lease != null) {
+            throw new IllegalStateException("Project workspace is actively leased by assignment " + lease.holderId());
+        }
+        if (jobRepository != null && jobRepository.countActiveRunsByProject(projectId) > 0) {
+            throw new IllegalStateException("Project has active job runs and cannot be deleted: " + projectId);
+        }
+    }
+
+    public void requireProjectMembershipRemovalAllowed(String projectId, String agentId) {
+        if (runtimeRepository != null && runtimeRepository.countActiveAssignmentsForProjectAndAgent(projectId, agentId) > 0) {
+            throw new IllegalStateException(
+                "Agent has active assignments in project and cannot be removed: " + agentId);
+        }
+        WorkspaceLease lease = activeProjectLease(projectId);
+        if (lease != null && runtimeRepository != null) {
+            WorkAssignment holder = runtimeRepository.findAssignment(lease.holderId()).orElse(null);
+            if (holder != null && agentId.equals(holder.agentId())) {
+                throw new IllegalStateException(
+                    "Agent holds the active project workspace lease and cannot be removed: " + agentId);
+            }
+        }
+    }
+
+    private WorkspaceLease activeProjectLease(String projectId) {
+        if (workspaceService == null || workspaceLeaseService == null) {
+            return null;
+        }
+        try {
+            Project project = getProject(projectId);
+            var workspace = workspaceService.projectWorkspace(projectId, project.name());
+            return workspaceLeaseService.activeWritableLease(workspace.id()).orElse(null);
+        } catch (RuntimeException ignored) {
+            return null;
+        }
     }
 
     // ── Helpers ──

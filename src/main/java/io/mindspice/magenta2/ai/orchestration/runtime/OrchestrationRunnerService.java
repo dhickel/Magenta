@@ -207,6 +207,12 @@ public class OrchestrationRunnerService {
 
     private WorkAssignment executeWithLease(WorkAssignment leased) {
         ScheduledFuture<?> heartbeat = startLeaseHeartbeat(leased.id());
+        try {
+            leased = assignmentService.repairEffectiveWorkspaceContext(leased);
+        } catch (RuntimeException exception) {
+            heartbeat.cancel(false);
+            return fail(assignmentService.get(leased.id()), exception.getMessage());
+        }
         AgentProfile profile = null;
         if (agentProfileService != null) {
             profile = agentProfileService.get(leased.agentId());
@@ -249,8 +255,9 @@ public class OrchestrationRunnerService {
             }
         }
         final WorkspaceLease acquiredProjectLease = projectLease;
+        final String assignmentLeaseHolderId = leased.id();
         ScheduledFuture<?> projectHeartbeat = acquiredProjectLease == null ? null : heartbeatExecutor.scheduleAtFixedRate(
-            () -> workspaceLeaseService.extendLease(acquiredProjectLease.id(), leased.id(), leaseDuration),
+            () -> workspaceLeaseService.extendLease(acquiredProjectLease.id(), assignmentLeaseHolderId, leaseDuration),
             Math.max(1, heartbeatInterval.toMillis()),
             Math.max(1, heartbeatInterval.toMillis()),
             TimeUnit.MILLISECONDS
@@ -314,6 +321,10 @@ public class OrchestrationRunnerService {
     }
 
     private String resolveProjectId(WorkAssignment assignment) {
+        String assignmentProjectId = assignment.projectId();
+        if (StringUtils.hasText(assignmentProjectId)) {
+            return assignmentProjectId;
+        }
         String projectId = text(assignment.input().get("projectId"), null);
         if (StringUtils.hasText(projectId)) {
             return projectId;

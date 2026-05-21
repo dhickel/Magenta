@@ -134,11 +134,12 @@ public class OrchestrationRuntimeRepository {
             """
                 insert into work_assignments (
                     id, agent_id, job_id, job_item_id, assignment_type, priority, status, model_override,
-                    workspace_id, current_item_index, checkpoint_json, input_json, output_json, evidence_json,
+                    workspace_id, project_id, effective_workspace_id, effective_workspace_kind,
+                    current_item_index, checkpoint_json, input_json, output_json, evidence_json,
                     error_text, lease_owner, lease_expires_at, last_progress_at, last_heartbeat_at,
                     created_at, updated_at, started_at, completed_at
                 )
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict(id) do update set
                     agent_id = excluded.agent_id,
                     job_id = excluded.job_id,
@@ -148,6 +149,9 @@ public class OrchestrationRuntimeRepository {
                     status = excluded.status,
                     model_override = excluded.model_override,
                     workspace_id = excluded.workspace_id,
+                    project_id = excluded.project_id,
+                    effective_workspace_id = excluded.effective_workspace_id,
+                    effective_workspace_kind = excluded.effective_workspace_kind,
                     current_item_index = excluded.current_item_index,
                     checkpoint_json = excluded.checkpoint_json,
                     input_json = excluded.input_json,
@@ -164,7 +168,8 @@ public class OrchestrationRuntimeRepository {
                 """,
             assignment.id(), assignment.agentId(), assignment.jobId(), assignment.jobItemId(),
             assignment.assignmentType().name(), assignment.priority(), assignment.status().name(),
-            assignment.modelOverride(), assignment.workspaceId(), assignment.currentItemIndex(),
+            assignment.modelOverride(), assignment.workspaceId(), assignment.projectId(),
+            assignment.effectiveWorkspaceId(), assignment.effectiveWorkspaceKind(), assignment.currentItemIndex(),
             jsonOrNull(assignment.checkpoint()), jsonOrNull(assignment.input()), jsonOrNull(assignment.output()),
             jsonOrNull(assignment.evidence()), assignment.errorText(), assignment.leaseOwner(),
             instant(assignment.leaseExpiresAt()), instant(lastProgressAt), instant(lastHeartbeatAt),
@@ -201,6 +206,9 @@ public class OrchestrationRuntimeRepository {
                     status = ?,
                     model_override = ?,
                     workspace_id = ?,
+                    project_id = ?,
+                    effective_workspace_id = ?,
+                    effective_workspace_kind = ?,
                     current_item_index = ?,
                     checkpoint_json = ?,
                     input_json = ?,
@@ -218,6 +226,7 @@ public class OrchestrationRuntimeRepository {
                 """,
             assignment.agentId(), assignment.jobId(), assignment.jobItemId(), assignment.assignmentType().name(),
             assignment.priority(), assignment.status().name(), assignment.modelOverride(), assignment.workspaceId(),
+            assignment.projectId(), assignment.effectiveWorkspaceId(), assignment.effectiveWorkspaceKind(),
             assignment.currentItemIndex(), jsonOrNull(assignment.checkpoint()), jsonOrNull(assignment.input()),
             jsonOrNull(assignment.output()), jsonOrNull(assignment.evidence()), assignment.errorText(),
             assignment.leaseOwner(), instant(assignment.leaseExpiresAt()), instant(lastProgressAt),
@@ -370,6 +379,92 @@ public class OrchestrationRuntimeRepository {
         );
     }
 
+    public List<WorkAssignment> findActiveAssignmentsForJob(String jobId) {
+        return jdbcTemplate.query(
+            """
+                select * from work_assignments
+                where job_id = ?
+                  and status not in (?, ?, ?, ?)
+                order by priority desc, created_at asc
+                """,
+            (rs, rowNum) -> toAssignment(rs),
+            jobId,
+            OrchestrationStatus.CANCELLED.name(),
+            OrchestrationStatus.FAILED.name(),
+            OrchestrationStatus.COMPLETED.name(),
+            OrchestrationStatus.NEEDS_REVIEW.name()
+        );
+    }
+
+    public List<WorkAssignment> findActiveAssignmentsForProject(String projectId) {
+        return jdbcTemplate.query(
+            """
+                select * from work_assignments
+                where project_id = ?
+                  and status not in (?, ?, ?, ?)
+                order by priority desc, created_at asc
+                """,
+            (rs, rowNum) -> toAssignment(rs),
+            projectId,
+            OrchestrationStatus.CANCELLED.name(),
+            OrchestrationStatus.FAILED.name(),
+            OrchestrationStatus.COMPLETED.name(),
+            OrchestrationStatus.NEEDS_REVIEW.name()
+        );
+    }
+
+    public List<WorkAssignment> findActiveAssignmentsForProjectAndAgent(String projectId, String agentId) {
+        return jdbcTemplate.query(
+            """
+                select * from work_assignments
+                where project_id = ?
+                  and agent_id = ?
+                  and status not in (?, ?, ?, ?)
+                order by priority desc, created_at asc
+                """,
+            (rs, rowNum) -> toAssignment(rs),
+            projectId,
+            agentId,
+            OrchestrationStatus.CANCELLED.name(),
+            OrchestrationStatus.FAILED.name(),
+            OrchestrationStatus.COMPLETED.name(),
+            OrchestrationStatus.NEEDS_REVIEW.name()
+        );
+    }
+
+    public List<WorkAssignment> findActiveAssignmentsForEffectiveWorkspace(String workspaceId) {
+        return jdbcTemplate.query(
+            """
+                select * from work_assignments
+                where effective_workspace_id = ?
+                  and status not in (?, ?, ?, ?)
+                order by priority desc, created_at asc
+                """,
+            (rs, rowNum) -> toAssignment(rs),
+            workspaceId,
+            OrchestrationStatus.CANCELLED.name(),
+            OrchestrationStatus.FAILED.name(),
+            OrchestrationStatus.COMPLETED.name(),
+            OrchestrationStatus.NEEDS_REVIEW.name()
+        );
+    }
+
+    public long countActiveAssignmentsForJob(String jobId) {
+        return findActiveAssignmentsForJob(jobId).size();
+    }
+
+    public long countActiveAssignmentsForProject(String projectId) {
+        return findActiveAssignmentsForProject(projectId).size();
+    }
+
+    public long countActiveAssignmentsForProjectAndAgent(String projectId, String agentId) {
+        return findActiveAssignmentsForProjectAndAgent(projectId, agentId).size();
+    }
+
+    public long countActiveAssignmentsForEffectiveWorkspace(String workspaceId) {
+        return findActiveAssignmentsForEffectiveWorkspace(workspaceId).size();
+    }
+
     public List<WorkAssignment> findQueuedAssignments(int limit) {
         return jdbcTemplate.query(
             """
@@ -409,6 +504,20 @@ public class OrchestrationRuntimeRepository {
             (rs, rowNum) -> toAssignment(rs),
             agentId,
             OrchestrationStatus.WAITING.name()
+        );
+    }
+
+    public List<WorkAssignment> findWaitingAssignments(int limit) {
+        return jdbcTemplate.query(
+            """
+                select * from work_assignments
+                where status = ?
+                order by priority desc, created_at asc
+                limit ?
+                """,
+            (rs, rowNum) -> toAssignment(rs),
+            OrchestrationStatus.WAITING.name(),
+            limit
         );
     }
 
@@ -853,7 +962,8 @@ public class OrchestrationRuntimeRepository {
             rs.getString("id"), rs.getString("agent_id"), rs.getString("job_id"), rs.getString("job_item_id"),
             AssignmentType.valueOf(rs.getString("assignment_type")), rs.getInt("priority"),
             OrchestrationStatus.valueOf(rs.getString("status")), rs.getString("model_override"),
-            rs.getString("workspace_id"), rs.getInt("current_item_index"), map(rs.getString("checkpoint_json")),
+            rs.getString("workspace_id"), rs.getString("project_id"), rs.getString("effective_workspace_id"),
+            rs.getString("effective_workspace_kind"), rs.getInt("current_item_index"), map(rs.getString("checkpoint_json")),
             map(rs.getString("input_json")), map(rs.getString("output_json")), map(rs.getString("evidence_json")),
             rs.getString("error_text"), rs.getString("lease_owner"), instantValue(rs.getString("lease_expires_at")),
             instantValue(rs.getString("created_at")), instantValue(rs.getString("updated_at")),
@@ -930,6 +1040,35 @@ public class OrchestrationRuntimeRepository {
         return StringUtils.hasText(value) ? Instant.parse(value) : null;
     }
 
+    private void backfillAssignmentProjectContext() {
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+            """
+                select id, input_json
+                from work_assignments
+                where project_id is null and input_json is not null
+                """
+        );
+        for (Map<String, Object> row : rows) {
+            String inputJson = row.get("input_json") == null ? null : row.get("input_json").toString();
+            if (!StringUtils.hasText(inputJson)) {
+                continue;
+            }
+            try {
+                Map<String, Object> input = objectMapper.readValue(inputJson, MAP_TYPE);
+                Object projectValue = input.get("projectId");
+                if (projectValue != null && StringUtils.hasText(projectValue.toString())) {
+                    jdbcTemplate.update(
+                        "update work_assignments set project_id = ? where id = ? and project_id is null",
+                        projectValue.toString().trim(),
+                        row.get("id")
+                    );
+                }
+            } catch (JsonProcessingException ignored) {
+                // Leave malformed legacy input untouched; row loading will surface parse failures where needed.
+            }
+        }
+    }
+
     private void ensureSchema() {
         jdbcTemplate.execute("""
             create table if not exists orchestration_jobs (
@@ -983,6 +1122,9 @@ public class OrchestrationRuntimeRepository {
                 status text not null,
                 model_override text,
                 workspace_id text,
+                project_id text,
+                effective_workspace_id text,
+                effective_workspace_kind text,
                 current_item_index integer not null,
                 checkpoint_json text,
                 input_json text,
@@ -1011,9 +1153,27 @@ public class OrchestrationRuntimeRepository {
             jdbcTemplate.execute("alter table work_assignments add column last_heartbeat_at text");
             jdbcTemplate.execute("update work_assignments set last_heartbeat_at = updated_at where status = 'RUNNING'");
         }
+        if (!assignmentColumns.contains("project_id")) {
+            jdbcTemplate.execute("alter table work_assignments add column project_id text");
+        }
+        if (!assignmentColumns.contains("effective_workspace_id")) {
+            jdbcTemplate.execute("alter table work_assignments add column effective_workspace_id text");
+        }
+        if (!assignmentColumns.contains("effective_workspace_kind")) {
+            jdbcTemplate.execute("alter table work_assignments add column effective_workspace_kind text");
+        }
+        backfillAssignmentProjectContext();
         jdbcTemplate.execute("""
             create index if not exists idx_work_assignments_queue
                 on work_assignments(status, priority, created_at)
+            """);
+        jdbcTemplate.execute("""
+            create index if not exists idx_work_assignments_project_active
+                on work_assignments(project_id, status, created_at)
+            """);
+        jdbcTemplate.execute("""
+            create index if not exists idx_work_assignments_effective_workspace_active
+                on work_assignments(effective_workspace_id, status, created_at)
             """);
         jdbcTemplate.execute("""
             create table if not exists assignment_conversation_links (

@@ -19,6 +19,12 @@ import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
 import io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettingsService;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowRun;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.EffectiveWorkspace;
+import io.mindspice.magenta2.ai.orchestration.workspaces.EffectiveWorkspaceResolver;
+import io.mindspice.magenta2.ai.orchestration.workspaces.Workspace;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLeaseService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceOwnerType;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -33,6 +39,9 @@ public class AssignmentService {
     private final AuditRepository auditRepository;
     private final PlanService planService;
     private final WorkflowService workflowService;
+    private final EffectiveWorkspaceResolver effectiveWorkspaceResolver;
+    private final WorkspaceService workspaceService;
+    private final WorkspaceLeaseService workspaceLeaseService;
     private volatile Consumer<String> localInterruptHandler = ignored -> { };
 
     public AssignmentService(
@@ -44,7 +53,6 @@ public class AssignmentService {
         this(repository, agentProfileService, runtimeSettingsService, jobService, null, null, null);
     }
 
-    @Autowired
     public AssignmentService(
         OrchestrationRuntimeRepository repository,
         AgentProfileService agentProfileService,
@@ -54,6 +62,23 @@ public class AssignmentService {
         @Autowired(required = false) PlanService planService,
         @Autowired(required = false) WorkflowService workflowService
     ) {
+        this(repository, agentProfileService, runtimeSettingsService, jobService, auditRepository, planService,
+            workflowService, null, null, null);
+    }
+
+    @Autowired
+    public AssignmentService(
+        OrchestrationRuntimeRepository repository,
+        AgentProfileService agentProfileService,
+        RuntimeSettingsService runtimeSettingsService,
+        JobService jobService,
+        @Autowired(required = false) AuditRepository auditRepository,
+        @Autowired(required = false) PlanService planService,
+        @Autowired(required = false) WorkflowService workflowService,
+        @Autowired(required = false) EffectiveWorkspaceResolver effectiveWorkspaceResolver,
+        @Autowired(required = false) WorkspaceService workspaceService,
+        @Autowired(required = false) WorkspaceLeaseService workspaceLeaseService
+    ) {
         this.repository = repository;
         this.agentProfileService = agentProfileService;
         this.runtimeSettingsService = runtimeSettingsService;
@@ -61,6 +86,9 @@ public class AssignmentService {
         this.auditRepository = auditRepository;
         this.planService = planService;
         this.workflowService = workflowService;
+        this.effectiveWorkspaceResolver = effectiveWorkspaceResolver;
+        this.workspaceService = workspaceService;
+        this.workspaceLeaseService = workspaceLeaseService;
     }
 
     public WorkAssignment create(AssignmentRequest request) {
@@ -82,6 +110,9 @@ public class AssignmentService {
             jobService.getDefinition(request.jobId());
         }
         Map<String, Object> input = inputWithProjectContext(request);
+        String projectId = normalize(firstText(request.projectId(), text(input.get("projectId"))));
+        validateWorkspaceCompatibility(projectId, request.workspaceId());
+        EffectiveWorkspace effectiveWorkspace = resolveEffectiveWorkspace(request.agentId(), projectId);
         AssignmentTemplateParser.validate(new AssignmentRequest(
             request.agentId(),
             request.jobId(),
@@ -89,7 +120,7 @@ public class AssignmentService {
             request.assignmentType(),
             request.priority(),
             request.modelOverride(),
-            request.projectId(),
+            projectId,
             request.workspaceId(),
             input
         ));
@@ -103,6 +134,9 @@ public class AssignmentService {
             OrchestrationStatus.QUEUED,
             normalize(request.modelOverride()),
             normalize(request.workspaceId()),
+            projectId,
+            effectiveWorkspace == null ? null : effectiveWorkspace.workspaceId(),
+            effectiveWorkspace == null ? null : effectiveWorkspace.ownerType().name(),
             0,
             Map.of(),
             input,
@@ -330,6 +364,109 @@ public class AssignmentService {
             .orElseGet(() -> repository.findAssignment(assignment.id()).orElse(assignment));
     }
 
+    public WorkAssignment repairEffectiveWorkspaceContext(WorkAssignment assignment) {
+        if (assignment == null) {
+            return null;
+        }
+        String projectId = normalize(firstText(assignment.projectId(), text(assignment.input().get("projectId"))));
+        if (StringUtils.hasText(projectId)) {
+            validateWorkspaceCompatibility(projectId, assignment.workspaceId());
+        }
+        if (StringUtils.hasText(assignment.effectiveWorkspaceId())
+            && StringUtils.hasText(assignment.effectiveWorkspaceKind())
+            && safeEquals(projectId, assignment.projectId())) {
+            return assignment;
+        }
+        EffectiveWorkspace effectiveWorkspace = resolveEffectiveWorkspace(assignment.agentId(), projectId);
+        if (effectiveWorkspace == null) {
+            return assignment;
+        }
+        return repository.saveAssignment(new WorkAssignment(
+            assignment.id(), assignment.agentId(), assignment.jobId(), assignment.jobItemId(),
+            assignment.assignmentType(), assignment.priority(), assignment.status(), assignment.modelOverride(),
+            assignment.workspaceId(), projectId, effectiveWorkspace.workspaceId(), effectiveWorkspace.ownerType().name(),
+            assignment.currentItemIndex(), assignment.checkpoint(), assignment.input(), assignment.output(), assignment.evidence(),
+            assignment.errorText(), assignment.leaseOwner(), assignment.leaseExpiresAt(), assignment.createdAt(),
+            assignment.updatedAt(), assignment.startedAt(), assignment.completedAt(), assignment.lastProgressAt(),
+            assignment.lastHeartbeatAt()
+        ));
+    }
+
+    public AssignmentSummary summary(String assignmentId) {
+        return summary(get(assignmentId));
+    }
+
+    public List<AssignmentSummary> summariesForAgent(String agentId) {
+        return assignments(agentId).stream().map(this::summary).toList();
+    }
+
+    public List<AssignmentSummary> activeSummariesForProject(String projectId) {
+        return repository.findActiveAssignmentsForProject(projectId).stream().map(this::summary).toList();
+    }
+
+    public List<AssignmentSummary> activeSummariesForEffectiveWorkspace(String workspaceId) {
+        return repository.findActiveAssignmentsForEffectiveWorkspace(workspaceId).stream().map(this::summary).toList();
+    }
+
+    public boolean hasActiveAssignmentsForProject(String projectId) {
+        return repository.countActiveAssignmentsForProject(projectId) > 0;
+    }
+
+    public boolean hasActiveAssignmentsForJob(String jobId) {
+        return repository.countActiveAssignmentsForJob(jobId) > 0;
+    }
+
+    public boolean hasActiveAssignmentsForEffectiveWorkspace(String workspaceId) {
+        return repository.countActiveAssignmentsForEffectiveWorkspace(workspaceId) > 0;
+    }
+
+    public WorkAssignment requeueWorkspaceBlockedAssignment(String assignmentId) {
+        WorkAssignment assignment = get(assignmentId);
+        if (assignment.status() != OrchestrationStatus.WAITING || !assignment.checkpoint().containsKey("workspaceBlocker")) {
+            throw new IllegalStateException("Assignment is not waiting on a workspace lease: " + assignmentId);
+        }
+        String workspaceId = firstText(
+            assignment.effectiveWorkspaceId(),
+            text(assignment.checkpoint().get("projectWorkspaceId")),
+            text(assignment.checkpoint().get("effectiveWorkspaceId"))
+        );
+        if (!StringUtils.hasText(workspaceId)) {
+            throw new IllegalStateException("Workspace-blocked assignment has no effective workspace id: " + assignmentId);
+        }
+        if (workspaceLeaseService == null) {
+            throw new IllegalStateException("Workspace lease service is unavailable");
+        }
+        if (workspaceLeaseService.activeWritableLease(workspaceId).isPresent()) {
+            throw new IllegalStateException("Workspace still has an active writable lease: " + workspaceId);
+        }
+        Map<String, Object> checkpoint = new LinkedHashMap<>(assignment.checkpoint());
+        Object blocker = checkpoint.remove("workspaceBlocker");
+        if (blocker != null) {
+            checkpoint.put("lastWorkspaceBlocker", blocker);
+        }
+        return repository.saveAssignment(copy(
+            assignment, OrchestrationStatus.QUEUED, assignment.currentItemIndex(), checkpoint,
+            assignment.output(), assignment.evidence(), null, null, null, assignment.completedAt()
+        ));
+    }
+
+    public int requeueWorkspaceBlockedAssignments(int limit) {
+        int boundedLimit = limit <= 0 ? 50 : Math.min(limit, 200);
+        int requeued = 0;
+        for (WorkAssignment assignment : repository.findWaitingAssignments(boundedLimit)) {
+            if (!assignment.checkpoint().containsKey("workspaceBlocker")) {
+                continue;
+            }
+            try {
+                requeueWorkspaceBlockedAssignment(assignment.id());
+                requeued++;
+            } catch (IllegalStateException ignored) {
+                // Still blocked or not enough context; leave it WAITING for a later operator pass.
+            }
+        }
+        return requeued;
+    }
+
     WorkAssignment saveStatus(WorkAssignment assignment, OrchestrationStatus status) {
         Instant completedAt = isTerminal(status) ? Instant.now() : assignment.completedAt();
         return repository.saveAssignment(copy(
@@ -361,6 +498,7 @@ public class AssignmentService {
         return new WorkAssignment(
             assignment.id(), assignment.agentId(), assignment.jobId(), assignment.jobItemId(),
             assignment.assignmentType(), assignment.priority(), status, assignment.modelOverride(), assignment.workspaceId(),
+            assignment.projectId(), assignment.effectiveWorkspaceId(), assignment.effectiveWorkspaceKind(),
             currentItemIndex, checkpoint == null ? Map.of() : checkpoint, assignment.input(),
             output == null ? Map.of() : output, evidence == null ? Map.of() : evidence, errorText,
             leaseOwner, leaseExpiresAt, assignment.createdAt(), assignment.updatedAt(), assignment.startedAt(), completedAt,
@@ -432,6 +570,43 @@ public class AssignmentService {
     private boolean isTerminal(OrchestrationStatus status) {
         return status == OrchestrationStatus.COMPLETED || status == OrchestrationStatus.CANCELLED
             || status == OrchestrationStatus.FAILED || status == OrchestrationStatus.NEEDS_REVIEW;
+    }
+
+    private AssignmentSummary summary(WorkAssignment assignment) {
+        return new AssignmentSummary(
+            assignment.id(),
+            assignment.agentId(),
+            assignment.jobId(),
+            assignment.jobItemId(),
+            assignment.assignmentType(),
+            assignment.priority(),
+            assignment.status(),
+            assignment.projectId(),
+            assignment.workspaceId(),
+            assignment.effectiveWorkspaceId(),
+            assignment.effectiveWorkspaceKind(),
+            effectiveWorkspaceDisplayPath(assignment.effectiveWorkspaceId()),
+            text(assignment.checkpoint().get("workspaceBlocker")),
+            text(assignment.checkpoint().get("jobRunId")),
+            text(assignment.checkpoint().get("workflowRunId")),
+            firstText(text(assignment.checkpoint().get("taskRunId")), text(assignment.checkpoint().get("planRunId"))),
+            assignment.createdAt(),
+            assignment.updatedAt(),
+            assignment.startedAt(),
+            assignment.completedAt()
+        );
+    }
+
+    private String effectiveWorkspaceDisplayPath(String workspaceId) {
+        if (!StringUtils.hasText(workspaceId) || workspaceService == null) {
+            return null;
+        }
+        try {
+            Workspace workspace = workspaceService.get(workspaceId);
+            return workspace.rootRelativePath();
+        } catch (RuntimeException ignored) {
+            return null;
+        }
     }
 
     public boolean deletable(OrchestrationStatus status) {
@@ -539,6 +714,36 @@ public class AssignmentService {
         return StringUtils.hasText(value) ? value.trim() : null;
     }
 
+    private boolean safeEquals(String left, String right) {
+        return java.util.Objects.equals(normalize(left), normalize(right));
+    }
+
+    private EffectiveWorkspace resolveEffectiveWorkspace(String agentId, String projectId) {
+        if (effectiveWorkspaceResolver == null) {
+            return null;
+        }
+        return effectiveWorkspaceResolver.resolve(agentId, projectId);
+    }
+
+    private void validateWorkspaceCompatibility(String projectId, String workspaceId) {
+        if (!StringUtils.hasText(projectId) || !StringUtils.hasText(workspaceId) || workspaceService == null) {
+            return;
+        }
+        try {
+            Workspace workspace = workspaceService.get(workspaceId.trim());
+            if (workspace.ownerType() == WorkspaceOwnerType.PROJECT
+                && !projectId.trim().equals(workspace.ownerId())) {
+                throw new IllegalArgumentException(
+                    "workspaceId belongs to project " + workspace.ownerId()
+                    + " but projectId is " + projectId.trim()
+                    + "; projectId is the only project-scoping field"
+                );
+            }
+        } catch (IllegalStateException ignored) {
+            // Unknown compatibility workspace ids remain metadata and do not select project execution.
+        }
+    }
+
     private Map<String, Object> inputWithProjectContext(AssignmentRequest request) {
         Map<String, Object> input = request.input() == null ? Map.of() : request.input();
         String projectId = firstText(request.projectId(), text(input.get("projectId")));
@@ -551,6 +756,30 @@ public class AssignmentService {
     }
 
     public record LinkedRunStatus(String type, String id, String parentId, String status, String errorText) {
+    }
+
+    public record AssignmentSummary(
+        String id,
+        String agentId,
+        String jobId,
+        String jobItemId,
+        AssignmentType assignmentType,
+        int priority,
+        OrchestrationStatus status,
+        String projectId,
+        String workspaceId,
+        String effectiveWorkspaceId,
+        String effectiveWorkspaceKind,
+        String effectiveWorkspaceDisplayPath,
+        String workspaceBlocker,
+        String jobRunId,
+        String workflowRunId,
+        String taskRunId,
+        Instant createdAt,
+        Instant updatedAt,
+        Instant startedAt,
+        Instant completedAt
+    ) {
     }
 
     public record AssignmentDiagnostics(

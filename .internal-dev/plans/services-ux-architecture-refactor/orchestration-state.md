@@ -22,6 +22,10 @@ Date: 2026-05-21
   - `.internal-dev/plans/services-ux-architecture-refactor/phase-03-output-provenance.md`
   - `.internal-dev/plans/services-ux-architecture-refactor/phase-04-project-job-ux.md`
   - `.internal-dev/plans/services-ux-architecture-refactor/phase-05-validation-closeout.md`
+- Phase 01 implementation completed locally:
+  - first-class assignment project/effective workspace columns, mapping, backfill, creation persistence, and execution-start repair.
+  - assignment summary/read contract, active assignment queries, workspace-blocked requeue operations, and active project/job mutation guards.
+  - minimal API conflict mapping for active mutation policy failures.
 
 ## Objective
 
@@ -107,3 +111,11 @@ Next recommended phase: start Phase 01 only. Do not start UI work until Phase 01
 ## Validation Log
 
 - Review wave was read-oriented; no source validation was expected. Review artifacts and notes passed `git diff --check`.
+- Phase 01 local validation passed:
+  - `mvn test -Dtest=AssignmentContextServiceTest,ProjectServiceTest,JobServiceTest`
+  - `mvn test -Dtest=PublicRunSubmissionControllerTest,OperationalUiContractControllerTest,AgentOrchestrationControllerTest,ProjectServiceTest,OrchestrationRuntimeTest`
+  - `mvn test -Dtest=WorkspaceLeaseServiceTest,WorkspaceRepositoryAttributionTest,WorkspaceRepositorySchemaMigrationTest,WorkspacePathSegmentValidationTest`
+  - `git diff --check`
+  - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` reached successful application startup before timeout shutdown.
+- Phase 01 remediation aligned `schema.sql` work assignment bootstrap with runtime assignment context columns: nullable `project_id`, `effective_workspace_id`, and `effective_workspace_kind`.
+- Phase 01 remediation validation passed: `mvn test -Dtest=WorkspaceRepositorySchemaMigrationTest,AssignmentContextServiceTest` and scoped `git diff --check`.

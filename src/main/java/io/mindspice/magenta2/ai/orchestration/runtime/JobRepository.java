@@ -148,6 +148,41 @@ public class JobRepository {
         );
     }
 
+    public long countActiveRunsByJobId(String jobId) {
+        Long count = jdbcTemplate.queryForObject(
+            """
+                select count(*)
+                from job_runs
+                where job_id = ?
+                  and status not in (?, ?, ?)
+                """,
+            Long.class,
+            jobId,
+            JobRunStatus.COMPLETED.name(),
+            JobRunStatus.FAILED.name(),
+            JobRunStatus.CANCELLED.name()
+        );
+        return count == null ? 0 : count;
+    }
+
+    public long countActiveRunsByProject(String projectId) {
+        Long count = jdbcTemplate.queryForObject(
+            """
+                select count(*)
+                from job_runs r
+                join job_definitions d on d.id = r.job_id
+                where d.project_id = ?
+                  and r.status not in (?, ?, ?)
+                """,
+            Long.class,
+            projectId,
+            JobRunStatus.COMPLETED.name(),
+            JobRunStatus.FAILED.name(),
+            JobRunStatus.CANCELLED.name()
+        );
+        return count == null ? 0 : count;
+    }
+
     public JobRun saveRun(JobRun run) {
         Instant now = Instant.now();
         Instant createdAt = run.createdAt() == null ? now : run.createdAt();
