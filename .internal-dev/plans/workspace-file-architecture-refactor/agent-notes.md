@@ -38,7 +38,7 @@ All review, planning, implementation, validation, remediation, documentation, an
 - Created Phase 03 commit: `4f59cb5 feat: route task outputs through effective workspace`.
 - Created Phase 04 commit: `d1cc9f3 feat: route workflow outputs through effective workspace`.
 - Created Phase 05 commit: `f2aaa1d feat: make project context explicit for submissions`.
-- Phase 06 implementation and validation completed locally; awaiting main orchestrator commit.
+- Created Phase 06 commit: `fc60acb feat: make job workspaces opt-in and isolated`.
 
 ## Validation Results
 
@@ -115,6 +115,7 @@ All review, planning, implementation, validation, remediation, documentation, an
 - Phase 05 Playwright re-validation completed 2026-05-21: project UI and plan submit checks passed. Phase 05 is ready for commit.
 - Phase 05 committed as `f2aaa1d feat: make project context explicit for submissions`.
 - Phase 06 validation agent completed 2026-05-21: all requested validation commands passed. Phase 06 is ready for commit.
+- Phase 06 committed as `fc60acb feat: make job workspaces opt-in and isolated`.
 
 ## Phase 03 Implementation Notes - 2026-05-21
 

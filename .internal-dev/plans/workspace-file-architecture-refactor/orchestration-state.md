@@ -36,12 +36,15 @@ Persistent state for this long-running orchestration effort. Use this file to re
 - Completed Phase 05 project owner-agent compatibility, explicit project submission context, and project UI remediation locally; no commit created by phase implementation/remediation agents.
 - Completed Phase 05 backend/API validation and Playwright UI validation through dedicated validation agents.
 - Committed Phase 05 as `f2aaa1d feat: make project context explicit for submissions`.
+- Completed Phase 06 job persistent workspace policy and output attribution implementation locally; no commit created by the phase implementation agent.
+- Completed Phase 06 validation through a dedicated validation agent.
+- Committed Phase 06 as `fc60acb feat: make job workspaces opt-in and isolated`.
 
 ## Current Work
 
 - Workspace/file architecture refactor.
-- Current gate: Phase 06 commit.
-- Phase 06 implementation and validation completed locally without a commit. Main orchestrator should commit, record the hash, then start Phase 07.
+- Current gate: Phase 07 integration and closeout.
+- Phase 06 implementation and validation are committed. Main orchestrator should launch Phase 07 integration, docs, final review, remediation, and closeout subplan.
 
 ## Current Plan Artifacts
 
