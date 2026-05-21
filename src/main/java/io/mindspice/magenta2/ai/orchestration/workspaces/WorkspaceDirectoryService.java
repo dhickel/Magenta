@@ -20,6 +20,7 @@ import org.springframework.util.StringUtils;
  * <h3>Layout</h3>
  * <ul>
  *   <li>Agent workspace: {@code data/agents/{agentId}/workspace}</li>
+ *   <li>Durable workspace layout: {@code work/}, {@code outputs/}, {@code runs/}, {@code scratch/}</li>
  *   <li>Agent outputs: {@code data/agents/{agentId}/workspace/outputs/{slug}-{runId}/}</li>
  *   <li>Agent project links: {@code data/agents/{agentId}/workspace/projects/{projectId}}</li>
  *   <li>Agent scratch: {@code data/agents/{agentId}/workspace/scratch}</li>
@@ -66,8 +67,7 @@ public class WorkspaceDirectoryService {
     }
 
     public Path agentWorkspaceRoot(String agentId) {
-        requireId(agentId, "agentId");
-        return ensureDir(confined("agents/" + agentId));
+        return agentWorkspace(agentId);
     }
 
     public Path agentWorkspaceOutputs(String agentId) {
@@ -83,6 +83,40 @@ public class WorkspaceDirectoryService {
     public Path agentScratch(String agentId) {
         requireId(agentId, "agentId");
         return ensureDir(confined("agents/" + agentId + "/workspace/scratch"));
+    }
+
+    public Path workDir(Path workspaceRoot) {
+        return ensureDir(confinedWorkspaceChild(workspaceRoot, "work"));
+    }
+
+    public Path outputsDir(Path workspaceRoot) {
+        return ensureDir(confinedWorkspaceChild(workspaceRoot, "outputs"));
+    }
+
+    public Path runsDir(Path workspaceRoot) {
+        return ensureDir(confinedWorkspaceChild(workspaceRoot, "runs"));
+    }
+
+    public Path scratchDir(Path workspaceRoot) {
+        return ensureDir(confinedWorkspaceChild(workspaceRoot, "scratch"));
+    }
+
+    public Path taskOutput(Path workspaceRoot, String taskId, String runId) {
+        requireId(taskId, "taskId");
+        requireId(runId, "runId");
+        return ensureDir(confinedWorkspaceChild(outputsDir(workspaceRoot), "tasks", taskId, runId));
+    }
+
+    public Path workflowOutput(Path workspaceRoot, String workflowId, String runId) {
+        requireId(workflowId, "workflowId");
+        requireId(runId, "runId");
+        return ensureDir(confinedWorkspaceChild(outputsDir(workspaceRoot), "workflows", workflowId, runId));
+    }
+
+    public Path jobAssignmentOutput(Path workspaceRoot, String jobAssignmentId, String runId) {
+        requireId(jobAssignmentId, "jobAssignmentId");
+        requireId(runId, "runId");
+        return ensureDir(confinedWorkspaceChild(outputsDir(workspaceRoot), "jobs", jobAssignmentId, runId));
     }
 
     /**
@@ -195,6 +229,10 @@ public class WorkspaceDirectoryService {
     public Path projectWorkspace(String projectId) {
         requireId(projectId, "projectId");
         return ensureDir(confined("projects/" + projectId + "/workspace"));
+    }
+
+    public Path projectWorkspaceRoot(String projectId) {
+        return projectWorkspace(projectId);
     }
 
     /**
@@ -372,6 +410,45 @@ public class WorkspaceDirectoryService {
             throw new IllegalArgumentException("Workspace child path escapes data root: " + child);
         }
         return resolved;
+    }
+
+    private Path confinedWorkspaceChild(Path workspaceRoot, String first, String... more) {
+        requireId(first, "workspaceChild");
+        Path root = confinedWorkspaceRoot(workspaceRoot);
+        Path resolved = root.resolve(first);
+        for (String segment : more) {
+            requireId(segment, "workspaceChild");
+            resolved = resolved.resolve(segment);
+        }
+        resolved = resolved.normalize();
+        if (!resolved.startsWith(root)) {
+            throw new IllegalArgumentException("Workspace child path escapes workspace root");
+        }
+        if (!resolved.startsWith(dataRoot)) {
+            throw new IllegalArgumentException("Workspace child path escapes data root");
+        }
+        return resolved;
+    }
+
+    private Path confinedWorkspaceRoot(Path workspaceRoot) {
+        if (workspaceRoot == null) {
+            throw new IllegalArgumentException("workspaceRoot is required");
+        }
+        Path normalized = workspaceRoot.isAbsolute()
+            ? workspaceRoot.normalize()
+            : dataRoot.resolve(workspaceRoot).normalize();
+        if (!normalized.startsWith(dataRoot)) {
+            throw new IllegalArgumentException("workspaceRoot escapes data root");
+        }
+        try {
+            Path realRoot = Files.createDirectories(normalized).toRealPath();
+            if (!realRoot.startsWith(dataRoot)) {
+                throw new IllegalArgumentException("workspaceRoot escapes data root");
+            }
+            return realRoot;
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to create directory: " + normalized, e);
+        }
     }
 
     private void removeExistingProjectLink(Path link, Path expectedTarget) throws IOException {

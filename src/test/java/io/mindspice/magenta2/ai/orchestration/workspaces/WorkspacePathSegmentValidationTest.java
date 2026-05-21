@@ -118,6 +118,88 @@ class WorkspacePathSegmentValidationTest {
         assertThat(Files.exists(projectWorkspace.resolve("shared.txt"))).isTrue();
     }
 
+    @Test
+    void effectiveWorkspaceResolverPrefersProjectWorkspaceWhenProjectIdIsPresent() throws Exception {
+        WorkspaceService workspaceService = workspaceService();
+        WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(aiConfig());
+        EffectiveWorkspaceResolver resolver = new EffectiveWorkspaceResolver(directoryService, workspaceService);
+
+        EffectiveWorkspace effective = resolver.resolve("agent-1", "project-1");
+
+        assertThat(effective.ownerType()).isEqualTo(WorkspaceOwnerType.PROJECT);
+        assertThat(effective.ownerId()).isEqualTo("project-1");
+        assertThat(effective.agentId()).isEqualTo("agent-1");
+        assertThat(effective.projectId()).isEqualTo("project-1");
+        assertThat(effective.workspaceId()).isNotBlank();
+        assertThat(effective.root()).isEqualTo(tempDir.resolve("projects/project-1/workspace").toRealPath());
+        assertThat(effective.workDir()).isEqualTo(effective.root().resolve("work"));
+        assertThat(effective.outputsDir()).isEqualTo(effective.root().resolve("outputs"));
+        assertThat(effective.runsDir()).isEqualTo(effective.root().resolve("runs"));
+        assertThat(effective.scratchDir()).isEqualTo(effective.root().resolve("scratch"));
+
+        Workspace workspace = workspaceService.get(effective.workspaceId());
+        assertThat(workspace.ownerType()).isEqualTo(WorkspaceOwnerType.PROJECT);
+        assertThat(workspace.ownerId()).isEqualTo("project-1");
+    }
+
+    @Test
+    void effectiveWorkspaceResolverUsesAgentWorkspaceWhenProjectIdIsAbsent() throws Exception {
+        WorkspaceService workspaceService = workspaceService();
+        WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(aiConfig());
+        EffectiveWorkspaceResolver resolver = new EffectiveWorkspaceResolver(directoryService, workspaceService);
+
+        EffectiveWorkspace effective = resolver.resolve("agent-1", null);
+
+        assertThat(effective.ownerType()).isEqualTo(WorkspaceOwnerType.AGENT);
+        assertThat(effective.ownerId()).isEqualTo("agent-1");
+        assertThat(effective.projectId()).isNull();
+        assertThat(effective.root()).isEqualTo(tempDir.resolve("agents/agent-1/workspace").toRealPath());
+        assertThat(workspaceService.get(effective.workspaceId()).ownerType()).isEqualTo(WorkspaceOwnerType.AGENT);
+    }
+
+    @Test
+    void durableWorkspaceLayoutHelpersCreateExpectedConfinedDirectories() throws Exception {
+        WorkspaceDirectoryService service = new WorkspaceDirectoryService(aiConfig());
+        Path root = service.agentWorkspaceRoot("agent-1");
+
+        assertThat(root).isEqualTo(tempDir.resolve("agents/agent-1/workspace").toRealPath());
+        assertThat(service.workDir(root)).isEqualTo(root.resolve("work"));
+        assertThat(service.outputsDir(root)).isEqualTo(root.resolve("outputs"));
+        assertThat(service.runsDir(root)).isEqualTo(root.resolve("runs"));
+        assertThat(service.scratchDir(root)).isEqualTo(root.resolve("scratch"));
+        assertThat(Files.isDirectory(root.resolve("work"))).isTrue();
+        assertThat(Files.isDirectory(root.resolve("outputs"))).isTrue();
+        assertThat(Files.isDirectory(root.resolve("runs"))).isTrue();
+        assertThat(Files.isDirectory(root.resolve("scratch"))).isTrue();
+
+        assertThatThrownBy(() -> service.workDir(tempDir.resolve("../escape").normalize()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("workspaceRoot");
+    }
+
+    @Test
+    void workUnitOutputHelpersCreateTraceablePathsAndValidateSegments() throws Exception {
+        WorkspaceDirectoryService service = new WorkspaceDirectoryService(aiConfig());
+        Path root = service.projectWorkspaceRoot("project-1");
+
+        assertThat(service.taskOutput(root, "task-1", "run-1"))
+            .isEqualTo(root.resolve("outputs/tasks/task-1/run-1"));
+        assertThat(service.workflowOutput(root, "workflow-1", "run-2"))
+            .isEqualTo(root.resolve("outputs/workflows/workflow-1/run-2"));
+        assertThat(service.jobAssignmentOutput(root, "assignment-1", "run-3"))
+            .isEqualTo(root.resolve("outputs/jobs/assignment-1/run-3"));
+
+        assertThatThrownBy(() -> service.taskOutput(root, "tasks/escape", "run-1"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("taskId");
+        assertThatThrownBy(() -> service.workflowOutput(root, "workflow-1", "../run"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("runId");
+        assertThatThrownBy(() -> service.jobAssignmentOutput(root, "assignment-1", "run\\bad"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("runId");
+    }
+
     private WorkspaceService workspaceService() throws Exception {
         return new WorkspaceService(
             new WorkspaceRepository(new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true))),

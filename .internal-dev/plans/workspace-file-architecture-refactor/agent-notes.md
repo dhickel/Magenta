@@ -34,6 +34,7 @@ All review, planning, implementation, validation, remediation, documentation, an
 - Review B completed read-only task/plan and workflow execution divergence review.
 - Created planning synthesis commit: `0738b4a plan: synthesize workspace file refactor phases`.
 - Created Phase 01 commit: `aee52fc test: characterize workspace file baseline`.
+- Phase 02 implementation completed locally; awaiting main orchestrator validation/commit.
 
 ## Validation Results
 
@@ -41,6 +42,14 @@ All review, planning, implementation, validation, remediation, documentation, an
   - `mvn test -Dtest=PlanServiceTest,OutputArtifactServiceAttributionTest,WorkflowRunnerTest` -> PASS, 60 tests.
   - `mvn test -Dtest=PlanServiceTest,OutputArtifactServiceAttributionTest,WorkflowRunnerTest,OrchestrationRuntimeTest,WorkspaceRepositorySchemaMigrationTest,PublicApiRouteBindingTest` -> PASS, 108 tests.
   - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` -> PASS under timeout rule; app started on port `42157`, then timeout stopped it with exit code `124`.
+- Phase 02 validation passed:
+  - `mvn test -Dtest=WorkspacePathSegmentValidationTest,PlanServiceTest,PlanRepositoryTest,WorkspaceRepositorySchemaMigrationTest` -> PASS, 60 tests.
+  - `mvn test -Dtest=PlanServiceTest,OutputArtifactServiceAttributionTest,WorkflowRunnerTest,OrchestrationRuntimeTest,WorkspaceRepositorySchemaMigrationTest,PublicApiRouteBindingTest` -> PASS, 109 tests.
+  - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` -> PASS under timeout rule; app started on port `42423`, then timeout stopped it with exit code `124`.
+- Phase 02 validation passed:
+  - `mvn test -Dtest=WorkspacePathSegmentValidationTest,PlanServiceTest,PlanRepositoryTest,WorkspaceRepositorySchemaMigrationTest` -> PASS, 60 tests.
+  - `mvn test -Dtest=PlanServiceTest,OutputArtifactServiceAttributionTest,WorkflowRunnerTest,OrchestrationRuntimeTest,WorkspaceRepositorySchemaMigrationTest,PublicApiRouteBindingTest` -> PASS, 109 tests.
+  - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` -> application started successfully on ephemeral port `41141`; command exited `124` because `timeout` stopped the running server after startup.
 
 ## Remediation Notes
 
@@ -69,6 +78,7 @@ All review, planning, implementation, validation, remediation, documentation, an
 - Planning Synthesis completed 2026-05-21: created `review-synthesis.md`, `implementation-plan.md`, `orchestration-suite.md`, and phase files `phase-01` through `phase-07`. The synthesized plan keeps implementation code edits serial and validation-gated, requires phase commits, preserves chat-file separation, stages loose artifact discovery behind confinement/gating plus explicit publishing, preserves `workspaceId` compatibility while adding `projectId`, treats project owner-agent removal as its own migration/API phase, and makes workflow `WAITING` assignment handling plus workflow context propagation concrete defect fixes.
 - Phase 01 validation completed 2026-05-21: all requested validation commands passed. Phase 01 is ready for commit.
 - Phase 01 committed as `aee52fc test: characterize workspace file baseline`.
+- Phase 02 validation completed 2026-05-21: all requested validation commands passed. Phase 02 is ready for commit.
 
 ## Phase 01 Implementation Notes - 2026-05-21
 
@@ -110,3 +120,56 @@ Recommended next validation:
 
 - Main validation can rerun the Phase 01 baseline command plus the bounded Spring context smoke above.
 - Phase 02 should start from the current characterization tests and add resolver-level path confinement tests before moving task/plan output placement.
+
+## Phase 02 Implementation Notes - 2026-05-21
+
+Changed files:
+
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/EffectiveWorkspace.java`
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/EffectiveWorkspaceResolver.java`
+- `src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/WorkspaceDirectoryService.java`
+- `src/main/java/io/mindspice/magenta2/ai/chat/plan/PlanService.java`
+- `src/test/java/io/mindspice/magenta2/ai/orchestration/workspaces/WorkspacePathSegmentValidationTest.java`
+- `src/test/java/io/mindspice/magenta2/ai/chat/plan/PlanServiceTest.java`
+- `.internal-dev/plans/workspace-file-architecture-refactor/agent-notes.md`
+- `.internal-dev/plans/workspace-file-architecture-refactor/orchestration-state.md`
+
+Implemented behavior:
+
+- Added a central `EffectiveWorkspaceResolver` that selects project durable workspace when `projectId` is present, otherwise agent durable workspace.
+- Resolver creates/loads the durable `Workspace` record and ensures shared layout directories exist under the selected root: `work/`, `outputs/`, `runs/`, and `scratch/`.
+- Added shared layout helpers and work-unit output helpers to `WorkspaceDirectoryService`: task outputs under `outputs/tasks/<taskId>/<runId>/`, workflow outputs under `outputs/workflows/<workflowId>/<runId>/`, and job assignment outputs under `outputs/jobs/<jobAssignmentId>/<runId>/`.
+- Kept path confinement strict by validating ids as plain path segments and checking workspace roots remain under the real configured `dataRoot`.
+- Integrated resolver into `PlanService.startRun` so new runs persist the effective durable workspace record id in `PlanRun.workspaceId` when the resolver is available.
+- Preserved existing `workspaceId` compatibility by not interpreting context/request `workspaceId` as `projectId`.
+- Preserved Phase 01 output behavior: task/plan run output directories still use the current agent/system output layout until Phase 03 moves task/plan path placement.
+- No schema change was needed because `plan_runs.workspace_id`, `output_directory`, and `temp_workspace_path` already exist.
+
+Coverage added:
+
+- Resolver selection prefers project workspace over agent workspace when `projectId` is present.
+- Resolver falls back to agent workspace when `projectId` is absent.
+- Shared durable layout helpers create confined `work`, `outputs`, `runs`, and `scratch` directories.
+- Work-unit output helpers create traceable task/workflow/job paths and reject invalid segments.
+- `PlanService.startRun` persists the effective workspace id while keeping current output placement under `agents/<agent>/workspace/outputs/`.
+
+Commands and results:
+
+- `mvn test -Dtest=WorkspacePathSegmentValidationTest,PlanServiceTest,PlanRepositoryTest,WorkspaceRepositorySchemaMigrationTest` -> PASS, 60 tests.
+- `mvn test -Dtest=PlanServiceTest,OutputArtifactServiceAttributionTest,WorkflowRunnerTest,OrchestrationRuntimeTest,WorkspaceRepositorySchemaMigrationTest,PublicApiRouteBindingTest` -> PASS, 109 tests.
+- `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` -> application started successfully on ephemeral port `41141`; command exited `124` because `timeout` stopped the running server after startup.
+
+Deferred planned work:
+
+- Phase 03 should move task/plan output placement onto the resolver-selected durable output helper paths and update runtime aliases.
+- Phase 03 should decide how explicit output publishing and gated loose discovery use the persisted effective workspace metadata.
+- Phase 04 should apply the resolver to workflow durable output placement and fix workflow waiting/context propagation defects.
+- Later project/API phases should add explicit public `projectId` submission paths while preserving existing `workspaceId` compatibility.
+
+Blockers:
+
+- None for Phase 02.
+
+Ready state:
+
+- Phase 02 is ready for main orchestrator validation. No commit was created by this implementation agent.

@@ -13,11 +13,14 @@ import io.mindspice.magenta2.ai.config.user.EndpointType;
 import io.mindspice.magenta2.ai.config.user.ModelConfig;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
+import io.mindspice.magenta2.ai.orchestration.workspaces.EffectiveWorkspaceResolver;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactQuery;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceOwnerType;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceRepository;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.ai.chat.messages.UserMessage;
@@ -934,6 +937,62 @@ class PlanServiceTest {
         } finally {
             OrchestrationTaskContextHolder.clear();
         }
+    }
+
+    @Test
+    void startRunPersistsEffectiveWorkspaceIdWithoutMovingCurrentOutputDirectory() throws Exception {
+        Path dataRoot = Files.createDirectories(tempDir.resolve("data-effective-workspace"));
+        WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(
+            new AiConfig(null, null, null, null, dataRoot, null, null));
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        WorkspaceRepository workspaceRepository = new WorkspaceRepository(jdbcTemplate);
+        WorkspaceService workspaceService = new WorkspaceService(
+            workspaceRepository,
+            new AiConfig(null, null, null, null, dataRoot, null, null));
+        EffectiveWorkspaceResolver resolver = new EffectiveWorkspaceResolver(dirService, workspaceService);
+        OutputArtifactService artifactService = new OutputArtifactService(
+            workspaceRepository, dirService, new ObjectMapper().findAndRegisterModules());
+
+        PlanRepository planRepository = new PlanRepository(jdbcTemplate, new ObjectMapper());
+        PlanService service = new PlanService(
+            planRepository,
+            new ChatMemoryRepository(jdbcTemplate, new ObjectMapper()),
+            null, new io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer(),
+            dirService, artifactService, resolver);
+
+        PlanDefinition task = service.saveTask(new PlanDefinition(
+            null, PlanKind.TASK_TEMPLATE, PlanStatus.APPROVED,
+            "Effective Workspace Task", "Do it.", "Goal.", null,
+            List.of(), List.of(), List.of(),
+            List.of(), List.of(new PlanStep(1, "Do it.")), List.of("Run starts."),
+            List.of(), List.of(), null, null, null, null,
+            null, List.of(), 0, 0, null, null, null, null));
+
+        PlanRun projectRun = service.startRun(task.id(), Map.of(),
+            new OrchestrationTaskContext("agent-1", "TestAgent", null, "project-1", "legacy-ws",
+                "TASK_RUN", null, null));
+
+        var projectWorkspace = workspaceRepository.findByOwner(WorkspaceOwnerType.PROJECT, "project-1").orElseThrow();
+        assertThat(projectRun.workspaceId()).isEqualTo(projectWorkspace.id());
+        assertThat(projectRun.workspaceId()).isNotEqualTo("legacy-ws");
+        assertThat(projectRun.outputDirectory()).contains("agents/agent-1/workspace/outputs/");
+        assertThat(Path.of(projectRun.outputDirectory()).toRealPath())
+            .isNotEqualTo(dirService.projectWorkspaceRoot("project-1").toRealPath());
+        assertThat(Files.isDirectory(dataRoot.resolve("projects/project-1/workspace/work"))).isTrue();
+        assertThat(Files.isDirectory(dataRoot.resolve("projects/project-1/workspace/outputs"))).isTrue();
+        assertThat(Files.isDirectory(dataRoot.resolve("projects/project-1/workspace/runs"))).isTrue();
+        assertThat(Files.isDirectory(dataRoot.resolve("projects/project-1/workspace/scratch"))).isTrue();
+
+        PlanRun agentRun = service.startRun(task.id(), Map.of(),
+            new OrchestrationTaskContext("agent-2", "TestAgent", null, null, "legacy-agent-ws",
+                "TASK_RUN", null, null));
+
+        var agentWorkspace = workspaceRepository.findByOwner(WorkspaceOwnerType.AGENT, "agent-2").orElseThrow();
+        assertThat(agentRun.workspaceId()).isEqualTo(agentWorkspace.id());
+        assertThat(agentRun.workspaceId()).isNotEqualTo("legacy-agent-ws");
+        assertThat(agentRun.outputDirectory()).contains("agents/agent-2/workspace/outputs/");
+        assertThat(planRepository.findRun(projectRun.id()).orElseThrow().workspaceId()).isEqualTo(projectWorkspace.id());
+        assertThat(planRepository.findRun(agentRun.id()).orElseThrow().workspaceId()).isEqualTo(agentWorkspace.id());
     }
 
     @Test

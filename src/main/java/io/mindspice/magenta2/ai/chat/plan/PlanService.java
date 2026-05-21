@@ -20,6 +20,8 @@ import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
 import io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettingsService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.EffectiveWorkspace;
+import io.mindspice.magenta2.ai.orchestration.workspaces.EffectiveWorkspaceResolver;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactContext;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
@@ -50,12 +52,13 @@ public class PlanService {
     private final ChatSessionMetadataRepository chatSessionMetadataRepository;
     private final ChatMarkdownRenderer markdownRenderer;
     private final WorkspaceDirectoryService workspaceDirectoryService;
+    private final EffectiveWorkspaceResolver effectiveWorkspaceResolver;
     private final OutputArtifactService outputArtifactService;
     private final RuntimeSettingsService runtimeSettingsService;
     private final Map<String, String> executionRunsByConversationId = new ConcurrentHashMap<>();
 
     public PlanService(PlanRepository planRepository, ChatMemoryRepository chatMemoryRepository) {
-        this(planRepository, chatMemoryRepository, null, new ChatMarkdownRenderer(), null, null, null);
+        this(planRepository, chatMemoryRepository, null, new ChatMarkdownRenderer(), null, null, null, null);
     }
 
     // Used by tests that need session metadata and markdown rendering
@@ -65,7 +68,7 @@ public class PlanService {
         ChatSessionMetadataRepository chatSessionMetadataRepository,
         ChatMarkdownRenderer markdownRenderer
     ) {
-        this(planRepository, chatMemoryRepository, chatSessionMetadataRepository, markdownRenderer, null, null, null);
+        this(planRepository, chatMemoryRepository, chatSessionMetadataRepository, markdownRenderer, null, null, null, null);
     }
 
     public PlanService(
@@ -77,7 +80,20 @@ public class PlanService {
         OutputArtifactService outputArtifactService
     ) {
         this(planRepository, chatMemoryRepository, chatSessionMetadataRepository, markdownRenderer,
-            workspaceDirectoryService, outputArtifactService, null);
+            workspaceDirectoryService, outputArtifactService, null, null);
+    }
+
+    public PlanService(
+        PlanRepository planRepository,
+        ChatMemoryRepository chatMemoryRepository,
+        ChatSessionMetadataRepository chatSessionMetadataRepository,
+        ChatMarkdownRenderer markdownRenderer,
+        WorkspaceDirectoryService workspaceDirectoryService,
+        OutputArtifactService outputArtifactService,
+        EffectiveWorkspaceResolver effectiveWorkspaceResolver
+    ) {
+        this(planRepository, chatMemoryRepository, chatSessionMetadataRepository, markdownRenderer,
+            workspaceDirectoryService, outputArtifactService, effectiveWorkspaceResolver, null);
     }
 
     @Autowired
@@ -88,6 +104,7 @@ public class PlanService {
         ChatMarkdownRenderer markdownRenderer,
         @Autowired(required = false) WorkspaceDirectoryService workspaceDirectoryService,
         @Autowired(required = false) OutputArtifactService outputArtifactService,
+        @Autowired(required = false) EffectiveWorkspaceResolver effectiveWorkspaceResolver,
         @Autowired(required = false) RuntimeSettingsService runtimeSettingsService
     ) {
         this.planRepository = planRepository;
@@ -95,6 +112,7 @@ public class PlanService {
         this.chatSessionMetadataRepository = chatSessionMetadataRepository;
         this.markdownRenderer = markdownRenderer;
         this.workspaceDirectoryService = workspaceDirectoryService;
+        this.effectiveWorkspaceResolver = effectiveWorkspaceResolver;
         this.outputArtifactService = outputArtifactService;
         this.runtimeSettingsService = runtimeSettingsService;
     }
@@ -893,12 +911,19 @@ public class PlanService {
         // Allocate workspace directories
         String tempWorkspacePath = null;
         String outputDirectoryPath = null;
+        String effectiveWorkspaceId = null;
         if (workspaceDirectoryService != null) {
             try {
                 Path tempDir = workspaceDirectoryService.taskTemp(runId);
                 tempWorkspacePath = tempDir.toRealPath().toString();
                 String slug = slugFromTitle(definition.title());
                 String agentId = context != null && context.hasAgentContext() ? context.agentId() : "system";
+                if (effectiveWorkspaceResolver != null) {
+                    EffectiveWorkspace effectiveWorkspace = effectiveWorkspaceResolver.resolve(
+                        agentId,
+                        context == null ? null : context.projectId());
+                    effectiveWorkspaceId = effectiveWorkspace.workspaceId();
+                }
                 Path outputDir = workspaceDirectoryService.agentOutput(agentId, slug, runId);
                 Path realOutputDir = outputDir.toRealPath();
                 outputDirectoryPath = realOutputDir.toString();
@@ -912,7 +937,8 @@ public class PlanService {
                     tempWorkspacePath, outputDirectoryPath, agentId, runId);
             } catch (Exception e) {
                 return saveAllocationFailureRun(
-                    runId, definition, cleanInputs, tempWorkspacePath, outputDirectoryPath, now, e, previousContext);
+                    runId, definition, cleanInputs, effectiveWorkspaceId,
+                    tempWorkspacePath, outputDirectoryPath, now, e, previousContext);
             }
         }
         try {
@@ -927,7 +953,8 @@ public class PlanService {
             }
         } catch (Exception e) {
             return saveAllocationFailureRun(
-                runId, definition, cleanInputs, tempWorkspacePath, outputDirectoryPath, now, e, previousContext);
+                runId, definition, cleanInputs, effectiveWorkspaceId,
+                tempWorkspacePath, outputDirectoryPath, now, e, previousContext);
         }
 
         return planRepository.saveRun(new PlanRun(
@@ -937,7 +964,7 @@ public class PlanService {
             cleanInputs,
             Map.of(),
             definition,
-            null,
+            effectiveWorkspaceId,
             outputDirectoryPath,
             tempWorkspacePath,
             List.of(definition.kind() == PlanKind.TASK_TEMPLATE ? "Task run started." : "Plan execution started."),
@@ -956,6 +983,7 @@ public class PlanService {
         String runId,
         PlanDefinition definition,
         Map<String, Object> cleanInputs,
+        String effectiveWorkspaceId,
         String tempWorkspacePath,
         String outputDirectoryPath,
         Instant startedAt,
@@ -976,7 +1004,7 @@ public class PlanService {
             cleanInputs,
             Map.of(),
             definition,
-            null,
+            effectiveWorkspaceId,
             outputDirectoryPath,
             tempWorkspacePath,
             List.of("Failure: " + message),
