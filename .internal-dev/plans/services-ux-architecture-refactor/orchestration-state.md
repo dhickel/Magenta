@@ -139,6 +139,15 @@ Next recommended phase: start Phase 01 only. Do not start UI work until Phase 01
   - Spring startup smoke on ephemeral port.
   - Focused browser validation of `/jobs` and the job editor runs panel, with screenshots captured under `test-results/` and intentionally not committed.
 - Phase 02 commit: `ca6c0c5 feat: add job execution summaries`.
+- Phase 03 implementation and validation passed:
+  - `mvn test -Dtest=OutputArtifactServiceAttributionTest,WorkspaceRepositoryAttributionTest,WorkspaceRepositorySchemaMigrationTest,WorkspacePathSegmentValidationTest`
+  - `mvn test -Dtest=PublicApiRouteBindingTest,OutputControllerTest,OperationalUiContractControllerTest`
+  - `mvn test -Dtest=OrchestrationRuntimeTest,WorkflowRunnerTest,JobServiceTest,AssignmentContextServiceTest`
+  - `mvn test -Dtest=WorkflowRepositoryTest,PlanServiceTest,TaskStreamSupportTest`
+  - `git diff --check`
+  - Spring startup smoke on ephemeral port.
+  - Focused browser validation of `/outputs`, with screenshots/JSON captured under `test-results/phase03-outputs-validation/` and intentionally not committed.
+- Phase 03 commit: `47877a9 feat: expose output provenance filters`.
 - Phase 01 local validation passed:
   - `mvn test -Dtest=AssignmentContextServiceTest,ProjectServiceTest,JobServiceTest`
   - `mvn test -Dtest=PublicRunSubmissionControllerTest,OperationalUiContractControllerTest,AgentOrchestrationControllerTest,ProjectServiceTest,OrchestrationRuntimeTest`
