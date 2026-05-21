@@ -3,7 +3,10 @@ package io.mindspice.magenta2.ai.orchestration.workflow;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.chat.plan.*;
 import io.mindspice.magenta2.ai.chat.repository.ChatMemoryRepository;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,6 +15,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
@@ -19,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -30,6 +35,7 @@ class WorkflowRunnerTest {
     private WorkflowRunner workflowRunner;
     private WorkflowService workflowService;
     private InboxService inboxService;
+    private OutputArtifactService outputArtifactService;
 
     @TempDir
     Path tempDir;
@@ -49,7 +55,7 @@ class WorkflowRunnerTest {
             new io.mindspice.magenta2.ai.config.user.AiConfig(
                 null, null, null, null, dataRoot, null, null));
 
-        OutputArtifactService outputArtifactService = new OutputArtifactService(
+        outputArtifactService = new OutputArtifactService(
             new WorkspaceRepository(jdbcTemplate), workspaceDirectoryService, mapper);
 
         WorkflowRepository workflowRepository = new WorkflowRepository(jdbcTemplate, mapper);
@@ -347,6 +353,69 @@ class WorkflowRunnerTest {
     }
 
     @Test
+    void finalOutputsCurrentlyMaterializeIntoWorkflowTempDirectory() throws Exception {
+        WorkflowNode finalNode = new WorkflowNode(
+            "final",
+            WorkflowNodeType.FINAL_OUTPUT,
+            null,
+            "Final",
+            null,
+            List.of(new WorkflowPort("message", PlanFieldType.STRING, false, false, null)),
+            List.of(),
+            Map.of(),
+            false,
+            List.of(),
+            "final message",
+            null
+        );
+        WorkflowDefinition def = workflowService.saveDefinitionValidated(new WorkflowDefinition(
+            null, 2, "Temp Output Workflow", "", 1,
+            List.of(finalNode), List.of(), Map.of(), null, null
+        ));
+
+        WorkflowRun run = workflowService.startRun(def.id());
+        WorkflowRun finished = pollForTerminal(run.id());
+
+        assertThat(finished.status()).isEqualTo(WorkflowRunStatus.COMPLETED);
+        assertThat(finished.outputDir()).isEqualTo(finished.workspacePath());
+        assertThat(finished.artifactIds()).hasSize(1);
+        RunOutputArtifact artifact = outputArtifactService.getArtifact(finished.artifactIds().getFirst());
+        assertThat(Path.of(artifact.filePath()).toRealPath())
+            .startsWith(Path.of(finished.workspacePath()).toRealPath());
+    }
+
+    @Test
+    void taskNodesCurrentlyDoNotInheritCallerOrchestrationContextAcrossAsyncExecution() throws Exception {
+        PlanDefinition task = task("context", List.of(), List.of(field("status", PlanFieldType.STRING, true)));
+        WorkflowNode node = taskNode("context-node", task.id());
+        WorkflowDefinition def = workflowService.saveDefinitionValidated(new WorkflowDefinition(
+            null, 2, "Async Context Characterization", "", 1,
+            List.of(node), List.of(), Map.of(), null, null
+        ));
+
+        AtomicReference<OrchestrationTaskContext> contextSeenByTaskNode = new AtomicReference<>();
+        workflowRunner.setTaskNodeExecutor((planId, planRunId, inputs, workspacePath) -> {
+            contextSeenByTaskNode.set(OrchestrationTaskContextHolder.current());
+            return completedPlanRun(planRunId, planId, inputs, Map.of("status", "ok"));
+        });
+
+        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
+            "agent-1", "Agent 1", "job-1", "project-1", "workspace-1", "WORKFLOW_RUN",
+            tempDir.resolve("caller-workspace").toString(),
+            tempDir.resolve("caller-outputs").toString()
+        ));
+        try {
+            WorkflowRun run = workflowService.startRun(def.id());
+            WorkflowRun finished = pollForTerminal(run.id());
+
+            assertThat(finished.status()).isEqualTo(WorkflowRunStatus.COMPLETED);
+            assertThat(contextSeenByTaskNode.get()).isNull();
+        } finally {
+            OrchestrationTaskContextHolder.clear();
+        }
+    }
+
+    @Test
     void resumeFollowsApprovedBranchAndSkipsRejectedBranch() throws Exception {
         PlanDefinition branchTask = task("branch", List.of(), List.of(field("status", PlanFieldType.STRING, true)));
 
@@ -370,6 +439,8 @@ class WorkflowRunnerTest {
 
         WorkflowRun run = workflowService.startRun(def.id());
         WorkflowRun waiting = pollForWaiting(run.id());
+        assertThat(waiting.outputDir()).isEqualTo(waiting.workspacePath());
+        assertThat(Files.isDirectory(Path.of(waiting.workspacePath()))).isTrue();
         String messageId = String.valueOf(waiting.nodeRuns().stream()
             .filter(n -> n.nodeKey().equals("gate"))
             .findFirst().orElseThrow().outputValues().get("messageId"));

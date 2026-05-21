@@ -924,6 +924,8 @@ class PlanServiceTest {
             OrchestrationTaskContext updated = OrchestrationTaskContextHolder.current();
 
             assertThat(run.outputDirectory()).contains("agents/agent-1/workspace/outputs/");
+            assertThat(Path.of(run.outputDirectory()).toRealPath())
+                .isNotEqualTo(dirService.projectWorkspace("project-1").toRealPath());
             assertThat(updated.hostWorkspacePath()).isEqualTo(run.tempWorkspacePath());
             assertThat(updated.hostOutputPath()).isEqualTo(run.outputDirectory());
             Path projectLink = Path.of(run.tempWorkspacePath()).resolve("projects/project-1");
@@ -1192,6 +1194,45 @@ class PlanServiceTest {
             .filter(a -> a.fileName().equals("extra.txt"))
             .toList();
         assertThat(artifacts).hasSize(1);
+    }
+
+    @Test
+    void completeRunDoesNotDiscoverConversationChatFilesAsTaskArtifacts() throws Exception {
+        Path dataRoot = Files.createDirectories(tempDir.resolve("data-chat-file-separation"));
+        Path chatFile = Files.createDirectories(dataRoot.resolve("chats/conversation-1/files"))
+            .resolve("uploaded-notes.md");
+        Files.writeString(chatFile, "# chat upload\n");
+
+        WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(
+            new AiConfig(null, null, null, null, dataRoot, null, null));
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        WorkspaceRepository workspaceRepository = new WorkspaceRepository(jdbcTemplate);
+        OutputArtifactService artifactService = new OutputArtifactService(
+            workspaceRepository, dirService, new ObjectMapper().findAndRegisterModules());
+
+        PlanService service = new PlanService(
+            new PlanRepository(jdbcTemplate, new ObjectMapper()),
+            new ChatMemoryRepository(jdbcTemplate, new ObjectMapper()),
+            null, new io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer(),
+            dirService, artifactService);
+
+        PlanDefinition task = service.saveTask(new PlanDefinition(
+            null, PlanKind.TASK_TEMPLATE, PlanStatus.APPROVED,
+            "Chat File Separation Task", "Do it.", "Goal.", null,
+            List.of(), List.of(),
+            List.of(new PlanFieldDefinition("result", PlanFieldType.STRING, false, "Result", true, null)),
+            List.of(), List.of(new PlanStep(1, "Do it.")), List.of("Result present."),
+            List.of(), List.of(), null, null, null, null,
+            null, List.of(), 0, 0, null, null, null, null));
+
+        PlanRun run = service.startRun(task.id(), Map.of());
+        service.completeRun(run.id(), Map.of("result", "done"), "Done", List.of());
+
+        assertThat(Files.exists(chatFile)).isTrue();
+        assertThat(artifactService.artifactsForRun(run.id()))
+            .extracting(RunOutputArtifact::fileName)
+            .containsExactly("result.txt")
+            .doesNotContain("uploaded-notes.md");
     }
 
     // ── Phase 03: Draft/finalize lifecycle tests ──

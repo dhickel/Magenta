@@ -361,4 +361,34 @@ class OutputArtifactServiceAttributionTest {
         assertThat(artifacts).extracting(RunOutputArtifact::fileName)
             .containsExactlyInAnyOrder("notes.md", "data.json");
     }
+
+    @Test
+    void looseArtifactDiscoveryCurrentlyScansOnlyDirectOutputFiles() throws Exception {
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
+        WorkspaceRepository repository = new WorkspaceRepository(jdbc);
+        WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
+            new AiConfig(null, null, null, null, Files.createDirectories(tempDir.resolve("root-shallow")), null, null)
+        );
+        OutputArtifactService service = new OutputArtifactService(
+            repository,
+            directoryService,
+            new ObjectMapper().findAndRegisterModules()
+        );
+
+        Path outputDir = Files.createDirectories(tempDir.resolve("outputs-shallow"));
+        Files.writeString(outputDir.resolve("direct.log"), "direct output");
+        Files.writeString(outputDir.resolve("unknown.bin"), "binary-ish output");
+        Path nested = Files.createDirectories(outputDir.resolve("nested"));
+        Files.writeString(nested.resolve("nested.txt"), "nested output");
+
+        int discovered = service.discoverLooseArtifacts(
+            "run-shallow", "plan-shallow", outputDir, OutputArtifactContext.EMPTY);
+
+        assertThat(discovered).isEqualTo(2);
+        List<RunOutputArtifact> artifacts = repository.findArtifactsByRunId("run-shallow");
+        assertThat(artifacts).extracting(RunOutputArtifact::fileName)
+            .containsExactlyInAnyOrder("direct.log", "unknown.bin");
+        assertThat(artifacts).extracting(RunOutputArtifact::artifactType)
+            .containsExactlyInAnyOrder("text", "file_path");
+    }
 }

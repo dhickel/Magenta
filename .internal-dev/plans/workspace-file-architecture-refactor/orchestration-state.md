@@ -23,12 +23,13 @@ Persistent state for this long-running orchestration effort. Use this file to re
   - Review D: loose artifact discovery risk assessment.
   - Review E: testing strategy and risk mitigation.
 - Ran Planning Synthesis agent, which created the implementation plan, orchestration suite, review synthesis, and phase files.
+- Created planning synthesis commit: `0738b4a plan: synthesize workspace file refactor phases`.
 
 ## Current Work
 
 - Workspace/file architecture refactor.
-- Current gate: commit planning synthesis artifacts, then begin Phase 01 baseline characterization.
-- No source implementation edits have started yet.
+- Current gate: Phase 01 commit.
+- Source implementation edits have not started. Phase 01 added/updated characterization tests and plan notes only.
 
 ## Current Plan Artifacts
 
@@ -68,4 +69,4 @@ Queued review/refactor focus:
 
 ## Next Action
 
-Commit planning synthesis artifacts, then start Phase 01 baseline characterization through a subagent.
+Commit Phase 01 characterization tests and notes, then start Phase 02 through a subagent.
