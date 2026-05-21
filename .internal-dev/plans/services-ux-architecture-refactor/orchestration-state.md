@@ -38,6 +38,11 @@ Date: 2026-05-21
   - workflow runs persist nullable output/context attribution fields for agent, job, assignment, job run, project, workspace, and run type.
   - output API/detail and `/outputs` fragments surface direct provenance while keeping job fallback as compatibility-only behavior.
   - duplicate output filenames are materialized with stable suffixes instead of overwriting files.
+- Phase 04 implementation completed locally:
+  - agent submit, plan submit, workflow submit, job submit/start-adjacent surfaces show assignment-level project/effective workspace/compatibility workspace context.
+  - job editor exposes persistent workspace configuration, and job run panels render `JobExecutionSummary` fields for assignment/run, agent/project, effective workspace, persistent job workspace, output directory, and output counts.
+  - project UI copy emphasizes shared workspace/membership, adds HTMX membership add/remove controls backed by service guards, and project active job links navigate to `/jobs/{jobId}`.
+  - assignment queue/history/diagnostics, output side panels, dashboard active work, and selector context plumbing were updated for project/workspace attribution.
 
 ## Objective
 
@@ -172,3 +177,10 @@ Next recommended phase: start Phase 01 only. Do not start UI work until Phase 01
   - `mvn test -Dtest=OrchestrationRuntimeTest`
   - `git diff --check`
   - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` reached successful application startup on port `42229`; command exited `124` because timeout stopped the running app.
+- Phase 04 local validation passed:
+  - `mvn test -Dtest=OrchestrationControllerTest`
+  - `mvn test -Dtest=OperationalUiContractControllerTest,OrchestrationControllerTest,PublicRunSubmissionControllerTest,AgentOrchestrationControllerTest`
+  - `mvn test -Dtest=ProjectServiceTest,JobServiceTest,AssignmentContextServiceTest,OutputControllerTest`
+  - `mvn test -Dtest=PublicApiRouteBindingTest`
+  - `git diff --check`
+  - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` reached successful application startup on port `37261`; command exited `124` because timeout stopped the running app.

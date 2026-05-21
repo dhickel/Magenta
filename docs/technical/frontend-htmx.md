@@ -36,6 +36,8 @@ Use HTMX for:
 - Modal body refreshes.
 - Validation fragments.
 - Submit-to-agent forms.
+- Project membership add/remove controls.
+- Assignment workspace-blocked requeue actions.
 - Delete/confirm actions.
 
 HTMX routes should return server-rendered HTML fragments and preserve consistent status/markup behavior for failed requests so operational panels show actionable errors instead of silent failures.

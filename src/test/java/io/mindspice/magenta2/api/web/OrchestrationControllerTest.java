@@ -769,6 +769,7 @@ class OrchestrationControllerTest {
 
         // Has submit and delete buttons
         assertThat(html).contains("Submit to Agent");
+        assertThat(html).contains("Persistent job workspace");
         assertThat(html).contains("Delete");
 
         // No Run button
@@ -807,6 +808,18 @@ class OrchestrationControllerTest {
     }
 
     @Test
+    void jobSubmitFormRendersProjectWorkspaceOverridesAndPersistenceStatus() {
+        String html = controller().jobSubmitForm("job-abc");
+
+        assertThat(html).contains("Saved project:");
+        assertThat(html).contains("Persistent job workspace:");
+        assertThat(html).contains("Project Override");
+        assertThat(html).contains("Compatibility Workspace");
+        assertThat(html).contains("name=\"projectId\"");
+        assertThat(html).contains("name=\"workspaceId\"");
+    }
+
+    @Test
     void projectPageRendersHtmxFirstWithListAndEditor() {
         String html = controller().projects();
 
@@ -838,7 +851,7 @@ class OrchestrationControllerTest {
         // Has detail sections
         assertThat(html).contains("Name");
         assertThat(html).contains("Description");
-        assertThat(html).contains("Initial Agent");
+        assertThat(html).contains("Legacy Initial Agent");
         assertThat(html).contains("name=\"ownerAgentId\"");
         assertThat(html).doesNotContain("Owner Agent");
         assertThat(html).contains("Git Repo URL");
@@ -852,6 +865,24 @@ class OrchestrationControllerTest {
 
         // Has delete button
         assertThat(html).contains("Delete");
+    }
+
+    @Test
+    void projectMembershipFragmentRendersAddAndRemoveControls() {
+        String html = controller().projectAgentsFragment("proj-xyz");
+
+        assertThat(html).contains("hx-post=\"/projects/_detail/proj-xyz/agents\"");
+        assertThat(html).contains("Add Member");
+        assertThat(html).contains("hx-delete=\"/projects/_detail/proj-xyz/agents/agent-1\"");
+        assertThat(html).contains("Remove");
+    }
+
+    @Test
+    void projectJobsFragmentLinksToRealJobDetailRoute() {
+        String html = controller().projectJobsFragment("proj-xyz");
+
+        assertThat(html).contains("href=\"/jobs/job-abc\"");
+        assertThat(html).doesNotContain("hx-target=\"#job-editor-container\"");
     }
 
     @Test
@@ -1482,6 +1513,29 @@ class OrchestrationControllerTest {
         assertThat(html).contains("targetId");
         assertThat(html).contains("priority");
         assertThat(html).contains("modelOverride");
+        assertThat(html).contains("projectId");
+        assertThat(html).contains("Compatibility Workspace");
+    }
+
+    @Test
+    void agentSubmitPassesProjectAndWorkspaceContextToAssignmentService() {
+        StubAssignmentService assignmentService = new StubAssignmentService();
+        OrchestrationController ctrl = controller(
+            true,
+            true,
+            new StubScheduleService(),
+            new StubEventReactionService(),
+            new StubJobService(),
+            assignmentService
+        );
+
+        String html = ctrl.submitToAgent("agent-1", "TASK_RUN", "plan-abc", 5, "local-qwen", "proj-xyz", "");
+
+        assertThat(html).contains("Assignment created");
+        assertThat(html).contains("Project: proj-xyz");
+        assertThat(html).contains("Effective workspace: PROJECT proj-xyz");
+        assertThat(assignmentService.lastRequest.projectId()).isEqualTo("proj-xyz");
+        assertThat(assignmentService.lastRequest.workspaceId()).isBlank();
     }
 
     @Test
@@ -2327,6 +2381,9 @@ class OrchestrationControllerTest {
             "agent-1", null, null, null, null, null, null
         );
         private final List<Project> projects = new ArrayList<>(List.of(STUB_PROJECT));
+        private List<ProjectAgentMembership> members = new ArrayList<>(List.of(
+            new ProjectAgentMembership("membership-1", "proj-xyz", "agent-1", "member", Instant.now())
+        ));
 
         StubProjectService() { super(null, null); }
         @Override public java.util.List<Project> listProjects() { return List.copyOf(projects); }
@@ -2358,7 +2415,26 @@ class OrchestrationControllerTest {
             projects.add(updated);
             return updated;
         }
-        @Override public java.util.List<ProjectAgentMembership> listMembers(String projectId) { return List.of(); }
+        @Override public ProjectAgentMembership addAgent(String projectId, String agentId, String role) {
+            ProjectAgentMembership membership = new ProjectAgentMembership(
+                "membership-" + (members.size() + 1),
+                projectId,
+                agentId,
+                role == null || role.isBlank() ? "member" : role,
+                Instant.now()
+            );
+            members = new ArrayList<>(members);
+            members.add(membership);
+            return membership;
+        }
+        @Override public void removeAgent(String projectId, String agentId) {
+            members = members.stream()
+                .filter(member -> !(projectId.equals(member.projectId()) && agentId.equals(member.agentId())))
+                .toList();
+        }
+        @Override public java.util.List<ProjectAgentMembership> listMembers(String projectId) {
+            return members.stream().filter(member -> projectId.equals(member.projectId())).toList();
+        }
         @Override public ProjectWorkspaceSummary workspaceSummary(String projectId) {
             return new ProjectWorkspaceSummary(projectId, "agent-1", "PROJECT", "projects/" + projectId + "/workspace", 1, null, null, null, false);
         }
@@ -2521,7 +2597,9 @@ class OrchestrationControllerTest {
             return new WorkAssignment("asgn-1", request.agentId(), request.jobId(), request.jobItemId(),
                 request.assignmentType(), request.priority() != null ? request.priority() : 0,
                 io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationStatus.QUEUED,
-                request.modelOverride(), request.workspaceId(),
+                request.modelOverride(), request.workspaceId(), request.projectId(),
+                request.projectId() != null && !request.projectId().isBlank() ? request.projectId() : "workspace-agent-1",
+                request.projectId() != null && !request.projectId().isBlank() ? "PROJECT" : "AGENT",
                 0, Map.of(), request.input() != null ? request.input() : Map.of(),
                 Map.of(), Map.of(), null, null, null,
                 Instant.now(), Instant.now(), null, null);

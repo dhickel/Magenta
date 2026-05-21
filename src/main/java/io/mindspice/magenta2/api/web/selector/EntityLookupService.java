@@ -278,7 +278,7 @@ public class EntityLookupService {
 
     private EntityOption option(Project project) {
         return new EntityOption("project", project.id(), first(project.name(), project.id()),
-            first(project.description(), "Owner " + first(project.ownerAgentId(), "unassigned")), "project", true);
+            first(project.description(), "Shared workspace context"), "project", true);
     }
 
     private EntityOption option(Workspace workspace) {

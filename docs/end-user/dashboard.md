@@ -8,7 +8,7 @@ The dashboard includes:
 
 - **System Chat** link to `/chat`.
 - A status strip with running jobs, pending jobs, message count, failed jobs, and active agents.
-- **Active Work** for non-terminal jobs.
+- **Active Work** for non-terminal jobs and queued/running/waiting assignments.
 - **Open Projects** with project cards.
 - **Agents** with status and model rows.
 - Side panels for inbox messages, recent outputs, and recent events.
@@ -27,11 +27,11 @@ These are operational summaries, not a full audit log. For exact details, open t
 
 ## Active Work
 
-Active work shows jobs that are not completed or cancelled. Use the job title link to move into job details. Owner and project fields may display IDs in this summary table because it is a compact dashboard view; edit and submit forms increasingly use selectors where a user needs to choose a value.
+Active work shows jobs that are not completed or cancelled plus active assignment rows for task, workflow, and job work. Use the job title link to move into job details, or the agent link on assignment rows to inspect queue and diagnostics. Project and workspace fields may display IDs because this is a compact dashboard view; edit and submit forms use selectors where a user needs to choose a value.
 
 ## Open Projects
 
-Open projects show project name, owner, and last update. Select a project to inspect workspace state, linked agents, jobs, and outputs.
+Open projects show project name, shared-workspace context, legacy initial-agent metadata when present, and last update. Select a project to inspect workspace state, members, jobs, and outputs.
 
 ## Agents
 

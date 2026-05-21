@@ -38,7 +38,15 @@ public class EntitySelectorController {
         );
         List<EntityOption> options = lookupService.search(entityKind, query);
         boolean required = Boolean.parseBoolean(params.getOrDefault("required", "false"));
-        return components.options(entityKind, name, required, options).render();
+        return components.options(
+            entityKind,
+            name,
+            required,
+            options,
+            query.context(),
+            params.get("label"),
+            params.get("placeholder")
+        ).render();
     }
 
     @GetMapping("/selectors/{kind}/selected")

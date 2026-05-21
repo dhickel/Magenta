@@ -70,9 +70,9 @@ Save recurrence from the job editor. Recurrence config does not prove the schedu
 Saved jobs expose two operational actions:
 
 - **Start Run** creates a job assignment using the job owner agent or the first active agent.
-- **Submit to Agent** opens a form where you choose the agent and priority before submitting.
+- **Submit to Agent** opens a form where you choose the agent, priority, optional project override, compatibility workspace metadata, and optional model override before submitting.
 
-The submit form's agent field is currently a plain dropdown. If you need a specific agent, choose it explicitly.
+The submit form shows the job's saved project, compatibility workspace, and persistent workspace setting. `projectId` chooses the effective project workspace for the assignment. `workspaceId` is compatibility metadata and does not replace project selection.
 
 Job outputs are written under the effective workspace at `outputs/jobs/<assignmentId>/<jobRunId>`. When persistent workspace is enabled, durable job working files are kept separately at `jobs/<assignmentId>`. Multiple assignments of the same job definition do not share that persistent workspace.
 
@@ -80,8 +80,8 @@ Job outputs are written under the effective workspace at `outputs/jobs/<assignme
 
 The job detail panels show:
 
-- **Runs** with run ID, status, created time, and cancel action for non-terminal runs.
-- **Recent Outputs** from job runs.
+- **Runs** with assignment ID, job run ID, status, agent/project context, effective workspace, persistent job workspace state/path, output directory, output count, created time, and cancel action for non-terminal runs.
+- **Recent Outputs** from job runs, including provenance context where available.
 - **Run Events** summarizing job run state changes.
 
 Use **Cancel** for a non-terminal run when you want Magenta to stop work. Use `/outputs` to browse and download artifacts across jobs, agents, projects, and runs.

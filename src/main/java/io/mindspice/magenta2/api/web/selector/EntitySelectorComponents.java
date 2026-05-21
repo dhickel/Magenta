@@ -65,6 +65,18 @@ public class EntitySelectorComponents {
     }
 
     public Component options(EntityKind kind, String name, boolean required, List<EntityOption> options) {
+        return options(kind, name, required, options, Map.of(), null, null);
+    }
+
+    public Component options(
+        EntityKind kind,
+        String name,
+        boolean required,
+        List<EntityOption> options,
+        Map<String, String> contextParams,
+        String label,
+        String placeholder
+    ) {
         HtmlTag list = new HtmlTag("div").withClass("entity-selector-options");
         if (options.isEmpty()) {
             return list.withChild(new HtmlTag("div")
@@ -74,6 +86,17 @@ public class EntitySelectorComponents {
         for (EntityOption option : options) {
             String url = "/selectors/" + kind.wireName() + "/selected?name=" + enc(name)
                 + "&value=" + enc(option.id()) + "&required=" + required;
+            if (StringUtils.hasText(label)) {
+                url += "&label=" + enc(label);
+            }
+            if (StringUtils.hasText(placeholder)) {
+                url += "&placeholder=" + enc(placeholder);
+            }
+            for (Map.Entry<String, String> entry : contextParams.entrySet()) {
+                if (StringUtils.hasText(entry.getValue())) {
+                    url += "&" + enc(entry.getKey()) + "=" + enc(entry.getValue());
+                }
+            }
             HtmlTag row = new HtmlTag("button")
                 .withAttribute("type", "button")
                 .withClass("entity-selector-option" + (option.available() ? "" : " entity-selector-invalid"))
@@ -119,13 +142,28 @@ public class EntitySelectorComponents {
     }
 
     private String optionsUrl(EntitySelectorConfig config) {
-        return "/selectors/" + config.kind().wireName() + "/options?name=" + enc(config.name())
-            + "&required=" + config.required();
+        return selectorUrl(config, "options");
     }
 
     private String validateUrl(EntitySelectorConfig config) {
-        return "/selectors/" + config.kind().wireName() + "/validate?name=" + enc(config.name())
+        return selectorUrl(config, "validate");
+    }
+
+    private String selectorUrl(EntitySelectorConfig config, String action) {
+        String url = "/selectors/" + config.kind().wireName() + "/" + action + "?name=" + enc(config.name())
             + "&required=" + config.required();
+        if (StringUtils.hasText(config.label())) {
+            url += "&label=" + enc(config.label());
+        }
+        if (StringUtils.hasText(config.placeholder())) {
+            url += "&placeholder=" + enc(config.placeholder());
+        }
+        for (Map.Entry<String, String> entry : config.contextParams().entrySet()) {
+            if (StringUtils.hasText(entry.getValue())) {
+                url += "&" + enc(entry.getKey()) + "=" + enc(entry.getValue());
+            }
+        }
+        return url;
     }
 
     private String rootId(EntityKind kind, String name) {

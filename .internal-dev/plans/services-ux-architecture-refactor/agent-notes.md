@@ -113,6 +113,21 @@
   - `mvn test -Dtest=OrchestrationRuntimeTest`
   - `git diff --check`
   - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` reached successful application startup on port `42229`; command exited `124` because timeout stopped the running app.
+- Phase 04 implementation completed project/job/operator UX alignment:
+  - Agent submit can carry explicit project context and compatibility workspace metadata, and submit results show assignment/project/effective workspace/compatibility workspace context.
+  - Plan/workflow submit results show assignment context, and compatibility workspace selectors are labeled distinctly from effective project workspace selection.
+  - Job editor exposes the persistent job workspace checkbox and saved status; job submit surfaces saved routing, project override, compatibility workspace metadata, and assignment context.
+  - Job runs render `JobExecutionSummary` context: assignment/run ids, agent/project, effective workspace, compatibility workspace, persistent job workspace state/path, output directory, and output count.
+  - Project UI copy now frames projects as shared workspace contexts, adds HTMX membership add/remove controls backed by service guards, and fixes project job links to real `/jobs/{jobId}` routes.
+  - Assignment queue/history/diagnostics, agent outputs, job/project output side panels, and dashboard active work now expose more project/workspace/job assignment context.
+  - Entity selector URLs preserve context params through options, selected-option, and validation requests.
+- Phase 04 local validation passed:
+  - `mvn test -Dtest=OrchestrationControllerTest`
+  - `mvn test -Dtest=OperationalUiContractControllerTest,OrchestrationControllerTest,PublicRunSubmissionControllerTest,AgentOrchestrationControllerTest`
+  - `mvn test -Dtest=ProjectServiceTest,JobServiceTest,AssignmentContextServiceTest,OutputControllerTest`
+  - `mvn test -Dtest=PublicApiRouteBindingTest`
+  - `git diff --check`
+  - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` reached successful application startup on port `37261`; command exited `124` because timeout stopped the running app.
 
 ## Review Wave Synthesis Inputs
 

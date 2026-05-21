@@ -15,12 +15,12 @@ The projects page has:
 1. Open `/projects`.
 2. Select **New Project**.
 3. Fill **Name**.
-4. Optionally choose an **Initial Agent**.
+4. Optionally choose a **Legacy Initial Agent**.
 5. Optionally fill description and Git repo URL.
 6. Choose manager type and default model if needed.
 7. Save.
 
-Projects are shared workspaces, not executable work units. The initial agent field is compatibility metadata and can be blank. Add agents as members when they need to work with the project.
+Projects are shared workspaces, not executable work units. The legacy initial agent field is compatibility metadata and can be blank. Add agents as members when they need to work with the project.
 
 ## Edit A Project
 
@@ -38,7 +38,7 @@ Deleting a project is destructive. Confirm the project is no longer referenced b
 
 For existing projects, the workspace section shows:
 
-- Initial agent, when legacy metadata exists.
+- Legacy initial agent, when compatibility metadata exists.
 - Root kind.
 - Display path.
 - Member/link count.
@@ -46,17 +46,17 @@ For existing projects, the workspace section shows:
 - Mounted agent.
 - Release requested state.
 
-If a lease is active, the UI may show **Release workspace after current turn**. This requests release after the current agent turn rather than immediately breaking active work.
+If a lease is active, the UI may show **Request release after current turn**. This requests release after the current agent turn rather than immediately breaking active work.
 
 ## Project Network And Memberships
 
-The project network section shows linked agents. The agents section lists assigned members and roles.
+The project network section shows linked agents. The agents section lists assigned members and roles, and provides HTMX controls to add a member, choose a role, or remove a member.
 
-Membership editing is limited in the current UI. If you need membership changes that are not exposed by the project page, use the relevant API or future UI once implemented.
+Membership removal is guarded while that agent has active assignments or holds the active project workspace lease.
 
 ## Active Jobs And Outputs
 
-The active jobs section lists jobs associated with the project. The recent outputs section lists output artifacts from project jobs.
+The active jobs section lists jobs associated with the project and links to the real job detail page. The recent outputs section lists output artifacts attributed to the project workspace.
 
 Use `/jobs` for job editing and `/outputs` for full artifact filtering, inline viewing, and downloads.
 
@@ -82,4 +82,4 @@ Workspace leases indicate active ownership or use. A lease is an orchestration/r
 
 ## Alpha Limits
 
-Project CRUD is available, but membership editing and deep workspace operations are still limited in the UI. Some project summary panels display raw member, lease, run, or job IDs for traceability. Searchable selectors are used in related job/project fields where available, but exact workspace and lease diagnostics may still require reading displayed IDs.
+Project CRUD and membership editing are available in the UI. Deep workspace operations remain limited to release requests and inspection. Some project summary panels display raw member, lease, run, or job IDs for traceability. Searchable selectors are used in related job/project fields where available, but exact workspace and lease diagnostics may still require reading displayed IDs.

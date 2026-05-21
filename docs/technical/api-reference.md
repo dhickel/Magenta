@@ -159,7 +159,7 @@ Output artifacts can carry agent, job, job assignment, job run, project, workspa
 
 Sources: [`DashboardController`](../../src/main/java/io/mindspice/magenta2/api/web/DashboardController.java), [`RuntimeController`](../../src/main/java/io/mindspice/magenta2/api/web/RuntimeController.java), [`RuntimeSettingsController`](../../src/main/java/io/mindspice/magenta2/api/web/RuntimeSettingsController.java), [`ModelController`](../../src/main/java/io/mindspice/magenta2/api/web/ModelController.java).
 
-- `GET /api/dashboard/summary`: project/work/job/agent/inbox/output/system summary.
+- `GET /api/dashboard/summary`: project/work/job/assignment/agent/inbox/output/system summary. `activeWork` includes non-terminal job definitions plus active assignment rows when assignment services are available; `pendingAssignments` reflects the active assignment count in that summary.
 - `GET /api/runtime/status`: app status, timestamp, default agent, and model count.
 - `GET /api/settings/runtime`, `PUT /api/settings/runtime`: persisted runtime defaults.
 - `GET /api/models`: configured model summaries from file-backed AI config.

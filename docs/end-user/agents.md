@@ -44,12 +44,13 @@ Approved tools and shell commands are comma-separated. Avoid broad wildcard acce
 
 ## Queue Tab
 
-The queue tab lists active assignments with type, status, priority, progress, lease, job, created time, and actions.
+The queue tab lists active assignments with type, status, priority, project/effective workspace context, compatibility workspace metadata, progress, lease, job, created time, and actions.
 
 Available actions depend on assignment status:
 
 - **Pause** queued or running work.
 - **Resume** waiting or paused work.
+- **Requeue Workspace** for assignments waiting on a workspace lease after the blocking lease has cleared.
 - **Cancel** non-terminal work.
 - **Diagnostics** to inspect runtime details.
 - **Transcript** from diagnostics/history views.
@@ -116,7 +117,11 @@ Use submit to send saved work directly to this agent:
 2. Use the searchable **Plan/Workflow/Job ID** selector to choose the target.
 3. Set priority.
 4. Choose optional model override.
-5. Submit.
+5. Choose optional project context. When set, the project workspace is the effective durable workspace for the assignment.
+6. Choose optional **Compatibility Workspace** metadata only when you need to preserve an older workspace reference.
+7. Submit.
+
+The submit result shows assignment ID, project, effective workspace kind/id, effective workspace path when available, and compatibility workspace metadata.
 
 The target selector searches across tasks, workflows, and jobs. Choose a result instead of copying an opaque ID when the selector is visible.
 
