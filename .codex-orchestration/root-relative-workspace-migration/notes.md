@@ -42,6 +42,8 @@
 - Independent Phase 1 validation passed: `mvn -Dtest=ExternalAiConfigLoaderTest,MagentaRootConfigurationTest,AiUserConfigConfigurationTest test` (17 tests) and bounded startup smoke with temp root `/tmp/magenta-phase1-smoke-WCiG78`; `magenta.sqlite` and `root/` were created. Phase 1 may proceed to Phase 2.
 - Phase 2 focused tests passed: `mvn -Dtest=RootRelativePathServiceTest test` (10 tests).
 - Independent Phase 2 validation passed: `mvn -Dtest=RootRelativePathServiceTest test` (10 tests). Phase 2 may proceed to Phase 3.
+- Phase 3 focused tests passed: `mvn -Dtest=OutputArtifactServiceAttributionTest,OutputArtifactPathSemanticsTest,OutputControllerTest test` (25 tests) plus a bounded isolated-root startup smoke from the implementation worker.
+- Independent Phase 3 validation passed: `mvn -Dtest=OutputArtifactServiceAttributionTest,OutputArtifactPathSemanticsTest,OutputControllerTest test` (25 tests). Phase 3 may proceed to Phase 4.
 
 ## Remediation Notes
 
