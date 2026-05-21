@@ -68,10 +68,11 @@
 ## Closeout Work
 
 - Required before final sign-off:
-  - `.internal-dev` changelog.
-  - Relevant docs updates under `docs/`.
-  - Reusable knowledge notes if new operational facts are learned.
-  - Phase commits after validation gates.
+  - `.internal-dev` changelog. Done: `2026-05-21-root-relative-workspace-migration.md`, `2026-05-21-root-relative-workspace-technical.md`, plus phase-specific chat carry-forward changelog.
+  - Relevant docs updates under `docs/`. Done in Phase 6.
+  - Reusable knowledge notes if new operational facts are learned. Done: `.internal-dev/knowledge/root-relative-workspace-storage.md`.
+  - Deferred ideas note for future migration tooling. Done: `.internal-dev/notes/root-migration-future-tooling.md`.
+  - Phase commits after validation gates. Done through Phase 6 plus UX remediation.
   - Startup smoke after backend wiring.
 
 ## Final Validation Status
