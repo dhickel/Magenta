@@ -259,7 +259,7 @@ class ChatServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
         ChatSessionMetadataRepository metadataRepository = new ChatSessionMetadataRepository(jdbcTemplate);
-        Path dataRoot = Files.createDirectories(tempDir.resolve("data"));
+        Path dataRoot = Files.createDirectories(tempDir.resolve("new-magenta-root/root"));
         ChatFileService chatFileService = new ChatFileService(
             new io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService(aiConfig(dataRoot))
         );
@@ -290,7 +290,7 @@ class ChatServiceTest {
         String conversationId = "00000000-0000-0000-0000-000000000001";
         memoryRepository.saveAll(conversationId, List.of(new UserMessage("hello")));
         Path files = Files.createDirectories(dataRoot.resolve("chats/" + conversationId + "/files/nested"));
-        Files.writeString(files.resolve("summary.txt"), "summary");
+        Files.writeString(files.resolve("seeded.md"), "seeded");
 
         assertThat(chatService.listSessions())
             .singleElement()

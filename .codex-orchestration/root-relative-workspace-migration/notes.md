@@ -102,3 +102,9 @@
   - Agent and project workspace root rows remain `agents/<agentId>/workspace` and `projects/<projectId>/workspace`; the existing `WorkspaceService.jobWorkspace` `jobs/<jobId>` compatibility behavior remains unchanged.
   - Focused validation passed: `mvn -Dtest=WorkspaceServicePathTest,WorkspaceControllerTest,WorkspaceRepositorySchemaMigrationTest test` (18 tests).
   - Bounded startup smoke passed with isolated root `/tmp/magenta-phase5-smoke-2384505`; app started on an ephemeral port and was stopped by `timeout 30s` (exit 124 after successful startup).
+- Phase 6 documented root-relative carry-forward and chat UX stability:
+  - Technical and end-user docs now describe `magenta.root.path`, default SQLite `<magenta.root.path>/magenta.sqlite`, default data root `<magenta.root.path>/root`, relative/absolute AI `dataRoot` behavior, manual DB/chat-file carry-forward, and explicitly out-of-scope migration tooling.
+  - Docs now state new Magenta-owned path columns store data-root-relative values, current-root absolute rows remain compatibility-readable, and stale old-root absolute values fail when used.
+  - Chat file tests now seed `new-magenta-root/root/chats/<conversationId>/files/nested/seeded.md` and verify list/count/download behavior without exposing absolute paths.
+  - `PublicApiRouteBindingTest` now uses an isolated `magenta.root.path`, omitted AI `dataRoot`, and a root-owned SQLite database path for route binding.
+  - Focused validation passed: `mvn -Dtest=ChatFileServiceTest,ChatFileControllerTest,ChatServiceTest,PublicApiRouteBindingTest test` (24 tests).

@@ -34,6 +34,7 @@ Important invariants:
 - Project-scoped runs use the project workspace as the effective durable workspace; agent-scoped runs use the agent workspace.
 - Task outputs are stored under `<effective-workspace>/outputs/tasks/<taskId>/<runId>/`.
 - `PlanRepository` adds `plan_runs.temp_workspace_path`, output path, workspace, and project compatibility columns for warm databases as needed.
+- New `plan_runs.output_directory` and `plan_runs.temp_workspace_path` values are stored relative to the configured data root. Legacy absolute values under the current data root remain compatibility-readable; stale old-root absolute values fail when filesystem operations use them.
 
 ## Workflows
 
@@ -49,6 +50,7 @@ Compatibility notes:
 - `WorkflowRepository` adds schema version, max concurrency, UI layout, node/route JSON, run output fields, current node index, node run JSON, workspace/output fields, snapshot, final/error messages, and timestamps when missing.
 - Workflow inbox messages are intentionally separate from runtime direct-line agent inbox messages.
 - Workflow durable outputs are stored under `<effective-workspace>/outputs/workflows/<workflowId>/<runId>/`; runtime execution state stays under workflow temp space and remains available while a run is `WAITING`.
+- New `workflow_runs.workspace_path` and `workflow_runs.output_dir` values are stored relative to the configured data root. Legacy absolute values under the current data root remain compatibility-readable; stale old-root absolute values fail at operation time.
 
 ## Agents, Assignments, Runtime Jobs, Inbox, Schedules, Reactions
 
@@ -84,6 +86,7 @@ Compatibility notes:
 - Persistent job workspace is opt-in and assignment-scoped under `<effective-workspace>/jobs/<assignmentId>`.
 - Job outputs are stored under `<effective-workspace>/outputs/jobs/<assignmentId>/<jobRunId>`.
 - Job execution summaries are service read models, not separate tables. They join job definition, assignment, run, workspace, project/agent labels, child run ids, and output counts.
+- New `job_runs.workspace_path` and `job_runs.output_dir` values are stored relative to the configured data root. Legacy absolute values under the current data root remain compatibility-readable; stale old-root absolute values fail at operation time.
 
 ## Projects
 
@@ -109,6 +112,7 @@ Important constraints:
 - `idx_workspaces_owner` enforces one workspace per owner.
 - `idx_workspace_leases_active_write` enforces at most one unreleased `WRITE` lease per workspace.
 - Output artifact queries are indexed by run, agent, job, project, and workspace.
+- New `workspace_links.target` values for `PATH` links and new `run_output_artifacts.file_path` values are stored relative to the configured data root. Non-`PATH` link targets are not filesystem-normalized. Legacy absolute current-root values remain compatibility-readable; stale old-root absolute values fail when used.
 
 Compatibility notes:
 

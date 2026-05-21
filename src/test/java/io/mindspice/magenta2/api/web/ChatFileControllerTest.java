@@ -41,6 +41,7 @@ class ChatFileControllerTest {
         assertThat(listing.files()).hasSize(1);
         assertThat(listing.files().get(0).relativePath()).isEqualTo("nested/report.txt");
         assertThat(listing.files().get(0).relativePath()).doesNotContain(tempDir.toString());
+        assertThat(Path.of(listing.files().get(0).relativePath()).isAbsolute()).isFalse();
     }
 
     @Test

@@ -23,6 +23,8 @@ Use **Send** to submit a message. Enter sends the message; Shift+Enter inserts a
 
 Sessions with chat-scoped files show a green `<n> Outputs` badge in the session card. Selecting that session shows the files in the right-side **Outputs** panel with file type, name, relative path when useful, size, modified time, and a **Download** button. The panel lists ordinary chat files created under the chat's persistent file directory; it does not preview or edit file contents.
 
+For installs moved to the root-owned layout, existing chat outputs appear after the operator copies old `chats/` into `<magenta.root.path>/root/chats/`. Magenta does not auto-copy chat files from an old data root.
+
 ## Planning Mode
 
 Planning mode creates an anonymous in-chat session plan inside the current chat conversation. These plans are `SESSION_PLAN` records keyed by the chat conversation id. They are not saved to `/plans`, do not define structured runtime inputs or outputs, and cannot be submitted to agents as saved task definitions.

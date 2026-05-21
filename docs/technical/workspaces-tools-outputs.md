@@ -4,7 +4,7 @@ Workspace and output behavior is owned by [`ai/orchestration/workspaces`](../../
 
 ## Data Root and Directory Layout
 
-Workspace paths are confined under the configured data root managed by `WorkspaceDirectoryService`. The current layout includes:
+Workspace paths are confined under the configured data root managed by `WorkspaceDirectoryService`. If AI config omits `dataRoot`, the default is `<magenta.root.path>/root`; relative AI `dataRoot` values resolve under `magenta.root.path`, and absolute values remain supported. The current layout includes:
 
 - Agent workspace root: `agents/<id>/workspace/`
 - Project workspace root: `projects/<projectId>/workspace/`
@@ -69,7 +69,7 @@ Artifacts include:
 - Run id and plan id.
 - Optional agent id, job id, job assignment id, job run id, project id, workspace id, and run type.
 - Output name and artifact type.
-- File name and absolute file path.
+- File name and stored file path. New rows store data-root-relative slash-separated paths; legacy absolute paths under the current data root remain compatibility-readable.
 - Optional content JSON.
 - Created timestamp.
 
@@ -83,13 +83,15 @@ API routes:
 
 When materialized output filenames collide in the same output directory, `OutputArtifactService` writes or copies the later artifact with a stable numeric suffix instead of overwriting the existing file.
 
-The controller limits inline content/downloads to 10 MB. Download resolves the real path and rejects files outside the output service data root. Text, JSON, and user-message artifacts are returned inline when safe; other artifacts direct callers to download.
+The controller limits inline content/downloads to 10 MB. Download resolves the stored path to a real path and rejects files outside the output service data root. Stale absolute paths from an old root fail at operation time; Magenta does not search old roots or rewrite those rows. Text, JSON, and user-message artifacts are returned inline when safe; other artifacts direct callers to download.
 
 ## Ordinary Chat Files
 
 Ordinary `/chat` conversations also have persistent chat-scoped files under `chats/<conversationId>/files/`. These files are created by chat file tools and anonymous chat plan execution context. They are not `run_output_artifacts`, are not indexed in the output artifact table, and are not moved into agent/job output directories.
 
 `ChatFileService` lists regular files recursively from that directory, returns relative-path descriptors, derives simple format labels from extensions, and resolves downloads through real-path confinement. `/api/chat/sessions` exposes `outputCount` for the session card, while `/api/chat/{conversationId}/files` and `/api/chat/{conversationId}/files/download?path=...` power the chat page outputs panel.
+
+For root carry-forward, operators preserve ordinary chat files by copying old `chats/` into `<magenta.root.path>/root/chats/` before starting Magenta on the new root. Workspace, output, and runtime directories are not carried forward automatically and should only be archived outside Magenta when needed.
 
 ## Tool Boundaries
 

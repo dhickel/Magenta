@@ -12,6 +12,10 @@ mvn spring-boot:run
 
 If the app is already running on a remote host, open the host URL in your browser. In local development, the default Spring Boot URL is usually `http://localhost:8080`.
 
+By default, Magenta stores runtime state under `${user.home}/.magenta`: SQLite at `<magenta.root.path>/magenta.sqlite` and the data root at `<magenta.root.path>/root` when AI config omits `dataRoot`.
+
+When carrying an older local install forward to this layout, stop Magenta, back up the old database and data root, copy old `./chat-memory.db` or the configured database to `<magenta.root.path>/magenta.sqlite`, and copy old `chats/` to `<magenta.root.path>/root/chats/`. Do not copy workspace, output, or runtime directories unless you are archiving them outside Magenta; Magenta does not auto-copy or delete those directories.
+
 ## Open The UI
 
 Start at `/`.

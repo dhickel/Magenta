@@ -51,6 +51,29 @@ class ChatFileServiceTest {
     }
 
     @Test
+    void listsCountsAndDownloadsSeededCopiedChatFile() throws Exception {
+        Path newDataRoot = Files.createDirectories(tempDir.resolve("new-magenta-root/root"));
+        ChatFileService service = service(newDataRoot);
+        Path seeded = Files.createDirectories(newDataRoot.resolve("chats/" + CONVERSATION_ID + "/files/nested"))
+            .resolve("seeded.md");
+        Files.writeString(seeded, "# Seeded");
+
+        var listing = service.listFiles(CONVERSATION_ID);
+
+        assertThat(service.countFiles(CONVERSATION_ID)).isEqualTo(1);
+        assertThat(listing.count()).isEqualTo(1);
+        assertThat(listing.files())
+            .singleElement()
+            .satisfies(file -> {
+                assertThat(file.relativePath()).isEqualTo("nested/seeded.md");
+                assertThat(file.relativePath()).doesNotContain(newDataRoot.toString());
+            });
+        Path download = service.resolveDownload(CONVERSATION_ID, "nested/seeded.md");
+        assertThat(download).isEqualTo(seeded.toRealPath());
+        assertThat(Files.readString(download)).isEqualTo("# Seeded");
+    }
+
+    @Test
     void labelsExtensionlessFilesAsFile() throws Exception {
         ChatFileService service = service();
         Files.writeString(chatFilesRoot().resolve("README"), "hello");
@@ -84,8 +107,12 @@ class ChatFileServiceTest {
     }
 
     private ChatFileService service() throws Exception {
+        return service(Files.createDirectories(tempDir.resolve("data")));
+    }
+
+    private ChatFileService service(Path dataRoot) throws Exception {
         return new ChatFileService(new WorkspaceDirectoryService(
-            new AiConfig(null, null, null, null, Files.createDirectories(tempDir.resolve("data")), null, null)
+            new AiConfig(null, null, null, null, dataRoot, null, null)
         ));
     }
 

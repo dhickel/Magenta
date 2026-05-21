@@ -9,6 +9,7 @@ import java.util.UUID;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mindspice.magenta2.ai.config.user.AiConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -39,15 +40,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "magenta.plan.execution-stream-timeout-seconds=0"
 })
 class PublicApiRouteBindingTest {
-    private static final Path DB_PATH = Path.of(
-        System.getProperty("java.io.tmpdir"),
-        "magenta-public-api-route-binding-" + UUID.randomUUID() + ".db"
-    );
-    private static final Path DATA_ROOT = Path.of(
+    private static final Path MAGENTA_ROOT = Path.of(
         System.getProperty("java.io.tmpdir"),
         "magenta-public-api-route-binding-root-" + UUID.randomUUID()
     );
-    private static final Path AI_CONFIG_PATH = DATA_ROOT.resolve("ai-config.json");
+    private static final Path DATA_ROOT = MAGENTA_ROOT.resolve("root");
+    private static final Path DB_PATH = MAGENTA_ROOT.resolve("magenta.sqlite");
+    private static final Path AI_CONFIG_PATH = MAGENTA_ROOT.resolve("config/ai-config.json");
 
     @Autowired
     private MockMvc mockMvc;
@@ -58,10 +57,21 @@ class PublicApiRouteBindingTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private AiConfig aiConfig;
+
     @DynamicPropertySource
     static void sqliteProperties(DynamicPropertyRegistry registry) {
+        registry.add("magenta.root.path", () -> MAGENTA_ROOT.toString());
         registry.add("spring.datasource.url", () -> "jdbc:sqlite:" + DB_PATH + "?foreign_keys=true");
         registry.add("app.ai.config-path", () -> aiConfigPath().toString());
+    }
+
+    @Test
+    void rootDefaultContextUsesRootOwnedDatabaseAndDataRoot() {
+        assertThat(aiConfig.dataRoot()).isEqualTo(DATA_ROOT.normalize());
+        assertThat(DATA_ROOT).isDirectory();
+        assertThat(DB_PATH).isRegularFile();
     }
 
     @Test
@@ -87,7 +97,8 @@ class PublicApiRouteBindingTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.conversationId").value(conversationId))
             .andExpect(jsonPath("$.count").value(1))
-            .andExpect(jsonPath("$.files[0].relativePath").value("route.txt"));
+            .andExpect(jsonPath("$.files[0].relativePath").value("route.txt"))
+            .andExpect(jsonPath("$.files[0].relativePath", org.hamcrest.Matchers.not(containsString(DATA_ROOT.toString()))));
 
         mockMvc.perform(get("/api/chat/" + conversationId + "/files/download")
                 .param("path", "route.txt"))
@@ -449,9 +460,8 @@ class PublicApiRouteBindingTest {
 
     private static Path aiConfigPath() {
         try {
-            Files.createDirectories(DATA_ROOT);
-            Files.createDirectories(DATA_ROOT.resolve("prompts"));
-            Files.writeString(DATA_ROOT.resolve("prompts/system.md"), "Route binding test agent.");
+            Files.createDirectories(AI_CONFIG_PATH.getParent().resolve("prompts"));
+            Files.writeString(AI_CONFIG_PATH.getParent().resolve("prompts/system.md"), "Route binding test agent.");
             Files.writeString(AI_CONFIG_PATH, """
                 {
                   "defaultAgent": "magenta",
@@ -461,7 +471,6 @@ class PublicApiRouteBindingTest {
                   "compactionModel": "local-qwen",
                   "contextBufferPercent": 33,
                   "unsafeAllowWildcardShellCommands": false,
-                  "dataRoot": "%s",
                   "models": {
                     "local-qwen": {
                       "remoteModelName": "qwen3.6:35b",
@@ -480,7 +489,7 @@ class PublicApiRouteBindingTest {
                     }
                   }
                 }
-                """.formatted(DATA_ROOT.toAbsolutePath()));
+                """);
             return AI_CONFIG_PATH;
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to create route-binding AI config", exception);

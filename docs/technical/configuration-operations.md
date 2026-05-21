@@ -7,7 +7,8 @@ Runtime defaults are split between file-backed AI configuration, persisted runti
 The app is a Spring Boot service with:
 
 - HTTP port default `8080`.
-- SQLite datasource default `jdbc:sqlite:./chat-memory.db?foreign_keys=true`.
+- Magenta root default `${user.home}/.magenta`, configurable with `magenta.root.path`.
+- SQLite datasource default `jdbc:sqlite:${magenta.root.path}/magenta.sqlite?foreign_keys=true`, which places the default database at `<magenta.root.path>/magenta.sqlite`.
 - SQL init always enabled against `classpath:schema.sql`.
 - Spring AI OpenAI auto-config disabled; model clients are assembled from user AI config.
 - Ollama base URL and default chat option present in Spring config, but application model routing primarily uses configured model definitions.
@@ -23,6 +24,12 @@ Use task-specific validation when a plan provides a stricter runtime path.
 ## AI Config File
 
 `app.ai.config-path` defaults to `./config/ai-config.example.json`.
+
+`AiConfig.dataRoot` is resolved after the file is loaded:
+
+- If `dataRoot` is omitted, Magenta uses `<magenta.root.path>/root`.
+- If `dataRoot` is relative, Magenta resolves it under `magenta.root.path`.
+- If `dataRoot` is absolute, Magenta keeps the absolute path for operator compatibility.
 
 The file-backed config records:
 
@@ -88,12 +95,28 @@ Operational implications:
 - Before changing a column assumption, inspect the owning repository for compatibility migrations.
 - Keep foreign key behavior in mind; the SQLite URL enables `foreign_keys=true`.
 - Warm data roots may have legacy workspace directories and older tables that repositories migrate forward.
+- Operators can still override `spring.datasource.url`; the root-owned SQLite path is the product default, not a forced migration of custom datasource settings.
+
+## Root Carry-Forward
+
+The root-owned default layout is a breaking cleanup. Magenta does not auto-copy, auto-delete, archive, or repair old runtime files during startup. To carry existing chat history and ordinary chat files forward:
+
+1. Stop Magenta.
+2. Back up the old SQLite database and old data root.
+3. Create or choose the new Magenta root.
+4. Copy the existing database from old `./chat-memory.db` or the configured database path to `<magenta.root.path>/magenta.sqlite`.
+5. Copy the old data root `chats/` directory to `<magenta.root.path>/root/chats/`.
+6. Do not copy workspace, output, or runtime directories unless archiving them outside Magenta. Magenta does not auto-copy or delete them.
+
+Future migration work is intentionally not implemented in this cleanup. Candidate follow-ups are a one-time migration CLI, an admin import/API path, startup diagnostics or repair, and a controlled rewrite for old absolute database rows.
 
 ## Filesystem Workspaces
 
 Agent execution uses filesystem-backed workspaces and host shell tools. `application.yml` explicitly notes that agent execution uses filesystem-backed workspaces.
 
 Workspace directories are confined under the configured data root by `WorkspaceDirectoryService`. Output downloads and artifact materialization also enforce data-root confinement.
+
+New Magenta-owned persisted path columns store data-root-relative values. Legacy absolute values under the current configured data root are read for compatibility. Stale absolute values from an old root are not rewritten and fail when an operation tries to use that path.
 
 ## Schedules and Recurrence
 
