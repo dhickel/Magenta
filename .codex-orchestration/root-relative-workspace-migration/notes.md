@@ -28,10 +28,16 @@
 ## Validation Results
 
 - Planning artifact only; no production code validation run.
+- R3 test-design review completed: `.internal-dev/reviews/2026-05-21-root-relative-testing-review.md`.
+- High-priority test gaps before implementation sign-off: isolated `/tmp` fresh-install SQLite/root behavior, root-relative helper stale absolute rejection, relative persisted path assertions for output/plan/workflow/job rows, seeded chat file carry-forward, and browser validation against an isolated root/database.
 
 ## Remediation Notes
 
-- None yet.
+- R1 root/config/SQLite review completed: `.internal-dev/reviews/2026-05-21-root-config-sqlite-review.md`.
+- Phase 1 constraints to carry forward: create SQLite parent before datasource/SQL init opens a connection; resolve/default `AiConfig.dataRoot` before workspace/tool beans consume it; ignore in-memory SQLite URLs; keep relative `dataRoot` rooted at `magenta.root.path`, not cwd or config file directory; do not touch old roots or `./chat-memory.db`.
+- R2 path-column review completed: `.internal-dev/reviews/2026-05-21-root-relative-path-storage-review.md`.
+- R2 key constraints: replace every direct `Path.of(storedDbValue)` reader for path columns, keep `OrchestrationTaskContext.host...` values resolved host paths, and avoid `toRealPath()` for display-only stale rows.
+- R2 highest-risk call sites: `OutputController.download`, `OutputArtifactService.loadContent`, `PlanService` run output/temp readers, `WorkflowRunner` context/output readers, `JobService`/`OrchestrationRunnerService` job path handoff, and `WorkspaceService.addLink`.
 
 ## Blockers
 
