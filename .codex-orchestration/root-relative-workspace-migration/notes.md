@@ -40,6 +40,8 @@
 - Phase 1 focused tests passed: `mvn -Dtest=ExternalAiConfigLoaderTest,MagentaRootConfigurationTest,AiUserConfigConfigurationTest test` (17 tests).
 - Phase 1 bounded startup smoke passed: app started with temp `--magenta.root.path=/tmp/magenta-phase1-smoke-1779380199373764712`, created `magenta.sqlite` and `root/`, then was stopped by `timeout` (exit 124 after successful startup).
 - Independent Phase 1 validation passed: `mvn -Dtest=ExternalAiConfigLoaderTest,MagentaRootConfigurationTest,AiUserConfigConfigurationTest test` (17 tests) and bounded startup smoke with temp root `/tmp/magenta-phase1-smoke-WCiG78`; `magenta.sqlite` and `root/` were created. Phase 1 may proceed to Phase 2.
+- Phase 2 focused tests passed: `mvn -Dtest=RootRelativePathServiceTest test` (10 tests).
+- Independent Phase 2 validation passed: `mvn -Dtest=RootRelativePathServiceTest test` (10 tests). Phase 2 may proceed to Phase 3.
 
 ## Remediation Notes
 
