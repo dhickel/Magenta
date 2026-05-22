@@ -73,6 +73,21 @@ Event reactions can enqueue assignments when matching runtime events occur, when
 
 If schedules or reactions are disabled, the tab shows the required feature flag.
 
+## Avatar Assistant Organizer Tools
+
+The reserved `Avatar` agent profile can be configured as the personal assistant surface for local organizer state. When the Avatar profile is active and explicitly approves the tool names, Avatar chat can manage:
+
+- Todos: `avatar_todo_list`, `avatar_todo_upsert`, `avatar_todo_complete`.
+- Daily tasks: `avatar_daily_task_list`, `avatar_daily_task_upsert`, `avatar_daily_task_complete`.
+- Local calendar items: `avatar_calendar_list`, `avatar_calendar_upsert`, `avatar_calendar_delete`.
+- Notes: `avatar_note_append`, `avatar_note_search`.
+- Task assignment: `avatar_submit_task`, `avatar_submit_research_assignment`.
+- Output inspection: `avatar_list_outputs`, `avatar_read_output`.
+
+These tools return compact JSON records and store organizer data in Avatar persistence. They do not grant shell access, poll email, connect to external calendars, or create plugin-runtime behavior.
+
+Avatar also exposes a backend email alert ingress route at `POST /api/avatar/email-alerts` for external mail adapters. The request must include `X-Magenta-Avatar-Email-Token`, matching the configured `magenta.avatar.email-alert-token`. Magenta publishes only redacted event payload fields: message id hash, from domain, optional address hash, subject snippet, received timestamp, labels, importance, and thread key hash. Raw email bodies and ingress tokens are not persisted.
+
 ## Workspace Tab
 
 The workspace tab shows:

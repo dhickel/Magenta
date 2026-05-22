@@ -311,6 +311,10 @@ public class AvatarRepository {
         );
     }
 
+    public void deleteCalendarItem(String id) {
+        jdbcTemplate.update("delete from avatar_calendar_items where id = ?", id);
+    }
+
     public AvatarNote saveNote(AvatarNote note) {
         String id = id(note.id());
         Instant now = Instant.now();

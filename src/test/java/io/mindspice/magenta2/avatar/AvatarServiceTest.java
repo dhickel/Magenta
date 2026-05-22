@@ -2,6 +2,9 @@ package io.mindspice.magenta2.avatar;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -44,5 +47,55 @@ class AvatarServiceTest {
         assertThat(snapshot.dashboardLayout()).isEmpty();
         assertThat(snapshot.todos()).isEmpty();
         assertThat(snapshot.events()).hasSize(1);
+    }
+
+    @Test
+    void organizerHelpersCompleteDeleteAppendAndSearch() {
+        AvatarTodo todo = service.saveTodo(new AvatarTodo(
+            null,
+            "Pay bills",
+            null,
+            AvatarTodoStatus.OPEN,
+            AvatarPriority.NORMAL,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+        ));
+        AvatarDailyTask dailyTask = service.saveDailyTask(new AvatarDailyTask(
+            null,
+            LocalDate.of(2026, 5, 22),
+            "Review day",
+            null,
+            AvatarTaskStatus.PLANNED,
+            0,
+            null,
+            null
+        ));
+        AvatarCalendarItem calendarItem = service.saveCalendarItem(new AvatarCalendarItem(
+            null,
+            "Dentist",
+            null,
+            Instant.parse("2026-05-24T15:00:00Z"),
+            null,
+            "UTC",
+            null,
+            AvatarCalendarStatus.SCHEDULED,
+            null,
+            null
+        ));
+        AvatarNote note = service.appendNote(null, "Garden", "Water seedlings", List.of("plants"));
+
+        service.appendNote(note.id(), null, "Move tray outside", List.of());
+        service.deleteCalendarItem(calendarItem.id());
+
+        assertThat(service.completeTodo(todo.id()).status()).isEqualTo(AvatarTodoStatus.DONE);
+        assertThat(service.completeDailyTask(dailyTask.id()).status()).isEqualTo(AvatarTaskStatus.DONE);
+        assertThat(service.calendarItems()).isEmpty();
+        assertThat(service.searchNotes("seedlings", false, 10)).singleElement()
+            .satisfies(saved -> assertThat(saved.body()).contains("Move tray outside"));
     }
 }

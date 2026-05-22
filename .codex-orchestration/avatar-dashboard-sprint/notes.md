@@ -24,11 +24,21 @@
 - Inspected relevant package guides and code anchors.
 - Created Avatar sprint planning suite, plugin research review, focus updates, and changelog.
 - Ran final synthesis review and remediated shared-write ownership issues in the orchestration plan.
+- Phase 01 implementation committed: Avatar core persistence and `avatar.sqlite` datasource/schema boundary.
+- Phase 02 implementation committed: workspace output directories and retained temp publication.
+- Phase 03 implementation committed: agent operational workspace/output/system tools.
+- Research/debug sidecar committed: plugin research review email formatting follow-up and watcher diagnostics.
+- Phase 04 implementation completed: Avatar assistant organizer tools, task/research/output helper tools, and redacted email alert ingress.
 
 ## Validation Results
 
 - `git diff --check` passed.
 - Suite consistency grep confirmed `avatar.sqlite`, plugin runtime deferral, no-worktree constraint, HTMX/SimplyPages UI direction, Playwright-by-subagent validation, and `includeTempWithOutput` references are present.
+- Phase 04 focused tests passed: `mvn -Dtest=AvatarRepositoryTest,AvatarServiceTest,AvatarEmailAlertIngressServiceTest,AvatarToolsTest test` (13 tests).
+- Phase 04 registry compatibility tests passed: `mvn -Dtest=ChatToolRegistryTest,AgentOperationalToolConfigurationTest test` (8 tests).
+- Phase 04 full test suite passed: `mvn test` (746 tests).
+- Phase 04 bounded startup passed: `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` reached healthy startup, then exited with timeout code 124 after graceful shutdown.
+- Phase 04 whitespace check passed: `git diff --check`.
 
 ## Remediation Notes
 
@@ -55,3 +65,4 @@
 
 - Later implementation must not use worktrees unless the user changes that constraint.
 - Later implementation lanes must declare owned paths and stage explicit path lists only.
+- Phase 04 intentionally keeps the Avatar profile reserved/dormant by default; operators must activate it and approve exact Avatar tool names before the tools can run.

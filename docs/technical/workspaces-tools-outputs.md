@@ -148,6 +148,16 @@ Operational agent tools:
 - Avatar supervisor tools use the `avatar_` prefix and require the durable Avatar profile identity plus explicit per-tool approval. They expose cross-agent and cross-project operational views intended for the personal assistant surface.
 - Agent side-panel chat uses `ChatService.chatAsAgent(...)` so model selection, approved tools, chat session origin, and orchestration context are scoped to the selected agent even when the turn runs through the shared chat queue.
 
+Avatar organizer tools:
+
+- Source: [`AvatarAssistantTools`](../../src/main/java/io/mindspice/magenta2/ai/chat/tool/avatar/AvatarAssistantTools.java).
+- These tools also use the `avatar_` prefix and require the active orchestration context to be the configured Avatar supervisor agent id, plus explicit approval of the exact tool name on that profile.
+- Organizer records are stored through `AvatarService` and the separate `avatar.sqlite` persistence boundary. Tool code must not bypass that service into raw SQL or the primary orchestration repository.
+- Current assistant tools cover todos, daily tasks, local calendar items, notes, task submission, research-oriented task submission, and output artifact list/read. They return compact JSON records rather than HTML.
+- `avatar_submit_task` and `avatar_submit_research_assignment` create `TASK_RUN` assignments through `AssignmentService`; they require an existing task id and rely on existing assignment validation for agent state, project context, workspace compatibility, and model override behavior.
+- `avatar_list_outputs` and `avatar_read_output` use `OutputArtifactService`, including existing query limits, path confinement, and bounded content reads.
+- Redacted email alert ingress uses `POST /api/avatar/email-alerts` with `X-Magenta-Avatar-Email-Token` and `magenta.avatar.email-alert-token`. It publishes `EMAIL_ALERT_RECEIVED` events through `OrchestrationEventService` with only message id hash, from domain, optional address hash, subject snippet, received timestamp, labels, importance, and thread key hash. Do not store raw email body content or ingress tokens in Avatar persistence, runtime events, logs, prompts, or UI.
+
 ## Tool Approval
 
 Agents carry approved tool names in `agent_profiles.approved_tool_names_json`. `ChatToolRegistry` validates configured names and resolves approved tools for chat/model calls. Runtime settings also carry system chat approved tools for the system chat path.
@@ -182,7 +192,22 @@ Example Avatar supervisor approvals:
   "avatar_job_list",
   "avatar_schedule_list",
   "avatar_output_list",
-  "avatar_output_read"
+  "avatar_output_read",
+  "avatar_todo_list",
+  "avatar_todo_upsert",
+  "avatar_todo_complete",
+  "avatar_daily_task_list",
+  "avatar_daily_task_upsert",
+  "avatar_daily_task_complete",
+  "avatar_calendar_list",
+  "avatar_calendar_upsert",
+  "avatar_calendar_delete",
+  "avatar_note_append",
+  "avatar_note_search",
+  "avatar_submit_task",
+  "avatar_submit_research_assignment",
+  "avatar_list_outputs",
+  "avatar_read_output"
 ]
 ```
 
