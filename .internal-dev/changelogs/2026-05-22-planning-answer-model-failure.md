@@ -10,10 +10,12 @@ Anonymous chat planning answer submission now handles continuation failures and 
 
 - `src/main/java/io/mindspice/magenta2/ai/chat/service/ChatService.java`
 - `src/main/java/io/mindspice/magenta2/ai/chat/plan/PlanCompletionService.java`
+- `src/main/java/io/mindspice/magenta2/ai/chat/tool/InteractionQuestionTools.java`
 - `src/main/java/io/mindspice/magenta2/api/web/ChatController.java`
 - `src/main/resources/static/js/chat-client.js`
 - `src/test/java/io/mindspice/magenta2/ai/chat/service/ChatServiceTest.java`
 - `src/test/java/io/mindspice/magenta2/ai/chat/plan/PlanServiceTest.java`
+- `src/test/java/io/mindspice/magenta2/ai/chat/tool/InteractionQuestionToolsTest.java`
 - `docs/technical/chat-planning-tasks.md`
 - `docs/end-user/plans-and-tasks.md`
 
@@ -26,6 +28,7 @@ Anonymous chat planning answer submission now handles continuation failures and 
 - Duplicate or stale planning answer submissions now refresh the current planning prompt instead of returning `400 No active planning question exists for this conversation` or `400 Stale planning answer`.
 - Anonymous plan completion validation now resolves relative artifact paths against the chat file directory before falling back to `dataRoot`, so files created by chat-scoped file tools can be read by the validator.
 - Spring AI tool argument conversion failures are converted into model-visible tool diagnostics and retried inside the tool loop instead of aborting the planning continuation.
+- The shared `ask_user_questions` planning/task tool now accepts object-shaped question entries and extracts their `question`, `text`, `prompt`, or `label` field before queuing prompts.
 - Anonymous plan execution stream disconnects are recorded as transport diagnostics instead of plan execution failures, so a closed browser stream does not by itself move the plan to `NEEDS_REVIEW`.
 - Browser error helpers now display server `error` payload fields instead of falling back to generic HTTP status text.
 
@@ -34,6 +37,7 @@ Anonymous chat planning answer submission now handles continuation failures and 
 - The failed planning question is not re-queued because the answer was already recorded. After fixing model or tool configuration, the user should answer the recovery clarification or send another planning message.
 - This handles AI/tool failures in the answer-continuation path; other chat/model routes may still surface provider failures through their existing route-specific handling.
 - A browser disconnect no longer marks execution failed, but the execution model still must complete normally and pass validator-gated completion for the plan to become `COMPLETED`.
+- `ask_user_questions` still enforces the existing one-to-five queued question limit after normalization; extra metadata on model-provided question objects is ignored.
 
 # Follow-up Items
 

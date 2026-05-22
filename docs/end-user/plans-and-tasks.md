@@ -116,7 +116,7 @@ For anonymous chat plans, artifact names such as `report.md` are checked in the 
 
 If the model emits a tool call with malformed JSON arguments, Magenta records a compact tool diagnostic and asks the model to retry or choose the next action. The malformed tool call is not executed.
 
-If a tool call has valid JSON but the arguments do not match the tool's expected shape, Magenta records the same kind of diagnostic and keeps the planning or execution turn moving instead of ending the chat turn with a server error.
+If a tool call has valid JSON but the arguments do not match the tool's expected shape, Magenta records the same kind of diagnostic and keeps the planning or execution turn moving instead of ending the chat turn with a server error. Planning questions may be supplied as plain text or simple question objects; Magenta extracts the user-visible question text before showing them in the prompt card.
 
 If automatic retries are exhausted, the plan becomes `NEEDS_REVIEW`. In that state the chat does not reopen planning controls or show **Cancel planning**. Review the execution evidence, validation feedback, and tool transcript before trusting or revising the result.
 

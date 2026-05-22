@@ -31,6 +31,7 @@
 - Patched anonymous completion validation so relative artifact paths are resolved against the chat file directory before falling back to `dataRoot`.
 - Patched Spring AI tool argument conversion failures so they become tool-loop diagnostics and retry prompts rather than aborting planning continuation.
 - Patched anonymous execution SSE disconnect handling so client transport breaks record `plan_stream_disconnect` instead of marking execution failed.
+- Patched `ask_user_questions` normalization so object-shaped question entries from the model are accepted and converted to plain prompt text.
 
 ## Blockers
 
@@ -83,3 +84,17 @@ Findings:
 - A longer no-stale browser run reached `READY_FOR_APPROVAL`, approved the anonymous plan, and started streamed execution.
 - Execution later moved to `NEEDS_REVIEW` because the SSE response broke with a `Broken pipe`; audit events showed `plan_execution` and `plan_stream_error` diagnostics tied to the stream failure rather than validator feedback.
 - Remediation: treat browser stream disconnects as transport diagnostics (`plan_stream_disconnect`) and allow the underlying execution path to continue toward normal completion or validator-gated failure.
+
+## Eighth Browser/DB Validation Pass (Non-Mutating)
+
+- Date: 2026-05-22
+- Branch head: `763789f`
+- Runtime used isolated DB `/tmp/magenta2-in-chat-planning-validation-8.sqlite` and root `/tmp/magenta2-in-chat-planning-validation-root-8`.
+- Conversation: `da6c802d-c245-42e1-a3c7-c8b3e0fbc83f`.
+
+Findings:
+- `/chat` and `/plan` loaded normally, and the validator answered the three live planning prompts without stale or malformed probes.
+- No browser console, page, or network 4xx/5xx errors were captured.
+- `READY_FOR_APPROVAL` was not reached. The DB stayed at `PLAN`/`DRAFT` with `planningTask=clarify_and_elaborate`.
+- Audit events showed repeated `ask_user_questions` failures because the model sent `questions` as objects containing `header`, `question`, and `type`; Spring could not convert those objects into `List<String>`.
+- Remediation: changed `ask_user_questions` to accept `List<Object>` and normalize plain strings or object-shaped question entries to user-visible question text.
