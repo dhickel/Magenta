@@ -18,10 +18,11 @@ Updated planning question cards so both `/chat` and saved-plan chat render a yel
 - `test-results/question-card-plan-validation.png`
 - `test-results/question-card-chat-revalidation.png`
 - `test-results/question-card-plan-revalidation.png`
+- `test-results/question-card-chat-margin-revalidation.png`
 
 ## Behavioral Impact
 
-Planning questions are visually clearer via a yellow question marker. The `/chat` planning question panel now has more bottom spacing before the message input, and question text/count/marker layout uses grid cells to avoid overlap on desktop and mobile.
+Planning questions are visually clearer via a yellow question marker. The `/chat` planning question panel now has more bottom spacing before the message input and a horizontal inset from the chat composer edge. Question text/count/marker layout uses grid cells to avoid overlap on desktop and mobile.
 
 ## Risks
 
