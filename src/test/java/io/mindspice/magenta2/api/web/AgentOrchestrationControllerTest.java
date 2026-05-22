@@ -110,6 +110,7 @@ class AgentOrchestrationControllerTest {
         assertThat(emitter.getTimeout()).isZero();
         assertThat(chatService.completed.await(1, TimeUnit.SECONDS)).isTrue();
         assertThat(profileService.requestedId).isEqualTo("agent-1");
+        assertThat(chatService.agent.id()).isEqualTo("agent-1");
         assertThat(chatService.request.message()).contains("Agent page context: task editor");
         assertThat(chatService.request.model()).isEqualTo("qwen3");
     }
@@ -504,13 +505,14 @@ class AgentOrchestrationControllerTest {
         }
 
         @Override
-        public ChatResponse chat(ChatRequest request) {
+        public ChatResponse chatAsAgent(AgentProfile agent, ChatRequest.MsgRequest request) {
             // Return a response that isn't MsgResponse, triggering error path
             return null;
         }
     }
 
     private static class StubChatService extends ChatService {
+        private AgentProfile agent;
         private ChatRequest.MsgRequest request;
         private final CountDownLatch completed = new CountDownLatch(1);
 
@@ -519,8 +521,9 @@ class AgentOrchestrationControllerTest {
         }
 
         @Override
-        public ChatResponse chat(ChatRequest request) {
-            this.request = (ChatRequest.MsgRequest) request;
+        public ChatResponse chatAsAgent(AgentProfile agent, ChatRequest.MsgRequest request) {
+            this.agent = agent;
+            this.request = request;
             var response = new ChatResponse.MsgResponse("conversation-1", this.request.model(), "ok", null, ChatPlanState.normal());
             completed.countDown();
             return response;
@@ -536,7 +539,7 @@ class AgentOrchestrationControllerTest {
         }
 
         @Override
-        public ChatResponse chat(ChatRequest request) {
+        public ChatResponse chatAsAgent(AgentProfile agent, ChatRequest.MsgRequest request) {
             started.countDown();
             try {
                 release.await(2, TimeUnit.SECONDS);
@@ -544,8 +547,7 @@ class AgentOrchestrationControllerTest {
                 Thread.currentThread().interrupt();
                 throw new RuntimeException(e);
             }
-            var msg = (ChatRequest.MsgRequest) request;
-            return new ChatResponse.MsgResponse("conv-1", msg.model(), "done", null, ChatPlanState.normal());
+            return new ChatResponse.MsgResponse("conv-1", request.model(), "done", null, ChatPlanState.normal());
         }
     }
 

@@ -374,7 +374,7 @@ public class AgentOrchestrationController {
     }
 
     private Map<String, Object> donePayload(AgentProfile agent, AgentChatRequest request, String prompt, String model) {
-        ChatResponse response = chatService.chat(new ChatRequest.MsgRequest(
+        ChatResponse response = chatService.chatAsAgent(agent, new ChatRequest.MsgRequest(
             request.conversationId(), prompt, model, null
         ));
         if (!(response instanceof ChatResponse.MsgResponse messageResponse)) {
@@ -386,7 +386,6 @@ public class AgentOrchestrationController {
         done.put("conversationId", messageResponse.conversationId());
         done.put("model", messageResponse.model());
         done.put("message", messageResponse.response());
-        chatService.markAgentConversation(messageResponse.conversationId(), agent.id());
         return done;
     }
 

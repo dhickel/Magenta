@@ -141,11 +141,50 @@ Plan/task/question tools:
 - Task tools create or operate on task definitions/runs.
 - Interaction question tools support model-driven clarification workflows.
 
+Operational agent tools:
+
+- Source: [`AgentOperationalTools`](../../src/main/java/io/mindspice/magenta2/ai/chat/tool/orchestration/AgentOperationalTools.java).
+- Normal agent tools use the `agent_` prefix and operate from the active `OrchestrationTaskContext` agent identity. They expose bounded workspace status, queue, assignment lifecycle, inbox, schedule, job, project, and output inspection or mutation.
+- Avatar supervisor tools use the `avatar_` prefix and require the durable Avatar profile identity plus explicit per-tool approval. They expose cross-agent and cross-project operational views intended for the personal assistant surface.
+- Agent side-panel chat uses `ChatService.chatAsAgent(...)` so model selection, approved tools, chat session origin, and orchestration context are scoped to the selected agent even when the turn runs through the shared chat queue.
+
 ## Tool Approval
 
 Agents carry approved tool names in `agent_profiles.approved_tool_names_json`. `ChatToolRegistry` validates configured names and resolves approved tools for chat/model calls. Runtime settings also carry system chat approved tools for the system chat path.
 
 Controllers and settings pages should not accept arbitrary tool execution; they should persist intended allowlists and let chat/tool services enforce them.
+
+Operational tools should be approved by exact name. Do not use wildcard approval for agent or Avatar operational profiles. `ToolAccessPolicy` keeps operational `agent_` and `avatar_` tools out of PLAN/TASK drafting modes; ordinary and execution turns can use them only when the current profile approval and runtime identity checks pass.
+
+Example normal-agent approvals:
+
+```json
+[
+  "agent_workspace_status",
+  "agent_queue_list",
+  "agent_assignment_get",
+  "agent_assignment_transcript",
+  "agent_inbox_list",
+  "agent_output_list",
+  "agent_output_read"
+]
+```
+
+Example Avatar supervisor approvals:
+
+```json
+[
+  "avatar_system_overview",
+  "avatar_agent_list",
+  "avatar_agent_status",
+  "avatar_assignment_list",
+  "avatar_project_list",
+  "avatar_job_list",
+  "avatar_schedule_list",
+  "avatar_output_list",
+  "avatar_output_read"
+]
+```
 
 ## Output Materialization Flow
 

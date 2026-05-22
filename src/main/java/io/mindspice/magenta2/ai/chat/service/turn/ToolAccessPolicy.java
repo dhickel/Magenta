@@ -70,10 +70,10 @@ public class ToolAccessPolicy {
             return List.of();
         }
         if (mode == PlanMode.PLAN) {
-            return chatToolRegistry.resolveApprovedTools(approvedToolNames, PLAN_MODE_TOOLS);
+            return withoutOperationalTools(chatToolRegistry.resolveApprovedTools(approvedToolNames, PLAN_MODE_TOOLS));
         }
         if (mode == PlanMode.TASK) {
-            return chatToolRegistry.resolveApprovedTools(approvedToolNames, TASK_MODE_TOOLS);
+            return withoutOperationalTools(chatToolRegistry.resolveApprovedTools(approvedToolNames, TASK_MODE_TOOLS));
         }
         if (mode == PlanMode.EXECUTE_PLAN) {
             return chatToolRegistry.resolveApprovedTools(approvedToolNames).stream()
@@ -88,5 +88,15 @@ public class ToolAccessPolicy {
         return chatToolRegistry.resolveApprovedTools(approvedToolNames).stream()
             .filter(callback -> !NORMAL_BLOCKED_TOOLS.contains(callback.getToolDefinition().name()))
             .toList();
+    }
+
+    private List<ToolCallback> withoutOperationalTools(List<ToolCallback> callbacks) {
+        return callbacks.stream()
+            .filter(callback -> !isOperationalTool(callback.getToolDefinition().name()))
+            .toList();
+    }
+
+    private boolean isOperationalTool(String toolName) {
+        return toolName != null && (toolName.startsWith("agent_") || toolName.startsWith("avatar_"));
     }
 }

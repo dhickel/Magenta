@@ -57,6 +57,7 @@ import io.mindspice.magenta2.ai.chat.tool.ToolTranscriptService.ToolTranscriptEn
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.ai.config.user.ModelConfig;
+import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
 import io.mindspice.magenta2.ai.execution.ActiveTurnPhase;
 import io.mindspice.magenta2.ai.execution.ActiveTurnRegistry.ActiveTurn;
 import io.mindspice.magenta2.ai.execution.ConversationTurnCoordinator;
@@ -289,22 +290,45 @@ public class ChatService {
     }
 
     private ChatResponse.MsgResponse chat(ResolvedChatRequest resolvedRequest) {
+        return chat(resolvedRequest, null, null);
+    }
+
+    private ChatResponse.MsgResponse chat(
+        ResolvedChatRequest resolvedRequest,
+        List<String> approvedToolNames,
+        OrchestrationTaskContext turnContext
+    ) {
         if (turnCoordinator != null) {
             return await(turnCoordinator.submit(
                 resolvedRequest.conversationId(),
                 MagentaWorkRequest.CHAT_PRIORITY,
                 "chat turn " + resolvedRequest.conversationId(),
-                () -> chatNow(resolvedRequest, null)
+                () -> chatNow(resolvedRequest, null, approvedToolNames, turnContext)
             ));
         }
-        return chatNow(resolvedRequest, null);
+        return chatNow(resolvedRequest, null, approvedToolNames, turnContext);
     }
 
     private ChatResponse.MsgResponse chatNow(ResolvedChatRequest resolvedRequest, ActiveTurn activeTurn) {
+        return chatNow(resolvedRequest, activeTurn, null, null);
+    }
+
+    private ChatResponse.MsgResponse chatNow(
+        ResolvedChatRequest resolvedRequest,
+        ActiveTurn activeTurn,
+        List<String> approvedToolNames,
+        OrchestrationTaskContext turnContext
+    ) {
         OrchestrationTaskContext previousContext = OrchestrationTaskContextHolder.current();
-        boolean installedChatContext = installChatFileContextIfNeeded(resolvedRequest.conversationId(), previousContext);
+        boolean installedTurnContext = false;
+        if (turnContext != null) {
+            OrchestrationTaskContextHolder.set(turnContext);
+            installedTurnContext = true;
+        }
+        boolean installedChatContext = turnContext == null
+            && installChatFileContextIfNeeded(resolvedRequest.conversationId(), previousContext);
         try {
-            List<ToolCallback> approvedTools = approvedTools(resolvedRequest);
+            List<ToolCallback> approvedTools = approvedTools(resolvedRequest, approvedToolNames);
             if (!approvedTools.isEmpty() && supportsTools(resolvedRequest.model())) {
                 try {
                     return toolChatWithRetry(resolvedRequest, approvedTools, activeTurn);
@@ -317,8 +341,34 @@ public class ChatService {
             }
             return plainChat(resolvedRequest);
         } finally {
-            restoreContext(previousContext, installedChatContext);
+            restoreContext(previousContext, installedTurnContext || installedChatContext);
         }
+    }
+
+    public ChatResponse chatAsAgent(AgentProfile agent, ChatRequest.MsgRequest request) {
+        if (agent == null) {
+            throw new IllegalArgumentException("agent is required");
+        }
+        if (request == null) {
+            throw new IllegalArgumentException("message request is required");
+        }
+        String model = StringUtils.hasText(request.model()) ? request.model() : agent.defaultModel();
+        if (!StringUtils.hasText(model)) {
+            model = defaultModel();
+        }
+        ResolvedChatRequest resolvedRequest = requestResolver.resolve(new ChatRequest.MsgRequest(
+            request.conversationId(),
+            request.message(),
+            model,
+            request.planningModel()
+        ));
+        markAgentConversation(resolvedRequest.conversationId(), agent.id());
+        OrchestrationTaskContext turnContext = new OrchestrationTaskContext(
+            agent.id(), agent.name(), null, null,
+            resolvedRequest.conversationId(), "AGENT_CHAT", null, null
+        );
+        List<String> agentApprovedTools = agent.approvedTools() == null ? List.of() : agent.approvedTools();
+        return chat(resolvedRequest, agentApprovedTools, turnContext);
     }
 
     private boolean installChatFileContextIfNeeded(String conversationId, OrchestrationTaskContext previousContext) {
@@ -1972,8 +2022,15 @@ public class ChatService {
     }
 
     private List<ToolCallback> approvedTools(ResolvedChatRequest request) {
+        return approvedTools(request, null);
+    }
+
+    private List<ToolCallback> approvedTools(ResolvedChatRequest request, List<String> approvedToolNames) {
         if (chatToolRegistry == null) {
             return List.of();
+        }
+        if (approvedToolNames != null) {
+            return filterApprovedTools(approvedToolNames, request);
         }
         if (runtimeSettingsService != null) {
             return filterApprovedTools(runtimeSettingsService.approvedTools(), request);

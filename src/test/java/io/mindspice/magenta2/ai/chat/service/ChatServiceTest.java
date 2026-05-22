@@ -9,6 +9,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mindspice.magenta2.ai.chat.model.ChatResponse;
 import io.mindspice.magenta2.ai.chat.model.ChatSession;
 import io.mindspice.magenta2.ai.chat.model.ContextUsage;
 import io.mindspice.magenta2.ai.chat.plan.PlanRepository;
@@ -24,6 +25,8 @@ import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.ai.config.user.EndpointType;
 import io.mindspice.magenta2.ai.config.user.ModelConfig;
+import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
+import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileStatus;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -692,6 +695,67 @@ class ChatServiceTest {
         assertThat(response.planState().promptQuestion())
             .isEqualTo("What assumptions, details, expectations, constraints, or preferred approach should guide the plan?");
         assertThat(response.planState().promptQuestionIndex()).isEqualTo(2);
+    }
+
+    @Test
+    void chatAsAgentUsesAgentModelAndMarksAgentSession() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        ChatSessionMetadataRepository metadataRepository = new ChatSessionMetadataRepository(jdbcTemplate);
+        ContextUsageTracker usageTracker = new ContextUsageTracker();
+        AiConfig config = aiConfig();
+        ChatModelRouter router = new TestChatModelRouter(new FixedChatModel("Agent answer"));
+        ContextManagementAdvisor contextAdvisor = new ContextManagementAdvisor(
+            memoryRepository,
+            config,
+            router,
+            new CharacterTokenEstimator(),
+            usageTracker,
+            new ToolTranscriptService(objectMapper),
+            null
+        );
+        ChatService chatService = new ChatService(
+            new RepositoryBackedChatMemory(memoryRepository),
+            memoryRepository,
+            metadataRepository,
+            new ChatMarkdownRenderer(),
+            config,
+            contextAdvisor,
+            usageTracker,
+            router,
+            null,
+            null,
+            null,
+            null
+        );
+        AgentProfile agent = new AgentProfile(
+            "agent-1",
+            "Agent One",
+            AgentProfileStatus.ACTIVE,
+            "main",
+            "system",
+            List.of(),
+            List.of(),
+            true,
+            null,
+            null
+        );
+
+        ChatResponse.MsgResponse response = (ChatResponse.MsgResponse) chatService.chatAsAgent(
+            agent,
+            new io.mindspice.magenta2.ai.chat.model.ChatRequest.MsgRequest(
+                null, "hello from side panel", null, null
+            )
+        );
+
+        assertThat(response.model()).isEqualTo("main");
+        assertThat(response.response()).isEqualTo("Agent answer");
+        assertThat(metadataRepository.findAgentConversationIds("agent-1"))
+            .containsExactly(response.conversationId());
+        assertThat(memoryRepository.findByConversationId(response.conversationId()))
+            .extracting(Message::getText)
+            .containsExactly("hello from side panel", "Agent answer");
     }
 
     private JdbcTemplate jdbcTemplate() {
