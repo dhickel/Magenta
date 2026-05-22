@@ -12,16 +12,18 @@ status: active
 
 | id | title | status | next_action | owner | source | created | review_after | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| UNFINISHED-20260522-01 | Confirm the first durable current focus. | needs-triage | Ask the user to choose the first long-term `current-focus.md` entry. | user | .internal-dev/changelogs/2026-05-22-internal-dev-focus-workflow.md | 2026-05-22 | 2026-06-21 | Initialization created the focus schema but intentionally did not invent strategic project direction. |
 
 ## Recently Closed
 
 | id | title | status | owner | source | closed_on | notes |
 | --- | --- | --- | --- | --- | --- | --- |
+| UNFINISHED-20260522-01 | Confirm the first durable current focus. | closed | user | .internal-dev/plans/avatar-dashboard-sprint/README.md | 2026-05-22 | Avatar was selected as the first durable implementation focus; current pass remains planning-only. |
+| UNFINISHED-20260522-02 | Create the Avatar dashboard sprint plan suite. | closed | unassigned | .internal-dev/plans/avatar-dashboard-sprint/final-orchestration-plan.md | 2026-05-22 | Planning suite was created as a handoff for later implementation. |
 
 ## Review Log
 
 | reviewed_on | reviewer | outcome | notes |
 | --- | --- | --- | --- |
+| 2026-05-22 | codex | updated | Closed the initial current-focus confirmation and recorded completion of this planning-suite handoff. |
 | 2026-05-22 | codex | initialized | Created strict-schema living document. |
 | 2026-05-22 | codex | updated | Added the remaining user decision needed to populate the first real current focus. |

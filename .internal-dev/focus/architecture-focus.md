@@ -12,6 +12,8 @@ status: active
 
 | id | area | direction | status | owner | source | review_after | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ARCH-20260522-04 | Avatar data ownership. | Store Avatar user-centric profile, preferences, organizer data, dashboard layout, facts, and events in separate `avatar.sqlite` under the Magenta root. | watching | unassigned | .internal-dev/plans/avatar-dashboard-sprint/phase-01-avatar-core-persistence.md | 2026-06-21 | Existing orchestration/runtime state stays in `magenta.sqlite`; no cross-database foreign keys. |
+| ARCH-20260522-03 | Avatar runtime boundary. | Build Avatar on existing chat, tool, agent profile, assignment, workspace, schedule, reaction, and output services rather than creating a second runtime. | watching | unassigned | .internal-dev/plans/avatar-dashboard-sprint/phase-04-avatar-assistant-behaviors.md | 2026-06-21 | Plugin runtime remains deferred research-only. |
 
 ## Constraints
 
@@ -28,4 +30,5 @@ status: active
 
 | reviewed_on | reviewer | outcome | notes |
 | --- | --- | --- | --- |
+| 2026-05-22 | codex | updated | Added Avatar data ownership and runtime-boundary architecture focus from the planning suite. |
 | 2026-05-22 | codex | initialized | Created strict-schema living document. |
