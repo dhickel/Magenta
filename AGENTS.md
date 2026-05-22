@@ -1,18 +1,26 @@
+<!-- BEGIN INTERNAL-DEV WORKFLOW -->
 ## `.internal-dev` Development Document Store
 
-`.internal-dev/` is the persistent engineering document store for plans, bugs, changelogs, reviews, notes, and reusable knowledge.
+`.internal-dev/` is the persistent engineering document store for plans, bugs, changelogs, reviews, notes, reusable knowledge, and living focus records.
 
 ### Required workflow
+- Before beginning non-trivial implementation or planning, perform the `.internal-dev` beginning pass: read `.internal-dev/focus/AGENTS.md`, then read only the focus files relevant to the task such as `current-focus.md`, `unfinished-work.md`, `architecture-focus.md`, or `decisions.md`.
 - After each feature implementation or non-trivial fix, complete the full `.internal-dev` workflow: write a changelog entry, record any out-of-scope bugs discovered, capture reusable knowledge, and note deferred ideas.
+- During the closeout workflow, update `.internal-dev/focus/unfinished-work.md` for work intentionally left incomplete, blocked, paused, handed off, resumed, or closed.
+- During closeout, check `.internal-dev/focus/current-focus.md`; if the completed work appears to finish, obsolete, or materially change the long-term focus, report the stale focus to the user instead of silently rewriting the project direction.
+- During closeout, update `.internal-dev/focus/architecture-focus.md` and `.internal-dev/focus/decisions.md` when architecture direction or durable decisions change; back reusable decisions with `.internal-dev/knowledge/` entries when appropriate.
 - After completing the `.internal-dev` workflow for a task, create a git commit that includes both the implementation and the `.internal-dev` updates.
 - When beginning implementation of a multi-phase plan, create a dedicated git branch for that plan before phase work starts.
 - For multi-phase plans, commit completed work at the end of each phase on that dedicated branch.
 - For any feature or non-trivial fix, update relevant docs in `docs/`: end-user docs for behavior changes, technical docs for architecture/API/service/schema/config changes, and API docs for route or payload changes.
 - Plans and reviews are written to `.internal-dev/plans/` and `.internal-dev/reviews/`.
 - Out-of-scope bugs found during work are logged immediately in `.internal-dev/bugs/`.
+- If this project has a GitHub repository, every `.internal-dev/bugs/` report must be mirrored directly to the GitHub repository as a GitHub Issue when it is created or compiled.
+- When adding or updating a local bug report in a project with a GitHub repository, check for related closed GitHub Issues before finishing; if the corresponding issue is already closed, move the local bug report to `.internal-dev/bugs/.archive/` instead of leaving it active.
 - Finalized work gets a changelog entry in `.internal-dev/changelogs/`.
 - Reusable insights go to `.internal-dev/knowledge/`.
 - Deferred future ideas go to `.internal-dev/notes/` after confirming they are out of scope.
+- Raw or semi-raw ideas that need later triage go to `.internal-dev/focus/ideas-inbox.md`; curated future targets go to `.internal-dev/focus/horizon-ideas.md`.
 - Move finalized bug/plan artifacts to sibling `.archive/` directories.
 
 ### Controlled access
@@ -21,6 +29,8 @@
 
 ### Reference guide
 - Process and templates: `.internal-dev/AGENTS.md`
+- Focus schemas and maintenance rules: `.internal-dev/focus/AGENTS.md`
+<!-- END INTERNAL-DEV WORKFLOW -->
 
 
 
