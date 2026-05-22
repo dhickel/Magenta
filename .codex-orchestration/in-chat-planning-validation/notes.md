@@ -9,7 +9,7 @@
 
 ## Active Agents
 
-- None yet.
+- Gibbs (`019e4ebd-b624-7972-8287-7dafc145ba1f`): completed first browser/database reproduction pass.
 
 ## Completed Work
 
@@ -17,11 +17,14 @@
 
 ## Validation Results
 
-- Pending.
+- First Playwright pass used isolated DB `/tmp/magenta2-in-chat-planning-validation.sqlite` and conversation `3da8c656-1d2b-44e9-9de5-1b3e5bb2ad2a`.
+- `/plan` entered planning and accepted several answers, then `POST /api/chat/{conversationId}/plan/answers` returned 500 when a planning continuation invoked `web_search` and hit `java.net.ConnectException`.
+- Repeated answer retries then returned `400` with `No active planning question exists for this conversation` because the answer had already been consumed.
+- Focused regression test added for saved-answer continuation failures caused by model auth errors and tool failures.
 
 ## Remediation Notes
 
-- Pending.
+- Patched `ChatService.submitPlanAnswer(...)` so failures after a saved answer return a controlled assistant notice and current plan state instead of propagating a servlet error.
 
 ## Blockers
 

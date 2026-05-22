@@ -46,6 +46,7 @@ import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 class ChatServiceTest {
 
@@ -405,6 +406,59 @@ class ChatServiceTest {
             );
     }
 
+    @Test
+    void planningAnswerToolFailureReturnsControlledResponseAfterSavingAnswer() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        ChatSessionMetadataRepository metadataRepository = new ChatSessionMetadataRepository(jdbcTemplate);
+        PlanService planService = new PlanService(new PlanRepository(jdbcTemplate, objectMapper), memoryRepository);
+        ContextUsageTracker usageTracker = new ContextUsageTracker();
+        ChatModelRouter router = new TestChatModelRouter(new ToolCallingChatModel());
+        ToolCallingManager toolCallingManager = mock(ToolCallingManager.class);
+        when(toolCallingManager.executeToolCalls(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+            .thenThrow(new RuntimeException("web_search connection refused"));
+        AiConfig config = aiConfig(Path.of("."), List.of("ask_user_questions"));
+        ContextManagementAdvisor contextAdvisor = new ContextManagementAdvisor(
+            memoryRepository,
+            config,
+            router,
+            new CharacterTokenEstimator(),
+            usageTracker,
+            new ToolTranscriptService(objectMapper),
+            null
+        );
+        ChatService chatService = new ChatService(
+            new RepositoryBackedChatMemory(memoryRepository),
+            memoryRepository,
+            metadataRepository,
+            new ChatMarkdownRenderer(),
+            config,
+            contextAdvisor,
+            usageTracker,
+            router,
+            toolCallingManager,
+            new ChatToolRegistry(List.of(new NamedToolCallback("ask_user_questions")), List.of()),
+            new ToolTranscriptService(objectMapper),
+            planService
+        );
+
+        planService.beginPlan("conversation-1");
+        planService.askQuestions("conversation-1", List.of("What should Magenta build?"));
+
+        var response = chatService.submitPlanAnswer("conversation-1", "A reliable planning flow.", null, 1);
+
+        assertThat(response.response()).contains("I saved your planning answer");
+        assertThat(response.response()).contains("planning tool or model call failed");
+        assertThat(response.planState().promptQuestion()).isNull();
+        assertThat(memoryRepository.findByConversationId("conversation-1"))
+            .extracting(Message::getText)
+            .contains(
+                "Planning answer\n\nQuestion: What should Magenta build?\n\nAnswer: A reliable planning flow.",
+                "I saved your planning answer, but Magenta could not continue the planning turn because a planning tool or model call failed. Check the unavailable service or model configuration, then send another planning message to continue."
+            );
+    }
+
     private JdbcTemplate jdbcTemplate() {
         SingleConnectionDataSource dataSource = new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true);
         return new JdbcTemplate(dataSource);
@@ -497,12 +551,46 @@ class ChatServiceTest {
         }
     }
 
+    private static final class ToolCallingChatModel implements ChatModel {
+        @Override
+        public org.springframework.ai.chat.model.ChatResponse call(Prompt prompt) {
+            AssistantMessage toolCallMessage = AssistantMessage.builder()
+                .content("")
+                .toolCalls(List.of(new AssistantMessage.ToolCall(
+                    "call-1",
+                    "function",
+                    "ask_user_questions",
+                    "{\"questions\":[\"What should happen next?\"]}"
+                )))
+                .build();
+            return new org.springframework.ai.chat.model.ChatResponse(List.of(new Generation(toolCallMessage)));
+        }
+    }
+
     private static final class SampleToolCallback implements ToolCallback {
         private final ToolDefinition definition = new DefaultToolDefinition(
             "sample_tool",
             "Sample test tool",
             "{\"type\":\"object\"}"
         );
+
+        @Override
+        public ToolDefinition getToolDefinition() {
+            return definition;
+        }
+
+        @Override
+        public String call(String toolInput) {
+            return "{\"ok\":true}";
+        }
+    }
+
+    private static final class NamedToolCallback implements ToolCallback {
+        private final ToolDefinition definition;
+
+        private NamedToolCallback(String name) {
+            this.definition = new DefaultToolDefinition(name, "Named test tool", "{\"type\":\"object\"}");
+        }
 
         @Override
         public ToolDefinition getToolDefinition() {

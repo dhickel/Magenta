@@ -106,6 +106,7 @@ public class ChatService {
     private static final String EXECUTE_PLAN_CLEAN_MESSAGE = "Execute the approved anonymous chat plan now using only the approved plan instructions and the persistent chat file directory context. Do not rely on earlier chat transcript details unless they are present in the approved plan.";
     private static final String PLAN_NEEDS_REVIEW_MESSAGE = "Plan execution needs review. Magenta could not verify completion through plan_complete after retrying. Review the saved execution evidence and validation feedback before trusting the result.";
     private static final String PLAN_ANSWER_MODEL_FAILURE_MESSAGE = "I saved your planning answer, but Magenta could not continue the planning turn because the configured planning model request failed. Check the selected planning model and API credentials, then send another planning message to continue.";
+    private static final String PLAN_ANSWER_CONTINUATION_FAILURE_MESSAGE = "I saved your planning answer, but Magenta could not continue the planning turn because a planning tool or model call failed. Check the unavailable service or model configuration, then send another planning message to continue.";
     private static final String EXECUTE_TASK_MESSAGE = """
         Execute the reusable task now using the provided runtime inputs.
         Work through the declared task steps directly. You must call task_complete with outputValues keyed exactly by declared output name before any final completion answer.
@@ -616,15 +617,27 @@ public class ChatService {
                 auditService.recordError(conversationId, "planning_model_failure",
                     safeAiFailureMessage(exception), stackTraceString(exception), continueModel);
             }
-            chatMemory.add(conversationId, List.of(new AssistantMessage(PLAN_ANSWER_MODEL_FAILURE_MESSAGE)));
-            return new ChatResponse.MsgResponse(
-                conversationId,
-                continueModel,
-                PLAN_ANSWER_MODEL_FAILURE_MESSAGE,
-                maintainContextUsage(conversationId, continueModel).usage(),
-                planState(conversationId)
-            );
+            return savedAnswerFailureResponse(conversationId, continueModel, PLAN_ANSWER_MODEL_FAILURE_MESSAGE);
+        } catch (RuntimeException exception) {
+            logger.warn("Planning answer continuation failed conv={} model={}: {}",
+                conversationId, continueModel, exception.getMessage(), exception);
+            if (auditService != null) {
+                auditService.recordError(conversationId, "planning_continuation_failure",
+                    safeAiFailureMessage(exception), stackTraceString(exception), continueModel);
+            }
+            return savedAnswerFailureResponse(conversationId, continueModel, PLAN_ANSWER_CONTINUATION_FAILURE_MESSAGE);
         }
+    }
+
+    private ChatResponse.MsgResponse savedAnswerFailureResponse(String conversationId, String model, String message) {
+        chatMemory.add(conversationId, List.of(new AssistantMessage(message)));
+        return new ChatResponse.MsgResponse(
+            conversationId,
+            model,
+            message,
+            maintainContextUsage(conversationId, model).usage(),
+            planState(conversationId)
+        );
     }
 
     public ChatPlanState approvePlan(String conversationId) {

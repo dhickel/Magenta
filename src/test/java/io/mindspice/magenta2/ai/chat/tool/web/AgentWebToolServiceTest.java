@@ -83,6 +83,18 @@ class AgentWebToolServiceTest {
     }
 
     @Test
+    void webToolsReturnStructuredErrorWhenSearchDependencyIsUnavailable() {
+        AgentWebToolService service = service(true);
+        AgentWebTools tools = new AgentWebTools(service, new ObjectMapper());
+
+        String result = tools.search("query", 5);
+
+        assertThat(result)
+            .contains("\"error\":\"web_search failed\"")
+            .contains("\"message\"");
+    }
+
+    @Test
     void fetchExtractsHtmlTextAndTruncates() throws Exception {
         startServer((exchange) -> respond(exchange, "text/html", """
             <html><head><title>Readable Page</title><script>bad()</script></head>

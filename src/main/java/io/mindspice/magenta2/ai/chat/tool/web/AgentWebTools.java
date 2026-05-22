@@ -1,5 +1,7 @@
 package io.mindspice.magenta2.ai.chat.tool.web;
 
+import java.util.Map;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.ai.tool.annotation.Tool;
@@ -25,8 +27,12 @@ public class AgentWebTools {
         String query,
         @ToolParam(required = false, description = "Maximum results to return. Defaults to 5 and is capped by the server.")
         Integer maxResults
-    ) throws Exception {
-        return json(webToolService.search(query, maxResults));
+    ) {
+        try {
+            return json(webToolService.search(query, maxResults));
+        } catch (Exception exception) {
+            return jsonError("web_search", exception);
+        }
     }
 
     @Tool(
@@ -38,8 +44,22 @@ public class AgentWebTools {
         String url,
         @ToolParam(required = false, description = "Maximum extracted characters to return. Defaults to 12000 and is capped by the server.")
         Integer maxCharacters
-    ) throws Exception {
-        return json(webToolService.fetch(url, maxCharacters));
+    ) {
+        try {
+            return json(webToolService.fetch(url, maxCharacters));
+        } catch (Exception exception) {
+            return jsonError("web_fetch", exception);
+        }
+    }
+
+    private String jsonError(String toolName, Exception exception) {
+        String message = exception == null || exception.getMessage() == null
+            ? "Tool failed"
+            : exception.getMessage();
+        return json(Map.of(
+            "error", toolName + " failed",
+            "message", message
+        ));
     }
 
     private String json(Object value) {
