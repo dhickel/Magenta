@@ -26,7 +26,9 @@
             body = JSON.parse(text);
         }
         if (!response.ok) {
-            const message = body && body.message ? body.message : (response.status + ' ' + response.statusText);
+            const message = body && (body.message || body.error)
+                ? (body.message || body.error)
+                : (response.status + ' ' + response.statusText);
             throw new Error(message);
         }
         return body;
@@ -1374,7 +1376,7 @@
         }
         try {
             const body = JSON.parse(text);
-            return new Error(body && body.message ? body.message : text);
+            return new Error(body && (body.message || body.error) ? (body.message || body.error) : text);
         } catch (error) {
             return new Error(text);
         }

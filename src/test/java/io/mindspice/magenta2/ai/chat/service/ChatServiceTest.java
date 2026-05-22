@@ -35,6 +35,7 @@ import org.springframework.ai.content.MediaContent;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
+import org.springframework.ai.retry.NonTransientAiException;
 import org.springframework.ai.tokenizer.TokenCountEstimator;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.DefaultToolDefinition;
@@ -355,6 +356,55 @@ class ChatServiceTest {
         verifyNoInteractions(toolCallingManager);
     }
 
+    @Test
+    void planningAnswerModelFailureReturnsControlledResponseAfterSavingAnswer() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        ChatSessionMetadataRepository metadataRepository = new ChatSessionMetadataRepository(jdbcTemplate);
+        PlanService planService = new PlanService(new PlanRepository(jdbcTemplate, objectMapper), memoryRepository);
+        ContextUsageTracker usageTracker = new ContextUsageTracker();
+        ChatModelRouter router = new TestChatModelRouter(new AuthenticationFailureChatModel());
+        AiConfig config = aiConfig();
+        ContextManagementAdvisor contextAdvisor = new ContextManagementAdvisor(
+            memoryRepository,
+            config,
+            router,
+            new CharacterTokenEstimator(),
+            usageTracker,
+            new ToolTranscriptService(objectMapper),
+            null
+        );
+        ChatService chatService = new ChatService(
+            new RepositoryBackedChatMemory(memoryRepository),
+            memoryRepository,
+            metadataRepository,
+            new ChatMarkdownRenderer(),
+            config,
+            contextAdvisor,
+            usageTracker,
+            router,
+            null,
+            null,
+            null,
+            planService
+        );
+
+        planService.beginPlan("conversation-1");
+        planService.askQuestions("conversation-1", List.of("What should Magenta build?"));
+
+        var response = chatService.submitPlanAnswer("conversation-1", "A reliable planning flow.", null, 1);
+
+        assertThat(response.response()).contains("I saved your planning answer");
+        assertThat(response.planState().promptQuestion()).isNull();
+        assertThat(memoryRepository.findByConversationId("conversation-1"))
+            .extracting(Message::getText)
+            .contains(
+                "Planning answer\n\nQuestion: What should Magenta build?\n\nAnswer: A reliable planning flow.",
+                "I saved your planning answer, but Magenta could not continue the planning turn because the configured planning model request failed. Check the selected planning model and API credentials, then send another planning message to continue."
+            );
+    }
+
     private JdbcTemplate jdbcTemplate() {
         SingleConnectionDataSource dataSource = new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true);
         return new JdbcTemplate(dataSource);
@@ -435,6 +485,15 @@ class ChatServiceTest {
         @Override
         public ToolCallingChatOptions chatOptions(String model) {
             return toolCallingOptions(model);
+        }
+    }
+
+    private static final class AuthenticationFailureChatModel implements ChatModel {
+        @Override
+        public org.springframework.ai.chat.model.ChatResponse call(Prompt prompt) {
+            throw new NonTransientAiException(
+                "401 - {\"error\":{\"message\":\"Authentication Fails, Your api key is invalid\"}}"
+            );
         }
     }
 

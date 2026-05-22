@@ -105,6 +105,7 @@ public class ChatService {
     private static final String EXECUTE_PLAN_MESSAGE = "Execute the saved plan now. Work through the plan directly and report the completed result.";
     private static final String EXECUTE_PLAN_CLEAN_MESSAGE = "Execute the approved anonymous chat plan now using only the approved plan instructions and the persistent chat file directory context. Do not rely on earlier chat transcript details unless they are present in the approved plan.";
     private static final String PLAN_NEEDS_REVIEW_MESSAGE = "Plan execution needs review. Magenta could not verify completion through plan_complete after retrying. Review the saved execution evidence and validation feedback before trusting the result.";
+    private static final String PLAN_ANSWER_MODEL_FAILURE_MESSAGE = "I saved your planning answer, but Magenta could not continue the planning turn because the configured planning model request failed. Check the selected planning model and API credentials, then send another planning message to continue.";
     private static final String EXECUTE_TASK_MESSAGE = """
         Execute the reusable task now using the provided runtime inputs.
         Work through the declared task steps directly. You must call task_complete with outputValues keyed exactly by declared output name before any final completion answer.
@@ -601,12 +602,29 @@ public class ChatService {
             );
         }
         String continueModel = resolvedPlanningModel(conversationId);
-        return chat(requestResolver.resolve(
-            conversationId,
-            "Continue planning from the three opening answers stored in the structured planning state. Treat those answers as authoritative seed context and ask only the next useful clarification if the plan is not ready.",
-            continueModel,
-            null
-        ).withoutTitleJob());
+        try {
+            return chat(requestResolver.resolve(
+                conversationId,
+                "Continue planning from the three opening answers stored in the structured planning state. Treat those answers as authoritative seed context and ask only the next useful clarification if the plan is not ready.",
+                continueModel,
+                null
+            ).withoutTitleJob());
+        } catch (NonTransientAiException exception) {
+            logger.warn("Planning answer continuation failed conv={} model={}: {}",
+                conversationId, continueModel, exception.getMessage());
+            if (auditService != null) {
+                auditService.recordError(conversationId, "planning_model_failure",
+                    safeAiFailureMessage(exception), stackTraceString(exception), continueModel);
+            }
+            chatMemory.add(conversationId, List.of(new AssistantMessage(PLAN_ANSWER_MODEL_FAILURE_MESSAGE)));
+            return new ChatResponse.MsgResponse(
+                conversationId,
+                continueModel,
+                PLAN_ANSWER_MODEL_FAILURE_MESSAGE,
+                maintainContextUsage(conversationId, continueModel).usage(),
+                planState(conversationId)
+            );
+        }
     }
 
     public ChatPlanState approvePlan(String conversationId) {
@@ -1795,6 +1813,17 @@ public class ChatService {
             current = current.getCause();
         }
         return false;
+    }
+
+    private static String safeAiFailureMessage(Throwable exception) {
+        String message = exception == null ? null : exception.getMessage();
+        if (!StringUtils.hasText(message)) {
+            return "AI model request failed";
+        }
+        if (message.contains("401") || message.toLowerCase().contains("authentication")) {
+            return "AI model request failed authentication";
+        }
+        return "AI model request failed";
     }
 
 

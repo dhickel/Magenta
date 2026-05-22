@@ -102,6 +102,8 @@ Task output artifacts are written under the effective workspace at `outputs/task
 
 Anonymous `/chat` plans run inside the chat conversation instead of creating saved `/plans` runs. During execution, Magenta records evidence and validation feedback in the chat plan status area.
 
+When you answer an anonymous chat planning question, Magenta saves the answer before asking the configured planning model to continue. If the model request fails because the selected model or API credentials are invalid, the chat shows a controlled notice and keeps your answer in the transcript. Fix the model configuration, then send another planning message to continue.
+
 Only one anonymous plan execution can run for a chat conversation at a time. If another execution is already active, Magenta rejects the second request instead of attaching it to the in-progress run.
 
 Completion is validator-gated. The execution model must call `plan_complete` with evidence for each validation criterion and a proposed final message. Magenta then validates that evidence and referenced artifacts before showing the final completion as trusted. Artifacts previously saved with `plan_report` are carried into completion validation automatically. Validation feedback shows whether a planning validator model ran, which model was used, whether a deterministic preflight rejected the completion before a model call, or whether no validator model was available. Completion validation does not fall back to the execution model. If validation fails, the remediation remains internal execution feedback and the model must continue working or call `plan_complete` again.
