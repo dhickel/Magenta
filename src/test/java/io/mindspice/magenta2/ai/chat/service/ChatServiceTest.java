@@ -40,6 +40,7 @@ import org.springframework.ai.tokenizer.TokenCountEstimator;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.DefaultToolDefinition;
 import org.springframework.ai.tool.definition.ToolDefinition;
+import org.springframework.ai.tool.execution.ToolExecutionException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
@@ -358,6 +359,65 @@ class ChatServiceTest {
     }
 
     @Test
+    void toolExecutionArgumentFailuresAreReportedAndRetried() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        ChatSessionMetadataRepository metadataRepository = new ChatSessionMetadataRepository(jdbcTemplate);
+        ToolTranscriptService transcriptService = new ToolTranscriptService(objectMapper);
+        ContextUsageTracker usageTracker = new ContextUsageTracker();
+        ToolExecutionFailureThenFinalChatModel chatModel = new ToolExecutionFailureThenFinalChatModel();
+        ToolCallingManager toolCallingManager = mock(ToolCallingManager.class);
+        ToolDefinition definition = new DefaultToolDefinition("sample_tool", "Sample test tool", "{\"type\":\"object\"}");
+        when(toolCallingManager.executeToolCalls(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+            .thenThrow(new ToolExecutionException(definition, new IllegalArgumentException(
+                "Conversion from JSON to java.util.List<String> failed"
+            )));
+        ChatToolRegistry toolRegistry = new ChatToolRegistry(List.of(new SampleToolCallback()), List.of());
+        ChatModelRouter router = new TestChatModelRouter(chatModel);
+        AiConfig config = aiConfig(Path.of("."), List.of("sample_tool"));
+        ContextManagementAdvisor contextAdvisor = new ContextManagementAdvisor(
+            memoryRepository,
+            config,
+            router,
+            new CharacterTokenEstimator(),
+            usageTracker,
+            transcriptService,
+            null
+        );
+        ChatService chatService = new ChatService(
+            new RepositoryBackedChatMemory(memoryRepository),
+            memoryRepository,
+            metadataRepository,
+            new ChatMarkdownRenderer(),
+            config,
+            contextAdvisor,
+            usageTracker,
+            router,
+            toolCallingManager,
+            toolRegistry,
+            transcriptService,
+            null
+        );
+
+        var response = chatService.chat("conversation-1", "ask a question", "main");
+
+        assertThat(response.toolActivities())
+            .singleElement()
+            .satisfies(activity -> {
+                assertThat(activity.toolName()).isEqualTo("sample_tool");
+                assertThat(activity.status()).isEqualTo("error");
+                assertThat(activity.summary()).contains("Malformed tool-call arguments");
+            });
+        assertThat(chatModel.prompts()).hasSizeGreaterThanOrEqualTo(2);
+        assertThat(chatModel.prompts().get(1)).contains("failed before Magenta could apply them");
+        assertThat(memoryRepository.findByConversationId("conversation-1"))
+            .extracting(Message::getText)
+            .anySatisfy(text -> assertThat(text).contains("Malformed tool-call arguments"))
+            .anySatisfy(text -> assertThat(text).contains("failed before Magenta could apply them"));
+    }
+
+    @Test
     void planningAnswerModelFailureReturnsControlledResponseAfterSavingAnswer() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         ObjectMapper objectMapper = new ObjectMapper();
@@ -561,6 +621,37 @@ class ChatServiceTest {
             }
             return new org.springframework.ai.chat.model.ChatResponse(List.of(
                 new Generation(new AssistantMessage("Recovered after diagnostic."))
+            ));
+        }
+
+        List<String> prompts() {
+            return prompts;
+        }
+    }
+
+    private static final class ToolExecutionFailureThenFinalChatModel implements ChatModel {
+        private final AtomicInteger calls = new AtomicInteger();
+        private final List<String> prompts = new java.util.ArrayList<>();
+
+        @Override
+        public org.springframework.ai.chat.model.ChatResponse call(Prompt prompt) {
+            prompts.add(prompt.getInstructions().stream()
+                .map(Message::getText)
+                .collect(Collectors.joining("\n")));
+            if (calls.getAndIncrement() == 0) {
+                AssistantMessage toolCallMessage = AssistantMessage.builder()
+                    .content("")
+                    .toolCalls(List.of(new AssistantMessage.ToolCall(
+                        "call-1",
+                        "function",
+                        "sample_tool",
+                        "{\"questions\":[{\"question\":\"What should happen next?\"}]}"
+                    )))
+                    .build();
+                return new org.springframework.ai.chat.model.ChatResponse(List.of(new Generation(toolCallMessage)));
+            }
+            return new org.springframework.ai.chat.model.ChatResponse(List.of(
+                new Generation(new AssistantMessage("Recovered after tool execution diagnostic."))
             ));
         }
 

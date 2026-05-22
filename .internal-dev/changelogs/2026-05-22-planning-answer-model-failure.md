@@ -24,6 +24,7 @@ Anonymous chat planning answer submission now handles continuation failures and 
 - If the draft would otherwise be left with no pending question, Magenta queues a recovery clarification so the UI has a next action instead of stalling in `DRAFT`.
 - Duplicate or stale planning answer submissions in a draft with no active prompt now refresh the recovery clarification instead of returning `400 No active planning question exists for this conversation`.
 - Anonymous plan completion validation now resolves relative artifact paths against the chat file directory before falling back to `dataRoot`, so files created by chat-scoped file tools can be read by the validator.
+- Spring AI tool argument conversion failures are converted into model-visible tool diagnostics and retried inside the tool loop instead of aborting the planning continuation.
 - Browser error helpers now display server `error` payload fields instead of falling back to generic HTTP status text.
 
 # Risks

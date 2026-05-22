@@ -28,6 +28,7 @@
 - Patched the saved-answer failure response to queue a recovery clarification when a continuation failure or thread interruption leaves a `DRAFT` plan with no pending question.
 - Patched stale/no-active planning answer submissions in `PLAN` mode to return the current recoverable plan state instead of surfacing `400 No active planning question exists for this conversation`.
 - Patched anonymous completion validation so relative artifact paths are resolved against the chat file directory before falling back to `dataRoot`.
+- Patched Spring AI tool argument conversion failures so they become tool-loop diagnostics and retry prompts rather than aborting planning continuation.
 
 ## Blockers
 

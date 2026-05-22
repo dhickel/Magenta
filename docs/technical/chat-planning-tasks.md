@@ -61,6 +61,8 @@ Anonymous execution is single-flight per conversation. `ActiveTurnRegistry` reje
 
 Tool-call argument JSON is preflight validated before Spring AI tool execution. If any tool call in a model batch has malformed argument JSON, none of the tools in that batch execute. Magenta persists and streams compact synthetic tool diagnostics, records audit detail for the rejected calls, adds a system control message telling the model which call failed parsing, and continues the tool loop so the model can retry. These recovered parser failures do not directly update plan status, execution evidence, or validation feedback.
 
+If Spring AI accepts the raw JSON but fails to convert it into the Java tool parameter types, Magenta treats that as the same class of recoverable tool-call diagnostic. The failed tool call is recorded as an error transcript, the model receives a control message with the conversion failure, and the turn continues so PLAN mode can still end in a queued question or approval state.
+
 `NEEDS_REVIEW` is an execution-review state, not draft planning. `PlanService.mode(...)` resolves it as `NORMAL` while `ChatPlanState.status` remains `NEEDS_REVIEW`, so clients can show evidence and validation feedback without reinstalling PLAN-mode prompts, tools, or planning controls.
 
 ## Saved Plan Chat

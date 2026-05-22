@@ -82,6 +82,7 @@ import org.springframework.ai.retry.NonTransientAiException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.execution.ToolExecutionException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -1295,7 +1296,13 @@ public class ChatService {
 
         phase(s.activeTurn, ActiveTurnPhase.TOOL_CALL);
         int promptMessageCount = s.prompt.getInstructions().size();
-        ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(s.prompt, s.response);
+        ToolExecutionResult toolExecutionResult;
+        try {
+            toolExecutionResult = toolCallingManager.executeToolCalls(s.prompt, s.response);
+        } catch (ToolExecutionException exception) {
+            handleToolExecutionFailure(s, exception);
+            return;
+        }
         List<ToolTranscriptEntry> toolTranscriptEntries = toolTranscriptEntries(s.response, toolExecutionResult);
         List<ChatMessage> pendingToolMessages = new ArrayList<>();
 
@@ -1390,6 +1397,70 @@ public class ChatService {
         }
 
         s.phase = TurnPhase.INVOKE_MODEL;
+    }
+
+    private void handleToolExecutionFailure(ToolLoopState s, ToolExecutionException exception) {
+        logger.warn("Tool execution failed conv={} during tool argument conversion/execution: {}",
+            s.request.conversationId(), exception.getMessage());
+        List<MalformedToolCall> failedCalls = failedToolCalls(s.response, exception);
+        List<ChatMessage> pendingToolMessages = new ArrayList<>();
+        for (MalformedToolCall failedCall : failedCalls) {
+            ToolTranscriptEntry entry = toolTranscriptService.malformedArgumentsEntry(
+                failedCall.id(),
+                failedCall.name(),
+                failedCall.arguments(),
+                failedCall.parserMessage()
+            );
+            Message transcriptMessage = toolTranscriptService.message(entry);
+            s.messagesToPersist.add(transcriptMessage);
+            s.activeToolMessages.add(transcriptMessage);
+            ChatMessage toolMessage = toolMessage(transcriptMessage);
+            if (toolMessage.toolActivity() != null) {
+                s.toolActivities.add(toolMessage.toolActivity());
+            }
+            pendingToolMessages.add(toolMessage);
+            turnAuditWriter.recordToolExec(entry, s.request.conversationId(), s.request.model());
+        }
+
+        SystemMessage controlMessage = new SystemMessage(
+            "One or more tool calls failed before Magenta could apply them: "
+                + compactParserMessage(exception.getMessage()) + ". "
+                + "Retry the failed tool call with the exact schema shown for that tool, or end the planning turn with ask_user_questions or plan_ready_for_approval."
+        );
+        s.messagesToPersist.add(controlMessage);
+        s.activeToolMessages.add(controlMessage);
+
+        ContextManagementAdvisor.ToolLoopPrompt checkpoint = contextManagementAdvisor.prepareToolLoopPrompt(
+            s.request.conversationId(), s.activeToolMessages,
+            s.currentSystemInstructions, s.request.model(), s.request.omitStoredMessages());
+        s.activeToolMessages = new ArrayList<>(checkpoint.activeMessages());
+        s.conversationHistory = new ArrayList<>(checkpoint.messages());
+        s.prompt = new Prompt(s.conversationHistory, s.toolOptions);
+
+        turnAuditWriter.recordContextUsage(s.request.conversationId(), checkpoint.usage(), s.request.model());
+        if (s.toolMessageConsumer != null) {
+            pendingToolMessages.forEach(s.toolMessageConsumer);
+        }
+        if (!checkpoint.toolUseAllowed()) {
+            s.toolUseAbort = new ToolUseAbort(
+                "Context is too large to safely continue tool use after a tool execution failure.");
+            s.phase = TurnPhase.EVALUATE;
+            return;
+        }
+        s.phase = TurnPhase.INVOKE_MODEL;
+    }
+
+    private List<MalformedToolCall> failedToolCalls(org.springframework.ai.chat.model.ChatResponse response, ToolExecutionException exception) {
+        if (response == null || response.getResult() == null || response.getResult().getOutput() == null) {
+            return List.of(new MalformedToolCall(null, "unknown", "", exception.getMessage()));
+        }
+        List<AssistantMessage.ToolCall> toolCalls = response.getResult().getOutput().getToolCalls();
+        if (toolCalls == null || toolCalls.isEmpty()) {
+            return List.of(new MalformedToolCall(null, "unknown", "", exception.getMessage()));
+        }
+        return toolCalls.stream()
+            .map(call -> new MalformedToolCall(call.id(), call.name(), call.arguments(), exception.getMessage()))
+            .toList();
     }
 
     private void handleMalformedToolCallArguments(ToolLoopState s, List<MalformedToolCall> malformedToolCalls) {
