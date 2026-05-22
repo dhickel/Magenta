@@ -481,16 +481,14 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
     }
 
     private String summarize(List<Message> olderMessages) {
-        String compactionModelKey = runtimeSettingsService == null
-            ? aiConfig.resolvedCompactionModelKey()
-            : keyForRemoteModel(runtimeSettingsService.compactionModel());
-        ModelConfig compactionModel = aiConfig.models().get(compactionModelKey);
+        String compactionModelRef = resolveCompactionModelReference();
+        ModelConfig compactionModel = chatModelRouter.modelConfig(compactionModelRef);
         String renderedConversation = renderConversation(olderMessages);
-        String summary = chatModelRouter.chatClient(compactionModel.remoteModelName())
+        String summary = chatModelRouter.chatClient(compactionModelRef)
             .prompt()
             .system(SUMMARY_SYSTEM_PROMPT)
             .user(renderedConversation)
-            .options(chatModelRouter.chatOptions(compactionModel.remoteModelName()))
+            .options(chatModelRouter.chatOptions(compactionModelRef))
             .call()
             .content();
         if (!StringUtils.hasText(summary)) {
@@ -724,11 +722,25 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
     }
 
     private String keyForRemoteModel(String remoteModelName) {
+        if (!StringUtils.hasText(remoteModelName)) {
+            return null;
+        }
         return aiConfig.models().entrySet().stream()
             .filter(entry -> remoteModelName.equals(entry.getValue().remoteModelName()))
             .map(Map.Entry::getKey)
             .findFirst()
             .orElse(remoteModelName);
+    }
+
+    private String resolveCompactionModelReference() {
+        if (runtimeSettingsService == null) {
+            return aiConfig.resolvedCompactionModelKey();
+        }
+        String runtimeCompaction = keyForRemoteModel(runtimeSettingsService.compactionModel());
+        if (StringUtils.hasText(runtimeCompaction)) {
+            return runtimeCompaction;
+        }
+        return aiConfig.resolvedCompactionModelKey();
     }
 
     private String conversationId(Map<String, Object> context) {

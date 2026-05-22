@@ -9,6 +9,7 @@ import org.springframework.util.StringUtils;
 public record AiConfig(
     String defaultAgent,
     String defaultModel,
+    String summaryModel,
     @JsonProperty("summeryModel") String summeryModel,
     String planningModel,
     @JsonProperty("compactionModel") String compactionModel,
@@ -28,8 +29,17 @@ public record AiConfig(
         return StringUtils.hasText(defaultModel) ? defaultModel : null;
     }
 
+    public String resolvedSummaryModelKey() {
+        return StringUtils.hasText(summaryModel) ? summaryModel : summeryModel;
+    }
+
+    /**
+     * @deprecated Use {@link #resolvedSummaryModelKey()}. This remains for older callers while
+     * legacy external configs still accept the misspelled {@code summeryModel} property.
+     */
+    @Deprecated
     public String resolvedSummeryModelKey() {
-        return summeryModel;
+        return resolvedSummaryModelKey();
     }
 
     public String resolvedPlanningModelKey() {
@@ -37,7 +47,7 @@ public record AiConfig(
     }
 
     public String resolvedCompactionModelKey() {
-        return StringUtils.hasText(compactionModel) ? compactionModel : summeryModel;
+        return StringUtils.hasText(compactionModel) ? compactionModel : resolvedSummaryModelKey();
     }
 
     public boolean unsafeAllowWildcardShellCommandsEnabled() {
@@ -47,7 +57,7 @@ public record AiConfig(
     public AiConfig(
         String defaultAgent,
         String defaultModel,
-        String summeryModel,
+        String summaryModel,
         String planningModel,
         String compactionModel,
         Integer contextBufferPercent,
@@ -56,43 +66,43 @@ public record AiConfig(
         Map<String, ModelConfig> models,
         Map<String, AgentConfig> agents
     ) {
-        this(defaultAgent, defaultModel, summeryModel, planningModel, compactionModel,
+        this(defaultAgent, defaultModel, summaryModel, null, planningModel, compactionModel,
             contextBufferPercent, dataRoot, webSearch, models, agents, false);
     }
 
     public AiConfig(
         String defaultAgent,
-        String summeryModel,
+        String summaryModel,
         String planningModel,
         Integer contextBufferPercent,
         Path dataRoot,
         Map<String, ModelConfig> models,
         Map<String, AgentConfig> agents
     ) {
-        this(defaultAgent, null, summeryModel, planningModel, null, contextBufferPercent, dataRoot, null, models, agents, false);
+        this(defaultAgent, null, summaryModel, null, planningModel, null, contextBufferPercent, dataRoot, null, models, agents, false);
     }
 
     public AiConfig(
         String defaultAgent,
-        String summeryModel,
+        String summaryModel,
         Integer contextBufferPercent,
         Path dataRoot,
         WebSearchConfig webSearch,
         Map<String, ModelConfig> models,
         Map<String, AgentConfig> agents
     ) {
-        this(defaultAgent, null, summeryModel, null, null, contextBufferPercent, dataRoot, webSearch, models, agents, false);
+        this(defaultAgent, null, summaryModel, null, null, null, contextBufferPercent, dataRoot, webSearch, models, agents, false);
     }
 
     public AiConfig(
         String defaultAgent,
-        String summeryModel,
+        String summaryModel,
         Integer contextBufferPercent,
         Path dataRoot,
         Map<String, ModelConfig> models,
         Map<String, AgentConfig> agents
     ) {
-        this(defaultAgent, null, summeryModel, null, null, contextBufferPercent, dataRoot, null, models, agents, false);
+        this(defaultAgent, null, summaryModel, null, null, null, contextBufferPercent, dataRoot, null, models, agents, false);
     }
 
 }

@@ -128,7 +128,7 @@ class ScheduleReactionFeatureParitySpringTest {
                 {
                   "defaultAgent": "magenta",
                   "defaultModel": "local-qwen",
-                  "summeryModel": "local-qwen",
+                  "summaryModel": "local-qwen",
                   "planningModel": "local-qwen",
                   "compactionModel": "local-qwen",
                   "contextBufferPercent": 33,

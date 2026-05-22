@@ -11,8 +11,10 @@ import io.mindspice.magenta2.ai.agent.job.AgentJobRepository;
 import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
 import io.mindspice.magenta2.ai.chat.service.ChatModelRouter;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
+import io.mindspice.magenta2.ai.config.user.ModelConfig;
 import io.mindspice.magenta2.ai.execution.MagentaWorkExecutor;
 import io.mindspice.magenta2.ai.execution.MagentaWorkRequest;
+import io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettingsService;
 import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,6 +38,7 @@ public class AgentJobService {
     private final AiConfig aiConfig;
     private final ObjectMapper objectMapper;
     private final MagentaWorkExecutor magentaWorkExecutor;
+    private final RuntimeSettingsService runtimeSettingsService;
 
     @Autowired
     public AgentJobService(
@@ -43,6 +46,7 @@ public class AgentJobService {
         ChatSessionMetadataRepository chatSessionMetadataRepository,
         ChatModelRouter chatModelRouter,
         AiConfig aiConfig,
+        @Autowired(required = false) RuntimeSettingsService runtimeSettingsService,
         ObjectMapper objectMapper,
         MagentaWorkExecutor magentaWorkExecutor
     ) {
@@ -50,12 +54,17 @@ public class AgentJobService {
         this.chatSessionMetadataRepository = chatSessionMetadataRepository;
         this.chatModelRouter = chatModelRouter;
         this.aiConfig = aiConfig;
+        this.runtimeSettingsService = runtimeSettingsService;
         this.objectMapper = objectMapper;
         this.magentaWorkExecutor = magentaWorkExecutor;
     }
 
     public Optional<AgentJob> submitConversationTitle(String conversationId, String selectedModel, String firstUserMessage) {
-        if (!StringUtils.hasText(conversationId) || !StringUtils.hasText(selectedModel) || !StringUtils.hasText(firstUserMessage)) {
+        if (!StringUtils.hasText(conversationId) || !StringUtils.hasText(firstUserMessage)) {
+            return Optional.empty();
+        }
+        String titleModel = titleModel();
+        if (!StringUtils.hasText(titleModel)) {
             return Optional.empty();
         }
         if (StringUtils.hasText(chatSessionMetadataRepository.findTitle(conversationId).orElse(null))) {
@@ -68,7 +77,7 @@ public class AgentJobService {
             UUID.randomUUID().toString(),
             AgentJobType.CONVERSATION_TITLE,
             conversationId,
-            selectedModel,
+            titleModel,
             json(Map.of("firstUserMessage", firstUserMessage))
         );
         enqueued.ifPresent(job -> {
@@ -118,6 +127,17 @@ public class AgentJobService {
             .chatClientResponse();
         String rawTitle = response.chatResponse().getResult().getOutput().getText();
         return cleanTitle(rawTitle);
+    }
+
+    private String titleModel() {
+        if (runtimeSettingsService != null) {
+            return runtimeSettingsService.summaryModel();
+        }
+        if (aiConfig == null || aiConfig.models() == null) {
+            return null;
+        }
+        ModelConfig model = aiConfig.models().get(aiConfig.resolvedSummaryModelKey());
+        return model == null ? null : model.remoteModelName();
     }
 
     String cleanTitle(String rawTitle) {

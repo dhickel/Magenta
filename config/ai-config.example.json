@@ -1,7 +1,7 @@
 {
   "defaultAgent": "magenta",
   "defaultModel": "deepseek-v4",
-  "summeryModel": "granite4.1:8b",
+  "summaryModel": "deepseek-flash-v4-zero",
   "planningModel": "deepseek-v4",
   "compactionModel": "local-gemma-e4b",
   "contextBufferPercent": 33,
@@ -53,6 +53,14 @@
       "endpointType": "OPENAI_COMPATIBLE",
       "contextLength": 128000,
       "thinkLevel": 4,
+      "apiKey": "set-your-provider-api-key"
+    },
+    "deepseek-flash-v4-zero": {
+      "remoteModelName": "deepseek-v4-flash",
+      "remoteEndpoint": "https://api.deepseek.com",
+      "endpointType": "DEEPSEEK",
+      "contextLength": 128000,
+      "thinkLevel": 0,
       "apiKey": "set-your-provider-api-key"
     }
   },

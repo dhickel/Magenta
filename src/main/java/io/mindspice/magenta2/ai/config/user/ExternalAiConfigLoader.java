@@ -44,6 +44,7 @@ public final class ExternalAiConfigLoader {
         return new AiConfig(
             config.defaultAgent(),
             config.defaultModel(),
+            config.summaryModel(),
             config.summeryModel(),
             config.planningModel(),
             config.compactionModel(),
@@ -66,16 +67,16 @@ public final class ExternalAiConfigLoader {
         if (config.models() == null || config.models().isEmpty()) {
             throw new IllegalArgumentException("AI config must define models");
         }
-        String summeryModelKey = config.resolvedSummeryModelKey();
-        if (!StringUtils.hasText(summeryModelKey)) {
-            throw new IllegalArgumentException("AI config must define summeryModel");
+        String summaryModelKey = config.resolvedSummaryModelKey();
+        if (!StringUtils.hasText(summaryModelKey)) {
+            throw new IllegalArgumentException("AI config must define summaryModel");
         }
-        ModelConfig summeryModel = config.models().get(summeryModelKey);
-        if (summeryModel == null) {
-            throw new IllegalArgumentException("summeryModel references missing model: " + summeryModelKey);
+        ModelConfig summaryModel = config.models().get(summaryModelKey);
+        if (summaryModel == null) {
+            throw new IllegalArgumentException("summaryModel references missing model: " + summaryModelKey);
         }
-        if (summeryModel.contextLength() == null || summeryModel.contextLength() <= 0) {
-            throw new IllegalArgumentException("summeryModel must define a positive contextLength: " + summeryModelKey);
+        if (summaryModel.contextLength() == null || summaryModel.contextLength() <= 0) {
+            throw new IllegalArgumentException("summaryModel must define a positive contextLength: " + summaryModelKey);
         }
         if (StringUtils.hasText(config.defaultModel()) && !config.models().containsKey(config.defaultModel())) {
             throw new IllegalArgumentException("defaultModel references missing model: " + config.defaultModel());

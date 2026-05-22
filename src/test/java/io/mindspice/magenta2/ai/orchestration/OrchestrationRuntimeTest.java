@@ -442,6 +442,7 @@ class OrchestrationRuntimeTest {
             "legacy",
             "main",
             "summary",
+            null,
             "planning",
             "main",
             10,

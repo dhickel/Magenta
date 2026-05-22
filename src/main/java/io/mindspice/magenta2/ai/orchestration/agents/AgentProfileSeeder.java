@@ -48,7 +48,7 @@ public class AgentProfileSeeder implements ApplicationRunner {
             ? legacy.model()
             : (StringUtils.hasText(aiConfig.resolvedDefaultModelKey())
                 ? aiConfig.resolvedDefaultModelKey()
-                : aiConfig.resolvedSummeryModelKey());
+                : aiConfig.resolvedSummaryModelKey());
         String prompt = legacy == null ? fallbackPrompt() : legacy.systemPrompt();
         AgentProfile seeded = service.create(new AgentProfile(
             id,
@@ -67,7 +67,7 @@ public class AgentProfileSeeder implements ApplicationRunner {
             seeded.name(),
             model,
             aiConfig.resolvedPlanningModelKey(),
-            aiConfig.resolvedSummeryModelKey(),
+            aiConfig.resolvedSummaryModelKey(),
             aiConfig.resolvedCompactionModelKey(),
             aiConfig.resolvedContextBufferPercent()
         ));

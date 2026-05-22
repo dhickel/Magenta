@@ -40,7 +40,7 @@ class ContextManagementAdvisorTest {
         ContextManagementAdvisor advisor = new ContextManagementAdvisor(
             memoryRepository,
             aiConfig(),
-            new SummaryRouter(new SummaryChatModel()),
+            new SummaryRouter(new SummaryChatModel(), aiConfig()),
             new CharacterTokenEstimator(),
             new ContextUsageTracker(),
             new ToolTranscriptService(new ObjectMapper()),
@@ -72,7 +72,7 @@ class ContextManagementAdvisorTest {
         ContextManagementAdvisor advisor = new ContextManagementAdvisor(
             memoryRepository,
             aiConfig(),
-            new SummaryRouter(new SummaryChatModel()),
+            new SummaryRouter(new SummaryChatModel(), aiConfig()),
             new CharacterTokenEstimator(),
             new ContextUsageTracker(),
             new ToolTranscriptService(new ObjectMapper()),
@@ -104,10 +104,11 @@ class ContextManagementAdvisorTest {
         JdbcTemplate jdbcTemplate = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
         ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
         SummaryChatModel summaryModel = new SummaryChatModel();
+        SummaryRouter summaryRouter = new SummaryRouter(summaryModel, aiConfig());
         ContextManagementAdvisor advisor = new ContextManagementAdvisor(
             memoryRepository,
             aiConfig(),
-            new SummaryRouter(summaryModel),
+            summaryRouter,
             new CharacterTokenEstimator(),
             new ContextUsageTracker(),
             new ToolTranscriptService(new ObjectMapper()),
@@ -130,9 +131,44 @@ class ContextManagementAdvisorTest {
         advisor.preparePrompt("conversation-1", List.of(new SystemMessage("system"), new UserMessage("current")), "qwen3");
 
         assertThat(summaryModel.lastPromptText).contains("prior summary to keep");
+        assertThat(summaryRouter.lastModelRef).isEqualTo("summary");
         assertThat(memoryRepository.findByConversationId("conversation-1"))
             .filteredOn(advisor::isCompactionNotice)
             .hasSize(1);
+    }
+
+    @Test
+    void compactionUsesConfiguredCompactionModelWhenPresent() {
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
+        SummaryChatModel summaryModel = new SummaryChatModel();
+        AiConfig config = aiConfigWithCompactionModel();
+        SummaryRouter summaryRouter = new SummaryRouter(summaryModel, config);
+        ContextManagementAdvisor advisor = new ContextManagementAdvisor(
+            memoryRepository,
+            config,
+            summaryRouter,
+            new CharacterTokenEstimator(),
+            new ContextUsageTracker(),
+            new ToolTranscriptService(new ObjectMapper()),
+            null
+        );
+        memoryRepository.saveAll("conversation-1", List.of(
+            new UserMessage("older message " + "x".repeat(250)),
+            new AssistantMessage("older answer " + "x".repeat(250)),
+            new UserMessage("older message " + "x".repeat(250)),
+            new AssistantMessage("older answer " + "x".repeat(250)),
+            new UserMessage("tail one " + "x".repeat(60)),
+            new AssistantMessage("tail two " + "x".repeat(60)),
+            new UserMessage("tail three " + "x".repeat(60)),
+            new AssistantMessage("tail four " + "x".repeat(60)),
+            new UserMessage("tail five " + "x".repeat(60)),
+            new AssistantMessage("tail six " + "x".repeat(60))
+        ));
+
+        advisor.preparePrompt("conversation-1", List.of(new SystemMessage("system"), new UserMessage("current")), "qwen3");
+
+        assertThat(summaryRouter.lastModelRef).isEqualTo("compact");
     }
 
     @Test
@@ -143,7 +179,7 @@ class ContextManagementAdvisorTest {
         ContextManagementAdvisor advisor = new ContextManagementAdvisor(
             memoryRepository,
             aiConfig(),
-            new SummaryRouter(summaryModel),
+            new SummaryRouter(summaryModel, aiConfig()),
             new CharacterTokenEstimator(),
             new ContextUsageTracker(),
             new ToolTranscriptService(new ObjectMapper()),
@@ -182,7 +218,7 @@ class ContextManagementAdvisorTest {
         ContextManagementAdvisor advisor = new ContextManagementAdvisor(
             memoryRepository,
             aiConfig(),
-            new SummaryRouter(summaryModel),
+            new SummaryRouter(summaryModel, aiConfig()),
             new CharacterTokenEstimator(),
             new ContextUsageTracker(),
             new ToolTranscriptService(new ObjectMapper()),
@@ -225,7 +261,7 @@ class ContextManagementAdvisorTest {
         ContextManagementAdvisor advisor = new ContextManagementAdvisor(
             memoryRepository,
             aiConfig,
-            new SummaryRouter(summaryModel),
+            new SummaryRouter(summaryModel, aiConfig()),
             new CharacterTokenEstimator(),
             new ContextUsageTracker(),
             new ToolTranscriptService(new ObjectMapper()),
@@ -263,7 +299,7 @@ class ContextManagementAdvisorTest {
         ContextManagementAdvisor advisor = new ContextManagementAdvisor(
             memoryRepository,
             aiConfig,
-            new SummaryRouter(summaryModel),
+            new SummaryRouter(summaryModel, aiConfig()),
             new CharacterTokenEstimator(),
             new ContextUsageTracker(),
             new ToolTranscriptService(new ObjectMapper()),
@@ -302,6 +338,27 @@ class ContextManagementAdvisorTest {
         );
     }
 
+    private AiConfig aiConfigWithCompactionModel() {
+        return new AiConfig(
+            "magenta",
+            null,
+            "summary",
+            null,
+            null,
+            "compact",
+            10,
+            null,
+            null,
+            Map.of(
+                "main", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 1200, null, null),
+                "summary", new ModelConfig("summary-model", "http://localhost:11434", EndpointType.OLLAMA, 512, null, null),
+                "compact", new ModelConfig("compaction-model", "http://localhost:11434", EndpointType.OLLAMA, 512, null, null)
+            ),
+            Map.of("magenta", new AgentConfig("main", "You are Magenta.", List.of())),
+            false
+        );
+    }
+
     private static final class CharacterTokenEstimator implements TokenCountEstimator {
         @Override
         public int estimate(String text) {
@@ -327,15 +384,31 @@ class ContextManagementAdvisorTest {
 
     private static final class SummaryRouter extends ChatModelRouter {
         private final ChatClient chatClient;
+        private final AiConfig config;
+        private String lastModelRef;
 
-        SummaryRouter(ChatModel chatModel) {
+        SummaryRouter(ChatModel chatModel, AiConfig config) {
             super(null, null, null);
+            this.config = config;
             this.chatClient = ChatClient.builder(chatModel).build();
         }
 
         @Override
         public ChatClient chatClient(String model) {
+            lastModelRef = model;
             return chatClient;
+        }
+
+        @Override
+        public ModelConfig modelConfig(String model) {
+            ModelConfig byKey = config.models().get(model);
+            if (byKey != null) {
+                return byKey;
+            }
+            return config.models().values().stream()
+                .filter(value -> model.equals(value.remoteModelName()))
+                .findFirst()
+                .orElseThrow();
         }
 
         @Override

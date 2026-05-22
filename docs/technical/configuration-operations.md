@@ -36,7 +36,8 @@ The file-backed config records:
 - Model endpoint definitions.
 - Endpoint type.
 - Default model selection.
-- Summary/planning model defaults.
+- `summaryModel` and planning model defaults. Legacy configs that still use the misspelled `summeryModel` field are accepted as a fallback, but new configs should use `summaryModel`.
+- Optional `compactionModel`; when omitted, context compaction falls back to `summaryModel`.
 - Context buffer policy.
 - Web search settings.
 - Legacy agent seed configuration.
@@ -45,6 +46,8 @@ The file-backed config records:
 Source records include `AiConfig`, `ModelConfig`, `EndpointType`, `AgentConfig`, and `WebSearchConfig`.
 
 Model endpoint definitions are read from file config. Durable agent profiles and runtime settings are stored in SQLite.
+
+Conversation title generation uses the effective summary model, not the model selected for the chat turn. Context compaction uses the effective compaction model, falling back to the effective summary model when no compaction model is configured.
 
 ## Runtime Settings
 

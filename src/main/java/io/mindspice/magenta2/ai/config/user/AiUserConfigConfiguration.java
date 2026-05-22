@@ -36,6 +36,7 @@ public class AiUserConfigConfiguration {
         return new AiConfig(
             config.defaultAgent(),
             config.defaultModel(),
+            config.summaryModel(),
             config.summeryModel(),
             config.planningModel(),
             config.compactionModel(),

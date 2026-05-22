@@ -29,7 +29,7 @@ public class RuntimeSettingsService {
             legacyDefaultAgentName(),
             aiConfig.resolvedDefaultModelKey(),
             aiConfig.resolvedPlanningModelKey(),
-            aiConfig.resolvedSummeryModelKey(),
+            aiConfig.resolvedSummaryModelKey(),
             aiConfig.resolvedCompactionModelKey(),
             aiConfig.resolvedContextBufferPercent(),
             aiConfig.resolvedDefaultModelKey(),
@@ -95,7 +95,17 @@ public class RuntimeSettingsService {
         RuntimeSettings settings = get();
         String key = StringUtils.hasText(settings.compactionModel())
             ? settings.compactionModel()
-            : aiConfig.resolvedCompactionModelKey();
+            : (StringUtils.hasText(settings.summaryModel())
+                ? settings.summaryModel()
+                : aiConfig.resolvedCompactionModelKey());
+        return remoteModelName(key);
+    }
+
+    public String summaryModel() {
+        RuntimeSettings settings = get();
+        String key = StringUtils.hasText(settings.summaryModel())
+            ? settings.summaryModel()
+            : aiConfig.resolvedSummaryModelKey();
         return remoteModelName(key);
     }
 
@@ -228,7 +238,7 @@ public class RuntimeSettingsService {
         if (StringUtils.hasText(agentName) && aiConfig.agents() != null && aiConfig.agents().get(agentName) != null) {
             return aiConfig.agents().get(agentName).model();
         }
-        return aiConfig.resolvedSummeryModelKey();
+        return aiConfig.resolvedSummaryModelKey();
     }
 
     private String legacyDefaultAgentName() {

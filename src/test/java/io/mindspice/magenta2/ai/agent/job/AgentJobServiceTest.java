@@ -7,6 +7,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.agent.job.AgentJobRepository;
 import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
+import io.mindspice.magenta2.ai.config.user.AiConfig;
+import io.mindspice.magenta2.ai.config.user.EndpointType;
+import io.mindspice.magenta2.ai.config.user.ModelConfig;
 import io.mindspice.magenta2.ai.execution.MagentaWorkExecutor;
 import io.mindspice.magenta2.ai.execution.MagentaWorkKind;
 import org.junit.jupiter.api.Test;
@@ -43,7 +46,7 @@ class AgentJobServiceTest {
         assertThat(metadataRepository.findTitle("conversation-1")).contains("Useful Title");
         AgentJob job = jobRepository.findAll().getFirst();
         assertThat(job.status()).isEqualTo(AgentJobStatus.SUCCEEDED);
-        assertThat(job.selectedModel()).isEqualTo("qwen3");
+        assertThat(job.selectedModel()).isEqualTo("summary-remote");
         assertThat(job.resultJson()).contains("Useful Title");
     }
 
@@ -56,7 +59,7 @@ class AgentJobServiceTest {
             "job-1",
             AgentJobType.CONVERSATION_TITLE,
             "conversation-1",
-            "qwen3",
+            "summary-remote",
             "{\"firstUserMessage\":\"Please help me plan reminders\"}"
         ).orElseThrow();
         metadataRepository.updateTitle("conversation-1", "Manual Title");
@@ -68,7 +71,7 @@ class AgentJobServiceTest {
     }
 
     @Test
-    void titleJobUsesChatModelDirectly() throws Exception {
+    void titleJobUsesSummaryModelInsteadOfChatModel() throws Exception {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         AgentJobRepository jobRepository = new AgentJobRepository(jdbcTemplate);
         ChatSessionMetadataRepository metadataRepository = new ChatSessionMetadataRepository(jdbcTemplate);
@@ -83,8 +86,8 @@ class AgentJobServiceTest {
         service.submitConversationTitle("conversation-1", "chat-remote", "Please help me plan reminders");
         Thread.sleep(100); // wait for async background job
 
-        assertThat(service.lastSelectedModel).isEqualTo("chat-remote");
-        assertThat(jobRepository.findAll().getFirst().selectedModel()).isEqualTo("chat-remote");
+        assertThat(service.lastSelectedModel).isEqualTo("summary-remote");
+        assertThat(jobRepository.findAll().getFirst().selectedModel()).isEqualTo("summary-remote");
     }
 
     @Test
@@ -119,6 +122,7 @@ class AgentJobServiceTest {
             new AgentJobRepository(jdbcTemplate),
             new ChatSessionMetadataRepository(jdbcTemplate),
             null,
+            aiConfig(),
             null,
             new ObjectMapper(),
             executor
@@ -136,6 +140,19 @@ class AgentJobServiceTest {
         return new JdbcTemplate(dataSource);
     }
 
+    private static AiConfig aiConfig() {
+        return new AiConfig(
+            "magenta",
+            "summary",
+            10,
+            null,
+            Map.of(
+                "summary", new ModelConfig("summary-remote", "http://localhost:11434", EndpointType.OLLAMA, 8192, null, null)
+            ),
+            Map.of()
+        );
+    }
+
     private static class FixedTitleAgentJobService extends AgentJobService {
         private final String title;
         private String lastSelectedModel;
@@ -146,7 +163,7 @@ class AgentJobServiceTest {
             MagentaWorkExecutor executor,
             String title
         ) {
-            super(jobRepository, metadataRepository, null, null, new ObjectMapper(), executor);
+            super(jobRepository, metadataRepository, null, aiConfig(), null, new ObjectMapper(), executor);
             this.title = title;
         }
 
@@ -168,7 +185,7 @@ class AgentJobServiceTest {
             ChatSessionMetadataRepository metadataRepository,
             MagentaWorkExecutor executor
         ) {
-            super(jobRepository, metadataRepository, null, null, new ObjectMapper(), executor);
+            super(jobRepository, metadataRepository, null, aiConfig(), null, new ObjectMapper(), executor);
         }
 
         @Override
