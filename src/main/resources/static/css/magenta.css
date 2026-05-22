@@ -645,25 +645,48 @@ body {
     border: 0;
     background: transparent;
     padding: 0;
+    margin-bottom: 1rem;
 }
 
 .planning-question-card {
     position: relative;
     box-sizing: border-box;
     width: 100%;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    column-gap: 0.68rem;
+    align-items: center;
     border: 1px solid #b8cbe0;
     border-radius: 8px;
-    background: #f7fbff;
+    background: linear-gradient(180deg, #fffdf5 0%, #f7fbff 100%);
     color: #243246;
-    padding: 0.72rem 0.8rem 0.78rem;
-    box-shadow: 0 0.25rem 0.8rem rgba(49, 93, 145, 0.08);
+    padding: 0.78rem 0.85rem 0.82rem;
+    box-shadow: 0 0.25rem 0.8rem rgba(49, 93, 145, 0.08), inset 0.22rem 0 0 #f6c445;
+}
+
+.planning-question-mark {
+    grid-column: 1;
+    grid-row: 1;
+    display: inline-grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid #e7b83d;
+    border-radius: 50%;
+    background: #ffd767;
+    color: #5c4510;
+    font-size: 1.15rem;
+    font-weight: 900;
+    line-height: 1;
+    box-shadow: 0 0.16rem 0.35rem rgba(130, 95, 20, 0.18);
 }
 
 .planning-question-count {
-    position: absolute;
-    top: 0.48rem;
-    right: 0.55rem;
-    max-width: min(45%, 11rem);
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+    align-self: start;
+    max-width: min(32vw, 11rem);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -678,7 +701,9 @@ body {
 }
 
 .planning-question-text {
-    padding-right: min(48%, 12rem);
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
     color: #243246;
     font-size: 0.95rem;
     font-weight: 700;
@@ -1122,13 +1147,31 @@ body {
     }
 
     .planning-question-count {
-        position: static;
+        grid-column: 1 / -1;
+        grid-row: 1;
+        justify-self: start;
         display: inline-flex;
         max-width: 100%;
         margin-bottom: 0.4rem;
     }
 
     .planning-question-text {
+        grid-column: 2;
+        grid-row: 2;
+    }
+
+    .planning-question-mark {
+        grid-column: 1;
+        grid-row: 2;
+    }
+
+    .planning-question-text {
         padding-right: 0;
+    }
+
+    .planning-question-mark {
+        width: 1.8rem;
+        height: 1.8rem;
+        font-size: 1rem;
     }
 }

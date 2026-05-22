@@ -63,6 +63,10 @@ final class ChatModuleRenderer {
         if (id != null && !id.isBlank()) {
             card.withId(id);
         }
+        card.withChild(new HtmlTag("span")
+            .withClass("planning-question-mark")
+            .withAttribute("aria-hidden", "true")
+            .withInnerText("?"));
         if (countLabel != null && !countLabel.isBlank()) {
             card.withChild(new HtmlTag("span")
                 .withClass("planning-question-count")

@@ -260,6 +260,7 @@
 
     function planningQuestionCard(id, question, countLabel) {
         return '<div id="' + escapeHtml(id) + '" class="planning-question-card">'
+            + '<span class="planning-question-mark" aria-hidden="true">?</span>'
             + (countLabel ? '<span class="planning-question-count">' + escapeHtml(countLabel) + '</span>' : '')
             + '<div class="planning-question-text">' + escapeHtml(question) + '</div>'
             + '</div>';
