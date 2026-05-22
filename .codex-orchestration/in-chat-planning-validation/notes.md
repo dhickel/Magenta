@@ -162,3 +162,4 @@ Remediation:
 - Validator input now includes a required completion checklist containing every deliverable and validation criterion using exact text.
 - Artifact content available to the validator was raised from 8 KB to 60 KB so medium-length markdown reports can be inspected in one pass.
 - Session plan artifact validation now resolves `outputs/...` and `workspace/...` aliases against the anonymous chat file directory when the direct relative path is not present.
+- Runtime 17 confirmed the alias resolution fix and final completion path on commit `e85b14e`: inline `/plan <topic>` reached approval, execution created `f13-backcross-report.md`, `plan_complete` accepted `outputs/f13-backcross-report.md` without `artifact not found`, intermediate failures were genuine content/evidence validation, and the plan reached `COMPLETED`.
