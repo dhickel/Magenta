@@ -25,10 +25,11 @@
 ## Remediation Notes
 
 - Patched `ChatService.submitPlanAnswer(...)` so failures after a saved answer return a controlled assistant notice and current plan state instead of propagating a servlet error.
+- Patched the saved-answer failure response to queue a recovery clarification when a continuation failure or thread interruption leaves a `DRAFT` plan with no pending question.
 
 ## Blockers
 
-- Pending.
+- Need another browser/DB validation pass to confirm the recovery prompt prevents the stalled draft observed after the second run.
 
 ## Closeout Work
 
@@ -42,3 +43,19 @@
 
 - Treat `/chat` anonymous planning as session-local and separate from saved `/plans`.
 - Read `.internal-dev/knowledge/live-chat-mcp-workflow-testing.md` before browser validation.
+
+## Second Browser/DB Validation Pass (Non-Mutating)
+
+- Date: 2026-05-22
+- Branch: `in-chat-planning-validation-remediation`
+- Runtime:
+  - `mvn spring-boot:run -Dspring-boot.run.arguments='--server.port=18080 --magenta.root.path=/tmp/magenta2-in-chat-planning-validation-root-2 --spring.datasource.url=jdbc:sqlite:/tmp/magenta2-in-chat-planning-validation-2.sqlite?foreign_keys=true --magenta.executor.chat-threads=4'`
+- Conversation: `a2ecde7f-c6ec-49d8-8c66-3b433c490a4c`
+
+Findings:
+- First attempt used `/plan <arguments>` and correctly returned `400 BAD_REQUEST "plan does not accept arguments"` (expected with current command contract).
+- Full browser flow rerun with `/plan` then answers posted through main composer.
+- No 500 and no `No active planning question exists for this conversation` response occurred during answer submission.
+- Planning accepted three answers (`goal`, `assumptions`, `deliverables`) but did not surface a new prompt or `READY_FOR_APPROVAL` actions afterward.
+- DB state remained `plan_definitions.status=DRAFT`, `planning_task=define_deliverables`, `pending_question_index=0`, `pending_questions_json` empty; no `plan_chat_messages` were persisted.
+- `audit_event` recorded multiple `web_search` tool calls with empty query text and `completed` status (`Searched web for `` and returned 0 results.`), then no further planning-state advancement.

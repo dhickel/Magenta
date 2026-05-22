@@ -102,7 +102,7 @@ Task output artifacts are written under the effective workspace at `outputs/task
 
 Anonymous `/chat` plans run inside the chat conversation instead of creating saved `/plans` runs. During execution, Magenta records evidence and validation feedback in the chat plan status area.
 
-When you answer an anonymous chat planning question, Magenta saves the answer before asking the configured planning model to continue. If the model request fails or a planning tool dependency is unavailable, the chat shows a controlled notice and keeps your answer in the transcript. Fix the model configuration or unavailable service, then send another planning message to continue.
+When you answer an anonymous chat planning question, Magenta saves the answer before asking the configured planning model to continue. If the model request fails, a planning tool dependency is unavailable, or the turn is interrupted after draft edits, the chat shows a controlled notice and keeps your answer in the transcript. If no next prompt is available, Magenta queues a recovery clarification so you can keep planning after fixing the model configuration or unavailable service.
 
 Only one anonymous plan execution can run for a chat conversation at a time. If another execution is already active, Magenta rejects the second request instead of attaching it to the in-progress run.
 

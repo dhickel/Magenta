@@ -397,7 +397,8 @@ class ChatServiceTest {
         var response = chatService.submitPlanAnswer("conversation-1", "A reliable planning flow.", null, 1);
 
         assertThat(response.response()).contains("I saved your planning answer");
-        assertThat(response.planState().promptQuestion()).isNull();
+        assertThat(response.planState().promptQuestion())
+            .isEqualTo("What should we clarify, change, or add before continuing this plan?");
         assertThat(memoryRepository.findByConversationId("conversation-1"))
             .extracting(Message::getText)
             .contains(
@@ -450,7 +451,8 @@ class ChatServiceTest {
 
         assertThat(response.response()).contains("I saved your planning answer");
         assertThat(response.response()).contains("planning tool or model call failed");
-        assertThat(response.planState().promptQuestion()).isNull();
+        assertThat(response.planState().promptQuestion())
+            .isEqualTo("What should we clarify, change, or add before continuing this plan?");
         assertThat(memoryRepository.findByConversationId("conversation-1"))
             .extracting(Message::getText)
             .contains(

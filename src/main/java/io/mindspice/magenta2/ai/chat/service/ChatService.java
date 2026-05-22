@@ -630,6 +630,7 @@ public class ChatService {
     }
 
     private ChatResponse.MsgResponse savedAnswerFailureResponse(String conversationId, String model, String message) {
+        ensureRecoverablePlanningPrompt(conversationId);
         chatMemory.add(conversationId, List.of(new AssistantMessage(message)));
         return new ChatResponse.MsgResponse(
             conversationId,
@@ -638,6 +639,19 @@ public class ChatService {
             maintainContextUsage(conversationId, model).usage(),
             planState(conversationId)
         );
+    }
+
+    private void ensureRecoverablePlanningPrompt(String conversationId) {
+        if (planService == null || planService.mode(conversationId) != PlanMode.PLAN) {
+            return;
+        }
+        ChatPlanState state = planService.view(conversationId);
+        if (!"DRAFT".equals(state.status()) || StringUtils.hasText(state.promptQuestion())) {
+            return;
+        }
+        planService.askQuestions(conversationId, List.of(
+            "What should we clarify, change, or add before continuing this plan?"
+        ));
     }
 
     public ChatPlanState approvePlan(String conversationId) {
