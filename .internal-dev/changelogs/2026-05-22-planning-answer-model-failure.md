@@ -4,7 +4,7 @@
 
 # Change Summary
 
-Anonymous chat planning answer submission now handles continuation failures after the answer is saved. If the continuation model call fails, such as with invalid API credentials, a planning tool call fails because a dependency is unavailable, or the worker thread is interrupted after draft edits, `ChatService` records a controlled assistant notice and returns a recoverable plan state instead of propagating a servlet error after consuming the queued question.
+Anonymous chat planning answer submission now handles continuation failures and stale answer submissions after an answer is saved. If the continuation model call fails, such as with invalid API credentials, a planning tool call fails because a dependency is unavailable, or the worker thread is interrupted after draft edits, `ChatService` records a controlled assistant notice and returns a recoverable plan state instead of propagating a servlet error after consuming the queued question.
 
 # Files
 
@@ -20,6 +20,7 @@ Anonymous chat planning answer submission now handles continuation failures afte
 - Invalid model credentials and unavailable planning tool dependencies no longer turn the answer route into an unhandled 500 after clearing the pending question.
 - The user sees a controlled chat notice explaining that the answer was saved and model/tool configuration should be fixed before continuing.
 - If the draft would otherwise be left with no pending question, Magenta queues a recovery clarification so the UI has a next action instead of stalling in `DRAFT`.
+- Duplicate or stale planning answer submissions in a draft with no active prompt now refresh the recovery clarification instead of returning `400 No active planning question exists for this conversation`.
 - Browser error helpers now display server `error` payload fields instead of falling back to generic HTTP status text.
 
 # Risks

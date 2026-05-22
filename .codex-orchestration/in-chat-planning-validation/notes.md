@@ -26,6 +26,7 @@
 
 - Patched `ChatService.submitPlanAnswer(...)` so failures after a saved answer return a controlled assistant notice and current plan state instead of propagating a servlet error.
 - Patched the saved-answer failure response to queue a recovery clarification when a continuation failure or thread interruption leaves a `DRAFT` plan with no pending question.
+- Patched stale/no-active planning answer submissions in `PLAN` mode to return the current recoverable plan state instead of surfacing `400 No active planning question exists for this conversation`.
 
 ## Blockers
 
@@ -59,3 +60,15 @@ Findings:
 - Planning accepted three answers (`goal`, `assumptions`, `deliverables`) but did not surface a new prompt or `READY_FOR_APPROVAL` actions afterward.
 - DB state remained `plan_definitions.status=DRAFT`, `planning_task=define_deliverables`, `pending_question_index=0`, `pending_questions_json` empty; no `plan_chat_messages` were persisted.
 - `audit_event` recorded multiple `web_search` tool calls with empty query text and `completed` status (`Searched web for `` and returned 0 results.`), then no further planning-state advancement.
+
+## Third Browser/DB Validation Pass (Non-Mutating)
+
+- Date: 2026-05-22
+- Runtime used isolated DB `/tmp/magenta2-in-chat-planning-validation-3.sqlite` and root `/tmp/magenta2-in-chat-planning-validation-root-3`.
+- Conversation: `36034618-10d8-4eaf-ab25-e433d2aad6d1`.
+
+Findings:
+- No browser console errors and no 500s were observed.
+- A stale `POST /api/chat/{conversationId}/plan/answers` returned `400 No active planning question exists for this conversation`.
+- DB inspection after the run showed the recovery clarification was present in `plan_definitions.pending_questions_json`, but the stale 400 kept the browser on the old error path.
+- Added a server-side stale-answer recovery path so the next validation pass should receive a normal response with the refreshed plan state.

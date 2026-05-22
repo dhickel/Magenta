@@ -104,6 +104,8 @@ Anonymous `/chat` plans run inside the chat conversation instead of creating sav
 
 When you answer an anonymous chat planning question, Magenta saves the answer before asking the configured planning model to continue. If the model request fails, a planning tool dependency is unavailable, or the turn is interrupted after draft edits, the chat shows a controlled notice and keeps your answer in the transcript. If no next prompt is available, Magenta queues a recovery clarification so you can keep planning after fixing the model configuration or unavailable service.
 
+If the browser submits an old planning answer after the server has already moved on, Magenta refreshes the planning prompt instead of leaving the chat at a stale error.
+
 Only one anonymous plan execution can run for a chat conversation at a time. If another execution is already active, Magenta rejects the second request instead of attaching it to the in-progress run.
 
 Completion is validator-gated. The execution model must call `plan_complete` with evidence for each validation criterion and a proposed final message. Magenta then validates that evidence and referenced artifacts before showing the final completion as trusted. Artifacts previously saved with `plan_report` are carried into completion validation automatically. Validation feedback shows whether a planning validator model ran, which model was used, whether a deterministic preflight rejected the completion before a model call, or whether no validator model was available. Completion validation does not fall back to the execution model. If validation fails, the remediation remains internal execution feedback and the model must continue working or call `plan_complete` again.

@@ -461,6 +461,55 @@ class ChatServiceTest {
             );
     }
 
+    @Test
+    void stalePlanningAnswerReturnsRecoverablePromptInsteadOfThrowing() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        ChatSessionMetadataRepository metadataRepository = new ChatSessionMetadataRepository(jdbcTemplate);
+        PlanService planService = new PlanService(new PlanRepository(jdbcTemplate, objectMapper), memoryRepository);
+        ContextUsageTracker usageTracker = new ContextUsageTracker();
+        ChatModelRouter router = new TestChatModelRouter(new FixedChatModel("unused"));
+        AiConfig config = aiConfig();
+        ContextManagementAdvisor contextAdvisor = new ContextManagementAdvisor(
+            memoryRepository,
+            config,
+            router,
+            new CharacterTokenEstimator(),
+            usageTracker,
+            new ToolTranscriptService(objectMapper),
+            null
+        );
+        ChatService chatService = new ChatService(
+            new RepositoryBackedChatMemory(memoryRepository),
+            memoryRepository,
+            metadataRepository,
+            new ChatMarkdownRenderer(),
+            config,
+            contextAdvisor,
+            usageTracker,
+            router,
+            null,
+            null,
+            null,
+            planService
+        );
+
+        planService.beginPlan("conversation-1");
+        planService.recordPromptAnswer("conversation-1", "Goal", null, 1);
+        planService.recordPromptAnswer("conversation-1", "Assumptions", null, 2);
+        planService.recordPromptAnswer("conversation-1", "Deliverables", null, 3);
+
+        var response = chatService.submitPlanAnswer("conversation-1", "stale duplicate", null, 3);
+
+        assertThat(response.response()).contains("no active planning question");
+        assertThat(response.planState().promptQuestion())
+            .isEqualTo("What should we clarify, change, or add before continuing this plan?");
+        assertThat(memoryRepository.findByConversationId("conversation-1"))
+            .extracting(Message::getText)
+            .contains("There is no active planning question to answer right now. I refreshed the planning prompt so you can continue.");
+    }
+
     private JdbcTemplate jdbcTemplate() {
         SingleConnectionDataSource dataSource = new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true);
         return new JdbcTemplate(dataSource);
@@ -550,6 +599,21 @@ class ChatServiceTest {
             throw new NonTransientAiException(
                 "401 - {\"error\":{\"message\":\"Authentication Fails, Your api key is invalid\"}}"
             );
+        }
+    }
+
+    private static final class FixedChatModel implements ChatModel {
+        private final String response;
+
+        private FixedChatModel(String response) {
+            this.response = response;
+        }
+
+        @Override
+        public org.springframework.ai.chat.model.ChatResponse call(Prompt prompt) {
+            return new org.springframework.ai.chat.model.ChatResponse(List.of(
+                new Generation(new AssistantMessage(response))
+            ));
         }
     }
 
