@@ -27,11 +27,13 @@ This package owns filesystem workspace management including effective durable wo
 - `WorkspaceDirectoryService` — filesystem path management and directory creation.
 - `EffectiveWorkspaceResolver` — effective durable workspace selection and layout path record creation.
 - `WorkspaceLeaseService` — exclusive writable lease acquisition, extension, and release.
-- `OutputArtifactService` — explicit output materialization/publication, compatibility loose discovery, and artifact persistence.
+- `OutputDirectoryService` — typed output directory resolution for task, workflow, and job publications.
+- `OutputArtifactService` — explicit output materialization/publication, copied temp publication, compatibility loose discovery, and artifact persistence.
 
 ### Change guidance
 - Workspace paths constructed by this package must be confined under `dataRoot` with normalized path checks.
 - Source paths supplied for persisted output materialization must also resolve through `toRealPath()` and stay under the real `dataRoot` before copy or artifact registration, so symlinks cannot escape the managed data tree.
+- Copied temp/run publication must skip symlinks, including project workspace links, and must register copied files under `copied_temp/...` artifact names.
 - Always use `Files.createDirectories` before returning a workspace path.
 - Temp directories are deleted after terminal run completion; output directories persist.
 - Waiting workflow temp directories must remain available for resume.

@@ -27,6 +27,12 @@ Legacy `agents/<id>/home` and `agents/<id>/outputs` directories are deprecated. 
 - Otherwise, the executing agent workspace is the effective durable workspace.
 - `workspaceId` is retained as compatibility metadata and is not interpreted as a project id.
 
+`OutputDirectoryService` centralizes output directory selection for tasks, workflows, and jobs. It uses the same effective workspace rule and preserves the existing layouts:
+
+- Task outputs: `<effective-workspace>/outputs/tasks/<taskId>/<runId>/`
+- Workflow outputs: `<effective-workspace>/outputs/workflows/<workflowId>/<runId>/`
+- Job outputs: `<effective-workspace>/outputs/jobs/<assignmentId>/<jobRunId>/`
+
 Projects are shared durable workspace and visibility abstractions. They are not executable work units, and `ownerAgentId` is nullable legacy compatibility metadata.
 
 ## Workspace Records and Links
@@ -155,6 +161,8 @@ Typical task/plan/workflow output flow:
 Temp workspaces can be cleaned up on terminal run states, but output directories persist.
 
 Loose artifact discovery exists only as compatibility behavior. It is gated by service policy, confined by real paths under the configured data root and expected run output directory, and should not be used as the primary contract for new work. New code should publish explicit outputs through output materialization or `OutputArtifactService.publishExistingFile(...)`.
+
+Task completion can optionally copy retained temp/run files into the final output publication by passing `includeTempWithOutput=true` through `task_complete`. The copy runs after declared output materialization and before loose artifact discovery and terminal persistence. It copies regular files from the confined temp directory into `copied-temp/` inside the final output directory, registers each copied file as a `copied_temp/...` output artifact, skips symlinks including project workspace links, and fails completion if the requested temp publication cannot be completed safely.
 
 ## Temp Retention
 

@@ -108,10 +108,13 @@ public class TaskTools {
     public String complete(
         @ToolParam(description = "Output values keyed by declared output name.") Map<String, Object> outputValues,
         @ToolParam(required = false, description = "Final user-facing completion message.") String finalMessage,
-        @ToolParam(required = false, description = "Specific execution evidence entries.") List<String> evidence
+        @ToolParam(required = false, description = "Specific execution evidence entries.") List<String> evidence,
+        @ToolParam(required = false, description = "Copy retained temp/run files into the final output directory and register them as copied output artifacts.")
+        Boolean includeTempWithOutput
     ) {
         PlanToolContext context = requireMode(PlanMode.EXECUTE_TASK, "task_complete");
-        TaskRun run = taskService.completeRun(context.runId(), outputValues, finalMessage, evidence);
+        TaskRun run = taskService.completeRun(
+            context.runId(), outputValues, finalMessage, evidence, Boolean.TRUE.equals(includeTempWithOutput));
         taskService.clearExecutionContext(context.conversationId());
         return "Task completed: " + run.id();
     }

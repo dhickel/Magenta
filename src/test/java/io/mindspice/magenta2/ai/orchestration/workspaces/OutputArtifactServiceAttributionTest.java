@@ -575,4 +575,118 @@ class OutputArtifactServiceAttributionTest {
         assertThat(artifact.filePath()).isEqualTo("projects/project-1/workspace/outputs/tasks/task-1/run-publish/report.md");
         assertThat(Files.readString(outputDir.resolve("report.md"))).isEqualTo("# report");
     }
+
+    @Test
+    void publishDirectoryContentsCopiesTempFilesAndRegistersArtifacts() throws Exception {
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
+        WorkspaceRepository repository = new WorkspaceRepository(jdbc);
+        Path dataRoot = Files.createDirectories(tempDir.resolve("root-publish-temp"));
+        WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
+            new AiConfig(null, null, null, null, dataRoot, null, null)
+        );
+        OutputArtifactService service = new OutputArtifactService(
+            repository,
+            directoryService,
+            new ObjectMapper().findAndRegisterModules()
+        );
+
+        Path sourceDir = Files.createDirectories(dataRoot.resolve("runtime/task-runs/run-temp"));
+        Files.writeString(sourceDir.resolve("report.md"), "# report");
+        Path nested = Files.createDirectories(sourceDir.resolve("nested"));
+        Files.writeString(nested.resolve("data.json"), "{\"ok\":true}");
+        Path outputDir = Files.createDirectories(dataRoot.resolve("agents/agent-1/workspace/outputs/tasks/task-1/run-temp"));
+
+        List<RunOutputArtifact> artifacts = service.publishDirectoryContents(
+            "run-temp",
+            "task-1",
+            sourceDir,
+            outputDir,
+            new OutputArtifactContext("agent-1", null, null, null, null, "workspace-1", "TASK_RUN")
+        );
+
+        assertThat(artifacts).hasSize(2);
+        assertThat(repository.findArtifactsByRunId("run-temp"))
+            .extracting(RunOutputArtifact::outputName)
+            .containsExactlyInAnyOrder("copied_temp/report.md", "copied_temp/nested/data.json");
+        assertThat(repository.findArtifactsByRunId("run-temp"))
+            .extracting(RunOutputArtifact::artifactType)
+            .containsExactlyInAnyOrder("user_message", "json");
+        assertThat(Files.readString(outputDir.resolve("copied-temp/report.md"))).isEqualTo("# report");
+        assertThat(Files.readString(outputDir.resolve("copied-temp/nested/data.json"))).isEqualTo("{\"ok\":true}");
+    }
+
+    @Test
+    void publishDirectoryContentsSkipsSymlinkedFilesAndProjectLinks() throws Exception {
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
+        WorkspaceRepository repository = new WorkspaceRepository(jdbc);
+        Path dataRoot = Files.createDirectories(tempDir.resolve("root-publish-temp-symlink"));
+        WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
+            new AiConfig(null, null, null, null, dataRoot, null, null)
+        );
+        OutputArtifactService service = new OutputArtifactService(
+            repository,
+            directoryService,
+            new ObjectMapper().findAndRegisterModules()
+        );
+
+        Path sourceDir = Files.createDirectories(dataRoot.resolve("runtime/task-runs/run-temp-symlink"));
+        Files.writeString(sourceDir.resolve("safe.txt"), "safe");
+        Files.createSymbolicLink(sourceDir.resolve("outside-link.txt"), Files.writeString(tempDir.resolve("outside.txt"), "outside"));
+        Path projectWorkspace = Files.createDirectories(dataRoot.resolve("projects/project-1/workspace"));
+        Files.writeString(projectWorkspace.resolve("project-data.txt"), "project");
+        Files.createDirectories(sourceDir.resolve("projects"));
+        Files.createSymbolicLink(sourceDir.resolve("projects/project-1"), projectWorkspace);
+        Path outputDir = Files.createDirectories(dataRoot.resolve("projects/project-1/workspace/outputs/tasks/task-1/run-temp-symlink"));
+
+        List<RunOutputArtifact> artifacts = service.publishDirectoryContents(
+            "run-temp-symlink",
+            "task-1",
+            sourceDir,
+            outputDir,
+            new OutputArtifactContext("agent-1", null, null, null, "project-1", "workspace-1", "TASK_RUN")
+        );
+
+        assertThat(artifacts).hasSize(1);
+        assertThat(artifacts.getFirst().outputName()).isEqualTo("copied_temp/safe.txt");
+        assertThat(Files.exists(outputDir.resolve("copied-temp/outside-link.txt"))).isFalse();
+        assertThat(Files.exists(outputDir.resolve("copied-temp/projects/project-1/project-data.txt"))).isFalse();
+    }
+
+    @Test
+    void publishDirectoryContentsRejectsEscapingSourceAndDestinationPaths() throws Exception {
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
+        WorkspaceRepository repository = new WorkspaceRepository(jdbc);
+        Path dataRoot = Files.createDirectories(tempDir.resolve("root-publish-temp-reject"));
+        WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(
+            new AiConfig(null, null, null, null, dataRoot, null, null)
+        );
+        OutputArtifactService service = new OutputArtifactService(
+            repository,
+            directoryService,
+            new ObjectMapper().findAndRegisterModules()
+        );
+        Path sourceDir = Files.createDirectories(dataRoot.resolve("runtime/task-runs/run-temp-reject"));
+        Files.writeString(sourceDir.resolve("safe.txt"), "safe");
+        Path outputDir = Files.createDirectories(dataRoot.resolve("outputs-temp-reject"));
+        Files.createSymbolicLink(outputDir.resolve("copied-temp"), tempDir.resolve("outside-dest"));
+
+        assertThatThrownBy(() -> service.publishDirectoryContents(
+            "run-temp-reject",
+            "task-1",
+            tempDir.resolve("outside-source"),
+            outputDir,
+            OutputArtifactContext.EMPTY
+        )).isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("escapes data root");
+
+        assertThatThrownBy(() -> service.publishDirectoryContents(
+            "run-temp-reject",
+            "task-1",
+            sourceDir,
+            outputDir,
+            OutputArtifactContext.EMPTY
+        )).isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("must not be a symlink");
+        assertThat(repository.findArtifactsByRunId("run-temp-reject")).isEmpty();
+    }
 }

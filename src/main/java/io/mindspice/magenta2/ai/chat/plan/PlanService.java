@@ -24,6 +24,9 @@ import io.mindspice.magenta2.ai.orchestration.workspaces.EffectiveWorkspace;
 import io.mindspice.magenta2.ai.orchestration.workspaces.EffectiveWorkspaceResolver;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactContext;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.OutputDirectoryService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.OutputPublicationTarget;
+import io.mindspice.magenta2.ai.orchestration.workspaces.ResolvedOutputDirectory;
 import io.mindspice.magenta2.ai.orchestration.workspaces.RootRelativePathService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
 import org.slf4j.Logger;
@@ -54,13 +57,14 @@ public class PlanService {
     private final ChatMarkdownRenderer markdownRenderer;
     private final WorkspaceDirectoryService workspaceDirectoryService;
     private final EffectiveWorkspaceResolver effectiveWorkspaceResolver;
+    private final OutputDirectoryService outputDirectoryService;
     private final OutputArtifactService outputArtifactService;
     private final RootRelativePathService rootRelativePathService;
     private final RuntimeSettingsService runtimeSettingsService;
     private final Map<String, String> executionRunsByConversationId = new ConcurrentHashMap<>();
 
     public PlanService(PlanRepository planRepository, ChatMemoryRepository chatMemoryRepository) {
-        this(planRepository, chatMemoryRepository, null, new ChatMarkdownRenderer(), null, null, null, null, null);
+        this(planRepository, chatMemoryRepository, null, new ChatMarkdownRenderer(), null, null, null, null, null, null);
     }
 
     // Used by tests that need session metadata and markdown rendering
@@ -70,7 +74,7 @@ public class PlanService {
         ChatSessionMetadataRepository chatSessionMetadataRepository,
         ChatMarkdownRenderer markdownRenderer
     ) {
-        this(planRepository, chatMemoryRepository, chatSessionMetadataRepository, markdownRenderer, null, null, null, null, null);
+        this(planRepository, chatMemoryRepository, chatSessionMetadataRepository, markdownRenderer, null, null, null, null, null, null);
     }
 
     public PlanService(
@@ -82,7 +86,7 @@ public class PlanService {
         OutputArtifactService outputArtifactService
     ) {
         this(planRepository, chatMemoryRepository, chatSessionMetadataRepository, markdownRenderer,
-            workspaceDirectoryService, outputArtifactService, null, null, null);
+            workspaceDirectoryService, outputArtifactService, null, null, null, null);
     }
 
     public PlanService(
@@ -95,7 +99,7 @@ public class PlanService {
         EffectiveWorkspaceResolver effectiveWorkspaceResolver
     ) {
         this(planRepository, chatMemoryRepository, chatSessionMetadataRepository, markdownRenderer,
-            workspaceDirectoryService, outputArtifactService, effectiveWorkspaceResolver, null, null);
+            workspaceDirectoryService, outputArtifactService, effectiveWorkspaceResolver, null, null, null);
     }
 
     @Autowired
@@ -107,6 +111,7 @@ public class PlanService {
         @Autowired(required = false) WorkspaceDirectoryService workspaceDirectoryService,
         @Autowired(required = false) OutputArtifactService outputArtifactService,
         @Autowired(required = false) EffectiveWorkspaceResolver effectiveWorkspaceResolver,
+        @Autowired(required = false) OutputDirectoryService outputDirectoryService,
         @Autowired(required = false) RootRelativePathService rootRelativePathService,
         @Autowired(required = false) RuntimeSettingsService runtimeSettingsService
     ) {
@@ -116,6 +121,7 @@ public class PlanService {
         this.markdownRenderer = markdownRenderer;
         this.workspaceDirectoryService = workspaceDirectoryService;
         this.effectiveWorkspaceResolver = effectiveWorkspaceResolver;
+        this.outputDirectoryService = outputDirectoryService;
         this.outputArtifactService = outputArtifactService;
         this.rootRelativePathService = rootRelativePathService != null
             ? rootRelativePathService
@@ -927,7 +933,18 @@ public class PlanService {
                 String slug = slugFromTitle(definition.title());
                 String agentId = context != null && context.hasAgentContext() ? context.agentId() : "system";
                 Path outputDir;
-                if (effectiveWorkspaceResolver != null) {
+                if (outputDirectoryService != null) {
+                    ResolvedOutputDirectory resolved = outputDirectoryService.resolve(OutputPublicationTarget.task(
+                        definition.id(),
+                        runId,
+                        agentId,
+                        context == null ? null : context.projectId(),
+                        null
+                    ));
+                    effectiveWorkspaceId = resolved.workspaceId();
+                    durableWorkspacePath = resolved.workspaceRoot().toRealPath().toString();
+                    outputDir = resolved.outputDirectory();
+                } else if (effectiveWorkspaceResolver != null) {
                     EffectiveWorkspace effectiveWorkspace = effectiveWorkspaceResolver.resolve(
                         agentId,
                         context == null ? null : context.projectId());
@@ -1098,7 +1115,18 @@ public class PlanService {
     }
 
     public PlanRun completeRun(String runId, Map<String, Object> outputValues, String finalMessage,
+                               List<String> evidence, boolean includeTempWithOutput) {
+        return completeRun(runId, outputValues, finalMessage, evidence, List.of(), includeTempWithOutput);
+    }
+
+    public PlanRun completeRun(String runId, Map<String, Object> outputValues, String finalMessage,
                                 List<String> evidence, List<String> deliverableEvidence) {
+        return completeRun(runId, outputValues, finalMessage, evidence, deliverableEvidence, false);
+    }
+
+    public PlanRun completeRun(String runId, Map<String, Object> outputValues, String finalMessage,
+                                List<String> evidence, List<String> deliverableEvidence,
+                                boolean includeTempWithOutput) {
         PlanRun run = requireRun(runId);
         if (run.status() != PlanRunStatus.RUNNING) {
             throw new IllegalStateException("complete is available only while a run is active");
@@ -1112,6 +1140,8 @@ public class PlanService {
 
         // Materialize outputs to the output directory
         materializeRunOutputs(run, cleanOutputs, task);
+
+        publishTempDirectoryIfRequested(run, task, includeTempWithOutput);
 
         // Discover any loose artifacts in the output directory
         discoverLooseArtifactsForRun(run, task);
@@ -1981,6 +2011,32 @@ Approved plan:
             }
         } catch (IOException | RuntimeException e) {
             log.warn("Failed to scan for loose artifacts for run={}: {}", run.id(), e.getMessage());
+        }
+    }
+
+    private void publishTempDirectoryIfRequested(PlanRun run, PlanDefinition task, boolean includeTempWithOutput) {
+        if (!includeTempWithOutput) {
+            return;
+        }
+        if (outputArtifactService == null) {
+            throw new IllegalStateException("Temp output publication requires OutputArtifactService");
+        }
+        if (!StringUtils.hasText(run.tempWorkspacePath())) {
+            throw new IllegalStateException("Temp output publication requires a temp workspace path");
+        }
+        if (!StringUtils.hasText(run.outputDirectory())) {
+            throw new IllegalStateException("Temp output publication requires an output directory");
+        }
+        try {
+            outputArtifactService.publishDirectoryContents(
+                run.id(),
+                run.planId(),
+                resolveStoredPath(run.tempWorkspacePath()),
+                resolveStoredPath(run.outputDirectory()),
+                outputArtifactContext(run, task)
+            );
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to publish retained temp files for run " + run.id(), exception);
         }
     }
 

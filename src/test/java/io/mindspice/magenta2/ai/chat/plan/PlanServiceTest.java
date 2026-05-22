@@ -1472,6 +1472,55 @@ class PlanServiceTest {
     }
 
     @Test
+    void completeRunCanCopyTempContentsIntoFinalOutputsBeforeCleanup() throws Exception {
+        Path dataRoot = Files.createDirectories(tempDir.resolve("data-include-temp"));
+        WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(
+            new AiConfig(null, null, null, null, dataRoot, null, null));
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        WorkspaceRepository workspaceRepository = new WorkspaceRepository(jdbcTemplate);
+        OutputArtifactService artifactService = new OutputArtifactService(
+            workspaceRepository, dirService, new ObjectMapper().findAndRegisterModules());
+
+        PlanService service = new PlanService(
+            new PlanRepository(jdbcTemplate, new ObjectMapper()),
+            new ChatMemoryRepository(jdbcTemplate, new ObjectMapper()),
+            null, new io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer(),
+            dirService, artifactService);
+
+        PlanDefinition task = service.saveTask(new PlanDefinition(
+            null, PlanKind.TASK_TEMPLATE, PlanStatus.APPROVED,
+            "Include Temp Task", "Do it.", "Goal.", null,
+            List.of(), List.of(),
+            List.of(new PlanFieldDefinition("result", PlanFieldType.STRING, false, "Result", true, null)),
+            List.of(), List.of(new PlanStep(1, "Do it.")), List.of("Result present."),
+            List.of(), List.of(), null, null, null, null,
+            null, List.of(), 0, 0, null, null, null, null));
+
+        PlanRun run = service.startRun(task.id(), Map.of());
+        Path tempRunDir = resolveStored(dataRoot, run.tempWorkspacePath());
+        Files.writeString(tempRunDir.resolve("notes.md"), "# notes");
+        Path nested = Files.createDirectories(tempRunDir.resolve("nested"));
+        Files.writeString(nested.resolve("result.json"), "{\"ok\":true}");
+        Path projectWorkspace = Files.createDirectories(dataRoot.resolve("projects/project-include/workspace"));
+        Files.writeString(projectWorkspace.resolve("project-file.txt"), "do not duplicate");
+        Files.createDirectories(tempRunDir.resolve("projects"));
+        Files.createSymbolicLink(tempRunDir.resolve("projects/project-include"), projectWorkspace);
+
+        PlanRun completed = service.completeRun(run.id(), Map.of("result", "done"), "Done", List.of(), true);
+
+        assertThat(completed.status()).isEqualTo(PlanRunStatus.COMPLETED);
+        assertThat(Files.exists(tempRunDir)).isFalse();
+        Path outputDir = resolveStored(dataRoot, run.outputDirectory());
+        assertThat(Files.readString(outputDir.resolve("copied-temp/notes.md"))).isEqualTo("# notes");
+        assertThat(Files.readString(outputDir.resolve("copied-temp/nested/result.json"))).isEqualTo("{\"ok\":true}");
+        assertThat(Files.exists(outputDir.resolve("copied-temp/projects/project-include/project-file.txt"))).isFalse();
+        assertThat(artifactService.artifactsForRun(run.id()))
+            .extracting(RunOutputArtifact::outputName)
+            .contains("copied_temp/notes.md", "copied_temp/nested/result.json")
+            .doesNotContain("copied_temp/projects/project-include/project-file.txt");
+    }
+
+    @Test
     void completeRunSupportsLegacyAbsoluteCurrentRootPaths() throws Exception {
         Path dataRoot = Files.createDirectories(tempDir.resolve("data-legacy-current"));
         WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(

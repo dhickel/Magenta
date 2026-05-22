@@ -19,6 +19,9 @@ import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.EffectiveWorkspace;
 import io.mindspice.magenta2.ai.orchestration.workspaces.EffectiveWorkspaceResolver;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.OutputDirectoryService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.OutputPublicationTarget;
+import io.mindspice.magenta2.ai.orchestration.workspaces.ResolvedOutputDirectory;
 import io.mindspice.magenta2.ai.orchestration.workspaces.RootRelativePathService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact;
 import io.mindspice.magenta2.ai.orchestration.workspaces.Workspace;
@@ -51,6 +54,7 @@ public class JobService {
     private final ProjectService projectService;
     private final WorkspaceService workspaceService;
     private final OutputArtifactService outputArtifactService;
+    private final OutputDirectoryService outputDirectoryService;
     private final RootRelativePathService rootRelativePathService;
 
     public JobService(JobRepository jobRepository,
@@ -75,7 +79,24 @@ public class JobService {
                       @Autowired(required = false) EffectiveWorkspaceResolver effectiveWorkspaceResolver,
                       @Autowired(required = false) OrchestrationRuntimeRepository runtimeRepository) {
         this(jobRepository, workspaceDirectoryService, planService, workflowService, effectiveWorkspaceResolver,
-            runtimeRepository, null, null, null, null, null, null);
+            runtimeRepository, null, null, null, null, null, null, null);
+    }
+
+    public JobService(JobRepository jobRepository,
+                      WorkspaceDirectoryService workspaceDirectoryService,
+                      PlanService planService,
+                      WorkflowService workflowService,
+                      EffectiveWorkspaceResolver effectiveWorkspaceResolver,
+                      OrchestrationRuntimeRepository runtimeRepository,
+                      ObjectProvider<AssignmentService> assignmentServiceProvider,
+                      AgentProfileService agentProfileService,
+                      ProjectService projectService,
+                      WorkspaceService workspaceService,
+                      OutputArtifactService outputArtifactService,
+                      RootRelativePathService rootRelativePathService) {
+        this(jobRepository, workspaceDirectoryService, planService, workflowService, effectiveWorkspaceResolver,
+            runtimeRepository, assignmentServiceProvider, agentProfileService, projectService, workspaceService,
+            outputArtifactService, null, rootRelativePathService);
     }
 
     @Autowired
@@ -90,6 +111,7 @@ public class JobService {
                       @Autowired(required = false) ProjectService projectService,
                       @Autowired(required = false) WorkspaceService workspaceService,
                       @Autowired(required = false) OutputArtifactService outputArtifactService,
+                      @Autowired(required = false) OutputDirectoryService outputDirectoryService,
                       @Autowired(required = false) RootRelativePathService rootRelativePathService) {
         this.jobRepository = jobRepository;
         this.workspaceDirectoryService = workspaceDirectoryService;
@@ -102,6 +124,7 @@ public class JobService {
         this.projectService = projectService;
         this.workspaceService = workspaceService;
         this.outputArtifactService = outputArtifactService;
+        this.outputDirectoryService = outputDirectoryService;
         this.rootRelativePathService = rootRelativePathService != null
             ? rootRelativePathService
             : workspaceDirectoryService == null ? null : new RootRelativePathService(workspaceDirectoryService);
@@ -265,8 +288,22 @@ public class JobService {
                     effectiveWorkspace.root(), assignmentKey);
                 workspacePath = storePath(wsPath.toRealPath());
             }
-            Path outPath = workspaceDirectoryService.jobAssignmentOutput(
-                effectiveWorkspace.root(), assignmentKey, runId);
+            Path outPath;
+            if (outputDirectoryService != null) {
+                ResolvedOutputDirectory resolved = outputDirectoryService.resolve(OutputPublicationTarget.job(
+                    def.id(),
+                    assignmentKey,
+                    runId,
+                    effectiveAgentId,
+                    effectiveProjectId,
+                    null
+                ));
+                effectiveWorkspaceId = resolved.workspaceId();
+                outPath = resolved.outputDirectory();
+            } else {
+                outPath = workspaceDirectoryService.jobAssignmentOutput(
+                    effectiveWorkspace.root(), assignmentKey, runId);
+            }
             outputDir = storePath(outPath.toRealPath());
             log.info("Allocated persistentJobWorkspace={} output={} agent={} project={} assignment={} for job run={}",
                 workspacePath, outputDir, effectiveAgentId, effectiveProjectId, assignmentKey, runId);

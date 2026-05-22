@@ -11,6 +11,8 @@ import io.mindspice.magenta2.ai.orchestration.workspaces.EffectiveWorkspace;
 import io.mindspice.magenta2.ai.orchestration.workspaces.EffectiveWorkspaceResolver;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactContext;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.OutputDirectoryService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.OutputPublicationTarget;
 import io.mindspice.magenta2.ai.orchestration.workspaces.RootRelativePathService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
@@ -52,6 +54,7 @@ public class WorkflowRunner {
     private final WorkspaceDirectoryService workspaceDirectoryService;
     private final OutputArtifactService outputArtifactService;
     private final EffectiveWorkspaceResolver effectiveWorkspaceResolver;
+    private final OutputDirectoryService outputDirectoryService;
     private final WorkflowTaskExecutor workflowTaskExecutor;
     private final RootRelativePathService rootRelativePathService;
     private final ExecutorService executor = Executors.newCachedThreadPool();
@@ -62,7 +65,7 @@ public class WorkflowRunner {
                           InboxService inboxService,
                           WorkspaceDirectoryService workspaceDirectoryService,
                           OutputArtifactService outputArtifactService) {
-        this(repository, planService, inboxService, workspaceDirectoryService, outputArtifactService, null, null, null);
+        this(repository, planService, inboxService, workspaceDirectoryService, outputArtifactService, null, null, null, null);
     }
 
     public WorkflowRunner(WorkflowRepository repository, PlanService planService,
@@ -71,7 +74,7 @@ public class WorkflowRunner {
                           OutputArtifactService outputArtifactService,
                           EffectiveWorkspaceResolver effectiveWorkspaceResolver) {
         this(repository, planService, inboxService, workspaceDirectoryService, outputArtifactService,
-            effectiveWorkspaceResolver, null, null);
+            effectiveWorkspaceResolver, null, null, null);
     }
 
     @Autowired
@@ -80,6 +83,7 @@ public class WorkflowRunner {
                           WorkspaceDirectoryService workspaceDirectoryService,
                           OutputArtifactService outputArtifactService,
                           @Autowired(required = false) EffectiveWorkspaceResolver effectiveWorkspaceResolver,
+                          @Autowired(required = false) OutputDirectoryService outputDirectoryService,
                           ObjectProvider<WorkflowTaskExecutor> workflowTaskExecutorProvider,
                           @Autowired(required = false) RootRelativePathService rootRelativePathService) {
         this.repository = repository;
@@ -88,6 +92,7 @@ public class WorkflowRunner {
         this.workspaceDirectoryService = workspaceDirectoryService;
         this.outputArtifactService = outputArtifactService;
         this.effectiveWorkspaceResolver = effectiveWorkspaceResolver;
+        this.outputDirectoryService = outputDirectoryService;
         this.workflowTaskExecutor = workflowTaskExecutorProvider == null ? null : workflowTaskExecutorProvider.getIfAvailable();
         this.rootRelativePathService = rootRelativePathService != null
             ? rootRelativePathService
@@ -733,6 +738,18 @@ public class WorkflowRunner {
         OrchestrationTaskContext context,
         Path fallbackTempPath
     ) {
+        if (outputDirectoryService != null) {
+            String agentId = context != null && StringUtils.hasText(context.agentId())
+                ? context.agentId()
+                : "system";
+            return outputDirectoryService.resolve(OutputPublicationTarget.workflow(
+                workflowId,
+                runId,
+                agentId,
+                context == null ? null : context.projectId(),
+                null
+            )).outputDirectory();
+        }
         if (effectiveWorkspaceResolver == null) {
             return fallbackTempPath;
         }

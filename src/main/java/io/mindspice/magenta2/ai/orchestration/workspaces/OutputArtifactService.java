@@ -1,13 +1,18 @@
 package io.mindspice.magenta2.ai.orchestration.workspaces;
 
 import java.io.IOException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -327,6 +332,99 @@ public class OutputArtifactService {
             destination.getFileName().toString(), destination, null, context);
     }
 
+    /**
+     * Copies confined directory contents into {@code outputDir/copied-temp/}
+     * and registers each copied regular file as a run output artifact.
+     * Symbolic links are skipped and never followed.
+     */
+    public synchronized List<RunOutputArtifact> publishDirectoryContents(
+        String runId,
+        String planId,
+        Path sourceDir,
+        Path outputDir,
+        OutputArtifactContext context
+    ) throws IOException {
+        requireId(runId, "runId");
+        requireId(planId, "planId");
+        if (sourceDir == null) {
+            throw new IllegalArgumentException("sourceDir is required");
+        }
+        Path realDataRoot = directoryService.dataRoot().toRealPath();
+        Path realSourceRoot = requireConfinedSourceDirectory(sourceDir, realDataRoot);
+        Path realOutputDir = requireConfinedOutputDirectory(outputDir);
+        if (realOutputDir.startsWith(realSourceRoot)) {
+            throw new IllegalArgumentException("Output directory must not be inside copied source directory: " + outputDir);
+        }
+        Path copiedTempDir = realOutputDir.resolve("copied-temp").normalize();
+        if (!copiedTempDir.startsWith(realOutputDir)) {
+            throw new IllegalArgumentException("Copied temp directory escapes output directory: " + outputDir);
+        }
+        if (Files.isSymbolicLink(copiedTempDir)) {
+            throw new IllegalArgumentException("Copied temp directory must not be a symlink: " + copiedTempDir);
+        }
+        Path realCopiedTempDir = Files.createDirectories(copiedTempDir).toRealPath();
+        if (!realCopiedTempDir.startsWith(realOutputDir)) {
+            throw new IllegalArgumentException("Copied temp directory escapes output directory: " + copiedTempDir);
+        }
+
+        List<RunOutputArtifact> artifacts = new ArrayList<>();
+        Files.walkFileTree(realSourceRoot, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                if (!realSourceRoot.equals(dir) && Files.isSymbolicLink(dir)) {
+                    return FileVisitResult.SKIP_SUBTREE;
+                }
+                Path realDir = dir.toRealPath();
+                if (!realDir.startsWith(realDataRoot) || !realDir.startsWith(realSourceRoot)) {
+                    throw new IllegalArgumentException("Source directory escapes source root: " + dir);
+                }
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                if (Files.isSymbolicLink(file)) {
+                    return FileVisitResult.CONTINUE;
+                }
+                Path realFile = file.toRealPath();
+                if (!realFile.startsWith(realDataRoot) || !realFile.startsWith(realSourceRoot)) {
+                    throw new IllegalArgumentException("Source file escapes source root: " + file);
+                }
+                Path relative = realSourceRoot.relativize(file);
+                Path destination = realCopiedTempDir.resolve(relative).normalize();
+                if (!destination.startsWith(realCopiedTempDir) || !destination.startsWith(realOutputDir)) {
+                    throw new IllegalArgumentException("Copied temp destination escapes output directory: " + relative);
+                }
+                if (Files.isSymbolicLink(destination)) {
+                    throw new IllegalArgumentException("Copied temp destination must not be a symlink: " + relative);
+                }
+                Path parent = Files.createDirectories(destination.getParent()).toRealPath();
+                if (!parent.startsWith(realCopiedTempDir) || !parent.startsWith(realOutputDir)) {
+                    throw new IllegalArgumentException("Copied temp destination parent escapes output directory: " + relative);
+                }
+                Files.copy(realFile, destination, StandardCopyOption.REPLACE_EXISTING);
+                Path realDestination = destination.toRealPath();
+                if (!realDestination.startsWith(realCopiedTempDir) || !realDestination.startsWith(realOutputDir)) {
+                    throw new IllegalArgumentException("Copied temp destination escapes output directory: " + relative);
+                }
+                String relativeName = relativePathWithSlashes(relative);
+                String artifactType = inferArtifactType(realDestination.getFileName().toString());
+                artifacts.add(saveArtifact(
+                    runId,
+                    planId,
+                    "copied_temp/" + relativeName,
+                    artifactType,
+                    realDestination.getFileName().toString(),
+                    realDestination,
+                    null,
+                    context
+                ));
+                return FileVisitResult.CONTINUE;
+            }
+        });
+        return artifacts;
+    }
+
     private String inferArtifactType(String fileName) {
         String lower = fileName.toLowerCase();
         if (lower.endsWith(".md")) return "user_message";
@@ -543,6 +641,26 @@ public class OutputArtifactService {
         return realOutputDir;
     }
 
+    private Path requireConfinedSourceDirectory(Path sourceDir, Path realDataRoot) throws IOException {
+        Path normalized = sourceDir.isAbsolute()
+            ? sourceDir.toAbsolutePath().normalize()
+            : realDataRoot.resolve(sourceDir).normalize();
+        if (!normalized.startsWith(realDataRoot)) {
+            throw new IllegalArgumentException("Source directory escapes data root: " + sourceDir);
+        }
+        if (Files.isSymbolicLink(normalized)) {
+            throw new IllegalArgumentException("Source directory must not be a symlink: " + sourceDir);
+        }
+        Path realSourceRoot = normalized.toRealPath();
+        if (!realSourceRoot.startsWith(realDataRoot)) {
+            throw new IllegalArgumentException("Source directory escapes data root: " + sourceDir);
+        }
+        if (!Files.isDirectory(realSourceRoot, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IllegalArgumentException("Source path is not a directory: " + sourceDir);
+        }
+        return realSourceRoot;
+    }
+
     private void requireId(String value, String label) {
         if (!StringUtils.hasText(value)) {
             throw new IllegalArgumentException(label + " is required");
@@ -602,5 +720,16 @@ public class OutputArtifactService {
         String base = dot > 0 ? fileName.substring(0, dot) : fileName;
         String ext = dot > 0 ? fileName.substring(dot) : "";
         return base + "-" + (attempt + 1) + ext;
+    }
+
+    private String relativePathWithSlashes(Path path) {
+        StringBuilder builder = new StringBuilder();
+        for (Path segment : path) {
+            if (!builder.isEmpty()) {
+                builder.append('/');
+            }
+            builder.append(segment);
+        }
+        return builder.toString();
     }
 }

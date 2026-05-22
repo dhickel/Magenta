@@ -168,6 +168,11 @@ public class TaskService {
         return toTaskRun(planService.completeRun(runId, outputValues, finalMessage, evidence));
     }
 
+    public TaskRun completeRun(String runId, Map<String, Object> outputValues, String finalMessage,
+                               List<String> evidence, boolean includeTempWithOutput) {
+        return toTaskRun(planService.completeRun(runId, outputValues, finalMessage, evidence, includeTempWithOutput));
+    }
+
     public TaskRun failRun(String runId, String errorText) {
         return toTaskRun(planService.failRun(runId, errorText));
     }
