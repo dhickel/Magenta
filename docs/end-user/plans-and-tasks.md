@@ -122,6 +122,8 @@ If the model emits a tool call with malformed JSON arguments, Magenta records a 
 
 If a tool call has valid JSON but the arguments do not match the tool's expected shape, Magenta records the same kind of diagnostic and keeps the planning or execution turn moving instead of ending the chat turn with a server error. Planning questions may be supplied as plain text or simple question objects; Magenta extracts the user-visible question text before showing them in the prompt card.
 
+Execution evidence may be supplied as plain text or simple evidence objects with fields such as criterion and evidence. Magenta normalizes those entries before validation, and accepts `artifacts` as another name for artifact paths.
+
 If automatic retries are exhausted, the plan becomes `NEEDS_REVIEW`. In that state the chat does not reopen planning controls or show **Cancel planning**. Review the execution evidence, validation feedback, and tool transcript before trusting or revising the result.
 
 ## Common Validation Failures

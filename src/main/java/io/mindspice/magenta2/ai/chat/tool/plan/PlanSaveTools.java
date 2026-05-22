@@ -1,6 +1,8 @@
 package io.mindspice.magenta2.ai.chat.tool.plan;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 import io.mindspice.magenta2.ai.chat.plan.PlanCompletionService;
 import io.mindspice.magenta2.ai.chat.model.PlanMode;
@@ -162,23 +164,25 @@ public class PlanSaveTools {
     public String report(
         @ToolParam(required = false, description = "Brief execution result summary.")
         String summary,
-        @ToolParam(required = false, description = "Per-criterion evidence. One entry per validation criterion: 'Criterion: <exact criterion text> | Evidence: <specific proof>'")
-        List<String> evidence,
+        @ToolParam(required = false, description = "Per-criterion evidence. Each item may be a string or an object with criterion/evidence/text fields.")
+        List<Object> evidence,
         @ToolParam(required = false, description = "Any deviations from the saved plan or validation criteria.")
-        List<String> deviations,
+        List<Object> deviations,
         @ToolParam(required = false, description = "Validation criteria that were not met.")
-        List<String> unmetCriteria,
+        List<Object> unmetCriteria,
         @ToolParam(required = false, description = "Artifacts created or used during execution, such as reports, scripts, or evidence files.")
-        List<String> artifactPaths
+        List<Object> artifactPaths,
+        @ToolParam(required = false, description = "Alias for artifactPaths. Artifacts created or used during execution.")
+        List<Object> artifacts
     ) {
         PlanToolContext context = requireMode(PlanMode.EXECUTE_PLAN, "plan_report");
         PlanDefinition plan = planService.recordExecutionReport(
             context.conversationId(),
             summary,
-            evidence,
-            deviations,
-            unmetCriteria,
-            artifactPaths
+            normalizeEvidence(evidence),
+            normalizeTextList(deviations),
+            normalizeTextList(unmetCriteria),
+            normalizeArtifacts(artifactPaths, artifacts)
         );
         return "Recorded execution evidence for plan: " + plan.title();
     }
@@ -190,14 +194,16 @@ public class PlanSaveTools {
     public String complete(
         @ToolParam(required = false, description = "Brief execution result summary.")
         String summary,
-        @ToolParam(required = false, description = "Per-criterion evidence. One entry per validation criterion: 'Criterion: <exact text> | Evidence: <specific proof>'")
-        List<String> evidence,
+        @ToolParam(required = false, description = "Per-criterion evidence. Each item may be a string or an object with criterion/evidence/text fields.")
+        List<Object> evidence,
         @ToolParam(required = false, description = "Any deviations from the saved plan or validation criteria.")
-        List<String> deviations,
+        List<Object> deviations,
         @ToolParam(required = false, description = "Validation criteria that remain unmet.")
-        List<String> unmetCriteria,
+        List<Object> unmetCriteria,
         @ToolParam(required = false, description = "Artifacts created or used during execution. These files will be auto-read and their contents included in validation.")
-        List<String> artifactPaths,
+        List<Object> artifactPaths,
+        @ToolParam(required = false, description = "Alias for artifactPaths. Artifacts created or used during execution.")
+        List<Object> artifacts,
         @ToolParam(required = false, description = "Intended final user-facing message summarizing the completed work. This exact text is delivered verbatim to the user after validation passes. Include a concise summary of what was accomplished and the outcome for each deliverable. If the deliverable itself IS a chat message (e.g., a drafted report, summary, or response), this IS the deliverable — write the complete user-facing text here.")
         String finalMessage
     ) {
@@ -211,12 +217,71 @@ public class PlanSaveTools {
         return planCompletionService.complete(
             context.conversationId(),
             summary,
-            evidence,
-            deviations,
-            unmetCriteria,
-            artifactPaths,
+            normalizeEvidence(evidence),
+            normalizeTextList(deviations),
+            normalizeTextList(unmetCriteria),
+            normalizeArtifacts(artifactPaths, artifacts),
             finalMessage
         );
+    }
+
+    static List<String> normalizeEvidence(List<Object> values) {
+        if (values == null) {
+            return List.of();
+        }
+        return values.stream()
+            .map(PlanSaveTools::evidenceText)
+            .filter(Objects::nonNull)
+            .map(String::trim)
+            .filter(value -> !value.isBlank())
+            .toList();
+    }
+
+    static List<String> normalizeTextList(List<Object> values) {
+        if (values == null) {
+            return List.of();
+        }
+        return values.stream()
+            .map(PlanSaveTools::plainText)
+            .filter(Objects::nonNull)
+            .map(String::trim)
+            .filter(value -> !value.isBlank())
+            .toList();
+    }
+
+    private static List<String> normalizeArtifacts(List<Object> artifactPaths, List<Object> artifacts) {
+        List<String> normalized = normalizeTextList(artifactPaths);
+        return normalized.isEmpty() ? normalizeTextList(artifacts) : normalized;
+    }
+
+    private static String evidenceText(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            Object criterion = firstPresent(map, "criterion", "validationCriterion", "validation_criterion");
+            Object evidence = firstPresent(map, "evidence", "proof", "result");
+            if (criterion != null && evidence != null) {
+                return "Criterion: " + criterion + " | Evidence: " + evidence;
+            }
+            Object text = firstPresent(map, "text", "summary", "message");
+            return text == null ? map.toString() : text.toString();
+        }
+        return plainText(value);
+    }
+
+    private static String plainText(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            Object text = firstPresent(map, "path", "file", "artifact", "text", "summary", "message", "value");
+            return text == null ? map.toString() : text.toString();
+        }
+        return value == null ? null : value.toString();
+    }
+
+    private static Object firstPresent(Map<?, ?> map, String... keys) {
+        for (String key : keys) {
+            if (map.containsKey(key)) {
+                return map.get(key);
+            }
+        }
+        return null;
     }
 
     private PlanToolContext requireMode(PlanMode mode, String toolName) {

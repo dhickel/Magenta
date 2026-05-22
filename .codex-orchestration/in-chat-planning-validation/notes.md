@@ -126,3 +126,17 @@ Findings:
 - A follow-up planning flow collected the three seeded answers and populated the draft, but the model queued additional follow-up questions instead of reaching approval during the validation window.
 - No execution started in this pass, so wrapped provider close retry and artifact visibility were not re-exercised.
 - Remediation: `/plan <topic or instruction>` now starts anonymous plan mode and records the inline text as the first goal answer, keeping command handling model-free while allowing the natural chat command form.
+
+## Twelfth And Thirteenth Browser/DB Validation Passes (Non-Mutating)
+
+- Date: 2026-05-22
+- Branch head: `531002e`
+- Runtime 12 used isolated DB `/tmp/magenta2-in-chat-planning-validation-12.sqlite` and root `/tmp/magenta2-in-chat-planning-validation-root-12`.
+- Runtime 13 used isolated DB `/tmp/magenta2-in-chat-planning-validation-13.sqlite` and root `/tmp/magenta2-in-chat-planning-validation-root-13`.
+
+Findings:
+- Inline `/plan <topic>` reached planning successfully.
+- Pointing the ignored local config at the reachable SearXNG service allowed `web_search` to return real results instead of connection failures.
+- Adding file write/append/replace to the ignored local approved tools allowed execution to create `f13-backcross-report.md` in the chat file directory.
+- Execution still remained `EXECUTING` because the model emitted `plan_report` and `plan_complete` evidence as objects, while the tool signatures expected `List<String>`. Spring rejected those calls with `Cannot deserialize value of type java.lang.String from Object value`.
+- Remediation: `plan_report` and `plan_complete` now accept object-shaped evidence/deviation/unmet/artifact entries and normalize them before validation. `artifacts` is also accepted as an alias for `artifactPaths`.

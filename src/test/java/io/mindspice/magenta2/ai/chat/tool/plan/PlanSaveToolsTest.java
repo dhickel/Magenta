@@ -1,6 +1,7 @@
 package io.mindspice.magenta2.ai.chat.tool.plan;
 
 import java.util.List;
+import java.util.Map;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.chat.plan.PlanDefinition;
@@ -131,7 +132,8 @@ class PlanSaveToolsTest {
                 List.of("Actual count: 1"),
                 List.of(),
                 List.of(),
-                List.of("report.md")
+                List.of("report.md"),
+                List.of()
             )).isEqualTo("Recorded execution evidence for plan: Plan");
         } finally {
             PlanToolExecutionContext.clear();
@@ -140,9 +142,32 @@ class PlanSaveToolsTest {
         assertThat(service.activePlan("conversation-1").orElseThrow().executionEvidence())
             .contains("Summary: Done")
             .contains("Artifact: report.md");
-        assertThatThrownBy(() -> tools.report(null, List.of(), List.of(), List.of(), List.of()))
+        assertThatThrownBy(() -> tools.report(null, List.of(), List.of(), List.of(), List.of(), List.of()))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("execute_plan mode");
+    }
+
+    @Test
+    void normalizesStructuredExecutionEvidenceAndArtifactAliases() {
+        assertThat(PlanSaveTools.normalizeEvidence(List.of(
+            Map.of("criterion", "Cites sources", "evidence", "Report includes source appendix"),
+            Map.of("text", "Plain evidence field"),
+            "Already formatted"
+        ))).containsExactly(
+            "Criterion: Cites sources | Evidence: Report includes source appendix",
+            "Plain evidence field",
+            "Already formatted"
+        );
+
+        assertThat(PlanSaveTools.normalizeTextList(List.of(
+            Map.of("path", "workspace/report.md"),
+            Map.of("message", "Cloudflare blocked one source"),
+            "Manual note"
+        ))).containsExactly(
+            "workspace/report.md",
+            "Cloudflare blocked one source",
+            "Manual note"
+        );
     }
 
     private JdbcTemplate jdbcTemplate() {

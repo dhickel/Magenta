@@ -71,6 +71,8 @@ If Spring AI accepts the raw JSON but fails to convert it into the Java tool par
 
 `ask_user_questions` accepts both simple string questions and object-shaped entries with fields such as `question`, `text`, `prompt`, or `label`. The server normalizes those entries to plain question text before calling `PlanService` or `TaskService`, because some models emit UI-like question objects with headers and free-response metadata.
 
+`plan_report` and `plan_complete` accept both string lists and object-shaped evidence lists. Objects with `criterion` and `evidence` fields are converted to the per-criterion evidence string format expected by completion preflight. Deviation, unmet-criterion, and artifact lists are also normalized from simple objects, and `artifacts` is accepted as an alias for `artifactPaths`.
+
 `NEEDS_REVIEW` is an execution-review state, not draft planning. `PlanService.mode(...)` resolves it as `NORMAL` while `ChatPlanState.status` remains `NEEDS_REVIEW`, so clients can show evidence and validation feedback without reinstalling PLAN-mode prompts, tools, or planning controls.
 
 ## Saved Plan Chat
