@@ -46,6 +46,7 @@ public class FrontendController {
             .withHtmxNavigation(false)
             .addPrimaryLink("Home", "/")
             .addPrimaryLink("Chat", "/chat")
+            .addPrimaryLink("Avatar", "/avatar")
             .addPrimaryLink("Dashboard", "/dashboard")
             .build();
         this.pageShell = shell("Magenta Portal", "Magenta Portal", "Operational assistant console")
@@ -78,11 +79,13 @@ public class FrontendController {
                 .withChild(pageHeader("Magenta Portal", "Chat, plan, delegate, and monitor operational assistant work."))
                 .withChild(new Row()
                     .addColumn(homeCard("Chat", "Continue an assistant conversation with session management.", "/chat"))
-                    .addColumn(homeCard("Dashboard", "Full-screen orchestration dashboard for plans, workflows, jobs, and agents.", "/dashboard"))
-                    .addColumn(homeCard("Plans & Tasks", "Build and run unified plan/task definitions.", "/plans")))
+                    .addColumn(homeCard("Avatar", "Open the personal dashboard for chat, organizer widgets, and recent work.", "/avatar"))
+                    .addColumn(homeCard("Dashboard", "Full-screen orchestration dashboard for plans, workflows, jobs, and agents.", "/dashboard")))
                 .withChild(new Row()
+                    .addColumn(homeCard("Plans & Tasks", "Build and run unified plan/task definitions.", "/plans"))
                     .addColumn(homeCard("Workflows", "Compose tasks into ordered workflows with gates and approvals.", "/workflows"))
-                    .addColumn(homeCard("Jobs", "Inspect orchestration jobs and run history.", "/jobs"))
+                    .addColumn(homeCard("Jobs", "Inspect orchestration jobs and run history.", "/jobs")))
+                .withChild(new Row()
                     .addColumn(homeCard("Inbox", "User and agent inboxes with approval controls.", "/inbox"))))
             .build());
     }

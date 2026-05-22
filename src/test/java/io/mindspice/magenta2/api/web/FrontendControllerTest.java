@@ -25,9 +25,11 @@ class FrontendControllerTest {
         assertThat(html).doesNotContain("/js/alpha-security.js?v=1");
         assertThat(html).contains("Magenta Portal");
         assertThat(html).contains("/chat");
+        assertThat(html).contains("/avatar");
         assertThat(html).contains("/dashboard");
         assertThat(html).contains("/webjars/htmx.org/dist/htmx.min.js");
         assertThat(html).doesNotContain("hx-get=\"/chat\"");
+        assertThat(html).doesNotContain("/js/avatar-chat.js");
         assertThat(html).doesNotContain("hx-get=\"/dashboard\"");
         assertThat(html).doesNotContain("<style>");
     }
@@ -46,6 +48,7 @@ class FrontendControllerTest {
         assertThat(html).contains("data-sp-chat=\"true\"");
         assertThat(html).contains("/api/fragments/chat/transcript");
         assertThat(html).contains("/js/chat-client.js?v=29");
+        assertThat(html).doesNotContain("/js/avatar-chat.js");
         assertThat(html).contains("id=\"chat-planning-panel\"");
         assertThat(html).contains("id=\"chat-session-files\"");
         assertThat(html).contains("class=\"chat-files-panel\"");

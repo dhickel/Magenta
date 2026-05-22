@@ -156,7 +156,7 @@ Avatar organizer tools:
 - Current assistant tools cover todos, daily tasks, local calendar items, notes, task submission, research-oriented task submission, and output artifact list/read. They return compact JSON records rather than HTML.
 - `avatar_submit_task` and `avatar_submit_research_assignment` create `TASK_RUN` assignments through `AssignmentService`; they require an existing task id and rely on existing assignment validation for agent state, project context, workspace compatibility, and model override behavior.
 - `avatar_list_outputs` and `avatar_read_output` use `OutputArtifactService`, including existing query limits, path confinement, and bounded content reads.
-- Redacted email alert ingress uses `POST /api/avatar/email-alerts` with `X-Magenta-Avatar-Email-Token` and `magenta.avatar.email-alert-token`. It publishes `EMAIL_ALERT_RECEIVED` events through `OrchestrationEventService` with only message id hash, from domain, optional address hash, subject snippet, received timestamp, labels, importance, and thread key hash. Do not store raw email body content or ingress tokens in Avatar persistence, runtime events, logs, prompts, or UI.
+- Email processing remains deferred. Do not add a public Avatar email-ingress endpoint in this sprint. Future mail handling should enter through the scripting API, internal messaging, or agents using approved tools to add messages, then publish internal events after endpoint lockdown and redaction rules are designed. Do not store raw email body content or ingress tokens in Avatar persistence, runtime events, logs, prompts, or UI.
 
 ## Tool Approval
 

@@ -4,12 +4,15 @@
 
 Implemented organizer assistant tools for the Avatar profile. No commit was created.
 
+## Correction
+
+The email alert HTTP ingress described in this original worker handoff was removed during orchestration review after Dwight clarified that email processing must enter through scripting API, internal messaging, or agents using approved tools to add messages. See `phase-04-email-ingress-remediation.md`.
+
 ## Changed Files
 
 - `src/main/java/io/mindspice/magenta2/avatar/AvatarRepository.java`
 - `src/main/java/io/mindspice/magenta2/avatar/AvatarService.java`
-- `src/main/java/io/mindspice/magenta2/avatar/AvatarEmailAlertIngressService.java`
-- `src/main/java/io/mindspice/magenta2/api/avatar/AvatarEmailAlertController.java`
+- Removed during remediation: first-pass Avatar email alert HTTP ingress files.
 - `src/main/java/io/mindspice/magenta2/ai/chat/tool/avatar/AvatarAssistantToolAuthorizationService.java`
 - `src/main/java/io/mindspice/magenta2/ai/chat/tool/avatar/AvatarAssistantToolConfiguration.java`
 - `src/main/java/io/mindspice/magenta2/ai/chat/tool/avatar/AvatarAssistantToolResponses.java`
@@ -17,7 +20,7 @@ Implemented organizer assistant tools for the Avatar profile. No commit was crea
 - `src/main/java/io/mindspice/magenta2/ai/chat/tool/avatar/AvatarAssistantTools.java`
 - `src/main/java/io/mindspice/magenta2/ai/orchestration/runtime/EventType.java`
 - `src/test/java/io/mindspice/magenta2/avatar/AvatarServiceTest.java`
-- `src/test/java/io/mindspice/magenta2/avatar/AvatarEmailAlertIngressServiceTest.java`
+- Removed during remediation: first-pass Avatar email alert HTTP ingress test.
 - `src/test/java/io/mindspice/magenta2/ai/chat/tool/avatar/AvatarToolsTest.java`
 - `docs/end-user/agents.md`
 - `docs/technical/workspaces-tools-outputs.md`
@@ -37,13 +40,12 @@ Implemented organizer assistant tools for the Avatar profile. No commit was crea
 - Task helper tools validate an existing task through `TaskService` and create `TASK_RUN` assignments through `AssignmentService`.
 - Output helper tools use `OutputArtifactService` query/read APIs, preserving existing path confinement and content-size checks.
 - Tools require the active orchestration context to be the configured Avatar supervisor agent id and require exact per-tool approval on that profile.
-- Added `EventType.EMAIL_ALERT_RECEIVED` plus `POST /api/avatar/email-alerts`, token-gated by `X-Magenta-Avatar-Email-Token` and `magenta.avatar.email-alert-token`.
-- Email alert events publish only redacted payload fields: message id hash, from domain, optional address hash, subject snippet, received timestamp, labels, importance, and thread key hash.
+- Removed during remediation: first-pass email alert HTTP ingress and event enum. Email processing is deferred to scripting API, internal messaging, or agents using approved tools to add messages.
 - No shell access was added.
 
 ## Validation
 
-- `mvn -Dtest=AvatarRepositoryTest,AvatarServiceTest,AvatarEmailAlertIngressServiceTest,AvatarToolsTest test` - passed.
+- Original focused Avatar tests passed before remediation. Remediation-focused tests are recorded in `phase-04-email-ingress-remediation.md` and the shared notes.
 - `mvn -Dtest=ChatToolRegistryTest,AgentOperationalToolConfigurationTest test` - passed.
 - `mvn -DskipTests compile` - passed.
 - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` - reached healthy startup on random port `40249`, then exited `124` when `timeout` stopped it and Spring shut down cleanly.
@@ -57,5 +59,5 @@ Implemented organizer assistant tools for the Avatar profile. No commit was crea
 ## Coordinator Next Steps
 
 - Enable the Avatar profile and approve the new Avatar assistant tool names when testing Avatar chat behavior.
-- Configure `magenta.avatar.email-alert-token` before testing email alert ingress.
+- Do not test a public Avatar email alert endpoint; that ingress was removed. Future email processing should use internal scripting/messaging/tool-created message paths after endpoint lockdown design.
 - Run integrated Avatar chat validation once the Phase 05 UI lane exposes the assistant surface.

@@ -6,18 +6,15 @@
 
 ## Change Summary
 
-Implemented Phase 04 Avatar assistant behaviors. Avatar now exposes Spring AI tools for todos, daily tasks, local calendar items, notes, task submission, research-oriented task submission, and output artifact list/read through the existing chat/tool path. Tool implementations use `AvatarService`, `AssignmentService`, `TaskService`, and `OutputArtifactService` instead of creating a second runtime or bypassing persistence boundaries. Added a token-gated redacted email alert ingress route that publishes existing runtime events.
+Implemented Phase 04 Avatar assistant behaviors. Avatar now exposes Spring AI tools for todos, daily tasks, local calendar items, notes, task submission, research-oriented task submission, and output artifact list/read through the existing chat/tool path. Tool implementations use `AvatarService`, `AssignmentService`, `TaskService`, and `OutputArtifactService` instead of creating a second runtime or bypassing persistence boundaries. A short-lived token-gated email alert HTTP ingress was removed during orchestration review because email processing should enter later through scripting/internal messaging/tool-created messages instead of a public Avatar endpoint.
 
 ## Files
 
 - `src/main/java/io/mindspice/magenta2/avatar/AvatarRepository.java`
 - `src/main/java/io/mindspice/magenta2/avatar/AvatarService.java`
-- `src/main/java/io/mindspice/magenta2/avatar/AvatarEmailAlertIngressService.java`
-- `src/main/java/io/mindspice/magenta2/api/avatar/AvatarEmailAlertController.java`
 - `src/main/java/io/mindspice/magenta2/ai/chat/tool/avatar/**`
 - `src/main/java/io/mindspice/magenta2/ai/orchestration/runtime/EventType.java`
 - `src/test/java/io/mindspice/magenta2/avatar/AvatarServiceTest.java`
-- `src/test/java/io/mindspice/magenta2/avatar/AvatarEmailAlertIngressServiceTest.java`
 - `src/test/java/io/mindspice/magenta2/ai/chat/tool/avatar/AvatarToolsTest.java`
 - `docs/end-user/agents.md`
 - `docs/technical/workspaces-tools-outputs.md`
@@ -35,11 +32,11 @@ The Avatar profile can approve and use:
 
 Tool responses are compact JSON records. The tools do not grant shell access, create a second runtime, add UI routes, or store organizer data outside Avatar persistence.
 
-`POST /api/avatar/email-alerts` accepts token-authenticated email alert payloads and publishes `EMAIL_ALERT_RECEIVED` through `OrchestrationEventService`. The stored event payload contains only redacted fields: message id hash, from domain, optional address hash, subject snippet, received timestamp, labels, importance, and thread key hash.
+No public email-ingress endpoint is exposed for Avatar. Email-triggered alerts remain a later internal integration target through scripting API, internal messaging, or agents using approved tools to add messages.
 
 ## Risks
 
-The reserved Avatar profile is still disabled by default from Phase 01. Operators must activate it and approve exact tool names before chat can use these tools. Authorization also depends on `ChatService.chatAsAgent(...)` or another existing path installing an Avatar `OrchestrationTaskContext`. Email ingress depends on `magenta.avatar.email-alert-token`; an unset token rejects ingress rather than accepting unauthenticated alerts.
+The reserved Avatar profile is still disabled by default from Phase 01. Operators must activate it and approve exact tool names before chat can use these tools. Authorization also depends on `ChatService.chatAsAgent(...)` or another existing path installing an Avatar `OrchestrationTaskContext`. Email processing remains out of scope until the internal scripting/messaging path and endpoint lockdown rules are designed.
 
 ## Follow-up Items
 

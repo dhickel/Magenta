@@ -84,9 +84,9 @@ The reserved `Avatar` agent profile can be configured as the personal assistant 
 - Task assignment: `avatar_submit_task`, `avatar_submit_research_assignment`.
 - Output inspection: `avatar_list_outputs`, `avatar_read_output`.
 
-These tools return compact JSON records and store organizer data in Avatar persistence. They do not grant shell access, poll email, connect to external calendars, or create plugin-runtime behavior.
+These tools return compact JSON records and store organizer data in Avatar persistence. They do not grant shell access, poll email, expose a public email-ingress endpoint, connect to external calendars, or create plugin-runtime behavior.
 
-Avatar also exposes a backend email alert ingress route at `POST /api/avatar/email-alerts` for external mail adapters. The request must include `X-Magenta-Avatar-Email-Token`, matching the configured `magenta.avatar.email-alert-token`. Magenta publishes only redacted event payload fields: message id hash, from domain, optional address hash, subject snippet, received timestamp, labels, importance, and thread key hash. Raw email bodies and ingress tokens are not persisted.
+Email processing is intentionally deferred. Future mail handling should enter through the scripting API, internal messaging, or agents using approved tools to add messages; it should not use an open external Avatar endpoint.
 
 ## Workspace Tab
 

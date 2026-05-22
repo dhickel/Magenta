@@ -28,7 +28,9 @@
 - Phase 02 implementation committed: workspace output directories and retained temp publication.
 - Phase 03 implementation committed: agent operational workspace/output/system tools.
 - Research/debug sidecar committed: plugin research review email formatting follow-up and watcher diagnostics.
-- Phase 04 implementation completed: Avatar assistant organizer tools, task/research/output helper tools, and redacted email alert ingress.
+- Phase 04 implementation completed: Avatar assistant organizer tools, task/research/output helper tools, and a first-pass redacted email alert ingress.
+- Phase 04 email-ingress remediation completed after Dwight clarified that email processing must not use a public Avatar endpoint; the HTTP ingress controller/service/test were removed and docs were corrected toward scripting/internal messaging/tool-created messages.
+- Phase 05 implementation completed: `/avatar` dashboard shell, widget fragments, HTMX layout editing, organizer CRUD widgets, compact Avatar chat, navigation/docs/changelog, and browser validation remediation.
 
 ## Validation Results
 
@@ -39,6 +41,10 @@
 - Phase 04 full test suite passed: `mvn test` (746 tests).
 - Phase 04 bounded startup passed: `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` reached healthy startup, then exited with timeout code 124 after graceful shutdown.
 - Phase 04 whitespace check passed: `git diff --check`.
+- Phase 04 email-ingress remediation focused tests passed: `mvn -Dtest=AvatarRepositoryTest,AvatarServiceTest,AvatarToolsTest,AvatarDashboardControllerTest test` (17 tests).
+- Phase 05 controller tests passed: `mvn -Dtest=AvatarDashboardControllerTest,FrontendControllerTest,OrchestrationControllerTest test` (108 tests).
+- Phase 05 operational/output compatibility tests passed: `mvn -Dtest=OperationalUiContractControllerTest,OutputControllerTest test` (11 tests).
+- Phase 05 Playwright validation by subagent passed on rerun 5: desktop/mobile `/avatar`, chat visible feedback, widget roots, HTMX edit save, todo create/done/delete, and distinct `/dashboard`. Artifacts are under `target/playwright-avatar-rerun-5/`; output preview remained unvalidated because no output seed data was present.
 
 ## Remediation Notes
 
@@ -66,3 +72,4 @@
 - Later implementation must not use worktrees unless the user changes that constraint.
 - Later implementation lanes must declare owned paths and stage explicit path lists only.
 - Phase 04 intentionally keeps the Avatar profile reserved/dormant by default; operators must activate it and approve exact Avatar tool names before the tools can run.
+- Avatar does not expose a public email alert ingress endpoint. Future email processing should enter through scripting API, internal messaging, or approved agent tools after endpoint lockdown/redaction design.
