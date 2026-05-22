@@ -140,3 +140,25 @@ Findings:
 - Adding file write/append/replace to the ignored local approved tools allowed execution to create `f13-backcross-report.md` in the chat file directory.
 - Execution still remained `EXECUTING` because the model emitted `plan_report` and `plan_complete` evidence as objects, while the tool signatures expected `List<String>`. Spring rejected those calls with `Cannot deserialize value of type java.lang.String from Object value`.
 - Remediation: `plan_report` and `plan_complete` now accept object-shaped evidence/deviation/unmet/artifact entries and normalize them before validation. `artifacts` is also accepted as an alias for `artifactPaths`.
+
+## Fourteenth And Fifteenth Browser/DB Validation Passes (Non-Mutating)
+
+- Date: 2026-05-22
+- Runtime 14 used isolated DB `/tmp/magenta2-in-chat-planning-validation-14.sqlite` and root `/tmp/magenta2-in-chat-planning-validation-root-14`.
+- Runtime 15 used isolated DB `/tmp/magenta2-in-chat-planning-validation-15.sqlite` and root `/tmp/magenta2-in-chat-planning-validation-root-15`.
+- Runtime 15 conversation: `52decad0-39e6-47fb-bf01-c9df1e9759af`.
+
+Findings:
+- Runtime 14 reached web search and plan editing, but the validation harness shut the app down while a planning continuation was sleeping/retrying, leaving the draft in `DRAFT` with a recovery clarification.
+- Runtime 15 accepted inline `/plan <topic>`, collected/seeded planning answers, reached `READY_FOR_APPROVAL`, approved the plan, entered `EXECUTING`, searched/fetched public sources, and created `f13-backcross-report.md`.
+- The report file was written under the anonymous chat file directory at `/tmp/magenta2-in-chat-planning-validation-root-15/root/chats/52decad0-39e6-47fb-bf01-c9df1e9759af/files/f13-backcross-report.md` with 501 lines and about 43 KB of markdown content.
+- No `Cannot deserialize value of type java.lang.String from Object value` conversion error occurred after the structured evidence fix.
+- Completion still looped because Magenta's validator input did not explicitly list every required deliverable/criterion, so the validator returned passing criteria for the validation criteria while omitting deliverables. The contract then fail-closed with "Validator did not address required criterion" findings.
+- Completion also required `finalMessage` even when the executing model supplied a usable summary, which caused another avoidable fail-closed loop.
+- Runtime 16 confirmed the completion contract patch progressed to artifact preflight, then exposed a remaining anonymous artifact path issue: file tools reported `outputs/f13-backcross-report.md`, while the chat file directory stored `f13-backcross-report.md` at the session file root. Validation rejected the reported `outputs/...` path as unreadable even though the artifact existed and could be listed/read by the file tools.
+
+Remediation:
+- Completion validation now falls back to the execution summary as the proposed final message when `finalMessage` is omitted.
+- Validator input now includes a required completion checklist containing every deliverable and validation criterion using exact text.
+- Artifact content available to the validator was raised from 8 KB to 60 KB so medium-length markdown reports can be inspected in one pass.
+- Session plan artifact validation now resolves `outputs/...` and `workspace/...` aliases against the anonymous chat file directory when the direct relative path is not present.
