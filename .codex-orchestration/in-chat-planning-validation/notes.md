@@ -113,3 +113,16 @@ Findings:
 - Execution continued after SSE `plan_stream_disconnect` diagnostics, confirming client disconnect was decoupled from immediate domain failure.
 - Execution later moved to `NEEDS_REVIEW` after a provider response extraction error wrapping `java.io.IOException: closed` / `Stream 19 cancelled`; no run artifacts were produced, so file visibility validation was not reached.
 - Remediation: widened transient retry detection to inspect the full cause chain for `ResourceAccessException` or `IOException`.
+
+## Tenth Browser/DB Validation Pass (Non-Mutating)
+
+- Date: 2026-05-22
+- Branch head: `7d30836`
+- Runtime used isolated DB `/tmp/magenta2-in-chat-planning-validation-10.sqlite` and root `/tmp/magenta2-in-chat-planning-validation-root-10`.
+- Conversation: `ec255a25-4c00-4341-ac55-81eff6290099`.
+
+Findings:
+- The browser entered `/plan <topic>` and received `400 BAD_REQUEST "plan does not accept arguments"`, which blocked the user-requested natural command form.
+- A follow-up planning flow collected the three seeded answers and populated the draft, but the model queued additional follow-up questions instead of reaching approval during the validation window.
+- No execution started in this pass, so wrapped provider close retry and artifact visibility were not re-exercised.
+- Remediation: `/plan <topic or instruction>` now starts anonymous plan mode and records the inline text as the first goal answer, keeping command handling model-free while allowing the natural chat command form.

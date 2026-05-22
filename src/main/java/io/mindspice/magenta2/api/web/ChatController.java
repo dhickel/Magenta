@@ -415,8 +415,7 @@ public class ChatController {
                 yield handleNew();
             }
             case "plan" -> {
-                requireNoArguments(rootCommand, parts);
-                yield handlePlan(request.conversationId(), request.model(), request.planningModel());
+                yield handlePlan(request.conversationId(), request.model(), request.planningModel(), commandArguments(parts));
             }
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "unknown command: " + rootCommand);
         };
@@ -529,12 +528,22 @@ public class ChatController {
         );
     }
 
-    private ChatResponse.CmdResponse handlePlan(String requestConversationId, String selectedModel, String planningModel) {
+    private ChatResponse.CmdResponse handlePlan(
+        String requestConversationId,
+        String selectedModel,
+        String planningModel,
+        String userInstruction
+    ) {
         String conversationId = normalize(requestConversationId);
         if (conversationId == null) {
             conversationId = chatService.newConversationId();
         }
-        ChatResponse.MsgResponse response = chatService.beginPlan(conversationId, selectedModel, planningModel);
+        ChatResponse.MsgResponse response = chatService.beginPlan(
+            conversationId,
+            selectedModel,
+            planningModel,
+            userInstruction
+        );
         List<String> conversationIds = new ArrayList<>(chatService.listConversationIds());
         if (!conversationIds.contains(conversationId)) {
             conversationIds.add(0, conversationId);
@@ -568,6 +577,14 @@ public class ChatController {
 
     private String commandName(String value) {
         return value.startsWith("/") ? value.substring(1) : value;
+    }
+
+    private String commandArguments(String[] parts) {
+        if (parts == null || parts.length <= 1) {
+            return null;
+        }
+        String joined = String.join(" ", java.util.Arrays.copyOfRange(parts, 1, parts.length));
+        return normalize(joined);
     }
 
     private void requireNoArguments(String command, String[] parts) {

@@ -516,6 +516,15 @@ public class ChatService {
     }
 
     public ChatResponse.MsgResponse beginPlan(String conversationId, String selectedModel, String planningModel) {
+        return beginPlan(conversationId, selectedModel, planningModel, null);
+    }
+
+    public ChatResponse.MsgResponse beginPlan(
+        String conversationId,
+        String selectedModel,
+        String planningModel,
+        String userInstruction
+    ) {
         requirePlanService();
         String prePlanningModel = StringUtils.hasText(selectedModel)
             ? selectedModel
@@ -527,6 +536,9 @@ public class ChatService {
             ? planningModel
             : resolvedPlanningModel(conversationId);
         planService.beginPlan(conversationId, prePlanningModel, executionModel);
+        if (StringUtils.hasText(userInstruction)) {
+            planService.recordPromptAnswer(conversationId, userInstruction, null);
+        }
         return new ChatResponse.MsgResponse(
             conversationId,
             executionModel,

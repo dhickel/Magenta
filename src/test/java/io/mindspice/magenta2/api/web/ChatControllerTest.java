@@ -140,14 +140,14 @@ class ChatControllerTest {
     }
 
     @Test
-    void planCommandRejectsArguments() {
-        assertThatThrownBy(() -> chatController.command(
+    void planCommandUsesArgumentsAsInitialGoalAnswer() {
+        ChatResponse.CmdResponse response = chatController.command(
             new ChatRequest.CmdRequest(CONVERSATION_ID, "/plan add reminder support")
-        ))
-            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
-                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-                assertThat(exception.getReason()).isEqualTo("plan does not accept arguments");
-            });
+        );
+
+        assertThat(response.message()).isEqualTo("What assumptions should guide the plan?");
+        assertThat(response.planState().mode()).isEqualTo("PLAN");
+        assertThat(chatService.initialPlanningInstruction).isEqualTo("add reminder support");
     }
 
     @Test
@@ -340,6 +340,7 @@ class ChatControllerTest {
         private int newConversationIdCalls;
         private String title;
         private String titleJobStatus;
+        private String initialPlanningInstruction;
         private boolean favorite;
         private boolean archived;
 
@@ -419,6 +420,52 @@ class ChatControllerTest {
         @Override
         public ChatResponse.MsgResponse beginPlan(String conversationId, String selectedModel, String planningModel) {
             return beginPlan(conversationId);
+        }
+
+        @Override
+        public ChatResponse.MsgResponse beginPlan(
+            String conversationId,
+            String selectedModel,
+            String planningModel,
+            String userInstruction
+        ) {
+            if (userInstruction == null) {
+                return beginPlan(conversationId);
+            }
+            initialPlanningInstruction = userInstruction;
+            planState = new ChatPlanState(
+                "PLAN",
+                "DRAFT",
+                null,
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                "questions",
+                "What assumptions should guide the plan?",
+                List.of(),
+                2,
+                3,
+                null,
+                null,
+                null,
+                null
+            );
+            return new ChatResponse.MsgResponse(
+                conversationId,
+                "qwen3",
+                "What assumptions should guide the plan?",
+                null,
+                planState
+            );
         }
 
         @Override

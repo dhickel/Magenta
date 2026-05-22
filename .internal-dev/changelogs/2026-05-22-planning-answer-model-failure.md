@@ -14,6 +14,7 @@ Anonymous chat planning answer submission now handles continuation failures and 
 - `src/main/java/io/mindspice/magenta2/api/web/ChatController.java`
 - `src/main/resources/static/js/chat-client.js`
 - `src/test/java/io/mindspice/magenta2/ai/chat/service/ChatServiceTest.java`
+- `src/test/java/io/mindspice/magenta2/api/web/ChatControllerTest.java`
 - `src/test/java/io/mindspice/magenta2/ai/chat/plan/PlanServiceTest.java`
 - `src/test/java/io/mindspice/magenta2/ai/chat/tool/InteractionQuestionToolsTest.java`
 - `docs/technical/chat-planning-tasks.md`
@@ -22,6 +23,7 @@ Anonymous chat planning answer submission now handles continuation failures and 
 # Behavioral Impact
 
 - Planning answers remain persisted even when the follow-up model or planning tool call fails.
+- `/plan <topic or instruction>` now starts anonymous plan mode and stores the inline text as the first opening goal answer instead of rejecting the command with `400 plan does not accept arguments`.
 - Invalid model credentials and unavailable planning tool dependencies no longer turn the answer route into an unhandled 500 after clearing the pending question.
 - The user sees a controlled chat notice explaining that the answer was saved and model/tool configuration should be fixed before continuing.
 - If the draft would otherwise be left with no pending question, Magenta queues a recovery clarification so the UI has a next action instead of stalling in `DRAFT`.
@@ -36,6 +38,7 @@ Anonymous chat planning answer submission now handles continuation failures and 
 # Risks
 
 - The failed planning question is not re-queued because the answer was already recorded. After fixing model or tool configuration, the user should answer the recovery clarification or send another planning message.
+- Inline `/plan` text is treated as the answer to the first goal prompt. If the user intended a command argument rather than goal context, they should start with plain `/plan` and answer the prompts separately.
 - This handles AI/tool failures in the answer-continuation path; other chat/model routes may still surface provider failures through their existing route-specific handling.
 - A browser disconnect no longer marks execution failed, but the execution model still must complete normally and pass validator-gated completion for the plan to become `COMPLETED`.
 - `ask_user_questions` still enforces the existing one-to-five queued question limit after normalization; extra metadata on model-provided question objects is ignored.
