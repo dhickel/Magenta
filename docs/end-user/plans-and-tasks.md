@@ -110,6 +110,8 @@ Only one anonymous plan execution can run for a chat conversation at a time. If 
 
 Completion is validator-gated. The execution model must call `plan_complete` with evidence for each validation criterion and a proposed final message. Magenta then validates that evidence and referenced artifacts before showing the final completion as trusted. Artifacts previously saved with `plan_report` are carried into completion validation automatically. Validation feedback shows whether a planning validator model ran, which model was used, whether a deterministic preflight rejected the completion before a model call, or whether no validator model was available. Completion validation does not fall back to the execution model. If validation fails, the remediation remains internal execution feedback and the model must continue working or call `plan_complete` again.
 
+For anonymous chat plans, artifact names such as `report.md` are checked in the chat's file directory during validation, so files created during execution can be cited without a full internal path.
+
 If the model emits a tool call with malformed JSON arguments, Magenta records a compact tool diagnostic and asks the model to retry or choose the next action. The malformed tool call is not executed.
 
 If automatic retries are exhausted, the plan becomes `NEEDS_REVIEW`. In that state the chat does not reopen planning controls or show **Cancel planning**. Review the execution evidence, validation feedback, and tool transcript before trusting or revising the result.

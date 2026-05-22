@@ -447,6 +447,100 @@ class PlanServiceTest {
     }
 
     @Test
+    void completionValidationReadsRelativeChatArtifactsFromSessionPlanFileDirectory() throws Exception {
+        Path dataRoot = Files.createDirectories(tempDir.resolve("validator-chat-artifacts"));
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        PlanRepository planRepository = new PlanRepository(jdbcTemplate, objectMapper);
+        AiConfig config = new AiConfig(
+            "default-agent",
+            "executor-key",
+            "summary-key",
+            "validator-key",
+            null,
+            10,
+            dataRoot,
+            null,
+            Map.of(
+                "validator-key", new ModelConfig("validator-remote", "http://localhost:11434", EndpointType.OLLAMA, 8192, null, null),
+                "executor-key", new ModelConfig("executor-remote", "http://localhost:11434", EndpointType.OLLAMA, 8192, null, null)
+            ),
+            Map.of()
+        );
+        WorkspaceDirectoryService workspaceDirectoryService = new WorkspaceDirectoryService(config);
+        PlanService service = new PlanService(
+            planRepository,
+            memoryRepository,
+            null,
+            new io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer(),
+            workspaceDirectoryService,
+            null
+        );
+        CapturingPlanCompletionValidator validator = new CapturingPlanCompletionValidator("""
+            {
+              "complete": true,
+              "summary": "Verified chat artifact.",
+              "criteria": [
+                {
+                  "criterion": "Chat Artifact Plan",
+                  "status": "passed",
+                  "evidence": "Approved plan inspected.",
+                  "risk": "",
+                  "requiredRemediation": ""
+                },
+                {
+                  "criterion": "Write chat report",
+                  "status": "passed",
+                  "evidence": "report.md artifact contents inspected.",
+                  "risk": "",
+                  "requiredRemediation": ""
+                },
+                {
+                  "criterion": "Report is readable",
+                  "status": "passed",
+                  "evidence": "report.md artifact contents inspected.",
+                  "risk": "",
+                  "requiredRemediation": ""
+                }
+              ],
+              "findings": [],
+              "remediationSteps": []
+            }
+            """);
+        PlanCompletionService completionService = new PlanCompletionService(service, validator, config, objectMapper);
+
+        service.beginPlan("conversation-chat-artifact");
+        Files.writeString(service.chatFileDirectory("conversation-chat-artifact").resolve("report.md"), "chat artifact content");
+        service.saveDraftPlan(
+            "conversation-chat-artifact",
+            "Validate chat artifact",
+            "Chat Artifact Plan",
+            "Exercise chat artifact validation.",
+            null,
+            List.of("Write chat report"),
+            List.of("Collect artifact"),
+            List.of("Report is readable")
+        );
+        service.markExecuting("conversation-chat-artifact");
+
+        String result = completionService.complete(
+            "conversation-chat-artifact",
+            "Report is ready.",
+            List.of("Criterion: Report is readable | Evidence: report.md was read back"),
+            List.of(),
+            List.of(),
+            List.of("report.md"),
+            "Done"
+        );
+
+        assertThat(result).contains("Plan validation passed");
+        assertThat(validator.requests()).singleElement().satisfies(request -> assertThat(request.userInput())
+            .contains("--- report.md ---\nchat artifact content")
+            .doesNotContain("artifact not found"));
+    }
+
+    @Test
     void preflightValidationRecordsModelSkipReason() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         ObjectMapper objectMapper = new ObjectMapper();

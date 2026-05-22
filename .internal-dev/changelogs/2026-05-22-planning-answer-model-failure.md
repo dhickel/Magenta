@@ -9,8 +9,10 @@ Anonymous chat planning answer submission now handles continuation failures and 
 # Files
 
 - `src/main/java/io/mindspice/magenta2/ai/chat/service/ChatService.java`
+- `src/main/java/io/mindspice/magenta2/ai/chat/plan/PlanCompletionService.java`
 - `src/main/resources/static/js/chat-client.js`
 - `src/test/java/io/mindspice/magenta2/ai/chat/service/ChatServiceTest.java`
+- `src/test/java/io/mindspice/magenta2/ai/chat/plan/PlanServiceTest.java`
 - `docs/technical/chat-planning-tasks.md`
 - `docs/end-user/plans-and-tasks.md`
 
@@ -21,6 +23,7 @@ Anonymous chat planning answer submission now handles continuation failures and 
 - The user sees a controlled chat notice explaining that the answer was saved and model/tool configuration should be fixed before continuing.
 - If the draft would otherwise be left with no pending question, Magenta queues a recovery clarification so the UI has a next action instead of stalling in `DRAFT`.
 - Duplicate or stale planning answer submissions in a draft with no active prompt now refresh the recovery clarification instead of returning `400 No active planning question exists for this conversation`.
+- Anonymous plan completion validation now resolves relative artifact paths against the chat file directory before falling back to `dataRoot`, so files created by chat-scoped file tools can be read by the validator.
 - Browser error helpers now display server `error` payload fields instead of falling back to generic HTTP status text.
 
 # Risks
