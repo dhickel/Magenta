@@ -32,6 +32,7 @@
 - Patched Spring AI tool argument conversion failures so they become tool-loop diagnostics and retry prompts rather than aborting planning continuation.
 - Patched anonymous execution SSE disconnect handling so client transport breaks record `plan_stream_disconnect` instead of marking execution failed.
 - Patched `ask_user_questions` normalization so object-shaped question entries from the model are accepted and converted to plain prompt text.
+- Patched transient provider failure detection so wrapped response-body `IOException` failures are retried instead of immediately failing plan execution.
 
 ## Blockers
 
@@ -98,3 +99,17 @@ Findings:
 - `READY_FOR_APPROVAL` was not reached. The DB stayed at `PLAN`/`DRAFT` with `planningTask=clarify_and_elaborate`.
 - Audit events showed repeated `ask_user_questions` failures because the model sent `questions` as objects containing `header`, `question`, and `type`; Spring could not convert those objects into `List<String>`.
 - Remediation: changed `ask_user_questions` to accept `List<Object>` and normalize plain strings or object-shaped question entries to user-visible question text.
+
+## Ninth Browser/DB Validation Pass (Non-Mutating)
+
+- Date: 2026-05-22
+- Branch head: `e5cd216`
+- Runtime used isolated DB `/tmp/magenta2-in-chat-planning-validation-9.sqlite` and root `/tmp/magenta2-in-chat-planning-validation-root-9`.
+- Conversation: `3dd85e97-83cf-40c5-96a4-158073dc03c3`.
+
+Findings:
+- Structured `ask_user_questions` payloads were accepted; the run reached `READY_FOR_APPROVAL`, approved the plan, and started execution.
+- Browser console/network did not show unexpected planning-phase failures.
+- Execution continued after SSE `plan_stream_disconnect` diagnostics, confirming client disconnect was decoupled from immediate domain failure.
+- Execution later moved to `NEEDS_REVIEW` after a provider response extraction error wrapping `java.io.IOException: closed` / `Stream 19 cancelled`; no run artifacts were produced, so file visibility validation was not reached.
+- Remediation: widened transient retry detection to inspect the full cause chain for `ResourceAccessException` or `IOException`.

@@ -2240,11 +2240,14 @@ public class ChatService {
     }
 
     private boolean isRetryable(Throwable error) {
-        Throwable unwrapped = unwrap(error);
-        if (unwrapped instanceof ResourceAccessException) {
-            return true;
+        Throwable current = unwrap(error);
+        while (current != null) {
+            if (current instanceof ResourceAccessException || current instanceof IOException) {
+                return true;
+            }
+            current = current.getCause();
         }
-        return unwrapped instanceof IOException;
+        return false;
     }
 
     private ChatMessage toolChatMessageWithRetry(

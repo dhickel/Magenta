@@ -29,6 +29,7 @@ Anonymous chat planning answer submission now handles continuation failures and 
 - Anonymous plan completion validation now resolves relative artifact paths against the chat file directory before falling back to `dataRoot`, so files created by chat-scoped file tools can be read by the validator.
 - Spring AI tool argument conversion failures are converted into model-visible tool diagnostics and retried inside the tool loop instead of aborting the planning continuation.
 - The shared `ask_user_questions` planning/task tool now accepts object-shaped question entries and extracts their `question`, `text`, `prompt`, or `label` field before queuing prompts.
+- Transient provider response extraction failures that wrap an `IOException` are retried through the existing conversation snapshot/restore path instead of immediately marking execution failed.
 - Anonymous plan execution stream disconnects are recorded as transport diagnostics instead of plan execution failures, so a closed browser stream does not by itself move the plan to `NEEDS_REVIEW`.
 - Browser error helpers now display server `error` payload fields instead of falling back to generic HTTP status text.
 
@@ -38,6 +39,7 @@ Anonymous chat planning answer submission now handles continuation failures and 
 - This handles AI/tool failures in the answer-continuation path; other chat/model routes may still surface provider failures through their existing route-specific handling.
 - A browser disconnect no longer marks execution failed, but the execution model still must complete normally and pass validator-gated completion for the plan to become `COMPLETED`.
 - `ask_user_questions` still enforces the existing one-to-five queued question limit after normalization; extra metadata on model-provided question objects is ignored.
+- Provider-side repeated response-stream closure can still fail after retry exhaustion, but a single wrapped body-close no longer bypasses transient retry handling.
 
 # Follow-up Items
 

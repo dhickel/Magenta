@@ -1,5 +1,6 @@
 package io.mindspice.magenta2.ai.chat.service;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -43,6 +44,7 @@ import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.execution.ToolExecutionException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
+import org.springframework.web.client.RestClientException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -418,6 +420,51 @@ class ChatServiceTest {
     }
 
     @Test
+    void wrappedIoFailuresAreRetriedAsTransientModelFailures() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        ChatSessionMetadataRepository metadataRepository = new ChatSessionMetadataRepository(jdbcTemplate);
+        ToolTranscriptService transcriptService = new ToolTranscriptService(objectMapper);
+        ContextUsageTracker usageTracker = new ContextUsageTracker();
+        WrappedIoFailureThenFinalChatModel chatModel = new WrappedIoFailureThenFinalChatModel();
+        ChatToolRegistry toolRegistry = new ChatToolRegistry(List.of(new SampleToolCallback()), List.of());
+        ChatModelRouter router = new TestChatModelRouter(chatModel);
+        AiConfig config = aiConfig(Path.of("."), List.of("sample_tool"));
+        ContextManagementAdvisor contextAdvisor = new ContextManagementAdvisor(
+            memoryRepository,
+            config,
+            router,
+            new CharacterTokenEstimator(),
+            usageTracker,
+            transcriptService,
+            null
+        );
+        ChatService chatService = new ChatService(
+            new RepositoryBackedChatMemory(memoryRepository),
+            memoryRepository,
+            metadataRepository,
+            new ChatMarkdownRenderer(),
+            config,
+            contextAdvisor,
+            usageTracker,
+            router,
+            mock(ToolCallingManager.class),
+            toolRegistry,
+            transcriptService,
+            null
+        );
+
+        var response = chatService.chat("conversation-1", "recover from closed stream", "main");
+
+        assertThat(response.response()).isEqualTo("Recovered after transient provider close.");
+        assertThat(chatModel.calls.get()).isEqualTo(2);
+        assertThat(memoryRepository.findByConversationId("conversation-1"))
+            .extracting(Message::getText)
+            .containsExactly("recover from closed stream", "Recovered after transient provider close.");
+    }
+
+    @Test
     void planningAnswerModelFailureReturnsControlledResponseAfterSavingAnswer() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         ObjectMapper objectMapper = new ObjectMapper();
@@ -702,6 +749,23 @@ class ChatServiceTest {
 
         List<String> prompts() {
             return prompts;
+        }
+    }
+
+    private static final class WrappedIoFailureThenFinalChatModel implements ChatModel {
+        private final AtomicInteger calls = new AtomicInteger();
+
+        @Override
+        public org.springframework.ai.chat.model.ChatResponse call(Prompt prompt) {
+            if (calls.getAndIncrement() == 0) {
+                throw new RestClientException(
+                    "Error while extracting response for type [ChatCompletion]",
+                    new IOException("closed")
+                );
+            }
+            return new org.springframework.ai.chat.model.ChatResponse(List.of(
+                new Generation(new AssistantMessage("Recovered after transient provider close."))
+            ));
         }
     }
 

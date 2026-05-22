@@ -61,6 +61,8 @@ Anonymous execution is single-flight per conversation. `ActiveTurnRegistry` reje
 
 Plan execution SSE transport errors are tracked separately from domain execution errors. If the browser closes or the SSE response breaks while anonymous execution is still running, `ChatController` records a `plan_stream_disconnect` audit diagnostic and stops sending events to that client without calling `recordExecutionFailure`. Underlying model/tool execution errors still record `plan_stream_error` and can move the plan to `NEEDS_REVIEW`.
 
+Model/provider response extraction failures are treated as transient when the exception chain contains `ResourceAccessException` or `IOException`, including wrapped `RestClientException` cases from a closed response body. Tool turns use the existing conversation snapshot/restore retry path for those failures.
+
 Tool-call argument JSON is preflight validated before Spring AI tool execution. If any tool call in a model batch has malformed argument JSON, none of the tools in that batch execute. Magenta persists and streams compact synthetic tool diagnostics, records audit detail for the rejected calls, adds a system control message telling the model which call failed parsing, and continues the tool loop so the model can retry. These recovered parser failures do not directly update plan status, execution evidence, or validation feedback.
 
 If Spring AI accepts the raw JSON but fails to convert it into the Java tool parameter types, Magenta treats that as the same class of recoverable tool-call diagnostic. The failed tool call is recorded as an error transcript, the model receives a control message with the conversion failure, and the turn continues so PLAN mode can still end in a queued question or approval state.
