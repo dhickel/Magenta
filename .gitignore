@@ -42,6 +42,7 @@ build/
 /chat-memory.db
 /chat-memory.db-*
 /.playwright-mcp
+/.antigravitycli/
 
 ### Config has api keys
 /config/ai-config.example.json
