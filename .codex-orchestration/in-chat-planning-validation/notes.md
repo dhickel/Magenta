@@ -30,10 +30,11 @@
 - Extended stale-answer recovery to stale question-index mismatches so the browser can resync to the current prompt instead of treating `400 Stale planning answer` as terminal.
 - Patched anonymous completion validation so relative artifact paths are resolved against the chat file directory before falling back to `dataRoot`.
 - Patched Spring AI tool argument conversion failures so they become tool-loop diagnostics and retry prompts rather than aborting planning continuation.
+- Patched anonymous execution SSE disconnect handling so client transport breaks record `plan_stream_disconnect` instead of marking execution failed.
 
 ## Blockers
 
-- Need another browser/DB validation pass to confirm the recovery prompt prevents the stalled draft observed after the second run.
+- Need another browser/DB validation pass to confirm execution can complete after transport disconnects are decoupled from domain execution failure.
 
 ## Closeout Work
 
@@ -75,3 +76,10 @@ Findings:
 - A stale `POST /api/chat/{conversationId}/plan/answers` returned `400 No active planning question exists for this conversation`.
 - DB inspection after the run showed the recovery clarification was present in `plan_definitions.pending_questions_json`, but the stale 400 kept the browser on the old error path.
 - Added a server-side stale-answer recovery path so the next validation pass should receive a normal response with the refreshed plan state.
+
+## Later Browser/DB Validation Passes (Non-Mutating)
+
+- Subsequent validation showed the planning flow could recover from stale answer submissions and Spring AI tool argument conversion failures.
+- A longer no-stale browser run reached `READY_FOR_APPROVAL`, approved the anonymous plan, and started streamed execution.
+- Execution later moved to `NEEDS_REVIEW` because the SSE response broke with a `Broken pipe`; audit events showed `plan_execution` and `plan_stream_error` diagnostics tied to the stream failure rather than validator feedback.
+- Remediation: treat browser stream disconnects as transport diagnostics (`plan_stream_disconnect`) and allow the underlying execution path to continue toward normal completion or validator-gated failure.

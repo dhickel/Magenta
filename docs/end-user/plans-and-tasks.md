@@ -108,6 +108,8 @@ If the browser submits an old planning answer after the server has already moved
 
 Only one anonymous plan execution can run for a chat conversation at a time. If another execution is already active, Magenta rejects the second request instead of attaching it to the in-progress run.
 
+If the browser stream closes during anonymous execution, Magenta records the disconnect separately from the plan result. A closed tab or broken SSE connection should not by itself turn the plan into `NEEDS_REVIEW`; the plan still needs the execution model and validator to finish successfully before it shows as completed.
+
 Completion is validator-gated. The execution model must call `plan_complete` with evidence for each validation criterion and a proposed final message. Magenta then validates that evidence and referenced artifacts before showing the final completion as trusted. Artifacts previously saved with `plan_report` are carried into completion validation automatically. Validation feedback shows whether a planning validator model ran, which model was used, whether a deterministic preflight rejected the completion before a model call, or whether no validator model was available. Completion validation does not fall back to the execution model. If validation fails, the remediation remains internal execution feedback and the model must continue working or call `plan_complete` again.
 
 For anonymous chat plans, artifact names such as `report.md` are checked in the chat's file directory during validation, so files created during execution can be cited without a full internal path.

@@ -40,6 +40,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.util.StringUtils;
 
 import jakarta.validation.Valid;
 import reactor.core.Disposable;
@@ -125,12 +126,17 @@ public class ChatController {
             planExecution ? planExecutionStreamTimeoutMillis : 0L
         );
         SseStreamLifecycle.SubscriptionGuard guard = SseStreamLifecycle.guardSubscription();
+        AtomicBoolean clientConnected = new AtomicBoolean(true);
         AtomicBoolean planExecutionFinalized = new AtomicBoolean(false);
         AtomicReference<String> planExecutionFinalMessage = new AtomicReference<>();
 
         Runnable domainCleanup = () -> {
             guard.dispose();
             activeTurnRegistry.complete(activeTurn.turnId());
+        };
+        java.util.function.Consumer<RuntimeException> recordTransportDisconnect = exception -> {
+            clientConnected.set(false);
+            recordStreamError(resolvedRequest, planExecution ? "plan_stream_disconnect" : "stream_disconnect", exception);
         };
         java.util.function.Consumer<RuntimeException> failPlanExecution = exception -> {
             domainCleanup.run();
@@ -140,12 +146,16 @@ public class ChatController {
             recordStreamError(resolvedRequest, planExecution ? "plan_stream_error" : "stream_error", exception);
         };
 
-        emitter.onCompletion(domainCleanup);
+        emitter.onCompletion(() -> {
+            if (clientConnected.get() || planExecutionFinalized.get()) {
+                domainCleanup.run();
+            }
+        });
         emitter.onTimeout(() -> failPlanExecution.accept(new IllegalStateException(
             "Plan execution stream timed out after " + (planExecutionStreamTimeoutMillis / 1000) + " seconds"
         )));
-        emitter.onError(error -> failPlanExecution.accept(new IllegalStateException(
-            "Plan execution stream ended before completion: " + ChatStreamSupport.safeMessage(error), error
+        emitter.onError(error -> recordTransportDisconnect.accept(new IllegalStateException(
+            "Plan execution stream client disconnected before completion: " + ChatStreamSupport.safeMessage(error), error
         )));
 
         try {
@@ -170,6 +180,12 @@ public class ChatController {
             .subscribeOn(Schedulers.boundedElastic())
             .subscribe(
             message -> {
+                if (planExecution && !isStreamSideChannel(message)) {
+                    planExecutionFinalMessage.set(message.text());
+                }
+                if (!clientConnected.get()) {
+                    return;
+                }
                 try {
                     if ("tool".equalsIgnoreCase(message.role())) {
                         ChatStreamSupport.sendSseEvent(
@@ -208,9 +224,6 @@ public class ChatController {
                         );
                         return;
                     }
-                    if (planExecution) {
-                        planExecutionFinalMessage.set(message.text());
-                    }
                     ChatStreamSupport.sendSseEvent(
                         emitter,
                         "context",
@@ -231,10 +244,9 @@ public class ChatController {
                             )
                         );
                 } catch (Exception e) {
-                    failPlanExecution.accept(new IllegalStateException(
-                        "Plan execution stream ended before the client received completion.", e
+                    recordTransportDisconnect.accept(new IllegalStateException(
+                        "Plan execution stream client disconnected before receiving an event.", e
                     ));
-                    emitter.completeWithError(e);
                 }
             },
             error -> {
@@ -275,33 +287,39 @@ public class ChatController {
                         ChatMessage compactionNotice = chatService.systemNotice(
                             ContextManagementAdvisor.COMPACTION_NOTICE
                         );
-                        ChatStreamSupport.sendSseEvent(
-                            emitter,
-                            "system",
-                            new ChatStreamEvent.SystemNotice(
-                                compactionNotice.text(),
-                                compactionNotice.renderedHtml(),
-                                contextUsage.usage(),
-                                chatService.planState(resolvedRequest.conversationId())
-                            )
-                        );
+                        if (clientConnected.get()) {
+                            ChatStreamSupport.sendSseEvent(
+                                emitter,
+                                "system",
+                                new ChatStreamEvent.SystemNotice(
+                                    compactionNotice.text(),
+                                    compactionNotice.renderedHtml(),
+                                    contextUsage.usage(),
+                                    chatService.planState(resolvedRequest.conversationId())
+                                )
+                            );
+                        }
                     }
                     ChatMessage lastMessage = ChatStreamSupport.lastAssistantMessage(
                         chatService, resolvedRequest.conversationId()
                     );
-                    ChatStreamSupport.sendSseEvent(
-                        emitter,
-                        "done",
-                        new ChatStreamEvent.Done(
-                            resolvedRequest.conversationId(),
-                            resolvedRequest.model(),
-                            lastMessage.text(),
-                            lastMessage.renderedHtml(),
-                            contextUsage.usage(),
-                            chatService.planState(resolvedRequest.conversationId())
-                            )
-                        );
-                    emitter.complete();
+                    if (clientConnected.get()) {
+                        ChatStreamSupport.sendSseEvent(
+                            emitter,
+                            "done",
+                            new ChatStreamEvent.Done(
+                                resolvedRequest.conversationId(),
+                                resolvedRequest.model(),
+                                lastMessage.text(),
+                                lastMessage.renderedHtml(),
+                                contextUsage.usage(),
+                                chatService.planState(resolvedRequest.conversationId())
+                                )
+                            );
+                        emitter.complete();
+                    } else {
+                        domainCleanup.run();
+                    }
                 } catch (Exception e) {
                     failPlanExecution.accept(new IllegalStateException(
                         "Plan execution stream failed while finalizing completion.", e
@@ -312,6 +330,16 @@ public class ChatController {
         );
         guard.set(subscription);
         return emitter;
+    }
+
+    private boolean isStreamSideChannel(ChatMessage message) {
+        if (message == null || !StringUtils.hasText(message.role())) {
+            return false;
+        }
+        String role = message.role();
+        return "tool".equalsIgnoreCase(role)
+            || "user".equalsIgnoreCase(role)
+            || "system".equalsIgnoreCase(role);
     }
 
     @PostMapping("/turns/{turnId}/interrupt")
