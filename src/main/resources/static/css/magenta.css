@@ -641,6 +641,51 @@ body {
     display: block;
 }
 
+#chat-planning-panel.question-active {
+    border: 0;
+    background: transparent;
+    padding: 0;
+}
+
+.planning-question-card {
+    position: relative;
+    box-sizing: border-box;
+    width: 100%;
+    border: 1px solid #b8cbe0;
+    border-radius: 8px;
+    background: #f7fbff;
+    color: #243246;
+    padding: 0.72rem 0.8rem 0.78rem;
+    box-shadow: 0 0.25rem 0.8rem rgba(49, 93, 145, 0.08);
+}
+
+.planning-question-count {
+    position: absolute;
+    top: 0.48rem;
+    right: 0.55rem;
+    max-width: min(45%, 11rem);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border: 1px solid #c5d6ea;
+    border-radius: 999px;
+    background: #ffffff;
+    color: #315d91;
+    padding: 0.12rem 0.45rem;
+    font-size: 0.72rem;
+    font-weight: 800;
+    line-height: 1.35;
+}
+
+.planning-question-text {
+    padding-right: min(48%, 12rem);
+    color: #243246;
+    font-size: 0.95rem;
+    font-weight: 700;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
 #chat-plan-document[hidden] {
     display: none;
 }
@@ -1074,5 +1119,16 @@ body {
     #chat-form,
     .agent-chat-form {
         grid-template-columns: 1fr;
+    }
+
+    .planning-question-count {
+        position: static;
+        display: inline-flex;
+        max-width: 100%;
+        margin-bottom: 0.4rem;
+    }
+
+    .planning-question-text {
+        padding-right: 0;
     }
 }

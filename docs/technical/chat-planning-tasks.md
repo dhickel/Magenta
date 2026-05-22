@@ -45,6 +45,8 @@ The `/chat` planning path is anonymous in-chat planning. It is conversation-scop
 
 Anonymous plan prompts do not expose structured inputs or outputs. They focus on goal, assumptions, expected deliverables, ordered steps, and validation. Approval actions are continue planning, approve and execute with conversation context, approve and execute clean, and cancel.
 
+When an anonymous plan has a pending prompt question, `/chat` renders the question as a compact prompt card directly above the main chat composer. The main `#chat-input` is the answer field for that state and submits to `/api/chat/{conversationId}/plan/answers`; slash-prefixed text is treated as answer content while the question is active, not as a command.
+
 Anonymous execution installs a chat-scoped file context when there is no assignment context. File tools then resolve to the active chat file directory instead of a broad data-root fallback. Validator-approved final anonymous execution messages are persisted as markdown files in that directory. Clean execution is prompt-scoped: it omits stored chat messages from the model prompt for that run, while preserving the persisted transcript and appending the execution turn afterward.
 
 Anonymous execution completion is gated by `plan_complete`. `PlanCompletionService` records the latest execution report, checks per-criterion evidence coverage, carries forward artifact paths previously recorded through `plan_report`, and asks the configured planning validator model to compare the approved plan, evidence, artifact contents, prior feedback, and proposed final message. Validator input sections are framed as untrusted data and the validator request is isolated from broad chat history. Durable validation feedback records the validator model used, records that model validation was skipped when a fail-closed preflight rejected completion before the model call, or fails closed if no planning validator model can resolve. Completion validation does not fall back to the execution model. On pass, the plan becomes `COMPLETED` and the stored final message is the only trusted user-facing completion. On failure, remediation stays in the execution tool loop; if the model exhausts completion repair without a validator-passed `plan_complete`, `ChatService` marks the plan `NEEDS_REVIEW` and persists a controlled review message instead of ordinary assistant text.
@@ -69,6 +71,8 @@ Saved task planning happens in `/plans` and is separate from `/api/chat`, `ai_ch
 - Enforcing saved-plan planning terminal states: either queued follow-up questions or a draft marked ready for approval.
 
 Saved plan model turns do not use `/api/chat`, `ai_chat_memory`, or `ai_chat_session_metadata`. They use `plan_chat_messages`, the current `PlanDefinition`, and saved-plan-specific tool callbacks scoped by plan id.
+
+Saved plan chat uses the same prompt-card visual pattern for pending questions, but keeps its own HTMX `#plan-chat-form` and `#plan-chat-input` submission flow under `/plans/_editor/{planId}/planning-chat/answers`.
 
 `PlanDefinition` is the durable plan contract for saved definitions. It contains title, summary, goal, notes, deliverables, structured inputs/outputs, assumptions, ordered steps, validation criteria, evidence, feedback, planning/execution model choices, settings overrides, pending questions, and conversation linkage.
 

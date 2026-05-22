@@ -22,6 +22,8 @@ Run history can display a stale in-progress job run for an empty job even though
 
 Open.
 
+GitHub mirror: https://github.com/dhickel/Magenta/issues/6
+
 ## Next Action
 
 Confirm expected empty-job behavior in `OrchestrationRunnerService` and update runner/job-service terminal status handling if empty jobs should complete without items.

@@ -59,6 +59,8 @@ Do not turn ordinary CRUD into a JavaScript transport surface. If an interaction
 
 The chat outputs panel remains in `chat-client.js` because the `/chat` session list, active conversation state, and SSE completion refreshes are already JS-owned. Standard CRUD and operational UI interactions elsewhere remain HTMX-first.
 
+Anonymous `/chat` planning questions are also handled inside `chat-client.js` because the chat composer is already SSE/client-state owned. Saved plan chat keeps HTMX submission in `#plan-chat-form`; both surfaces share the same prompt-card classes for visual consistency.
+
 ## SimplyPages Reuse
 
 When adding or changing UI:

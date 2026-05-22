@@ -58,6 +58,21 @@ final class ChatModuleRenderer {
             ));
     }
 
+    static Component planningQuestionCard(String id, String promptText, String countLabel) {
+        Div card = new Div().withClass("planning-question-card");
+        if (id != null && !id.isBlank()) {
+            card.withId(id);
+        }
+        if (countLabel != null && !countLabel.isBlank()) {
+            card.withChild(new HtmlTag("span")
+                .withClass("planning-question-count")
+                .withInnerText(countLabel));
+        }
+        return card.withChild(new Div()
+            .withClass("planning-question-text")
+            .withInnerText(promptText == null ? "" : promptText));
+    }
+
     static HtmlTag message(String role, String text) {
         String resolvedRole = role == null || role.isBlank() ? "assistant" : role.toLowerCase();
         return new HtmlTag("article")

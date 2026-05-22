@@ -178,8 +178,7 @@
         const mode = planState && planState.mode ? String(planState.mode) : 'NORMAL';
         const status = planState && planState.status ? String(planState.status) : '';
         if (status === 'NEEDS_REVIEW' || (mode !== 'PLAN' && status !== 'APPROVED' && status !== 'SAVED_TASK')) {
-            panel.classList.remove('active');
-            panel.innerHTML = '';
+            clearPlanningPanel();
             return;
         }
 
@@ -189,20 +188,22 @@
         const questionCount = Number(planState && planState.promptQuestionCount ? planState.promptQuestionCount : 0);
         if (question) {
             const progress = questionCount > 0 ? 'Question ' + questionIndex + '/' + questionCount : 'Question';
-            body = '<form data-planning-answer-form="questions">'
-                + '<div class="planning-panel-progress">' + escapeHtml(progress) + '</div>'
-                + '<div class="planning-panel-title">' + escapeHtml(question) + '</div>'
-                + '<input type="hidden" name="questionIndex" value="' + escapeHtml(questionIndex) + '">'
-                + '<input type="hidden" name="question" value="' + escapeHtml(question) + '">'
-                + '<textarea name="answer" rows="3" placeholder="Answer"></textarea>'
-                + planningActions('<button type="submit">Submit answer</button>')
-                + '</form>';
+            panel.classList.add('question-active');
+            panel.dataset.planningQuestionActive = 'true';
+            panel.dataset.planningQuestion = question;
+            panel.dataset.planningQuestionIndex = Number.isFinite(questionIndex) ? String(questionIndex) : '';
+            panel.dataset.planningQuestionCount = Number.isFinite(questionCount) ? String(questionCount) : '';
+            body = planningQuestionCard('chat-planning-question', question, progress);
         } else if (status === 'READY_FOR_APPROVAL') {
+            panel.classList.remove('question-active');
+            clearActivePlanningQuestion(panel);
             body = '<div class="planning-panel-body">'
                 + '<div class="planning-panel-title">Plan ready for approval</div>'
                 + planningActions('<button type="button" data-plan-action="approve">Approve plan</button><button type="button" data-plan-action="continue">Continue planning</button>')
                 + '</div>';
         } else if (status === 'APPROVED' || status === 'SAVED_TASK') {
+            panel.classList.remove('question-active');
+            clearActivePlanningQuestion(panel);
             body = '<div class="planning-panel-body">'
                 + '<div class="planning-panel-title">Approved plan</div>'
                 + planningActions(
@@ -212,6 +213,8 @@
                 )
                 + '</div>';
         } else {
+            panel.classList.remove('question-active');
+            clearActivePlanningQuestion(panel);
             body = '<div class="planning-panel-body">'
                 + '<div class="planning-panel-title">Planning active</div>'
                 + planningActions('')
@@ -227,7 +230,39 @@
             return;
         }
         panel.classList.remove('active');
+        panel.classList.remove('question-active');
         panel.innerHTML = '';
+        clearActivePlanningQuestion(panel);
+    }
+
+    function clearActivePlanningQuestion(panel) {
+        if (!panel) {
+            return;
+        }
+        delete panel.dataset.planningQuestionActive;
+        delete panel.dataset.planningQuestion;
+        delete panel.dataset.planningQuestionIndex;
+        delete panel.dataset.planningQuestionCount;
+    }
+
+    function activePlanningQuestion() {
+        const panel = byId('chat-planning-panel');
+        if (!panel || panel.dataset.planningQuestionActive !== 'true') {
+            return null;
+        }
+        const question = panel.dataset.planningQuestion || '';
+        const questionIndex = Number(panel.dataset.planningQuestionIndex || 0);
+        return {
+            question: question,
+            questionIndex: Number.isFinite(questionIndex) ? questionIndex : 0
+        };
+    }
+
+    function planningQuestionCard(id, question, countLabel) {
+        return '<div id="' + escapeHtml(id) + '" class="planning-question-card">'
+            + (countLabel ? '<span class="planning-question-count">' + escapeHtml(countLabel) + '</span>' : '')
+            + '<div class="planning-question-text">' + escapeHtml(question) + '</div>'
+            + '</div>';
     }
 
     function planningActions(primaryButtons) {
@@ -1118,17 +1153,16 @@
         loadActiveFiles();
     }
 
-    async function submitPlanningAnswer(form) {
+    async function submitPlanningAnswer(answer, questionIndex, question, notes) {
         const conversationId = activeConversationId();
         if (!conversationId || requestInFlight) {
             return;
         }
-        const formData = new FormData(form);
-        const answer = String(formData.get('answer') || '').trim();
-        const notes = String(formData.get('notes') || '').trim();
-        const questionIndex = Number(formData.get('questionIndex') || 0);
-        const question = String(formData.get('question') || '').trim();
-        appendPendingUserMessage(planningAnswerMessage(question, answer, notes));
+        const resolvedAnswer = String(answer || '').trim();
+        const resolvedNotes = String(notes || '').trim();
+        const resolvedQuestion = String(question || '').trim();
+        const resolvedQuestionIndex = Number(questionIndex || 0);
+        appendPendingUserMessage(planningAnswerMessage(resolvedQuestion, resolvedAnswer, resolvedNotes));
         clearPlanningPanel();
         requestInFlight = true;
         setFormDisabled(true);
@@ -1136,7 +1170,11 @@
             const data = await getJson('/api/chat/' + encodeURIComponent(conversationId) + '/plan/answers', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ answer: answer, notes: notes, questionIndex: questionIndex || null })
+                body: JSON.stringify({
+                    answer: resolvedAnswer,
+                    notes: resolvedNotes,
+                    questionIndex: resolvedQuestionIndex || null
+                })
             });
             syncModelSelection(data.model);
             updateContextUsage(data.contextUsage);
@@ -1424,9 +1462,21 @@
                 return;
             }
 
+            const planningQuestion = activePlanningQuestion();
+            const planningPanel = byId('chat-planning-panel');
+            const planningPanelSnapshot = planningQuestion && planningPanel
+                ? {
+                    html: planningPanel.innerHTML,
+                    question: planningPanel.dataset.planningQuestion || '',
+                    questionIndex: planningPanel.dataset.planningQuestionIndex || '',
+                    questionCount: planningPanel.dataset.planningQuestionCount || ''
+                }
+                : null;
             input.value = '';
             try {
-                if (text.startsWith('/') && !requestInFlight) {
+                if (planningQuestion) {
+                    await submitPlanningAnswer(text, planningQuestion.questionIndex, planningQuestion.question, '');
+                } else if (text.startsWith('/') && !requestInFlight) {
                     await sendCommand(text);
                 } else if (text.startsWith('/')) {
                     input.value = text;
@@ -1436,25 +1486,18 @@
                 }
             } catch (error) {
                 input.value = text;
+                if (planningPanelSnapshot && planningPanel) {
+                    planningPanel.innerHTML = planningPanelSnapshot.html;
+                    planningPanel.dataset.planningQuestionActive = 'true';
+                    planningPanel.dataset.planningQuestion = planningPanelSnapshot.question;
+                    planningPanel.dataset.planningQuestionIndex = planningPanelSnapshot.questionIndex;
+                    planningPanel.dataset.planningQuestionCount = planningPanelSnapshot.questionCount;
+                    planningPanel.classList.add('active');
+                    planningPanel.classList.add('question-active');
+                }
                 setError(error.message);
             }
         });
-
-        const planningPanel = byId('chat-planning-panel');
-        if (planningPanel) {
-            planningPanel.addEventListener('submit', async function(event) {
-                const form = event.target.closest('[data-planning-answer-form]');
-                if (!form) {
-                    return;
-                }
-                event.preventDefault();
-                try {
-                    await submitPlanningAnswer(form);
-                } catch (error) {
-                    setError(error.message);
-                }
-            });
-        }
 
         document.addEventListener('click', async function(event) {
             const button = event.target.closest('[data-plan-action]');

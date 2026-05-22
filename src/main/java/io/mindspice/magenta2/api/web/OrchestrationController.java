@@ -119,7 +119,7 @@ import jakarta.servlet.http.HttpServletResponse;
 @Controller
 public class OrchestrationController {
     private static final Logger log = LoggerFactory.getLogger(OrchestrationController.class);
-    private static final String DASHBOARD_CSS = "/css/orchestration.css?v=11";
+    private static final String DASHBOARD_CSS = "/css/orchestration.css?v=12";
     private static final String DASHBOARD_JS = "/js/orchestration/dashboard.js?v=5";
     private static final String AGENTS_JS = "/js/orchestration/agents.js?v=1";
     private static final String AGENT_CHAT_JS = "/js/orchestration/agent-chat.js?v=2";
@@ -2025,8 +2025,17 @@ public class OrchestrationController {
         composer.withAttribute("hx-post", "/plans/_editor/" + plan.id() + "/planning-chat/answers");
         composer.withAttribute("hx-target", "#plan-editor-container");
         composer.withAttribute("hx-swap", "innerHTML");
-        composer.withChild(new Div().withId("plan-chat-prompt").withAttribute("aria-live", "polite")
-            .withInnerText(state.promptQuestion() == null ? "Message" : state.promptQuestion()));
+        Div prompt = new Div().withId("plan-chat-prompt").withAttribute("aria-live", "polite");
+        if (state.promptQuestion() == null) {
+            prompt.withInnerText("Message");
+        } else {
+            prompt.withChild(ChatModuleRenderer.planningQuestionCard(
+                "plan-chat-question",
+                state.promptQuestion(),
+                planningQuestionCountLabel(state)
+            ));
+        }
+        composer.withChild(prompt);
         composer.withChild(TextArea.create("message").withId("plan-chat-input").withRows(6)
             .withPlaceholder("Reply to the planning prompt")
             .withAttribute("autocomplete", "off"));
@@ -2034,6 +2043,16 @@ public class OrchestrationController {
             .withAttribute("type", "submit"));
         return new Div().withClass("plan-saved-chat")
             .withChild(ChatModuleRenderer.embeddedPlanChatModule(plan.id(), transcript, composer));
+    }
+
+    private String planningQuestionCountLabel(SavedPlanChatState state) {
+        PlanDefinition plan = state == null ? null : state.plan();
+        if (plan == null || plan.pendingQuestions() == null || plan.pendingQuestions().isEmpty()) {
+            return "Question";
+        }
+        int count = plan.pendingQuestions().size();
+        int index = Math.min(Math.max(plan.pendingQuestionIndex() + 1, 1), count);
+        return "Question " + index + "/" + count;
     }
 
     // ── Section renderers ──
