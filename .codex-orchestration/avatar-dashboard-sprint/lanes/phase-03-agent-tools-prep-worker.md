@@ -18,8 +18,8 @@
 - `.internal-dev/focus/architecture-focus.md`
 - `.internal-dev/focus/decisions.md`
 - `.internal-dev/notes/current-architecture-focus.md`
-- `.internal-dev/plans/avatar-dashboard-sprint/phase-03-agent-workspace-tools.md`
-- `.internal-dev/plans/avatar-dashboard-sprint/final-orchestration-plan.md`
+- `.internal-dev/plans/.archive/avatar-dashboard-sprint/phase-03-agent-workspace-tools.md`
+- `.internal-dev/plans/.archive/avatar-dashboard-sprint/final-orchestration-plan.md`
 - Relevant package guides:
   - `src/main/java/io/mindspice/magenta2/AGENTS.md`
   - `src/main/java/io/mindspice/magenta2/ai/chat/tool/AGENTS.md`

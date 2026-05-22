@@ -23,7 +23,7 @@ Primary local anchors:
 - `docs/technical/data-model.md`
 - `docs/technical/security.md`
 - `.internal-dev/reviews/2026-05-22-avatar-plugin-system-research.md`
-- `.internal-dev/plans/avatar-dashboard-sprint/phase-04-avatar-assistant-behaviors.md`
+- `.internal-dev/plans/.archive/avatar-dashboard-sprint/phase-04-avatar-assistant-behaviors.md`
 
 Primary external references:
 

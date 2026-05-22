@@ -9,9 +9,9 @@ This does not implement runtime behavior, parser code, routes, plugin loading, K
 Source inputs reviewed:
 
 - `.internal-dev/reviews/2026-05-22-avatar-plugin-system-research.md`
-- `.internal-dev/plans/avatar-dashboard-sprint/README.md`
-- `.internal-dev/plans/avatar-dashboard-sprint/phase-04-avatar-assistant-behaviors.md`
-- `.internal-dev/plans/avatar-dashboard-sprint/phase-05-avatar-dashboard-ui.md`
+- `.internal-dev/plans/.archive/avatar-dashboard-sprint/README.md`
+- `.internal-dev/plans/.archive/avatar-dashboard-sprint/phase-04-avatar-assistant-behaviors.md`
+- `.internal-dev/plans/.archive/avatar-dashboard-sprint/phase-05-avatar-dashboard-ui.md`
 - `.internal-dev/focus/current-focus.md`
 - `.internal-dev/focus/architecture-focus.md`
 - `.internal-dev/focus/decisions.md`

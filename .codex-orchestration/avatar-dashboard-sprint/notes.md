@@ -2,7 +2,7 @@
 
 ## Global Assumptions
 
-- Planning-only run for `.internal-dev/plans/avatar-dashboard-sprint/`.
+- Planning-only run for `.internal-dev/plans/.archive/avatar-dashboard-sprint/`.
 - No Avatar feature implementation or plugin runtime implementation in this pass.
 - Branch: `plan/avatar-dashboard-sprint`.
 - Domain planning agents are read-only; the main agent owns file writes in this checkout.
@@ -31,6 +31,8 @@
 - Phase 04 implementation completed: Avatar assistant organizer tools, task/research/output helper tools, and a first-pass redacted email alert ingress.
 - Phase 04 email-ingress remediation completed after Dwight clarified that email processing must not use a public Avatar endpoint; the HTTP ingress controller/service/test were removed and docs were corrected toward scripting/internal messaging/tool-created messages.
 - Phase 05 implementation completed: `/avatar` dashboard shell, widget fragments, HTMX layout editing, organizer CRUD widgets, compact Avatar chat, navigation/docs/changelog, and browser validation remediation.
+- Final integration validation completed by subagent `019e520c-f086-7921-92fa-44ef1eac3f48`.
+- Final closeout archived the planning suite to `.internal-dev/plans/.archive/avatar-dashboard-sprint/`.
 
 ## Validation Results
 
@@ -45,6 +47,8 @@
 - Phase 05 controller tests passed: `mvn -Dtest=AvatarDashboardControllerTest,FrontendControllerTest,OrchestrationControllerTest test` (108 tests).
 - Phase 05 operational/output compatibility tests passed: `mvn -Dtest=OperationalUiContractControllerTest,OutputControllerTest test` (11 tests).
 - Phase 05 Playwright validation by subagent passed on rerun 5: desktop/mobile `/avatar`, chat visible feedback, widget roots, HTMX edit save, todo create/done/delete, and distinct `/dashboard`. Artifacts are under `target/playwright-avatar-rerun-5/`; output preview remained unvalidated because no output seed data was present.
+- Final browser validation by `gpt-5.3-codex` medium passed across `/avatar`, `/dashboard`, `/agents`, `/projects`, `/jobs`, `/outputs`, and `/chat`; artifacts are under `target/playwright-avatar-final/`.
+- Final red-team pass found no active public Avatar email endpoint or token contract, confirmed output confinement uses real-path data-root checks and symlink skipping for retained temp publication, and confirmed Avatar/agent tools require runtime context plus exact profile approval for supervisor operations.
 
 ## Remediation Notes
 
@@ -62,10 +66,13 @@
 - Update focus records for the locked Avatar current-focus decision.
 - Add changelog entry for the planning suite.
 - Commit explicit path list.
+- Added sprint closeout changelog.
+- Updated focus deferred-work and architecture/decision notes.
+- Archived completed plan artifacts.
 
 ## Final Validation Status
 
-- Planning artifact validation passed; no runtime tests were required because this pass made no application code changes.
+- Implementation validation passed. Full unit suite, bounded Spring startup, and final Playwright browser validation completed. Local model connection failures to `http://localhost:11434` appeared during browser chat attempts, but the UI handled them without route/page failure.
 
 ## Handoff Notes
 
