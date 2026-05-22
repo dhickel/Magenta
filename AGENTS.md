@@ -30,6 +30,55 @@
 ### Reference guide
 - Process and templates: `.internal-dev/AGENTS.md`
 - Focus schemas and maintenance rules: `.internal-dev/focus/AGENTS.md`
+
+### Email work summary reports
+When the user asks for a work summary by email, especially after long-running orchestration plans, multi-hour remediation loops, validation campaigns, or multi-phase implementation work, send a renderable HTML email with a plain-text fallback. Do not send raw Markdown as the primary email body. Use the AgentMail workflow when available, and keep credentials, API keys, local secrets, and ignored config contents out of the report.
+
+Use this report schema unless the user asks for a different format:
+
+1. **Title and status header**
+   - Project/workstream name.
+   - Overall status such as `Completed`, `Partially Completed`, `Blocked`, or `Needs Review`.
+   - Branch, primary commits, final validation state, and date.
+   - One or two short paragraphs summarizing the overall work at a high level.
+
+2. **Important takeaways**
+   - Include this section near the top when there are operator-relevant findings, production risks, user-visible behavior changes, required follow-up actions, validation caveats, config/security notes, or decisions the user should see first.
+   - Keep this concise and direct.
+
+3. **What changed**
+   - Summarize watched changes grouped by domain or target area.
+   - Include a table or compact list with targets/files/modules and the concrete updates made.
+   - Call out notable behavior changes separately from internal refactors.
+
+4. **Validation results**
+   - Include commands run, browser/Playwright checks, smoke tests, database or log checks, and final pass/fail state.
+   - Use a table with check, result, and evidence/path when useful.
+   - If validation was skipped or blocked, state the blocker explicitly.
+
+5. **Bugs, issues, and risks**
+   - List bugs fixed, bugs found but left out of scope, open issues, regressions avoided, and remaining risks.
+   - Link or name any `.internal-dev/bugs/` entries or GitHub Issues created.
+
+6. **Suggestions, notes, and follow-ups**
+   - Include deferred ideas, operational notes, config reminders, and recommended next actions.
+   - Distinguish required follow-up from optional improvement ideas.
+
+7. **Summarized changelogs**
+   - Summarize every relevant changelog entry produced or touched by the work.
+   - Each summarized changelog gets a clear heading, one short summary paragraph, a target/update list, validation notes, risks, and follow-ups.
+   - Prefer concise summaries here; the full changelog text belongs in the appendix.
+
+8. **Full changelog appendix**
+   - Append the full text of all relevant `.internal-dev/changelogs/` entries at the bottom of the email.
+   - Preserve changelog headings and file lists so the email can stand alone as a durable closeout artifact.
+
+HTML formatting expectations:
+- Use semantic headings, tables, and lists that render in common email clients.
+- Prefer inline CSS for reliability.
+- Keep the layout readable without external assets.
+- Include a plain-text fallback with the same substantive content.
+- Use code styling for commands, branch names, commits, paths, and config keys.
 <!-- END INTERNAL-DEV WORKFLOW -->
 
 
