@@ -104,7 +104,7 @@ Anonymous `/chat` plans run inside the chat conversation instead of creating sav
 
 When you answer an anonymous chat planning question, Magenta saves the answer before asking the configured planning model to continue. If the model request fails, a planning tool dependency is unavailable, or the turn is interrupted after draft edits, the chat shows a controlled notice and keeps your answer in the transcript. If no next prompt is available, Magenta queues a recovery clarification so you can keep planning after fixing the model configuration or unavailable service.
 
-If the browser submits an old planning answer after the server has already moved on, Magenta refreshes the planning prompt instead of leaving the chat at a stale error.
+If the browser submits an old planning answer after the server has already moved on or advanced to a later question, Magenta refreshes the planning prompt instead of leaving the chat at a stale error.
 
 Only one anonymous plan execution can run for a chat conversation at a time. If another execution is already active, Magenta rejects the second request instead of attaching it to the in-progress run.
 

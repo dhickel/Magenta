@@ -596,14 +596,14 @@ public class ChatService {
         try {
             plan = planService.recordPromptAnswer(conversationId, answer, notes, questionIndex);
         } catch (IllegalStateException exception) {
-            if (!isNoActivePlanningQuestion(exception) || planService.mode(conversationId) != PlanMode.PLAN) {
+            if (!isRecoverablePlanningAnswerConflict(exception) || planService.mode(conversationId) != PlanMode.PLAN) {
                 throw exception;
             }
             String model = resolvedPlanningModel(conversationId);
             return savedAnswerFailureResponse(
                 conversationId,
                 model,
-                "There is no active planning question to answer right now. I refreshed the planning prompt so you can continue."
+                "That planning answer was for an older prompt. I refreshed the current planning prompt so you can continue."
             );
         }
         if (plan.hasPendingQuestion()) {
@@ -643,10 +643,13 @@ public class ChatService {
         }
     }
 
-    private boolean isNoActivePlanningQuestion(IllegalStateException exception) {
-        return exception != null
-            && StringUtils.hasText(exception.getMessage())
-            && exception.getMessage().contains("No active planning question exists");
+    private boolean isRecoverablePlanningAnswerConflict(IllegalStateException exception) {
+        if (exception == null || !StringUtils.hasText(exception.getMessage())) {
+            return false;
+        }
+        String message = exception.getMessage();
+        return message.contains("No active planning question exists")
+            || message.contains("Stale planning answer.");
     }
 
     private ChatResponse.MsgResponse savedAnswerFailureResponse(String conversationId, String model, String message) {

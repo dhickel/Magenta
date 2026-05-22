@@ -522,7 +522,7 @@ class ChatServiceTest {
     }
 
     @Test
-    void stalePlanningAnswerReturnsRecoverablePromptInsteadOfThrowing() {
+    void missingPlanningQuestionReturnsRecoverablePromptInsteadOfThrowing() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         ObjectMapper objectMapper = new ObjectMapper();
         ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
@@ -562,12 +562,57 @@ class ChatServiceTest {
 
         var response = chatService.submitPlanAnswer("conversation-1", "stale duplicate", null, 3);
 
-        assertThat(response.response()).contains("no active planning question");
+        assertThat(response.response()).contains("older prompt");
         assertThat(response.planState().promptQuestion())
             .isEqualTo("What should we clarify, change, or add before continuing this plan?");
         assertThat(memoryRepository.findByConversationId("conversation-1"))
             .extracting(Message::getText)
-            .contains("There is no active planning question to answer right now. I refreshed the planning prompt so you can continue.");
+            .contains("That planning answer was for an older prompt. I refreshed the current planning prompt so you can continue.");
+    }
+
+    @Test
+    void stalePlanningAnswerIndexReturnsCurrentPromptInsteadOfThrowing() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        ChatSessionMetadataRepository metadataRepository = new ChatSessionMetadataRepository(jdbcTemplate);
+        PlanService planService = new PlanService(new PlanRepository(jdbcTemplate, objectMapper), memoryRepository);
+        ContextUsageTracker usageTracker = new ContextUsageTracker();
+        ChatModelRouter router = new TestChatModelRouter(new FixedChatModel("unused"));
+        AiConfig config = aiConfig();
+        ContextManagementAdvisor contextAdvisor = new ContextManagementAdvisor(
+            memoryRepository,
+            config,
+            router,
+            new CharacterTokenEstimator(),
+            usageTracker,
+            new ToolTranscriptService(objectMapper),
+            null
+        );
+        ChatService chatService = new ChatService(
+            new RepositoryBackedChatMemory(memoryRepository),
+            memoryRepository,
+            metadataRepository,
+            new ChatMarkdownRenderer(),
+            config,
+            contextAdvisor,
+            usageTracker,
+            router,
+            null,
+            null,
+            null,
+            planService
+        );
+
+        planService.beginPlan("conversation-1");
+        planService.recordPromptAnswer("conversation-1", "Goal", null, 1);
+
+        var response = chatService.submitPlanAnswer("conversation-1", "stale duplicate", null, 1);
+
+        assertThat(response.response()).contains("older prompt");
+        assertThat(response.planState().promptQuestion())
+            .isEqualTo("What assumptions, details, expectations, constraints, or preferred approach should guide the plan?");
+        assertThat(response.planState().promptQuestionIndex()).isEqualTo(2);
     }
 
     private JdbcTemplate jdbcTemplate() {

@@ -27,6 +27,7 @@
 - Patched `ChatService.submitPlanAnswer(...)` so failures after a saved answer return a controlled assistant notice and current plan state instead of propagating a servlet error.
 - Patched the saved-answer failure response to queue a recovery clarification when a continuation failure or thread interruption leaves a `DRAFT` plan with no pending question.
 - Patched stale/no-active planning answer submissions in `PLAN` mode to return the current recoverable plan state instead of surfacing `400 No active planning question exists for this conversation`.
+- Extended stale-answer recovery to stale question-index mismatches so the browser can resync to the current prompt instead of treating `400 Stale planning answer` as terminal.
 - Patched anonymous completion validation so relative artifact paths are resolved against the chat file directory before falling back to `dataRoot`.
 - Patched Spring AI tool argument conversion failures so they become tool-loop diagnostics and retry prompts rather than aborting planning continuation.
 
