@@ -12,8 +12,10 @@ import io.mindspice.magenta2.ai.chat.model.ChatPlanState;
 import io.mindspice.magenta2.ai.chat.model.ChatRequest;
 import io.mindspice.magenta2.ai.chat.model.ChatResponse;
 import io.mindspice.magenta2.ai.chat.model.ChatSession;
+import io.mindspice.magenta2.ai.chat.model.ContextUsage;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.chat.service.ResolvedChatRequest;
+import io.mindspice.magenta2.ai.chat.service.StoredContextUsage;
 import io.mindspice.magenta2.ai.execution.ActiveTurnRegistry;
 import io.mindspice.magenta2.ai.execution.ActiveTurnRegistry.ActiveTurn;
 import org.junit.jupiter.api.Test;
@@ -79,6 +81,41 @@ class ChatControllerTest {
 
         assertThat(response.conversationId()).isEqualTo(CONVERSATION_ID);
         assertThat(response.title()).isEqualTo("Reminder Followup");
+    }
+
+    @Test
+    void historyPayloadReturnsCompletedStateWhenContextMaintenanceDegrades() {
+        chatService.planState = new ChatPlanState(
+            "NORMAL",
+            "COMPLETED",
+            "Saved Plan",
+            null,
+            null,
+            null,
+            List.of("Step"),
+            List.of("Do the work"),
+            List.of("Evidence: validated")
+        );
+        chatService.historyMessages = List.of(new ChatMessage(
+            "assistant",
+            "Validated final message",
+            "<p>Validated final message</p>",
+            null
+        ));
+        chatService.contextUsage = new StoredContextUsage(
+            new ContextUsage(1200, 1200, 1080, 100.0),
+            false,
+            true,
+            "Context maintenance failed"
+        );
+
+        var response = chatController.history(CONVERSATION_ID);
+
+        assertThat(response.messages()).extracting(ChatMessage::text)
+            .containsExactly("Validated final message");
+        assertThat(response.planState().mode()).isEqualTo("NORMAL");
+        assertThat(response.planState().status()).isEqualTo("COMPLETED");
+        assertThat(response.contextUsage()).isEqualTo(new ContextUsage(1200, 1200, 1080, 100.0));
     }
 
     @Test
@@ -343,6 +380,8 @@ class ChatControllerTest {
         private String initialPlanningInstruction;
         private boolean favorite;
         private boolean archived;
+        private List<ChatMessage> historyMessages = List.of();
+        private StoredContextUsage contextUsage;
 
         StubChatService(List<String> conversationIds, Map<String, String> modelsByConversationId) {
             super(null, null, null, null, null);
@@ -375,7 +414,17 @@ class ChatControllerTest {
 
         @Override
         public List<ChatMessage> history(String conversationId) {
-            return List.of();
+            return historyMessages;
+        }
+
+        @Override
+        public StoredContextUsage maintainContextUsage(String conversationId, String model) {
+            return contextUsage == null ? new StoredContextUsage(null, false) : contextUsage;
+        }
+
+        @Override
+        public StoredContextUsage snapshotContextUsage(String conversationId, String model) {
+            return contextUsage == null ? new StoredContextUsage(null, false) : contextUsage;
         }
 
         @Override

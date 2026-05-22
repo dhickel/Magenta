@@ -12,6 +12,7 @@ status: active
 
 | id | decision | status | owner | source | decided_on | knowledge_ref | review_after | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| DECISION-20260522-03 | Chat history reload and completed execution finalization use non-compacting context snapshots; model-backed compaction stays on prompt/maintenance paths. | active | unassigned | chat completion compaction reload repair | 2026-05-22 | .internal-dev/knowledge/chat-completion-context-maintenance.md | 2026-06-21 | Read-only reload must preserve completed transcript visibility even when the compaction model is unavailable. |
 | DECISION-20260522-02 | Summary-style internal jobs use `summaryModel`; context compaction uses `compactionModel` with summary fallback. | active | unassigned | chat summary/title model fix | 2026-05-22 | .internal-dev/knowledge/summary-title-model-selection.md | 2026-06-21 | Conversation title generation is intentionally decoupled from the selected chat model. |
 | DECISION-20260522-01 | Initialize `.internal-dev/focus/` as strict-schema living documents without migrating existing notes. | active | unassigned | task request | 2026-05-22 | .internal-dev/knowledge/internal-dev-focus-workflow.md | 2026-06-21 | Focus workflow knowledge captures the reusable maintenance rules. |
 
@@ -24,5 +25,6 @@ status: active
 
 | reviewed_on | reviewer | outcome | notes |
 | --- | --- | --- | --- |
+| 2026-05-22 | codex | updated | Added non-compacting context snapshot decision for history reload and completed execution finalization. |
 | 2026-05-22 | codex | updated | Added durable summary/title/compaction model routing decision. |
 | 2026-05-22 | codex | initialized | Created strict-schema living document. |

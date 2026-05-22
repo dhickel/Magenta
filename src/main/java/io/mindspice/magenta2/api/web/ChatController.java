@@ -279,10 +279,9 @@ public class ChatController {
                         );
                         planExecutionFinalized.set(true);
                     }
-                    StoredContextUsage contextUsage = chatService.maintainContextUsage(
-                        resolvedRequest.conversationId(),
-                        resolvedRequest.model()
-                    );
+                    StoredContextUsage contextUsage = planExecution
+                        ? chatService.snapshotContextUsage(resolvedRequest.conversationId(), resolvedRequest.model())
+                        : chatService.maintainContextUsage(resolvedRequest.conversationId(), resolvedRequest.model());
                     if (contextUsage.compacted()) {
                         ChatMessage compactionNotice = chatService.systemNotice(
                             ContextManagementAdvisor.COMPACTION_NOTICE
@@ -361,7 +360,7 @@ public class ChatController {
     @GetMapping("/{conversationId}/history")
     public ChatHistory history(@PathVariable String conversationId) {
         String model = chatService.storedConversationModel(conversationId);
-        StoredContextUsage contextUsage = chatService.maintainContextUsage(conversationId, model);
+        StoredContextUsage contextUsage = chatService.snapshotContextUsage(conversationId, model);
         return new ChatHistory(
             conversationId,
             chatService.conversationTitle(conversationId),

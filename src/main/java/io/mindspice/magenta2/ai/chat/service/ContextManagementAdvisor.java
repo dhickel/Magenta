@@ -158,7 +158,21 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
         if (usage.usedTokens() > usage.triggerTokens()) {
             log.info("Compacting stored context: conv={} tokens={} exceeds trigger={}", conversationId,
                 usage.usedTokens(), usage.triggerTokens());
-            storedMessages = compact(conversationId, storedMessages, storedMaintenanceInstructions(), remoteModelName);
+            try {
+                storedMessages = compact(conversationId, storedMessages, storedMaintenanceInstructions(), remoteModelName);
+            } catch (ContextCompactionSummaryException exception) {
+                log.warn(
+                    "Stored context maintenance degraded during compaction: conv={} model={} tokens={} trigger={} error={}",
+                    conversationId, remoteModelName, usage.usedTokens(), usage.triggerTokens(), exception.toString()
+                );
+                usageTracker.record(conversationId, usage);
+                return new StoredContextMaintenance(
+                    usage,
+                    false,
+                    true,
+                    "Context compaction failed during maintenance: " + rootCauseMessage(exception)
+                );
+            }
             usage = estimateStoredUsage(conversationId, remoteModelName);
             log.info("After compact: conv={} tokens={}/{} ({:.0f}%)", conversationId,
                 usage.usedTokens(), usage.maxTokens(), usage.percentUsed());
@@ -175,14 +189,17 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
         if (usage.usedTokens() > usage.triggerTokens()) {
             log.error("Stored context too large after all strategies: conv={} tokens={} trigger={}",
                 conversationId, usage.usedTokens(), usage.triggerTokens());
-            throw new IllegalStateException(
-                "Context is too large to store safely after compaction: "
-                    + usage.usedTokens() + " estimated tokens exceeds trigger budget " + usage.triggerTokens()
+            usageTracker.record(conversationId, usage);
+            return new StoredContextMaintenance(
+                usage,
+                compacted,
+                true,
+                "Context remains above the maintenance trigger after compaction and trimming."
             );
         }
 
         usageTracker.record(conversationId, usage);
-        return new StoredContextMaintenance(usage, compacted);
+        return new StoredContextMaintenance(usage, compacted, false, null);
     }
 
     public ContextUsage estimateUsage(List<Message> messages, String remoteModelName) {
@@ -484,15 +501,26 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
         String compactionModelRef = resolveCompactionModelReference();
         ModelConfig compactionModel = chatModelRouter.modelConfig(compactionModelRef);
         String renderedConversation = renderConversation(olderMessages);
-        String summary = chatModelRouter.chatClient(compactionModelRef)
-            .prompt()
-            .system(SUMMARY_SYSTEM_PROMPT)
-            .user(renderedConversation)
-            .options(chatModelRouter.chatOptions(compactionModelRef))
-            .call()
-            .content();
+        String summary;
+        try {
+            summary = chatModelRouter.chatClient(compactionModelRef)
+                .prompt()
+                .system(SUMMARY_SYSTEM_PROMPT)
+                .user(renderedConversation)
+                .options(chatModelRouter.chatOptions(compactionModelRef))
+                .call()
+                .content();
+        } catch (RuntimeException exception) {
+            throw new ContextCompactionSummaryException(
+                "Context compaction failed while calling model " + compactionModel.remoteModelName()
+                    + ": " + rootCauseMessage(exception),
+                exception
+            );
+        }
         if (!StringUtils.hasText(summary)) {
-            throw new IllegalStateException("Context compaction failed: compaction model returned an empty summary");
+            throw new ContextCompactionSummaryException(
+                "Context compaction failed: compaction model returned an empty summary"
+            );
         }
         return summary.trim();
     }
@@ -743,6 +771,15 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
         return aiConfig.resolvedCompactionModelKey();
     }
 
+    private String rootCauseMessage(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null && current.getCause() != null) {
+            current = current.getCause();
+        }
+        String message = current == null ? null : current.getMessage();
+        return StringUtils.hasText(message) ? message : throwable.getClass().getSimpleName();
+    }
+
     private String conversationId(Map<String, Object> context) {
         Object conversationId = context.get(ChatMemory.CONVERSATION_ID);
         if (conversationId instanceof String value && StringUtils.hasText(value)) {
@@ -766,6 +803,21 @@ public class ContextManagementAdvisor implements CallAdvisor, StreamAdvisor {
     ) {
     }
 
-    public record StoredContextMaintenance(ContextUsage usage, boolean compacted) {
+    public record StoredContextMaintenance(
+        ContextUsage usage,
+        boolean compacted,
+        boolean degraded,
+        String degradationReason
+    ) {
+    }
+
+    private static final class ContextCompactionSummaryException extends RuntimeException {
+        private ContextCompactionSummaryException(String message) {
+            super(message);
+        }
+
+        private ContextCompactionSummaryException(String message, Throwable cause) {
+            super(message, cause);
+        }
     }
 }

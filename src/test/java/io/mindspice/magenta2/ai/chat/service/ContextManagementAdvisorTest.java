@@ -250,6 +250,47 @@ class ContextManagementAdvisorTest {
     }
 
     @Test
+    void maintainStoredContextDegradesWhenCompactionModelFails() {
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
+        ContextManagementAdvisor advisor = new ContextManagementAdvisor(
+            memoryRepository,
+            aiConfig(),
+            new SummaryRouter(new FailingSummaryChatModel(), aiConfig()),
+            new CharacterTokenEstimator(),
+            new ContextUsageTracker(),
+            new ToolTranscriptService(new ObjectMapper()),
+            null
+        );
+        List<Message> originalMessages = List.of(
+            new UserMessage("older message " + "x".repeat(250)),
+            new AssistantMessage("older answer " + "x".repeat(250)),
+            new UserMessage("older message " + "x".repeat(250)),
+            new AssistantMessage("older answer " + "x".repeat(250)),
+            new UserMessage("tail one " + "x".repeat(60)),
+            new AssistantMessage("tail two " + "x".repeat(60)),
+            new UserMessage("tail three " + "x".repeat(60)),
+            new AssistantMessage("tail four " + "x".repeat(60)),
+            new UserMessage("tail five " + "x".repeat(60)),
+            new AssistantMessage("tail six " + "x".repeat(60))
+        );
+        memoryRepository.saveAll("conversation-1", originalMessages);
+
+        ContextManagementAdvisor.StoredContextMaintenance maintenance = advisor.maintainStoredContext("conversation-1", "qwen3");
+
+        assertThat(maintenance.degraded()).isTrue();
+        assertThat(maintenance.compacted()).isFalse();
+        assertThat(maintenance.degradationReason()).contains("Context compaction failed");
+        assertThat(maintenance.usage().usedTokens()).isGreaterThan(maintenance.usage().triggerTokens());
+        assertThat(memoryRepository.findByConversationId("conversation-1"))
+            .extracting(Message::getText)
+            .containsExactlyElementsOf(originalMessages.stream().map(Message::getText).toList());
+        assertThat(memoryRepository.findByConversationId("conversation-1"))
+            .filteredOn(advisor::isHiddenSummary)
+            .isEmpty();
+    }
+
+    @Test
     void runtimeSettingsControlContextBufferPercent() {
         JdbcTemplate jdbcTemplate = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
         ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
@@ -441,6 +482,13 @@ class ContextManagementAdvisorTest {
                 .map(Message::getText)
                 .collect(java.util.stream.Collectors.joining("\n"));
             return new ChatResponse(List.of(new Generation(new AssistantMessage("short summary"))));
+        }
+    }
+
+    private static final class FailingSummaryChatModel implements ChatModel {
+        @Override
+        public ChatResponse call(Prompt prompt) {
+            throw new RuntimeException("compaction endpoint unavailable");
         }
     }
 

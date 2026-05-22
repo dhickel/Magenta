@@ -10,6 +10,7 @@ import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.chat.model.ChatSession;
+import io.mindspice.magenta2.ai.chat.model.ContextUsage;
 import io.mindspice.magenta2.ai.chat.plan.PlanRepository;
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
 import io.mindspice.magenta2.ai.chat.plan.PlanStatus;
@@ -256,6 +257,37 @@ class ChatServiceTest {
         Path finalMessage = dataRoot.resolve("chats/conversation-validated/files/final-message.md");
         assertThat(finalMessage).exists();
         assertThat(Files.readString(finalMessage)).isEqualTo("Validated final message\n");
+    }
+
+    @Test
+    void maintainContextUsageReturnsDegradedUsageWhenMaintenanceThrows() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        ChatSessionMetadataRepository metadataRepository = new ChatSessionMetadataRepository(jdbcTemplate);
+        ContextUsageTracker usageTracker = new ContextUsageTracker();
+        ChatService chatService = new ChatService(
+            new RepositoryBackedChatMemory(memoryRepository),
+            memoryRepository,
+            metadataRepository,
+            null,
+            aiConfig(),
+            new ThrowingMaintenanceAdvisor(),
+            usageTracker,
+            null,
+            null,
+            null,
+            null,
+            null
+        );
+
+        StoredContextUsage usage = chatService.maintainContextUsage("conversation-1", "qwen3");
+
+        assertThat(usage.degraded()).isTrue();
+        assertThat(usage.compacted()).isFalse();
+        assertThat(usage.degradationReason()).contains("Context maintenance failed");
+        assertThat(usage.usage()).isEqualTo(new ContextUsage(1200, 1200, 1080, 100.0));
+        assertThat(usageTracker.find("conversation-1")).isEqualTo(usage.usage());
     }
 
     @Test
@@ -830,6 +862,22 @@ class ChatServiceTest {
                 )))
                 .build();
             return new org.springframework.ai.chat.model.ChatResponse(List.of(new Generation(toolCallMessage)));
+        }
+    }
+
+    private static final class ThrowingMaintenanceAdvisor extends ContextManagementAdvisor {
+        private ThrowingMaintenanceAdvisor() {
+            super(null, null, null, null, null, null, null);
+        }
+
+        @Override
+        public StoredContextMaintenance maintainStoredContext(String conversationId, String remoteModelName) {
+            throw new RuntimeException("compaction endpoint unavailable");
+        }
+
+        @Override
+        public ContextUsage estimateStoredUsage(String conversationId, String remoteModelName) {
+            return new ContextUsage(1200, 1200, 1080, 100.0);
         }
     }
 

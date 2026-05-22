@@ -1028,9 +1028,75 @@ public class ChatService {
             return new StoredContextUsage(trackedUsage, false);
         }
         String resolvedModel = StringUtils.hasText(model) ? model : storedConversationModel(conversationId);
-        ContextManagementAdvisor.StoredContextMaintenance maintenance =
-            contextManagementAdvisor.maintainStoredContext(conversationId, resolvedModel);
-        return new StoredContextUsage(maintenance.usage(), maintenance.compacted());
+        try {
+            ContextManagementAdvisor.StoredContextMaintenance maintenance =
+                contextManagementAdvisor.maintainStoredContext(conversationId, resolvedModel);
+            return new StoredContextUsage(
+                maintenance.usage(),
+                maintenance.compacted(),
+                maintenance.degraded(),
+                maintenance.degradationReason()
+            );
+        } catch (RuntimeException exception) {
+            ContextUsage fallbackUsage = null;
+            try {
+                fallbackUsage = contextManagementAdvisor.estimateStoredUsage(conversationId, resolvedModel);
+                if (contextUsageTracker != null && fallbackUsage != null) {
+                    contextUsageTracker.record(conversationId, fallbackUsage);
+                }
+            } catch (RuntimeException estimateException) {
+                logger.warn(
+                    "Context maintenance and fallback usage estimation failed conv={} model={} maintenanceError={} estimateError={}",
+                    conversationId, resolvedModel, exception.toString(), estimateException.toString()
+                );
+                return new StoredContextUsage(
+                    contextUsageTracker == null ? null : contextUsageTracker.find(conversationId),
+                    false,
+                    true,
+                    "Context maintenance failed: " + rootCauseMessage(exception)
+                );
+            }
+            logger.warn(
+                "Context maintenance degraded conv={} model={} tokens={}/{} error={}",
+                conversationId,
+                resolvedModel,
+                fallbackUsage.usedTokens(),
+                fallbackUsage.triggerTokens(),
+                exception.toString()
+            );
+            return new StoredContextUsage(
+                fallbackUsage,
+                false,
+                true,
+                "Context maintenance failed: " + rootCauseMessage(exception)
+            );
+        }
+    }
+
+    public StoredContextUsage snapshotContextUsage(String conversationId, String model) {
+        if (contextManagementAdvisor == null || chatMemoryRepository == null) {
+            ContextUsage trackedUsage = contextUsageTracker == null ? null : contextUsageTracker.find(conversationId);
+            return new StoredContextUsage(trackedUsage, false);
+        }
+        String resolvedModel = StringUtils.hasText(model) ? model : storedConversationModel(conversationId);
+        try {
+            ContextUsage usage = contextManagementAdvisor.estimateStoredUsage(conversationId, resolvedModel);
+            if (contextUsageTracker != null && usage != null) {
+                contextUsageTracker.record(conversationId, usage);
+            }
+            return new StoredContextUsage(usage, false);
+        } catch (RuntimeException exception) {
+            logger.warn(
+                "Context usage snapshot degraded conv={} model={} error={}",
+                conversationId, resolvedModel, exception.toString()
+            );
+            return new StoredContextUsage(
+                contextUsageTracker == null ? null : contextUsageTracker.find(conversationId),
+                false,
+                true,
+                "Context usage snapshot failed: " + rootCauseMessage(exception)
+            );
+        }
     }
 
     public String storedConversationModel(String conversationId) {
@@ -1638,7 +1704,9 @@ public class ChatService {
         }
         contextManagementAdvisor.saveAssistantMessages(s.request.conversationId(), s.messagesToPersist);
 
-        StoredContextUsage maintenance = maintainContextUsage(s.request.conversationId(), s.request.model());
+        StoredContextUsage maintenance = s.planCompletionDetected
+            ? snapshotContextUsage(s.request.conversationId(), s.request.model())
+            : maintainContextUsage(s.request.conversationId(), s.request.model());
         turnAuditWriter.recordEndOfTurnContext(s.request, maintenance);
         if (maintenance.compacted() && s.toolMessageConsumer != null) {
             s.toolMessageConsumer.accept(systemMessage(ContextManagementAdvisor.COMPACTION_NOTICE));
