@@ -1,6 +1,26 @@
 # Data Model
 
-SQLite schema is initialized from [`schema.sql`](../../src/main/resources/schema.sql). That file is the canonical table inventory. Repositories also create tables defensively and add compatibility columns for warm local databases, so code inspection should include both `schema.sql` and the owning repository before changing schema assumptions.
+Primary Magenta SQLite schema is initialized from [`schema.sql`](../../src/main/resources/schema.sql). Avatar user-centric data is initialized separately from [`avatar-schema.sql`](../../src/main/resources/avatar-schema.sql) into `avatar.sqlite`. Repositories also create tables defensively and add compatibility columns for warm local databases, so code inspection should include the relevant schema file and owning repository before changing schema assumptions.
+
+## Avatar Personal Data
+
+Source package: [`avatar`](../../src/main/java/io/mindspice/magenta2/avatar).
+
+Avatar personal dashboard and organizer state is stored in a separate `<magenta.root.path>/avatar.sqlite` database through the `avatarDataSource` and `avatarJdbcTemplate` beans. This keeps user-centric Avatar data out of the primary `magenta.sqlite` runtime database and avoids cross-database foreign keys.
+
+Tables in `avatar.sqlite`:
+
+- `avatar_profile`: singleton Avatar personal profile row.
+- `avatar_preferences`: key/value preference records with JSON values.
+- `avatar_dashboard_layout`: singleton dashboard widget layout JSON.
+- `avatar_todos`: personal todo records with status, priority, optional due time, and optional project/task/output references.
+- `avatar_daily_tasks`: date-scoped daily task rows.
+- `avatar_calendar_items`: local calendar entries.
+- `avatar_notes`: notes with tag JSON and optional source references.
+- `avatar_facts`: durable facts keyed by namespace and key.
+- `avatar_events`: append-only Avatar event records.
+
+The backing `agent_profiles` row for `Avatar` remains in the primary Magenta database because agent profiles are part of the existing orchestration/runtime surface. Phase 01 reserves that profile as disabled and direct-line-off without changing runtime defaults.
 
 ## Chat, Sessions, and Audit
 
