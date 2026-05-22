@@ -64,6 +64,12 @@ This is the style we want to take with our UI.
 - Use JavaScript only when it is clearly the simpler path and path of least resistance for the specific behavior.
 - When JavaScript is used, keep it narrowly scoped to that interaction instead of turning the page into a JS-transport surface.
 
+#### Reusability Default Policy (SimplyPages)
+- Prefer reusable components and modules over one-off page-level markup for frontend work.
+- If functionality appears in multiple places and is more than bare-minimum presentation, treat it as a reusable component/module candidate.
+- If views are similar, prefer shared render structures and slot-key based reuse rather than duplicating near-identical view code.
+- Use SimplyPages components/modules as reusable building blocks first, and only fall back to ad-hoc page-specific structures when reuse would add unnecessary complexity.
+
 *Always use the libraries coding style and practices, do not try to shoehorn functionality or use raw html strings, raw html is a fallback for advanced cases most functionality from css, js, htmx
 can be done via functions. The library has a vast set of components and ways to make your own, search the well formated documentation for your operation and read it before any edits, if
 still faced with ambiguity, or needing context refer to the demos, if still confused DO NOT DO AD-HOC HACKISH WORKAROUND CONSULT THE USER.*
@@ -95,6 +101,7 @@ If you find a bug pull the recent version of the library and directly implement 
 - Services should own use-case behavior and avoid persistence or transport details leaking into callers.
 - Repositories should own persistence details and keep schema assumptions localized.
 - Request/response payloads and internal data carriers should use Java records where practical.
+- For workspace, output, project, job, task/plan, and workflow architecture work, read `.internal-dev/notes/current-architecture-focus.md` as the current intended direction before planning or editing. In current code and docs, `task` and `plan` may be used interchangeably; prefer `task` for user-facing executable work while preserving existing compatibility until a deliberate rename is planned.
 
 ### Agent and tool direction
 - Treat Magenta as an operational assistant, not a generic framework.
@@ -112,6 +119,8 @@ If you find a bug pull the recent version of the library and directly implement 
 - Before considering backend or application-wiring work complete, smoke test that the Spring Boot application context starts successfully. Prefer a bounded startup command such as `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` unless the task has a more specific startup path.
 - For live chat, browser, SSE, agent/model routing, planning, interruption, chat switching, or concurrent-interaction validation, use the Playwright MCP workflow documented in `.internal-dev/knowledge/live-chat-mcp-workflow-testing.md`. Read that file before running this class of test, follow its MCP-first approach, and update it when you discover better methods, new gotchas, or changed endpoint behavior.
 - For UI changes with interactions that can be validated in a small focused pass, run Playwright validation on the changed targets before sign-off.
+- For any UI change, capture Playwright screenshots of the changed surfaces for agent-side visual review/debugging, and use them to check regressions, layout breakage, and consistency with good UI/UX design patterns before sign-off.
+- Screenshots are primarily an internal debugging/review artifact; share them with users only when useful for communication (for example, to pinpoint where an issue appears on screen).
 - Run Playwright while the application is running so validation checks both front-end interaction behavior and observable backend behavior tied to those interactions.
 - Default Playwright validation scope to focused change-target checks; deep end-to-end or full production-style Playwright integration campaigns require explicit user approval.
 - Execute Playwright validation on a subagent, never inline with the main implementation workflow; the subagent should run the checks and report findings back.

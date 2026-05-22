@@ -1,0 +1,14 @@
+{
+  "status": 200,
+  "url": "http://localhost:18080/outputs",
+  "rows": 0,
+  "hasWorkspace": true,
+  "hasPlan": true,
+  "hasAssignment": true,
+  "hasJobRun": true,
+  "hasRunType": true,
+  "hasNoData": true,
+  "consoleErrors": [],
+  "pageErrors": [],
+  "reqFails": []
+}

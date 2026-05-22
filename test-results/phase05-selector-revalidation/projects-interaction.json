@@ -1,0 +1,9 @@
+{
+  "clicked": "button:has-text(\"New Project\")",
+  "formCount": 1,
+  "formVisible": true,
+  "memberControls": 0,
+  "projectFields": 8,
+  "submitButtons": 1,
+  "url": "http://localhost:18080/projects"
+}

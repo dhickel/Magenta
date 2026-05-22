@@ -31,3 +31,5 @@ This package owns HTTP and web-facing entry points.
 ### Validation
 - Add or update controller tests for new routes, request validation, status codes, and response shapes.
 - Check browser client behavior when web-facing API contracts change.
+- For any web/UI change, capture Playwright screenshots of affected screens for agent-side visual review/debugging and verify non-breaking behavior, layout integrity, and sound UI/UX patterns before sign-off.
+- Treat screenshots as internal validation artifacts first; use them in user communication when they help localize or explain UI issues.

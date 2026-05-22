@@ -1,0 +1,24 @@
+{
+  "planningSubmitRequests": [
+    {
+      "url": "http://127.0.0.1:8097/api/chat/validation-conv-1/plan/answers",
+      "method": "POST",
+      "postData": "{\"answer\":\"/slash answer should route to plan answers\",\"notes\":\"\",\"questionIndex\":1}"
+    }
+  ],
+  "hasPlanAnswersRequest": true,
+  "hasStreamRequestDuringActiveQuestionSubmit": false,
+  "savedPlan": {
+    "hasForm": true,
+    "formHxPost": "/plans/_editor/13b0366d-4bb7-4fc2-a868-ce072bdd032c/planning-chat/answers",
+    "hasInput": true,
+    "hasPromptCard": true,
+    "promptCount": "Question 1/4"
+  },
+  "consoleErrorsOrWarnings": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    }
+  ]
+}

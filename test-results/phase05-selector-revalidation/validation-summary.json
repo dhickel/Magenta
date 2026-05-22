@@ -1,0 +1,31 @@
+{
+  "baseURL": "http://localhost:18080",
+  "startedAt": "2026-05-21T10:01:16.901Z",
+  "pages": {
+    "jobs": {
+      "status": 200,
+      "url": "http://localhost:18080/jobs",
+      "formVisible": false,
+      "projectFieldCount": 0,
+      "agentFieldCount": 1,
+      "contextFieldCount": 0,
+      "submitButtons": 0,
+      "postInteractionFormVisible": true,
+      "postInteractionProjectFieldCount": 4,
+      "postInteractionAgentFieldCount": 4,
+      "postInteractionContextFieldCount": 0
+    },
+    "projects": {
+      "status": 200,
+      "url": "http://localhost:18080/projects",
+      "formVisible": false,
+      "memberControlCount": 0,
+      "submitButtons": 0
+    }
+  },
+  "consoleErrors": [],
+  "pageErrors": [],
+  "requestFailures": [],
+  "badResponses": [],
+  "finishedAt": "2026-05-21T10:01:20.799Z"
+}
