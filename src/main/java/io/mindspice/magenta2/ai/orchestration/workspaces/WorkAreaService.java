@@ -40,6 +40,10 @@ public class WorkAreaService {
         return repository.findByOwner(ownerType, ownerId, includeInactive);
     }
 
+    public List<WorkArea> listActive(int limit) {
+        return repository.findActive(limit);
+    }
+
     public WorkArea ensureHome(WorkspaceOwnerType ownerType, String ownerId, String displayName) {
         requireSupportedOwner(ownerType);
         requireOwnerId(ownerId);

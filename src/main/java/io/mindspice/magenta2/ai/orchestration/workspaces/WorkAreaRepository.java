@@ -81,6 +81,19 @@ public class WorkAreaRepository {
         );
     }
 
+    public List<WorkArea> findActive(int limit) {
+        return jdbcTemplate.query(
+            """
+                select * from work_areas
+                where active_flag = 1
+                order by home_flag desc, display_name, owner_type, owner_id
+                limit ?
+                """,
+            (rs, rowNum) -> toWorkArea(rs),
+            Math.max(1, limit)
+        );
+    }
+
     public WorkArea save(WorkArea workArea) {
         Instant now = Instant.now();
         Instant createdAt = workArea.createdAt() == null ? now : workArea.createdAt();

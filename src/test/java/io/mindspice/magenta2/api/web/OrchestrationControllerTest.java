@@ -318,6 +318,7 @@ class OrchestrationControllerTest {
             new StubJobService(),
             new StubProjectService(),
             workspaceService(),
+            null,
             new StubChatService()
         );
     }
@@ -524,6 +525,9 @@ class OrchestrationControllerTest {
         assertThat(html).contains("agentId");
         assertThat(html).contains("modelOverride");
         assertThat(html).contains("priority");
+        assertThat(html).contains("data-selector-kind=\"work-area\"");
+        assertThat(html).contains("name=\"selectedWorkAreaId\"");
+        assertThat(html).contains("name=\"outputWorkAreaId\"");
     }
 
     @Test
@@ -1544,6 +1548,9 @@ class OrchestrationControllerTest {
         assertThat(html).contains("modelOverride");
         assertThat(html).contains("projectId");
         assertThat(html).contains("Compatibility Workspace");
+        assertThat(html).contains("data-selector-kind=\"work-area\"");
+        assertThat(html).contains("selectorContext.ownerType");
+        assertThat(html).contains("selectorContext.ownerId");
     }
 
     @Test

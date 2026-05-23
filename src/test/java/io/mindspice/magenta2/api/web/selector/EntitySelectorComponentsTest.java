@@ -55,6 +55,21 @@ class EntitySelectorComponentsTest {
     }
 
     @Test
+    void workAreaSelectorRendersExplicitBrowseControl() {
+        String html = components.selector(
+            new EntitySelectorConfig("selectedWorkAreaId", EntityKind.WORK_AREA, null,
+                "Selected Work Area", "blank uses Home", false, Map.of("ownerType", "AGENT", "ownerId", "agent-1")),
+            null
+        ).render();
+
+        assertThat(html).contains("data-selector-kind=\"work-area\"");
+        assertThat(html).contains("Browse Work Areas");
+        assertThat(html).contains("hx-get=\"/selectors/work-area/options?name=selectedWorkAreaId&amp;required=false");
+        assertThat(html).contains("selectorContext.ownerType=AGENT");
+        assertThat(html).contains("selectorContext.ownerId=agent-1");
+    }
+
+    @Test
     void optionsUseServerSelectedFragmentSwap() {
         String html = components.options(EntityKind.JOB, "jobId", true, List.of(
             new EntityOption("job", "job-1", "Nightly Job", "2 items", "DRAFT", true)

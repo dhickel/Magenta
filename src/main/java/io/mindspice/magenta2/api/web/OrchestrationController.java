@@ -2260,7 +2260,7 @@ public class OrchestrationController {
                 "Project", "optional project context", false))
             .withChild(entitySelector("workspaceId", EntityKind.WORKSPACE, null,
                 "Compatibility Workspace", "optional compatibility workspace metadata", false))
-            .withChild(submitRoutingFields()));
+            .withChild(submitRoutingFields(Map.of())));
 
         // Generated input form from declared inputs
         if (!plan.inputs().isEmpty()) {
@@ -3338,7 +3338,7 @@ public class OrchestrationController {
                 "Project", "optional project context", false))
             .withChild(entitySelector("workspaceId", EntityKind.WORKSPACE, null,
                 "Compatibility Workspace", "optional compatibility workspace metadata", false))
-            .withChild(submitRoutingFields()));
+            .withChild(submitRoutingFields(Map.of())));
 
         form.withChild(Button.create("Submit").withClass("orch-primary").withAttribute("type", "submit"));
         panel.withChild(form);
@@ -3768,7 +3768,7 @@ public class OrchestrationController {
                 "Compatibility Workspace", "optional compatibility workspace metadata", false))
             .withChild(label("Priority", TextInput.number("priority")
                 .withValue("9").withMin("0").withMax("100")))
-            .withChild(submitRoutingFields()));
+            .withChild(submitRoutingFields(Map.of("ownerType", "AGENT", "ownerId", nn(job.ownerAgentId())))));
 
         form.withChild(Button.create("Submit").withClass("orch-primary")
             .withAttribute("type", "submit"));
@@ -7231,7 +7231,7 @@ public class OrchestrationController {
             "Project", "optional project context", false, Map.of("agentId", agent.id())));
         form.withChild(entitySelector("workspaceId", EntityKind.WORKSPACE, null,
             "Compatibility Workspace", "optional compatibility workspace metadata", false));
-        form.withChild(submitRoutingFields());
+        form.withChild(submitRoutingFields(Map.of("ownerType", "AGENT", "ownerId", agent.id())));
 
         form.withChild(new Div().withClass("orch-actions")
             .withChild(Button.create("Submit").withClass("orch-primary").withAttribute("type", "submit")));
@@ -7603,18 +7603,18 @@ public class OrchestrationController {
         return new HtmlTag("label").withChild(new TextNode(text)).withChild(input);
     }
 
-    private Component submitRoutingFields() {
+    private Component submitRoutingFields(Map<String, String> context) {
         Div group = new Div().withClass("orch-form-stack");
         group.withChild(new HtmlTag("h4").withInnerText("Work Area / Outputs"));
-        group.withChild(label("Selected Work Area ID", TextInput.create("selectedWorkAreaId")
-            .withPlaceholder("blank uses Home")));
+        group.withChild(entitySelector("selectedWorkAreaId", EntityKind.WORK_AREA, null,
+            "Selected Work Area", "blank uses Home", false, context));
         Select routeType = Select.create("outputRouteType")
             .addOption("", "Default: selected Work Area outputs", true)
             .addOption(AssignmentRequest.OUTPUT_ROUTE_WORK_AREA, "Redirect to Work Area outputs", false)
             .addOption(AssignmentRequest.OUTPUT_ROUTE_DIRECT_DIRECTORY, "Redirect to direct directory", false);
         group.withChild(label("Output Route", routeType));
-        group.withChild(label("Output Work Area ID", TextInput.create("outputWorkAreaId")
-            .withPlaceholder("required for Work Area redirect")));
+        group.withChild(entitySelector("outputWorkAreaId", EntityKind.WORK_AREA, null,
+            "Output Work Area", "required for Work Area redirect", false, context));
         group.withChild(label("Direct Output Directory", TextInput.create("outputDirectRelativePath")
             .withPlaceholder("existing owner-root-relative directory")));
         return group;

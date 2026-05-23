@@ -66,6 +66,17 @@ class WorkAreaServiceTest {
     }
 
     @Test
+    void listsActiveWorkAreasAcrossOwnersForPickers() throws Exception {
+        TestContext context = context();
+        WorkArea agentHome = context.service().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);
+        WorkArea projectHome = context.service().ensureHome(WorkspaceOwnerType.PROJECT, "project-1", null);
+
+        assertThat(context.service().listActive(20))
+            .extracting(WorkArea::id)
+            .contains(agentHome.id(), projectHome.id());
+    }
+
+    @Test
     void rejectsTraversalRootMarkingAndUnsupportedOwners() throws Exception {
         TestContext context = context();
         context.service().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);

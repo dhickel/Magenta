@@ -56,6 +56,7 @@ class EntityLookupServiceTest {
             null,
             null,
             null,
+            null,
             chat
         );
     }

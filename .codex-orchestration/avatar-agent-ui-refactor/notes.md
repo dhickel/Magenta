@@ -18,6 +18,7 @@
 - Assignment Work Area metadata slice implemented: `work_assignments` selected/output route columns, request/record fields, assignment creation validation, docs, and changelog.
 - Runtime Work Area routing slice implemented: selected Work Area runtime path allocation, output redirect resolution, `root/` alias support, docs, package guide, and changelog.
 - Submit Work Area routing slice implemented: operational submit forms and direct submit DTOs now propagate selected Work Area/output route metadata while plan-chat routes remain unchanged.
+- Submit Work Area picker slice implemented: operational submit forms use the shared HTMX entity selector for selected/output Work Area controls instead of raw ID-only fields.
 - Work Area explorer backend slice implemented: `/api/work-areas` metadata/explorer routes, confined browse/preview/download/edit/directory/rename/delete/mark behavior, delete guardrails, docs, tests, and changelog.
 - Avatar layout editor UI slice implemented: `/avatar` can render persisted row/widget layouts, `/avatar/_edit` exposes row/widget add/move/resize/remove actions, and layout mutations autosave with HTMX plus OOB grid refresh.
 - Avatar Work Area explorer UI slice implemented: Work Areas widget lists agent-owned Work Areas and opens HTMX modal fragments for browse, preview/download, safe text edit, create directory, delete, and mark nested Work Area.
@@ -37,6 +38,9 @@
 - Assignment metadata focused tests: `mvn -Dtest='io.mindspice.magenta2.ai.orchestration.runtime.AssignmentContextServiceTest,io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaServiceTest,io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceRepositorySchemaMigrationTest' test` passed with 22 tests, 0 failures, 0 errors.
 - Runtime routing focused tests: `mvn -Dtest='io.mindspice.magenta2.ai.orchestration.workspaces.OutputDirectoryServiceTest,io.mindspice.magenta2.ai.chat.plan.PlanServiceTest,io.mindspice.magenta2.ai.chat.tool.file.AgentFileToolServiceTest,io.mindspice.magenta2.ai.chat.tool.shell.AgentShellToolServiceTest' test` passed with 103 tests, 0 failures, 0 errors. Follow-up targeted route/alias test pass also passed with 31 tests, 0 failures, 0 errors.
 - Submit routing focused tests: `mvn -Dtest='io.mindspice.magenta2.api.web.OrchestrationControllerTest,io.mindspice.magenta2.api.web.AgentOrchestrationControllerTest,io.mindspice.magenta2.api.web.PublicRunSubmissionControllerTest' test` passed with 132 tests, 0 failures, 0 errors.
+- Submit Work Area picker focused tests: `mvn -Dtest='io.mindspice.magenta2.api.web.OrchestrationControllerTest,io.mindspice.magenta2.api.web.selector.*Test,io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaServiceTest' test` passed with 114 tests, 0 failures, 0 errors.
+- Submit Work Area picker Playwright validation subagent `019e53cf-3dfb-7341-b2c2-7e16da1c0f0c` passed desktop picker behavior but found mobile Submit tab/sidebar interception.
+- Submit Work Area picker mobile recheck subagent `019e53dd-2f16-70c0-8af2-a0a7fbc2fc05` passed desktop/mobile Submit tab loading, Browse Work Areas option loading, output route/direct directory controls, and no sidebar intercept. Screenshots saved under `target/playwright-submit-work-area-pickers-mobile-recheck/`.
 - Work Area explorer backend focused tests: `mvn -Dtest='io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaExplorerServiceTest,io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaServiceTest' test` passed locally after explorer guardrail hardening.
 - Avatar layout editor focused tests: `mvn -Dtest='io.mindspice.magenta2.api.web.AvatarDashboardControllerTest,io.mindspice.magenta2.avatar.*Test' test` passed with 23 tests, 0 failures, 0 errors.
 - Avatar layout editor compile check: `mvn -DskipTests compile` passed.
@@ -55,6 +59,7 @@
 
 - Playwright validation found one UX friction: when every first-party widget exists, the add-widget catalog is all disabled entries until a user removes a widget elsewhere. This is expected by the v1 single-instance rule and was recorded in `.internal-dev/focus/ideas-inbox.md`.
 - Organizer validation found and remediated two issues: the Organizer modal now uses `#avatar-organizer-modal` with specific submit labels, and Avatar row-grid CSS overrides SimplyPages global `.col-*` max-width/flex behavior inside `.avatar-dashboard-row` so widgets do not collapse into slivers.
+- Submit picker validation found and remediated a mobile sidebar override that kept the sidebar open over agent-detail content. The orchestration stylesheet now leaves the mobile sidebar hidden until framework JS applies `mobile-open`.
 
 ## Blockers
 

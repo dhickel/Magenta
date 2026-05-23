@@ -474,9 +474,13 @@
         width: min(20rem, calc(100vw - 1.5rem));
         max-height: calc(100vh - 1.5rem);
         overflow-y: auto;
-        transform: translateX(0);
+        transform: translateX(calc(-100% - 1rem));
         transition: transform 160ms ease;
         -webkit-overflow-scrolling: touch;
+    }
+
+    .main-container.has-sidebar > .main-sidebar.mobile-open {
+        transform: translateX(0);
     }
 
     .main-container.has-sidebar.sidebar-collapsed > .main-sidebar {
@@ -1808,6 +1812,11 @@
     font-size: 0.82rem;
     font-weight: 600;
     color: #334155;
+}
+
+.entity-selector-browse {
+    align-self: flex-start;
+    min-height: 1.8rem;
 }
 
 .entity-selector-results {

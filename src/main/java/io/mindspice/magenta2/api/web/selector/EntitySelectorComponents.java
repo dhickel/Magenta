@@ -57,6 +57,16 @@ public class EntitySelectorComponents {
             .withClass("entity-selector-label")
             .withChild(new TextNode(label))
             .withChild(input));
+        if (config.kind() == EntityKind.WORK_AREA) {
+            root.withChild(new HtmlTag("button")
+                .withAttribute("type", "button")
+                .withClass("entity-selector-browse")
+                .withAttribute("hx-get", optionsUrl(config))
+                .withAttribute("hx-target", "#" + resultsId)
+                .withAttribute("hx-include", "closest .entity-selector")
+                .withAttribute("hx-swap", "innerHTML")
+                .withInnerText("Browse Work Areas"));
+        }
         root.withChild(status(config, current));
         root.withChild(new HtmlTag("div")
             .withId(resultsId)

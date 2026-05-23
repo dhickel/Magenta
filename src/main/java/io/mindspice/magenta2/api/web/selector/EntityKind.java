@@ -10,6 +10,7 @@ public enum EntityKind {
     JOB("job"),
     PROJECT("project"),
     WORKSPACE("workspace"),
+    WORK_AREA("work-area"),
     MODEL("model"),
     RUN("run"),
     TARGET("target");
