@@ -485,7 +485,7 @@ public class AvatarDashboardController {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
             explorer.saveText(workAreaId, path, content);
-            return AvatarDashboardComponents.workAreaExplorer(explorer.list(workAreaId, parentPath(path))).render();
+            return AvatarDashboardComponents.workAreaPreview(workAreaId, explorer.preview(workAreaId, path)).render();
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }

@@ -4,8 +4,8 @@ Avatar Work Area UI Refactor Planning
 
 ## Source References
 
-- `.internal-dev/plans/avatar-agent-ui-refactor/implementation-plan.md`
-- `.internal-dev/plans/avatar-agent-ui-refactor/orchestration.md`
+- `.internal-dev/plans/.archive/avatar-agent-ui-refactor/implementation-plan.md`
+- `.internal-dev/plans/.archive/avatar-agent-ui-refactor/orchestration.md`
 - `.internal-dev/notes/2026-05-22-avatar-dashboard-ui-style-guidelines.md`
 - `.internal-dev/notes/current-architecture-focus.md`
 - `src/main/java/io/mindspice/magenta2/api/web/AvatarDashboardController.java`

@@ -23,7 +23,7 @@
 - Avatar layout editor UI slice implemented: `/avatar` can render persisted row/widget layouts, `/avatar/_edit` exposes row/widget add/move/resize/remove actions, and layout mutations autosave with HTMX plus OOB grid refresh.
 - Avatar Work Area explorer UI slice implemented: Work Areas widget lists agent-owned Work Areas and opens HTMX modal fragments for browse, preview/download, safe text edit, create directory, delete, and mark nested Work Area.
 - Avatar planner organizer slice implemented: durable planner task/subtodo/note-link/projection persistence, friendly recurrence projection, and HTMX Organizer modal tabs for planner, todos, calendar, and notes.
-- Plan suite created under `.internal-dev/plans/avatar-agent-ui-refactor/`.
+- Plan suite created under `.internal-dev/plans/.archive/avatar-agent-ui-refactor/`.
 - Non-mutating closeout review completed by subagent `019e5351-f450-7690-90eb-aab7eab5c054`; it found no missing required items.
 - SimplyPages UI reviewer completed; recommended splitting layout/editor/catalog components out of `AvatarDashboardComponents`, using SimplyPages `Row`/`Column`, stable OOB containers, compact decorator controls, and narrow raw HTML fallbacks only.
 - Runtime reviewer completed; confirmed Work Area persistence must precede runtime metadata/routing, and identified alias/output routing touchpoints in runtime, plan, workflow, file/shell tools, and output services.
@@ -52,6 +52,11 @@
 - Avatar organizer Playwright validation subagent `019e53b8-5005-7ea1-925d-c6a926f39751` initially passed organizer function but found desktop widget slivers and organizer modal/button ambiguity.
 - Avatar organizer Playwright recheck subagent `019e53bd-dd5c-7682-9c7f-ef109014ed86` confirmed modal/button fixes and isolated remaining desktop row-grid sliver issue.
 - Avatar row-grid Playwright recheck subagent `019e53c5-cf3e-7e52-a1ac-bf4bfc7570b1` passed desktop widget readability, organizer modal id, planner task/subtodo creation, and mobile no-overflow checks. Screenshots saved under `target/playwright-avatar-row-grid-recheck/`.
+- Final Playwright sweep subagent `019e53e6-9603-7ed2-b525-4f5c15f1a7e8` passed `/avatar` view/edit, Organizer planner/subtodo, `/dashboard`, and `/agents` style checks on port 18080, but found two issues: Work Area submit browse results were not visible in the tested full-page flow and Work Area preview/edit state was unstable after save/mark/open transitions. Screenshots saved under `target/playwright-avatar-final-sweep-18080/`.
+- Remediation recheck subagent `019e53ec-b992-7ab2-86ed-32e2fcde00bf` passed both corrected flows on port 18080: `/agents` Avatar Submit tab shows visible results for both Browse Work Areas buttons, and `/avatar` Work Area preview/edit/save keeps the preview pane present with edited content visible. Screenshots saved under `target/playwright-avatar-remediation-recheck/`.
+- Final focused remediation tests: `mvn -Dtest='io.mindspice.magenta2.api.web.selector.*Test,io.mindspice.magenta2.api.web.AvatarDashboardControllerTest,io.mindspice.magenta2.api.web.OrchestrationControllerTest' test` passed with 115 tests, 0 failures, 0 errors.
+- Final full test suite: `mvn test` passed with 779 tests, 0 failures, 0 errors.
+- Final bounded startup: `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` reached a healthy Spring Boot start on port 41347 and then shut down cleanly via timeout.
 - Planning artifact grep/readback completed locally.
 - Closeout review found the plan covers `/avatar` operational redo, SimplyPages row/column editor, Work Areas, explorer/output routing, planner recurrence, orchestration lanes, validation/red-team gates, docs, `.internal-dev`, and commit workflow.
 
@@ -60,6 +65,7 @@
 - Playwright validation found one UX friction: when every first-party widget exists, the add-widget catalog is all disabled entries until a user removes a widget elsewhere. This is expected by the v1 single-instance rule and was recorded in `.internal-dev/focus/ideas-inbox.md`.
 - Organizer validation found and remediated two issues: the Organizer modal now uses `#avatar-organizer-modal` with specific submit labels, and Avatar row-grid CSS overrides SimplyPages global `.col-*` max-width/flex behavior inside `.avatar-dashboard-row` so widgets do not collapse into slivers.
 - Submit picker validation found and remediated a mobile sidebar override that kept the sidebar open over agent-detail content. The orchestration stylesheet now leaves the mobile sidebar hidden until framework JS applies `mobile-open`.
+- Final validation found and remediated two issues: Work Area selector browse buttons now render as explicit HTMX buttons with a Work Area-specific empty state, and Work Area text saves now return the updated preview pane instead of replacing the full explorer modal.
 
 ## Blockers
 
@@ -67,12 +73,12 @@
 
 ## Closeout Work
 
-- Add changelog and focus/decision updates for the planning artifact.
+- Final docs, changelog, knowledge, focus/decision/unfinished-work updates prepared.
 - Commit and push explicit paths.
 
 ## Final Validation Status
 
-- Planning artifact validation passed.
+- Final implementation validation passed after remediation.
 
 ## Handoff Notes
 

@@ -64,6 +64,9 @@ class EntitySelectorComponentsTest {
 
         assertThat(html).contains("data-selector-kind=\"work-area\"");
         assertThat(html).contains("Browse Work Areas");
+        assertThat(html).contains("class=\"btn btn-primary entity-selector-browse\"");
+        assertThat(html).contains("hx-trigger=\"click\"");
+        assertThat(html).contains("aria-controls=\"entity-selector-work-area-selectedWorkAreaId-results\"");
         assertThat(html).contains("hx-get=\"/selectors/work-area/options?name=selectedWorkAreaId&amp;required=false");
         assertThat(html).contains("selectorContext.ownerType=AGENT");
         assertThat(html).contains("selectorContext.ownerId=agent-1");
@@ -89,5 +92,13 @@ class EntitySelectorComponentsTest {
 
         assertThat(html).contains("selectorContext.agentId=agent-1");
         assertThat(html).doesNotContain("&amp;agentId=agent-1");
+    }
+
+    @Test
+    void emptyWorkAreaOptionsUseExplicitEmptyState() {
+        String html = components.options(EntityKind.WORK_AREA, "selectedWorkAreaId", false, List.of()).render();
+
+        assertThat(html).contains("entity-selector-empty");
+        assertThat(html).contains("No Work Areas found");
     }
 }

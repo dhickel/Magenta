@@ -60,11 +60,13 @@ public class EntitySelectorComponents {
         if (config.kind() == EntityKind.WORK_AREA) {
             root.withChild(new HtmlTag("button")
                 .withAttribute("type", "button")
-                .withClass("entity-selector-browse")
+                .withClass("btn btn-primary entity-selector-browse")
                 .withAttribute("hx-get", optionsUrl(config))
+                .withAttribute("hx-trigger", "click")
                 .withAttribute("hx-target", "#" + resultsId)
                 .withAttribute("hx-include", "closest .entity-selector")
                 .withAttribute("hx-swap", "innerHTML")
+                .withAttribute("aria-controls", resultsId)
                 .withInnerText("Browse Work Areas"));
         }
         root.withChild(status(config, current));
@@ -90,9 +92,10 @@ public class EntitySelectorComponents {
     ) {
         HtmlTag list = new HtmlTag("div").withClass("entity-selector-options");
         if (options.isEmpty()) {
+            String message = kind == EntityKind.WORK_AREA ? "No Work Areas found" : "No matches";
             return list.withChild(new HtmlTag("div")
                 .withClass("entity-selector-empty")
-                .withInnerText("No matches"));
+                .withInnerText(message));
         }
         for (EntityOption option : options) {
             String url = "/selectors/" + kind.wireName() + "/selected?name=" + enc(name)

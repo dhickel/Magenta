@@ -154,7 +154,10 @@ class AvatarDashboardControllerTest {
         String newFileEditor = controller.createWorkAreaTextFile(workAreaId, "notes", "draft.md");
         assertThat(newFileEditor).contains("textarea");
 
-        controller.saveWorkAreaText(workAreaId, "notes/todo.md", "hello\n");
+        String savedPreview = controller.saveWorkAreaText(workAreaId, "notes/todo.md", "hello\n");
+        assertThat(savedPreview).contains("id=\"avatar-workarea-preview\"");
+        assertThat(savedPreview).contains("hello");
+
         String preview = controller.workAreaPreview(workAreaId, "notes/todo.md");
         assertThat(preview).contains("hello");
         assertThat(preview).contains("/api/work-areas/" + workAreaId + "/files/download");

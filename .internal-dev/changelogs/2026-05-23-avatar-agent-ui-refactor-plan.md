@@ -8,10 +8,10 @@ Created the advanced implementation and orchestration plan for the next `/avatar
 
 ## Files
 
-- `.internal-dev/plans/avatar-agent-ui-refactor/README.md`
-- `.internal-dev/plans/avatar-agent-ui-refactor/implementation-plan.md`
-- `.internal-dev/plans/avatar-agent-ui-refactor/orchestration.md`
-- `.internal-dev/plans/avatar-agent-ui-refactor/validation-red-team.md`
+- `.internal-dev/plans/.archive/avatar-agent-ui-refactor/README.md`
+- `.internal-dev/plans/.archive/avatar-agent-ui-refactor/implementation-plan.md`
+- `.internal-dev/plans/.archive/avatar-agent-ui-refactor/orchestration.md`
+- `.internal-dev/plans/.archive/avatar-agent-ui-refactor/validation-red-team.md`
 - `.codex-orchestration/avatar-agent-ui-refactor/notes.md`
 - `.internal-dev/knowledge/avatar-work-area-ui-refactor-planning.md`
 - `.internal-dev/focus/architecture-focus.md`
@@ -28,5 +28,5 @@ No production behavior changed. This is a planning and coordination artifact for
 
 ## Follow-up Items
 
-- Begin implementation orchestration from `.internal-dev/plans/avatar-agent-ui-refactor/orchestration.md`.
+- Begin implementation orchestration from `.internal-dev/plans/.archive/avatar-agent-ui-refactor/orchestration.md`.
 - Decide during implementation whether old Avatar organizer data is migrated or hard-replaced.

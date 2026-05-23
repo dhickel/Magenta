@@ -47,7 +47,7 @@ class FrontendControllerTest {
         assertThat(html).contains("id=\"magenta-chat-module\"");
         assertThat(html).contains("data-sp-chat=\"true\"");
         assertThat(html).contains("/api/fragments/chat/transcript");
-        assertThat(html).contains("/js/chat-client.js?v=29");
+        assertThat(html).contains("/js/chat-client.js?v=30");
         assertThat(html).doesNotContain("/js/avatar-chat.js");
         assertThat(html).contains("id=\"chat-planning-panel\"");
         assertThat(html).contains("id=\"chat-session-files\"");

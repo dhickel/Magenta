@@ -5,13 +5,37 @@ The Avatar dashboard is available at `/avatar`. It is a personal dashboard for q
 ## What Is On The Page
 
 - Compact Avatar chat is always visible on `/avatar`.
-- Organizer widgets cover daily tasks, todos, calendar items, and notes.
+- Organizer widgets cover daily tasks, todos, calendar items, notes, and planner tasks.
+- Work Areas show agent-owned Work Areas and open the file explorer modal.
 - Output widgets show recent materialized outputs and safe previews through the existing output artifact APIs.
 - System and recent-work widgets summarize existing agent, job, assignment, and output state.
 - Alerts use existing inbox and internal Avatar event data.
 
 ## Editing Widgets
 
-Use **Edit Layout** on `/avatar` to enable or disable widgets and choose compact, standard, or wide sizing. Layout changes are saved through HTMX and the dashboard refreshes in place.
+Use **Edit Layout** on `/avatar` to change rows and widgets. The editor uses 12-column rows. You can add rows, add one instance of each first-party widget, move widgets across rows, resize widgets to preset widths, and remove widgets. Each action saves immediately through HTMX and refreshes the dashboard grid in place.
+
+## Organizer
+
+Use **Organizer** to open the tabbed organizer modal:
+
+- **Planner** creates durable personal planner tasks with priority, start/due dates, recurrence, links to existing Magenta work, and subtodos.
+- **Todos** shows the existing Avatar todo list.
+- **Calendar** shows Avatar calendar items and planner projections.
+- **Notes** shows Avatar notes.
+
+Planner tasks are personal organizer records. They are not executable Magenta plans/tasks, and v1 does not schedule reminders, contact the user, or start assignments from planner recurrence.
+
+## Work Areas And Files
+
+The **Work Areas** widget opens a confined file explorer for agent-owned Work Areas. The explorer supports browsing directories, previewing and downloading files, safe text edits, creating directories, creating text files, deleting with confirmation, and marking nested directories as Work Areas.
+
+New assignment work defaults to the selected Home Work Area. During execution, `workspace/` points at the selected Work Area and `root/` points at the broader owned root. Outputs default to the selected Work Area `outputs/` folder unless the submit form redirects them to another Work Area or to an existing confined owner-root directory.
+
+## Submit Pickers
+
+Operational submit forms now include **Work Area / Outputs** controls. Use the Work Area pickers to choose the selected execution Work Area or an output Work Area redirect. Direct output redirects still require an existing owner-root-relative directory path.
+
+Plan chats do not show Work Area controls.
 
 Routine widget actions such as adding todos, completing daily tasks, saving notes, adding calendar items, refreshing widgets, previewing outputs, and dismissing Avatar event alerts are HTMX actions. The compact chat uses a small `/avatar`-specific SSE script and does not load the full `/chat` client.
