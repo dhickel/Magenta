@@ -132,6 +132,7 @@ class AvatarDashboardControllerTest {
         assertThat(editRowsHtml).contains("add-module-section");
         assertThat(editRowsHtml).contains("insert-row-section");
         assertThat(editRowsHtml).contains("avatar-widget-corner-controls");
+        assertThat(editRowsHtml).contains("avatar-chat-status");
         assertThat(editRowsHtml).contains("/width-cycle");
         assertThat(editRowsHtml).doesNotContain("avatar-row-decoration");
         assertThat(editRowsHtml).doesNotContain("avatar-widget-decoration");
@@ -198,15 +199,19 @@ class AvatarDashboardControllerTest {
         String rowId = avatarService.dashboardRows().getFirst().id();
         assertThat(afterRow).contains("hx-swap-oob=\"true\"");
         assertThat(afterRow).contains("/avatar/_layout/rows/" + rowId + "/catalog");
-        assertThat(afterRow).contains("/avatar/_layout/rows/" + rowId + "/insert-after");
+        assertThat(afterRow).contains("avatar-empty-row-insert");
+        assertThat(afterRow).doesNotContain("/avatar/_layout/rows/" + rowId + "/insert-after");
 
         String catalog = controller.widgetCatalog(rowId);
         assertThat(catalog).contains("Add Widget");
         assertThat(catalog).contains("daily-tasks");
+        assertThat(catalog).contains("avatar-modal avatar-widget-picker");
+        assertThat(catalog).contains("avatar-widget-picker-modal");
 
         String inserted = controller.insertLayoutRowAfter(rowId);
         assertThat(inserted).contains("hx-swap-oob=\"true\"");
         assertThat(inserted).contains("avatar-widget-catalog");
+        assertThat(inserted).contains("avatar-empty-row-insert");
         assertThat(avatarService.dashboardRows()).hasSize(2);
 
         assertThatThrownBy(() -> controller.addLayoutWidget(rowId, "unknown", 4))

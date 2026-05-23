@@ -98,8 +98,11 @@ final class AvatarDashboardComponents {
         }
         for (int i = 0; i < rows.size(); i++) {
             AvatarDashboardRow row = rows.get(i);
+            if (!editMode && row.widgets().isEmpty()) {
+                continue;
+            }
             grid.withChild(rowShell(data, row, i, rows.size(), editMode));
-            if (editMode) {
+            if (editMode && !row.widgets().isEmpty()) {
                 grid.withChild(insertRowSection(row));
             }
         }
@@ -224,9 +227,11 @@ final class AvatarDashboardComponents {
             .flatMap(row -> row.widgets().stream())
             .map(AvatarDashboardRowWidget::widgetKey)
             .collect(java.util.stream.Collectors.toSet());
-        Div panel = new Div().withClass("avatar-edit-panel avatar-widget-catalog");
+        Div panel = new Div().withClass("avatar-edit-panel avatar-widget-catalog avatar-widget-picker-modal");
         panel.withChild(new Div().withClass("avatar-edit-header")
-            .withChild(Header.H2("Add Widget"))
+            .withChild(new Div()
+                .withChild(Header.H2("Add Widget"))
+                .withChild(small("Pick one module for this row. Widths follow the 12-column dashboard grid.")))
             .withChild(Button.create("Close")
                 .withAttribute("type", "button")
                 .withAttribute("hx-get", "/avatar/_edit?close=true")
@@ -239,11 +244,16 @@ final class AvatarDashboardComponents {
             form.withAttribute("hx-post", "/avatar/_layout/rows/" + rowId + "/widgets");
             form.withAttribute("hx-target", "#avatar-edit-container");
             form.withAttribute("hx-swap", "innerHTML");
+            if (disabled) {
+                form.withClass("avatar-catalog-item-disabled");
+            }
             form.withChild(new HtmlTag("input", true)
                 .withAttribute("type", "hidden")
                 .withAttribute("name", "widgetKey")
                 .withAttribute("value", definition.key()));
-            form.withChild(new HtmlTag("strong").withInnerText(definition.title()));
+            form.withChild(new Div()
+                .withChild(new HtmlTag("strong").withInnerText(definition.title()))
+                .withChild(small(widgetDescription(definition.key()))));
             form.withChild(widthSelect("columnWidth", defaultWidth(definition), false));
             Button button = Button.submit(disabled ? "Added" : "Add");
             if (disabled) {
@@ -253,7 +263,7 @@ final class AvatarDashboardComponents {
             catalog.withChild(form);
         }
         panel.withChild(catalog);
-        return new Div().withId("avatar-edit-modal").withClass("avatar-inline-catalog").withChild(panel);
+        return new Div().withId("avatar-edit-modal").withClass("avatar-modal avatar-widget-picker").withChild(panel);
     }
 
     static Component organizerModal(
@@ -495,6 +505,11 @@ final class AvatarDashboardComponents {
                 ? "avatar-dashboard-row-shell editable-row-wrapper avatar-dashboard-row-shell-editing"
                 : "avatar-dashboard-row-shell")
             .withAttribute("data-avatar-row-id", dashboardRow.id());
+        if (editMode && dashboardRow.widgets().isEmpty()) {
+            shell.withClass("avatar-empty-row-shell");
+            shell.withChild(emptyRowInsert(dashboardRow, index, rowCount));
+            return shell;
+        }
         Row row = new Row().withId("avatar-dashboard-row-" + dashboardRow.id());
         row.withAttribute("class", "row avatar-dashboard-row");
         for (AvatarDashboardRowWidget rowWidget : dashboardRow.widgets()) {
@@ -550,8 +565,17 @@ final class AvatarDashboardComponents {
             .withAttribute("data-chat-surface", "avatar")
             .withAttribute("data-default-model", defaultModel == null ? "" : defaultModel)
             .withChild(new Div().withClass("avatar-chat-header")
-                .withChild(Header.H2("Avatar Chat"))
-                .withChild(new HtmlTag("span").withId("avatar-chat-session").withInnerText("New chat")))
+                .withChild(new Div()
+                    .withChild(Header.H2("Avatar Chat"))
+                    .withChild(small("Personal assistant channel")))
+                .withChild(new Div().withClass("avatar-chat-chips")
+                    .withChild(new HtmlTag("span").withClass("avatar-chip").withInnerText("surface avatar"))
+                    .withChild(new HtmlTag("span").withId("avatar-chat-session").withClass("avatar-chip").withInnerText("new chat"))))
+            .withChild(new Div().withClass("avatar-chat-status")
+                .withChild(new HtmlTag("span").withId("avatar-chat-status").withInnerText("Ready"))
+                .withChild(new HtmlTag("span").withInnerText(defaultModel == null || defaultModel.isBlank()
+                    ? "model unset"
+                    : "model " + defaultModel)))
             .withChild(new Div().withId("avatar-chat-messages")
                 .withClass("avatar-chat-messages")
                 .withAttribute("aria-live", "polite")
@@ -588,15 +612,20 @@ final class AvatarDashboardComponents {
         if (tasks == null || tasks.isEmpty()) {
             return body.withChild(empty("No daily tasks for today."));
         }
-        Div list = new Div().withClass("avatar-list");
-        for (AvatarDailyTask task : tasks) {
+        List<AvatarDailyTask> visible = tasks.stream().limit(6).toList();
+        Div list = new Div().withClass("avatar-list avatar-list-constrained");
+        for (AvatarDailyTask task : visible) {
             list.withChild(new Div().withClass("avatar-list-row")
                 .withChild(new Div()
                     .withChild(new HtmlTag("strong").withInnerText(task.title()))
                     .withChild(small(task.status() == null ? "planned" : task.status().name().toLowerCase(Locale.ROOT))))
                 .withChild(action("Done", "/avatar/_daily-tasks/" + task.id() + "/complete", rootId("daily-tasks"))));
         }
-        return body.withChild(list);
+        body.withChild(list);
+        if (tasks.size() > visible.size()) {
+            body.withChild(small("Showing " + visible.size() + " of " + tasks.size() + " daily tasks."));
+        }
+        return body;
     }
 
     private static Component todos(List<AvatarTodo> todos) {
@@ -616,8 +645,9 @@ final class AvatarDashboardComponents {
         if (todos == null || todos.isEmpty()) {
             return body.withChild(empty("No todos."));
         }
-        Div list = new Div().withClass("avatar-list");
-        for (AvatarTodo todo : newestTodos(todos)) {
+        List<AvatarTodo> visible = newestTodos(todos);
+        Div list = new Div().withClass("avatar-list avatar-list-constrained");
+        for (AvatarTodo todo : visible) {
             list.withChild(new Div().withClass("avatar-list-row")
                 .withChild(new Div()
                     .withChild(new HtmlTag("strong").withInnerText(todo.title()))
@@ -626,7 +656,14 @@ final class AvatarDashboardComponents {
                     .withChild(action("Done", "/avatar/_todos/" + todo.id() + "/complete", rootId("todos")))
                     .withChild(deleteAction("Delete", "/avatar/_todos/" + todo.id(), rootId("todos")))));
         }
-        return body.withChild(list);
+        body.withChild(list);
+        long openCount = todos.stream()
+            .filter(todo -> todo.status() == null || "OPEN".equals(todo.status().name()))
+            .count();
+        if (openCount > visible.size()) {
+            body.withChild(small("Showing " + visible.size() + " of " + openCount + " open todos."));
+        }
+        return body;
     }
 
     private static List<AvatarTodo> newestTodos(List<AvatarTodo> todos) {
@@ -1020,7 +1057,20 @@ final class AvatarDashboardComponents {
 
     private static Component addModuleSection(AvatarDashboardRow row, int index, int rowCount) {
         return new Div().withClass("add-module-section avatar-add-module-section")
-            .withChild(Button.create("+ Add Widget to Row")
+            .withChild(Button.create("+ Add Widget")
+                .withAttribute("type", "button")
+                .withAttribute("hx-get", "/avatar/_layout/rows/" + row.id() + "/catalog")
+                .withAttribute("hx-target", "#avatar-edit-container")
+                .withAttribute("hx-swap", "innerHTML"));
+    }
+
+    private static Component emptyRowInsert(AvatarDashboardRow row, int index, int rowCount) {
+        return new Div().withClass("avatar-empty-row-insert")
+            .withChild(rowMicroControls(row, index, rowCount))
+            .withChild(new Div()
+                .withChild(new HtmlTag("strong").withInnerText("Empty row"))
+                .withChild(small("Add a widget or remove this row.")))
+            .withChild(Button.create("+ Add Widget")
                 .withAttribute("type", "button")
                 .withAttribute("hx-get", "/avatar/_layout/rows/" + row.id() + "/catalog")
                 .withAttribute("hx-target", "#avatar-edit-container")
@@ -1311,6 +1361,21 @@ final class AvatarDashboardComponents {
             return "compact";
         }
         return "standard";
+    }
+
+    private static String widgetDescription(String key) {
+        return switch (key) {
+            case "daily-tasks" -> "Today-focused task capture.";
+            case "todos" -> "Priority queue and quick completion.";
+            case "calendar" -> "Upcoming dated work.";
+            case "notes" -> "Short personal notes.";
+            case "files" -> "Agent work-area browser.";
+            case "outputs" -> "Recent generated artifacts.";
+            case "system" -> "Agent and queue counters.";
+            case "alerts" -> "Inbox and system alerts.";
+            case "recent-work" -> "Recent jobs, assignments, and outputs.";
+            default -> "Avatar dashboard widget.";
+        };
     }
 
     private static Map<String, AvatarDashboardWidget> layoutByKey(List<AvatarDashboardWidget> saved) {

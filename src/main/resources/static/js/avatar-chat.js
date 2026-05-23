@@ -15,6 +15,8 @@ function initAvatarChat() {
     const input = root.querySelector("#avatar-chat-input");
     const messages = root.querySelector("#avatar-chat-messages");
     const session = root.querySelector("#avatar-chat-session");
+    const status = root.querySelector("#avatar-chat-status");
+    const submit = form?.querySelector("button[type='submit']");
     const model = root.dataset.defaultModel || null;
     const surface = (root.dataset.chatSurface || "avatar").toUpperCase();
 
@@ -26,6 +28,8 @@ function initAvatarChat() {
         append(messages, "user", message);
         input.value = "";
         input.disabled = true;
+        if (submit) submit.disabled = true;
+        setStatus(status, "Sending");
         let visibleResponse = false;
         const waitingNotice = window.setTimeout(() => {
             if (!visibleResponse) {
@@ -49,6 +53,7 @@ function initAvatarChat() {
                 start: data => {
                     conversationId = data.conversationId || conversationId;
                     if (session) session.textContent = conversationId ? conversationId.slice(0, 8) : "New chat";
+                    setStatus(status, "Streaming");
                 },
                 chunk: data => {
                     visibleResponse = append(messages, "assistant", eventText(data)) || visibleResponse;
@@ -58,10 +63,12 @@ function initAvatarChat() {
                 },
                 interrupt: data => append(messages, "user", eventText(data)),
                 error: data => {
+                    setStatus(status, "Error");
                     visibleResponse = append(messages, "system", eventText(data) || "Avatar chat failed.") || visibleResponse;
                 },
                 done: data => {
                     conversationId = data.conversationId || conversationId;
+                    setStatus(status, "Ready");
                     visibleResponse = append(messages, "assistant", eventText(data)) || visibleResponse;
                 }
             });
@@ -69,10 +76,12 @@ function initAvatarChat() {
                 append(messages, "system", "Avatar chat finished without returning a visible response.");
             }
         } catch (error) {
+            setStatus(status, "Error");
             append(messages, "system", error.message || "Avatar chat request failed.");
         } finally {
             window.clearTimeout(waitingNotice);
             input.disabled = false;
+            if (submit) submit.disabled = false;
             input.focus();
         }
     });
@@ -140,4 +149,8 @@ function clearEmpty(root) {
 function eventText(data) {
     if (!data) return "";
     return data.text || data.message || data.response || data.error || "";
+}
+
+function setStatus(root, text) {
+    if (root) root.textContent = text;
 }

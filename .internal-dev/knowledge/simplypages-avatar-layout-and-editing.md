@@ -41,6 +41,14 @@ In-place edit mode should decorate the real dashboard:
 - widget top-corner controls for move left/right/up/down, resize to 3/4/6/8/12, remove, refresh, and open detail without consuming the widget content area;
 - module detail modal/drawer for content-specific iteration only.
 
+Empty rows are a special case. They should not render as full blank dashboard rows in normal mode, and in edit mode they should collapse to a compact insertion affordance such as `.avatar-empty-row-insert`. The empty-row affordance may include add-widget and safe row-delete controls, but it must not create a large dead band or make editor chrome more prominent than real dashboard content.
+
+Add-widget selection should be focused. Prefer a modal/drawer/local picker in the shared edit container over a full-width inline block appended below a long grid. The picker should describe available widgets, show used widgets as disabled, keep 12-column width choice clear, and close through the existing shared edit container/OOB refresh pattern.
+
+Avatar chat can borrow hierarchy from `/chat` without importing the full browser chat client: title, session/model/status chips, bounded transcript, and a clear composer are enough for the dashboard surface. Keep the JavaScript narrow and leave standard widget CRUD/layout actions to HTMX.
+
+List-heavy widgets should have bounded visual bodies and summary text when they render only a subset of available items. Do not depend on a clean local database for visual quality.
+
 Validation must compare `/avatar?edit=true` against the live SimplyPages editing demo when layout editing is touched. A pass requires screenshot review for practical UI quality: no oversized editor chrome, no modal-only layout workflow, no stranded columns or massive gaps, no overlapped/clipped controls, and no mobile horizontal overflow.
 
 ## Open Questions

@@ -15,7 +15,9 @@ The Avatar dashboard is available at `/avatar`. It is a personal dashboard for q
 
 Use **Edit Layout In Place** on `/avatar` to change rows and widgets on the displayed dashboard. The layout uses 12-column rows. In edit mode, compact controls appear on the live dashboard surface: widget controls sit in the top corner of each widget, add-widget controls appear between row content, and insert-row controls appear as row separators. Placement, movement, and sizing happen where the widget is actually shown.
 
-You can add rows, add one instance of each first-party widget, move widgets across rows, resize widgets to preset widths, remove widgets, and delete empty rows. Each action saves immediately through HTMX and refreshes the dashboard grid in place.
+You can add rows, add one instance of each first-party widget, move widgets across rows, resize widgets to preset widths, remove widgets, and delete empty rows. Empty rows collapse into a compact add-widget affordance instead of a full blank dashboard band. Each action saves immediately through HTMX and refreshes the dashboard grid in place.
+
+Adding a widget opens a focused picker modal. The picker lists available first-party widgets, disables widgets already present on the dashboard, and lets you choose the 12-column width before adding the widget to the row.
 
 Each widget also has a small detail action. Detail views are for working with that widget's content or module-specific controls; dashboard placement and 12-column sizing remain in-place layout actions.
 
@@ -42,4 +44,4 @@ Operational submit forms now include **Work Area / Outputs** controls. Use the W
 
 Plan chats do not show Work Area controls.
 
-Routine widget actions such as adding todos, completing daily tasks, saving notes, adding calendar items, refreshing widgets, previewing outputs, and dismissing Avatar event alerts are HTMX actions. The compact chat uses a small `/avatar`-specific SSE script and does not load the full `/chat` client.
+Routine widget actions such as adding todos, completing daily tasks, saving notes, adding calendar items, refreshing widgets, previewing outputs, and dismissing Avatar event alerts are HTMX actions. Long todo and daily-task lists are visually constrained so they do not take over the dashboard. The compact chat uses a small `/avatar`-specific SSE script with Avatar status/session chips and does not load the full `/chat` client.
