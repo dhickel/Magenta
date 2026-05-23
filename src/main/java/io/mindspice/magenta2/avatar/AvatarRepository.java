@@ -138,6 +138,7 @@ public class AvatarRepository {
             jsonMap(widget.settings()),
             updatedAt.toString()
         );
+        syncDashboardRowWidgetFromLegacy(widget);
         return findDashboardLayout().stream()
             .filter(saved -> saved.widgetId().equals(widget.widgetId()))
             .findFirst()
@@ -149,6 +150,435 @@ public class AvatarRepository {
             "select * from avatar_dashboard_layout order by widget_position, widget_id",
             (rs, rowNum) -> toDashboardWidget(rs)
         );
+    }
+
+    public List<AvatarDashboardRow> findDashboardRows() {
+        seedDashboardRowsFromLegacyLayoutIfNeeded();
+        List<DashboardRowRecord> rows = jdbcTemplate.query(
+            "select * from avatar_dashboard_rows order by row_position, id",
+            (rs, rowNum) -> toDashboardRowRecord(rs)
+        );
+        return rows.stream()
+            .map(row -> new AvatarDashboardRow(
+                row.id(),
+                row.position(),
+                row.collapsed(),
+                row.settings(),
+                row.updatedAt(),
+                findDashboardRowWidgets(row.id())
+            ))
+            .toList();
+    }
+
+    public AvatarDashboardRow addDashboardRow() {
+        int nextPosition = nextDashboardRowPosition();
+        String id = "row-" + UUID.randomUUID();
+        Instant now = Instant.now();
+        jdbcTemplate.update(
+            """
+                insert into avatar_dashboard_rows (id, row_position, collapsed, settings_json, updated_at)
+                values (?, ?, 0, '{}', ?)
+                """,
+            id,
+            nextPosition,
+            now.toString()
+        );
+        return findDashboardRow(id).orElseThrow();
+    }
+
+    public AvatarDashboardRow moveDashboardRow(String rowId, int direction) {
+        requireText(rowId, "row id");
+        if (direction != -1 && direction != 1) {
+            throw new IllegalArgumentException("row direction must be -1 or 1");
+        }
+        List<DashboardRowRecord> rows = dashboardRowRecords();
+        int index = indexOfRow(rows, rowId);
+        int target = index + direction;
+        if (target < 0 || target >= rows.size()) {
+            throw new IllegalArgumentException("row cannot move outside layout bounds");
+        }
+        DashboardRowRecord current = rows.get(index);
+        DashboardRowRecord swap = rows.get(target);
+        Instant now = Instant.now();
+        jdbcTemplate.update("update avatar_dashboard_rows set row_position = ?, updated_at = ? where id = ?",
+            swap.position(), now.toString(), current.id());
+        jdbcTemplate.update("update avatar_dashboard_rows set row_position = ?, updated_at = ? where id = ?",
+            current.position(), now.toString(), swap.id());
+        normalizeDashboardRows();
+        return findDashboardRow(rowId).orElseThrow();
+    }
+
+    public AvatarDashboardRowWidget addDashboardWidget(String rowId, String widgetKey, int columnWidth) {
+        requireText(rowId, "row id");
+        requireText(widgetKey, "widget key");
+        int width = requireColumnWidth(columnWidth);
+        if (findDashboardWidgetByKey(widgetKey).isPresent()) {
+            throw new IllegalArgumentException("dashboard widget already exists: " + widgetKey);
+        }
+        findDashboardRow(rowId).orElseThrow(() -> new IllegalArgumentException("dashboard row not found: " + rowId));
+        int usedWidth = dashboardRowWidth(rowId);
+        if (usedWidth + width > 12) {
+            throw new IllegalArgumentException("dashboard row width cannot exceed 12 columns");
+        }
+        String id = "widget-" + UUID.randomUUID();
+        Instant now = Instant.now();
+        jdbcTemplate.update(
+            """
+                insert into avatar_dashboard_widgets (
+                    id, row_id, widget_key, column_position, column_width, enabled, collapsed, settings_json, updated_at
+                )
+                values (?, ?, ?, ?, ?, 1, 0, '{}', ?)
+                """,
+            id,
+            rowId,
+            widgetKey,
+            nextDashboardWidgetPosition(rowId),
+            width,
+            now.toString()
+        );
+        return findDashboardWidget(id).orElseThrow();
+    }
+
+    public AvatarDashboardRowWidget resizeDashboardWidget(String widgetId, int columnWidth) {
+        AvatarDashboardRowWidget widget = findDashboardWidget(widgetId)
+            .orElseThrow(() -> new IllegalArgumentException("dashboard widget not found: " + widgetId));
+        int width = requireColumnWidth(columnWidth);
+        int usedWidthWithoutWidget = dashboardRowWidth(widget.rowId()) - widget.columnWidth();
+        if (usedWidthWithoutWidget + width > 12) {
+            throw new IllegalArgumentException("dashboard row width cannot exceed 12 columns");
+        }
+        jdbcTemplate.update(
+            "update avatar_dashboard_widgets set column_width = ?, updated_at = ? where id = ?",
+            width,
+            Instant.now().toString(),
+            widgetId
+        );
+        return findDashboardWidget(widgetId).orElseThrow();
+    }
+
+    public AvatarDashboardRowWidget moveDashboardWidget(String widgetId, String direction) {
+        AvatarDashboardRowWidget widget = findDashboardWidget(widgetId)
+            .orElseThrow(() -> new IllegalArgumentException("dashboard widget not found: " + widgetId));
+        String normalized = requireText(direction, "widget direction").toLowerCase(Locale.ROOT);
+        return switch (normalized) {
+            case "left" -> moveDashboardWidgetWithinRow(widget, -1);
+            case "right" -> moveDashboardWidgetWithinRow(widget, 1);
+            case "up" -> moveDashboardWidgetToAdjacentRow(widget, -1);
+            case "down" -> moveDashboardWidgetToAdjacentRow(widget, 1);
+            default -> throw new IllegalArgumentException("unknown widget direction: " + direction);
+        };
+    }
+
+    public void removeDashboardWidget(String widgetId) {
+        requireText(widgetId, "widget id");
+        if (jdbcTemplate.update("delete from avatar_dashboard_widgets where id = ?", widgetId) == 0) {
+            throw new IllegalArgumentException("dashboard widget not found: " + widgetId);
+        }
+        normalizeDashboardWidgets();
+    }
+
+    private Optional<AvatarDashboardRow> findDashboardRow(String rowId) {
+        return jdbcTemplate.query(
+            "select * from avatar_dashboard_rows where id = ?",
+            rs -> rs.next()
+                ? Optional.of(toDashboardRowRecord(rs))
+                : Optional.<DashboardRowRecord>empty(),
+            rowId
+        ).map(row -> new AvatarDashboardRow(
+            row.id(),
+            row.position(),
+            row.collapsed(),
+            row.settings(),
+            row.updatedAt(),
+            findDashboardRowWidgets(row.id())
+        ));
+    }
+
+    private Optional<AvatarDashboardRowWidget> findDashboardWidget(String widgetId) {
+        return jdbcTemplate.query(
+            "select * from avatar_dashboard_widgets where id = ?",
+            rs -> rs.next() ? Optional.of(toDashboardRowWidget(rs)) : Optional.empty(),
+            widgetId
+        );
+    }
+
+    private Optional<AvatarDashboardRowWidget> findDashboardWidgetByKey(String widgetKey) {
+        return jdbcTemplate.query(
+            "select * from avatar_dashboard_widgets where widget_key = ?",
+            rs -> rs.next() ? Optional.of(toDashboardRowWidget(rs)) : Optional.empty(),
+            widgetKey
+        );
+    }
+
+    private List<AvatarDashboardRowWidget> findDashboardRowWidgets(String rowId) {
+        return jdbcTemplate.query(
+            """
+                select * from avatar_dashboard_widgets
+                where row_id = ?
+                order by column_position, widget_key
+                """,
+            (rs, rowNum) -> toDashboardRowWidget(rs),
+            rowId
+        );
+    }
+
+    private List<DashboardRowRecord> dashboardRowRecords() {
+        seedDashboardRowsFromLegacyLayoutIfNeeded();
+        return jdbcTemplate.query(
+            "select * from avatar_dashboard_rows order by row_position, id",
+            (rs, rowNum) -> toDashboardRowRecord(rs)
+        );
+    }
+
+    private int nextDashboardRowPosition() {
+        Integer position = jdbcTemplate.queryForObject(
+            "select coalesce(max(row_position), -1) + 1 from avatar_dashboard_rows",
+            Integer.class
+        );
+        return position == null ? 0 : position;
+    }
+
+    private int nextDashboardWidgetPosition(String rowId) {
+        Integer position = jdbcTemplate.queryForObject(
+            "select coalesce(max(column_position), -1) + 1 from avatar_dashboard_widgets where row_id = ?",
+            Integer.class,
+            rowId
+        );
+        return position == null ? 0 : position;
+    }
+
+    private int dashboardRowWidth(String rowId) {
+        Integer width = jdbcTemplate.queryForObject(
+            "select coalesce(sum(column_width), 0) from avatar_dashboard_widgets where row_id = ?",
+            Integer.class,
+            rowId
+        );
+        return width == null ? 0 : width;
+    }
+
+    private int indexOfRow(List<DashboardRowRecord> rows, String rowId) {
+        for (int i = 0; i < rows.size(); i++) {
+            if (rows.get(i).id().equals(rowId)) {
+                return i;
+            }
+        }
+        throw new IllegalArgumentException("dashboard row not found: " + rowId);
+    }
+
+    private AvatarDashboardRowWidget moveDashboardWidgetWithinRow(AvatarDashboardRowWidget widget, int direction) {
+        List<AvatarDashboardRowWidget> widgets = findDashboardRowWidgets(widget.rowId());
+        int index = indexOfWidget(widgets, widget.id());
+        int target = index + direction;
+        if (target < 0 || target >= widgets.size()) {
+            throw new IllegalArgumentException("widget cannot move outside row bounds");
+        }
+        AvatarDashboardRowWidget swap = widgets.get(target);
+        Instant now = Instant.now();
+        jdbcTemplate.update("update avatar_dashboard_widgets set column_position = ?, updated_at = ? where id = ?",
+            swap.columnPosition(), now.toString(), widget.id());
+        jdbcTemplate.update("update avatar_dashboard_widgets set column_position = ?, updated_at = ? where id = ?",
+            widget.columnPosition(), now.toString(), swap.id());
+        normalizeDashboardWidgets(widget.rowId());
+        return findDashboardWidget(widget.id()).orElseThrow();
+    }
+
+    private AvatarDashboardRowWidget moveDashboardWidgetToAdjacentRow(AvatarDashboardRowWidget widget, int direction) {
+        List<DashboardRowRecord> rows = dashboardRowRecords();
+        int currentRowIndex = indexOfRow(rows, widget.rowId());
+        int targetRowIndex = currentRowIndex + direction;
+        if (targetRowIndex < 0 || targetRowIndex >= rows.size()) {
+            throw new IllegalArgumentException("widget cannot move outside layout bounds");
+        }
+        String targetRowId = rows.get(targetRowIndex).id();
+        if (dashboardRowWidth(targetRowId) + widget.columnWidth() > 12) {
+            throw new IllegalArgumentException("target row does not have enough available width");
+        }
+        jdbcTemplate.update(
+            "update avatar_dashboard_widgets set row_id = ?, column_position = ?, updated_at = ? where id = ?",
+            targetRowId,
+            nextDashboardWidgetPosition(targetRowId),
+            Instant.now().toString(),
+            widget.id()
+        );
+        normalizeDashboardWidgets(widget.rowId());
+        normalizeDashboardWidgets(targetRowId);
+        return findDashboardWidget(widget.id()).orElseThrow();
+    }
+
+    private int indexOfWidget(List<AvatarDashboardRowWidget> widgets, String widgetId) {
+        for (int i = 0; i < widgets.size(); i++) {
+            if (widgets.get(i).id().equals(widgetId)) {
+                return i;
+            }
+        }
+        throw new IllegalArgumentException("dashboard widget not found: " + widgetId);
+    }
+
+    private void normalizeDashboardRows() {
+        List<DashboardRowRecord> rows = jdbcTemplate.query(
+            "select * from avatar_dashboard_rows order by row_position, id",
+            (rs, rowNum) -> toDashboardRowRecord(rs)
+        );
+        Instant now = Instant.now();
+        for (int i = 0; i < rows.size(); i++) {
+            jdbcTemplate.update(
+                "update avatar_dashboard_rows set row_position = ?, updated_at = ? where id = ?",
+                i,
+                now.toString(),
+                rows.get(i).id()
+            );
+        }
+    }
+
+    private void normalizeDashboardWidgets() {
+        for (DashboardRowRecord row : dashboardRowRecords()) {
+            normalizeDashboardWidgets(row.id());
+        }
+    }
+
+    private void normalizeDashboardWidgets(String rowId) {
+        List<AvatarDashboardRowWidget> widgets = findDashboardRowWidgets(rowId);
+        Instant now = Instant.now();
+        for (int i = 0; i < widgets.size(); i++) {
+            jdbcTemplate.update(
+                "update avatar_dashboard_widgets set column_position = ?, updated_at = ? where id = ?",
+                i,
+                now.toString(),
+                widgets.get(i).id()
+            );
+        }
+    }
+
+    private void seedDashboardRowsFromLegacyLayoutIfNeeded() {
+        Integer rowCount = jdbcTemplate.queryForObject("select count(*) from avatar_dashboard_rows", Integer.class);
+        if (rowCount != null && rowCount > 0) {
+            return;
+        }
+        List<AvatarDashboardWidget> legacy = findDashboardLayout();
+        if (legacy.isEmpty()) {
+            return;
+        }
+        String rowId = null;
+        int rowPosition = -1;
+        int rowWidth = 0;
+        for (AvatarDashboardWidget widget : legacy) {
+            int width = widthForLegacySize(widget.size());
+            if (rowId == null || rowWidth + width > 12) {
+                rowId = insertDashboardRow(++rowPosition);
+                rowWidth = 0;
+            }
+            insertDashboardRowWidget(rowId, widget, width, nextDashboardWidgetPosition(rowId));
+            rowWidth += width;
+        }
+    }
+
+    private void syncDashboardRowWidgetFromLegacy(AvatarDashboardWidget widget) {
+        seedDashboardRowsFromLegacyLayoutIfNeeded();
+        Optional<AvatarDashboardRowWidget> existing = findDashboardWidgetByKey(widget.widgetId());
+        int width = widthForLegacySize(widget.size());
+        if (existing.isPresent()) {
+            jdbcTemplate.update(
+                """
+                    update avatar_dashboard_widgets
+                    set column_width = ?, enabled = ?, collapsed = ?, settings_json = ?, updated_at = ?
+                    where id = ?
+                    """,
+                width,
+                widget.enabled() ? 1 : 0,
+                widget.collapsed() ? 1 : 0,
+                jsonMap(widget.settings()),
+                Instant.now().toString(),
+                existing.get().id()
+            );
+            return;
+        }
+        List<DashboardRowRecord> rows = dashboardRowRecords();
+        String rowId = rows.isEmpty() ? insertDashboardRow(0) : rows.get(rows.size() - 1).id();
+        if (dashboardRowWidth(rowId) + width > 12) {
+            rowId = insertDashboardRow(nextDashboardRowPosition());
+        }
+        insertDashboardRowWidget(rowId, widget, width, nextDashboardWidgetPosition(rowId));
+    }
+
+    private String insertDashboardRow(int position) {
+        String rowId = "row-" + UUID.randomUUID();
+        jdbcTemplate.update(
+            "insert into avatar_dashboard_rows (id, row_position, collapsed, settings_json, updated_at) values (?, ?, 0, '{}', ?)",
+            rowId,
+            position,
+            Instant.now().toString()
+        );
+        return rowId;
+    }
+
+    private void insertDashboardRowWidget(String rowId, AvatarDashboardWidget widget, int width, int position) {
+        jdbcTemplate.update(
+            """
+                insert into avatar_dashboard_widgets (
+                    id, row_id, widget_key, column_position, column_width, enabled, collapsed, settings_json, updated_at
+                )
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+            "widget-" + UUID.randomUUID(),
+            rowId,
+            requireText(widget.widgetId(), "widget id"),
+            position,
+            width,
+            widget.enabled() ? 1 : 0,
+            widget.collapsed() ? 1 : 0,
+            jsonMap(widget.settings()),
+            Instant.now().toString()
+        );
+    }
+
+    private int widthForLegacySize(String size) {
+        if ("wide".equalsIgnoreCase(size)) {
+            return 6;
+        }
+        if ("compact".equalsIgnoreCase(size)) {
+            return 3;
+        }
+        return 4;
+    }
+
+    private int requireColumnWidth(int width) {
+        if (width != 3 && width != 4 && width != 6 && width != 8 && width != 12) {
+            throw new IllegalArgumentException("column width must be one of 3, 4, 6, 8, or 12");
+        }
+        return width;
+    }
+
+    private DashboardRowRecord toDashboardRowRecord(ResultSet rs) throws SQLException {
+        return new DashboardRowRecord(
+            rs.getString("id"),
+            rs.getInt("row_position"),
+            rs.getInt("collapsed") == 1,
+            map(rs.getString("settings_json")),
+            instant(rs.getString("updated_at"))
+        );
+    }
+
+    private AvatarDashboardRowWidget toDashboardRowWidget(ResultSet rs) throws SQLException {
+        return new AvatarDashboardRowWidget(
+            rs.getString("id"),
+            rs.getString("row_id"),
+            rs.getString("widget_key"),
+            rs.getInt("column_position"),
+            rs.getInt("column_width"),
+            rs.getInt("enabled") == 1,
+            rs.getInt("collapsed") == 1,
+            map(rs.getString("settings_json")),
+            instant(rs.getString("updated_at"))
+        );
+    }
+
+    private record DashboardRowRecord(
+        String id,
+        int position,
+        boolean collapsed,
+        Map<String, Object> settings,
+        Instant updatedAt
+    ) {
     }
 
     public AvatarTodo saveTodo(AvatarTodo todo) {

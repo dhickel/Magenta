@@ -26,6 +26,31 @@ create table if not exists avatar_dashboard_layout (
     updated_at text not null
 );
 
+create table if not exists avatar_dashboard_rows (
+    id text primary key,
+    row_position integer not null,
+    collapsed integer not null default 0,
+    settings_json text not null default '{}',
+    updated_at text not null
+);
+
+create table if not exists avatar_dashboard_widgets (
+    id text primary key,
+    row_id text not null,
+    widget_key text not null,
+    column_position integer not null,
+    column_width integer not null,
+    enabled integer not null default 1,
+    collapsed integer not null default 0,
+    settings_json text not null default '{}',
+    updated_at text not null,
+    unique(widget_key),
+    foreign key(row_id) references avatar_dashboard_rows(id) on delete cascade
+);
+
+create index if not exists idx_avatar_dashboard_widgets_row
+    on avatar_dashboard_widgets(row_id, column_position);
+
 create table if not exists avatar_todos (
     id text primary key,
     title text not null,

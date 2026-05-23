@@ -1,6 +1,7 @@
 package io.mindspice.magenta2.avatar;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -80,6 +81,13 @@ class AvatarRepositoryTest {
             .satisfies(preference -> assertThat(preference.value()).containsEntry("mode", "compact"));
         assertThat(repository.findDashboardLayout()).singleElement()
             .satisfies(widget -> assertThat(widget.settings()).containsEntry("accent", "green"));
+        assertThat(repository.findDashboardRows()).singleElement()
+            .satisfies(row -> assertThat(row.widgets()).singleElement()
+                .satisfies(widget -> {
+                    assertThat(widget.widgetKey()).isEqualTo("today");
+                    assertThat(widget.columnWidth()).isEqualTo(6);
+                    assertThat(widget.settings()).containsEntry("accent", "green");
+                }));
         assertThat(repository.findFacts()).singleElement()
             .satisfies(fact -> {
                 assertThat(fact.value()).containsEntry("value", "UTC");
@@ -160,5 +168,89 @@ class AvatarRepositoryTest {
         ));
 
         assertThat(repository.findEvents()).extracting(AvatarEvent::id).containsExactly("earlier", "later");
+    }
+
+    @Test
+    void migratesLegacyLayoutIntoRowsWithTwelveColumnWrapping() {
+        repository.saveDashboardWidget(widget("one", 0, "wide"));
+        repository.saveDashboardWidget(widget("two", 1, "wide"));
+        repository.saveDashboardWidget(widget("three", 2, "standard"));
+
+        List<AvatarDashboardRow> rows = repository.findDashboardRows();
+
+        assertThat(rows).hasSize(2);
+        assertThat(rows.get(0).position()).isZero();
+        assertThat(rows.get(0).widgets()).extracting(AvatarDashboardRowWidget::widgetKey)
+            .containsExactly("one", "two");
+        assertThat(rows.get(0).widgets()).extracting(AvatarDashboardRowWidget::columnWidth)
+            .containsExactly(6, 6);
+        assertThat(rows.get(1).position()).isEqualTo(1);
+        assertThat(rows.get(1).widgets()).extracting(AvatarDashboardRowWidget::widgetKey)
+            .containsExactly("three");
+    }
+
+    @Test
+    void addsWidgetsWithSingleInstanceAndRowWidthBounds() {
+        AvatarDashboardRow row = repository.addDashboardRow();
+        AvatarDashboardRowWidget first = repository.addDashboardWidget(row.id(), "todos", 8);
+        AvatarDashboardRowWidget second = repository.addDashboardWidget(row.id(), "notes", 4);
+
+        assertThat(repository.findDashboardRows()).singleElement()
+            .satisfies(saved -> assertThat(saved.widgets()).extracting(AvatarDashboardRowWidget::widgetKey)
+                .containsExactly("todos", "notes"));
+        assertThatThrownBy(() -> repository.addDashboardWidget(row.id(), "todos", 3))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("already exists");
+        assertThatThrownBy(() -> repository.resizeDashboardWidget(first.id(), 12))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("cannot exceed 12");
+        assertThatThrownBy(() -> repository.addDashboardWidget(row.id(), "calendar", 3))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("cannot exceed 12");
+
+        repository.removeDashboardWidget(second.id());
+        assertThat(repository.findDashboardRows()).singleElement()
+            .satisfies(saved -> assertThat(saved.widgets()).extracting(AvatarDashboardRowWidget::widgetKey)
+                .containsExactly("todos"));
+    }
+
+    @Test
+    void movesRowsAndWidgetsWithinBounds() {
+        AvatarDashboardRow rowOne = repository.addDashboardRow();
+        AvatarDashboardRow rowTwo = repository.addDashboardRow();
+        AvatarDashboardRowWidget todos = repository.addDashboardWidget(rowOne.id(), "todos", 4);
+        AvatarDashboardRowWidget notes = repository.addDashboardWidget(rowOne.id(), "notes", 4);
+        repository.addDashboardWidget(rowTwo.id(), "calendar", 4);
+
+        assertThatThrownBy(() -> repository.moveDashboardRow(rowOne.id(), -1))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("outside layout bounds");
+
+        repository.moveDashboardRow(rowTwo.id(), -1);
+        assertThat(repository.findDashboardRows()).extracting(AvatarDashboardRow::id)
+            .containsExactly(rowTwo.id(), rowOne.id());
+
+        repository.moveDashboardWidget(notes.id(), "left");
+        AvatarDashboardRow savedRowOne = repository.findDashboardRows().stream()
+            .filter(row -> row.id().equals(rowOne.id()))
+            .findFirst()
+            .orElseThrow();
+        assertThat(savedRowOne.widgets()).extracting(AvatarDashboardRowWidget::widgetKey)
+            .containsExactly("notes", "todos");
+
+        repository.moveDashboardWidget(todos.id(), "up");
+        AvatarDashboardRow savedRowTwo = repository.findDashboardRows().stream()
+            .filter(row -> row.id().equals(rowTwo.id()))
+            .findFirst()
+            .orElseThrow();
+        assertThat(savedRowTwo.widgets()).extracting(AvatarDashboardRowWidget::widgetKey)
+            .containsExactly("calendar", "todos");
+        assertThatThrownBy(() -> repository.moveDashboardWidget(notes.id(), "sideways"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("unknown widget direction");
+    }
+
+    private AvatarDashboardWidget widget(String id, int position, String size) {
+        return new AvatarDashboardWidget(id, position, size, true, false, Map.of(), null);
     }
 }

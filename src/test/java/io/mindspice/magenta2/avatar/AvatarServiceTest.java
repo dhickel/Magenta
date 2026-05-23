@@ -1,6 +1,7 @@
 package io.mindspice.magenta2.avatar;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -97,5 +98,26 @@ class AvatarServiceTest {
         assertThat(service.calendarItems()).isEmpty();
         assertThat(service.searchNotes("seedlings", false, 10)).singleElement()
             .satisfies(saved -> assertThat(saved.body()).contains("Move tray outside"));
+    }
+
+    @Test
+    void dashboardRowHelpersExposeLayoutOperations() {
+        AvatarDashboardRow row = service.addDashboardRow();
+        AvatarDashboardRowWidget todos = service.addDashboardWidget(row.id(), "todos", 4);
+        AvatarDashboardRowWidget notes = service.addDashboardWidget(row.id(), "notes", 4);
+
+        service.moveDashboardWidget(notes.id(), "left");
+        service.resizeDashboardWidget(todos.id(), 3);
+
+        assertThat(service.dashboardRows()).singleElement()
+            .satisfies(saved -> {
+                assertThat(saved.widgets()).extracting(AvatarDashboardRowWidget::widgetKey)
+                    .containsExactly("notes", "todos");
+                assertThat(saved.widgets()).extracting(AvatarDashboardRowWidget::columnWidth)
+                    .containsExactly(4, 3);
+            });
+        assertThatThrownBy(() -> service.addDashboardWidget(row.id(), "todos", 4))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("already exists");
     }
 }

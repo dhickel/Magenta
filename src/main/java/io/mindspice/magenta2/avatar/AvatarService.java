@@ -40,6 +40,34 @@ public class AvatarService {
         return repository.findDashboardLayout();
     }
 
+    public List<AvatarDashboardRow> dashboardRows() {
+        return repository.findDashboardRows();
+    }
+
+    public AvatarDashboardRow addDashboardRow() {
+        return repository.addDashboardRow();
+    }
+
+    public AvatarDashboardRow moveDashboardRow(String rowId, int direction) {
+        return repository.moveDashboardRow(rowId, direction);
+    }
+
+    public AvatarDashboardRowWidget addDashboardWidget(String rowId, String widgetKey, int columnWidth) {
+        return repository.addDashboardWidget(rowId, widgetKey, columnWidth);
+    }
+
+    public AvatarDashboardRowWidget resizeDashboardWidget(String widgetId, int columnWidth) {
+        return repository.resizeDashboardWidget(widgetId, columnWidth);
+    }
+
+    public AvatarDashboardRowWidget moveDashboardWidget(String widgetId, String direction) {
+        return repository.moveDashboardWidget(widgetId, direction);
+    }
+
+    public void removeDashboardWidget(String widgetId) {
+        repository.removeDashboardWidget(widgetId);
+    }
+
     public AvatarTodo saveTodo(AvatarTodo todo) {
         return repository.saveTodo(todo);
     }

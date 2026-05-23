@@ -13,6 +13,7 @@ These docs explain Magenta internals for contributors. Code remains the source o
 - [Workflow Engine](workflow-engine.md)
 - [Workspaces, Tools, and Outputs](workspaces-tools-outputs.md)
 - [Frontend HTMX](frontend-htmx.md)
+- [Avatar Dashboard Layout Persistence](avatar-dashboard-layout-persistence.md)
 - [Security](security.md)
 - [Configuration and Operations](configuration-operations.md)
 
