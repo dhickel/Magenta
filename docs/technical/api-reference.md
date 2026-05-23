@@ -149,6 +149,25 @@ Source: [`WorkspaceController`](../../src/main/java/io/mindspice/magenta2/api/we
 
 `ownerType` is parsed as `WorkspaceOwnerType`; invalid values return `400`.
 
+## Work Areas: `/api/work-areas`
+
+Source: [`WorkAreaController`](../../src/main/java/io/mindspice/magenta2/api/web/WorkAreaController.java), [`WorkAreaService`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/WorkAreaService.java), [`WorkAreaExplorerService`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/WorkAreaExplorerService.java).
+
+- `GET /api/work-areas?ownerType=&ownerId=&includeInactive=`: list agent/project Work Areas and create Home on demand.
+- `POST /api/work-areas/home`: ensure an owner Home Work Area.
+- `POST /api/work-areas`: mark an existing owner-root-relative directory as a Work Area.
+- `DELETE /api/work-areas/{workAreaId}`: unmark a non-system Work Area.
+- `GET /api/work-areas/{workAreaId}/files?path=`: list a confined Work Area directory.
+- `GET /api/work-areas/{workAreaId}/files/preview?path=`: return bounded safe text content or binary/large-file metadata.
+- `GET /api/work-areas/{workAreaId}/files/download?path=`: download a confined file up to 10 MB.
+- `PUT /api/work-areas/{workAreaId}/files/text?path=`: save safe text file types up to 1 MB.
+- `POST /api/work-areas/{workAreaId}/directories`: create a confined directory.
+- `POST /api/work-areas/{workAreaId}/files/rename`: rename a path to a plain sibling name.
+- `DELETE /api/work-areas/{workAreaId}/files?path=&confirm=`: recursive delete with typed confirmation and protected-path checks.
+- `POST /api/work-areas/{workAreaId}/files/mark-work-area`: mark a nested existing directory as another Work Area.
+
+Explorer routes reject traversal, absolute paths, symlink paths, unsafe text-edit extensions, oversized text saves/downloads, Work Area roots, Home/system Work Areas, marked Work Area descendants, and Work Areas referenced by queued/running assignments or output targets.
+
 ## Outputs: `/api/outputs`
 
 Source: [`OutputController`](../../src/main/java/io/mindspice/magenta2/api/web/OutputController.java), [`OutputArtifactService`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/OutputArtifactService.java).

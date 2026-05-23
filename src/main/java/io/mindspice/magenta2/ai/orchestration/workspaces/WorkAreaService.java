@@ -106,6 +106,10 @@ public class WorkAreaService {
         return repository.deactivate(workAreaId);
     }
 
+    public boolean hasActiveWorkReferences(String workAreaId) {
+        return repository.hasActiveAssignment(workAreaId) || repository.hasActiveOutputTarget(workAreaId);
+    }
+
     public Path resolve(WorkArea workArea) {
         if (workArea == null) {
             throw new IllegalArgumentException("work area is required");

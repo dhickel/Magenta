@@ -100,6 +100,8 @@ Runtime alias and output directory resolution consume these columns during task,
 - `WORK_AREA` writes under `<output-work-area>/outputs/...`.
 - `DIRECT_DIRECTORY` writes directly to the existing owner-root-relative directory.
 
+`WorkAreaExplorerService` provides the backend contract for the Avatar Work Areas/file explorer surface. It supports confined directory listings, safe text preview/save, bounded downloads, directory creation, sibling rename, recursive delete with typed confirmation, and marking nested directories as Work Areas. Explorer path resolution rejects absolute paths, traversal, symlink path components, unsafe text-edit extensions, oversized text saves, Home/system roots, marked Work Area descendants, and Work Areas referenced by queued/running assignment or output routing metadata.
+
 ## Workspace Leases
 
 `WorkspaceLeaseService` owns `WorkspaceLease` records in `workspace_leases`.
