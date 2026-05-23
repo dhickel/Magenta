@@ -191,6 +191,10 @@ public class TaskController {
                 normalize(request == null ? null : request.modelOverride()),
                 normalize(request == null ? null : request.projectId()),
                 normalize(request == null ? null : request.workspaceId()),
+                normalize(request == null ? null : request.selectedWorkAreaId()),
+                normalize(request == null ? null : request.outputRouteType()),
+                normalize(request == null ? null : request.outputWorkAreaId()),
+                normalize(request == null ? null : request.outputDirectRelativePath()),
                 taskRunInput(taskId, request)
             ));
             SseStreamLifecycle.sendSseEvent(emitter, "submitted", Map.of(
@@ -263,9 +267,26 @@ public class TaskController {
         String jobId,
         String projectId,
         String workspaceId,
+        String selectedWorkAreaId,
+        String outputRouteType,
+        String outputWorkAreaId,
+        String outputDirectRelativePath,
         String modelOverride,
         Integer priority
     ) {
+        public TaskRunRequest(
+            Map<String, Object> inputValues,
+            String conversationId,
+            String agentId,
+            String jobId,
+            String projectId,
+            String workspaceId,
+            String modelOverride,
+            Integer priority
+        ) {
+            this(inputValues, conversationId, agentId, jobId, projectId, workspaceId,
+                null, null, null, null, modelOverride, priority);
+        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

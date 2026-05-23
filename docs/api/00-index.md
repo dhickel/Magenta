@@ -50,7 +50,7 @@ The public plan/task/workflow stream routes acknowledge durable assignment submi
 - Job execution summaries: [`JobExecutionSummary`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/runtime/JobExecutionSummary.java).
 - Workspaces/outputs: [`Workspace`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/Workspace.java), [`WorkspaceLease`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/WorkspaceLease.java), [`RunOutputArtifact`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/RunOutputArtifact.java).
 
-Assignment-returning submit routes expose first-class project/effective workspace context. `projectId` selects project workspace execution; `workspaceId` is compatibility metadata. Output query routes expose direct attribution filters for agent, job, job assignment, job run, project, workspace, plan/workflow id, run id, run type, artifact type, and limit.
+Assignment-returning submit routes expose first-class project/effective workspace context. `projectId` selects project workspace execution; `workspaceId` is compatibility metadata. Submit payloads can also carry `selectedWorkAreaId`, `outputRouteType`, `outputWorkAreaId`, and `outputDirectRelativePath`; plan-chat routes do not accept these controls. Output query routes expose direct attribution filters for agent, job, job assignment, job run, project, workspace, plan/workflow id, run id, run type, artifact type, and limit.
 
 ## Error Conventions
 

@@ -140,7 +140,7 @@ Public plan/task run routes now submit durable assignments:
 
 The controller resolves an active agent when no `agentId` is supplied, defaults priority to `9`, builds `AssignmentRequest`, and calls `AssignmentService.create` with `AssignmentType.TASK_RUN`. The SSE stream returns `submitted` or `failed` and then completes.
 
-Submission payloads can carry explicit `projectId` and compatibility `workspaceId`. `projectId` controls effective durable workspace selection; `workspaceId` is retained for compatibility metadata.
+Submission payloads can carry explicit `projectId`, compatibility `workspaceId`, `selectedWorkAreaId`, `outputRouteType`, `outputWorkAreaId`, and `outputDirectRelativePath`. `projectId` controls effective durable workspace selection; `workspaceId` is retained for compatibility metadata. Anonymous plan-chat execution does not expose Work Area controls.
 
 Actual execution is handled later by orchestration runner services. This keeps HTTP request handling short and makes queued work observable/cancellable.
 

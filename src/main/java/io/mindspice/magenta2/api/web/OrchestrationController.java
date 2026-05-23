@@ -1688,6 +1688,10 @@ public class OrchestrationController {
                 nn(params.get("modelOverride")),
                 nn(params.get("projectId")),
                 nn(params.get("workspaceId")),
+                nn(params.get("selectedWorkAreaId")),
+                routeTypeParam(params),
+                nn(params.get("outputWorkAreaId")),
+                nn(params.get("outputDirectRelativePath")),
                 Map.of("taskId", planId, "inputValues", inputValues)
             ));
             return submitResultFragment(assignment, plan).render();
@@ -2255,7 +2259,8 @@ public class OrchestrationController {
             .withChild(entitySelector("projectId", EntityKind.PROJECT, null,
                 "Project", "optional project context", false))
             .withChild(entitySelector("workspaceId", EntityKind.WORKSPACE, null,
-                "Compatibility Workspace", "optional compatibility workspace metadata", false)));
+                "Compatibility Workspace", "optional compatibility workspace metadata", false))
+            .withChild(submitRoutingFields()));
 
         // Generated input form from declared inputs
         if (!plan.inputs().isEmpty()) {
@@ -2755,6 +2760,10 @@ public class OrchestrationController {
                 nn(params.get("modelOverride")),
                 nn(params.get("projectId")),
                 nn(params.get("workspaceId")),
+                nn(params.get("selectedWorkAreaId")),
+                routeTypeParam(params),
+                nn(params.get("outputWorkAreaId")),
+                nn(params.get("outputDirectRelativePath")),
                 Map.of("workflowId", workflowId)
             ));
             return workflowSubmitResultFragment(assignment, wf).render();
@@ -3328,7 +3337,8 @@ public class OrchestrationController {
             .withChild(entitySelector("projectId", EntityKind.PROJECT, null,
                 "Project", "optional project context", false))
             .withChild(entitySelector("workspaceId", EntityKind.WORKSPACE, null,
-                "Compatibility Workspace", "optional compatibility workspace metadata", false)));
+                "Compatibility Workspace", "optional compatibility workspace metadata", false))
+            .withChild(submitRoutingFields()));
 
         form.withChild(Button.create("Submit").withClass("orch-primary").withAttribute("type", "submit"));
         panel.withChild(form);
@@ -3757,7 +3767,8 @@ public class OrchestrationController {
             .withChild(entitySelector("workspaceId", EntityKind.WORKSPACE, nn(job.workspaceId()),
                 "Compatibility Workspace", "optional compatibility workspace metadata", false))
             .withChild(label("Priority", TextInput.number("priority")
-                .withValue("9").withMin("0").withMax("100"))));
+                .withValue("9").withMin("0").withMax("100")))
+            .withChild(submitRoutingFields()));
 
         form.withChild(Button.create("Submit").withClass("orch-primary")
             .withAttribute("type", "submit"));
@@ -3794,6 +3805,10 @@ public class OrchestrationController {
                 nn(params.get("modelOverride")),
                 projectId,
                 workspaceId,
+                nn(params.get("selectedWorkAreaId")),
+                routeTypeParam(params),
+                nn(params.get("outputWorkAreaId")),
+                nn(params.get("outputDirectRelativePath")),
                 Map.of("jobId", jobId)
             );
             WorkAssignment assignment = assignmentService.create(request);
@@ -4156,6 +4171,10 @@ public class OrchestrationController {
                 nn(job.model()),
                 projectId,
                 workspaceId,
+                nn(params.get("selectedWorkAreaId")),
+                routeTypeParam(params),
+                nn(params.get("outputWorkAreaId")),
+                nn(params.get("outputDirectRelativePath")),
                 Map.of("jobId", jobId)
             ));
             return jobAssignmentCreatedPanel(assignment).render();
@@ -7212,6 +7231,7 @@ public class OrchestrationController {
             "Project", "optional project context", false, Map.of("agentId", agent.id())));
         form.withChild(entitySelector("workspaceId", EntityKind.WORKSPACE, null,
             "Compatibility Workspace", "optional compatibility workspace metadata", false));
+        form.withChild(submitRoutingFields());
 
         form.withChild(new Div().withClass("orch-actions")
             .withChild(Button.create("Submit").withClass("orch-primary").withAttribute("type", "submit")));
@@ -7220,6 +7240,19 @@ public class OrchestrationController {
         container.withChild(form);
         container.withChild(new Div().withId("agent-submit-result-" + agentId));
         return container.render();
+    }
+
+    public String submitToAgent(
+        String agentId,
+        String assignmentType,
+        String targetId,
+        int priority,
+        String modelOverride,
+        String projectId,
+        String workspaceId
+    ) {
+        return submitToAgent(agentId, assignmentType, targetId, priority, modelOverride, projectId, workspaceId,
+            "", "", "", "");
     }
 
     @PostMapping("/agents/_submit/{agentId}")
@@ -7231,7 +7264,11 @@ public class OrchestrationController {
         @RequestParam(value = "priority", defaultValue = "0") int priority,
         @RequestParam(value = "modelOverride", defaultValue = "") String modelOverride,
         @RequestParam(value = "projectId", defaultValue = "") String projectId,
-        @RequestParam(value = "workspaceId", defaultValue = "") String workspaceId
+        @RequestParam(value = "workspaceId", defaultValue = "") String workspaceId,
+        @RequestParam(value = "selectedWorkAreaId", defaultValue = "") String selectedWorkAreaId,
+        @RequestParam(value = "outputRouteType", defaultValue = "") String outputRouteType,
+        @RequestParam(value = "outputWorkAreaId", defaultValue = "") String outputWorkAreaId,
+        @RequestParam(value = "outputDirectRelativePath", defaultValue = "") String outputDirectRelativePath
     ) {
         try {
             AgentProfile agent = agentProfileService.get(agentId);
@@ -7255,7 +7292,12 @@ public class OrchestrationController {
                 agentId, jobId, null, type, priority,
                 modelOverride.isBlank() ? null : modelOverride.trim(),
                 nn(projectId),
-                nn(workspaceId), input
+                nn(workspaceId),
+                nn(selectedWorkAreaId),
+                StringUtils.hasText(outputRouteType) ? outputRouteType : null,
+                nn(outputWorkAreaId),
+                nn(outputDirectRelativePath),
+                input
             ));
 
             return new Div().withClass("orch-status")
@@ -7559,6 +7601,27 @@ public class OrchestrationController {
 
     private Component label(String text, Component input) {
         return new HtmlTag("label").withChild(new TextNode(text)).withChild(input);
+    }
+
+    private Component submitRoutingFields() {
+        Div group = new Div().withClass("orch-form-stack");
+        group.withChild(new HtmlTag("h4").withInnerText("Work Area / Outputs"));
+        group.withChild(label("Selected Work Area ID", TextInput.create("selectedWorkAreaId")
+            .withPlaceholder("blank uses Home")));
+        Select routeType = Select.create("outputRouteType")
+            .addOption("", "Default: selected Work Area outputs", true)
+            .addOption(AssignmentRequest.OUTPUT_ROUTE_WORK_AREA, "Redirect to Work Area outputs", false)
+            .addOption(AssignmentRequest.OUTPUT_ROUTE_DIRECT_DIRECTORY, "Redirect to direct directory", false);
+        group.withChild(label("Output Route", routeType));
+        group.withChild(label("Output Work Area ID", TextInput.create("outputWorkAreaId")
+            .withPlaceholder("required for Work Area redirect")));
+        group.withChild(label("Direct Output Directory", TextInput.create("outputDirectRelativePath")
+            .withPlaceholder("existing owner-root-relative directory")));
+        return group;
+    }
+
+    private String routeTypeParam(Map<String, String> params) {
+        return StringUtils.hasText(params.get("outputRouteType")) ? params.get("outputRouteType") : null;
     }
 
     private Component tabNav(String agentId, String... names) {

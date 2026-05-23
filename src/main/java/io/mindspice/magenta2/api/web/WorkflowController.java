@@ -122,6 +122,10 @@ public class WorkflowController {
                 normalize(request == null ? null : request.modelOverride()),
                 normalize(request == null ? null : request.projectId()),
                 normalize(request == null ? null : request.workspaceId()),
+                normalize(request == null ? null : request.selectedWorkAreaId()),
+                normalize(request == null ? null : request.outputRouteType()),
+                normalize(request == null ? null : request.outputWorkAreaId()),
+                normalize(request == null ? null : request.outputDirectRelativePath()),
                 Map.of("workflowId", workflowId)
             ));
         } catch (IllegalArgumentException exception) {
@@ -239,9 +243,24 @@ public class WorkflowController {
         String jobId,
         String projectId,
         String workspaceId,
+        String selectedWorkAreaId,
+        String outputRouteType,
+        String outputWorkAreaId,
+        String outputDirectRelativePath,
         String modelOverride,
         Integer priority
-    ) {}
+    ) {
+        public WorkflowRunRequest(
+            String agentId,
+            String jobId,
+            String projectId,
+            String workspaceId,
+            String modelOverride,
+            Integer priority
+        ) {
+            this(agentId, jobId, projectId, workspaceId, null, null, null, null, modelOverride, priority);
+        }
+    }
 
     public record InboxRespondRequest(boolean approved, String comment) {
     }

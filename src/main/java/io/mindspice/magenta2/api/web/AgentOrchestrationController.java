@@ -140,6 +140,10 @@ public class AgentOrchestrationController {
                 request.modelOverride(),
                 request.projectId(),
                 request.workspaceId(),
+                request.selectedWorkAreaId(),
+                request.outputRouteType(),
+                request.outputWorkAreaId(),
+                request.outputDirectRelativePath(),
                 request.input()
             ));
         } catch (IllegalArgumentException | IllegalStateException exception) {
@@ -403,8 +407,26 @@ public class AgentOrchestrationController {
         String modelOverride,
         String projectId,
         String workspaceId,
+        String selectedWorkAreaId,
+        String outputRouteType,
+        String outputWorkAreaId,
+        String outputDirectRelativePath,
         Map<String, Object> input
     ) {
+        public AgentAssignmentCreateRequest(
+            String jobId,
+            String jobItemId,
+            AssignmentType assignmentType,
+            Integer priority,
+            String modelOverride,
+            String projectId,
+            String workspaceId,
+            Map<String, Object> input
+        ) {
+            this(jobId, jobItemId, assignmentType, priority, modelOverride, projectId, workspaceId,
+                null, null, null, null, input);
+        }
+
         public AgentAssignmentCreateRequest {
             input = input == null ? Map.of() : Map.copyOf(input);
         }
