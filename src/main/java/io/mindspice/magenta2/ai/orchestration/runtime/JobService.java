@@ -424,6 +424,21 @@ public class JobService {
         ));
     }
 
+    public JobRun completeRun(String runId, String finalMessage) {
+        JobRun run = getRun(runId);
+        if (run.status().isTerminal()) {
+            return run;
+        }
+        return jobRepository.saveRun(new JobRun(
+            run.id(), run.jobId(), run.jobAssignmentId(), run.workspaceId(), JobRunStatus.COMPLETED,
+            run.workItemRuns(), run.workspacePath(), run.outputDir(),
+            StringUtils.hasText(finalMessage) ? finalMessage : "Job run completed",
+            run.errorText(),
+            run.createdAt(), Instant.now(),
+            run.startedAt(), Instant.now()
+        ));
+    }
+
     public JobRun cancelRun(String runId) {
         JobRun run = getRun(runId);
         if (run.status().isTerminal()) {

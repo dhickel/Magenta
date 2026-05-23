@@ -1330,6 +1330,12 @@ class OrchestrationRuntimeTest {
         assertThat(second.status()).isEqualTo(OrchestrationStatus.COMPLETED);
         JobRun firstRun = jobService.getRun(first.checkpoint().get("jobRunId").toString());
         JobRun secondRun = jobService.getRun(second.checkpoint().get("jobRunId").toString());
+        assertThat(firstRun.status()).isEqualTo(JobRunStatus.COMPLETED);
+        assertThat(secondRun.status()).isEqualTo(JobRunStatus.COMPLETED);
+        assertThat(firstRun.completedAt()).isNotNull();
+        assertThat(secondRun.completedAt()).isNotNull();
+        assertThat(firstRun.finalMessage()).isEqualTo("Job run completed");
+        assertThat(secondRun.finalMessage()).isEqualTo("Job run completed");
         Path projectWorkspace = directoryService.projectWorkspace(project.id()).toRealPath();
         assertThat(firstRun.workspacePath()).isEqualTo("projects/" + project.id() + "/workspace/jobs/assignment-job-a");
         assertThat(secondRun.workspacePath()).isEqualTo("projects/" + project.id() + "/workspace/jobs/assignment-job-b");

@@ -12,6 +12,7 @@ status: active
 
 | id | decision | status | owner | source | decided_on | knowledge_ref | review_after | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| DECISION-20260523-05 | API enum wire values should be normalized narrowly at the JSON boundary, and empty submitted jobs complete as no-op job runs unless product policy changes to reject them at submission. | active | unassigned | .internal-dev/changelogs/2026-05-23-chat-surface-and-empty-job-run-fixes.md | 2026-05-23 | .internal-dev/knowledge/api-boundary-enums-and-empty-job-run-completion.md | 2026-06-22 | Chat surface values accept known names case-insensitively while rejecting blank/unknown values; empty job submissions leave assignment-owned `job_runs` terminal instead of `RUNNING`. |
 | DECISION-20260523-04 | Long-running email-coordinated work records inbound AgentMail instructions in `.internal-dev/inbox` before dispatching implementation. | active | unassigned | .internal-dev/inbox/README.md | 2026-05-23 | .internal-dev/inbox/README.md | 2026-06-22 | Acknowledge inbound email first, check for additional messages, summarize actionable instructions in the inbox queue, and move handled messages to the read ledger. |
 | DECISION-20260523-03 | Avatar dashboard layout editing happens in place on the rendered dashboard surface, with modal/detail flows reserved for module-specific iteration. | active | unassigned | .internal-dev/changelogs/2026-05-23-avatar-simplypages-demo-parity-refactor.md | 2026-05-23 | .internal-dev/knowledge/simplypages-avatar-layout-and-editing.md | 2026-06-22 | Future layout agents must compare against the SimplyPages editing demo and validate compact top-corner decorators, add-widget sections, insert-row separators, and practical visual quality with Playwright. |
 | DECISION-20260523-02 | The Avatar UI refactor uses SimplyPages-native row/column layout editing and runtime-owned Work Areas instead of restyling the old flat widget layout. | active | unassigned | .internal-dev/plans/.archive/avatar-agent-ui-refactor/implementation-plan.md | 2026-05-23 | .internal-dev/knowledge/avatar-work-area-ui-refactor-implementation.md | 2026-06-22 | Implementation preserves Avatar-on-existing-runtime boundary; Work Area selection and output routing are explicit assignment metadata, and planner recurrence remains non-automated. |
@@ -33,6 +34,7 @@ status: active
 
 | reviewed_on | reviewer | outcome | notes |
 | --- | --- | --- | --- |
+| 2026-05-23 | codex | updated | Added API enum normalization and empty submitted job no-op completion decision from GitHub #6/#7 remediation. |
 | 2026-05-23 | codex | updated | Added durable AgentMail inbox coordination decision after Dwight requested persistent email intake during remote work. |
 | 2026-05-23 | codex | updated | Tightened the Avatar in-place layout editing decision after replacing the heavy edit-mode panels with SimplyPages demo-style decorators and insertion controls. |
 | 2026-05-23 | codex | updated | Added durable in-place Avatar dashboard layout editing and Playwright visual-validation decision. |

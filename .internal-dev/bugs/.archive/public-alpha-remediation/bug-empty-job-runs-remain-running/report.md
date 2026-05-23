@@ -20,10 +20,17 @@ Run history can display a stale in-progress job run for an empty job even though
 
 ## Status
 
-Open.
+Fixed and validated on 2026-05-23.
 
 GitHub mirror: https://github.com/dhickel/Magenta/issues/6
 
-## Next Action
+## Resolution
 
-Confirm expected empty-job behavior in `OrchestrationRunnerService` and update runner/job-service terminal status handling if empty jobs should complete without items.
+Kept empty submitted jobs as valid no-op executions and added explicit successful terminal handling for assignment-owned job runs with no work items.
+
+## Validation
+
+- `mvn -q -Dtest=ChatControllerTest,JobServiceTest,OrchestrationRuntimeTest,PublicRunSubmissionControllerTest,OrchestrationControllerTest,PublicApiRouteBindingTest test`
+- `mvn -q test`
+- `git diff --check`
+- `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0`

@@ -83,7 +83,7 @@ Sources: [`JobService`](../../src/main/java/io/mindspice/magenta2/ai/orchestrati
 - `JobExecutionSummary` is the read model for job run/operator context. It ties job definition, assignment, run, agent/project, effective workspace, compatibility workspace metadata, persistent job workspace, child runs, and output counts together.
 - Recurrence/start paths enqueue assignments; direct run allocation is guarded for assignment-owned execution.
 - Jobs can opt into persistent per-assignment workspace under the effective durable workspace. Job outputs are stored under `outputs/jobs/<assignmentId>/<jobRunId>` and artifacts carry assignment/run attribution.
-- Jobs can be empty `DRAFT` definitions so the UI can save metadata before items are added.
+- Jobs can be empty `DRAFT` definitions so the UI can save metadata before items are added. If an empty job is submitted, the assignment-owned run completes as a no-op instead of leaving `job_runs` in `RUNNING`.
 
 Tables: `job_definitions`, `job_runs`, `job_recurrences`, `run_output_artifacts`, plus assignment tables when submitted.
 

@@ -9,7 +9,7 @@ In current alpha posture, routes are open at the application layer. Use controll
 Source: [`ChatController`](../../src/main/java/io/mindspice/magenta2/api/web/ChatController.java), [`ChatFileController`](../../src/main/java/io/mindspice/magenta2/api/web/ChatFileController.java), [`ChatRequest`](../../src/main/java/io/mindspice/magenta2/ai/chat/model/ChatRequest.java), [`ChatResponse`](../../src/main/java/io/mindspice/magenta2/ai/chat/model/ChatResponse.java), [`ChatStreamEvent`](../../src/main/java/io/mindspice/magenta2/ai/chat/model/ChatStreamEvent.java), [`ChatService`](../../src/main/java/io/mindspice/magenta2/ai/chat/service/ChatService.java), [`ChatFileService`](../../src/main/java/io/mindspice/magenta2/ai/chat/service/ChatFileService.java).
 
 - `POST /api/chat`: non-streaming chat turn from `ChatRequest.MsgRequest`.
-- `POST /api/chat/stream`: SSE chat turn. `ChatRequest.MsgRequest` accepts an optional `surface` field so the browser chat page can tag sessions separately from Avatar or other internal chat surfaces.
+- `POST /api/chat/stream`: SSE chat turn. `ChatRequest.MsgRequest` accepts an optional `surface` field so the browser chat page can tag sessions separately from Avatar or other internal chat surfaces. Known surface values (`BROWSER`, `AVATAR`, `INTERNAL`) are accepted case-insensitively; blank or unknown values are rejected.
 - `POST /api/chat/{conversationId}/plan/execute`: execute an approved anonymous session plan. Payload may set `clearContext=true` for clean execution.
 - `POST /api/chat/{conversationId}/plan/execute/stream`: SSE execution of the current anonymous session plan path. Payload may set `clearContext=true` for clean execution.
 - `POST /api/chat/turns/{turnId}/interrupt`: interrupt an active turn.

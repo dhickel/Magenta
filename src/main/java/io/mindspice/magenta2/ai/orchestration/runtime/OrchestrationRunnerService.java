@@ -531,6 +531,7 @@ public class OrchestrationRunnerService {
             )), outputs, evidence);
             current = assignmentService.saveIfLeaseOwner(current, leaseOwner);
         }
+        jobRun = jobService.completeRun(jobRun.id(), "Job run completed");
         jobService.updateDefinitionStatus(job.id(), "COMPLETED");
         eventService.publish(EventType.JOB_STATUS_CHANGED, "JOB", job.id(), Map.of("jobId", job.id(), "status", "COMPLETED"));
         return complete(current, outputs, evidence);

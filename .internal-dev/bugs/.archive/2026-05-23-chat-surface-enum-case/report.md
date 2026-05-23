@@ -39,8 +39,15 @@ Low-to-medium. Browser JS currently sends uppercase values, but direct clients, 
 
 ## Status
 
-Open. Mirrored to GitHub issue: https://github.com/dhickel/Magenta/issues/7
+Fixed and validated on 2026-05-23. Mirrored to GitHub issue: https://github.com/dhickel/Magenta/issues/7
 
-## Next Action
+## Resolution
 
-Add case-insensitive deserialization for `ChatSessionSurface` or replace direct enum binding with a small normalizer that accepts known lowercase/uppercase values and rejects unknown values clearly.
+Added case-insensitive JSON deserialization for `ChatSessionSurface` and kept blank/unknown values rejected.
+
+## Validation
+
+- `mvn -q -Dtest=ChatControllerTest,JobServiceTest,OrchestrationRuntimeTest,PublicRunSubmissionControllerTest,OrchestrationControllerTest,PublicApiRouteBindingTest test`
+- `mvn -q test`
+- `git diff --check`
+- `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0`

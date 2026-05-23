@@ -312,6 +312,22 @@ class JobServiceTest {
     }
 
     @Test
+    void completeRunTransitionsEmptyRunToCompleted() {
+        JobDefinition def = jobService.saveDefinition(jobDef(null, "Empty Complete Job", List.of()));
+        JobRun run = jobService.startRun(def.id(), "agent-1", null, "assignment-empty-complete");
+        run = jobService.markRunning(run.id());
+
+        JobRun completed = jobService.completeRun(run.id(), "Job run completed");
+        JobRun completedAgain = jobService.completeRun(run.id(), "ignored");
+
+        assertThat(completed.status()).isEqualTo(JobRunStatus.COMPLETED);
+        assertThat(completed.workItemRuns()).isEmpty();
+        assertThat(completed.finalMessage()).isEqualTo("Job run completed");
+        assertThat(completed.completedAt()).isNotNull();
+        assertThat(completedAgain).isEqualTo(completed);
+    }
+
+    @Test
     void failedWorkItemResultsInFailedJob() {
         JobDefinition def = jobService.saveDefinition(
             jobDef(null, "Fail Job", List.of(

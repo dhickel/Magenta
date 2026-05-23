@@ -74,7 +74,7 @@ There are two job-related schemas:
 - User-facing `job_definitions`, `job_runs`, and `job_recurrences`, owned by `JobService`/`JobRepository`.
 - Runtime legacy/internal `orchestration_jobs` and `orchestration_job_items`, owned by `OrchestrationRuntimeRepository`.
 
-Current public job APIs use `JobDefinition` and `JobWorkItem`. Public job execution submits `AssignmentType.JOB_RUN`. Job items can reference tasks or workflows, include model override and priority, and persist retry count plus continue-on-failure policy.
+Current public job APIs use `JobDefinition` and `JobWorkItem`. Public job execution submits `AssignmentType.JOB_RUN`. Job items can reference tasks or workflows, include model override and priority, and persist retry count plus continue-on-failure policy. Empty job submissions are valid no-op executions: the assignment-owned `job_runs` row moves to `COMPLETED` with an empty item-run list.
 
 User-facing jobs can opt into persistent per-assignment workspace with `persistentWorkspaceEnabled`. When enabled, job workspace state lives under the effective workspace at `jobs/<assignmentId>`. Job outputs live under `outputs/jobs/<assignmentId>/<jobRunId>` and output artifacts carry job assignment/run attribution. The compatibility `workspaceId` field remains available on definitions and submissions.
 

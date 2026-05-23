@@ -12,6 +12,7 @@ import io.mindspice.magenta2.ai.chat.model.ChatPlanState;
 import io.mindspice.magenta2.ai.chat.model.ChatRequest;
 import io.mindspice.magenta2.ai.chat.model.ChatResponse;
 import io.mindspice.magenta2.ai.chat.model.ChatSession;
+import io.mindspice.magenta2.ai.chat.model.ChatSessionSurface;
 import io.mindspice.magenta2.ai.chat.model.ContextUsage;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.chat.service.ResolvedChatRequest;
@@ -155,6 +156,31 @@ class ChatControllerTest {
 
         assertThat(request.favorite()).isTrue();
         assertThat(legacyRequest.favorite()).isTrue();
+    }
+
+    @Test
+    void messageRequestBindsSurfaceCaseInsensitively() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        ChatRequest.MsgRequest browser = objectMapper.readValue(
+            "{\"message\":\"ping\",\"surface\":\"browser\"}",
+            ChatRequest.MsgRequest.class
+        );
+        ChatRequest.MsgRequest avatar = objectMapper.readValue(
+            "{\"message\":\"ping\",\"surface\":\"AvAtAr\"}",
+            ChatRequest.MsgRequest.class
+        );
+
+        assertThat(browser.surface()).isEqualTo(ChatSessionSurface.BROWSER);
+        assertThat(avatar.surface()).isEqualTo(ChatSessionSurface.AVATAR);
+        assertThatThrownBy(() -> objectMapper.readValue(
+            "{\"message\":\"ping\",\"surface\":\"external\"}",
+            ChatRequest.MsgRequest.class
+        )).hasMessageContaining("Unknown chat session surface");
+        assertThatThrownBy(() -> objectMapper.readValue(
+            "{\"message\":\"ping\",\"surface\":\"   \"}",
+            ChatRequest.MsgRequest.class
+        )).hasMessageContaining("Unknown chat session surface");
     }
 
     @Test
