@@ -1,6 +1,6 @@
 # Avatar Dashboard Fragment Routes
 
-`/avatar` is a server-rendered SimplyPages page with HTMX fragments for widget refresh, layout editing, organizer mutations, output preview, and internal alert dismissal.
+`/avatar` is a server-rendered SimplyPages page with HTMX fragments for widget refresh, layout editing, organizer modals, output preview, and internal alert dismissal.
 
 ## Page And Layout
 
@@ -32,6 +32,8 @@ Stable widget root IDs:
 
 ## Widget Actions
 
+- Organizer modal: `GET /avatar/_organizer?tab=planner|todos|calendar|notes`.
+- Planner tasks: `POST /avatar/_planner-tasks` and `POST /avatar/_planner-tasks/{taskId}/subtodos`.
 - Todos: `POST /avatar/_todos`, `POST /avatar/_todos/{todoId}/complete`, `DELETE /avatar/_todos/{todoId}`.
 - Daily tasks: `POST /avatar/_daily-tasks`, `POST /avatar/_daily-tasks/{taskId}/complete`.
 - Notes: `POST /avatar/_notes`.
@@ -39,5 +41,7 @@ Stable widget root IDs:
 - Work Areas: `GET /avatar/_work-areas/{workAreaId}/explorer`, `GET /avatar/_work-areas/{workAreaId}/preview`, `GET /avatar/_work-areas/{workAreaId}/edit`, `PUT /avatar/_work-areas/{workAreaId}/text`, `POST /avatar/_work-areas/{workAreaId}/directories`, `POST /avatar/_work-areas/{workAreaId}/mark`, and `DELETE /avatar/_work-areas/{workAreaId}/files`.
 - Outputs: `GET /avatar/_outputs/{artifactId}` uses `OutputArtifactService` for confined artifact content.
 - Alerts: `POST /avatar/_alerts/{eventId}/dismiss` records an internal Avatar event dismissal and rerenders the alerts widget.
+
+The Organizer toolbar action opens a single modal container with tabs for planner tasks, todos, calendar, and notes. Planner task records are distinct from Magenta executable task/work units; v1 supports durable planner records, subtodos, recurrence projection, and optional links to existing project/assignment/job/output ids, but does not schedule new automation.
 
 The Work Areas widget reads agent-owned Work Areas from `WorkAreaService` and opens the explorer in the shared modal container. Explorer fragments delegate filesystem behavior to `WorkAreaExplorerService`, so traversal, symlink, safe text editing, and protected delete rules stay in the workspace service layer. The alerts widget reads existing inbox messages and internal Avatar events only. Email ingestion is intentionally out of scope for this route set.

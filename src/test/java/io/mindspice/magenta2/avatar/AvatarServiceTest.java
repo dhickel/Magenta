@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 
@@ -46,8 +47,53 @@ class AvatarServiceTest {
         assertThat(snapshot.profile().displayName()).isEqualTo("Avatar");
         assertThat(snapshot.preferences()).hasSize(1);
         assertThat(snapshot.dashboardLayout()).isEmpty();
+        assertThat(snapshot.plannerTasks()).isEmpty();
         assertThat(snapshot.todos()).isEmpty();
         assertThat(snapshot.events()).hasSize(1);
+    }
+
+    @Test
+    void plannerTasksProjectFriendlyRecurrence() {
+        PlannerTask task = service.savePlannerTask(new PlannerTask(
+            null,
+            "Water plants",
+            null,
+            PlannerTaskStatus.PLANNED,
+            AvatarPriority.NORMAL,
+            Instant.now().plusSeconds(3600),
+            null,
+            "UTC",
+            new PlannerRecurrence(
+                PlannerRecurrenceMode.DAILY,
+                1,
+                LocalDate.now(),
+                LocalDate.now().plusDays(3),
+                LocalTime.of(9, 0),
+                null,
+                null,
+                null
+            ),
+            new PlannerTaskLink(null, null, null, null),
+            null,
+            null,
+            null
+        ));
+
+        PlannerSubtodo subtodo = service.savePlannerSubtodo(new PlannerSubtodo(
+            null,
+            task.id(),
+            "Fill watering can",
+            AvatarTodoStatus.OPEN,
+            0,
+            null,
+            null
+        ));
+
+        assertThat(service.plannerTasks()).singleElement()
+            .satisfies(saved -> assertThat(saved.title()).isEqualTo("Water plants"));
+        assertThat(service.plannerSubtodos(task.id())).containsExactly(subtodo);
+        assertThat(service.plannerCalendarProjection(null, null)).hasSizeGreaterThanOrEqualTo(1)
+            .allSatisfy(projection -> assertThat(projection.taskId()).isEqualTo(task.id()));
     }
 
     @Test

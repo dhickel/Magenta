@@ -2,6 +2,11 @@ package io.mindspice.magenta2.avatar;
 
 import java.time.LocalDate;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -203,6 +208,39 @@ public class AvatarService {
             .toList();
     }
 
+    public PlannerTask savePlannerTask(PlannerTask task) {
+        PlannerTask saved = repository.savePlannerTask(task);
+        repository.replacePlannerCalendarProjection(saved.id(), project(saved, 60));
+        return saved;
+    }
+
+    public PlannerTask plannerTask(String id) {
+        requireText(id, "planner task id");
+        return repository.findPlannerTask(id)
+            .orElseThrow(() -> new IllegalArgumentException("planner task not found: " + id));
+    }
+
+    public List<PlannerTask> plannerTasks() {
+        return repository.findPlannerTasks();
+    }
+
+    public PlannerSubtodo savePlannerSubtodo(PlannerSubtodo subtodo) {
+        return repository.savePlannerSubtodo(subtodo);
+    }
+
+    public List<PlannerSubtodo> plannerSubtodos(String taskId) {
+        requireText(taskId, "planner task id");
+        return repository.findPlannerSubtodos(taskId);
+    }
+
+    public void linkPlannerTaskNote(String taskId, String noteId) {
+        repository.linkPlannerTaskNote(taskId, noteId);
+    }
+
+    public List<PlannerCalendarProjection> plannerCalendarProjection(Instant from, Instant to) {
+        return repository.findPlannerCalendarProjection(from, to);
+    }
+
     public AvatarFact upsertFact(AvatarFact fact) {
         return repository.upsertFact(fact);
     }
@@ -219,11 +257,54 @@ public class AvatarService {
         return repository.findEvents();
     }
 
+    public List<PlannerCalendarProjection> project(PlannerTask task, int days) {
+        if (task == null) {
+            return List.of();
+        }
+        PlannerRecurrence recurrence = task.recurrence() == null
+            ? new PlannerRecurrence(PlannerRecurrenceMode.NONE, 1, null, null, null, null, null, null)
+            : task.recurrence().normalized();
+        Instant seed = task.startsAt() != null ? task.startsAt() : task.dueAt();
+        if (seed == null) {
+            return List.of();
+        }
+        ZoneId zone = StringUtils.hasText(task.timezone()) ? ZoneId.of(task.timezone()) : ZoneId.systemDefault();
+        ZonedDateTime cursor = seed.atZone(zone);
+        if (recurrence.startDate() != null) {
+            LocalTime time = recurrence.time() == null ? cursor.toLocalTime() : recurrence.time();
+            cursor = LocalDateTime.of(recurrence.startDate(), time).atZone(zone);
+        }
+        cursor = alignRecurrenceCursor(cursor, recurrence);
+        Instant until = Instant.now().plusSeconds(Math.max(days, 1L) * 24L * 60L * 60L);
+        List<PlannerCalendarProjection> result = new ArrayList<>();
+        if (recurrence.mode() == PlannerRecurrenceMode.NONE || recurrence.mode() == PlannerRecurrenceMode.CRON) {
+            result.add(projection(task, cursor.toInstant()));
+            return result;
+        }
+        int interval = Math.max(recurrence.interval(), 1);
+        while (!cursor.toInstant().isAfter(until) && result.size() < 64) {
+            if (recurrence.endDate() != null && cursor.toLocalDate().isAfter(recurrence.endDate())) {
+                break;
+            }
+            if (!cursor.toInstant().isBefore(Instant.now().minusSeconds(24 * 60 * 60))) {
+                result.add(projection(task, cursor.toInstant()));
+            }
+            cursor = switch (recurrence.mode()) {
+                case DAILY -> cursor.plusDays(interval);
+                case WEEKLY -> cursor.plusWeeks(interval);
+                case MONTHLY -> cursor.plusMonths(interval);
+                default -> cursor.plusDays(interval);
+            };
+        }
+        return result;
+    }
+
     public AvatarSnapshot snapshot() {
         return new AvatarSnapshot(
             profile(),
             preferences(),
             dashboardLayout(),
+            plannerTasks(),
             todos(),
             dailyTasks(null),
             calendarItems(),
@@ -231,6 +312,23 @@ public class AvatarService {
             facts(),
             events()
         );
+    }
+
+    private ZonedDateTime alignRecurrenceCursor(ZonedDateTime cursor, PlannerRecurrence recurrence) {
+        if (recurrence.mode() == PlannerRecurrenceMode.WEEKLY && recurrence.weekday() != null) {
+            while (cursor.getDayOfWeek() != recurrence.weekday()) {
+                cursor = cursor.plusDays(1);
+            }
+        }
+        if (recurrence.mode() == PlannerRecurrenceMode.MONTHLY && recurrence.monthDay() != null) {
+            int day = Math.max(1, Math.min(recurrence.monthDay(), cursor.toLocalDate().lengthOfMonth()));
+            cursor = cursor.withDayOfMonth(day);
+        }
+        return cursor;
+    }
+
+    private PlannerCalendarProjection projection(PlannerTask task, Instant start) {
+        return new PlannerCalendarProjection(null, task.id(), start, task.dueAt(), task.status(), null, null);
     }
 
     private boolean matches(AvatarNote note, String query) {

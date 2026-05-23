@@ -6,6 +6,7 @@ public record AvatarSnapshot(
     AvatarProfile profile,
     List<AvatarPreference> preferences,
     List<AvatarDashboardWidget> dashboardLayout,
+    List<PlannerTask> plannerTasks,
     List<AvatarTodo> todos,
     List<AvatarDailyTask> dailyTasks,
     List<AvatarCalendarItem> calendarItems,

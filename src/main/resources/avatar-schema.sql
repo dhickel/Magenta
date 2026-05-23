@@ -113,6 +113,65 @@ create table if not exists avatar_notes (
 create index if not exists idx_avatar_notes_archived_updated
     on avatar_notes (archived, updated_at);
 
+create table if not exists avatar_planner_tasks (
+    id text primary key,
+    title text not null,
+    notes text,
+    status text not null,
+    priority text not null,
+    starts_at text,
+    due_at text,
+    timezone text,
+    recurrence_json text not null default '{}',
+    linked_project_id text,
+    linked_assignment_id text,
+    linked_job_id text,
+    linked_output_id text,
+    created_at text not null,
+    updated_at text not null,
+    completed_at text
+);
+
+create index if not exists idx_avatar_planner_tasks_status_due
+    on avatar_planner_tasks (status, due_at);
+
+create table if not exists avatar_planner_subtodos (
+    id text primary key,
+    task_id text not null,
+    title text not null,
+    status text not null,
+    subtodo_position integer not null,
+    created_at text not null,
+    updated_at text not null,
+    foreign key(task_id) references avatar_planner_tasks(id) on delete cascade
+);
+
+create index if not exists idx_avatar_planner_subtodos_task
+    on avatar_planner_subtodos (task_id, subtodo_position);
+
+create table if not exists avatar_planner_task_notes (
+    task_id text not null,
+    note_id text not null,
+    created_at text not null,
+    primary key(task_id, note_id),
+    foreign key(task_id) references avatar_planner_tasks(id) on delete cascade,
+    foreign key(note_id) references avatar_notes(id) on delete cascade
+);
+
+create table if not exists avatar_planner_calendar_projection (
+    id text primary key,
+    task_id text not null,
+    occurrence_start text not null,
+    occurrence_end text,
+    status text not null,
+    created_at text not null,
+    updated_at text not null,
+    foreign key(task_id) references avatar_planner_tasks(id) on delete cascade
+);
+
+create index if not exists idx_avatar_planner_projection_start
+    on avatar_planner_calendar_projection (occurrence_start, task_id);
+
 create table if not exists avatar_facts (
     namespace text not null,
     fact_key text not null,

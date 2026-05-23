@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 
@@ -150,6 +151,74 @@ class AvatarRepositoryTest {
         assertThat(repository.findCalendarItem(calendar.id()).orElseThrow().timezone()).isEqualTo("America/New_York");
         assertThat(repository.findNote(note.id()).orElseThrow().tags()).containsExactly("home", "plants");
         assertThat(repository.findNotes(false)).containsExactly(note);
+    }
+
+    @Test
+    void savesPlannerTasksSubtodosLinksAndCalendarProjection() {
+        AvatarNote note = repository.saveNote(new AvatarNote(
+            null,
+            "Research",
+            "Linkable context",
+            List.of("planner"),
+            Map.of(),
+            false,
+            null,
+            null
+        ));
+        PlannerTask task = repository.savePlannerTask(new PlannerTask(
+            null,
+            "Plan garden week",
+            "Use recurring reminder",
+            PlannerTaskStatus.ACTIVE,
+            AvatarPriority.HIGH,
+            Instant.parse("2026-05-23T14:00:00Z"),
+            Instant.parse("2026-05-23T15:00:00Z"),
+            "UTC",
+            new PlannerRecurrence(
+                PlannerRecurrenceMode.WEEKLY,
+                2,
+                LocalDate.of(2026, 5, 23),
+                LocalDate.of(2026, 6, 30),
+                LocalTime.of(14, 0),
+                null,
+                null,
+                null
+            ),
+            new PlannerTaskLink("project-1", "assignment-1", "job-1", "output-1"),
+            null,
+            null,
+            null
+        ));
+
+        PlannerSubtodo subtodo = repository.savePlannerSubtodo(new PlannerSubtodo(
+            null,
+            task.id(),
+            "Check seedlings",
+            AvatarTodoStatus.OPEN,
+            0,
+            null,
+            null
+        ));
+        repository.linkPlannerTaskNote(task.id(), note.id());
+        repository.replacePlannerCalendarProjection(task.id(), List.of(new PlannerCalendarProjection(
+            null,
+            task.id(),
+            Instant.parse("2026-05-23T14:00:00Z"),
+            Instant.parse("2026-05-23T15:00:00Z"),
+            PlannerTaskStatus.ACTIVE,
+            null,
+            null
+        )));
+
+        assertThat(repository.findPlannerTask(task.id())).hasValueSatisfying(saved -> {
+            assertThat(saved.link().assignmentId()).isEqualTo("assignment-1");
+            assertThat(saved.recurrence().mode()).isEqualTo(PlannerRecurrenceMode.WEEKLY);
+            assertThat(saved.recurrence().interval()).isEqualTo(2);
+        });
+        assertThat(repository.findPlannerTasks()).containsExactly(task);
+        assertThat(repository.findPlannerSubtodos(task.id())).containsExactly(subtodo);
+        assertThat(repository.findPlannerCalendarProjection(null, null)).singleElement()
+            .satisfies(projection -> assertThat(projection.taskId()).isEqualTo(task.id()));
     }
 
     @Test

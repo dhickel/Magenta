@@ -84,26 +84,35 @@
 
 .avatar-dashboard-row > .col {
     min-width: 0;
+    width: auto;
+    max-width: none;
+    padding: 0;
+    flex: none;
 }
 
 .avatar-dashboard-row > .col-3 {
     grid-column: span 3;
+    max-width: none;
 }
 
 .avatar-dashboard-row > .col-4 {
     grid-column: span 4;
+    max-width: none;
 }
 
 .avatar-dashboard-row > .col-6 {
     grid-column: span 6;
+    max-width: none;
 }
 
 .avatar-dashboard-row > .col-8 {
     grid-column: span 8;
+    max-width: none;
 }
 
 .avatar-dashboard-row > .col-12 {
     grid-column: span 12;
+    max-width: none;
 }
 
 .avatar-widget {
@@ -192,6 +201,16 @@
 
 .avatar-list-row > div:first-child {
     min-width: 0;
+}
+
+.avatar-dashboard-row > .col-3 .avatar-inline-form,
+.avatar-dashboard-row > .col-4 .avatar-inline-form {
+    grid-template-columns: 1fr;
+}
+
+.avatar-dashboard-row > .col-3 .avatar-metrics,
+.avatar-dashboard-row > .col-4 .avatar-metrics {
+    grid-template-columns: 1fr;
 }
 
 .avatar-list-row strong,
@@ -312,6 +331,59 @@
     border-radius: 8px;
     background: var(--mg-panel);
     padding: 1rem;
+}
+
+.avatar-organizer-panel {
+    width: min(58rem, 100%);
+}
+
+.avatar-tabs {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+    margin: 0.75rem 0;
+}
+
+.avatar-tabs button {
+    min-height: 2rem;
+}
+
+.avatar-tabs button.active {
+    border-color: var(--mg-primary);
+    background: #eaf2fb;
+}
+
+.avatar-organizer-body,
+.avatar-recurrence-fields,
+.avatar-planner-task-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+}
+
+.avatar-form-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.45rem;
+}
+
+.avatar-planner-form {
+    border: 1px solid #dfe7f0;
+    border-radius: 7px;
+    background: #fbfdff;
+    padding: 0.7rem;
+}
+
+.avatar-planner-task {
+    align-items: stretch;
+}
+
+.avatar-section-heading {
+    color: var(--mg-muted);
+    font-size: 0.8rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
 }
 
 .avatar-edit-row {
@@ -444,7 +516,8 @@
     .avatar-inline-form,
     .avatar-edit-widgets,
     .avatar-catalog-grid,
-    .avatar-metrics {
+    .avatar-metrics,
+    .avatar-form-grid {
         grid-template-columns: 1fr;
     }
 

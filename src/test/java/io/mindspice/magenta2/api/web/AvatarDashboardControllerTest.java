@@ -239,6 +239,35 @@ class AvatarDashboardControllerTest {
         assertThat(notesHtml).contains("Garden");
         assertThat(avatarService.notes(false)).singleElement()
             .satisfies(note -> assertThat(note.body()).contains("Water seedlings"));
+
+        String organizer = controller.organizer("planner");
+        assertThat(organizer).contains("Planner");
+        assertThat(organizer).contains("/avatar/_planner-tasks");
+
+        String plannerHtml = controller.createPlannerTask(
+            "Review projects",
+            "Look for blocked work",
+            "HIGH",
+            "",
+            "",
+            "DAILY",
+            1,
+            LocalDate.now().toString(),
+            LocalDate.now().plusDays(2).toString(),
+            "09:00",
+            "",
+            null,
+            "",
+            "project-1",
+            "",
+            "",
+            ""
+        );
+        assertThat(plannerHtml).contains("Review projects");
+        String taskId = avatarService.plannerTasks().getFirst().id();
+        String subtodoHtml = controller.createPlannerSubtodo(taskId, "Check queue");
+        assertThat(subtodoHtml).contains("Check queue");
+        assertThat(controller.organizer("calendar")).contains("Planner projection");
     }
 
     @Test

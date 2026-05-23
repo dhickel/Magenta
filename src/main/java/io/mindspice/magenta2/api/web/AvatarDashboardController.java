@@ -1,9 +1,11 @@
 package io.mindspice.magenta2.api.web;
 
 import java.io.IOException;
+import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Locale;
@@ -34,6 +36,12 @@ import io.mindspice.magenta2.avatar.AvatarService;
 import io.mindspice.magenta2.avatar.AvatarTaskStatus;
 import io.mindspice.magenta2.avatar.AvatarTodo;
 import io.mindspice.magenta2.avatar.AvatarTodoStatus;
+import io.mindspice.magenta2.avatar.PlannerRecurrence;
+import io.mindspice.magenta2.avatar.PlannerRecurrenceMode;
+import io.mindspice.magenta2.avatar.PlannerSubtodo;
+import io.mindspice.magenta2.avatar.PlannerTask;
+import io.mindspice.magenta2.avatar.PlannerTaskLink;
+import io.mindspice.magenta2.avatar.PlannerTaskStatus;
 import io.mindspice.simplypages.builders.BannerBuilder;
 import io.mindspice.simplypages.builders.ShellBuilder;
 import io.mindspice.simplypages.builders.ShellTemplate;
@@ -323,6 +331,86 @@ public class AvatarDashboardController {
         return widget("calendar");
     }
 
+    @GetMapping("/avatar/_organizer")
+    @ResponseBody
+    public String organizer(@RequestParam(value = "tab", defaultValue = "planner") String tab) {
+        return AvatarDashboardComponents.organizerModal(
+            normalizeOrganizerTab(tab),
+            avatarService.plannerTasks(),
+            plannerSubtodos(),
+            avatarService.plannerCalendarProjection(null, null),
+            avatarService.todos(),
+            avatarService.calendarItems(),
+            avatarService.notes(false)
+        ).render();
+    }
+
+    @PostMapping("/avatar/_planner-tasks")
+    @ResponseBody
+    public String createPlannerTask(
+        @RequestParam String title,
+        @RequestParam(value = "notes", required = false) String notes,
+        @RequestParam(value = "priority", required = false) String priority,
+        @RequestParam(value = "startsAt", required = false) String startsAt,
+        @RequestParam(value = "dueAt", required = false) String dueAt,
+        @RequestParam(value = "recurrenceMode", required = false) String recurrenceMode,
+        @RequestParam(value = "recurrenceInterval", defaultValue = "1") int recurrenceInterval,
+        @RequestParam(value = "recurrenceStartDate", required = false) String recurrenceStartDate,
+        @RequestParam(value = "recurrenceEndDate", required = false) String recurrenceEndDate,
+        @RequestParam(value = "recurrenceTime", required = false) String recurrenceTime,
+        @RequestParam(value = "recurrenceWeekday", required = false) String recurrenceWeekday,
+        @RequestParam(value = "recurrenceMonthDay", required = false) Integer recurrenceMonthDay,
+        @RequestParam(value = "recurrenceCron", required = false) String recurrenceCron,
+        @RequestParam(value = "linkedProjectId", required = false) String linkedProjectId,
+        @RequestParam(value = "linkedAssignmentId", required = false) String linkedAssignmentId,
+        @RequestParam(value = "linkedJobId", required = false) String linkedJobId,
+        @RequestParam(value = "linkedOutputId", required = false) String linkedOutputId
+    ) {
+        requireText(title, "planner task title");
+        avatarService.savePlannerTask(new PlannerTask(
+            null,
+            title.strip(),
+            notes,
+            PlannerTaskStatus.PLANNED,
+            parsePriority(priority),
+            parseOptionalDateTime(startsAt),
+            parseOptionalDateTime(dueAt),
+            ZoneId.systemDefault().getId(),
+            new PlannerRecurrence(
+                parseRecurrenceMode(recurrenceMode),
+                recurrenceInterval,
+                parseOptionalDate(recurrenceStartDate),
+                parseOptionalDate(recurrenceEndDate),
+                parseOptionalTime(recurrenceTime),
+                parseOptionalWeekday(recurrenceWeekday),
+                recurrenceMonthDay,
+                recurrenceCron
+            ),
+            new PlannerTaskLink(blankToNull(linkedProjectId), blankToNull(linkedAssignmentId),
+                blankToNull(linkedJobId), blankToNull(linkedOutputId)),
+            null,
+            null,
+            null
+        ));
+        return organizer("planner");
+    }
+
+    @PostMapping("/avatar/_planner-tasks/{taskId}/subtodos")
+    @ResponseBody
+    public String createPlannerSubtodo(@PathVariable String taskId, @RequestParam String title) {
+        requireText(title, "planner subtodo title");
+        avatarService.savePlannerSubtodo(new PlannerSubtodo(
+            null,
+            taskId,
+            title.strip(),
+            AvatarTodoStatus.OPEN,
+            avatarService.plannerSubtodos(taskId).size(),
+            null,
+            null
+        ));
+        return organizer("planner");
+    }
+
     @GetMapping("/avatar/_outputs/{artifactId}")
     @ResponseBody
     public String outputPreview(@PathVariable String artifactId) {
@@ -510,6 +598,16 @@ public class AvatarDashboardController {
             .toList();
     }
 
+    private Map<String, List<PlannerSubtodo>> plannerSubtodos() {
+        return avatarService.plannerTasks().stream()
+            .collect(java.util.stream.Collectors.toMap(
+                PlannerTask::id,
+                task -> avatarService.plannerSubtodos(task.id()),
+                (left, right) -> left,
+                java.util.LinkedHashMap::new
+            ));
+    }
+
     private <T> List<T> safeList(ListSupplier<T> supplier) {
         try {
             List<T> result = supplier.get();
@@ -576,6 +674,69 @@ public class AvatarDashboardController {
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown priority: " + value);
         }
+    }
+
+    private String normalizeOrganizerTab(String value) {
+        String normalized = StringUtils.hasText(value) ? value.strip().toLowerCase(Locale.ROOT) : "planner";
+        return switch (normalized) {
+            case "planner", "todos", "calendar", "notes" -> normalized;
+            default -> "planner";
+        };
+    }
+
+    private PlannerRecurrenceMode parseRecurrenceMode(String value) {
+        if (!StringUtils.hasText(value)) {
+            return PlannerRecurrenceMode.NONE;
+        }
+        try {
+            return PlannerRecurrenceMode.valueOf(value.strip().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown recurrence mode: " + value);
+        }
+    }
+
+    private Instant parseOptionalDateTime(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        return parseDateTime(value);
+    }
+
+    private LocalDate parseOptionalDate(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(value.strip());
+        } catch (RuntimeException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid date value.");
+        }
+    }
+
+    private LocalTime parseOptionalTime(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        try {
+            return LocalTime.parse(value.strip());
+        } catch (RuntimeException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid time value.");
+        }
+    }
+
+    private DayOfWeek parseOptionalWeekday(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        try {
+            return DayOfWeek.valueOf(value.strip().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid weekday value.");
+        }
+    }
+
+    private String blankToNull(String value) {
+        return StringUtils.hasText(value) ? value.strip() : null;
     }
 
     private Instant parseDateTime(String value) {

@@ -29,6 +29,9 @@ import io.mindspice.magenta2.avatar.AvatarEvent;
 import io.mindspice.magenta2.avatar.AvatarNote;
 import io.mindspice.magenta2.avatar.AvatarProfile;
 import io.mindspice.magenta2.avatar.AvatarTodo;
+import io.mindspice.magenta2.avatar.PlannerCalendarProjection;
+import io.mindspice.magenta2.avatar.PlannerSubtodo;
+import io.mindspice.magenta2.avatar.PlannerTask;
 import io.mindspice.simplypages.components.Div;
 import io.mindspice.simplypages.components.Header;
 import io.mindspice.simplypages.components.Paragraph;
@@ -221,6 +224,193 @@ final class AvatarDashboardComponents {
         return new Div().withId("avatar-edit-modal").withClass("avatar-modal").withChild(panel);
     }
 
+    static Component organizerModal(
+        String activeTab,
+        List<PlannerTask> plannerTasks,
+        Map<String, List<PlannerSubtodo>> subtodos,
+        List<PlannerCalendarProjection> projections,
+        List<AvatarTodo> todos,
+        List<AvatarCalendarItem> calendarItems,
+        List<AvatarNote> notes
+    ) {
+        String tab = activeTab == null ? "planner" : activeTab;
+        Div panel = new Div().withClass("avatar-edit-panel avatar-organizer-panel");
+        panel.withChild(new Div().withClass("avatar-edit-header")
+            .withChild(Header.H2("Organizer"))
+            .withChild(Button.create("Close")
+                .withAttribute("type", "button")
+                .withAttribute("hx-get", "/avatar/_edit?close=true")
+                .withAttribute("hx-target", "#avatar-edit-container")
+                .withAttribute("hx-swap", "innerHTML")));
+        panel.withChild(organizerTabs(tab));
+        panel.withChild(switch (tab) {
+            case "todos" -> organizerTodoTab(todos);
+            case "calendar" -> organizerCalendarTab(calendarItems, projections);
+            case "notes" -> organizerNotesTab(notes);
+            default -> organizerPlannerTab(plannerTasks, subtodos);
+        });
+        return new Div().withId("avatar-organizer-modal").withClass("avatar-modal").withChild(panel);
+    }
+
+    private static Component organizerTabs(String activeTab) {
+        Div tabs = new Div().withClass("avatar-tabs");
+        tabs.withChild(organizerTab("planner", "Planner", activeTab));
+        tabs.withChild(organizerTab("todos", "Todos", activeTab));
+        tabs.withChild(organizerTab("calendar", "Calendar", activeTab));
+        tabs.withChild(organizerTab("notes", "Notes", activeTab));
+        return tabs;
+    }
+
+    private static Component organizerTab(String tab, String label, String activeTab) {
+        HtmlTag button = new HtmlTag("button")
+            .withAttribute("type", "button")
+            .withAttribute("hx-get", "/avatar/_organizer?tab=" + tab)
+            .withAttribute("hx-target", "#avatar-edit-container")
+            .withAttribute("hx-swap", "innerHTML")
+            .withInnerText(label);
+        if (tab.equals(activeTab)) {
+            button.withClass("active");
+        }
+        return button;
+    }
+
+    private static Component organizerPlannerTab(
+        List<PlannerTask> plannerTasks,
+        Map<String, List<PlannerSubtodo>> subtodos
+    ) {
+        Div body = new Div().withClass("avatar-organizer-body");
+        Form form = Form.create().withClass("avatar-stack-form avatar-planner-form");
+        form.withAttribute("hx-post", "/avatar/_planner-tasks");
+        form.withAttribute("hx-target", "#avatar-edit-container");
+        form.withAttribute("hx-swap", "innerHTML");
+        form.withChild(TextInput.create("title").withPlaceholder("Planner task title"));
+        form.withChild(TextArea.create("notes").withRows(3).withPlaceholder("Notes"));
+        form.withChild(new Div().withClass("avatar-form-grid")
+            .withChild(prioritySelect())
+            .withChild(TextInput.create("startsAt").withAttribute("type", "datetime-local"))
+            .withChild(TextInput.create("dueAt").withAttribute("type", "datetime-local")));
+        form.withChild(recurrenceFields());
+        form.withChild(new Div().withClass("avatar-form-grid")
+            .withChild(TextInput.create("linkedProjectId").withPlaceholder("Project link"))
+            .withChild(TextInput.create("linkedAssignmentId").withPlaceholder("Assignment link"))
+            .withChild(TextInput.create("linkedJobId").withPlaceholder("Job link"))
+            .withChild(TextInput.create("linkedOutputId").withPlaceholder("Output link")));
+        form.withChild(Button.submit("Create Planner Task"));
+        body.withChild(form);
+
+        Div list = new Div().withClass("avatar-list");
+        List<PlannerTask> safeTasks = plannerTasks == null ? List.of() : plannerTasks;
+        if (safeTasks.isEmpty()) {
+            list.withChild(empty("No planner tasks yet."));
+        }
+        for (PlannerTask task : safeTasks.stream().limit(12).toList()) {
+            Div item = new Div().withClass("avatar-list-row avatar-planner-task");
+            item.withChild(new Div()
+                .withChild(new HtmlTag("strong").withInnerText(task.title()))
+                .withChild(small(taskMeta(task))));
+            Div taskBody = new Div().withClass("avatar-planner-task-body");
+            List<PlannerSubtodo> taskSubtodos = subtodos == null
+                ? List.of()
+                : subtodos.getOrDefault(task.id(), List.of());
+            for (PlannerSubtodo subtodo : taskSubtodos.stream().limit(4).toList()) {
+                taskBody.withChild(small("- " + subtodo.title()));
+            }
+            Form subtodoForm = Form.create().withClass("avatar-inline-form");
+            subtodoForm.withAttribute("hx-post", "/avatar/_planner-tasks/" + task.id() + "/subtodos");
+            subtodoForm.withAttribute("hx-target", "#avatar-edit-container");
+            subtodoForm.withAttribute("hx-swap", "innerHTML");
+            subtodoForm.withChild(TextInput.create("title").withPlaceholder("Add subtodo"));
+            subtodoForm.withChild(Button.submit("Add Subtodo"));
+            taskBody.withChild(subtodoForm);
+            item.withChild(taskBody);
+            list.withChild(item);
+        }
+        return body.withChild(list);
+    }
+
+    private static Component organizerTodoTab(List<AvatarTodo> todos) {
+        Div body = new Div().withClass("avatar-organizer-body");
+        return body.withChild(todos(todos));
+    }
+
+    private static Component organizerCalendarTab(
+        List<AvatarCalendarItem> items,
+        List<PlannerCalendarProjection> projections
+    ) {
+        Div body = new Div().withClass("avatar-organizer-body");
+        body.withChild(calendar(items));
+        Div projected = new Div().withClass("avatar-list");
+        List<PlannerCalendarProjection> safeProjections = projections == null ? List.of() : projections;
+        if (safeProjections.isEmpty()) {
+            projected.withChild(empty("No planner projections."));
+        }
+        for (PlannerCalendarProjection projection : safeProjections.stream().limit(8).toList()) {
+            projected.withChild(new Div().withClass("avatar-list-row")
+                .withChild(new Div()
+                    .withChild(new HtmlTag("strong").withInnerText("Planner occurrence"))
+                    .withChild(small(formatInstant(projection.occurrenceStart())))));
+        }
+        body.withChild(new Div().withClass("avatar-section-heading").withInnerText("Planner projection"));
+        return body.withChild(projected);
+    }
+
+    private static Component organizerNotesTab(List<AvatarNote> notes) {
+        Div body = new Div().withClass("avatar-organizer-body");
+        return body.withChild(notes(notes));
+    }
+
+    private static Component recurrenceFields() {
+        Div group = new Div().withClass("avatar-recurrence-fields");
+        group.withChild(new Div().withClass("avatar-form-grid")
+            .withChild(Select.create("recurrenceMode")
+                .addOption("NONE", "No repeat", true)
+                .addOption("DAILY", "Daily", false)
+                .addOption("WEEKLY", "Weekly", false)
+                .addOption("MONTHLY", "Monthly", false)
+                .addOption("CRON", "Cron", false))
+            .withChild(TextInput.create("recurrenceInterval")
+                .withAttribute("type", "number")
+                .withAttribute("min", "1")
+                .withAttribute("value", "1"))
+            .withChild(TextInput.create("recurrenceStartDate").withAttribute("type", "date"))
+            .withChild(TextInput.create("recurrenceEndDate").withAttribute("type", "date"))
+            .withChild(TextInput.create("recurrenceTime").withAttribute("type", "time")));
+        group.withChild(new Div().withClass("avatar-form-grid")
+            .withChild(Select.create("recurrenceWeekday")
+                .addOption("", "Any weekday", true)
+                .addOption("MONDAY", "Monday", false)
+                .addOption("TUESDAY", "Tuesday", false)
+                .addOption("WEDNESDAY", "Wednesday", false)
+                .addOption("THURSDAY", "Thursday", false)
+                .addOption("FRIDAY", "Friday", false)
+                .addOption("SATURDAY", "Saturday", false)
+                .addOption("SUNDAY", "Sunday", false))
+            .withChild(TextInput.create("recurrenceMonthDay")
+                .withPlaceholder("Month day")
+                .withAttribute("type", "number")
+                .withAttribute("min", "1")
+                .withAttribute("max", "31"))
+            .withChild(TextInput.create("recurrenceCron").withPlaceholder("Advanced cron")));
+        return group;
+    }
+
+    private static Component prioritySelect() {
+        return Select.create("priority")
+            .addOption("NORMAL", "Normal", true)
+            .addOption("HIGH", "High", false)
+            .addOption("URGENT", "Urgent", false)
+            .addOption("LOW", "Low", false);
+    }
+
+    private static String taskMeta(PlannerTask task) {
+        String status = task.status() == null ? "planned" : task.status().name().toLowerCase(Locale.ROOT);
+        String due = task.dueAt() == null ? "unscheduled" : formatInstant(task.dueAt());
+        String recurrence = task.recurrence() == null || task.recurrence().mode() == null
+            ? "none"
+            : task.recurrence().mode().name().toLowerCase(Locale.ROOT);
+        return status + " / due " + due + " / repeat " + recurrence;
+    }
+
     static Component outputPreview(RunOutputArtifact artifact, String content) {
         return new Div()
             .withId("avatar-output-preview")
@@ -277,6 +467,12 @@ final class AvatarDashboardComponents {
         return new Div().withClass("avatar-toolbar")
             .withChild(new HtmlTag("button")
                 .withAttribute("type", "button")
+                .withAttribute("hx-get", "/avatar/_organizer?tab=planner")
+                .withAttribute("hx-target", "#avatar-edit-container")
+                .withAttribute("hx-swap", "innerHTML")
+                .withInnerText("Organizer"))
+            .withChild(new HtmlTag("button")
+                .withAttribute("type", "button")
                 .withAttribute("hx-get", "/avatar/_edit")
                 .withAttribute("hx-target", "#avatar-edit-container")
                 .withAttribute("hx-swap", "innerHTML")
@@ -316,7 +512,7 @@ final class AvatarDashboardComponents {
             .withAttribute("hx-target", "#" + rootId("daily-tasks"))
             .withAttribute("hx-swap", "outerHTML")
             .withChild(TextInput.create("title").withPlaceholder("Add daily task"))
-            .withChild(Button.submit("Add")));
+            .withChild(Button.submit("Add Daily")));
         if (tasks == null || tasks.isEmpty()) {
             return body.withChild(empty("No daily tasks for today."));
         }
@@ -344,7 +540,7 @@ final class AvatarDashboardComponents {
             .withAttribute("hx-swap", "outerHTML")
             .withChild(TextInput.create("title").withPlaceholder("Add todo"))
             .withChild(priority)
-            .withChild(Button.submit("Add")));
+            .withChild(Button.submit("Add Todo")));
         if (todos == null || todos.isEmpty()) {
             return body.withChild(empty("No todos."));
         }

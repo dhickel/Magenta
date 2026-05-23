@@ -2,8 +2,10 @@ package io.mindspice.magenta2.avatar;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Locale;
@@ -796,6 +798,173 @@ public class AvatarRepository {
         );
     }
 
+    public PlannerTask savePlannerTask(PlannerTask task) {
+        String id = id(task.id());
+        Instant now = Instant.now();
+        Instant createdAt = task.createdAt() == null ? now : task.createdAt();
+        PlannerTaskLink link = task.link() == null ? new PlannerTaskLink(null, null, null, null) : task.link();
+        jdbcTemplate.update(
+            """
+                insert into avatar_planner_tasks (
+                    id, title, notes, status, priority, starts_at, due_at, timezone, recurrence_json,
+                    linked_project_id, linked_assignment_id, linked_job_id, linked_output_id,
+                    created_at, updated_at, completed_at
+                )
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                on conflict(id) do update set
+                    title = excluded.title,
+                    notes = excluded.notes,
+                    status = excluded.status,
+                    priority = excluded.priority,
+                    starts_at = excluded.starts_at,
+                    due_at = excluded.due_at,
+                    timezone = excluded.timezone,
+                    recurrence_json = excluded.recurrence_json,
+                    linked_project_id = excluded.linked_project_id,
+                    linked_assignment_id = excluded.linked_assignment_id,
+                    linked_job_id = excluded.linked_job_id,
+                    linked_output_id = excluded.linked_output_id,
+                    updated_at = excluded.updated_at,
+                    completed_at = excluded.completed_at
+                """,
+            id,
+            requireText(task.title(), "planner task title"),
+            task.notes(),
+            status(task.status(), PlannerTaskStatus.PLANNED).name(),
+            priority(task.priority()).name(),
+            string(task.startsAt()),
+            string(task.dueAt()),
+            StringUtils.hasText(task.timezone()) ? task.timezone() : ZoneId.systemDefault().getId(),
+            jsonRecurrence(task.recurrence()),
+            link.projectId(),
+            link.assignmentId(),
+            link.jobId(),
+            link.outputId(),
+            createdAt.toString(),
+            now.toString(),
+            string(task.completedAt())
+        );
+        return findPlannerTask(id).orElseThrow();
+    }
+
+    public Optional<PlannerTask> findPlannerTask(String id) {
+        return jdbcTemplate.query(
+            "select * from avatar_planner_tasks where id = ?",
+            rs -> rs.next() ? Optional.of(toPlannerTask(rs)) : Optional.empty(),
+            id
+        );
+    }
+
+    public List<PlannerTask> findPlannerTasks() {
+        return jdbcTemplate.query(
+            """
+                select * from avatar_planner_tasks
+                order by coalesce(due_at, starts_at, '9999-12-31T23:59:59Z'), created_at, title
+                """,
+            (rs, rowNum) -> toPlannerTask(rs)
+        );
+    }
+
+    public PlannerSubtodo savePlannerSubtodo(PlannerSubtodo subtodo) {
+        findPlannerTask(requireText(subtodo.taskId(), "planner task id"))
+            .orElseThrow(() -> new IllegalArgumentException("planner task not found: " + subtodo.taskId()));
+        String id = id(subtodo.id());
+        Instant now = Instant.now();
+        Instant createdAt = subtodo.createdAt() == null ? now : subtodo.createdAt();
+        jdbcTemplate.update(
+            """
+                insert into avatar_planner_subtodos (
+                    id, task_id, title, status, subtodo_position, created_at, updated_at
+                )
+                values (?, ?, ?, ?, ?, ?, ?)
+                on conflict(id) do update set
+                    title = excluded.title,
+                    status = excluded.status,
+                    subtodo_position = excluded.subtodo_position,
+                    updated_at = excluded.updated_at
+                """,
+            id,
+            subtodo.taskId(),
+            requireText(subtodo.title(), "planner subtodo title"),
+            status(subtodo.status(), AvatarTodoStatus.OPEN).name(),
+            subtodo.position(),
+            createdAt.toString(),
+            now.toString()
+        );
+        return findPlannerSubtodos(subtodo.taskId()).stream()
+            .filter(saved -> saved.id().equals(id))
+            .findFirst()
+            .orElseThrow();
+    }
+
+    public List<PlannerSubtodo> findPlannerSubtodos(String taskId) {
+        return jdbcTemplate.query(
+            "select * from avatar_planner_subtodos where task_id = ? order by subtodo_position, created_at, title",
+            (rs, rowNum) -> toPlannerSubtodo(rs),
+            taskId
+        );
+    }
+
+    public void linkPlannerTaskNote(String taskId, String noteId) {
+        findPlannerTask(requireText(taskId, "planner task id"))
+            .orElseThrow(() -> new IllegalArgumentException("planner task not found: " + taskId));
+        findNote(requireText(noteId, "note id"))
+            .orElseThrow(() -> new IllegalArgumentException("note not found: " + noteId));
+        jdbcTemplate.update(
+            """
+                insert into avatar_planner_task_notes (task_id, note_id, created_at)
+                values (?, ?, ?)
+                on conflict(task_id, note_id) do nothing
+                """,
+            taskId,
+            noteId,
+            Instant.now().toString()
+        );
+    }
+
+    public void replacePlannerCalendarProjection(String taskId, List<PlannerCalendarProjection> projections) {
+        jdbcTemplate.update("delete from avatar_planner_calendar_projection where task_id = ?", taskId);
+        for (PlannerCalendarProjection projection : projections == null ? List.<PlannerCalendarProjection>of() : projections) {
+            String id = id(projection.id());
+            Instant now = Instant.now();
+            Instant createdAt = projection.createdAt() == null ? now : projection.createdAt();
+            jdbcTemplate.update(
+                """
+                    insert into avatar_planner_calendar_projection (
+                        id, task_id, occurrence_start, occurrence_end, status, created_at, updated_at
+                    )
+                    values (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                id,
+                taskId,
+                requireInstant(projection.occurrenceStart(), "planner occurrence start").toString(),
+                string(projection.occurrenceEnd()),
+                status(projection.status(), PlannerTaskStatus.PLANNED).name(),
+                createdAt.toString(),
+                now.toString()
+            );
+        }
+    }
+
+    public List<PlannerCalendarProjection> findPlannerCalendarProjection(Instant from, Instant to) {
+        if (from == null || to == null) {
+            return jdbcTemplate.query(
+                "select * from avatar_planner_calendar_projection order by occurrence_start, task_id",
+                (rs, rowNum) -> toPlannerProjection(rs)
+            );
+        }
+        return jdbcTemplate.query(
+            """
+                select * from avatar_planner_calendar_projection
+                where occurrence_start >= ? and occurrence_start <= ?
+                order by occurrence_start, task_id
+                """,
+            (rs, rowNum) -> toPlannerProjection(rs),
+            from.toString(),
+            to.toString()
+        );
+    }
+
     public AvatarFact upsertFact(AvatarFact fact) {
         Instant updatedAt = Instant.now();
         jdbcTemplate.update(
@@ -951,6 +1120,53 @@ public class AvatarRepository {
         );
     }
 
+    private PlannerTask toPlannerTask(ResultSet rs) throws SQLException {
+        return new PlannerTask(
+            rs.getString("id"),
+            rs.getString("title"),
+            rs.getString("notes"),
+            PlannerTaskStatus.valueOf(rs.getString("status")),
+            AvatarPriority.valueOf(rs.getString("priority")),
+            instant(rs.getString("starts_at")),
+            instant(rs.getString("due_at")),
+            rs.getString("timezone"),
+            recurrence(rs.getString("recurrence_json")),
+            new PlannerTaskLink(
+                rs.getString("linked_project_id"),
+                rs.getString("linked_assignment_id"),
+                rs.getString("linked_job_id"),
+                rs.getString("linked_output_id")
+            ),
+            instant(rs.getString("created_at")),
+            instant(rs.getString("updated_at")),
+            instant(rs.getString("completed_at"))
+        );
+    }
+
+    private PlannerSubtodo toPlannerSubtodo(ResultSet rs) throws SQLException {
+        return new PlannerSubtodo(
+            rs.getString("id"),
+            rs.getString("task_id"),
+            rs.getString("title"),
+            AvatarTodoStatus.valueOf(rs.getString("status")),
+            rs.getInt("subtodo_position"),
+            instant(rs.getString("created_at")),
+            instant(rs.getString("updated_at"))
+        );
+    }
+
+    private PlannerCalendarProjection toPlannerProjection(ResultSet rs) throws SQLException {
+        return new PlannerCalendarProjection(
+            rs.getString("id"),
+            rs.getString("task_id"),
+            instant(rs.getString("occurrence_start")),
+            instant(rs.getString("occurrence_end")),
+            PlannerTaskStatus.valueOf(rs.getString("status")),
+            instant(rs.getString("created_at")),
+            instant(rs.getString("updated_at"))
+        );
+    }
+
     private AvatarFact toFact(ResultSet rs) throws SQLException {
         return new AvatarFact(
             rs.getString("namespace"),
@@ -1025,6 +1241,84 @@ public class AvatarRepository {
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Failed to serialize Avatar JSON list", exception);
         }
+    }
+
+    private String jsonRecurrence(PlannerRecurrence value) {
+        try {
+            PlannerRecurrence recurrence = value == null
+                ? new PlannerRecurrence(PlannerRecurrenceMode.NONE, 1, null, null, null, null, null, null)
+                : value.normalized();
+            return objectMapper.writeValueAsString(Map.of(
+                "mode", recurrence.mode().name(),
+                "interval", recurrence.interval(),
+                "startDate", recurrence.startDate() == null ? "" : recurrence.startDate().toString(),
+                "endDate", recurrence.endDate() == null ? "" : recurrence.endDate().toString(),
+                "time", recurrence.time() == null ? "" : recurrence.time().toString(),
+                "weekday", recurrence.weekday() == null ? "" : recurrence.weekday().name(),
+                "monthDay", recurrence.monthDay() == null ? "" : recurrence.monthDay().toString(),
+                "cron", recurrence.cron() == null ? "" : recurrence.cron()
+            ));
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Failed to serialize planner recurrence", exception);
+        }
+    }
+
+    private PlannerRecurrence recurrence(String json) {
+        if (!StringUtils.hasText(json) || "{}".equals(json.trim())) {
+            return new PlannerRecurrence(PlannerRecurrenceMode.NONE, 1, null, null, null, null, null, null);
+        }
+        try {
+            Map<String, Object> values = objectMapper.readValue(json, MAP);
+            return new PlannerRecurrence(
+                recurrenceMode(values.get("mode")),
+                intValue(values.get("interval"), 1),
+                localDate(values.get("startDate")),
+                localDate(values.get("endDate")),
+                localTime(values.get("time")),
+                weekday(values.get("weekday")),
+                intObject(values.get("monthDay")),
+                stringValue(values.get("cron"))
+            ).normalized();
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Failed to parse planner recurrence", exception);
+        }
+    }
+
+    private PlannerRecurrenceMode recurrenceMode(Object value) {
+        String text = stringValue(value);
+        if (!StringUtils.hasText(text)) {
+            return PlannerRecurrenceMode.NONE;
+        }
+        return PlannerRecurrenceMode.valueOf(text);
+    }
+
+    private LocalDate localDate(Object value) {
+        String text = stringValue(value);
+        return StringUtils.hasText(text) ? LocalDate.parse(text) : null;
+    }
+
+    private LocalTime localTime(Object value) {
+        String text = stringValue(value);
+        return StringUtils.hasText(text) ? LocalTime.parse(text) : null;
+    }
+
+    private DayOfWeek weekday(Object value) {
+        String text = stringValue(value);
+        return StringUtils.hasText(text) ? DayOfWeek.valueOf(text) : null;
+    }
+
+    private Integer intObject(Object value) {
+        String text = stringValue(value);
+        return StringUtils.hasText(text) ? Integer.parseInt(text) : null;
+    }
+
+    private int intValue(Object value, int fallback) {
+        Integer parsed = intObject(value);
+        return parsed == null ? fallback : parsed;
+    }
+
+    private String stringValue(Object value) {
+        return value == null ? null : value.toString();
     }
 
     private Map<String, Object> map(String json) {
