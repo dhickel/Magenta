@@ -12,6 +12,7 @@ status: active
 - Avatar editing must happen in place on the rendered dashboard; modal flows are reserved for deep single-module iteration.
 - Normal mode may show only a small top-corner module decorator for module detail/iteration. Edit mode should reveal sleek top-corner edit/delete/move/resize affordances plus add-module and add-row controls modeled after the demo.
 - The scratch/demo area may be used for temporary design validation, but it is not a source of truth and must not be referenced as canonical knowledge.
+- Dwight is on the road and email is a standing control channel for this workstream. Keep a reply-wait active after reports/phase updates, acknowledge every inbound email before acting on it, check for more than one inbound message, and make emailed reports detailed enough to stand alone with the full review content in the email body.
 
 ## Active Agents
 
