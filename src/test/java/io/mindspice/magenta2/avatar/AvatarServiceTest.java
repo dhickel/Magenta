@@ -165,5 +165,14 @@ class AvatarServiceTest {
         assertThatThrownBy(() -> service.addDashboardWidget(row.id(), "todos", 4))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("already exists");
+
+        assertThatThrownBy(() -> service.removeDashboardRow(row.id()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("must be empty");
+
+        service.removeDashboardWidget(notes.id());
+        service.removeDashboardWidget(todos.id());
+        service.removeDashboardRow(row.id());
+        assertThat(service.dashboardRows()).isEmpty();
     }
 }

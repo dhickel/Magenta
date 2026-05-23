@@ -57,6 +57,10 @@ public class AvatarService {
         return repository.moveDashboardRow(rowId, direction);
     }
 
+    public void removeDashboardRow(String rowId) {
+        repository.removeDashboardRow(rowId);
+    }
+
     public AvatarDashboardRowWidget addDashboardWidget(String rowId, String widgetKey, int columnWidth) {
         return repository.addDashboardWidget(rowId, widgetKey, columnWidth);
     }

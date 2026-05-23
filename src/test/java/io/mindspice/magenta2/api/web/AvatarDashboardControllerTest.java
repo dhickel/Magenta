@@ -109,7 +109,7 @@ class AvatarDashboardControllerTest {
 
     @Test
     void avatarShellRendersCompactChatWidgetRootsAndScopedAssets() {
-        String html = controller.avatar();
+        String html = controller.avatar(false);
 
         assertThat(html).contains("/css/avatar-dashboard.css?v=1");
         assertThat(html).contains("/js/avatar-chat.js?v=3");
@@ -120,16 +120,29 @@ class AvatarDashboardControllerTest {
         for (AvatarDashboardComponents.WidgetDefinition widget : AvatarDashboardComponents.WIDGETS) {
             assertThat(html).contains("id=\"avatar-widget-" + widget.key() + "\"");
         }
+
+        String editHtml = controller.avatar(true);
+        assertThat(editHtml).contains("avatar-widget-grid-editing");
+        assertThat(editHtml).contains("Exit Layout Edit");
+
+        controller.addLayoutRow();
+        controller.addLayoutWidget(avatarService.dashboardRows().getFirst().id(), "todos", 4);
+        String editRowsHtml = controller.avatar(true);
+        assertThat(editRowsHtml).contains("avatar-row-decoration");
+        assertThat(editRowsHtml).contains("avatar-widget-decoration");
     }
 
     @Test
     void widgetFragmentsReturnStableTargets() {
-        String grid = controller.widgets();
+        String grid = controller.widgets(false);
+        String editGrid = controller.widgets(true);
         String todos = controller.widget("todos");
 
         assertThat(grid).contains("id=\"avatar-widget-grid\"");
+        assertThat(editGrid).contains("avatar-widget-grid-editing");
         assertThat(todos).contains("id=\"avatar-widget-todos\"");
         assertThat(todos).contains("hx-post=\"/avatar/_todos\"");
+        assertThat(controller.widgetDetail("todos")).contains("avatar-widget-detail-modal");
         assertThatThrownBy(() -> controller.widget("unknown"))
             .isInstanceOf(ResponseStatusException.class)
             .extracting(error -> ((ResponseStatusException) error).getStatusCode())
@@ -220,6 +233,15 @@ class AvatarDashboardControllerTest {
             .extracting(widget -> widget.widgetKey())
             .containsExactly("todos");
 
+        assertThatThrownBy(() -> controller.removeLayoutRow(rowId))
+            .isInstanceOf(ResponseStatusException.class)
+            .extracting(error -> ((ResponseStatusException) error).getStatusCode())
+            .isEqualTo(HttpStatus.BAD_REQUEST);
+
+        controller.removeLayoutWidget(todosId);
+        assertThat(controller.removeLayoutRow(rowId)).contains("avatar-widget-grid-editing");
+
+        controller.addLayoutRow();
         controller.addLayoutRow();
         String secondRowId = avatarService.dashboardRows().get(1).id();
         controller.moveLayoutRow(secondRowId, "up");

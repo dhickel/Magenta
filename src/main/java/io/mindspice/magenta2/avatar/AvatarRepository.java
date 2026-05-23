@@ -271,6 +271,16 @@ public class AvatarRepository {
         };
     }
 
+    public void removeDashboardRow(String rowId) {
+        requireText(rowId, "row id");
+        findDashboardRow(rowId).orElseThrow(() -> new IllegalArgumentException("dashboard row not found: " + rowId));
+        if (dashboardRowWidth(rowId) > 0) {
+            throw new IllegalArgumentException("dashboard row must be empty before it can be removed");
+        }
+        jdbcTemplate.update("delete from avatar_dashboard_rows where id = ?", rowId);
+        normalizeDashboardRows();
+    }
+
     public void removeDashboardWidget(String widgetId) {
         requireText(widgetId, "widget id");
         if (jdbcTemplate.update("delete from avatar_dashboard_widgets where id = ?", widgetId) == 0) {

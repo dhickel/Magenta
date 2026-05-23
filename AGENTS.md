@@ -75,9 +75,17 @@ This is the style we want to take with our UI.
 - If views are similar, prefer shared render structures and slot-key based reuse rather than duplicating near-identical view code.
 - Use SimplyPages components/modules as reusable building blocks first, and only fall back to ad-hoc page-specific structures when reuse would add unnecessary complexity.
 
+#### SimplyPages Layout and Editing Research Policy
+- Before adding or refactoring a SimplyPages UI layout, inspect the relevant SimplyPages docs and demo code first. For dashboard/module editing, start with the dynamic SlotKey/RenderContext docs, editing-system docs, editing API reference, and the demo `EditingDemoController`.
+- Diagnose the existing Magenta code against SimplyPages examples before inventing a new UI structure. Identify where current code diverges from reusable `Row`, `Column`, module, HTMX, OOB swap, slot-key, or edit-decorator patterns.
+- Prefer in-place decorated editing for layout operations. Moving, resizing, adding rows, adding modules/widgets, and deleting layout elements should happen on the real displayed layout whenever practical, not in a separate layout-only modal.
+- Modal or drawer editing is appropriate for deep module-specific iteration, but it must not own dashboard placement, row ordering, or 12-column sizing.
+- When a scratch page is useful for planning or visual experiments, create it as an internal/dev-only surface, keep it out of normal navigation, and use it only to validate ideas with Playwright. Never treat scratch pages as source-of-truth documentation; extract stable examples and lessons into production components, docs, or `.internal-dev/knowledge/`.
+
 #### Avatar Dashboard Style Reference
 - Before redesigning `/avatar` or adding Avatar dashboard-like surfaces, read `.internal-dev/notes/2026-05-22-avatar-dashboard-ui-style-guidelines.md`.
 - Keep Avatar styling aligned with the existing `/dashboard` and per-agent dashboard operational console: dense panels, compact controls, thin blue-gray borders, small radii, semantic chips, and HTMX-first fragments.
+- For Avatar layout/editing work, also read `.internal-dev/knowledge/simplypages-avatar-layout-and-editing.md`.
 
 *Always use the libraries coding style and practices, do not try to shoehorn functionality or use raw html strings, raw html is a fallback for advanced cases most functionality from css, js, htmx
 can be done via functions. The library has a vast set of components and ways to make your own, search the well formated documentation for your operation and read it before any edits, if
@@ -129,6 +137,8 @@ If you find a bug pull the recent version of the library and directly implement 
 - For live chat, browser, SSE, agent/model routing, planning, interruption, chat switching, or concurrent-interaction validation, use the Playwright MCP workflow documented in `.internal-dev/knowledge/live-chat-mcp-workflow-testing.md`. Read that file before running this class of test, follow its MCP-first approach, and update it when you discover better methods, new gotchas, or changed endpoint behavior.
 - For UI changes with interactions that can be validated in a small focused pass, run Playwright validation on the changed targets before sign-off.
 - For any UI change, capture Playwright screenshots of the changed surfaces for agent-side visual review/debugging, and use them to check regressions, layout breakage, and consistency with good UI/UX design patterns before sign-off.
+- For any UI layout change, the Playwright pass must include a visual quality critique, not only a functional click-through. Actively inspect alignment, spacing, gaps, density, scan hierarchy, control affordances, text wrapping, overflow, first-viewport usefulness, mobile stacking, and whether the page uses available space coherently.
+- A UI layout is not validated if screenshots show stranded columns, excessive dead zones, cramped controls, clipped text, incoherent gutters, overlapping elements, weak hierarchy, or a design that appears optimized for an editor/modal instead of the actual user-facing surface.
 - Screenshots are primarily an internal debugging/review artifact; share them with users only when useful for communication (for example, to pinpoint where an issue appears on screen).
 - Run Playwright while the application is running so validation checks both front-end interaction behavior and observable backend behavior tied to those interactions.
 - Default Playwright validation scope to focused change-target checks; deep end-to-end or full production-style Playwright integration campaigns require explicit user approval.

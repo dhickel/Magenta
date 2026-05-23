@@ -281,6 +281,14 @@ class AvatarRepositoryTest {
         assertThat(repository.findDashboardRows()).singleElement()
             .satisfies(saved -> assertThat(saved.widgets()).extracting(AvatarDashboardRowWidget::widgetKey)
                 .containsExactly("todos"));
+
+        assertThatThrownBy(() -> repository.removeDashboardRow(row.id()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("must be empty");
+
+        repository.removeDashboardWidget(first.id());
+        repository.removeDashboardRow(row.id());
+        assertThat(repository.findDashboardRows()).isEmpty();
     }
 
     @Test

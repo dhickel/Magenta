@@ -31,6 +31,7 @@ status: active
 
 | reviewed_on | reviewer | outcome | notes |
 | --- | --- | --- | --- |
+| 2026-05-23 | codex | reviewed | Avatar visual layout refactor preserves existing Avatar data/runtime boundaries while making rendered dashboard layout the editing source of truth. |
 | 2026-05-23 | codex | updated | Added Avatar Work Area/layout refactor direction from the new implementation plan suite. |
 | 2026-05-23 | codex | updated | Refreshed Avatar Work Area/layout refactor notes after implementation landed on the feature branch. |
 | 2026-05-22 | codex | updated | Updated Avatar runtime boundary notes after final dashboard integration and email-ingress removal. |

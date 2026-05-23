@@ -24,6 +24,8 @@ This package owns HTTP and web-facing entry points.
 - If UI behavior or structure is used in multiple places and is more than bare functionality, promote it into a reusable component/module.
 - For similar views, prefer shared render structures and slot-key based reuse over duplicated near-identical templates.
 - Before changing `/avatar` styling or layout, read `.internal-dev/notes/2026-05-22-avatar-dashboard-ui-style-guidelines.md` and preserve the `/dashboard` plus per-agent dashboard operational style language unless the user explicitly changes direction.
+- For `/avatar`, the rendered dashboard is the source of truth for layout. Move, resize, add-row, add-widget, and remove controls should decorate the live dashboard surface; modal or drawer flows are only for module-specific detail/settings work.
+- For `/avatar` layout work, read `.internal-dev/knowledge/simplypages-avatar-layout-and-editing.md` and compare the implementation against SimplyPages `Row`, `Column`, `EditableModule`, HTMX, OOB, and slot-key patterns before changing code.
 - Preserve HTMX-compatible security failures and keep CSRF compatibility in the shared shell/client helpers when adding browser mutation routes.
 - Do not put chat, persistence, or orchestration logic in controllers.
 - Keep command parsing small and explicit.
@@ -33,4 +35,5 @@ This package owns HTTP and web-facing entry points.
 - Add or update controller tests for new routes, request validation, status codes, and response shapes.
 - Check browser client behavior when web-facing API contracts change.
 - For any web/UI change, capture Playwright screenshots of affected screens for agent-side visual review/debugging and verify non-breaking behavior, layout integrity, and sound UI/UX patterns before sign-off.
+- For `/avatar` UI changes, Playwright validation must capture normal and edit mode on desktop and mobile, compare against `/dashboard` and `/agents`, and explicitly report alignment, dead space, density, hierarchy, wrapping, and control affordance quality.
 - Treat screenshots as internal validation artifacts first; use them in user communication when they help localize or explain UI issues.

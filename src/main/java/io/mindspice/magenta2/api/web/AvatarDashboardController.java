@@ -114,14 +114,14 @@ public class AvatarDashboardController {
 
     @GetMapping("/avatar")
     @ResponseBody
-    public String avatar() {
-        return shell.renderWithContent(AvatarDashboardComponents.page(data()));
+    public String avatar(@RequestParam(value = "edit", required = false) boolean edit) {
+        return shell.renderWithContent(AvatarDashboardComponents.page(data(), edit));
     }
 
     @GetMapping("/avatar/_widgets")
     @ResponseBody
-    public String widgets() {
-        return AvatarDashboardComponents.widgetGrid(data()).render();
+    public String widgets(@RequestParam(value = "edit", required = false) boolean edit) {
+        return AvatarDashboardComponents.widgetGrid(data(), edit).render();
     }
 
     @GetMapping("/avatar/_widgets/{widgetKey}")
@@ -143,6 +143,13 @@ public class AvatarDashboardController {
         return AvatarDashboardComponents.widget(data, widget).render();
     }
 
+    @GetMapping("/avatar/_widgets/{widgetKey}/detail")
+    @ResponseBody
+    public String widgetDetail(@PathVariable String widgetKey) {
+        requireWidget(widgetKey);
+        return AvatarDashboardComponents.widgetDetailModal(data(), widgetKey).render();
+    }
+
     @GetMapping("/avatar/_edit")
     @ResponseBody
     public String edit(@RequestParam(value = "close", required = false) boolean close) {
@@ -156,7 +163,7 @@ public class AvatarDashboardController {
     @ResponseBody
     public String addLayoutRow() {
         avatarService.addDashboardRow();
-        return AvatarDashboardComponents.layoutEditResponse(data()).render();
+        return AvatarDashboardComponents.layoutEditResponse(data(), true).render();
     }
 
     @PostMapping("/avatar/_layout/rows/{rowId}/move")
@@ -167,13 +174,24 @@ public class AvatarDashboardController {
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
-        return AvatarDashboardComponents.layoutEditResponse(data()).render();
+        return AvatarDashboardComponents.layoutEditResponse(data(), true).render();
     }
 
     @GetMapping("/avatar/_layout/rows/{rowId}/catalog")
     @ResponseBody
     public String widgetCatalog(@PathVariable String rowId) {
         return AvatarDashboardComponents.widgetCatalogModal(avatarService.dashboardRows(), rowId).render();
+    }
+
+    @DeleteMapping("/avatar/_layout/rows/{rowId}")
+    @ResponseBody
+    public String removeLayoutRow(@PathVariable String rowId) {
+        try {
+            avatarService.removeDashboardRow(rowId);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
+        return AvatarDashboardComponents.layoutEditResponse(data(), true).render();
     }
 
     @PostMapping("/avatar/_layout/rows/{rowId}/widgets")
@@ -189,7 +207,7 @@ public class AvatarDashboardController {
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
-        return AvatarDashboardComponents.layoutEditResponse(data()).render();
+        return AvatarDashboardComponents.layoutEditResponse(data(), true).render();
     }
 
     @PostMapping("/avatar/_layout/widgets/{widgetId}/move")
@@ -200,7 +218,7 @@ public class AvatarDashboardController {
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
-        return AvatarDashboardComponents.layoutEditResponse(data()).render();
+        return AvatarDashboardComponents.layoutEditResponse(data(), true).render();
     }
 
     @PutMapping("/avatar/_layout/widgets/{widgetId}/width")
@@ -211,7 +229,7 @@ public class AvatarDashboardController {
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
-        return AvatarDashboardComponents.layoutEditResponse(data()).render();
+        return AvatarDashboardComponents.layoutEditResponse(data(), true).render();
     }
 
     @DeleteMapping("/avatar/_layout/widgets/{widgetId}")
@@ -222,14 +240,14 @@ public class AvatarDashboardController {
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
-        return AvatarDashboardComponents.layoutEditResponse(data()).render();
+        return AvatarDashboardComponents.layoutEditResponse(data(), true).render();
     }
 
     @Deprecated
     @PutMapping("/avatar/_layout")
     @ResponseBody
     public String saveLayout() {
-        return AvatarDashboardComponents.layoutEditResponse(data()).render();
+        return AvatarDashboardComponents.layoutEditResponse(data(), true).render();
     }
 
     @PostMapping("/avatar/_todos")
