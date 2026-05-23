@@ -21,6 +21,7 @@ import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowRun;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.EffectiveWorkspace;
 import io.mindspice.magenta2.ai.orchestration.workspaces.EffectiveWorkspaceResolver;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.Workspace;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLeaseService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceOwnerType;
@@ -42,6 +43,7 @@ public class AssignmentService {
     private final EffectiveWorkspaceResolver effectiveWorkspaceResolver;
     private final WorkspaceService workspaceService;
     private final WorkspaceLeaseService workspaceLeaseService;
+    private final WorkAreaService workAreaService;
     private volatile Consumer<String> localInterruptHandler = ignored -> { };
 
     public AssignmentService(
@@ -63,7 +65,23 @@ public class AssignmentService {
         @Autowired(required = false) WorkflowService workflowService
     ) {
         this(repository, agentProfileService, runtimeSettingsService, jobService, auditRepository, planService,
-            workflowService, null, null, null);
+            workflowService, null, null, null, null);
+    }
+
+    public AssignmentService(
+        OrchestrationRuntimeRepository repository,
+        AgentProfileService agentProfileService,
+        RuntimeSettingsService runtimeSettingsService,
+        JobService jobService,
+        AuditRepository auditRepository,
+        PlanService planService,
+        WorkflowService workflowService,
+        EffectiveWorkspaceResolver effectiveWorkspaceResolver,
+        WorkspaceService workspaceService,
+        WorkspaceLeaseService workspaceLeaseService
+    ) {
+        this(repository, agentProfileService, runtimeSettingsService, jobService, auditRepository, planService,
+            workflowService, effectiveWorkspaceResolver, workspaceService, workspaceLeaseService, null);
     }
 
     @Autowired
@@ -77,7 +95,8 @@ public class AssignmentService {
         @Autowired(required = false) WorkflowService workflowService,
         @Autowired(required = false) EffectiveWorkspaceResolver effectiveWorkspaceResolver,
         @Autowired(required = false) WorkspaceService workspaceService,
-        @Autowired(required = false) WorkspaceLeaseService workspaceLeaseService
+        @Autowired(required = false) WorkspaceLeaseService workspaceLeaseService,
+        @Autowired(required = false) WorkAreaService workAreaService
     ) {
         this.repository = repository;
         this.agentProfileService = agentProfileService;
@@ -89,6 +108,7 @@ public class AssignmentService {
         this.effectiveWorkspaceResolver = effectiveWorkspaceResolver;
         this.workspaceService = workspaceService;
         this.workspaceLeaseService = workspaceLeaseService;
+        this.workAreaService = workAreaService;
     }
 
     public WorkAssignment create(AssignmentRequest request) {
@@ -113,6 +133,11 @@ public class AssignmentService {
         String projectId = normalize(firstText(request.projectId(), text(input.get("projectId"))));
         validateWorkspaceCompatibility(projectId, request.workspaceId());
         EffectiveWorkspace effectiveWorkspace = resolveEffectiveWorkspace(request.agentId(), projectId);
+        WorkspaceOwnerType effectiveOwnerType = StringUtils.hasText(projectId)
+            ? WorkspaceOwnerType.PROJECT
+            : WorkspaceOwnerType.AGENT;
+        String effectiveOwnerId = StringUtils.hasText(projectId) ? projectId : request.agentId();
+        WorkAreaRouting workAreaRouting = resolveWorkAreaRouting(request, effectiveOwnerType, effectiveOwnerId);
         AssignmentTemplateParser.validate(new AssignmentRequest(
             request.agentId(),
             request.jobId(),
@@ -122,6 +147,10 @@ public class AssignmentService {
             request.modelOverride(),
             projectId,
             request.workspaceId(),
+            workAreaRouting.selectedWorkAreaId(),
+            workAreaRouting.outputRouteType(),
+            workAreaRouting.outputWorkAreaId(),
+            workAreaRouting.outputDirectRelativePath(),
             input
         ));
         return repository.saveAssignment(new WorkAssignment(
@@ -137,6 +166,10 @@ public class AssignmentService {
             projectId,
             effectiveWorkspace == null ? null : effectiveWorkspace.workspaceId(),
             effectiveWorkspace == null ? null : effectiveWorkspace.ownerType().name(),
+            workAreaRouting.selectedWorkAreaId(),
+            workAreaRouting.outputRouteType(),
+            workAreaRouting.outputWorkAreaId(),
+            workAreaRouting.outputDirectRelativePath(),
             0,
             Map.of(),
             input,
@@ -385,6 +418,8 @@ public class AssignmentService {
             assignment.id(), assignment.agentId(), assignment.jobId(), assignment.jobItemId(),
             assignment.assignmentType(), assignment.priority(), assignment.status(), assignment.modelOverride(),
             assignment.workspaceId(), projectId, effectiveWorkspace.workspaceId(), effectiveWorkspace.ownerType().name(),
+            assignment.selectedWorkAreaId(), assignment.outputRouteType(), assignment.outputWorkAreaId(),
+            assignment.outputDirectRelativePath(),
             assignment.currentItemIndex(), assignment.checkpoint(), assignment.input(), assignment.output(), assignment.evidence(),
             assignment.errorText(), assignment.leaseOwner(), assignment.leaseExpiresAt(), assignment.createdAt(),
             assignment.updatedAt(), assignment.startedAt(), assignment.completedAt(), assignment.lastProgressAt(),
@@ -499,6 +534,8 @@ public class AssignmentService {
             assignment.id(), assignment.agentId(), assignment.jobId(), assignment.jobItemId(),
             assignment.assignmentType(), assignment.priority(), status, assignment.modelOverride(), assignment.workspaceId(),
             assignment.projectId(), assignment.effectiveWorkspaceId(), assignment.effectiveWorkspaceKind(),
+            assignment.selectedWorkAreaId(), assignment.outputRouteType(), assignment.outputWorkAreaId(),
+            assignment.outputDirectRelativePath(),
             currentItemIndex, checkpoint == null ? Map.of() : checkpoint, assignment.input(),
             output == null ? Map.of() : output, evidence == null ? Map.of() : evidence, errorText,
             leaseOwner, leaseExpiresAt, assignment.createdAt(), assignment.updatedAt(), assignment.startedAt(), completedAt,
@@ -723,6 +760,69 @@ public class AssignmentService {
             return null;
         }
         return effectiveWorkspaceResolver.resolve(agentId, projectId);
+    }
+
+    private WorkAreaRouting resolveWorkAreaRouting(
+        AssignmentRequest request,
+        WorkspaceOwnerType ownerType,
+        String ownerId
+    ) {
+        String selectedWorkAreaId = normalize(request.selectedWorkAreaId());
+        String routeType = normalizeOutputRouteType(request.outputRouteType());
+        String outputWorkAreaId = normalize(request.outputWorkAreaId());
+        String outputDirectRelativePath = normalize(request.outputDirectRelativePath());
+
+        if (workAreaService == null) {
+            return new WorkAreaRouting(selectedWorkAreaId, routeType, outputWorkAreaId, outputDirectRelativePath);
+        }
+
+        if (!StringUtils.hasText(selectedWorkAreaId)) {
+            selectedWorkAreaId = workAreaService.ensureHome(ownerType, ownerId, null).id();
+        } else {
+            workAreaService.requireActiveOwned(selectedWorkAreaId, ownerType, ownerId, "selected Work Area");
+        }
+
+        if (AssignmentRequest.OUTPUT_ROUTE_WORK_AREA.equals(routeType)) {
+            if (!StringUtils.hasText(outputWorkAreaId)) {
+                throw new IllegalArgumentException("outputWorkAreaId is required when outputRouteType is WORK_AREA");
+            }
+            workAreaService.requireActiveOwned(outputWorkAreaId, ownerType, ownerId, "output Work Area");
+            outputDirectRelativePath = null;
+        } else if (AssignmentRequest.OUTPUT_ROUTE_DIRECT_DIRECTORY.equals(routeType)) {
+            if (!StringUtils.hasText(outputDirectRelativePath)) {
+                throw new IllegalArgumentException(
+                    "outputDirectRelativePath is required when outputRouteType is DIRECT_DIRECTORY");
+            }
+            outputDirectRelativePath = workAreaService.requireExistingOwnerDirectory(
+                ownerType, ownerId, outputDirectRelativePath, "direct output directory");
+            outputWorkAreaId = null;
+        } else {
+            outputWorkAreaId = null;
+            outputDirectRelativePath = null;
+        }
+        return new WorkAreaRouting(selectedWorkAreaId, routeType, outputWorkAreaId, outputDirectRelativePath);
+    }
+
+    private String normalizeOutputRouteType(String routeType) {
+        String normalized = normalize(routeType);
+        if (!StringUtils.hasText(normalized)) {
+            return AssignmentRequest.OUTPUT_ROUTE_DEFAULT;
+        }
+        String upper = normalized.toUpperCase(java.util.Locale.ROOT);
+        if (AssignmentRequest.OUTPUT_ROUTE_DEFAULT.equals(upper)
+            || AssignmentRequest.OUTPUT_ROUTE_WORK_AREA.equals(upper)
+            || AssignmentRequest.OUTPUT_ROUTE_DIRECT_DIRECTORY.equals(upper)) {
+            return upper;
+        }
+        throw new IllegalArgumentException("Unsupported outputRouteType: " + routeType);
+    }
+
+    private record WorkAreaRouting(
+        String selectedWorkAreaId,
+        String outputRouteType,
+        String outputWorkAreaId,
+        String outputDirectRelativePath
+    ) {
     }
 
     private void validateWorkspaceCompatibility(String projectId, String workspaceId) {

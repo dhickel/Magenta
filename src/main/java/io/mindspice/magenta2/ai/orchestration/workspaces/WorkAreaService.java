@@ -114,6 +114,38 @@ public class WorkAreaService {
         return requireExistingDirectory(root, workArea.areaRelativePath(), "work area");
     }
 
+    public Path ownerRoot(WorkspaceOwnerType ownerType, String ownerId) {
+        requireSupportedOwner(ownerType);
+        requireOwnerId(ownerId);
+        return rootPath(workspace(ownerType, ownerId, null).rootRelativePath());
+    }
+
+    public WorkArea requireActiveOwned(String workAreaId, WorkspaceOwnerType ownerType, String ownerId, String label) {
+        WorkArea workArea = get(workAreaId);
+        if (workArea.ownerType() != ownerType || !workArea.ownerId().equals(ownerId)) {
+            throw new IllegalArgumentException(label + " does not belong to " + ownerType + " " + ownerId);
+        }
+        if (!workArea.active()) {
+            throw new IllegalArgumentException(label + " is inactive: " + workAreaId);
+        }
+        resolve(workArea);
+        return workArea;
+    }
+
+    public String requireExistingOwnerDirectory(
+        WorkspaceOwnerType ownerType,
+        String ownerId,
+        String relativePath,
+        String label
+    ) {
+        requireSupportedOwner(ownerType);
+        requireOwnerId(ownerId);
+        Workspace workspace = workspace(ownerType, ownerId, null);
+        String normalized = normalizeAreaRelativePath(relativePath);
+        requireExistingDirectory(workspace, normalized);
+        return normalized;
+    }
+
     private WorkArea createHome(WorkspaceOwnerType ownerType, String ownerId, String displayName) {
         Workspace workspace = workspace(ownerType, ownerId, displayName);
         Path root = rootPath(workspace.rootRelativePath());

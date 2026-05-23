@@ -14,8 +14,31 @@ public record AssignmentRequest(
     String modelOverride,
     String projectId,
     String workspaceId,
+    String selectedWorkAreaId,
+    String outputRouteType,
+    String outputWorkAreaId,
+    String outputDirectRelativePath,
     Map<String, Object> input
 ) {
+    public static final String OUTPUT_ROUTE_DEFAULT = "DEFAULT";
+    public static final String OUTPUT_ROUTE_WORK_AREA = "WORK_AREA";
+    public static final String OUTPUT_ROUTE_DIRECT_DIRECTORY = "DIRECT_DIRECTORY";
+
+    public AssignmentRequest(
+        String agentId,
+        String jobId,
+        String jobItemId,
+        AssignmentType assignmentType,
+        Integer priority,
+        String modelOverride,
+        String projectId,
+        String workspaceId,
+        Map<String, Object> input
+    ) {
+        this(agentId, jobId, jobItemId, assignmentType, priority, modelOverride, projectId, workspaceId,
+            null, null, null, null, input);
+    }
+
     public AssignmentRequest(
         String agentId,
         String jobId,
@@ -26,6 +49,7 @@ public record AssignmentRequest(
         String workspaceId,
         Map<String, Object> input
     ) {
-        this(agentId, jobId, jobItemId, assignmentType, priority, modelOverride, null, workspaceId, input);
+        this(agentId, jobId, jobItemId, assignmentType, priority, modelOverride, null, workspaceId,
+            null, null, null, null, input);
     }
 }

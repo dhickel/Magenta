@@ -1,5 +1,6 @@
 package io.mindspice.magenta2.ai.orchestration.runtime;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
@@ -15,6 +16,10 @@ import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileRepository;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileStatus;
 import io.mindspice.magenta2.ai.orchestration.workspaces.EffectiveWorkspaceResolver;
+import io.mindspice.magenta2.ai.orchestration.workspaces.RootRelativePathService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkArea;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaRepository;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.Workspace;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLeaseService;
@@ -156,6 +161,68 @@ class AssignmentContextServiceTest {
         assertThat(requeued.checkpoint()).containsEntry("lastWorkspaceBlocker", "leased");
     }
 
+    @Test
+    void assignmentCreationDefaultsToHomeWorkArea() {
+        Context context = context();
+
+        WorkAssignment assignment = context.assignmentService().create(new AssignmentRequest(
+            "agent-1", null, null, AssignmentType.REPORT, 1, null,
+            null, null, Map.of("message", "hello")
+        ));
+        WorkArea home = context.workAreaService().get(assignment.selectedWorkAreaId());
+
+        assertThat(home.home()).isTrue();
+        assertThat(home.ownerType()).isEqualTo(WorkspaceOwnerType.AGENT);
+        assertThat(home.ownerId()).isEqualTo("agent-1");
+        assertThat(assignment.outputRouteType()).isEqualTo(AssignmentRequest.OUTPUT_ROUTE_DEFAULT);
+        assertThat(assignment.outputWorkAreaId()).isNull();
+        assertThat(assignment.outputDirectRelativePath()).isNull();
+        assertThat(Files.isDirectory(tempDir.resolve("agents/agent-1/workspace/home"))).isTrue();
+    }
+
+    @Test
+    void assignmentCreationPersistsOutputWorkAreaRoute() throws Exception {
+        Context context = context();
+        context.workAreaService().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);
+        Files.createDirectories(tempDir.resolve("agents/agent-1/workspace/review"));
+        WorkArea outputArea = context.workAreaService()
+            .markDirectory(WorkspaceOwnerType.AGENT, "agent-1", "review", "Review");
+
+        WorkAssignment assignment = context.assignmentService().create(new AssignmentRequest(
+            "agent-1", null, null, AssignmentType.REPORT, 1, null,
+            null, null, null, AssignmentRequest.OUTPUT_ROUTE_WORK_AREA, outputArea.id(), null,
+            Map.of("message", "hello")
+        ));
+
+        assertThat(assignment.selectedWorkAreaId()).isNotBlank();
+        assertThat(assignment.outputRouteType()).isEqualTo(AssignmentRequest.OUTPUT_ROUTE_WORK_AREA);
+        assertThat(assignment.outputWorkAreaId()).isEqualTo(outputArea.id());
+        assertThat(assignment.outputDirectRelativePath()).isNull();
+    }
+
+    @Test
+    void assignmentCreationValidatesDirectOutputDirectory() throws Exception {
+        Context context = context();
+        Files.createDirectories(tempDir.resolve("agents/agent-1/workspace/manual-out"));
+
+        WorkAssignment assignment = context.assignmentService().create(new AssignmentRequest(
+            "agent-1", null, null, AssignmentType.REPORT, 1, null,
+            null, null, null, AssignmentRequest.OUTPUT_ROUTE_DIRECT_DIRECTORY, null, "manual-out",
+            Map.of("message", "hello")
+        ));
+
+        assertThat(assignment.outputRouteType()).isEqualTo(AssignmentRequest.OUTPUT_ROUTE_DIRECT_DIRECTORY);
+        assertThat(assignment.outputWorkAreaId()).isNull();
+        assertThat(assignment.outputDirectRelativePath()).isEqualTo("manual-out");
+        assertThatThrownBy(() -> context.assignmentService().create(new AssignmentRequest(
+            "agent-1", null, null, AssignmentType.REPORT, 1, null,
+            null, null, null, AssignmentRequest.OUTPUT_ROUTE_DIRECT_DIRECTORY, null, "../outside",
+            Map.of("message", "hello")
+        )))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("escapes workspace root");
+    }
+
     private Context context() {
         JdbcTemplate jdbc = jdbcTemplate();
         ObjectMapper mapper = new ObjectMapper();
@@ -170,12 +237,18 @@ class AssignmentContextServiceTest {
             throw new IllegalStateException(e);
         }
         WorkspaceRepository workspaceRepository = new WorkspaceRepository(jdbc);
+        WorkAreaRepository workAreaRepository = new WorkAreaRepository(jdbc);
         WorkspaceService workspaceService;
         try {
-            workspaceService = new WorkspaceService(workspaceRepository, config);
+            workspaceService = new WorkspaceService(
+                workspaceRepository,
+                config,
+                new RootRelativePathService(directoryService)
+            );
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
+        WorkAreaService workAreaService = new WorkAreaService(workAreaRepository, workspaceService, directoryService);
         WorkspaceLeaseService leaseService = new WorkspaceLeaseService(workspaceRepository);
         AgentProfileService agentService = new AgentProfileService(new AgentProfileRepository(jdbc, mapper), config, null);
         agentService.create(new AgentProfile(
@@ -184,9 +257,10 @@ class AssignmentContextServiceTest {
         ));
         AssignmentService assignmentService = new AssignmentService(
             repository, agentService, null, null, null, null, null,
-            new EffectiveWorkspaceResolver(directoryService, workspaceService), workspaceService, leaseService
+            new EffectiveWorkspaceResolver(directoryService, workspaceService), workspaceService, leaseService,
+            workAreaService
         );
-        return new Context(repository, workspaceService, leaseService, assignmentService);
+        return new Context(repository, workspaceService, leaseService, workAreaService, assignmentService);
     }
 
     private JdbcTemplate jdbcTemplate() {
@@ -197,6 +271,7 @@ class AssignmentContextServiceTest {
         OrchestrationRuntimeRepository repository,
         WorkspaceService workspaceService,
         WorkspaceLeaseService leaseService,
+        WorkAreaService workAreaService,
         AssignmentService assignmentService
     ) {
     }

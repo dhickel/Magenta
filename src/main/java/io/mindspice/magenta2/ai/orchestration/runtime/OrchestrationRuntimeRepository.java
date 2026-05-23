@@ -135,11 +135,12 @@ public class OrchestrationRuntimeRepository {
                 insert into work_assignments (
                     id, agent_id, job_id, job_item_id, assignment_type, priority, status, model_override,
                     workspace_id, project_id, effective_workspace_id, effective_workspace_kind,
+                    selected_work_area_id, output_route_type, output_work_area_id, output_direct_relative_path,
                     current_item_index, checkpoint_json, input_json, output_json, evidence_json,
                     error_text, lease_owner, lease_expires_at, last_progress_at, last_heartbeat_at,
                     created_at, updated_at, started_at, completed_at
                 )
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict(id) do update set
                     agent_id = excluded.agent_id,
                     job_id = excluded.job_id,
@@ -152,6 +153,10 @@ public class OrchestrationRuntimeRepository {
                     project_id = excluded.project_id,
                     effective_workspace_id = excluded.effective_workspace_id,
                     effective_workspace_kind = excluded.effective_workspace_kind,
+                    selected_work_area_id = excluded.selected_work_area_id,
+                    output_route_type = excluded.output_route_type,
+                    output_work_area_id = excluded.output_work_area_id,
+                    output_direct_relative_path = excluded.output_direct_relative_path,
                     current_item_index = excluded.current_item_index,
                     checkpoint_json = excluded.checkpoint_json,
                     input_json = excluded.input_json,
@@ -169,7 +174,9 @@ public class OrchestrationRuntimeRepository {
             assignment.id(), assignment.agentId(), assignment.jobId(), assignment.jobItemId(),
             assignment.assignmentType().name(), assignment.priority(), assignment.status().name(),
             assignment.modelOverride(), assignment.workspaceId(), assignment.projectId(),
-            assignment.effectiveWorkspaceId(), assignment.effectiveWorkspaceKind(), assignment.currentItemIndex(),
+            assignment.effectiveWorkspaceId(), assignment.effectiveWorkspaceKind(),
+            assignment.selectedWorkAreaId(), assignment.outputRouteType(), assignment.outputWorkAreaId(),
+            assignment.outputDirectRelativePath(), assignment.currentItemIndex(),
             jsonOrNull(assignment.checkpoint()), jsonOrNull(assignment.input()), jsonOrNull(assignment.output()),
             jsonOrNull(assignment.evidence()), assignment.errorText(), assignment.leaseOwner(),
             instant(assignment.leaseExpiresAt()), instant(lastProgressAt), instant(lastHeartbeatAt),
@@ -963,7 +970,9 @@ public class OrchestrationRuntimeRepository {
             AssignmentType.valueOf(rs.getString("assignment_type")), rs.getInt("priority"),
             OrchestrationStatus.valueOf(rs.getString("status")), rs.getString("model_override"),
             rs.getString("workspace_id"), rs.getString("project_id"), rs.getString("effective_workspace_id"),
-            rs.getString("effective_workspace_kind"), rs.getInt("current_item_index"), map(rs.getString("checkpoint_json")),
+            rs.getString("effective_workspace_kind"), rs.getString("selected_work_area_id"),
+            rs.getString("output_route_type"), rs.getString("output_work_area_id"),
+            rs.getString("output_direct_relative_path"), rs.getInt("current_item_index"), map(rs.getString("checkpoint_json")),
             map(rs.getString("input_json")), map(rs.getString("output_json")), map(rs.getString("evidence_json")),
             rs.getString("error_text"), rs.getString("lease_owner"), instantValue(rs.getString("lease_expires_at")),
             instantValue(rs.getString("created_at")), instantValue(rs.getString("updated_at")),
@@ -1125,6 +1134,10 @@ public class OrchestrationRuntimeRepository {
                 project_id text,
                 effective_workspace_id text,
                 effective_workspace_kind text,
+                selected_work_area_id text,
+                output_route_type text,
+                output_work_area_id text,
+                output_direct_relative_path text,
                 current_item_index integer not null,
                 checkpoint_json text,
                 input_json text,
@@ -1161,6 +1174,18 @@ public class OrchestrationRuntimeRepository {
         }
         if (!assignmentColumns.contains("effective_workspace_kind")) {
             jdbcTemplate.execute("alter table work_assignments add column effective_workspace_kind text");
+        }
+        if (!assignmentColumns.contains("selected_work_area_id")) {
+            jdbcTemplate.execute("alter table work_assignments add column selected_work_area_id text");
+        }
+        if (!assignmentColumns.contains("output_route_type")) {
+            jdbcTemplate.execute("alter table work_assignments add column output_route_type text");
+        }
+        if (!assignmentColumns.contains("output_work_area_id")) {
+            jdbcTemplate.execute("alter table work_assignments add column output_work_area_id text");
+        }
+        if (!assignmentColumns.contains("output_direct_relative_path")) {
+            jdbcTemplate.execute("alter table work_assignments add column output_direct_relative_path text");
         }
         backfillAssignmentProjectContext();
         jdbcTemplate.execute("""

@@ -82,6 +82,17 @@ Service behavior:
 
 Current Work Area persistence is the foundation for later assignment runtime routing. Until the assignment metadata phase lands, execution aliases still use the existing effective workspace rule described below.
 
+Assignment records now carry first-class Work Area/output routing metadata:
+
+- `selected_work_area_id`: the Work Area selected for assignment execution. New assignments default to the owner `home/` Work Area when Work Area services are available.
+- `output_route_type`: `DEFAULT`, `WORK_AREA`, or `DIRECT_DIRECTORY`.
+- `output_work_area_id`: the output Work Area when `output_route_type` is `WORK_AREA`.
+- `output_direct_relative_path`: an existing owner-root-relative directory when `output_route_type` is `DIRECT_DIRECTORY`.
+
+The metadata is validated at assignment creation. `WORK_AREA` targets must be active Work Areas owned by the same agent/project root. `DIRECT_DIRECTORY` targets must already exist under the owner root and pass the same traversal and symlink confinement policy as Work Areas.
+
+Runtime alias and output directory resolution are staged separately. Until that phase lands, these columns are durable routing intent for UI/API submit surfaces and later execution services.
+
 ## Workspace Leases
 
 `WorkspaceLeaseService` owns `WorkspaceLease` records in `workspace_leases`.
