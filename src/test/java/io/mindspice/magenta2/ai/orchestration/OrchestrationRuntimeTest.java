@@ -126,7 +126,7 @@ class OrchestrationRuntimeTest {
         assertThat(settingsRepository.find()).contains(saved);
         assertThat(settingsService.resolveModel("planning", "main")).isEqualTo("planning-remote");
         assertThat(settingsService.resolveModel(null, "main")).isEqualTo("main-remote");
-        assertThat(settingsService.defaultModel()).isEqualTo("main-remote");
+        assertThat(settingsService.defaultModel()).isEqualTo("summary-remote");
         assertThat(settingsService.contextBufferPercent()).isEqualTo(20);
     }
 

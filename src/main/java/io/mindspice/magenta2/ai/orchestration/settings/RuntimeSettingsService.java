@@ -75,12 +75,7 @@ public class RuntimeSettingsService {
     }
 
     public String defaultModel() {
-        String agentDefaultModel = null;
-        try {
-            agentDefaultModel = defaultAgentProfile().defaultModel();
-        } catch (IllegalStateException ignored) {
-        }
-        return resolveModel(null, agentDefaultModel);
+        return resolveModel(null);
     }
 
     public String planningModel() {

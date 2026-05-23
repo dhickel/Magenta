@@ -3,6 +3,11 @@ package io.mindspice.magenta2.ai.orchestration.settings;
 import java.util.List;
 import java.util.Map;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
+import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileRepository;
+import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
+import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileStatus;
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.ai.config.user.EndpointType;
@@ -33,6 +38,40 @@ class RuntimeSettingsServiceTest {
         assertThat(service.compactionModel()).isEqualTo("summary-remote");
     }
 
+    @Test
+    void anonymousDefaultModelUsesRuntimeSettingBeforeDefaultAgentProfileModel() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        AiConfig aiConfig = aiConfig();
+        AgentProfileRepository agentRepository = new AgentProfileRepository(jdbcTemplate, new ObjectMapper());
+        AgentProfileService agentService = new AgentProfileService(agentRepository, aiConfig, null);
+        agentService.create(new AgentProfile(
+            "agent-1",
+            "magenta",
+            AgentProfileStatus.ACTIVE,
+            "main",
+            "Prompt",
+            List.of(),
+            List.of(),
+            true,
+            null,
+            null
+        ));
+        RuntimeSettingsRepository repository = new RuntimeSettingsRepository(jdbcTemplate);
+        repository.save(new RuntimeSettings(
+            "agent-1",
+            "magenta",
+            "summary",
+            "main",
+            "summary",
+            "compact",
+            10
+        ));
+        RuntimeSettingsService service = new RuntimeSettingsService(repository, aiConfig, agentService);
+
+        assertThat(service.defaultModel()).isEqualTo("summary-remote");
+        assertThat(service.resolveModel(null, "main")).isEqualTo("main-remote");
+    }
+
     private RuntimeSettings settings(String summaryModel, String compactionModel) {
         return new RuntimeSettings(
             null,
@@ -53,11 +92,15 @@ class RuntimeSettingsServiceTest {
     }
 
     private RuntimeSettingsRepository repository() {
+        return new RuntimeSettingsRepository(jdbcTemplate());
+    }
+
+    private JdbcTemplate jdbcTemplate() {
         SingleConnectionDataSource dataSource = new SingleConnectionDataSource(
             "jdbc:sqlite::memory:?foreign_keys=true",
             true
         );
-        return new RuntimeSettingsRepository(new JdbcTemplate(dataSource));
+        return new JdbcTemplate(dataSource);
     }
 
     private AiConfig aiConfig() {

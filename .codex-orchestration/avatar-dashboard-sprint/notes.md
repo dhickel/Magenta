@@ -54,6 +54,7 @@
 
 - Final review found shared notes/docs/internal-dev ownership was too broad for parallel lanes.
 - Fixed by making shared notes coordinator-owned, requiring per-lane handoff notes, and making ambiguous docs/internal-dev closeout serial coordinator work.
+- Post-closeout email follow-up diagnosed local model connection failures during browser chat attempts as default model precedence choosing the default agent profile model over the explicit runtime/file default model. Runtime anonymous chat default resolution now uses runtime/file default settings; agent-scoped calls can still pass an agent default model through `resolveModel(null, agentDefaultModel)`.
 
 ## Blockers
 
@@ -73,6 +74,7 @@
 ## Final Validation Status
 
 - Implementation validation passed. Full unit suite, bounded Spring startup, and final Playwright browser validation completed. Local model connection failures to `http://localhost:11434` appeared during browser chat attempts, but the UI handled them without route/page failure.
+- Follow-up local-model fix focused validation passed: `mvn -Dtest=RuntimeSettingsServiceTest,OrchestrationRuntimeTest#runtimeSettingsSaveLoadAndModelResolutionPriority test`.
 
 ## Handoff Notes
 
