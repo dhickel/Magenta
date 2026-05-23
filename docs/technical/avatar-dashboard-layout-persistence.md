@@ -1,6 +1,6 @@
 # Avatar Dashboard Layout Persistence
 
-`/avatar` dashboard layout persistence is owned by the Avatar package and stored in `avatar.sqlite`. The current browser UI still reads the compatibility `AvatarDashboardWidget` layout contract, but the persistence layer now also supports the row/widget model required by the next editable dashboard refactor.
+`/avatar` dashboard layout persistence is owned by the Avatar package and stored in `avatar.sqlite`. The browser UI now renders the row/widget model for persisted layouts and keeps the legacy `AvatarDashboardWidget` contract only as a compatibility fallback for older rows.
 
 ## Tables
 
@@ -12,7 +12,7 @@
 
 ## Service Contract
 
-`AvatarService` exposes row/widget operations for later HTMX editor routes:
+`AvatarService` exposes row/widget operations used by the HTMX editor routes:
 
 - list dashboard rows with widgets;
 - add and move rows;
@@ -25,10 +25,24 @@ The repository enforces row width totals at or below 12 columns and rejects dupl
 
 ## Compatibility
 
-Existing calls to `saveDashboardWidget(...)` and `dashboardLayout()` remain available for the current `/avatar` UI. When legacy layout rows exist, the repository seeds row/widget records by mapping:
+Existing calls to `saveDashboardWidget(...)` and `dashboardLayout()` remain available for compatibility. When legacy layout rows exist, the repository seeds row/widget records by mapping:
 
 - `wide` to 6 columns;
 - `standard` to 4 columns;
 - `compact` to 3 columns.
 
 Legacy widgets wrap to a new row when the next placement would exceed 12 columns.
+
+## Editor UI Contract
+
+The `/avatar/_edit` modal is the row/widget editor. It uses per-action HTMX requests and OOB grid refreshes rather than a single flat save form:
+
+- `POST /avatar/_layout/rows`
+- `POST /avatar/_layout/rows/{rowId}/move?direction=up|down`
+- `GET /avatar/_layout/rows/{rowId}/catalog`
+- `POST /avatar/_layout/rows/{rowId}/widgets`
+- `POST /avatar/_layout/widgets/{widgetId}/move?direction=left|right|up|down`
+- `PUT /avatar/_layout/widgets/{widgetId}/width`
+- `DELETE /avatar/_layout/widgets/{widgetId}`
+
+The editor uses SimplyPages row/column layout primitives for the 12-column placement model and keeps mutations scoped to the single `#avatar-edit-container` modal surface with `#avatar-widget-grid` refreshed out of band.

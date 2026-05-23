@@ -18,6 +18,8 @@ import io.mindspice.magenta2.ai.orchestration.workflow.InboxMessage;
 import io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact;
 import io.mindspice.magenta2.avatar.AvatarCalendarItem;
 import io.mindspice.magenta2.avatar.AvatarDailyTask;
+import io.mindspice.magenta2.avatar.AvatarDashboardRow;
+import io.mindspice.magenta2.avatar.AvatarDashboardRowWidget;
 import io.mindspice.magenta2.avatar.AvatarDashboardWidget;
 import io.mindspice.magenta2.avatar.AvatarEvent;
 import io.mindspice.magenta2.avatar.AvatarNote;
@@ -26,7 +28,6 @@ import io.mindspice.magenta2.avatar.AvatarTodo;
 import io.mindspice.simplypages.components.Div;
 import io.mindspice.simplypages.components.Header;
 import io.mindspice.simplypages.components.Paragraph;
-import io.mindspice.simplypages.components.TextNode;
 import io.mindspice.simplypages.components.forms.Button;
 import io.mindspice.simplypages.components.forms.Form;
 import io.mindspice.simplypages.components.forms.Select;
@@ -34,6 +35,8 @@ import io.mindspice.simplypages.components.forms.TextArea;
 import io.mindspice.simplypages.components.forms.TextInput;
 import io.mindspice.simplypages.core.Component;
 import io.mindspice.simplypages.core.HtmlTag;
+import io.mindspice.simplypages.layout.Column;
+import io.mindspice.simplypages.layout.Row;
 
 final class AvatarDashboardComponents {
     static final List<WidgetDefinition> WIDGETS = List.of(
@@ -70,12 +73,26 @@ final class AvatarDashboardComponents {
     }
 
     static Component widgetGrid(AvatarDashboardData data) {
+        List<AvatarDashboardRow> rows = data.rows() == null ? List.of() : data.rows();
         Div grid = new Div()
             .withId("avatar-widget-grid")
-            .withClass("avatar-widget-grid")
+            .withClass(rows.isEmpty() ? "avatar-widget-grid" : "avatar-widget-grid avatar-row-widget-grid")
             .withAttribute("data-avatar-widget-grid", "true");
-        for (AvatarDashboardWidget widget : normalizedLayout(data.layout())) {
-            grid.withChild(widget(data, widget));
+        if (rows.isEmpty()) {
+            for (AvatarDashboardWidget widget : normalizedLayout(data.layout())) {
+                grid.withChild(widget(data, widget));
+            }
+            return grid;
+        }
+        for (AvatarDashboardRow dashboardRow : rows) {
+            Row row = new Row().withId("avatar-dashboard-row-" + dashboardRow.id());
+            row.withAttribute("class", "row avatar-dashboard-row");
+            for (AvatarDashboardRowWidget rowWidget : dashboardRow.widgets()) {
+                row.addColumn(Column.create()
+                    .withWidth(rowWidget.columnWidth())
+                    .withChild(widget(data, displayWidget(rowWidget))));
+            }
+            grid.withChild(row);
         }
         return grid;
     }
@@ -112,46 +129,92 @@ final class AvatarDashboardComponents {
         };
     }
 
-    static Component editModal(List<AvatarDashboardWidget> layout) {
-        Map<String, AvatarDashboardWidget> widgets = layoutByKey(layout);
-        HtmlTag form = Form.create()
-            .withId("avatar-layout-form")
+    static Component editModal(List<AvatarDashboardRow> rows) {
+        Div panel = new Div()
+            .withId("avatar-layout-editor")
             .withClass("avatar-edit-panel")
-            .withAttribute("hx-put", "/avatar/_layout")
-            .withAttribute("hx-target", "#avatar-edit-container")
-            .withAttribute("hx-swap", "innerHTML");
-        form.withChild(new Div().withClass("avatar-edit-header")
-            .withChild(Header.H2("Edit Avatar Dashboard"))
+            .withAttribute("data-avatar-layout-editor", "true");
+        panel.withChild(new Div().withClass("avatar-edit-header")
+            .withChild(new Div()
+                .withChild(Header.H2("Edit Avatar Dashboard"))
+                .withChild(small("Rows use 12-column widths. Each first-party widget can appear once.")))
             .withChild(Button.create("Close")
                 .withAttribute("type", "button")
                 .withAttribute("hx-get", "/avatar/_edit?close=true")
                 .withAttribute("hx-target", "#avatar-edit-container")
                 .withAttribute("hx-swap", "innerHTML")));
-        Div rows = new Div().withClass("avatar-edit-list");
-        int position = 0;
-        for (WidgetDefinition definition : WIDGETS) {
-            AvatarDashboardWidget widget = widgets.getOrDefault(definition.key(), defaultWidget(definition, position));
-            rows.withChild(editRow(definition, widget, position));
-            position++;
+
+        Div list = new Div().withClass("avatar-edit-list");
+        List<AvatarDashboardRow> safeRows = rows == null ? List.of() : rows;
+        for (int i = 0; i < safeRows.size(); i++) {
+            list.withChild(editRow(safeRows.get(i), i, safeRows.size()));
         }
-        form.withChild(rows);
-        form.withChild(new Div().withClass("avatar-edit-actions")
-            .withChild(Button.submit("Save Layout").withClass("orch-primary")));
-        return new Div().withId("avatar-edit-modal").withClass("avatar-modal").withChild(form);
+        if (safeRows.isEmpty()) {
+            list.withChild(empty("No layout rows yet."));
+        }
+        panel.withChild(list);
+        panel.withChild(new Div().withClass("avatar-edit-actions")
+            .withChild(Button.create("Add Row")
+                .withAttribute("type", "button")
+                .withAttribute("hx-post", "/avatar/_layout/rows")
+                .withAttribute("hx-target", "#avatar-edit-container")
+                .withAttribute("hx-swap", "innerHTML")));
+        return new Div().withId("avatar-edit-modal").withClass("avatar-modal").withChild(panel);
     }
 
     static Component layoutSavedResponse(AvatarDashboardData data) {
+        return layoutEditResponse(data);
+    }
+
+    static Component layoutEditResponse(AvatarDashboardData data) {
+        List<AvatarDashboardRow> rows = data.rows() == null ? List.of() : data.rows();
         Div grid = new Div().withId("avatar-widget-grid")
             .withAttribute("hx-swap-oob", "true")
-            .withClass("avatar-widget-grid")
+            .withClass(rows.isEmpty() ? "avatar-widget-grid" : "avatar-widget-grid avatar-row-widget-grid")
             .withAttribute("data-avatar-widget-grid", "true");
         for (Component child : widgetGridChildren(data)) {
             grid.withChild(child);
         }
         return new Div()
-            .withChild(new Div().withId("avatar-edit-container")
-                .withAttribute("hx-swap-oob", "true"))
+            .withChild(editModal(data.rows()))
             .withChild(grid);
+    }
+
+    static Component widgetCatalogModal(List<AvatarDashboardRow> rows, String rowId) {
+        java.util.Set<String> used = rows == null ? java.util.Set.of() : rows.stream()
+            .flatMap(row -> row.widgets().stream())
+            .map(AvatarDashboardRowWidget::widgetKey)
+            .collect(java.util.stream.Collectors.toSet());
+        Div panel = new Div().withClass("avatar-edit-panel avatar-widget-catalog");
+        panel.withChild(new Div().withClass("avatar-edit-header")
+            .withChild(Header.H2("Add Widget"))
+            .withChild(Button.create("Back")
+                .withAttribute("type", "button")
+                .withAttribute("hx-get", "/avatar/_edit")
+                .withAttribute("hx-target", "#avatar-edit-container")
+                .withAttribute("hx-swap", "innerHTML")));
+        Div catalog = new Div().withClass("avatar-catalog-grid");
+        for (WidgetDefinition definition : WIDGETS) {
+            boolean disabled = used.contains(definition.key());
+            Form form = Form.create().withClass("avatar-catalog-item");
+            form.withAttribute("hx-post", "/avatar/_layout/rows/" + rowId + "/widgets");
+            form.withAttribute("hx-target", "#avatar-edit-container");
+            form.withAttribute("hx-swap", "innerHTML");
+            form.withChild(new HtmlTag("input", true)
+                .withAttribute("type", "hidden")
+                .withAttribute("name", "widgetKey")
+                .withAttribute("value", definition.key()));
+            form.withChild(new HtmlTag("strong").withInnerText(definition.title()));
+            form.withChild(widthSelect("columnWidth", defaultWidth(definition), false));
+            Button button = Button.submit(disabled ? "Added" : "Add");
+            if (disabled) {
+                button.withAttribute("disabled", "disabled");
+            }
+            form.withChild(button);
+            catalog.withChild(form);
+        }
+        panel.withChild(catalog);
+        return new Div().withId("avatar-edit-modal").withClass("avatar-modal").withChild(panel);
     }
 
     static Component outputPreview(RunOutputArtifact artifact, String content) {
@@ -174,8 +237,23 @@ final class AvatarDashboardComponents {
     }
 
     private static List<Component> widgetGridChildren(AvatarDashboardData data) {
-        return normalizedLayout(data.layout()).stream()
-            .map(widget -> widget(data, widget))
+        List<AvatarDashboardRow> rows = data.rows() == null ? List.of() : data.rows();
+        if (rows.isEmpty()) {
+            return normalizedLayout(data.layout()).stream()
+                .map(widget -> widget(data, widget))
+                .toList();
+        }
+        return rows.stream()
+            .map(row -> {
+                Row layoutRow = new Row().withId("avatar-dashboard-row-" + row.id());
+                layoutRow.withAttribute("class", "row avatar-dashboard-row");
+                for (AvatarDashboardRowWidget rowWidget : row.widgets()) {
+                    layoutRow.addColumn(Column.create()
+                        .withWidth(rowWidget.columnWidth())
+                        .withChild(widget(data, displayWidget(rowWidget))));
+                }
+                return (Component) layoutRow;
+            })
             .toList();
     }
 
@@ -478,29 +556,92 @@ final class AvatarDashboardComponents {
         return body.withChild(list);
     }
 
-    private static Component editRow(WidgetDefinition definition, AvatarDashboardWidget widget, int position) {
-        Select size = Select.create("size-" + definition.key())
-            .addOption("standard", "Standard", "standard".equals(size(widget)))
-            .addOption("wide", "Wide", "wide".equals(size(widget)))
-            .addOption("compact", "Compact", "compact".equals(size(widget)));
-        return new Div().withClass("avatar-edit-row")
-            .withChild(new HtmlTag("input", true)
-                .withAttribute("type", "hidden")
-                .withAttribute("name", "widgetKey")
-                .withAttribute("value", definition.key()))
-            .withChild(new HtmlTag("input", true)
-                .withAttribute("type", "hidden")
-                .withAttribute("name", "position-" + definition.key())
-                .withAttribute("value", Integer.toString(position)))
-            .withChild(new HtmlTag("label")
-                .withClass("avatar-checkbox-label")
-                .withChild(new HtmlTag("input", true)
-                    .withAttribute("type", "checkbox")
-                    .withAttribute("name", "enabled-" + definition.key())
-                    .withAttribute("value", "true")
-                    .withAttribute(widget.enabled() ? "checked" : "data-unchecked", widget.enabled() ? "checked" : "true"))
-                .withChild(new TextNode(definition.title())))
-            .withChild(size);
+    private static Component editRow(AvatarDashboardRow row, int index, int rowCount) {
+        Div frame = new Div()
+            .withClass("avatar-edit-row")
+            .withAttribute("data-avatar-row-id", row.id());
+        frame.withChild(new Div().withClass("avatar-edit-row-header")
+            .withChild(new Div()
+                .withChild(new HtmlTag("strong").withInnerText("Row " + (index + 1)))
+                .withChild(small(row.widgets().stream().mapToInt(AvatarDashboardRowWidget::columnWidth).sum() + "/12 columns used")))
+            .withChild(new Div().withClass("avatar-row-actions")
+                .withChild(rowMoveButton(row.id(), "up", index == 0))
+                .withChild(rowMoveButton(row.id(), "down", index >= rowCount - 1))
+                .withChild(Button.create("Add Widget")
+                    .withAttribute("type", "button")
+                    .withAttribute("hx-get", "/avatar/_layout/rows/" + row.id() + "/catalog")
+                    .withAttribute("hx-target", "#avatar-edit-container")
+                    .withAttribute("hx-swap", "innerHTML"))));
+        Div widgets = new Div().withClass("avatar-edit-widgets");
+        if (row.widgets().isEmpty()) {
+            widgets.withChild(empty("No widgets in this row."));
+        }
+        for (AvatarDashboardRowWidget widget : row.widgets()) {
+            widgets.withChild(editWidget(widget));
+        }
+        return frame.withChild(widgets);
+    }
+
+    private static Component editWidget(AvatarDashboardRowWidget widget) {
+        WidgetDefinition definition = definition(widget.widgetKey());
+        HtmlTag widthForm = Form.create().withClass("avatar-widget-width-form")
+            .withAttribute("hx-put", "/avatar/_layout/widgets/" + widget.id() + "/width")
+            .withAttribute("hx-target", "#avatar-edit-container")
+            .withAttribute("hx-swap", "innerHTML");
+        widthForm.withChild(widthSelect("columnWidth", widget.columnWidth(), true));
+        widthForm.withChild(Button.submit("Set"));
+        return new Div().withClass("avatar-edit-widget")
+            .withChild(new Div()
+                .withChild(new HtmlTag("strong").withInnerText(definition.title()))
+                .withChild(small(widget.columnWidth() + "/12")))
+            .withChild(widthForm)
+            .withChild(new Div().withClass("avatar-row-actions")
+                .withChild(widgetMoveButton(widget.id(), "left"))
+                .withChild(widgetMoveButton(widget.id(), "right"))
+                .withChild(widgetMoveButton(widget.id(), "up"))
+                .withChild(widgetMoveButton(widget.id(), "down"))
+                .withChild(Button.create("Remove")
+                    .withAttribute("type", "button")
+                    .withAttribute("hx-delete", "/avatar/_layout/widgets/" + widget.id())
+                    .withAttribute("hx-target", "#avatar-edit-container")
+                    .withAttribute("hx-swap", "innerHTML")
+                    .withAttribute("hx-confirm", "Remove this widget?")));
+    }
+
+    private static Component rowMoveButton(String rowId, String direction, boolean disabled) {
+        Button button = Button.create(direction.equals("up") ? "Up" : "Down");
+        button.withAttribute("type", "button");
+        button.withAttribute("hx-post", "/avatar/_layout/rows/" + rowId + "/move?direction=" + direction);
+        button.withAttribute("hx-target", "#avatar-edit-container");
+        button.withAttribute("hx-swap", "innerHTML");
+        if (disabled) {
+            button.withAttribute("disabled", "disabled");
+        }
+        return button;
+    }
+
+    private static Component widgetMoveButton(String widgetId, String direction) {
+        return Button.create(switch (direction) {
+                case "left" -> "Left";
+                case "right" -> "Right";
+                case "up" -> "Up";
+                case "down" -> "Down";
+                default -> direction;
+            })
+            .withAttribute("type", "button")
+            .withAttribute("hx-post", "/avatar/_layout/widgets/" + widgetId + "/move?direction=" + direction)
+            .withAttribute("hx-target", "#avatar-edit-container")
+            .withAttribute("hx-swap", "innerHTML");
+    }
+
+    private static Component widthSelect(String name, int selected, boolean compact) {
+        Select select = Select.create(name)
+            .addOption("3", compact ? "3" : "Quarter (3/12)", selected == 3)
+            .addOption("4", compact ? "4" : "Third (4/12)", selected == 4)
+            .addOption("6", compact ? "6" : "Half (6/12)", selected == 6)
+            .addOption("8", compact ? "8" : "Two Thirds (8/12)", selected == 8)
+            .addOption("12", compact ? "12" : "Full (12/12)", selected == 12);
+        return select;
     }
 
     private static Component refreshButton(String key) {
@@ -614,6 +755,36 @@ final class AvatarDashboardComponents {
         return new AvatarDashboardWidget(definition.key(), position, definition.defaultSize(), true, false, Map.of(), null);
     }
 
+    static AvatarDashboardWidget displayWidget(AvatarDashboardRowWidget widget) {
+        return new AvatarDashboardWidget(
+            widget.widgetKey(),
+            widget.columnPosition(),
+            sizeFromWidth(widget.columnWidth()),
+            widget.enabled(),
+            widget.collapsed(),
+            widget.settings(),
+            widget.updatedAt()
+        );
+    }
+
+    private static int defaultWidth(WidgetDefinition definition) {
+        return switch (definition.defaultSize()) {
+            case "wide" -> 6;
+            case "compact" -> 3;
+            default -> 4;
+        };
+    }
+
+    private static String sizeFromWidth(int width) {
+        if (width >= 6) {
+            return "wide";
+        }
+        if (width <= 3) {
+            return "compact";
+        }
+        return "standard";
+    }
+
     private static Map<String, AvatarDashboardWidget> layoutByKey(List<AvatarDashboardWidget> saved) {
         Map<String, AvatarDashboardWidget> byKey = new LinkedHashMap<>();
         if (saved != null) {
@@ -632,6 +803,7 @@ final class AvatarDashboardComponents {
     record AvatarDashboardData(
         AvatarProfile profile,
         List<AvatarDashboardWidget> layout,
+        List<AvatarDashboardRow> rows,
         List<AvatarDailyTask> dailyTasks,
         List<AvatarTodo> todos,
         List<AvatarCalendarItem> calendarItems,

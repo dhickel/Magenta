@@ -19,6 +19,7 @@
 - Runtime Work Area routing slice implemented: selected Work Area runtime path allocation, output redirect resolution, `root/` alias support, docs, package guide, and changelog.
 - Submit Work Area routing slice implemented: operational submit forms and direct submit DTOs now propagate selected Work Area/output route metadata while plan-chat routes remain unchanged.
 - Work Area explorer backend slice implemented: `/api/work-areas` metadata/explorer routes, confined browse/preview/download/edit/directory/rename/delete/mark behavior, delete guardrails, docs, tests, and changelog.
+- Avatar layout editor UI slice implemented: `/avatar` can render persisted row/widget layouts, `/avatar/_edit` exposes row/widget add/move/resize/remove actions, and layout mutations autosave with HTMX plus OOB grid refresh.
 - Plan suite created under `.internal-dev/plans/avatar-agent-ui-refactor/`.
 - Non-mutating closeout review completed by subagent `019e5351-f450-7690-90eb-aab7eab5c054`; it found no missing required items.
 - SimplyPages UI reviewer completed; recommended splitting layout/editor/catalog components out of `AvatarDashboardComponents`, using SimplyPages `Row`/`Column`, stable OOB containers, compact decorator controls, and narrow raw HTML fallbacks only.
@@ -35,12 +36,15 @@
 - Runtime routing focused tests: `mvn -Dtest='io.mindspice.magenta2.ai.orchestration.workspaces.OutputDirectoryServiceTest,io.mindspice.magenta2.ai.chat.plan.PlanServiceTest,io.mindspice.magenta2.ai.chat.tool.file.AgentFileToolServiceTest,io.mindspice.magenta2.ai.chat.tool.shell.AgentShellToolServiceTest' test` passed with 103 tests, 0 failures, 0 errors. Follow-up targeted route/alias test pass also passed with 31 tests, 0 failures, 0 errors.
 - Submit routing focused tests: `mvn -Dtest='io.mindspice.magenta2.api.web.OrchestrationControllerTest,io.mindspice.magenta2.api.web.AgentOrchestrationControllerTest,io.mindspice.magenta2.api.web.PublicRunSubmissionControllerTest' test` passed with 132 tests, 0 failures, 0 errors.
 - Work Area explorer backend focused tests: `mvn -Dtest='io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaExplorerServiceTest,io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaServiceTest' test` passed locally after explorer guardrail hardening.
+- Avatar layout editor focused tests: `mvn -Dtest='io.mindspice.magenta2.api.web.AvatarDashboardControllerTest,io.mindspice.magenta2.avatar.*Test' test` passed with 23 tests, 0 failures, 0 errors.
+- Avatar layout editor compile check: `mvn -DskipTests compile` passed.
+- Playwright validation subagent `019e5398-8502-72f0-8df0-ce5be067377b` passed `/avatar` desktop/mobile and layout-editor interaction checks on port 18080. Screenshots saved under `target/playwright-avatar-layout-editor/`.
 - Planning artifact grep/readback completed locally.
 - Closeout review found the plan covers `/avatar` operational redo, SimplyPages row/column editor, Work Areas, explorer/output routing, planner recurrence, orchestration lanes, validation/red-team gates, docs, `.internal-dev`, and commit workflow.
 
 ## Remediation Notes
 
-- None.
+- Playwright validation found one UX friction: when every first-party widget exists, the add-widget catalog is all disabled entries until a user removes a widget elsewhere. This is expected by the v1 single-instance rule and was recorded in `.internal-dev/focus/ideas-inbox.md`.
 
 ## Blockers
 

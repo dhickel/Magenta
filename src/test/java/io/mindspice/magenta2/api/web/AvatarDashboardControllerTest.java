@@ -38,8 +38,6 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
 import org.springframework.web.server.ResponseStatusException;
 
 class AvatarDashboardControllerTest {
@@ -79,7 +77,7 @@ class AvatarDashboardControllerTest {
         String html = controller.avatar();
 
         assertThat(html).contains("/css/avatar-dashboard.css?v=1");
-        assertThat(html).contains("/js/avatar-chat.js?v=2");
+        assertThat(html).contains("/js/avatar-chat.js?v=3");
         assertThat(html).doesNotContain("/js/chat-client.js");
         assertThat(html).contains("id=\"avatar-chat\"");
         assertThat(html).contains("data-avatar-chat=\"true\"");
@@ -104,37 +102,58 @@ class AvatarDashboardControllerTest {
     }
 
     @Test
-    void layoutSaveRejectsUnknownWidgetAndPersistsValidLayout() {
-        MultiValueMap<String, String> invalid = new LinkedMultiValueMap<>();
-        invalid.add("widgetKey", "unknown");
-        assertThatThrownBy(() -> controller.saveLayout(invalid))
+    void rowLayoutEditorAddsMovesResizesAndRemovesWidgets() {
+        String emptyEditor = controller.edit(false);
+        assertThat(emptyEditor).contains("/avatar/_layout/rows");
+
+        String afterRow = controller.addLayoutRow();
+        String rowId = avatarService.dashboardRows().getFirst().id();
+        assertThat(afterRow).contains("hx-swap-oob=\"true\"");
+        assertThat(afterRow).contains("/avatar/_layout/rows/" + rowId + "/catalog");
+
+        String catalog = controller.widgetCatalog(rowId);
+        assertThat(catalog).contains("Add Widget");
+        assertThat(catalog).contains("daily-tasks");
+
+        assertThatThrownBy(() -> controller.addLayoutWidget(rowId, "unknown", 4))
             .isInstanceOf(ResponseStatusException.class)
             .extracting(error -> ((ResponseStatusException) error).getStatusCode())
             .isEqualTo(HttpStatus.BAD_REQUEST);
 
-        MultiValueMap<String, String> valid = new LinkedMultiValueMap<>();
-        int position = 0;
-        for (AvatarDashboardComponents.WidgetDefinition widget : AvatarDashboardComponents.WIDGETS) {
-            valid.add("widgetKey", widget.key());
-            valid.add("position-" + widget.key(), Integer.toString(position++));
-            valid.add("size-" + widget.key(), widget.key().equals("todos") ? "compact" : widget.defaultSize());
-            if (!widget.key().equals("calendar")) {
-                valid.add("enabled-" + widget.key(), "true");
-            }
-        }
+        controller.addLayoutWidget(rowId, "todos", 4);
+        controller.addLayoutWidget(rowId, "notes", 4);
+        String todosId = avatarService.dashboardRows().getFirst().widgets().stream()
+            .filter(widget -> widget.widgetKey().equals("todos"))
+            .findFirst()
+            .orElseThrow()
+            .id();
+        String notesId = avatarService.dashboardRows().getFirst().widgets().stream()
+            .filter(widget -> widget.widgetKey().equals("notes"))
+            .findFirst()
+            .orElseThrow()
+            .id();
 
-        String html = controller.saveLayout(valid);
+        String resized = controller.resizeLayoutWidget(todosId, 6);
+        assertThat(resized).contains("id=\"avatar-widget-todos\"");
+        assertThat(avatarService.dashboardRows().getFirst().widgets()).anySatisfy(widget -> {
+            assertThat(widget.widgetKey()).isEqualTo("todos");
+            assertThat(widget.columnWidth()).isEqualTo(6);
+        });
 
-        assertThat(html).contains("hx-swap-oob=\"true\"");
-        assertThat(avatarService.dashboardLayout()).hasSize(AvatarDashboardComponents.WIDGETS.size());
-        assertThat(avatarService.dashboardLayout()).anySatisfy(widget -> {
-            assertThat(widget.widgetId()).isEqualTo("todos");
-            assertThat(widget.size()).isEqualTo("compact");
-        });
-        assertThat(avatarService.dashboardLayout()).anySatisfy(widget -> {
-            assertThat(widget.widgetId()).isEqualTo("calendar");
-            assertThat(widget.enabled()).isFalse();
-        });
+        controller.moveLayoutWidget(notesId, "left");
+        assertThat(avatarService.dashboardRows().getFirst().widgets())
+            .extracting(widget -> widget.widgetKey())
+            .containsExactly("notes", "todos");
+
+        controller.removeLayoutWidget(notesId);
+        assertThat(avatarService.dashboardRows().getFirst().widgets())
+            .extracting(widget -> widget.widgetKey())
+            .containsExactly("todos");
+
+        controller.addLayoutRow();
+        String secondRowId = avatarService.dashboardRows().get(1).id();
+        controller.moveLayoutRow(secondRowId, "up");
+        assertThat(avatarService.dashboardRows().getFirst().id()).isEqualTo(secondRowId);
     }
 
     @Test

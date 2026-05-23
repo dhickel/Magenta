@@ -5,7 +5,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -39,7 +38,6 @@ import io.mindspice.simplypages.core.Component;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
-import org.springframework.util.MultiValueMap;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -113,12 +111,17 @@ public class AvatarDashboardController {
     public String widget(@PathVariable String widgetKey) {
         requireWidget(widgetKey);
         AvatarDashboardComponents.AvatarDashboardData data = data();
-        AvatarDashboardWidget widget = AvatarDashboardComponents.normalizedLayout(data.layout()).stream()
-            .filter(item -> item.widgetId().equals(widgetKey))
+        AvatarDashboardWidget widget = data.rows().stream()
+            .flatMap(row -> row.widgets().stream())
+            .filter(item -> item.widgetKey().equals(widgetKey))
             .findFirst()
-            .orElseGet(() -> AvatarDashboardComponents.defaultWidget(
-                AvatarDashboardComponents.definition(widgetKey), 0
-            ));
+            .map(AvatarDashboardComponents::displayWidget)
+            .orElseGet(() -> AvatarDashboardComponents.normalizedLayout(data.layout()).stream()
+                .filter(item -> item.widgetId().equals(widgetKey))
+                .findFirst()
+                .orElseGet(() -> AvatarDashboardComponents.defaultWidget(
+                    AvatarDashboardComponents.definition(widgetKey), 0
+                )));
         return AvatarDashboardComponents.widget(data, widget).render();
     }
 
@@ -128,41 +131,87 @@ public class AvatarDashboardController {
         if (close) {
             return "";
         }
-        return AvatarDashboardComponents.editModal(avatarService.dashboardLayout()).render();
+        return AvatarDashboardComponents.editModal(avatarService.dashboardRows()).render();
     }
 
+    @PostMapping("/avatar/_layout/rows")
+    @ResponseBody
+    public String addLayoutRow() {
+        avatarService.addDashboardRow();
+        return AvatarDashboardComponents.layoutEditResponse(data()).render();
+    }
+
+    @PostMapping("/avatar/_layout/rows/{rowId}/move")
+    @ResponseBody
+    public String moveLayoutRow(@PathVariable String rowId, @RequestParam String direction) {
+        try {
+            avatarService.moveDashboardRow(rowId, directionValue(direction));
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
+        return AvatarDashboardComponents.layoutEditResponse(data()).render();
+    }
+
+    @GetMapping("/avatar/_layout/rows/{rowId}/catalog")
+    @ResponseBody
+    public String widgetCatalog(@PathVariable String rowId) {
+        return AvatarDashboardComponents.widgetCatalogModal(avatarService.dashboardRows(), rowId).render();
+    }
+
+    @PostMapping("/avatar/_layout/rows/{rowId}/widgets")
+    @ResponseBody
+    public String addLayoutWidget(
+        @PathVariable String rowId,
+        @RequestParam String widgetKey,
+        @RequestParam(defaultValue = "4") int columnWidth
+    ) {
+        requireWidget(widgetKey);
+        try {
+            avatarService.addDashboardWidget(rowId, widgetKey, columnWidth);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
+        return AvatarDashboardComponents.layoutEditResponse(data()).render();
+    }
+
+    @PostMapping("/avatar/_layout/widgets/{widgetId}/move")
+    @ResponseBody
+    public String moveLayoutWidget(@PathVariable String widgetId, @RequestParam String direction) {
+        try {
+            avatarService.moveDashboardWidget(widgetId, direction);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
+        return AvatarDashboardComponents.layoutEditResponse(data()).render();
+    }
+
+    @PutMapping("/avatar/_layout/widgets/{widgetId}/width")
+    @ResponseBody
+    public String resizeLayoutWidget(@PathVariable String widgetId, @RequestParam int columnWidth) {
+        try {
+            avatarService.resizeDashboardWidget(widgetId, columnWidth);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
+        return AvatarDashboardComponents.layoutEditResponse(data()).render();
+    }
+
+    @DeleteMapping("/avatar/_layout/widgets/{widgetId}")
+    @ResponseBody
+    public String removeLayoutWidget(@PathVariable String widgetId) {
+        try {
+            avatarService.removeDashboardWidget(widgetId);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
+        return AvatarDashboardComponents.layoutEditResponse(data()).render();
+    }
+
+    @Deprecated
     @PutMapping("/avatar/_layout")
     @ResponseBody
-    public String saveLayout(@RequestParam MultiValueMap<String, String> form) {
-        List<String> keys = form.get("widgetKey");
-        if (keys == null || keys.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "At least one widget is required.");
-        }
-        Map<String, Integer> seen = new LinkedHashMap<>();
-        for (String key : keys) {
-            requireWidget(key);
-            if (seen.put(key, seen.size()) != null) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Duplicate widget key: " + key);
-            }
-        }
-        for (String key : keys) {
-            int position = intParam(form, "position-" + key, seen.get(key));
-            String size = textParam(form, "size-" + key, AvatarDashboardComponents.definition(key).defaultSize());
-            if (!List.of("standard", "wide", "compact").contains(size)) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown widget size: " + size);
-            }
-            boolean enabled = "true".equalsIgnoreCase(textParam(form, "enabled-" + key, "false"));
-            avatarService.saveDashboardWidget(new AvatarDashboardWidget(
-                key,
-                position,
-                size,
-                enabled,
-                false,
-                Map.of(),
-                null
-            ));
-        }
-        return AvatarDashboardComponents.layoutSavedResponse(data()).render();
+    public String saveLayout() {
+        return AvatarDashboardComponents.layoutEditResponse(data()).render();
     }
 
     @PostMapping("/avatar/_todos")
@@ -297,6 +346,7 @@ public class AvatarDashboardController {
         return new AvatarDashboardComponents.AvatarDashboardData(
             avatarService.profile(),
             avatarService.dashboardLayout(),
+            avatarService.dashboardRows(),
             avatarService.dailyTasks(LocalDate.now()),
             avatarService.todos(),
             avatarService.calendarItems(),
@@ -342,21 +392,13 @@ public class AvatarDashboardController {
         }
     }
 
-    private String textParam(MultiValueMap<String, String> form, String name, String defaultValue) {
-        String value = form.getFirst(name);
-        return StringUtils.hasText(value) ? value.strip() : defaultValue;
-    }
-
-    private int intParam(MultiValueMap<String, String> form, String name, int defaultValue) {
-        String value = form.getFirst(name);
-        if (!StringUtils.hasText(value)) {
-            return defaultValue;
-        }
-        try {
-            return Integer.parseInt(value);
-        } catch (NumberFormatException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid number: " + name);
-        }
+    private int directionValue(String direction) {
+        String normalized = StringUtils.hasText(direction) ? direction.strip().toLowerCase(Locale.ROOT) : "";
+        return switch (normalized) {
+            case "up" -> -1;
+            case "down" -> 1;
+            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown row direction: " + direction);
+        };
     }
 
     private AvatarPriority parsePriority(String value) {

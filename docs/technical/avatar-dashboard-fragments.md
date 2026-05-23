@@ -7,8 +7,16 @@
 - `GET /avatar` renders the full shell with Avatar CSS, compact chat, widget grid, edit container, and output preview container.
 - `GET /avatar/_widgets` returns `#avatar-widget-grid`.
 - `GET /avatar/_widgets/{widgetKey}` returns one stable widget root.
-- `GET /avatar/_edit` returns the layout edit modal.
-- `PUT /avatar/_layout` validates known widget keys and sizes, persists `AvatarDashboardWidget` rows through `AvatarService`, and returns out-of-band swaps for the edit container and widget grid.
+- `GET /avatar/_edit` returns the row/widget layout edit modal.
+- `POST /avatar/_layout/rows` adds a row.
+- `POST /avatar/_layout/rows/{rowId}/move?direction=up|down` reorders rows.
+- `GET /avatar/_layout/rows/{rowId}/catalog` opens the single add-widget modal view.
+- `POST /avatar/_layout/rows/{rowId}/widgets` adds a known first-party widget with a 12-column width.
+- `POST /avatar/_layout/widgets/{widgetId}/move?direction=left|right|up|down` moves widgets inside or across rows.
+- `PUT /avatar/_layout/widgets/{widgetId}/width` resizes a widget to `3`, `4`, `6`, `8`, or `12` columns.
+- `DELETE /avatar/_layout/widgets/{widgetId}` removes a widget instance.
+
+Layout mutations return the edit modal as the primary target and refresh `#avatar-widget-grid` with an out-of-band swap. `PUT /avatar/_layout` remains as a deprecated compatibility endpoint that rerenders the row editor response without accepting the old flat form contract.
 
 Stable widget root IDs:
 
