@@ -65,6 +65,36 @@ class WorkspaceRepositorySchemaMigrationTest {
     }
 
     @Test
+    void schemaSqlCreatesWorkAreas() throws Exception {
+        JdbcTemplate jdbc = jdbc();
+
+        applySchema(jdbc);
+
+        assertThat(columns(jdbc, "work_areas")).containsExactly(
+            "id",
+            "owner_type",
+            "owner_id",
+            "workspace_id",
+            "root_relative_path",
+            "area_relative_path",
+            "display_name",
+            "system_flag",
+            "home_flag",
+            "active_flag",
+            "metadata_json",
+            "created_at",
+            "updated_at"
+        );
+        assertThat(indexes(jdbc, "work_areas")).contains("idx_work_areas_owner");
+        assertThat(foreignKeyTargets(jdbc, "work_areas")).contains("workspaces");
+
+        new WorkspaceRepository(jdbc);
+        new WorkAreaRepository(jdbc);
+
+        assertThat(columns(jdbc, "work_areas")).contains("area_relative_path", "active_flag");
+    }
+
+    @Test
     void schemaSqlCreatesProjectsWithNullableLegacyOwnerAgent() throws Exception {
         JdbcTemplate jdbc = jdbc();
 

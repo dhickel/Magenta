@@ -451,6 +451,27 @@ create table if not exists workspace_links (
     foreign key(workspace_id) references workspaces(id)
 );
 
+create table if not exists work_areas (
+    id text primary key,
+    owner_type text not null,
+    owner_id text not null,
+    workspace_id text,
+    root_relative_path text not null,
+    area_relative_path text not null,
+    display_name text not null,
+    system_flag integer not null default 0,
+    home_flag integer not null default 0,
+    active_flag integer not null default 1,
+    metadata_json text not null default '{}',
+    created_at text not null,
+    updated_at text not null,
+    unique(owner_type, owner_id, area_relative_path),
+    foreign key(workspace_id) references workspaces(id)
+);
+
+create index if not exists idx_work_areas_owner
+    on work_areas(owner_type, owner_id, active_flag);
+
 -- Exclusive writable leases on job/project workspaces. Only one active
 -- writable lease per workspace at a time. Extension must verify holder
 -- ownership.

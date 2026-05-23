@@ -3,7 +3,7 @@
 This package owns filesystem workspace management including effective durable workspace resolution, agent/project workspace roots, optional job persistent workspaces, temp task/workflow directories, output directories, artifact metadata, and workspace leases.
 
 ### Responsibilities
-- Manage all workspace directories confined under the configured `dataRoot`.
+- Manage all workspace directories and Work Area metadata confined under the configured `dataRoot`.
 - Resolve effective durable workspace centrally: project workspace when `projectId` is present, otherwise executing agent workspace.
 - Provide typed directory paths: agent/project workspace roots, `work/`, `outputs/`, `runs/`, `scratch/`, task temp, workflow temp, opt-in job workspace, task output, workflow output, and job output.
 - Enforce exclusive writable leases on job/project workspaces and reconcile expired leases before they block reacquisition.
@@ -14,6 +14,7 @@ This package owns filesystem workspace management including effective durable wo
 ### Layout
 - Agent workspace root: `agents/<id>/workspace/`
 - Project workspace root: `projects/<projectId>/workspace/`
+- Default Home Work Area: `<owner-workspace>/home/`
 - Effective workspace directories: `work/`, `outputs/`, `runs/`, `scratch/`, `jobs/`
 - Task outputs: `outputs/tasks/<taskId>/<runId>/`
 - Workflow outputs: `outputs/workflows/<workflowId>/<runId>/`
@@ -25,6 +26,8 @@ This package owns filesystem workspace management including effective durable wo
 
 ### Services
 - `WorkspaceDirectoryService` — filesystem path management and directory creation.
+- `WorkAreaService` — mark/list/unmark confined workspace subdirectories as user-selectable Work Areas.
+- `WorkAreaRepository` — durable `work_areas` metadata and active assignment/output target guard checks.
 - `EffectiveWorkspaceResolver` — effective durable workspace selection and layout path record creation.
 - `WorkspaceLeaseService` — exclusive writable lease acquisition, extension, and release.
 - `OutputDirectoryService` — typed output directory resolution for task, workflow, and job publications.
@@ -32,6 +35,9 @@ This package owns filesystem workspace management including effective durable wo
 
 ### Change guidance
 - Workspace paths constructed by this package must be confined under `dataRoot` with normalized path checks.
+- Work Areas are metadata around existing confined directories. Do not mark the owner workspace root itself as a Work Area.
+- The `home/` Work Area is system-owned and cannot be unmarked.
+- Unmarking must reject Work Areas referenced by queued/running assignments or active output targets.
 - Source paths supplied for persisted output materialization must also resolve through `toRealPath()` and stay under the real `dataRoot` before copy or artifact registration, so symlinks cannot escape the managed data tree.
 - Copied temp/run publication must skip symlinks, including project workspace links, and must register copied files under `copied_temp/...` artifact names.
 - Always use `Files.createDirectories` before returning a workspace path.
@@ -43,5 +49,6 @@ This package owns filesystem workspace management including effective durable wo
 
 ### Validation
 - Path confinement tests for all directory methods.
+- Work Area persistence, Home creation, duplicate reactivation, active-use guard, and symlink escape tests.
 - Lease conflict, extension, and release tests.
 - Output materialization tests for each PlanFieldType.

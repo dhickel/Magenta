@@ -54,6 +54,34 @@ API routes:
 
 Project and agent pages consume the same services for workspace summaries.
 
+## Work Areas
+
+`WorkAreaService` owns durable Work Area metadata for confined directories inside an agent or project workspace root. A Work Area is not a new filesystem root; it is a named pointer to an existing directory under the owner workspace. The default `home/` Work Area is system-owned, created on demand, and is the v1 default selection point for new assignment work.
+
+Schema:
+
+- `work_areas.id`
+- `owner_type` and `owner_id`
+- `workspace_id`
+- `root_relative_path`
+- `area_relative_path`
+- `display_name`
+- `system_flag`, `home_flag`, and `active_flag`
+- `metadata_json`
+- `created_at` and `updated_at`
+
+Service behavior:
+
+- `ensureHome(...)` creates `<owner-workspace>/home/` and persists it as a system/Home Work Area.
+- `markDirectory(...)` accepts only existing relative directories beneath the owner workspace root.
+- The owner workspace root itself cannot be marked as a Work Area.
+- Existing inactive Work Areas are reactivated instead of creating duplicate rows.
+- `unmark(...)` deactivates user-created Work Areas but refuses Home/system Work Areas.
+- Unmarking refuses Work Areas referenced by queued/running assignments or output targets when those assignment metadata columns exist.
+- Path checks normalize traversal and use real paths so symlink escapes outside the workspace root are rejected.
+
+Current Work Area persistence is the foundation for later assignment runtime routing. Until the assignment metadata phase lands, execution aliases still use the existing effective workspace rule described below.
+
 ## Workspace Leases
 
 `WorkspaceLeaseService` owns `WorkspaceLease` records in `workspace_leases`.
