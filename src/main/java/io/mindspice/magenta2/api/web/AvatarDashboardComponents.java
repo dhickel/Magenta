@@ -97,7 +97,11 @@ final class AvatarDashboardComponents {
             return grid;
         }
         for (int i = 0; i < rows.size(); i++) {
-            grid.withChild(rowShell(data, rows.get(i), i, rows.size(), editMode));
+            AvatarDashboardRow row = rows.get(i);
+            grid.withChild(rowShell(data, row, i, rows.size(), editMode));
+            if (editMode) {
+                grid.withChild(insertRowSection(row));
+            }
         }
         return grid;
     }
@@ -121,16 +125,13 @@ final class AvatarDashboardComponents {
             .withAttribute("data-avatar-widget-enabled", Boolean.toString(widget.enabled()));
         if (editMode && layoutWidget != null) {
             frame.withClass("avatar-widget-editing");
-            frame.withChild(widgetDecoration(layoutWidget));
         }
         if (!widget.enabled()) {
             frame.withClass("avatar-widget-disabled");
         }
+        frame.withChild(widgetCornerControls(widget.widgetId(), layoutWidget, editMode));
         frame.withChild(new Div().withClass("avatar-widget-header")
-            .withChild(Header.H2(definition.title()))
-            .withChild(new Div().withClass("avatar-widget-actions")
-                .withChild(detailButton(widget.widgetId()))
-                .withChild(refreshButton(widget.widgetId()))));
+            .withChild(Header.H2(definition.title())));
         if (!widget.enabled()) {
             return frame.withChild(empty("Disabled in layout."));
         }
@@ -179,6 +180,14 @@ final class AvatarDashboardComponents {
         grid.withAttribute("hx-swap-oob", "true");
         return new Div()
             .withChild(new Div().withId("avatar-edit-container").withAttribute("hx-swap-oob", "true"))
+            .withChild(grid);
+    }
+
+    static Component layoutEditResponseWithCatalog(AvatarDashboardData data, String rowId) {
+        Div grid = (Div) widgetGrid(data, true);
+        grid.withAttribute("hx-swap-oob", "true");
+        return new Div()
+            .withChild(widgetCatalogModal(data.rows(), rowId))
             .withChild(grid);
     }
 
@@ -482,11 +491,10 @@ final class AvatarDashboardComponents {
         boolean editMode
     ) {
         Div shell = new Div()
-            .withClass(editMode ? "avatar-dashboard-row-shell avatar-dashboard-row-shell-editing" : "avatar-dashboard-row-shell")
+            .withClass(editMode
+                ? "avatar-dashboard-row-shell editable-row-wrapper avatar-dashboard-row-shell-editing"
+                : "avatar-dashboard-row-shell")
             .withAttribute("data-avatar-row-id", dashboardRow.id());
-        if (editMode) {
-            shell.withChild(rowDecoration(dashboardRow, index, rowCount));
-        }
         Row row = new Row().withId("avatar-dashboard-row-" + dashboardRow.id());
         row.withAttribute("class", "row avatar-dashboard-row");
         for (AvatarDashboardRowWidget rowWidget : dashboardRow.widgets()) {
@@ -494,7 +502,12 @@ final class AvatarDashboardComponents {
                 .withWidth(rowWidget.columnWidth())
                 .withChild(widget(data, displayWidget(rowWidget), rowWidget, editMode)));
         }
-        return shell.withChild(row);
+        shell.withChild(row);
+        if (editMode) {
+            shell.withChild(rowMicroControls(dashboardRow, index, rowCount));
+            shell.withChild(addModuleSection(dashboardRow, index, rowCount));
+        }
+        return shell;
     }
 
     private static Component pageHeader(AvatarProfile profile) {
@@ -1005,56 +1018,72 @@ final class AvatarDashboardComponents {
                     .withAttribute("hx-confirm", "Remove this widget?")));
     }
 
-    private static Component rowDecoration(AvatarDashboardRow row, int index, int rowCount) {
-        int used = row.widgets().stream().mapToInt(AvatarDashboardRowWidget::columnWidth).sum();
-        return new Div().withClass("avatar-row-decoration")
-            .withChild(new Div()
-                .withChild(new HtmlTag("strong").withInnerText("Row " + (index + 1)))
-                .withChild(small(used + "/12 columns used")))
-            .withChild(new Div().withClass("avatar-row-actions")
-                .withChild(rowMoveButton(row.id(), "up", index == 0))
-                .withChild(rowMoveButton(row.id(), "down", index >= rowCount - 1))
-                .withChild(Button.create("Add Widget")
-                    .withAttribute("type", "button")
-                    .withAttribute("hx-get", "/avatar/_layout/rows/" + row.id() + "/catalog")
-                    .withAttribute("hx-target", "#avatar-edit-container")
-                    .withAttribute("hx-swap", "innerHTML"))
-                .withChild(Button.create("Add Row")
-                    .withAttribute("type", "button")
-                    .withAttribute("hx-post", "/avatar/_layout/rows")
-                    .withAttribute("hx-target", "#avatar-edit-container")
-                    .withAttribute("hx-swap", "innerHTML"))
-                .withChild(rowDeleteButton(row.id(), row.widgets().isEmpty())));
+    private static Component addModuleSection(AvatarDashboardRow row, int index, int rowCount) {
+        return new Div().withClass("add-module-section avatar-add-module-section")
+            .withChild(Button.create("+ Add Widget to Row")
+                .withAttribute("type", "button")
+                .withAttribute("hx-get", "/avatar/_layout/rows/" + row.id() + "/catalog")
+                .withAttribute("hx-target", "#avatar-edit-container")
+                .withAttribute("hx-swap", "innerHTML"));
     }
 
-    private static Component widgetDecoration(AvatarDashboardRowWidget widget) {
-        HtmlTag widthForm = Form.create().withClass("avatar-widget-width-form avatar-widget-decoration-width")
-            .withAttribute("hx-put", "/avatar/_layout/widgets/" + widget.id() + "/width")
+    private static Component rowMicroControls(AvatarDashboardRow row, int index, int rowCount) {
+        return new Div().withClass("avatar-row-micro-controls")
+            .withChild(rowMoveButton(row.id(), "up", index == 0))
+            .withChild(rowMoveButton(row.id(), "down", index >= rowCount - 1))
+            .withChild(rowDeleteButton(row.id(), row.widgets().isEmpty()));
+    }
+
+    private static Component insertRowSection(AvatarDashboardRow row) {
+        return new Div().withClass("insert-row-section avatar-insert-row-section")
+            .withChild(Button.create("+ Insert Row Below")
+                .withAttribute("type", "button")
+                .withAttribute("hx-post", "/avatar/_layout/rows/" + row.id() + "/insert-after")
+                .withAttribute("hx-target", "#avatar-edit-container")
+                .withAttribute("hx-swap", "innerHTML"));
+    }
+
+    private static Component widgetCornerControls(
+        String widgetKey,
+        AvatarDashboardRowWidget layoutWidget,
+        boolean editMode
+    ) {
+        Div controls = new Div().withClass(editMode
+            ? "avatar-widget-corner-controls avatar-widget-corner-controls-editing"
+            : "avatar-widget-corner-controls");
+        controls.withChild(detailButton(widgetKey));
+        if (!editMode || layoutWidget == null) {
+            return controls;
+        }
+        controls.withChild(refreshButton(widgetKey));
+        controls.withChild(widgetMoveButton(layoutWidget.id(), "left"));
+        controls.withChild(widgetMoveButton(layoutWidget.id(), "right"));
+        controls.withChild(widgetMoveButton(layoutWidget.id(), "up"));
+        controls.withChild(widgetMoveButton(layoutWidget.id(), "down"));
+
+        controls.withChild(Button.create("W")
+            .withAttribute("type", "button")
+            .withAttribute("title", "Cycle widget width")
+            .withAttribute("aria-label", "Cycle " + definition(widgetKey).title() + " width")
+            .withAttribute("hx-post", "/avatar/_layout/widgets/" + layoutWidget.id() + "/width-cycle")
             .withAttribute("hx-target", "#avatar-edit-container")
-            .withAttribute("hx-swap", "innerHTML");
-        widthForm.withChild(widthSelect("columnWidth", widget.columnWidth(), true));
-        widthForm.withChild(Button.submit("Resize"));
-        return new Div().withClass("avatar-widget-decoration")
-            .withChild(new Div().withClass("avatar-widget-decoration-title")
-                .withChild(new HtmlTag("strong").withInnerText(definition(widget.widgetKey()).title()))
-                .withChild(small(widget.columnWidth() + "/12")))
-            .withChild(widthForm)
-            .withChild(new Div().withClass("avatar-row-actions")
-                .withChild(widgetMoveButton(widget.id(), "left"))
-                .withChild(widgetMoveButton(widget.id(), "right"))
-                .withChild(widgetMoveButton(widget.id(), "up"))
-                .withChild(widgetMoveButton(widget.id(), "down"))
-                .withChild(Button.create("Remove")
-                    .withAttribute("type", "button")
-                    .withAttribute("hx-delete", "/avatar/_layout/widgets/" + widget.id())
-                    .withAttribute("hx-target", "#avatar-edit-container")
-                    .withAttribute("hx-swap", "innerHTML")
-                    .withAttribute("hx-confirm", "Remove this widget?")));
+            .withAttribute("hx-swap", "innerHTML"));
+        controls.withChild(Button.create("X")
+            .withAttribute("type", "button")
+            .withAttribute("title", "Remove widget")
+            .withAttribute("aria-label", "Remove " + definition(widgetKey).title())
+            .withAttribute("hx-delete", "/avatar/_layout/widgets/" + layoutWidget.id())
+            .withAttribute("hx-target", "#avatar-edit-container")
+            .withAttribute("hx-swap", "innerHTML")
+            .withAttribute("hx-confirm", "Remove this widget?"));
+        return controls;
     }
 
     private static Component rowMoveButton(String rowId, String direction, boolean disabled) {
-        Button button = Button.create(direction.equals("up") ? "Up" : "Down");
+        Button button = Button.create(direction.equals("up") ? "^" : "v");
         button.withAttribute("type", "button");
+        button.withAttribute("title", "Move row " + direction);
+        button.withAttribute("aria-label", "Move row " + direction);
         button.withAttribute("hx-post", "/avatar/_layout/rows/" + rowId + "/move?direction=" + direction);
         button.withAttribute("hx-target", "#avatar-edit-container");
         button.withAttribute("hx-swap", "innerHTML");
@@ -1065,8 +1094,10 @@ final class AvatarDashboardComponents {
     }
 
     private static Component rowDeleteButton(String rowId, boolean enabled) {
-        Button button = Button.create("Delete Row");
+        Button button = Button.create("X");
         button.withAttribute("type", "button");
+        button.withAttribute("title", "Delete empty row");
+        button.withAttribute("aria-label", "Delete empty row");
         button.withAttribute("hx-delete", "/avatar/_layout/rows/" + rowId);
         button.withAttribute("hx-target", "#avatar-edit-container");
         button.withAttribute("hx-swap", "innerHTML");
@@ -1080,13 +1111,15 @@ final class AvatarDashboardComponents {
 
     private static Component widgetMoveButton(String widgetId, String direction) {
         return Button.create(switch (direction) {
-                case "left" -> "Left";
-                case "right" -> "Right";
-                case "up" -> "Up";
-                case "down" -> "Down";
+                case "left" -> "<";
+                case "right" -> ">";
+                case "up" -> "^";
+                case "down" -> "v";
                 default -> direction;
             })
             .withAttribute("type", "button")
+            .withAttribute("title", "Move widget " + direction)
+            .withAttribute("aria-label", "Move widget " + direction)
             .withAttribute("hx-post", "/avatar/_layout/widgets/" + widgetId + "/move?direction=" + direction)
             .withAttribute("hx-target", "#avatar-edit-container")
             .withAttribute("hx-swap", "innerHTML");
@@ -1108,7 +1141,9 @@ final class AvatarDashboardComponents {
             .withAttribute("hx-get", "/avatar/_widgets/" + key)
             .withAttribute("hx-target", "#" + rootId(key))
             .withAttribute("hx-swap", "outerHTML")
-            .withInnerText("Refresh");
+            .withAttribute("title", "Refresh widget")
+            .withAttribute("aria-label", "Refresh " + definition(key).title())
+            .withInnerText("R");
     }
 
     private static Component detailButton(String key) {
@@ -1121,7 +1156,7 @@ final class AvatarDashboardComponents {
             .withAttribute("hx-get", "/avatar/_widgets/" + key + "/detail")
             .withAttribute("hx-target", "#avatar-edit-container")
             .withAttribute("hx-swap", "innerHTML")
-            .withInnerText("Details");
+            .withInnerText("i");
     }
 
     private static Component action(String label, String path, String targetId) {

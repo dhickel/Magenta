@@ -12,7 +12,7 @@ status: active
 
 | id | title | status | next_action | owner | source | created | review_after | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| UNFINISHED-20260523-03 | Polish Avatar edit-mode control hierarchy and mobile ergonomics. | deferred | In a later Avatar UI polish pass, reduce edit-control density, improve contrast, and increase mobile hit-target clarity without moving layout editing back into a modal. | unassigned | .internal-dev/changelogs/2026-05-23-avatar-visual-layout-refactor.md | 2026-05-23 | 2026-06-22 | Playwright rerun found no blocking defects, but edit mode remains visually dense compared with `/dashboard` and `/agents`. |
+| UNFINISHED-20260523-04 | Review and plan Avatar high-level visual polish. | needs-triage | Use the high-level design review to decide whether to plan a follow-up polish pass for Avatar chat hierarchy, desktop balance, empty-row handling, add-widget styling, and noisy-list constraints. | unassigned | .internal-dev/reviews/2026-05-23-avatar-high-level-design-review.md | 2026-05-23 | 2026-06-22 | Design review says Avatar now passes the requested SimplyPages demo parity criteria but still needs polish before being called visually complete. |
 | UNFINISHED-20260523-01 | Decide whether to migrate historical untagged chat sessions. | deferred | If legacy `/chat` history visibility matters, design a one-time migration or operator repair path that can distinguish browser sessions from Avatar/internal sessions without reintroducing cross-surface leakage. | unassigned | .internal-dev/changelogs/2026-05-22-chat-session-scope-filter.md | 2026-05-23 | 2026-06-22 | The session-scope fix hides untagged legacy conversations from `/chat` rather than risking Avatar/agent/internal leakage. |
 | UNFINISHED-20260523-02 | Decide whether planner recurrence should trigger automation. | deferred | If planner tasks should drive reminders, user contact, wait-for-input flows, or assignment creation, design that scheduler/automation separately from the v1 organizer records. | unassigned | .internal-dev/changelogs/2026-05-23-avatar-planner-organizer.md | 2026-05-23 | 2026-06-22 | V1 stores planner tasks, recurrence, subtodos, projections, and work links only; it intentionally does not automate execution. |
 | UNFINISHED-20260522-04 | Design future email processing through scripting or internal messaging. | deferred | Plan a non-public ingestion path using the scripting API, internal messaging, or approved agent tools after endpoint lockdown/redaction rules are designed. | unassigned | .internal-dev/changelogs/2026-05-22-avatar-email-ingress-correction.md | 2026-05-22 | 2026-06-21 | Dwight rejected the first-pass public-ish Avatar email endpoint; the sprint removed it and left email processing as later scope. |
@@ -22,6 +22,7 @@ status: active
 
 | id | title | status | owner | source | closed_on | notes |
 | --- | --- | --- | --- | --- | --- | --- |
+| UNFINISHED-20260523-03 | Polish Avatar edit-mode control hierarchy and mobile ergonomics. | closed | unassigned | .internal-dev/changelogs/2026-05-23-avatar-simplypages-demo-parity-refactor.md | 2026-05-23 | Closed by replacing heavy edit-mode panels with SimplyPages demo-style top-corner decorators, row micro controls, add-widget sections, insert-row catalog behavior, and delegated Playwright visual validation. |
 | UNFINISHED-20260522-01 | Confirm the first durable current focus. | closed | user | .internal-dev/plans/.archive/avatar-dashboard-sprint/README.md | 2026-05-22 | Avatar was selected as the first durable implementation focus; current pass remains planning-only. |
 | UNFINISHED-20260522-02 | Create the Avatar dashboard sprint plan suite. | closed | unassigned | .internal-dev/plans/.archive/avatar-dashboard-sprint/final-orchestration-plan.md | 2026-05-22 | Planning suite was created as a handoff for later implementation. |
 
@@ -29,6 +30,8 @@ status: active
 
 | reviewed_on | reviewer | outcome | notes |
 | --- | --- | --- | --- |
+| 2026-05-23 | codex | updated | Added a needs-triage Avatar visual polish item from the high-level design review requested after visual validation. |
+| 2026-05-23 | codex | closed | Closed the deferred Avatar edit-mode density item after the SimplyPages demo parity refactor passed delegated Playwright visual validation. |
 | 2026-05-23 | codex | updated | Added deferred Avatar edit-mode visual polish after Playwright validation accepted the functional refactor with non-blocking density concerns. |
 | 2026-05-23 | codex | updated | Added deferred decision for historical untagged chat-session migration after introducing explicit chat surface filtering. |
 | 2026-05-23 | codex | updated | Added deferred planner automation decision after the Avatar planner organizer implementation. |

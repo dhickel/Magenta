@@ -128,8 +128,13 @@ class AvatarDashboardControllerTest {
         controller.addLayoutRow();
         controller.addLayoutWidget(avatarService.dashboardRows().getFirst().id(), "todos", 4);
         String editRowsHtml = controller.avatar(true);
-        assertThat(editRowsHtml).contains("avatar-row-decoration");
-        assertThat(editRowsHtml).contains("avatar-widget-decoration");
+        assertThat(editRowsHtml).contains("editable-row-wrapper");
+        assertThat(editRowsHtml).contains("add-module-section");
+        assertThat(editRowsHtml).contains("insert-row-section");
+        assertThat(editRowsHtml).contains("avatar-widget-corner-controls");
+        assertThat(editRowsHtml).contains("/width-cycle");
+        assertThat(editRowsHtml).doesNotContain("avatar-row-decoration");
+        assertThat(editRowsHtml).doesNotContain("avatar-widget-decoration");
     }
 
     @Test
@@ -187,16 +192,22 @@ class AvatarDashboardControllerTest {
     @Test
     void rowLayoutEditorAddsMovesResizesAndRemovesWidgets() {
         String emptyEditor = controller.edit(false);
-        assertThat(emptyEditor).contains("/avatar/_layout/rows");
+        assertThat(emptyEditor).isEmpty();
 
         String afterRow = controller.addLayoutRow();
         String rowId = avatarService.dashboardRows().getFirst().id();
         assertThat(afterRow).contains("hx-swap-oob=\"true\"");
         assertThat(afterRow).contains("/avatar/_layout/rows/" + rowId + "/catalog");
+        assertThat(afterRow).contains("/avatar/_layout/rows/" + rowId + "/insert-after");
 
         String catalog = controller.widgetCatalog(rowId);
         assertThat(catalog).contains("Add Widget");
         assertThat(catalog).contains("daily-tasks");
+
+        String inserted = controller.insertLayoutRowAfter(rowId);
+        assertThat(inserted).contains("hx-swap-oob=\"true\"");
+        assertThat(inserted).contains("avatar-widget-catalog");
+        assertThat(avatarService.dashboardRows()).hasSize(2);
 
         assertThatThrownBy(() -> controller.addLayoutWidget(rowId, "unknown", 4))
             .isInstanceOf(ResponseStatusException.class)
@@ -221,6 +232,12 @@ class AvatarDashboardControllerTest {
         assertThat(avatarService.dashboardRows().getFirst().widgets()).anySatisfy(widget -> {
             assertThat(widget.widgetKey()).isEqualTo("todos");
             assertThat(widget.columnWidth()).isEqualTo(6);
+        });
+
+        controller.cycleLayoutWidgetWidth(todosId);
+        assertThat(avatarService.dashboardRows().getFirst().widgets()).anySatisfy(widget -> {
+            assertThat(widget.widgetKey()).isEqualTo("todos");
+            assertThat(widget.columnWidth()).isEqualTo(8);
         });
 
         controller.moveLayoutWidget(notesId, "left");

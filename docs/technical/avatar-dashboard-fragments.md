@@ -7,22 +7,24 @@
 - `GET /avatar` renders the full shell with Avatar CSS, compact chat, widget grid, edit container, and output preview container.
 - `GET /avatar?edit=true` renders the same dashboard in in-place layout edit mode.
 - `GET /avatar/_widgets` returns `#avatar-widget-grid`.
-- `GET /avatar/_widgets?edit=true` returns `#avatar-widget-grid` with row and widget layout decoration controls.
+- `GET /avatar/_widgets?edit=true` returns `#avatar-widget-grid` with demo-style in-place edit decorations: top-corner widget controls, centered add-widget sections, and insert-row separators.
 - `GET /avatar/_widgets/{widgetKey}` returns one stable widget root.
 - `GET /avatar/_widgets/{widgetKey}/detail` opens a widget-specific detail modal in the shared edit container.
-- `GET /avatar/_edit` returns the legacy row/widget layout edit modal. This route remains for compatibility and fallback; the preferred layout workflow is `/avatar?edit=true`.
+- `GET /avatar/_edit` only clears or leaves the shared edit container empty. The legacy row/widget layout edit modal is no longer the layout workflow.
 - `POST /avatar/_layout/rows` adds a row.
+- `POST /avatar/_layout/rows/{rowId}/insert-after` inserts a row directly below an existing row.
 - `POST /avatar/_layout/rows/{rowId}/move?direction=up|down` reorders rows.
 - `DELETE /avatar/_layout/rows/{rowId}` removes an empty row.
 - `GET /avatar/_layout/rows/{rowId}/catalog` opens the single add-widget modal view.
 - `POST /avatar/_layout/rows/{rowId}/widgets` adds a known first-party widget with a 12-column width.
 - `POST /avatar/_layout/widgets/{widgetId}/move?direction=left|right|up|down` moves widgets inside or across rows.
 - `PUT /avatar/_layout/widgets/{widgetId}/width` resizes a widget to `3`, `4`, `6`, `8`, or `12` columns.
+- `POST /avatar/_layout/widgets/{widgetId}/width-cycle` advances the widget through the same width presets for compact top-corner editing.
 - `DELETE /avatar/_layout/widgets/{widgetId}` removes a widget instance.
 
 Layout mutations refresh `#avatar-widget-grid` with an out-of-band swap and clear the shared edit container when appropriate. `PUT /avatar/_layout` remains as a deprecated compatibility endpoint that rerenders the edit-mode grid response without accepting the old flat form contract.
 
-In-place edit mode is the source-of-truth layout workflow. Move, resize, add-row, add-widget, remove-widget, and empty-row delete controls should be rendered on the live dashboard surface. Modals remain appropriate for widget-specific detail work and add-widget catalog selection.
+In-place edit mode is the source-of-truth layout workflow. Move, resize, add-row, add-widget, remove-widget, and empty-row delete controls are rendered on the live dashboard surface. Modals remain appropriate for widget-specific detail work and add-widget catalog selection, but layout placement and 12-column sizing do not use a separate modal editor.
 
 Stable widget root IDs:
 

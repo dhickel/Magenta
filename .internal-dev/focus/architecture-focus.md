@@ -12,7 +12,7 @@ status: active
 
 | id | area | direction | status | owner | source | review_after | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| ARCH-20260523-01 | Avatar Work Areas and dashboard refactor. | Treat Work Areas as runtime-owned metadata around confined agent/project directories while keeping Avatar layout and planner data in `avatar.sqlite`. | active | unassigned | .internal-dev/plans/.archive/avatar-agent-ui-refactor/implementation-plan.md | 2026-06-22 | Implemented direction: selected Work Area becomes assignment `workspace/`, broader owned root becomes `root/`, output routing is explicit assignment metadata, and planner organizer data remains non-executable Avatar data. |
+| ARCH-20260523-01 | Avatar Work Areas and dashboard refactor. | Treat Work Areas as runtime-owned metadata around confined agent/project directories while keeping Avatar layout and planner data in `avatar.sqlite`. | active | unassigned | .internal-dev/changelogs/2026-05-23-avatar-simplypages-demo-parity-refactor.md | 2026-06-22 | Implemented direction: selected Work Area becomes assignment `workspace/`, broader owned root becomes `root/`, output routing is explicit assignment metadata, planner organizer data remains non-executable Avatar data, and dashboard layout editing remains in-place using SimplyPages row/module patterns. |
 | ARCH-20260522-04 | Avatar data ownership. | Store Avatar user-centric profile, preferences, organizer data, dashboard layout, facts, and events in separate `avatar.sqlite` under the Magenta root. | active | unassigned | .internal-dev/plans/.archive/avatar-dashboard-sprint/phase-01-avatar-core-persistence.md | 2026-06-21 | Phase 01 implemented the separate datasource/schema; existing orchestration/runtime state stays in `magenta.sqlite`; no cross-database foreign keys. |
 | ARCH-20260522-03 | Avatar runtime boundary. | Build Avatar on existing chat, tool, agent profile, assignment, workspace, schedule, reaction, and output services rather than creating a second runtime. | active | unassigned | .internal-dev/plans/.archive/avatar-dashboard-sprint/phase-04-avatar-assistant-behaviors.md | 2026-06-21 | Sprint implementation kept Avatar on existing services; Phase 05 added the `/avatar` surface and removed the first-pass email HTTP ingress after user review. |
 
@@ -31,6 +31,7 @@ status: active
 
 | reviewed_on | reviewer | outcome | notes |
 | --- | --- | --- | --- |
+| 2026-05-23 | codex | updated | Refreshed Avatar layout notes after the SimplyPages demo parity pass replaced heavy edit panels with live row/module decorators and insertion controls. |
 | 2026-05-23 | codex | reviewed | Avatar visual layout refactor preserves existing Avatar data/runtime boundaries while making rendered dashboard layout the editing source of truth. |
 | 2026-05-23 | codex | updated | Added Avatar Work Area/layout refactor direction from the new implementation plan suite. |
 | 2026-05-23 | codex | updated | Refreshed Avatar Work Area/layout refactor notes after implementation landed on the feature branch. |

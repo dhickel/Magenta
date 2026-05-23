@@ -153,10 +153,7 @@ public class AvatarDashboardController {
     @GetMapping("/avatar/_edit")
     @ResponseBody
     public String edit(@RequestParam(value = "close", required = false) boolean close) {
-        if (close) {
-            return "";
-        }
-        return AvatarDashboardComponents.editModal(avatarService.dashboardRows()).render();
+        return "";
     }
 
     @PostMapping("/avatar/_layout/rows")
@@ -164,6 +161,18 @@ public class AvatarDashboardController {
     public String addLayoutRow() {
         avatarService.addDashboardRow();
         return AvatarDashboardComponents.layoutEditResponse(data(), true).render();
+    }
+
+    @PostMapping("/avatar/_layout/rows/{rowId}/insert-after")
+    @ResponseBody
+    public String insertLayoutRowAfter(@PathVariable String rowId) {
+        String insertedId;
+        try {
+            insertedId = avatarService.insertDashboardRowAfter(rowId).id();
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
+        return AvatarDashboardComponents.layoutEditResponseWithCatalog(data(), insertedId).render();
     }
 
     @PostMapping("/avatar/_layout/rows/{rowId}/move")
@@ -226,6 +235,17 @@ public class AvatarDashboardController {
     public String resizeLayoutWidget(@PathVariable String widgetId, @RequestParam int columnWidth) {
         try {
             avatarService.resizeDashboardWidget(widgetId, columnWidth);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
+        return AvatarDashboardComponents.layoutEditResponse(data(), true).render();
+    }
+
+    @PostMapping("/avatar/_layout/widgets/{widgetId}/width-cycle")
+    @ResponseBody
+    public String cycleLayoutWidgetWidth(@PathVariable String widgetId) {
+        try {
+            avatarService.cycleDashboardWidgetWidth(widgetId);
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }

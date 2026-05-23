@@ -13,11 +13,11 @@ The Avatar dashboard is available at `/avatar`. It is a personal dashboard for q
 
 ## Editing Widgets
 
-Use **Edit Layout In Place** on `/avatar` to change rows and widgets on the displayed dashboard. The layout uses 12-column rows. In edit mode, row controls and widget controls appear directly on the dashboard surface so placement, movement, and sizing happen where the widget is actually shown.
+Use **Edit Layout In Place** on `/avatar` to change rows and widgets on the displayed dashboard. The layout uses 12-column rows. In edit mode, compact controls appear on the live dashboard surface: widget controls sit in the top corner of each widget, add-widget controls appear between row content, and insert-row controls appear as row separators. Placement, movement, and sizing happen where the widget is actually shown.
 
 You can add rows, add one instance of each first-party widget, move widgets across rows, resize widgets to preset widths, remove widgets, and delete empty rows. Each action saves immediately through HTMX and refreshes the dashboard grid in place.
 
-Each widget also has an **Open** detail action. Detail views are for working with that widget's content or module-specific controls; dashboard placement and 12-column sizing remain in-place layout actions.
+Each widget also has a small detail action. Detail views are for working with that widget's content or module-specific controls; dashboard placement and 12-column sizing remain in-place layout actions.
 
 ## Organizer
 

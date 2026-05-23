@@ -53,6 +53,10 @@ public class AvatarService {
         return repository.addDashboardRow();
     }
 
+    public AvatarDashboardRow insertDashboardRowAfter(String rowId) {
+        return repository.insertDashboardRowAfter(rowId);
+    }
+
     public AvatarDashboardRow moveDashboardRow(String rowId, int direction) {
         return repository.moveDashboardRow(rowId, direction);
     }
@@ -67,6 +71,10 @@ public class AvatarService {
 
     public AvatarDashboardRowWidget resizeDashboardWidget(String widgetId, int columnWidth) {
         return repository.resizeDashboardWidget(widgetId, columnWidth);
+    }
+
+    public AvatarDashboardRowWidget cycleDashboardWidgetWidth(String widgetId) {
+        return repository.cycleDashboardWidgetWidth(widgetId);
     }
 
     public AvatarDashboardRowWidget moveDashboardWidget(String widgetId, String direction) {

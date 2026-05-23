@@ -80,6 +80,7 @@ This is the style we want to take with our UI.
 - Diagnose the existing Magenta code against SimplyPages examples before inventing a new UI structure. Identify where current code diverges from reusable `Row`, `Column`, module, HTMX, OOB swap, slot-key, or edit-decorator patterns.
 - Prefer in-place decorated editing for layout operations. Moving, resizing, adding rows, adding modules/widgets, and deleting layout elements should happen on the real displayed layout whenever practical, not in a separate layout-only modal.
 - Modal or drawer editing is appropriate for deep module-specific iteration, but it must not own dashboard placement, row ordering, or 12-column sizing.
+- For dashboard/module editing, the SimplyPages demo pattern is the baseline: real module cards first, small top-corner decorators, centered add-module controls, and low-emphasis insert-row separators. Do not approve large text-heavy row/widget editor blocks that push content down or make the actual page look like an editor form.
 - When a scratch page is useful for planning or visual experiments, create it as an internal/dev-only surface, keep it out of normal navigation, and use it only to validate ideas with Playwright. Never treat scratch pages as source-of-truth documentation; extract stable examples and lessons into production components, docs, or `.internal-dev/knowledge/`.
 
 #### Avatar Dashboard Style Reference

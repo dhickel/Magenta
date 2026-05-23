@@ -188,6 +188,34 @@ public class AvatarRepository {
         return findDashboardRow(id).orElseThrow();
     }
 
+    public AvatarDashboardRow insertDashboardRowAfter(String rowId) {
+        requireText(rowId, "row id");
+        List<DashboardRowRecord> rows = dashboardRowRecords();
+        int index = indexOfRow(rows, rowId);
+        if (index < 0) {
+            throw new IllegalArgumentException("dashboard row not found: " + rowId);
+        }
+        int position = rows.get(index).position() + 1;
+        Instant now = Instant.now();
+        jdbcTemplate.update(
+            "update avatar_dashboard_rows set row_position = row_position + 1, updated_at = ? where row_position >= ?",
+            now.toString(),
+            position
+        );
+        String id = "row-" + UUID.randomUUID();
+        jdbcTemplate.update(
+            """
+                insert into avatar_dashboard_rows (id, row_position, collapsed, settings_json, updated_at)
+                values (?, ?, 0, '{}', ?)
+                """,
+            id,
+            position,
+            now.toString()
+        );
+        normalizeDashboardRows();
+        return findDashboardRow(id).orElseThrow();
+    }
+
     public AvatarDashboardRow moveDashboardRow(String rowId, int direction) {
         requireText(rowId, "row id");
         if (direction != -1 && direction != 1) {
@@ -256,6 +284,20 @@ public class AvatarRepository {
             widgetId
         );
         return findDashboardWidget(widgetId).orElseThrow();
+    }
+
+    public AvatarDashboardRowWidget cycleDashboardWidgetWidth(String widgetId) {
+        AvatarDashboardRowWidget widget = findDashboardWidget(widgetId)
+            .orElseThrow(() -> new IllegalArgumentException("dashboard widget not found: " + widgetId));
+        int[] widths = {3, 4, 6, 8, 12};
+        int next = widths[0];
+        for (int i = 0; i < widths.length; i++) {
+            if (widths[i] == widget.columnWidth()) {
+                next = widths[(i + 1) % widths.length];
+                break;
+            }
+        }
+        return resizeDashboardWidget(widgetId, next);
     }
 
     public AvatarDashboardRowWidget moveDashboardWidget(String widgetId, String direction) {

@@ -104,10 +104,8 @@
 }
 
 .avatar-dashboard-row-shell-editing {
-    border: 1px dashed var(--mg-border-strong);
-    border-radius: 8px;
-    background: rgba(239, 246, 255, 0.45);
-    padding: 0.55rem;
+    position: relative;
+    padding: 0;
 }
 
 .avatar-dashboard-row {
@@ -151,6 +149,7 @@
 }
 
 .avatar-widget {
+    position: relative;
     grid-column: span 2;
     min-width: 0;
     border: 1px solid var(--mg-border);
@@ -162,6 +161,7 @@
 
 .avatar-widget-editing {
     border-color: var(--mg-border-strong);
+    padding-top: 1.15rem;
 }
 
 .avatar-widget-wide {
@@ -279,12 +279,44 @@
     justify-content: flex-end;
 }
 
-.avatar-widget-actions {
-    gap: 0.35rem;
+.avatar-widget-corner-controls {
+    position: absolute;
+    top: 0.25rem;
+    right: 0.25rem;
+    z-index: 4;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.12rem;
+    max-width: calc(100% - 0.5rem);
 }
 
-.avatar-widget-actions button {
-    padding-inline: 0.45rem;
+.avatar-widget-corner-controls button,
+.avatar-widget-corner-controls select {
+    min-height: 1.35rem;
+    height: 1.35rem;
+    padding: 0 0.32rem;
+    border: 0;
+    background: transparent;
+    color: var(--mg-muted);
+    font-size: 0.78rem;
+    line-height: 1;
+    box-shadow: none;
+}
+
+.avatar-widget-corner-controls button:hover,
+.avatar-widget-corner-controls select:hover,
+.avatar-widget-corner-controls button:focus,
+.avatar-widget-corner-controls select:focus {
+    background: var(--mg-panel-soft);
+    color: var(--mg-text);
+    outline: 1px solid var(--mg-border);
+}
+
+.avatar-widget-corner-controls-editing {
+    border-radius: 5px;
+    background: var(--mg-panel);
+    box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.24);
 }
 
 .avatar-metrics {
@@ -456,37 +488,12 @@
 .avatar-edit-row-header,
 .avatar-edit-widget,
 .avatar-widget-width-form,
-.avatar-workarea-create-row,
-.avatar-row-decoration,
-.avatar-widget-decoration {
+.avatar-workarea-create-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 0.6rem;
     flex-wrap: wrap;
-}
-
-.avatar-row-decoration,
-.avatar-widget-decoration {
-    margin-bottom: 0.55rem;
-    border: 1px solid #b9c9dd;
-    border-radius: 7px;
-    background: #eef5fc;
-    padding: 0.45rem 0.55rem;
-}
-
-.avatar-widget-decoration {
-    align-items: flex-start;
-    display: grid;
-    grid-template-columns: minmax(6rem, 1fr) minmax(7rem, auto) auto;
-}
-
-.avatar-widget-decoration-title {
-    min-width: 7rem;
-}
-
-.avatar-widget-decoration-width {
-    justify-content: flex-start;
 }
 
 .avatar-edit-widgets,
@@ -515,6 +522,84 @@
 .avatar-widget-width-form select,
 .avatar-catalog-item select {
     min-height: 2rem;
+}
+
+.editable-row-wrapper {
+    position: relative;
+}
+
+.avatar-add-module-section {
+    margin: 1rem 0 0;
+    text-align: center;
+}
+
+.avatar-add-module-section > button {
+    border: 2px dashed var(--mg-border-strong);
+    background: var(--mg-panel-soft);
+    color: var(--mg-muted);
+    font-weight: 700;
+    min-height: 2.5rem;
+    padding: 0 1.25rem;
+}
+
+.avatar-add-module-section > button:hover,
+.avatar-add-module-section > button:focus {
+    border-color: var(--mg-primary);
+    color: var(--mg-text);
+}
+
+.avatar-row-micro-controls {
+    position: absolute;
+    top: -0.55rem;
+    right: 0;
+    z-index: 3;
+    display: inline-flex;
+    gap: 0.25rem;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    opacity: 0.72;
+}
+
+.avatar-row-micro-controls button {
+    min-width: 1.35rem;
+    min-height: 1.35rem;
+    height: 1.35rem;
+    padding: 0 0.28rem;
+    color: var(--mg-muted);
+    background: var(--mg-panel);
+    border: 1px solid var(--mg-border);
+    font-size: 0.76rem;
+    line-height: 1;
+    box-shadow: none;
+}
+
+.avatar-row-micro-controls button:hover,
+.avatar-row-micro-controls button:focus {
+    color: var(--mg-text);
+    border-color: var(--mg-border-strong);
+    opacity: 1;
+}
+
+.avatar-insert-row-section {
+    margin: 1.2rem 0;
+    padding: 0.8rem 0;
+    border-top: 1px solid var(--mg-border);
+    text-align: center;
+}
+
+.avatar-insert-row-section button {
+    min-height: 1.9rem;
+    border: 1px solid var(--mg-border);
+    background: transparent;
+    color: var(--mg-muted);
+    font-size: 0.86rem;
+}
+
+.avatar-insert-row-section button:hover,
+.avatar-insert-row-section button:focus {
+    border-color: var(--mg-border-strong);
+    background: var(--mg-panel-soft);
+    color: var(--mg-text);
 }
 
 .avatar-icon-button {
@@ -643,8 +728,6 @@
         grid-template-columns: 1fr;
     }
 
-    .avatar-row-decoration,
-    .avatar-widget-decoration,
     .avatar-toolbar {
         align-items: stretch;
         display: flex;

@@ -19,9 +19,10 @@ This package owns Avatar user-centric data and services.
 ### UI Knowledge
 - Before changing Avatar dashboard UI, read `.internal-dev/notes/2026-05-22-avatar-dashboard-ui-style-guidelines.md` and `.internal-dev/knowledge/simplypages-avatar-layout-and-editing.md`.
 - Compare Avatar UI code to the SimplyPages docs and demo editing patterns before adding custom structures.
+- For layout editing, use the SimplyPages HTMX editing demo as the concrete visual baseline: small top-corner module controls, in-place add-widget/add-row affordances, and no separate layout-list modal as the main editing interface.
 - Scratch layout pages are allowed only for dev/planning experiments and Playwright visual checks. Do not reference scratch pages as source truth in package docs or knowledge files; extract stable lessons into reusable components or `.internal-dev/knowledge/`.
 
 ### Validation
 - Add focused datasource, schema, repository, service, and bootstrap tests for persistence changes.
 - Run Avatar package tests after changes.
-- For Avatar UI changes, run delegated Playwright visual validation with desktop and mobile screenshots. The validation must critique alignment, density, empty space, text wrapping, control placement, and consistency with `/dashboard` and `/agents`, not just confirm that the route loads.
+- For Avatar UI changes, run delegated Playwright visual validation with desktop and mobile screenshots. The validation must critique alignment, density, empty space, text wrapping, control placement, and consistency with `/dashboard`, `/agents`, and the SimplyPages editing demo when layout editing changes, not just confirm that the route loads.
