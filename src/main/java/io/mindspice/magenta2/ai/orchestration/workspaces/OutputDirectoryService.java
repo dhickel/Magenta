@@ -1,8 +1,12 @@
 package io.mindspice.magenta2.ai.orchestration.workspaces;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 
+import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentRequest;
 import io.mindspice.magenta2.core.util.PlainPathSegmentValidator;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -10,13 +14,24 @@ import org.springframework.util.StringUtils;
 public class OutputDirectoryService {
     private final EffectiveWorkspaceResolver effectiveWorkspaceResolver;
     private final WorkspaceDirectoryService workspaceDirectoryService;
+    private final WorkAreaService workAreaService;
 
     public OutputDirectoryService(
         EffectiveWorkspaceResolver effectiveWorkspaceResolver,
         WorkspaceDirectoryService workspaceDirectoryService
     ) {
+        this(effectiveWorkspaceResolver, workspaceDirectoryService, null);
+    }
+
+    @Autowired
+    public OutputDirectoryService(
+        EffectiveWorkspaceResolver effectiveWorkspaceResolver,
+        WorkspaceDirectoryService workspaceDirectoryService,
+        @Autowired(required = false) WorkAreaService workAreaService
+    ) {
         this.effectiveWorkspaceResolver = effectiveWorkspaceResolver;
         this.workspaceDirectoryService = workspaceDirectoryService;
+        this.workAreaService = workAreaService;
     }
 
     public ResolvedOutputDirectory resolve(OutputPublicationTarget target) {
@@ -24,26 +39,67 @@ public class OutputDirectoryService {
             throw new IllegalArgumentException("target is required");
         }
         EffectiveWorkspace workspace = effectiveWorkspaceResolver.resolve(target.agentId(), target.projectId());
-        Path outputDirectory = switch (target.kind()) {
-            case TASK -> workspaceDirectoryService.taskOutput(
-                workspace.root(), requireSegment(target.workUnitId(), "taskId"), requireSegment(target.runId(), "runId"));
-            case WORKFLOW -> workspaceDirectoryService.workflowOutput(
-                workspace.root(), requireSegment(target.workUnitId(), "workflowId"), requireSegment(target.runId(), "runId"));
-            case JOB -> workspaceDirectoryService.jobAssignmentOutput(
-                workspace.root(),
-                requireSegment(target.jobAssignmentId(), "jobAssignmentId"),
-                requireSegment(target.jobRunId(), "jobRunId"));
-        };
+        WorkAreaPaths workAreaPaths = resolveWorkAreaPaths(target, workspace);
+        Path outputDirectory = workAreaPaths.directOutput()
+            ? workAreaPaths.outputRoot()
+            : switch (target.kind()) {
+                case TASK -> workspaceDirectoryService.taskOutput(
+                    workAreaPaths.outputRoot(), requireSegment(target.workUnitId(), "taskId"), requireSegment(target.runId(), "runId"));
+                case WORKFLOW -> workspaceDirectoryService.workflowOutput(
+                    workAreaPaths.outputRoot(), requireSegment(target.workUnitId(), "workflowId"), requireSegment(target.runId(), "runId"));
+                case JOB -> workspaceDirectoryService.jobAssignmentOutput(
+                    workAreaPaths.outputRoot(),
+                    requireSegment(target.jobAssignmentId(), "jobAssignmentId"),
+                    requireSegment(target.jobRunId(), "jobRunId"));
+            };
         return new ResolvedOutputDirectory(
             workspace.ownerType(),
             workspace.ownerId(),
             workspace.agentId(),
             workspace.projectId(),
             workspace.workspaceId(),
-            workspace.root(),
+            workAreaPaths.ownerRoot(),
+            workAreaPaths.executionRoot(),
             outputDirectory,
             artifactContext(target, workspace)
         );
+    }
+
+    private WorkAreaPaths resolveWorkAreaPaths(OutputPublicationTarget target, EffectiveWorkspace workspace) {
+        if (workAreaService == null || !StringUtils.hasText(target.selectedWorkAreaId())) {
+            return new WorkAreaPaths(workspace.root(), workspace.root(), workspace.root(), false);
+        }
+        WorkspaceOwnerType ownerType = workspace.ownerType();
+        String ownerId = workspace.ownerId();
+        WorkArea selected = workAreaService.requireActiveOwned(
+            target.selectedWorkAreaId(), ownerType, ownerId, "selected Work Area");
+        Path ownerRoot = workAreaService.ownerRoot(ownerType, ownerId);
+        Path executionRoot = workAreaService.resolve(selected);
+        String routeType = StringUtils.hasText(target.outputRouteType())
+            ? target.outputRouteType()
+            : AssignmentRequest.OUTPUT_ROUTE_DEFAULT;
+        boolean directOutput = AssignmentRequest.OUTPUT_ROUTE_DIRECT_DIRECTORY.equals(routeType);
+        Path outputRoot = switch (routeType) {
+            case AssignmentRequest.OUTPUT_ROUTE_WORK_AREA -> {
+                WorkArea outputArea = workAreaService.requireActiveOwned(
+                    target.outputWorkAreaId(), ownerType, ownerId, "output Work Area");
+                yield workAreaService.resolve(outputArea);
+            }
+            case AssignmentRequest.OUTPUT_ROUTE_DIRECT_DIRECTORY ->
+                ownerRoot.resolve(workAreaService.requireExistingOwnerDirectory(
+                    ownerType, ownerId, target.outputDirectRelativePath(), "direct output directory")).normalize();
+            default -> executionRoot;
+        };
+        outputRoot = ensureRealDirectory(outputRoot);
+        return new WorkAreaPaths(ownerRoot, executionRoot, outputRoot, directOutput);
+    }
+
+    private Path ensureRealDirectory(Path path) {
+        try {
+            return Files.createDirectories(path).toRealPath();
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to create output directory: " + path, exception);
+        }
     }
 
     private OutputArtifactContext artifactContext(OutputPublicationTarget target, EffectiveWorkspace workspace) {
@@ -72,5 +128,8 @@ public class OutputDirectoryService {
         }
         PlainPathSegmentValidator.requirePlainSegment(value, label);
         return value.trim();
+    }
+
+    private record WorkAreaPaths(Path ownerRoot, Path executionRoot, Path outputRoot, boolean directOutput) {
     }
 }

@@ -91,7 +91,14 @@ Assignment records now carry first-class Work Area/output routing metadata:
 
 The metadata is validated at assignment creation. `WORK_AREA` targets must be active Work Areas owned by the same agent/project root. `DIRECT_DIRECTORY` targets must already exist under the owner root and pass the same traversal and symlink confinement policy as Work Areas.
 
-Runtime alias and output directory resolution are staged separately. Until that phase lands, these columns are durable routing intent for UI/API submit surfaces and later execution services.
+Runtime alias and output directory resolution consume these columns during task, workflow, and job run allocation:
+
+- `workspace/` resolves to the selected Work Area path when present.
+- `root/` resolves to the broader owner workspace root.
+- `outputs/` resolves to the active run output directory.
+- `DEFAULT` writes under `<selected-work-area>/outputs/...`.
+- `WORK_AREA` writes under `<output-work-area>/outputs/...`.
+- `DIRECT_DIRECTORY` writes directly to the existing owner-root-relative directory.
 
 ## Workspace Leases
 
@@ -159,7 +166,8 @@ Shell tools:
 
 During task, workflow, or job execution, file and shell tools resolve runtime aliases from the active orchestration context:
 
-- `workspace/`: effective durable workspace root.
+- `workspace/`: selected Work Area when present; otherwise effective durable workspace root.
+- `root/`: effective durable owner root, useful when `workspace/` is narrowed to a Work Area.
 - `work/`: effective workspace `work/`.
 - `outputs/`: current run output directory.
 - `run/`: current run temp/execution directory.

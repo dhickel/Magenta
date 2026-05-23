@@ -5,6 +5,7 @@ import java.nio.file.Path;
 import java.util.Map;
 
 import io.mindspice.magenta2.ai.config.user.AiConfig;
+import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentRequest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -62,6 +63,61 @@ class OutputDirectoryServiceTest {
         assertThat(resolved.artifactContext().runType()).isEqualTo("JOB_RUN");
     }
 
+    @Test
+    void selectedWorkAreaBecomesWorkspaceRootAndDefaultOutputsStayUnderSelectedOutputs() throws Exception {
+        Fixture fixture = fixture("selected-work-area");
+        Files.createDirectories(fixture.dataRoot().resolve("agents/agent-1/workspace/research"));
+        WorkArea selected = fixture.workAreaService()
+            .markDirectory(WorkspaceOwnerType.AGENT, "agent-1", "research", "Research");
+
+        ResolvedOutputDirectory resolved = fixture.service().resolve(OutputPublicationTarget.task(
+            "task-1", "run-1", "agent-1", null, null,
+            selected.id(), AssignmentRequest.OUTPUT_ROUTE_DEFAULT, null, null));
+
+        assertThat(resolved.ownerRoot())
+            .isEqualTo(fixture.dataRoot().resolve("agents/agent-1/workspace"));
+        assertThat(resolved.workspaceRoot())
+            .isEqualTo(fixture.dataRoot().resolve("agents/agent-1/workspace/research"));
+        assertThat(resolved.outputDirectory())
+            .isEqualTo(fixture.dataRoot().resolve("agents/agent-1/workspace/research/outputs/tasks/task-1/run-1"));
+    }
+
+    @Test
+    void outputWorkAreaRedirectUsesTargetWorkAreaOutputs() throws Exception {
+        Fixture fixture = fixture("output-work-area");
+        Files.createDirectories(fixture.dataRoot().resolve("agents/agent-1/workspace/home"));
+        Files.createDirectories(fixture.dataRoot().resolve("agents/agent-1/workspace/review"));
+        WorkArea selected = fixture.workAreaService()
+            .markDirectory(WorkspaceOwnerType.AGENT, "agent-1", "home", "Home");
+        WorkArea output = fixture.workAreaService()
+            .markDirectory(WorkspaceOwnerType.AGENT, "agent-1", "review", "Review");
+
+        ResolvedOutputDirectory resolved = fixture.service().resolve(OutputPublicationTarget.workflow(
+            "workflow-1", "run-1", "agent-1", null, null,
+            selected.id(), AssignmentRequest.OUTPUT_ROUTE_WORK_AREA, output.id(), null));
+
+        assertThat(resolved.workspaceRoot())
+            .isEqualTo(fixture.dataRoot().resolve("agents/agent-1/workspace/home"));
+        assertThat(resolved.outputDirectory())
+            .isEqualTo(fixture.dataRoot().resolve("agents/agent-1/workspace/review/outputs/workflows/workflow-1/run-1"));
+    }
+
+    @Test
+    void directOutputRouteUsesExistingDirectoryDirectly() throws Exception {
+        Fixture fixture = fixture("direct-output");
+        Files.createDirectories(fixture.dataRoot().resolve("agents/agent-1/workspace/home"));
+        Files.createDirectories(fixture.dataRoot().resolve("agents/agent-1/workspace/manual"));
+        WorkArea selected = fixture.workAreaService()
+            .markDirectory(WorkspaceOwnerType.AGENT, "agent-1", "home", "Home");
+
+        ResolvedOutputDirectory resolved = fixture.service().resolve(OutputPublicationTarget.job(
+            "job-1", "assignment-1", "job-run-1", "agent-1", null, null,
+            selected.id(), AssignmentRequest.OUTPUT_ROUTE_DIRECT_DIRECTORY, null, "manual"));
+
+        assertThat(resolved.outputDirectory())
+            .isEqualTo(fixture.dataRoot().resolve("agents/agent-1/workspace/manual"));
+    }
+
     private Fixture fixture(String name) throws Exception {
         JdbcTemplate jdbc = new JdbcTemplate(
             new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true)
@@ -73,10 +129,16 @@ class OutputDirectoryServiceTest {
         );
         WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(aiConfig);
         WorkspaceService workspaceService = new WorkspaceService(repository, aiConfig, new RootRelativePathService(directoryService));
+        WorkAreaRepository workAreaRepository = new WorkAreaRepository(jdbc);
+        WorkAreaService workAreaService = new WorkAreaService(workAreaRepository, workspaceService, directoryService);
         EffectiveWorkspaceResolver resolver = new EffectiveWorkspaceResolver(directoryService, workspaceService);
-        return new Fixture(new OutputDirectoryService(resolver, directoryService), directoryService.dataRoot());
+        return new Fixture(
+            new OutputDirectoryService(resolver, directoryService, workAreaService),
+            workAreaService,
+            directoryService.dataRoot()
+        );
     }
 
-    private record Fixture(OutputDirectoryService service, Path dataRoot) {
+    private record Fixture(OutputDirectoryService service, WorkAreaService workAreaService, Path dataRoot) {
     }
 }

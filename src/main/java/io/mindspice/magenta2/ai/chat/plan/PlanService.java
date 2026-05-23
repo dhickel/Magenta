@@ -933,16 +933,22 @@ public class PlanService {
                 String slug = slugFromTitle(definition.title());
                 String agentId = context != null && context.hasAgentContext() ? context.agentId() : "system";
                 Path outputDir;
+                String ownerRootPath = null;
                 if (outputDirectoryService != null) {
                     ResolvedOutputDirectory resolved = outputDirectoryService.resolve(OutputPublicationTarget.task(
                         definition.id(),
                         runId,
                         agentId,
                         context == null ? null : context.projectId(),
-                        null
+                        null,
+                        context == null ? null : context.selectedWorkAreaId(),
+                        context == null ? null : context.outputRouteType(),
+                        context == null ? null : context.outputWorkAreaId(),
+                        context == null ? null : context.outputDirectRelativePath()
                     ));
                     effectiveWorkspaceId = resolved.workspaceId();
                     durableWorkspacePath = resolved.workspaceRoot().toRealPath().toString();
+                    ownerRootPath = resolved.ownerRoot().toRealPath().toString();
                     outputDir = resolved.outputDirectory();
                 } else if (effectiveWorkspaceResolver != null) {
                     EffectiveWorkspace effectiveWorkspace = effectiveWorkspaceResolver.resolve(
@@ -960,7 +966,8 @@ public class PlanService {
                 String hostOutputDirectoryPath = realOutputDir.toString();
                 effectiveContext = context == null
                     ? null
-                    : context.withExecutionPaths(durableWorkspacePath, hostOutputDirectoryPath, hostTempWorkspacePath);
+                    : context.withExecutionPaths(durableWorkspacePath, hostOutputDirectoryPath, hostTempWorkspacePath,
+                        ownerRootPath);
                 if (effectiveContext != null && OrchestrationTaskContextHolder.current() != null) {
                     OrchestrationTaskContextHolder.set(effectiveContext);
                 }

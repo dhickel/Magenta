@@ -43,7 +43,7 @@ This package owns filesystem workspace management including effective durable wo
 - Always use `Files.createDirectories` before returning a workspace path.
 - Temp directories are deleted after terminal run completion; output directories persist.
 - Waiting workflow temp directories must remain available for resume.
-- Runtime aliases are part of this architecture contract: `workspace/`, `work/`, `outputs/`, `run/`, `scratch/`, and `job/` when an active job assignment/run has an opt-in persistent job workspace.
+- Runtime aliases are part of this architecture contract: `workspace/` for the selected Work Area or durable workspace, `root/` for the owner workspace root, `work/`, `outputs/`, `run/`, `scratch/`, and `job/` when an active job assignment/run has an opt-in persistent job workspace.
 - Lease extension must verify holder ownership.
 - Do not add UI, scheduling, or agent behavior here.
 

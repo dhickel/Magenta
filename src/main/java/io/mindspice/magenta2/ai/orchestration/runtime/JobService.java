@@ -260,6 +260,19 @@ public class JobService {
     }
 
     public JobRun startRun(String jobId, String agentId, String projectId, String jobAssignmentId) {
+        return startRun(jobId, agentId, projectId, jobAssignmentId, null, null, null, null);
+    }
+
+    public JobRun startRun(
+        String jobId,
+        String agentId,
+        String projectId,
+        String jobAssignmentId,
+        String selectedWorkAreaId,
+        String outputRouteType,
+        String outputWorkAreaId,
+        String outputDirectRelativePath
+    ) {
         if (!StringUtils.hasText(jobAssignmentId)) {
             throw new IllegalStateException("Job runs require an assignment context");
         }
@@ -296,7 +309,11 @@ public class JobService {
                     runId,
                     effectiveAgentId,
                     effectiveProjectId,
-                    null
+                    null,
+                    selectedWorkAreaId,
+                    outputRouteType,
+                    outputWorkAreaId,
+                    outputDirectRelativePath
                 ));
                 effectiveWorkspaceId = resolved.workspaceId();
                 outPath = resolved.outputDirectory();

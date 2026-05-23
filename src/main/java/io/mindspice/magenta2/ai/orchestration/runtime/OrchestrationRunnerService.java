@@ -302,7 +302,15 @@ public class OrchestrationRunnerService {
             firstText(leased.effectiveWorkspaceId(), leased.workspaceId()),
             leased.assignmentType().name(),
             null, // hostWorkspacePath — resolved by PlanService during startRun
-            null  // hostOutputPath — resolved by PlanService during startRun
+            null, // hostOutputPath — resolved by PlanService during startRun
+            null,
+            null,
+            null,
+            null,
+            leased.selectedWorkAreaId(),
+            leased.outputRouteType(),
+            leased.outputWorkAreaId(),
+            leased.outputDirectRelativePath()
         );
 
         try {
@@ -536,7 +544,11 @@ public class OrchestrationRunnerService {
                 ? jobService.markRunning(existing.id())
                 : existing;
         }
-        JobRun run = jobService.startRun(job.id(), assignment.agentId(), projectId, assignment.id());
+        JobRun run = jobService.startRun(
+            job.id(), assignment.agentId(), projectId, assignment.id(),
+            assignment.selectedWorkAreaId(), assignment.outputRouteType(), assignment.outputWorkAreaId(),
+            assignment.outputDirectRelativePath()
+        );
         return run.status() == JobRunStatus.QUEUED ? jobService.markRunning(run.id()) : run;
     }
 

@@ -406,6 +406,12 @@ public class AgentFileToolService {
             return workspaceScope(workspaceRoot, normalized.substring("workspace/".length()), requested,
                 "active durable workspace");
         }
+        if ("root".equals(normalized) || normalized.startsWith("root/")) {
+            Path ownerRoot = activeScopeRoot(contextRootPath(ctx), "active owner root");
+            String remainder = "root".equals(normalized) ? "" : normalized.substring("root/".length());
+            rejectUnsafeRelativePath(remainder, "path escapes active owner root: " + requested);
+            return new FileScope(ownerRoot, "root", "active owner root", remainder);
+        }
         if ("outputs".equals(normalized) || normalized.startsWith("outputs/")) {
             Path outputRoot = activeScopeRoot(ctx.hostOutputPath(), "active assignment output directory");
             String remainder = "outputs".equals(normalized) ? "" : normalized.substring("outputs/".length());
@@ -543,6 +549,12 @@ public class AgentFileToolService {
         return StringUtils.hasText(ctx.hostRunPath())
             ? ctx.hostRunPath()
             : ctx.hostWorkspacePath();
+    }
+
+    private String contextRootPath(OrchestrationTaskContext ctx) {
+        return StringUtils.hasText(ctx.hostRootPath())
+            ? ctx.hostRootPath()
+            : contextWorkspacePath(ctx);
     }
 
     private Path durableChildScope(Path workspaceRoot, String child) throws IOException {

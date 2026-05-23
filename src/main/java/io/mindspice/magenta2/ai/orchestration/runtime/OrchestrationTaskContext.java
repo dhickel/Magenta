@@ -28,10 +28,15 @@ public record OrchestrationTaskContext(
     String hostOutputPath,
     String hostDurableWorkspacePath,
     String hostRunPath,
-    String hostJobWorkspacePath
+    String hostJobWorkspacePath,
+    String hostRootPath,
+    String selectedWorkAreaId,
+    String outputRouteType,
+    String outputWorkAreaId,
+    String outputDirectRelativePath
 ) {
     public static final OrchestrationTaskContext EMPTY = new OrchestrationTaskContext(
-        null, null, null, null, null, null, null, null, null, null, null, null, null);
+        null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
 
     public OrchestrationTaskContext(
         String agentId,
@@ -44,7 +49,7 @@ public record OrchestrationTaskContext(
         String hostOutputPath
     ) {
         this(agentId, agentName, jobId, null, null, projectId, workspaceId, runType,
-            hostWorkspacePath, hostOutputPath, null, hostWorkspacePath, null);
+            hostWorkspacePath, hostOutputPath, null, hostWorkspacePath, null, null, null, null, null, null);
     }
 
     public OrchestrationTaskContext(
@@ -60,7 +65,8 @@ public record OrchestrationTaskContext(
         String hostRunPath
     ) {
         this(agentId, agentName, jobId, null, null, projectId, workspaceId, runType,
-            hostWorkspacePath, hostOutputPath, hostDurableWorkspacePath, hostRunPath, null);
+            hostWorkspacePath, hostOutputPath, hostDurableWorkspacePath, hostRunPath, null,
+            hostDurableWorkspacePath, null, null, null, null);
     }
 
     public OrchestrationTaskContext(
@@ -77,7 +83,31 @@ public record OrchestrationTaskContext(
         String hostJobWorkspacePath
     ) {
         this(agentId, agentName, jobId, null, null, projectId, workspaceId, runType,
-            hostWorkspacePath, hostOutputPath, hostDurableWorkspacePath, hostRunPath, hostJobWorkspacePath);
+            hostWorkspacePath, hostOutputPath, hostDurableWorkspacePath, hostRunPath, hostJobWorkspacePath,
+            hostDurableWorkspacePath, null, null, null, null);
+    }
+
+    public OrchestrationTaskContext(
+        String agentId,
+        String agentName,
+        String jobId,
+        String projectId,
+        String workspaceId,
+        String runType,
+        String hostWorkspacePath,
+        String hostOutputPath,
+        String hostDurableWorkspacePath,
+        String hostRunPath,
+        String hostJobWorkspacePath,
+        String hostRootPath,
+        String selectedWorkAreaId,
+        String outputRouteType,
+        String outputWorkAreaId,
+        String outputDirectRelativePath
+    ) {
+        this(agentId, agentName, jobId, null, null, projectId, workspaceId, runType,
+            hostWorkspacePath, hostOutputPath, hostDurableWorkspacePath, hostRunPath, hostJobWorkspacePath,
+            hostRootPath, selectedWorkAreaId, outputRouteType, outputWorkAreaId, outputDirectRelativePath);
     }
 
     public OrchestrationTaskContext {
@@ -94,6 +124,11 @@ public record OrchestrationTaskContext(
         hostDurableWorkspacePath = normalize(hostDurableWorkspacePath);
         hostRunPath = normalize(hostRunPath);
         hostJobWorkspacePath = normalize(hostJobWorkspacePath);
+        hostRootPath = normalize(hostRootPath);
+        selectedWorkAreaId = normalize(selectedWorkAreaId);
+        outputRouteType = normalize(outputRouteType);
+        outputWorkAreaId = normalize(outputWorkAreaId);
+        outputDirectRelativePath = normalize(outputDirectRelativePath);
     }
 
     public boolean hasAgentContext() {
@@ -116,7 +151,8 @@ public record OrchestrationTaskContext(
         return new OrchestrationTaskContext(
             agentId, agentName, jobId, jobAssignmentId, jobRunId, projectId, workspaceId, runType,
             hostWorkspacePath, hostOutputPath, hostDurableWorkspacePath, hostWorkspacePath,
-            hostJobWorkspacePath
+            hostJobWorkspacePath, hostRootPath, selectedWorkAreaId, outputRouteType, outputWorkAreaId,
+            outputDirectRelativePath
         );
     }
 
@@ -128,7 +164,22 @@ public record OrchestrationTaskContext(
         return new OrchestrationTaskContext(
             agentId, agentName, jobId, jobAssignmentId, jobRunId, projectId, workspaceId, runType,
             hostRunPath, hostOutputPath, hostDurableWorkspacePath, hostRunPath,
-            hostJobWorkspacePath
+            hostJobWorkspacePath, hostDurableWorkspacePath, selectedWorkAreaId, outputRouteType,
+            outputWorkAreaId, outputDirectRelativePath
+        );
+    }
+
+    public OrchestrationTaskContext withExecutionPaths(
+        String hostDurableWorkspacePath,
+        String hostOutputPath,
+        String hostRunPath,
+        String hostRootPath
+    ) {
+        return new OrchestrationTaskContext(
+            agentId, agentName, jobId, jobAssignmentId, jobRunId, projectId, workspaceId, runType,
+            hostRunPath, hostOutputPath, hostDurableWorkspacePath, hostRunPath,
+            hostJobWorkspacePath, hostRootPath, selectedWorkAreaId, outputRouteType,
+            outputWorkAreaId, outputDirectRelativePath
         );
     }
 
@@ -136,7 +187,8 @@ public record OrchestrationTaskContext(
         return new OrchestrationTaskContext(
             agentId, agentName, jobId, jobAssignmentId, jobRunId, projectId, workspaceId, runType,
             hostWorkspacePath, hostOutputPath, hostDurableWorkspacePath, hostRunPath,
-            hostJobWorkspacePath
+            hostJobWorkspacePath, hostRootPath, selectedWorkAreaId, outputRouteType, outputWorkAreaId,
+            outputDirectRelativePath
         );
     }
 
@@ -144,7 +196,8 @@ public record OrchestrationTaskContext(
         return new OrchestrationTaskContext(
             agentId, agentName, jobId, jobAssignmentId, jobRunId, projectId, workspaceId, runType,
             hostWorkspacePath, hostOutputPath, hostDurableWorkspacePath, hostRunPath,
-            hostJobWorkspacePath
+            hostJobWorkspacePath, hostRootPath, selectedWorkAreaId, outputRouteType, outputWorkAreaId,
+            outputDirectRelativePath
         );
     }
 }

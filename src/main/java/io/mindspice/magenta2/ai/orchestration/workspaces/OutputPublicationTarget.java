@@ -11,7 +11,11 @@ public record OutputPublicationTarget(
     String jobId,
     String jobAssignmentId,
     String jobRunId,
-    String workspaceId
+    String workspaceId,
+    String selectedWorkAreaId,
+    String outputRouteType,
+    String outputWorkAreaId,
+    String outputDirectRelativePath
 ) {
     public OutputPublicationTarget {
         if (kind == null) {
@@ -25,6 +29,10 @@ public record OutputPublicationTarget(
         jobAssignmentId = normalize(jobAssignmentId);
         jobRunId = normalize(jobRunId);
         workspaceId = normalize(workspaceId);
+        selectedWorkAreaId = normalize(selectedWorkAreaId);
+        outputRouteType = normalize(outputRouteType);
+        outputWorkAreaId = normalize(outputWorkAreaId);
+        outputDirectRelativePath = normalize(outputDirectRelativePath);
     }
 
     public static OutputPublicationTarget task(
@@ -35,7 +43,24 @@ public record OutputPublicationTarget(
         String workspaceId
     ) {
         return new OutputPublicationTarget(
-            OutputDirectoryKind.TASK, taskId, runId, agentId, projectId, null, null, null, workspaceId);
+            OutputDirectoryKind.TASK, taskId, runId, agentId, projectId, null, null, null, workspaceId,
+            null, null, null, null);
+    }
+
+    public static OutputPublicationTarget task(
+        String taskId,
+        String runId,
+        String agentId,
+        String projectId,
+        String workspaceId,
+        String selectedWorkAreaId,
+        String outputRouteType,
+        String outputWorkAreaId,
+        String outputDirectRelativePath
+    ) {
+        return new OutputPublicationTarget(
+            OutputDirectoryKind.TASK, taskId, runId, agentId, projectId, null, null, null, workspaceId,
+            selectedWorkAreaId, outputRouteType, outputWorkAreaId, outputDirectRelativePath);
     }
 
     public static OutputPublicationTarget workflow(
@@ -46,7 +71,24 @@ public record OutputPublicationTarget(
         String workspaceId
     ) {
         return new OutputPublicationTarget(
-            OutputDirectoryKind.WORKFLOW, workflowId, runId, agentId, projectId, null, null, null, workspaceId);
+            OutputDirectoryKind.WORKFLOW, workflowId, runId, agentId, projectId, null, null, null, workspaceId,
+            null, null, null, null);
+    }
+
+    public static OutputPublicationTarget workflow(
+        String workflowId,
+        String runId,
+        String agentId,
+        String projectId,
+        String workspaceId,
+        String selectedWorkAreaId,
+        String outputRouteType,
+        String outputWorkAreaId,
+        String outputDirectRelativePath
+    ) {
+        return new OutputPublicationTarget(
+            OutputDirectoryKind.WORKFLOW, workflowId, runId, agentId, projectId, null, null, null, workspaceId,
+            selectedWorkAreaId, outputRouteType, outputWorkAreaId, outputDirectRelativePath);
     }
 
     public static OutputPublicationTarget job(
@@ -58,7 +100,25 @@ public record OutputPublicationTarget(
         String workspaceId
     ) {
         return new OutputPublicationTarget(
-            OutputDirectoryKind.JOB, null, null, agentId, projectId, jobId, jobAssignmentId, jobRunId, workspaceId);
+            OutputDirectoryKind.JOB, null, null, agentId, projectId, jobId, jobAssignmentId, jobRunId, workspaceId,
+            null, null, null, null);
+    }
+
+    public static OutputPublicationTarget job(
+        String jobId,
+        String jobAssignmentId,
+        String jobRunId,
+        String agentId,
+        String projectId,
+        String workspaceId,
+        String selectedWorkAreaId,
+        String outputRouteType,
+        String outputWorkAreaId,
+        String outputDirectRelativePath
+    ) {
+        return new OutputPublicationTarget(
+            OutputDirectoryKind.JOB, null, null, agentId, projectId, jobId, jobAssignmentId, jobRunId, workspaceId,
+            selectedWorkAreaId, outputRouteType, outputWorkAreaId, outputDirectRelativePath);
     }
 
     private static String normalize(String value) {

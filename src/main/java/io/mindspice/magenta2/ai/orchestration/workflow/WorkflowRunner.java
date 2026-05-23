@@ -747,7 +747,11 @@ public class WorkflowRunner {
                 runId,
                 agentId,
                 context == null ? null : context.projectId(),
-                null
+                null,
+                context == null ? null : context.selectedWorkAreaId(),
+                context == null ? null : context.outputRouteType(),
+                context == null ? null : context.outputWorkAreaId(),
+                context == null ? null : context.outputDirectRelativePath()
             )).outputDirectory();
         }
         if (effectiveWorkspaceResolver == null) {
@@ -778,7 +782,7 @@ public class WorkflowRunner {
             durableWorkspacePath = inferDurableWorkspacePath(run);
         }
         if (base != null) {
-            return base.withExecutionPaths(durableWorkspacePath, outputPath, runPath);
+            return base.withExecutionPaths(durableWorkspacePath, outputPath, runPath, base.hostRootPath());
         }
         if (!StringUtils.hasText(runPath) && !StringUtils.hasText(outputPath)) {
             return null;

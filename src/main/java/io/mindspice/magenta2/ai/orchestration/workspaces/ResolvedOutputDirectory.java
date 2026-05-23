@@ -8,6 +8,7 @@ public record ResolvedOutputDirectory(
     String agentId,
     String projectId,
     String workspaceId,
+    Path ownerRoot,
     Path workspaceRoot,
     Path outputDirectory,
     OutputArtifactContext artifactContext
