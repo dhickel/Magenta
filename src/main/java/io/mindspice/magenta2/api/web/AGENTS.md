@@ -23,6 +23,7 @@ This package owns HTTP and web-facing entry points.
 - For SimplyPages-facing web surfaces, prefer reusable components/modules instead of one-off markup patterns.
 - If UI behavior or structure is used in multiple places and is more than bare functionality, promote it into a reusable component/module.
 - For similar views, prefer shared render structures and slot-key based reuse over duplicated near-identical templates.
+- Before changing `/avatar` styling or layout, read `.internal-dev/notes/2026-05-22-avatar-dashboard-ui-style-guidelines.md` and preserve the `/dashboard` plus per-agent dashboard operational style language unless the user explicitly changes direction.
 - Preserve HTMX-compatible security failures and keep CSRF compatibility in the shared shell/client helpers when adding browser mutation routes.
 - Do not put chat, persistence, or orchestration logic in controllers.
 - Keep command parsing small and explicit.

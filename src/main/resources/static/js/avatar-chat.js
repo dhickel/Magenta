@@ -16,6 +16,7 @@ function initAvatarChat() {
     const messages = root.querySelector("#avatar-chat-messages");
     const session = root.querySelector("#avatar-chat-session");
     const model = root.dataset.defaultModel || null;
+    const surface = (root.dataset.chatSurface || "avatar").toUpperCase();
 
     form?.addEventListener("submit", async event => {
         event.preventDefault();
@@ -38,7 +39,7 @@ function initAvatarChat() {
                     "Accept": "text/event-stream",
                     "Content-Type": "application/json"
                 },
-                body: JSON.stringify({ conversationId, message, model })
+                body: JSON.stringify({ conversationId, message, model, surface })
             });
             if (!response.ok) {
                 const text = await response.text();

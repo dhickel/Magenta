@@ -11,6 +11,7 @@ import java.util.stream.Collectors;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.chat.model.ChatResponse;
 import io.mindspice.magenta2.ai.chat.model.ChatSession;
+import io.mindspice.magenta2.ai.chat.model.ChatSessionSurface;
 import io.mindspice.magenta2.ai.chat.model.ContextUsage;
 import io.mindspice.magenta2.ai.chat.plan.PlanRepository;
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
@@ -329,6 +330,7 @@ class ChatServiceTest {
         );
         String conversationId = "00000000-0000-0000-0000-000000000001";
         memoryRepository.saveAll(conversationId, List.of(new UserMessage("hello")));
+        metadataRepository.saveSurfaceIfAbsent(conversationId, ChatSessionSurface.BROWSER);
         Path files = Files.createDirectories(dataRoot.resolve("chats/" + conversationId + "/files/nested"));
         Files.writeString(files.resolve("seeded.md"), "seeded");
 
@@ -336,6 +338,50 @@ class ChatServiceTest {
             .singleElement()
             .extracting(ChatSession::outputCount)
             .isEqualTo(1);
+    }
+
+    @Test
+    void listSessionsOnlyIncludesBrowserSurfaceNormalChats() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        ChatSessionMetadataRepository metadataRepository = new ChatSessionMetadataRepository(jdbcTemplate);
+        PlanService planService = new PlanService(new PlanRepository(jdbcTemplate, objectMapper), memoryRepository);
+        ChatService chatService = new ChatService(
+            new RepositoryBackedChatMemory(memoryRepository),
+            memoryRepository,
+            metadataRepository,
+            null,
+            aiConfig(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            planService
+        );
+
+        String browserConversationId = "00000000-0000-0000-0000-000000000010";
+        String avatarConversationId = "00000000-0000-0000-0000-000000000011";
+        String agentConversationId = "00000000-0000-0000-0000-000000000012";
+        String planningConversationId = "00000000-0000-0000-0000-000000000013";
+
+        memoryRepository.saveAll(browserConversationId, List.of(new UserMessage("browser")));
+        metadataRepository.saveSurfaceIfAbsent(browserConversationId, ChatSessionSurface.BROWSER);
+
+        memoryRepository.saveAll(avatarConversationId, List.of(new UserMessage("avatar")));
+        metadataRepository.saveSurfaceIfAbsent(avatarConversationId, ChatSessionSurface.AVATAR);
+
+        memoryRepository.saveAll(agentConversationId, List.of(new UserMessage("agent")));
+        metadataRepository.saveOriginIfAbsent(agentConversationId, io.mindspice.magenta2.ai.chat.model.ChatSessionOrigin.AGENT_CHAT, "agent-1");
+
+        memoryRepository.saveAll(planningConversationId, List.of(new UserMessage("plan")));
+        planService.beginPlan(planningConversationId);
+
+        assertThat(chatService.listSessions())
+            .extracting(ChatSession::conversationId)
+            .containsExactly(browserConversationId);
     }
 
     @Test

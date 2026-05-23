@@ -997,10 +997,14 @@ public class ChatService {
     }
 
     public List<ChatSession> listSessions() {
-        return rawConversationIds().stream()
+        if (chatSessionMetadataRepository == null) {
+            return List.of();
+        }
+        return chatSessionMetadataRepository.findBrowserConversationIds().stream()
             .map(this::session)
             .filter(session -> session.origin() != ChatSessionOrigin.AGENT_CHAT)
             .filter(session -> !session.archived())
+            .filter(session -> interactionMode(session.conversationId()) == PlanMode.NORMAL)
             .sorted(java.util.Comparator
                 .comparing(ChatSession::favorite).reversed()
                 .thenComparing(

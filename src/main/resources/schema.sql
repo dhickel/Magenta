@@ -19,6 +19,7 @@ create table if not exists ai_chat_session_metadata (
     favorite integer not null default 0,
     archived integer not null default 0,
     origin text,
+    surface text,
     agent_id text,
     updated_at text
 );

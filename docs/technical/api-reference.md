@@ -9,7 +9,7 @@ In current alpha posture, routes are open at the application layer. Use controll
 Source: [`ChatController`](../../src/main/java/io/mindspice/magenta2/api/web/ChatController.java), [`ChatFileController`](../../src/main/java/io/mindspice/magenta2/api/web/ChatFileController.java), [`ChatRequest`](../../src/main/java/io/mindspice/magenta2/ai/chat/model/ChatRequest.java), [`ChatResponse`](../../src/main/java/io/mindspice/magenta2/ai/chat/model/ChatResponse.java), [`ChatStreamEvent`](../../src/main/java/io/mindspice/magenta2/ai/chat/model/ChatStreamEvent.java), [`ChatService`](../../src/main/java/io/mindspice/magenta2/ai/chat/service/ChatService.java), [`ChatFileService`](../../src/main/java/io/mindspice/magenta2/ai/chat/service/ChatFileService.java).
 
 - `POST /api/chat`: non-streaming chat turn from `ChatRequest.MsgRequest`.
-- `POST /api/chat/stream`: SSE chat turn.
+- `POST /api/chat/stream`: SSE chat turn. `ChatRequest.MsgRequest` accepts an optional `surface` field so the browser chat page can tag sessions separately from Avatar or other internal chat surfaces.
 - `POST /api/chat/{conversationId}/plan/execute`: execute an approved anonymous session plan. Payload may set `clearContext=true` for clean execution.
 - `POST /api/chat/{conversationId}/plan/execute/stream`: SSE execution of the current anonymous session plan path. Payload may set `clearContext=true` for clean execution.
 - `POST /api/chat/turns/{turnId}/interrupt`: interrupt an active turn.
@@ -23,7 +23,7 @@ Source: [`ChatController`](../../src/main/java/io/mindspice/magenta2/api/web/Cha
 
 SSE events are JSON events. Chat emits `start`, `chunk`, `tool`, `system`, `interrupt`, `context`, `done`, and `error` from `ChatStreamEvent`; the controller also emits plan-execution updates around anonymous plan execution. Anonymous plan execution reports `planState.status=COMPLETED` only after validator-gated `plan_complete` succeeds. If automatic completion repair is exhausted, `done.planState.status` is `NEEDS_REVIEW` and the response text is a controlled review notice, not the model's unvalidated completion text.
 
-`GET /api/chat/sessions` includes `outputCount` on each session for regular files under that conversation's persistent chat file directory. Chat file listing and download routes require a UUID-shaped existing conversation id, expose only relative paths, reject traversal, and enforce the same 10 MB controller download limit used by output artifacts.
+`GET /api/chat/sessions` includes `outputCount` on each session for regular files under that conversation's persistent chat file directory and only returns browser-surface chats in normal mode. Chat file listing and download routes require a UUID-shaped existing conversation id, expose only relative paths, reject traversal, and enforce the same 10 MB controller download limit used by output artifacts.
 
 Common errors: validation failures return `400`; missing sessions/plans generally return `404`; active-turn conflicts or invalid lifecycle operations return controller-specific conflict/error payloads.
 

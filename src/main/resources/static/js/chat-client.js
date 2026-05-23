@@ -18,6 +18,10 @@
         return document.querySelector('[data-chat-root="true"]');
     }
 
+    function chatSurface() {
+        return (root()?.dataset.chatSurface || 'browser').toUpperCase();
+    }
+
     async function getJson(url, options) {
         const response = await fetch(url, options);
         const text = await response.text();
@@ -961,7 +965,8 @@
             conversationId: activeConversationId(),
             message: message,
             model: selectedModel(),
-            planningModel: selectedPlanningModel()
+            planningModel: selectedPlanningModel(),
+            surface: chatSurface()
         };
 
         appendPendingUserMessage(message);

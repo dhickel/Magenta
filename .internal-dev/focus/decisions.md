@@ -12,6 +12,7 @@ status: active
 
 | id | decision | status | owner | source | decided_on | knowledge_ref | review_after | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| DECISION-20260523-01 | Browser `/chat` session lists use explicit chat surface metadata plus normal-mode filtering instead of raw conversation-id enumeration. | active | unassigned | .internal-dev/changelogs/2026-05-22-chat-session-scope-filter.md | 2026-05-23 | .internal-dev/knowledge/chat-session-surface-scope-filter.md | 2026-06-22 | This prevents Avatar, agent, planning, and internal chat conversations from leaking into the browser chat sidebar. |
 | DECISION-20260522-07 | Avatar dashboard interactions are HTMX-first and use a compact dedicated chat client instead of the full browser chat client. | active | unassigned | .internal-dev/changelogs/2026-05-22-avatar-dashboard-ui.md | 2026-05-22 | docs/technical/avatar-dashboard-fragments.md | 2026-06-21 | `/avatar` owns widget fragments and layout editing; it does not load `/js/chat-client.js`. |
 | DECISION-20260522-06 | Agent operational tools use existing Spring AI tool registration, exact approved-tool names, current orchestration context, and Avatar identity checks instead of a separate operational runtime. | active | unassigned | .internal-dev/plans/.archive/avatar-dashboard-sprint/phase-03-agent-workspace-tooling.md | 2026-05-22 | .internal-dev/changelogs/2026-05-22-agent-operational-tools.md | 2026-06-21 | PLAN/TASK drafting modes exclude `agent_` and `avatar_` tools; side-panel agent chat installs context inside the queued chat turn. |
 | DECISION-20260522-05 | Avatar sprint implementation will use separate `avatar.sqlite`, HTMX-first `/avatar`, existing chat/tool/runtime services, and research-only plugin planning. | active | unassigned | .internal-dev/plans/.archive/avatar-dashboard-sprint/README.md | 2026-05-22 | .internal-dev/reviews/2026-05-22-avatar-plugin-system-research.md | 2026-06-21 | Plugin runtime is deferred; Kawa is only a trusted local scripting candidate unless a real sandbox is designed. |
@@ -29,6 +30,7 @@ status: active
 
 | reviewed_on | reviewer | outcome | notes |
 | --- | --- | --- | --- |
+| 2026-05-23 | codex | updated | Added durable chat-session surface filtering decision from the `/chat` sidebar scope fix. |
 | 2026-05-22 | codex | updated | Added Avatar dashboard HTMX/chat-client decision from Phase 05. |
 | 2026-05-22 | codex | updated | Added Phase 03 operational tools/runtime-boundary decision. |
 | 2026-05-22 | codex | updated | Added Avatar sprint architecture/process decision from the planning suite. |

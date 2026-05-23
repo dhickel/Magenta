@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Optional;
 
 import io.mindspice.magenta2.ai.chat.model.ChatSessionOrigin;
+import io.mindspice.magenta2.ai.chat.model.ChatSessionSurface;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.util.StringUtils;
@@ -288,6 +289,22 @@ public class ChatSessionMetadataRepository {
         );
     }
 
+    public void saveSurfaceIfAbsent(String conversationId, ChatSessionSurface surface) {
+        if (!StringUtils.hasText(conversationId) || surface == null) {
+            return;
+        }
+        jdbcTemplate.update(
+            """
+                insert into ai_chat_session_metadata (conversation_id, surface, updated_at)
+                values (?, ?, ?)
+                on conflict(conversation_id) do update set
+                    surface = coalesce(ai_chat_session_metadata.surface, excluded.surface),
+                    updated_at = excluded.updated_at
+                """,
+            conversationId, surface.name(), now()
+        );
+    }
+
     public Optional<ChatSessionOrigin> findOrigin(String conversationId) {
         if (!StringUtils.hasText(conversationId)) {
             return Optional.empty();
@@ -299,6 +316,26 @@ public class ChatSessionMetadataRepository {
                     return Optional.empty();
                 }
                 return Optional.of(ChatSessionOrigin.valueOf(rs.getString("origin")));
+            },
+            conversationId
+        );
+    }
+
+    public Optional<ChatSessionSurface> findSurface(String conversationId) {
+        if (!StringUtils.hasText(conversationId)) {
+            return Optional.empty();
+        }
+        return jdbcTemplate.query(
+            "select surface from ai_chat_session_metadata where conversation_id = ?",
+            rs -> {
+                if (!rs.next() || !StringUtils.hasText(rs.getString("surface"))) {
+                    return Optional.empty();
+                }
+                try {
+                    return Optional.of(ChatSessionSurface.valueOf(rs.getString("surface")));
+                } catch (IllegalArgumentException exception) {
+                    return Optional.empty();
+                }
             },
             conversationId
         );
@@ -338,6 +375,19 @@ public class ChatSessionMetadataRepository {
         );
     }
 
+    public List<String> findBrowserConversationIds() {
+        return jdbcTemplate.queryForList(
+            """
+                select conversation_id
+                from ai_chat_session_metadata
+                where surface = ?
+                order by coalesce(updated_at, '') desc, conversation_id asc
+                """,
+            String.class,
+            ChatSessionSurface.BROWSER.name()
+        );
+    }
+
     private void ensureSchema() {
         jdbcTemplate.execute("""
             create table if not exists ai_chat_session_metadata (
@@ -348,6 +398,7 @@ public class ChatSessionMetadataRepository {
                 favorite integer not null default 0,
                 archived integer not null default 0,
                 origin text,
+                surface text,
                 agent_id text,
                 updated_at text
             )
@@ -376,6 +427,9 @@ public class ChatSessionMetadataRepository {
         }
         if (!columns.contains("origin")) {
             jdbcTemplate.execute("alter table ai_chat_session_metadata add column origin text");
+        }
+        if (!columns.contains("surface")) {
+            jdbcTemplate.execute("alter table ai_chat_session_metadata add column surface text");
         }
         if (!columns.contains("agent_id")) {
             jdbcTemplate.execute("alter table ai_chat_session_metadata add column agent_id text");

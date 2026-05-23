@@ -19,6 +19,8 @@ The chat page has:
 
 Open `/chat` for a new or existing chat session. Select a prior session from the sidebar to continue it. The session list supports favorites, archives, deletion, and bulk actions.
 
+The sidebar only shows browser-surface `/chat` conversations. Avatar chat, agent chats, planning-only turns, and other internal assistant use do not appear there.
+
 Use **Send** to submit a message. Enter sends the message; Shift+Enter inserts a newline.
 
 Sessions with chat-scoped files show a green `<n> Outputs` badge in the session card. Selecting that session shows the files in the right-side **Outputs** panel with file type, name, relative path when useful, size, modified time, and a **Download** button. The panel lists ordinary chat files created under the chat's persistent file directory; it does not preview or edit file contents.

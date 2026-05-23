@@ -4,7 +4,17 @@ import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.validation.constraints.NotBlank;
 
 public sealed interface ChatRequest {
-    record MsgRequest(String conversationId, @NotBlank String message, String model, String planningModel) implements ChatRequest { }
+    record MsgRequest(
+        String conversationId,
+        @NotBlank String message,
+        String model,
+        String planningModel,
+        ChatSessionSurface surface
+    ) implements ChatRequest {
+        public MsgRequest(String conversationId, String message, String model, String planningModel) {
+            this(conversationId, message, model, planningModel, null);
+        }
+    }
 
     record CmdRequest(String conversationId, @NotBlank String command, String model, String planningModel) implements ChatRequest {
         public CmdRequest(String conversationId, String command) {

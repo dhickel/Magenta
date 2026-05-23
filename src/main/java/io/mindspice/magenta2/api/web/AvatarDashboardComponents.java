@@ -66,7 +66,7 @@ final class AvatarDashboardComponents {
                 .withChild(compactChat(data.defaultModel())))
             .withChild(new Div().withId("avatar-edit-container"))
             .withChild(new Div().withId("avatar-output-preview").withClass("avatar-output-preview"))
-            .withChild(moduleScript("/js/avatar-chat.js?v=2"));
+            .withChild(moduleScript("/js/avatar-chat.js?v=3"));
     }
 
     static Component widgetGrid(AvatarDashboardData data) {
@@ -212,6 +212,7 @@ final class AvatarDashboardComponents {
             .withId("avatar-chat")
             .withClass("avatar-chat")
             .withAttribute("data-avatar-chat", "true")
+            .withAttribute("data-chat-surface", "avatar")
             .withAttribute("data-default-model", defaultModel == null ? "" : defaultModel)
             .withChild(new Div().withClass("avatar-chat-header")
                 .withChild(Header.H2("Avatar Chat"))

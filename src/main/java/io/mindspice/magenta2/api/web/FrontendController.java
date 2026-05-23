@@ -33,7 +33,7 @@ import java.util.List;
 public class FrontendController {
 
     private static final String APP_CSS = "/css/magenta.css?v=5";
-    private static final String CHAT_JS = "/js/chat-client.js?v=29";
+    private static final String CHAT_JS = "/js/chat-client.js?v=30";
 
     private final ChatService chatService;
     private final Component topNavBar;
@@ -101,6 +101,7 @@ public class FrontendController {
         Component chatContent = new Div()
             .withId("chat-page")
             .withAttribute("data-chat-root", "true")
+            .withAttribute("data-chat-surface", "browser")
             .withAttribute("data-active-conversation-id", conversationId == null ? "" : conversationId)
             .withAttribute("data-start-planning", "true".equalsIgnoreCase(startPlanning) ? "true" : "false")
             .withClass("chat-page")

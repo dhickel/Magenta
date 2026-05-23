@@ -7,6 +7,7 @@ import java.util.UUID;
 import io.mindspice.magenta2.ai.chat.model.ChatRequest;
 import io.mindspice.magenta2.ai.chat.model.ChatSession;
 import io.mindspice.magenta2.ai.chat.model.ChatSessionOrigin;
+import io.mindspice.magenta2.ai.chat.model.ChatSessionSurface;
 import io.mindspice.magenta2.ai.chat.model.PlanMode;
 import io.mindspice.magenta2.ai.chat.repository.ChatMemoryRepository;
 import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
@@ -63,17 +64,38 @@ public class RequestResolver {
     }
 
     public ResolvedChatRequest resolve(ChatRequest request) {
-        if (request instanceof ChatRequest.MsgRequest(String conversationId, String message, String model, String planningModel)) {
-            return resolve(conversationId, message, model, planningModel);
+        if (request instanceof ChatRequest.MsgRequest msgRequest) {
+            return resolve(
+                msgRequest.conversationId(),
+                msgRequest.message(),
+                msgRequest.model(),
+                msgRequest.planningModel(),
+                msgRequest.surface()
+            );
         }
         throw new IllegalArgumentException("message request is required");
     }
 
     public ResolvedChatRequest resolve(String conversationId, String message, String model, String planningModel) {
+        return resolve(conversationId, message, model, planningModel, null);
+    }
+
+    public ResolvedChatRequest resolve(
+        String conversationId,
+        String message,
+        String model,
+        String planningModel,
+        ChatSessionSurface surface
+    ) {
         String resolvedConversationId = StringUtils.hasText(conversationId) ? conversationId : UUID.randomUUID().toString();
         boolean newConversation = !conversationExists(resolvedConversationId);
         if (newConversation) {
             chatSessionMetadataRepository.saveOriginIfAbsent(resolvedConversationId, ChatSessionOrigin.CHAT, null);
+            if (surface != null) {
+                chatSessionMetadataRepository.saveSurfaceIfAbsent(resolvedConversationId, surface);
+            }
+        } else if (surface != null) {
+            chatSessionMetadataRepository.saveSurfaceIfAbsent(resolvedConversationId, surface);
         }
         if (StringUtils.hasText(planningModel)) {
             chatSessionMetadataRepository.savePlanningModel(resolvedConversationId, planningModel);

@@ -75,6 +75,10 @@ This is the style we want to take with our UI.
 - If views are similar, prefer shared render structures and slot-key based reuse rather than duplicating near-identical view code.
 - Use SimplyPages components/modules as reusable building blocks first, and only fall back to ad-hoc page-specific structures when reuse would add unnecessary complexity.
 
+#### Avatar Dashboard Style Reference
+- Before redesigning `/avatar` or adding Avatar dashboard-like surfaces, read `.internal-dev/notes/2026-05-22-avatar-dashboard-ui-style-guidelines.md`.
+- Keep Avatar styling aligned with the existing `/dashboard` and per-agent dashboard operational console: dense panels, compact controls, thin blue-gray borders, small radii, semantic chips, and HTMX-first fragments.
+
 *Always use the libraries coding style and practices, do not try to shoehorn functionality or use raw html strings, raw html is a fallback for advanced cases most functionality from css, js, htmx
 can be done via functions. The library has a vast set of components and ways to make your own, search the well formated documentation for your operation and read it before any edits, if
 still faced with ambiguity, or needing context refer to the demos, if still confused DO NOT DO AD-HOC HACKISH WORKAROUND CONSULT THE USER.*
