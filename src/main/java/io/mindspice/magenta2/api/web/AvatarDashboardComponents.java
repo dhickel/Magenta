@@ -1,5 +1,7 @@
 package io.mindspice.magenta2.api.web;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -16,6 +18,8 @@ import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationStatus;
 import io.mindspice.magenta2.ai.orchestration.runtime.WorkAssignment;
 import io.mindspice.magenta2.ai.orchestration.workflow.InboxMessage;
 import io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkArea;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaExplorerService;
 import io.mindspice.magenta2.avatar.AvatarCalendarItem;
 import io.mindspice.magenta2.avatar.AvatarDailyTask;
 import io.mindspice.magenta2.avatar.AvatarDashboardRow;
@@ -44,7 +48,7 @@ final class AvatarDashboardComponents {
         new WidgetDefinition("todos", "Todos", "standard"),
         new WidgetDefinition("calendar", "Calendar", "standard"),
         new WidgetDefinition("notes", "Notes", "wide"),
-        new WidgetDefinition("files", "Files", "standard"),
+        new WidgetDefinition("files", "Work Areas", "standard"),
         new WidgetDefinition("outputs", "Outputs", "wide"),
         new WidgetDefinition("system", "System", "standard"),
         new WidgetDefinition("alerts", "Alerts", "standard"),
@@ -120,7 +124,7 @@ final class AvatarDashboardComponents {
             case "todos" -> frame.withChild(todos(data.todos()));
             case "calendar" -> frame.withChild(calendar(data.calendarItems()));
             case "notes" -> frame.withChild(notes(data.notes()));
-            case "files" -> frame.withChild(files(data.outputs()));
+            case "files" -> frame.withChild(files(data.workAreas()));
             case "outputs" -> frame.withChild(outputs(data.outputs()));
             case "system" -> frame.withChild(system(data.agents(), data.jobs(), data.assignments()));
             case "alerts" -> frame.withChild(alerts(data.events(), data.userInbox()));
@@ -412,27 +416,165 @@ final class AvatarDashboardComponents {
         return body.withChild(list);
     }
 
-    private static Component files(List<RunOutputArtifact> outputs) {
-        Div body = new Div().withClass("avatar-widget-body");
-        List<RunOutputArtifact> withFiles = outputs == null ? List.of() : outputs.stream()
-            .filter(output -> output.fileName() != null && !output.fileName().isBlank())
-            .limit(6)
-            .toList();
-        if (withFiles.isEmpty()) {
-            return body.withChild(empty("No recent output files."));
-        }
+    static Component workAreaExplorer(WorkAreaExplorerService.DirectoryListing listing) {
+        Div panel = new Div().withClass("avatar-edit-panel avatar-workarea-panel");
+        panel.withChild(new Div().withClass("avatar-edit-header")
+            .withChild(new Div()
+                .withChild(Header.H2(listing.workArea().displayName()))
+                .withChild(small(listing.path().isBlank() ? "." : listing.path())))
+            .withChild(Button.create("Close")
+                .withAttribute("type", "button")
+                .withAttribute("hx-get", "/avatar/_edit?close=true")
+                .withAttribute("hx-target", "#avatar-edit-container")
+                .withAttribute("hx-swap", "innerHTML")));
+        panel.withChild(new Div().withClass("avatar-workarea-create-row")
+            .withChild(workAreaCreateDirectoryForm(listing))
+            .withChild(workAreaCreateTextFileForm(listing)));
+        Div body = new Div().withClass("avatar-workarea-browser");
         Div list = new Div().withClass("avatar-list");
-        for (RunOutputArtifact output : withFiles) {
+        if (!".".equals(listing.path()) && !listing.path().isBlank()) {
             list.withChild(new Div().withClass("avatar-list-row")
                 .withChild(new Div()
-                    .withChild(new HtmlTag("strong").withInnerText(output.fileName()))
-                    .withChild(small(output.outputName())))
+                    .withChild(new HtmlTag("strong").withInnerText(".."))
+                    .withChild(small("Parent directory")))
+                .withChild(Button.create("Open")
+                    .withAttribute("type", "button")
+                    .withAttribute("hx-get", "/avatar/_work-areas/" + listing.workArea().id()
+                        + "/explorer?path=" + url(parentPath(listing.path())))
+                    .withAttribute("hx-target", "#avatar-edit-container")
+                    .withAttribute("hx-swap", "innerHTML")));
+        }
+        if (listing.entries().isEmpty()) {
+            list.withChild(empty("This directory is empty."));
+        }
+        for (WorkAreaExplorerService.Entry entry : listing.entries()) {
+            list.withChild(workAreaEntry(listing.workArea().id(), entry));
+        }
+        body.withChild(list);
+        body.withChild(new Div().withId("avatar-workarea-preview").withClass("avatar-workarea-preview")
+            .withChild(empty("Select a file to preview.")));
+        panel.withChild(body);
+        return new Div().withId("avatar-edit-modal").withClass("avatar-modal").withChild(panel);
+    }
+
+    static Component workAreaPreview(String workAreaId, WorkAreaExplorerService.FilePreview preview) {
+        Div panel = new Div().withId("avatar-workarea-preview").withClass("avatar-workarea-preview");
+        panel.withChild(new Div().withClass("avatar-output-preview-header")
+            .withChild(Header.H2(fileName(preview.path())))
+            .withChild(new Div().withClass("avatar-row-actions")
                 .withChild(new HtmlTag("a")
                     .withClass("orch-primary")
-                    .withAttribute("href", "/api/outputs/" + output.id() + "/download")
-                    .withInnerText("Download")));
+                    .withAttribute("href", "/api/work-areas/" + workAreaId + "/files/download?path=" + url(preview.path()))
+                    .withInnerText("Download"))
+                .withChild(Button.create("Edit")
+                    .withAttribute("type", "button")
+                    .withAttribute("hx-get", "/avatar/_work-areas/" + workAreaId + "/edit?path=" + url(preview.path()))
+                    .withAttribute("hx-target", "#avatar-workarea-preview")
+                    .withAttribute("hx-swap", "outerHTML"))));
+        panel.withChild(small(preview.size() + " bytes"));
+        if (!preview.text()) {
+            return panel.withChild(empty("Preview unavailable for this file type or size."));
+        }
+        return panel.withChild(new HtmlTag("pre").withInnerText(preview.content() == null ? "" : preview.content()));
+    }
+
+    static Component workAreaTextEditor(String workAreaId, WorkAreaExplorerService.FilePreview preview) {
+        if (!preview.text()) {
+            return workAreaPreview(workAreaId, preview);
+        }
+        Form form = Form.create().withClass("avatar-stack-form avatar-workarea-preview")
+            .withId("avatar-workarea-preview");
+        form.withAttribute("hx-put", "/avatar/_work-areas/" + workAreaId + "/text?path=" + url(preview.path()));
+        form.withAttribute("hx-target", "#avatar-edit-container");
+        form.withAttribute("hx-swap", "innerHTML");
+        form.withChild(new Div().withClass("avatar-output-preview-header")
+            .withChild(Header.H2(fileName(preview.path())))
+            .withChild(Button.submit("Save File")));
+        form.withChild(TextArea.create("content").withRows(14)
+            .withInnerText(preview.content() == null ? "" : preview.content()));
+        return form;
+    }
+
+    private static Component files(List<WorkArea> workAreas) {
+        Div body = new Div().withClass("avatar-widget-body");
+        if (workAreas == null || workAreas.isEmpty()) {
+            return body.withChild(empty("No agent Work Areas are available."));
+        }
+        Div list = new Div().withClass("avatar-list");
+        for (WorkArea workArea : workAreas.stream().limit(8).toList()) {
+            list.withChild(new Div().withClass("avatar-list-row")
+                .withChild(new Div()
+                    .withChild(new HtmlTag("strong").withInnerText(workArea.displayName()))
+                    .withChild(small(workArea.ownerId() + " / " + workArea.areaRelativePath())))
+                .withChild(Button.create("Browse")
+                    .withAttribute("type", "button")
+                    .withAttribute("hx-get", "/avatar/_work-areas/" + workArea.id() + "/explorer")
+                    .withAttribute("hx-target", "#avatar-edit-container")
+                    .withAttribute("hx-swap", "innerHTML")));
         }
         return body.withChild(list);
+    }
+
+    private static Component workAreaCreateDirectoryForm(WorkAreaExplorerService.DirectoryListing listing) {
+        Form form = Form.create().withClass("avatar-inline-form");
+        form.withAttribute("hx-post", "/avatar/_work-areas/" + listing.workArea().id() + "/directories");
+        form.withAttribute("hx-target", "#avatar-edit-container");
+        form.withAttribute("hx-swap", "innerHTML");
+        form.withChild(new HtmlTag("input", true)
+            .withAttribute("type", "hidden")
+            .withAttribute("name", "path")
+            .withAttribute("value", listing.path().isBlank() ? "." : listing.path()));
+        form.withChild(TextInput.create("name").withPlaceholder("New directory"));
+        form.withChild(Button.submit("Create"));
+        return form;
+    }
+
+    private static Component workAreaCreateTextFileForm(WorkAreaExplorerService.DirectoryListing listing) {
+        Form form = Form.create().withClass("avatar-inline-form");
+        form.withAttribute("hx-post", "/avatar/_work-areas/" + listing.workArea().id() + "/text");
+        form.withAttribute("hx-target", "#avatar-workarea-preview");
+        form.withAttribute("hx-swap", "outerHTML");
+        form.withChild(new HtmlTag("input", true)
+            .withAttribute("type", "hidden")
+            .withAttribute("name", "path")
+            .withAttribute("value", listing.path().isBlank() ? "." : listing.path()));
+        form.withChild(TextInput.create("name").withPlaceholder("New text file"));
+        form.withChild(Button.submit("Create File"));
+        return form;
+    }
+
+    private static Component workAreaEntry(String workAreaId, WorkAreaExplorerService.Entry entry) {
+        Div actions = new Div().withClass("avatar-row-actions");
+        if (entry.directory()) {
+            actions.withChild(Button.create("Open")
+                .withAttribute("type", "button")
+                .withAttribute("hx-get", "/avatar/_work-areas/" + workAreaId + "/explorer?path=" + url(entry.path()))
+                .withAttribute("hx-target", "#avatar-edit-container")
+                .withAttribute("hx-swap", "innerHTML"));
+            actions.withChild(Button.create("Mark")
+                .withAttribute("type", "button")
+                .withAttribute("hx-post", "/avatar/_work-areas/" + workAreaId + "/mark?path=" + url(entry.path()))
+                .withAttribute("hx-target", "#avatar-edit-container")
+                .withAttribute("hx-swap", "innerHTML"));
+        } else if (entry.regularFile()) {
+            actions.withChild(Button.create("Preview")
+                .withAttribute("type", "button")
+                .withAttribute("hx-get", "/avatar/_work-areas/" + workAreaId + "/preview?path=" + url(entry.path()))
+                .withAttribute("hx-target", "#avatar-workarea-preview")
+                .withAttribute("hx-swap", "outerHTML"));
+        }
+        actions.withChild(Button.create("Delete")
+            .withAttribute("type", "button")
+            .withAttribute("hx-delete", "/avatar/_work-areas/" + workAreaId + "/files?path=" + url(entry.path())
+                + "&confirm=" + url(entry.name()))
+            .withAttribute("hx-target", "#avatar-edit-container")
+            .withAttribute("hx-swap", "innerHTML")
+            .withAttribute("hx-confirm", "Delete " + entry.name() + "?"));
+        return new Div().withClass("avatar-list-row")
+            .withChild(new Div()
+                .withChild(new HtmlTag("strong").withInnerText(entry.name()))
+                .withChild(small(entry.directory() ? "directory" : entry.size() + " bytes")))
+            .withChild(actions);
     }
 
     private static Component outputs(List<RunOutputArtifact> outputs) {
@@ -716,6 +858,28 @@ final class AvatarDashboardComponents {
         return DATE.format(instant.atZone(ZoneId.systemDefault()));
     }
 
+    private static String fileName(String path) {
+        if (path == null || path.isBlank()) {
+            return "file";
+        }
+        String normalized = path.replace('\\', '/');
+        int lastSlash = normalized.lastIndexOf('/');
+        return lastSlash < 0 ? normalized : normalized.substring(lastSlash + 1);
+    }
+
+    private static String parentPath(String path) {
+        if (path == null || path.isBlank() || ".".equals(path)) {
+            return ".";
+        }
+        String normalized = path.replace('\\', '/');
+        int lastSlash = normalized.lastIndexOf('/');
+        return lastSlash <= 0 ? "." : normalized.substring(0, lastSlash);
+    }
+
+    private static String url(String value) {
+        return URLEncoder.encode(value == null ? "" : value, StandardCharsets.UTF_8);
+    }
+
     private static String size(AvatarDashboardWidget widget) {
         if (widget == null || widget.size() == null || widget.size().isBlank()) {
             return "standard";
@@ -811,6 +975,7 @@ final class AvatarDashboardComponents {
         List<AvatarEvent> events,
         List<RunOutputArtifact> outputs,
         List<AgentProfile> agents,
+        List<WorkArea> workAreas,
         List<JobDefinition> jobs,
         List<WorkAssignment> assignments,
         List<InboxMessage> userInbox,

@@ -20,6 +20,7 @@
 - Submit Work Area routing slice implemented: operational submit forms and direct submit DTOs now propagate selected Work Area/output route metadata while plan-chat routes remain unchanged.
 - Work Area explorer backend slice implemented: `/api/work-areas` metadata/explorer routes, confined browse/preview/download/edit/directory/rename/delete/mark behavior, delete guardrails, docs, tests, and changelog.
 - Avatar layout editor UI slice implemented: `/avatar` can render persisted row/widget layouts, `/avatar/_edit` exposes row/widget add/move/resize/remove actions, and layout mutations autosave with HTMX plus OOB grid refresh.
+- Avatar Work Area explorer UI slice implemented: Work Areas widget lists agent-owned Work Areas and opens HTMX modal fragments for browse, preview/download, safe text edit, create directory, delete, and mark nested Work Area.
 - Plan suite created under `.internal-dev/plans/avatar-agent-ui-refactor/`.
 - Non-mutating closeout review completed by subagent `019e5351-f450-7690-90eb-aab7eab5c054`; it found no missing required items.
 - SimplyPages UI reviewer completed; recommended splitting layout/editor/catalog components out of `AvatarDashboardComponents`, using SimplyPages `Row`/`Column`, stable OOB containers, compact decorator controls, and narrow raw HTML fallbacks only.
@@ -39,6 +40,9 @@
 - Avatar layout editor focused tests: `mvn -Dtest='io.mindspice.magenta2.api.web.AvatarDashboardControllerTest,io.mindspice.magenta2.avatar.*Test' test` passed with 23 tests, 0 failures, 0 errors.
 - Avatar layout editor compile check: `mvn -DskipTests compile` passed.
 - Playwright validation subagent `019e5398-8502-72f0-8df0-ce5be067377b` passed `/avatar` desktop/mobile and layout-editor interaction checks on port 18080. Screenshots saved under `target/playwright-avatar-layout-editor/`.
+- Avatar Work Area explorer UI focused tests: `mvn -Dtest='io.mindspice.magenta2.api.web.AvatarDashboardControllerTest,io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaExplorerServiceTest,io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaServiceTest' test` passed with 17 tests, 0 failures, 0 errors.
+- Avatar Work Area explorer UI compile check: `mvn -DskipTests compile` passed.
+- Playwright validation subagent `019e53a2-e8d3-7802-ac4f-6f02087e315d` passed Work Area create-directory/create-file/edit/preview/download-link flow with one ambiguous `Save` click issue; follow-up subagent `019e53ab-4dbf-7731-a9d5-c4bc2203364f` passed the renamed `Save File` normal-click recheck. Screenshots saved under `target/playwright-avatar-workarea-explorer/`.
 - Planning artifact grep/readback completed locally.
 - Closeout review found the plan covers `/avatar` operational redo, SimplyPages row/column editor, Work Areas, explorer/output routing, planner recurrence, orchestration lanes, validation/red-team gates, docs, `.internal-dev`, and commit workflow.
 

@@ -19,6 +19,10 @@ import io.mindspice.magenta2.ai.orchestration.workflow.InboxMessage;
 import io.mindspice.magenta2.ai.orchestration.workflow.InboxService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkArea;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaExplorerService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceOwnerType;
 import io.mindspice.magenta2.avatar.AvatarCalendarItem;
 import io.mindspice.magenta2.avatar.AvatarCalendarStatus;
 import io.mindspice.magenta2.avatar.AvatarDailyTask;
@@ -58,6 +62,8 @@ public class AvatarDashboardController {
     private final AgentProfileService agentProfileService;
     private final JobService jobService;
     private final ObjectProvider<AssignmentService> assignmentService;
+    private final ObjectProvider<WorkAreaService> workAreaService;
+    private final ObjectProvider<WorkAreaExplorerService> workAreaExplorerService;
     private final InboxService inboxService;
     private final ShellTemplate shell;
 
@@ -67,6 +73,8 @@ public class AvatarDashboardController {
                                      AgentProfileService agentProfileService,
                                      JobService jobService,
                                      ObjectProvider<AssignmentService> assignmentService,
+                                     ObjectProvider<WorkAreaService> workAreaService,
+                                     ObjectProvider<WorkAreaExplorerService> workAreaExplorerService,
                                      InboxService inboxService) {
         this.avatarService = avatarService;
         this.chatService = chatService;
@@ -74,6 +82,8 @@ public class AvatarDashboardController {
         this.agentProfileService = agentProfileService;
         this.jobService = jobService;
         this.assignmentService = assignmentService;
+        this.workAreaService = workAreaService;
+        this.workAreaExplorerService = workAreaExplorerService;
         this.inboxService = inboxService;
         this.shell = ShellBuilder.create()
             .withPageTitle("Avatar Dashboard")
@@ -341,6 +351,124 @@ public class AvatarDashboardController {
         return widget("alerts");
     }
 
+    @GetMapping("/avatar/_work-areas/{workAreaId}/explorer")
+    @ResponseBody
+    public String workAreaExplorer(
+        @PathVariable String workAreaId,
+        @RequestParam(value = "path", defaultValue = ".") String path
+    ) {
+        WorkAreaExplorerService explorer = requireExplorerService();
+        try {
+            return AvatarDashboardComponents.workAreaExplorer(explorer.list(workAreaId, path)).render();
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
+    }
+
+    @GetMapping("/avatar/_work-areas/{workAreaId}/preview")
+    @ResponseBody
+    public String workAreaPreview(@PathVariable String workAreaId, @RequestParam String path) {
+        WorkAreaExplorerService explorer = requireExplorerService();
+        try {
+            return AvatarDashboardComponents.workAreaPreview(workAreaId, explorer.preview(workAreaId, path)).render();
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
+    }
+
+    @GetMapping("/avatar/_work-areas/{workAreaId}/edit")
+    @ResponseBody
+    public String workAreaTextEditor(@PathVariable String workAreaId, @RequestParam String path) {
+        WorkAreaExplorerService explorer = requireExplorerService();
+        try {
+            return AvatarDashboardComponents.workAreaTextEditor(workAreaId, explorer.preview(workAreaId, path)).render();
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
+    }
+
+    @PutMapping("/avatar/_work-areas/{workAreaId}/text")
+    @ResponseBody
+    public String saveWorkAreaText(
+        @PathVariable String workAreaId,
+        @RequestParam String path,
+        @RequestParam String content
+    ) {
+        WorkAreaExplorerService explorer = requireExplorerService();
+        try {
+            explorer.saveText(workAreaId, path, content);
+            return AvatarDashboardComponents.workAreaExplorer(explorer.list(workAreaId, parentPath(path))).render();
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
+    }
+
+    @PostMapping("/avatar/_work-areas/{workAreaId}/directories")
+    @ResponseBody
+    public String createWorkAreaDirectory(
+        @PathVariable String workAreaId,
+        @RequestParam String path,
+        @RequestParam String name
+    ) {
+        WorkAreaExplorerService explorer = requireExplorerService();
+        String childPath = joinPath(path, name);
+        try {
+            explorer.createDirectory(workAreaId, childPath);
+            return AvatarDashboardComponents.workAreaExplorer(explorer.list(workAreaId, path)).render();
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
+    }
+
+    @PostMapping("/avatar/_work-areas/{workAreaId}/text")
+    @ResponseBody
+    public String createWorkAreaTextFile(
+        @PathVariable String workAreaId,
+        @RequestParam String path,
+        @RequestParam String name
+    ) {
+        WorkAreaExplorerService explorer = requireExplorerService();
+        String childPath = joinPath(path, name);
+        try {
+            explorer.saveText(workAreaId, childPath, "");
+            return AvatarDashboardComponents.workAreaTextEditor(workAreaId, explorer.preview(workAreaId, childPath)).render();
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
+    }
+
+    @PostMapping("/avatar/_work-areas/{workAreaId}/mark")
+    @ResponseBody
+    public String markNestedWorkArea(
+        @PathVariable String workAreaId,
+        @RequestParam String path,
+        @RequestParam(value = "displayName", required = false) String displayName
+    ) {
+        WorkAreaExplorerService explorer = requireExplorerService();
+        try {
+            explorer.mark(workAreaId, path, displayName);
+            return AvatarDashboardComponents.workAreaExplorer(explorer.list(workAreaId, parentPath(path))).render();
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
+    }
+
+    @DeleteMapping("/avatar/_work-areas/{workAreaId}/files")
+    @ResponseBody
+    public String deleteWorkAreaPath(
+        @PathVariable String workAreaId,
+        @RequestParam String path,
+        @RequestParam String confirm
+    ) {
+        WorkAreaExplorerService explorer = requireExplorerService();
+        try {
+            explorer.deleteRecursive(workAreaId, path, confirm);
+            return AvatarDashboardComponents.workAreaExplorer(explorer.list(workAreaId, parentPath(path))).render();
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
+    }
+
     private AvatarDashboardComponents.AvatarDashboardData data() {
         List<AgentProfile> agents = safeList(agentProfileService::list);
         return new AvatarDashboardComponents.AvatarDashboardData(
@@ -354,6 +482,7 @@ public class AvatarDashboardController {
             avatarService.events(),
             safeList(() -> outputArtifactService.query(null, null, null, 20)),
             agents,
+            workAreas(agents),
             safeList(jobService::listDefinitions),
             assignments(agents),
             safeList(inboxService::userInbox),
@@ -368,6 +497,16 @@ public class AvatarDashboardController {
         }
         return agents.stream()
             .flatMap(agent -> safeList(() -> service.queueAssignments(agent.id())).stream())
+            .toList();
+    }
+
+    private List<WorkArea> workAreas(List<AgentProfile> agents) {
+        WorkAreaService service = workAreaService.getIfAvailable();
+        if (service == null || agents == null || agents.isEmpty()) {
+            return List.of();
+        }
+        return agents.stream()
+            .flatMap(agent -> safeList(() -> service.list(WorkspaceOwnerType.AGENT, agent.id(), false)).stream())
             .toList();
     }
 
@@ -390,6 +529,33 @@ public class AvatarDashboardController {
         if (!StringUtils.hasText(value)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, name + " is required");
         }
+    }
+
+    private WorkAreaExplorerService requireExplorerService() {
+        WorkAreaExplorerService service = workAreaExplorerService.getIfAvailable();
+        if (service == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Work Area explorer is unavailable");
+        }
+        return service;
+    }
+
+    private String parentPath(String path) {
+        if (!StringUtils.hasText(path) || ".".equals(path.strip())) {
+            return ".";
+        }
+        String normalized = path.strip().replace('\\', '/');
+        int lastSlash = normalized.lastIndexOf('/');
+        if (lastSlash <= 0) {
+            return ".";
+        }
+        return normalized.substring(0, lastSlash);
+    }
+
+    private String joinPath(String base, String name) {
+        requireText(name, "directory name");
+        String child = name.strip().replace('\\', '/');
+        String prefix = StringUtils.hasText(base) && !".".equals(base.strip()) ? base.strip().replace('\\', '/') + "/" : "";
+        return prefix + child;
     }
 
     private int directionValue(String direction) {

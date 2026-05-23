@@ -36,7 +36,8 @@ Stable widget root IDs:
 - Daily tasks: `POST /avatar/_daily-tasks`, `POST /avatar/_daily-tasks/{taskId}/complete`.
 - Notes: `POST /avatar/_notes`.
 - Calendar: `POST /avatar/_calendar`, `DELETE /avatar/_calendar/{calendarId}`.
+- Work Areas: `GET /avatar/_work-areas/{workAreaId}/explorer`, `GET /avatar/_work-areas/{workAreaId}/preview`, `GET /avatar/_work-areas/{workAreaId}/edit`, `PUT /avatar/_work-areas/{workAreaId}/text`, `POST /avatar/_work-areas/{workAreaId}/directories`, `POST /avatar/_work-areas/{workAreaId}/mark`, and `DELETE /avatar/_work-areas/{workAreaId}/files`.
 - Outputs: `GET /avatar/_outputs/{artifactId}` uses `OutputArtifactService` for confined artifact content.
 - Alerts: `POST /avatar/_alerts/{eventId}/dismiss` records an internal Avatar event dismissal and rerenders the alerts widget.
 
-The alerts widget reads existing inbox messages and internal Avatar events only. Email ingestion is intentionally out of scope for this route set.
+The Work Areas widget reads agent-owned Work Areas from `WorkAreaService` and opens the explorer in the shared modal container. Explorer fragments delegate filesystem behavior to `WorkAreaExplorerService`, so traversal, symlink, safe text editing, and protected delete rules stay in the workspace service layer. The alerts widget reads existing inbox messages and internal Avatar events only. Email ingestion is intentionally out of scope for this route set.

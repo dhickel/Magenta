@@ -326,7 +326,8 @@
 
 .avatar-edit-row-header,
 .avatar-edit-widget,
-.avatar-widget-width-form {
+.avatar-widget-width-form,
+.avatar-workarea-create-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -351,6 +352,10 @@
 
 .avatar-widget-width-form {
     margin: 0;
+}
+
+.avatar-workarea-create-row {
+    justify-content: flex-start;
 }
 
 .avatar-widget-width-form select,

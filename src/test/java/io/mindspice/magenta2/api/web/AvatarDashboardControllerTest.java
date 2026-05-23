@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
+import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileStatus;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobDefinition;
@@ -24,8 +25,15 @@ import io.mindspice.magenta2.ai.orchestration.workflow.InboxMessageToType;
 import io.mindspice.magenta2.ai.orchestration.workflow.InboxMessageType;
 import io.mindspice.magenta2.ai.orchestration.workflow.InboxService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.RootRelativePathService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaExplorerService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaRepository;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceOwnerType;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceRepository;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceService;
 import io.mindspice.magenta2.avatar.AvatarEvent;
 import io.mindspice.magenta2.avatar.AvatarRepository;
 import io.mindspice.magenta2.avatar.AvatarSchemaInitializer;
@@ -45,6 +53,8 @@ class AvatarDashboardControllerTest {
     Path tempDir;
 
     private AvatarService avatarService;
+    private WorkAreaService workAreaService;
+    private WorkAreaExplorerService workAreaExplorerService;
     private AvatarDashboardController controller;
 
     @BeforeEach
@@ -61,6 +71,29 @@ class AvatarDashboardControllerTest {
             Map.of("body", "Check inbox"),
             Instant.parse("2026-05-22T10:00:00Z")
         ));
+        JdbcTemplate runtimeJdbc = new JdbcTemplate(new SingleConnectionDataSource(
+            "jdbc:sqlite::memory:?foreign_keys=true",
+            true
+        ));
+        WorkspaceRepository workspaceRepository = new WorkspaceRepository(runtimeJdbc);
+        WorkAreaRepository workAreaRepository = new WorkAreaRepository(runtimeJdbc);
+        AiConfig runtimeConfig = new AiConfig(
+            null,
+            null,
+            null,
+            10,
+            tempDir.resolve("data"),
+            Map.of(),
+            Map.of()
+        );
+        WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(runtimeConfig);
+        WorkspaceService workspaceService = new WorkspaceService(
+            workspaceRepository,
+            runtimeConfig,
+            new RootRelativePathService(directoryService)
+        );
+        workAreaService = new WorkAreaService(workAreaRepository, workspaceService, directoryService);
+        workAreaExplorerService = new WorkAreaExplorerService(workAreaService);
         controller = new AvatarDashboardController(
             avatarService,
             new StubChatService(),
@@ -68,6 +101,8 @@ class AvatarDashboardControllerTest {
             new StubAgentProfileService(),
             new StubJobService(),
             new EmptyAssignmentProvider(),
+            new FixedProvider<>(workAreaService),
+            new FixedProvider<>(workAreaExplorerService),
             new StubInboxService()
         );
     }
@@ -99,6 +134,38 @@ class AvatarDashboardControllerTest {
             .isInstanceOf(ResponseStatusException.class)
             .extracting(error -> ((ResponseStatusException) error).getStatusCode())
             .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void workAreaWidgetAndExplorerFragmentsBrowseAndEditFiles() {
+        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Home");
+
+        String files = controller.widget("files");
+        assertThat(files).contains("Work Areas");
+        assertThat(files).contains("/avatar/_work-areas/");
+
+        String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "agent-1", false).getFirst().id();
+        String explorer = controller.workAreaExplorer(workAreaId, ".");
+        assertThat(explorer).contains("New directory");
+
+        String created = controller.createWorkAreaDirectory(workAreaId, ".", "notes");
+        assertThat(created).contains("notes");
+
+        String newFileEditor = controller.createWorkAreaTextFile(workAreaId, "notes", "draft.md");
+        assertThat(newFileEditor).contains("textarea");
+
+        controller.saveWorkAreaText(workAreaId, "notes/todo.md", "hello\n");
+        String preview = controller.workAreaPreview(workAreaId, "notes/todo.md");
+        assertThat(preview).contains("hello");
+        assertThat(preview).contains("/api/work-areas/" + workAreaId + "/files/download");
+
+        String editor = controller.workAreaTextEditor(workAreaId, "notes/todo.md");
+        assertThat(editor).contains("textarea");
+
+        String marked = controller.markNestedWorkArea(workAreaId, "notes", "Notes");
+        assertThat(marked).contains("notes");
+        assertThat(workAreaService.list(WorkspaceOwnerType.AGENT, "agent-1", false))
+            .anySatisfy(workArea -> assertThat(workArea.displayName()).isEqualTo("Notes"));
     }
 
     @Test
@@ -260,7 +327,18 @@ class AvatarDashboardControllerTest {
 
         @Override
         public List<AgentProfile> list() {
-            return List.of();
+            return List.of(new AgentProfile(
+                "agent-1",
+                "Research Agent",
+                AgentProfileStatus.ACTIVE,
+                "qwen3",
+                null,
+                List.of(),
+                List.of(),
+                false,
+                Instant.parse("2026-05-22T10:00:00Z"),
+                Instant.parse("2026-05-22T10:00:00Z")
+            ));
         }
     }
 
@@ -333,6 +411,43 @@ class AvatarDashboardControllerTest {
         @Override
         public java.util.stream.Stream<AssignmentService> orderedStream() {
             return java.util.stream.Stream.empty();
+        }
+    }
+
+    private record FixedProvider<T>(T value) implements ObjectProvider<T> {
+        @Override
+        public T getObject(Object... args) {
+            return value;
+        }
+
+        @Override
+        public T getIfAvailable() {
+            return value;
+        }
+
+        @Override
+        public T getIfUnique() {
+            return value;
+        }
+
+        @Override
+        public T getObject() {
+            return value;
+        }
+
+        @Override
+        public java.util.Iterator<T> iterator() {
+            return List.of(value).iterator();
+        }
+
+        @Override
+        public java.util.stream.Stream<T> stream() {
+            return java.util.stream.Stream.of(value);
+        }
+
+        @Override
+        public java.util.stream.Stream<T> orderedStream() {
+            return stream();
         }
     }
 }
