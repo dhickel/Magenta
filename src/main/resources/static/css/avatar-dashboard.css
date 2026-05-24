@@ -349,6 +349,27 @@
     width: auto;
 }
 
+.avatar-control-button {
+    display: inline-grid;
+    place-items: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    min-width: 1.5rem;
+    min-height: 1.5rem;
+    inline-size: 1.5rem;
+    block-size: 1.5rem;
+    min-inline-size: 1.5rem;
+    min-block-size: 1.5rem;
+    padding: 0;
+}
+
+.avatar-control-icon {
+    width: 0.92rem;
+    height: 0.92rem;
+    display: block;
+    pointer-events: none;
+}
+
 .avatar-widget-corner-controls button:hover,
 .avatar-widget-corner-controls select:hover,
 .avatar-widget-corner-controls button:focus,
@@ -644,10 +665,10 @@
 }
 
 .avatar-row-micro-controls button {
-    min-width: 1.35rem;
-    min-height: 1.35rem;
-    height: 1.35rem;
-    padding: 0 0.28rem;
+    min-width: 1.5rem;
+    min-height: 1.5rem;
+    height: 1.5rem;
+    padding: 0;
     color: var(--mg-muted);
     background: var(--mg-panel);
     border: 1px solid var(--mg-border);
@@ -661,6 +682,11 @@
     color: var(--mg-text);
     border-color: var(--mg-border-strong);
     opacity: 1;
+}
+
+.avatar-row-micro-controls button:disabled {
+    opacity: 0.38;
+    cursor: not-allowed;
 }
 
 .avatar-insert-row-section {
@@ -686,7 +712,7 @@
 }
 
 .avatar-icon-button {
-    padding: 0 0.5rem;
+    padding: 0;
 }
 
 .avatar-widget-detail-panel {

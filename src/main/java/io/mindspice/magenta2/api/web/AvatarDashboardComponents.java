@@ -619,7 +619,13 @@ final class AvatarDashboardComponents {
                 .withChild(new Div()
                     .withChild(new HtmlTag("strong").withInnerText(task.title()))
                     .withChild(small(task.status() == null ? "planned" : task.status().name().toLowerCase(Locale.ROOT))))
-                .withChild(action("Done", "/avatar/_daily-tasks/" + task.id() + "/complete", rootId("daily-tasks"))));
+                .withChild(iconPostAction(
+                    "check",
+                    "Mark daily task done",
+                    "Mark daily task " + task.title() + " done",
+                    "/avatar/_daily-tasks/" + task.id() + "/complete",
+                    rootId("daily-tasks")
+                )));
         }
         body.withChild(list);
         if (tasks.size() > visible.size()) {
@@ -653,8 +659,19 @@ final class AvatarDashboardComponents {
                     .withChild(new HtmlTag("strong").withInnerText(todo.title()))
                     .withChild(small(todo.priority() == null ? "normal" : todo.priority().name().toLowerCase(Locale.ROOT))))
                 .withChild(new Div().withClass("avatar-row-actions")
-                    .withChild(action("Done", "/avatar/_todos/" + todo.id() + "/complete", rootId("todos")))
-                    .withChild(deleteAction("Delete", "/avatar/_todos/" + todo.id(), rootId("todos")))));
+                    .withChild(iconPostAction(
+                        "check",
+                        "Mark todo done",
+                        "Mark todo " + todo.title() + " done",
+                        "/avatar/_todos/" + todo.id() + "/complete",
+                        rootId("todos")
+                    ))
+                    .withChild(iconDeleteAction(
+                        "Delete todo",
+                        "Delete todo " + todo.title(),
+                        "/avatar/_todos/" + todo.id(),
+                        rootId("todos")
+                    ))));
         }
         body.withChild(list);
         long openCount = todos.stream()
@@ -695,7 +712,12 @@ final class AvatarDashboardComponents {
                 .withChild(new Div()
                     .withChild(new HtmlTag("strong").withInnerText(item.title()))
                     .withChild(small(formatInstant(item.startsAt()))))
-                .withChild(deleteAction("Remove", "/avatar/_calendar/" + item.id(), rootId("calendar"))));
+                .withChild(iconDeleteAction(
+                    "Delete calendar item",
+                    "Delete calendar item " + item.title(),
+                    "/avatar/_calendar/" + item.id(),
+                    rootId("calendar")
+                )));
         }
         return body.withChild(list);
     }
@@ -1111,17 +1133,11 @@ final class AvatarDashboardComponents {
         controls.withChild(widgetMoveButton(layoutWidget.id(), "up"));
         controls.withChild(widgetMoveButton(layoutWidget.id(), "down"));
 
-        controls.withChild(Button.create("W")
-            .withAttribute("type", "button")
-            .withAttribute("title", "Cycle widget width")
-            .withAttribute("aria-label", "Cycle " + definition(widgetKey).title() + " width")
+        controls.withChild(iconButton("width", "Cycle widget width", "Cycle " + definition(widgetKey).title() + " width")
             .withAttribute("hx-post", "/avatar/_layout/widgets/" + layoutWidget.id() + "/width-cycle")
             .withAttribute("hx-target", "#avatar-edit-container")
             .withAttribute("hx-swap", "innerHTML"));
-        controls.withChild(Button.create("X")
-            .withAttribute("type", "button")
-            .withAttribute("title", "Remove widget")
-            .withAttribute("aria-label", "Remove " + definition(widgetKey).title())
+        controls.withChild(iconButton("trash", "Remove widget", "Remove " + definition(widgetKey).title())
             .withAttribute("hx-delete", "/avatar/_layout/widgets/" + layoutWidget.id())
             .withAttribute("hx-target", "#avatar-edit-container")
             .withAttribute("hx-swap", "innerHTML")
@@ -1130,10 +1146,11 @@ final class AvatarDashboardComponents {
     }
 
     private static Component rowMoveButton(String rowId, String direction, boolean disabled) {
-        Button button = Button.create(direction.equals("up") ? "^" : "v");
-        button.withAttribute("type", "button");
-        button.withAttribute("title", "Move row " + direction);
-        button.withAttribute("aria-label", "Move row " + direction);
+        HtmlTag button = iconButton(
+            direction.equals("up") ? "up" : "down",
+            "Move row " + direction,
+            "Move row " + direction
+        );
         button.withAttribute("hx-post", "/avatar/_layout/rows/" + rowId + "/move?direction=" + direction);
         button.withAttribute("hx-target", "#avatar-edit-container");
         button.withAttribute("hx-swap", "innerHTML");
@@ -1144,10 +1161,7 @@ final class AvatarDashboardComponents {
     }
 
     private static Component rowDeleteButton(String rowId, boolean enabled) {
-        Button button = Button.create("X");
-        button.withAttribute("type", "button");
-        button.withAttribute("title", "Delete empty row");
-        button.withAttribute("aria-label", "Delete empty row");
+        HtmlTag button = iconButton("trash", "Delete empty row", "Delete empty row");
         button.withAttribute("hx-delete", "/avatar/_layout/rows/" + rowId);
         button.withAttribute("hx-target", "#avatar-edit-container");
         button.withAttribute("hx-swap", "innerHTML");
@@ -1160,16 +1174,7 @@ final class AvatarDashboardComponents {
     }
 
     private static Component widgetMoveButton(String widgetId, String direction) {
-        return Button.create(switch (direction) {
-                case "left" -> "<";
-                case "right" -> ">";
-                case "up" -> "^";
-                case "down" -> "v";
-                default -> direction;
-            })
-            .withAttribute("type", "button")
-            .withAttribute("title", "Move widget " + direction)
-            .withAttribute("aria-label", "Move widget " + direction)
+        return iconButton(direction, "Move widget " + direction, "Move widget " + direction)
             .withAttribute("hx-post", "/avatar/_layout/widgets/" + widgetId + "/move?direction=" + direction)
             .withAttribute("hx-target", "#avatar-edit-container")
             .withAttribute("hx-swap", "innerHTML");
@@ -1186,27 +1191,110 @@ final class AvatarDashboardComponents {
     }
 
     private static Component refreshButton(String key) {
-        return new HtmlTag("button")
-            .withAttribute("type", "button")
+        return iconButton("refresh", "Refresh widget", "Refresh " + definition(key).title())
             .withAttribute("hx-get", "/avatar/_widgets/" + key)
             .withAttribute("hx-target", "#" + rootId(key))
             .withAttribute("hx-swap", "outerHTML")
-            .withAttribute("title", "Refresh widget")
-            .withAttribute("aria-label", "Refresh " + definition(key).title())
-            .withInnerText("R");
+            .withAttribute("data-avatar-refresh-trigger", key);
     }
 
     private static Component detailButton(String key) {
-        return new HtmlTag("button")
-            .withClass("avatar-icon-button")
-            .withAttribute("type", "button")
+        return iconButton("settings", "Open widget settings", "Open " + definition(key).title() + " settings")
             .withAttribute("data-avatar-detail-trigger", key)
-            .withAttribute("title", "Open widget detail")
-            .withAttribute("aria-label", "Open " + definition(key).title() + " detail")
             .withAttribute("hx-get", "/avatar/_widgets/" + key + "/detail")
             .withAttribute("hx-target", "#avatar-edit-container")
-            .withAttribute("hx-swap", "innerHTML")
-            .withInnerText("i");
+            .withAttribute("hx-swap", "innerHTML");
+    }
+
+    private static HtmlTag iconPostAction(String icon, String title, String ariaLabel, String path, String targetId) {
+        return iconButton(icon, title, ariaLabel)
+            .withAttribute("hx-post", path)
+            .withAttribute("hx-target", "#" + targetId)
+            .withAttribute("hx-swap", "outerHTML");
+    }
+
+    private static HtmlTag iconDeleteAction(String title, String ariaLabel, String path, String targetId) {
+        return iconButton("trash", title, ariaLabel)
+            .withAttribute("hx-delete", path)
+            .withAttribute("hx-target", "#" + targetId)
+            .withAttribute("hx-swap", "outerHTML");
+    }
+
+    private static HtmlTag iconButton(String icon, String title, String ariaLabel) {
+        return new HtmlTag("button")
+            .withClass("avatar-icon-button avatar-control-button")
+            .withAttribute("type", "button")
+            .withAttribute("title", title)
+            .withAttribute("aria-label", ariaLabel)
+            .withUnsafeHtml(iconSvg(icon));
+    }
+
+    private static String iconSvg(String icon) {
+        return switch (icon) {
+            case "check" -> strokeIcon("""
+                <path d="M5 12.5l4.2 4.2L19 7.5"/>
+                """);
+            case "trash" -> strokeIcon("""
+                <path d="M4 7h16"/>
+                <path d="M9 7V5.5a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 5.5V7"/>
+                <path d="M7.5 7l.7 11.2A1.8 1.8 0 0 0 10 20h4a1.8 1.8 0 0 0 1.8-1.8L16.5 7"/>
+                <path d="M10 10.5v6"/>
+                <path d="M14 10.5v6"/>
+                """);
+            case "refresh" -> strokeIcon("""
+                <path d="M20 11a8 8 0 0 0-14.5-3.8"/>
+                <path d="M4 4v4h4"/>
+                <path d="M4 13a8 8 0 0 0 14.5 3.8"/>
+                <path d="M20 20v-4h-4"/>
+                """);
+            case "left" -> strokeIcon("""
+                <path d="M19 12H5"/>
+                <path d="M11 6l-6 6 6 6"/>
+                """);
+            case "right" -> strokeIcon("""
+                <path d="M5 12h14"/>
+                <path d="M13 6l6 6-6 6"/>
+                """);
+            case "up" -> strokeIcon("""
+                <path d="M12 19V5"/>
+                <path d="M6 11l6-6 6 6"/>
+                """);
+            case "down" -> strokeIcon("""
+                <path d="M12 5v14"/>
+                <path d="M18 13l-6 6-6-6"/>
+                """);
+            case "width" -> strokeIcon("""
+                <path d="M4 6v12"/>
+                <path d="M20 6v12"/>
+                <path d="M9 12H5"/>
+                <path d="M7 10l-2 2 2 2"/>
+                <path d="M15 12h4"/>
+                <path d="M17 10l2 2-2 2"/>
+                <path d="M10 8h4"/>
+                <path d="M10 16h4"/>
+                """);
+            case "settings" -> strokeIcon("""
+                <path d="M4 7h8"/>
+                <path d="M16 7h4"/>
+                <circle cx="14" cy="7" r="2"/>
+                <path d="M4 17h4"/>
+                <path d="M12 17h8"/>
+                <circle cx="10" cy="17" r="2"/>
+                """);
+            default -> strokeIcon("""
+                <circle cx="12" cy="12" r="9"/>
+                <path d="M12 8v8"/>
+                <path d="M8 12h8"/>
+                """);
+        };
+    }
+
+    private static String strokeIcon(String paths) {
+        return """
+            <svg class="avatar-control-icon" viewBox="0 0 24 24" fill="none"
+                 xmlns="http://www.w3.org/2000/svg" stroke="currentColor"
+                 stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            """ + paths + "</svg>";
     }
 
     private static Component action(String label, String path, String targetId) {
