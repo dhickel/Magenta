@@ -76,7 +76,8 @@ final class AvatarDashboardComponents {
                 .withChild(compactChat(data.defaultModel())))
             .withChild(new Div().withId("avatar-edit-container"))
             .withChild(new Div().withId("avatar-output-preview").withClass("avatar-output-preview"))
-            .withChild(moduleScript("/js/avatar-chat.js?v=3"));
+            .withChild(moduleScript("/js/avatar-chat.js?v=3"))
+            .withChild(moduleScript("/js/avatar-layout-edit.js?v=1"));
     }
 
     static Component widgetGrid(AvatarDashboardData data) {
@@ -206,6 +207,70 @@ final class AvatarDashboardComponents {
         panel.withChild(new Div().withClass("avatar-widget avatar-widget-detail")
             .withChild(widgetBody(data, widgetKey)));
         return new Div().withId("avatar-widget-detail-modal").withClass("avatar-modal").withChild(panel);
+    }
+
+    static Component widgetWidthPicker(List<AvatarDashboardRow> rows, AvatarDashboardRowWidget widget) {
+        WidgetDefinition definition = definition(widget.widgetKey());
+        int maxWidth = maxWidthForWidget(rows, widget);
+        Div panel = new Div()
+            .withClass("avatar-width-picker-popover")
+            .withAttribute("data-avatar-width-picker", "true")
+            .withAttribute("data-avatar-widget-id", widget.id());
+        panel.withChild(new Div().withClass("avatar-width-picker-header")
+            .withChild(new Div()
+                .withChild(new HtmlTag("strong").withInnerText("Widget width"))
+                .withChild(small(definition.title() + " is " + widget.columnWidth() + "/12. Up to " + maxWidth + "/12 fits in this row.")))
+            .withChild(iconButton("close", "Close width picker", "Close width picker")
+                .withAttribute("data-avatar-width-picker-dismiss", "true")));
+
+        Div presets = new Div().withClass("avatar-width-preset-grid");
+        for (int width : List.of(3, 4, 6, 8, 12)) {
+            boolean available = width <= maxWidth;
+            Form preset = Form.create().withClass("avatar-width-preset-form");
+            preset.withAttribute("hx-put", "/avatar/_layout/widgets/" + widget.id() + "/width");
+            preset.withAttribute("hx-target", "#avatar-edit-container");
+            preset.withAttribute("hx-swap", "innerHTML");
+            preset.withChild(hiddenInput("columnWidth", Integer.toString(width)));
+            Button button = Button.submit(width + "/12");
+            button.withClass("avatar-width-preset-button");
+            if (width == widget.columnWidth()) {
+                button.withClass("active");
+            }
+            if (!available) {
+                button.withAttribute("disabled", "disabled");
+                button.withAttribute("title", "This row does not have room for " + width + "/12");
+            }
+            preset.withChild(button);
+            presets.withChild(preset);
+        }
+        panel.withChild(new Div().withClass("avatar-width-picker-section")
+            .withChild(new HtmlTag("strong").withInnerText("Presets"))
+            .withChild(presets));
+
+        Form custom = Form.create().withClass("avatar-width-custom-form");
+        custom.withAttribute("hx-put", "/avatar/_layout/widgets/" + widget.id() + "/width");
+        custom.withAttribute("hx-target", "#avatar-edit-container");
+        custom.withAttribute("hx-swap", "innerHTML");
+        custom.withChild(new Div().withClass("avatar-width-custom-grid")
+            .withChild(TextInput.number("columnWidth")
+                .withMin("1")
+                .withMax(Integer.toString(maxWidth))
+                .withValue(Integer.toString(widget.columnWidth()))
+                .withAttribute("step", "1")
+                .withAttribute("inputmode", "numeric")
+                .withAttribute("aria-label", "Custom widget width in twelfths"))
+            .withChild(Button.submit("Apply")));
+        custom.withChild(small("Enter any width from 1/12 to " + maxWidth + "/12 that still fits this row."));
+        panel.withChild(new Div().withClass("avatar-width-picker-section")
+            .withChild(new HtmlTag("strong").withInnerText("Custom"))
+            .withChild(custom));
+
+        return new Div().withId("avatar-width-picker-root")
+            .withClass("avatar-inline-popover-root")
+            .withChild(new Div()
+                .withClass("avatar-inline-popover-backdrop")
+                .withAttribute("data-avatar-width-picker-dismiss", "true"))
+            .withChild(panel);
     }
 
     private static Component legacyLayoutEditResponse(AvatarDashboardData data) {
@@ -1133,8 +1198,10 @@ final class AvatarDashboardComponents {
         controls.withChild(widgetMoveButton(layoutWidget.id(), "up"));
         controls.withChild(widgetMoveButton(layoutWidget.id(), "down"));
 
-        controls.withChild(iconButton("width", "Cycle widget width", "Cycle " + definition(widgetKey).title() + " width")
-            .withAttribute("hx-post", "/avatar/_layout/widgets/" + layoutWidget.id() + "/width-cycle")
+        controls.withChild(iconButton("width", "Choose widget width", "Choose " + definition(widgetKey).title() + " width")
+            .withAttribute("data-avatar-width-picker-trigger", "true")
+            .withAttribute("data-avatar-widget-id", layoutWidget.id())
+            .withAttribute("hx-get", "/avatar/_layout/widgets/" + layoutWidget.id() + "/width-picker")
             .withAttribute("hx-target", "#avatar-edit-container")
             .withAttribute("hx-swap", "innerHTML"));
         controls.withChild(iconButton("trash", "Remove widget", "Remove " + definition(widgetKey).title())
@@ -1281,12 +1348,40 @@ final class AvatarDashboardComponents {
                 <path d="M12 17h8"/>
                 <circle cx="10" cy="17" r="2"/>
                 """);
+            case "close" -> strokeIcon("""
+                <path d="M6 6l12 12"/>
+                <path d="M18 6L6 18"/>
+                """);
             default -> strokeIcon("""
                 <circle cx="12" cy="12" r="9"/>
                 <path d="M12 8v8"/>
                 <path d="M8 12h8"/>
                 """);
         };
+    }
+
+    private static Component hiddenInput(String name, String value) {
+        return new HtmlTag("input", true)
+            .withAttribute("type", "hidden")
+            .withAttribute("name", name)
+            .withAttribute("value", value);
+    }
+
+    private static int maxWidthForWidget(List<AvatarDashboardRow> rows, AvatarDashboardRowWidget widget) {
+        if (rows == null) {
+            return 12;
+        }
+        return rows.stream()
+            .filter(row -> row.id().equals(widget.rowId()))
+            .findFirst()
+            .map(row -> {
+                int usedWithoutWidget = row.widgets().stream()
+                    .filter(item -> !item.id().equals(widget.id()))
+                    .mapToInt(AvatarDashboardRowWidget::columnWidth)
+                    .sum();
+                return Math.max(1, 12 - usedWithoutWidget);
+            })
+            .orElse(12);
     }
 
     private static String strokeIcon(String paths) {

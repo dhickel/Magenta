@@ -18,10 +18,10 @@
 - add and move rows;
 - add widgets to a row;
 - move widgets left, right, up, or down;
-- resize widgets to supported widths `3`, `4`, `6`, `8`, or `12`;
+- resize widgets to any width from `1` through `12` that still fits the row;
 - remove widgets.
 
-The repository enforces row width totals at or below 12 columns and rejects duplicate widget keys.
+The repository enforces row width totals at or below 12 columns, rejects duplicate widget keys, and rejects width values outside `1..12`.
 
 ## Compatibility
 
@@ -35,14 +35,15 @@ Legacy widgets wrap to a new row when the next placement would exceed 12 columns
 
 ## Editor UI Contract
 
-The `/avatar/_edit` modal is the row/widget editor. It uses per-action HTMX requests and OOB grid refreshes rather than a single flat save form:
+The in-place `/avatar` layout editor uses per-action HTMX requests and OOB grid refreshes rather than a single flat save form:
 
 - `POST /avatar/_layout/rows`
 - `POST /avatar/_layout/rows/{rowId}/move?direction=up|down`
 - `GET /avatar/_layout/rows/{rowId}/catalog`
 - `POST /avatar/_layout/rows/{rowId}/widgets`
 - `POST /avatar/_layout/widgets/{widgetId}/move?direction=left|right|up|down`
+- `GET /avatar/_layout/widgets/{widgetId}/width-picker`
 - `PUT /avatar/_layout/widgets/{widgetId}/width`
 - `DELETE /avatar/_layout/widgets/{widgetId}`
 
-The editor uses SimplyPages row/column layout primitives for the 12-column placement model and keeps mutations scoped to the single `#avatar-edit-container` modal surface with `#avatar-widget-grid` refreshed out of band.
+The editor uses SimplyPages row/column layout primitives for the 12-column placement model and keeps mutations scoped to the shared `#avatar-edit-container` overlay/popover surface with `#avatar-widget-grid` refreshed out of band.

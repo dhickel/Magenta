@@ -596,8 +596,8 @@ public class AvatarRepository {
     }
 
     private int requireColumnWidth(int width) {
-        if (width != 3 && width != 4 && width != 6 && width != 8 && width != 12) {
-            throw new IllegalArgumentException("column width must be one of 3, 4, 6, 8, or 12");
+        if (width < 1 || width > 12) {
+            throw new IllegalArgumentException("column width must be between 1 and 12");
         }
         return width;
     }

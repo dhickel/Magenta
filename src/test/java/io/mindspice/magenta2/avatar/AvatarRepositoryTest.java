@@ -267,13 +267,16 @@ class AvatarRepositoryTest {
         assertThat(repository.findDashboardRows()).singleElement()
             .satisfies(saved -> assertThat(saved.widgets()).extracting(AvatarDashboardRowWidget::widgetKey)
                 .containsExactly("todos", "notes"));
+        repository.resizeDashboardWidget(first.id(), 5);
+        assertThat(repository.findDashboardRows()).singleElement()
+            .satisfies(saved -> assertThat(saved.widgets().getFirst().columnWidth()).isEqualTo(5));
         assertThatThrownBy(() -> repository.addDashboardWidget(row.id(), "todos", 3))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("already exists");
         assertThatThrownBy(() -> repository.resizeDashboardWidget(first.id(), 12))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("cannot exceed 12");
-        assertThatThrownBy(() -> repository.addDashboardWidget(row.id(), "calendar", 3))
+        assertThatThrownBy(() -> repository.addDashboardWidget(row.id(), "calendar", 4))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("cannot exceed 12");
 

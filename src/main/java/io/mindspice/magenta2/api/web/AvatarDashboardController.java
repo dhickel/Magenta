@@ -29,6 +29,7 @@ import io.mindspice.magenta2.avatar.AvatarCalendarItem;
 import io.mindspice.magenta2.avatar.AvatarCalendarStatus;
 import io.mindspice.magenta2.avatar.AvatarDailyTask;
 import io.mindspice.magenta2.avatar.AvatarDashboardWidget;
+import io.mindspice.magenta2.avatar.AvatarDashboardRowWidget;
 import io.mindspice.magenta2.avatar.AvatarEvent;
 import io.mindspice.magenta2.avatar.AvatarNote;
 import io.mindspice.magenta2.avatar.AvatarPriority;
@@ -239,6 +240,20 @@ public class AvatarDashboardController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
         return AvatarDashboardComponents.layoutEditResponse(data(), true).render();
+    }
+
+    @GetMapping("/avatar/_layout/widgets/{widgetId}/width-picker")
+    @ResponseBody
+    public String widgetWidthPicker(@PathVariable String widgetId) {
+        AvatarDashboardRowWidget widget = avatarService.dashboardRows().stream()
+            .flatMap(row -> row.widgets().stream())
+            .filter(item -> item.id().equals(widgetId))
+            .findFirst()
+            .orElseThrow(() -> new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "dashboard widget not found: " + widgetId
+            ));
+        return AvatarDashboardComponents.widgetWidthPicker(avatarService.dashboardRows(), widget).render();
     }
 
     @PostMapping("/avatar/_layout/widgets/{widgetId}/width-cycle")

@@ -113,6 +113,7 @@ class AvatarDashboardControllerTest {
 
         assertThat(html).contains("/css/avatar-dashboard.css?v=1");
         assertThat(html).contains("/js/avatar-chat.js?v=3");
+        assertThat(html).contains("/js/avatar-layout-edit.js?v=1");
         assertThat(html).doesNotContain("/js/chat-client.js");
         assertThat(html).contains("id=\"avatar-chat\"");
         assertThat(html).contains("data-avatar-chat=\"true\"");
@@ -133,7 +134,7 @@ class AvatarDashboardControllerTest {
         assertThat(editRowsHtml).contains("insert-row-section");
         assertThat(editRowsHtml).contains("avatar-widget-corner-controls");
         assertThat(editRowsHtml).contains("avatar-chat-status");
-        assertThat(editRowsHtml).contains("/width-cycle");
+        assertThat(editRowsHtml).contains("/width-picker");
         assertThat(editRowsHtml).doesNotContain("avatar-row-decoration");
         assertThat(editRowsHtml).doesNotContain("avatar-widget-decoration");
     }
@@ -232,17 +233,23 @@ class AvatarDashboardControllerTest {
             .orElseThrow()
             .id();
 
-        String resized = controller.resizeLayoutWidget(todosId, 6);
+        String widthPicker = controller.widgetWidthPicker(todosId);
+        assertThat(widthPicker).contains("Widget width");
+        assertThat(widthPicker).contains("data-avatar-width-picker");
+        assertThat(widthPicker).contains("1/12");
+        assertThat(widthPicker).contains("12/12");
+
+        String resized = controller.resizeLayoutWidget(todosId, 5);
         assertThat(resized).contains("id=\"avatar-widget-todos\"");
         assertThat(avatarService.dashboardRows().getFirst().widgets()).anySatisfy(widget -> {
             assertThat(widget.widgetKey()).isEqualTo("todos");
-            assertThat(widget.columnWidth()).isEqualTo(6);
+            assertThat(widget.columnWidth()).isEqualTo(5);
         });
 
         controller.cycleLayoutWidgetWidth(todosId);
         assertThat(avatarService.dashboardRows().getFirst().widgets()).anySatisfy(widget -> {
             assertThat(widget.widgetKey()).isEqualTo("todos");
-            assertThat(widget.columnWidth()).isEqualTo(8);
+            assertThat(widget.columnWidth()).isEqualTo(3);
         });
 
         controller.moveLayoutWidget(notesId, "left");

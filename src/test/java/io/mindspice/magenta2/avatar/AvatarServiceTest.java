@@ -153,14 +153,14 @@ class AvatarServiceTest {
         AvatarDashboardRowWidget notes = service.addDashboardWidget(row.id(), "notes", 4);
 
         service.moveDashboardWidget(notes.id(), "left");
-        service.resizeDashboardWidget(todos.id(), 3);
+        service.resizeDashboardWidget(todos.id(), 5);
 
         assertThat(service.dashboardRows()).singleElement()
             .satisfies(saved -> {
                 assertThat(saved.widgets()).extracting(AvatarDashboardRowWidget::widgetKey)
                     .containsExactly("notes", "todos");
                 assertThat(saved.widgets()).extracting(AvatarDashboardRowWidget::columnWidth)
-                    .containsExactly(4, 3);
+                    .containsExactly(4, 5);
             });
         assertThatThrownBy(() -> service.addDashboardWidget(row.id(), "todos", 4))
             .isInstanceOf(IllegalArgumentException.class)

@@ -18,13 +18,14 @@
 - `GET /avatar/_layout/rows/{rowId}/catalog` opens the focused add-widget picker modal in the shared edit container.
 - `POST /avatar/_layout/rows/{rowId}/widgets` adds a known first-party widget with a 12-column width.
 - `POST /avatar/_layout/widgets/{widgetId}/move?direction=left|right|up|down` moves widgets inside or across rows.
-- `PUT /avatar/_layout/widgets/{widgetId}/width` resizes a widget to `3`, `4`, `6`, `8`, or `12` columns.
-- `POST /avatar/_layout/widgets/{widgetId}/width-cycle` advances the widget through the same width presets for compact top-corner editing.
+- `GET /avatar/_layout/widgets/{widgetId}/width-picker` opens the compact anchored width picker in the shared edit container.
+- `PUT /avatar/_layout/widgets/{widgetId}/width` resizes a widget to any width from `1` through `12` that still fits the row.
+- `POST /avatar/_layout/widgets/{widgetId}/width-cycle` remains available as a compatibility endpoint for preset cycling but is no longer the primary UI flow.
 - `DELETE /avatar/_layout/widgets/{widgetId}` removes a widget instance.
 
 Layout mutations refresh `#avatar-widget-grid` with an out-of-band swap and clear the shared edit container when appropriate. `PUT /avatar/_layout` remains as a deprecated compatibility endpoint that rerenders the edit-mode grid response without accepting the old flat form contract.
 
-In-place edit mode is the source-of-truth layout workflow. Move, resize, add-row, add-widget, remove-widget, and empty-row delete controls are rendered on the live dashboard surface. Empty persisted rows are skipped in normal mode and render as compact `.avatar-empty-row-insert` affordances in edit mode. Modals remain appropriate for widget-specific detail work and add-widget picker selection, but layout placement and 12-column sizing do not use a separate modal editor.
+In-place edit mode is the source-of-truth layout workflow. Move, resize, add-row, add-widget, remove-widget, and empty-row delete controls are rendered on the live dashboard surface. Empty persisted rows are skipped in normal mode and render as compact `.avatar-empty-row-insert` affordances in edit mode. Modals remain appropriate for widget-specific detail work and add-widget picker selection, while widget width now uses a small anchored popover rather than a separate layout modal.
 
 Stable widget root IDs:
 

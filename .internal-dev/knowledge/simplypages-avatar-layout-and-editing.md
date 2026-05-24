@@ -20,7 +20,7 @@ SimplyPages Avatar layout and editing patterns.
 
 ## Key Takeaways
 
-- Use SimplyPages `Row` and `Column.create().withWidth(...)` for 12-column dashboard composition. Keep widths to practical presets such as 3, 4, 6, 8, and 12.
+- Use SimplyPages `Row` and `Column.create().withWidth(...)` for 12-column dashboard composition. Presets such as 3, 4, 6, 8, and 12 are good fast choices, but the layout model may support any `1..12` width when the row still fits.
 - Use in-place row/module controls for layout operations. The SimplyPages editing demo renders rows and modules as the real page structure, then places add-module and insert-row controls around that structure.
 - Use `EditableModule.wrap(...)` and `EditModalBuilder` for module-specific editing where appropriate, but do not put layout positioning in a separate modal-only editor.
 - Match the demo's visual hierarchy: the module/card content stays primary, edit/detail/delete controls are tiny top-corner decorators, `add-module-section` is a centered dashed affordance, and `insert-row-section` is a quiet separator. Large row headers, stacked movement buttons, and widget-internal resize panels are failure patterns for production `/avatar` edit mode.
@@ -38,7 +38,8 @@ In-place edit mode should decorate the real dashboard:
 
 - row controls for move up/down and safe row delete as secondary controls near the row-level add-module affordance;
 - centered add-widget controls and low-emphasis insert-row separators modeled after `.add-module-section` and `.insert-row-section`;
-- widget top-corner controls for move left/right/up/down, resize to 3/4/6/8/12, remove, refresh, and open detail without consuming the widget content area;
+- widget top-corner controls for move left/right/up/down, remove, refresh, and open detail without consuming the widget content area;
+- width changes from a compact anchored picker near the width control, with preset buttons plus an optional custom `n/12` entry that closes on outside click or after apply;
 - module detail modal/drawer for content-specific iteration only.
 
 Empty rows are a special case. They should not render as full blank dashboard rows in normal mode, and in edit mode they should collapse to a compact insertion affordance such as `.avatar-empty-row-insert`. The empty-row affordance may include add-widget and safe row-delete controls, but it must not create a large dead band or make editor chrome more prominent than real dashboard content.

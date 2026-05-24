@@ -15,7 +15,9 @@ The Avatar dashboard is available at `/avatar`. It is a personal dashboard for q
 
 Use **Edit Layout In Place** on `/avatar` to change rows and widgets on the displayed dashboard. The layout uses 12-column rows. In edit mode, compact controls appear on the live dashboard surface: widget controls sit in the top corner of each widget, add-widget controls appear between row content, and insert-row controls appear as row separators. Placement, movement, and sizing happen where the widget is actually shown.
 
-You can add rows, add one instance of each first-party widget, move widgets across rows, resize widgets to preset widths, remove widgets, and delete empty rows. Empty rows collapse into a compact add-widget affordance instead of a full blank dashboard band. Each action saves immediately through HTMX and refreshes the dashboard grid in place.
+You can add rows, add one instance of each first-party widget, move widgets across rows, resize widgets from a compact width picker, remove widgets, and delete empty rows. Empty rows collapse into a compact add-widget affordance instead of a full blank dashboard band. Each action saves immediately through HTMX and refreshes the dashboard grid in place.
+
+Clicking the width control opens a small picker beside that control. The picker offers common preset widths and a custom `n/12` input for any width that still fits the current row. It closes if you click away, press Escape, or apply a new width.
 
 Adding a widget opens a focused picker modal. The picker lists available first-party widgets, disables widgets already present on the dashboard, and lets you choose the 12-column width before adding the widget to the row.
 
