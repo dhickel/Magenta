@@ -1,56 +1,69 @@
 # Avatar Dashboard Fragment Routes
 
-`/avatar` is a server-rendered SimplyPages page with HTMX fragments for widget refresh, layout editing, organizer modals, output preview, and internal alert dismissal.
+`/avatar` is a server-rendered SimplyPages shell with HTMX fragments for tab swaps, dashboard layout editing, widget detail flows, output preview, alerts, and Work Area file operations.
 
-## Page And Layout
+## Shell Routes
 
-- `GET /avatar` renders the full shell with Avatar CSS, compact chat, widget grid, edit container, and output preview container.
-- `GET /avatar?edit=true` renders the same dashboard in in-place layout edit mode.
-- `GET /avatar/_widgets` returns `#avatar-widget-grid`.
-- `GET /avatar/_widgets?edit=true` returns `#avatar-widget-grid` with demo-style in-place edit decorations: top-corner widget controls, centered add-widget sections, compact empty-row insert affordances, and insert-row separators.
-- `GET /avatar/_widgets/{widgetKey}` returns one stable widget root.
-- `GET /avatar/_widgets/{widgetKey}/detail` opens a widget-specific detail modal in the shared edit container.
-- `GET /avatar/_edit` only clears or leaves the shared edit container empty. The legacy row/widget layout edit modal is no longer the layout workflow.
-- `POST /avatar/_layout/rows` adds a row.
-- `POST /avatar/_layout/rows/{rowId}/insert-after` inserts a row directly below an existing row.
-- `POST /avatar/_layout/rows/{rowId}/move?direction=up|down` reorders rows.
-- `DELETE /avatar/_layout/rows/{rowId}` removes an empty row.
-- `GET /avatar/_layout/rows/{rowId}/catalog` opens the focused add-widget picker modal in the shared edit container.
-- `POST /avatar/_layout/rows/{rowId}/widgets` adds a known first-party widget with a 12-column width.
-- `POST /avatar/_layout/widgets/{widgetId}/move?direction=left|right|up|down` moves widgets inside or across rows.
-- `GET /avatar/_layout/widgets/{widgetId}/width-picker` opens the compact anchored width picker in the shared edit container.
-- `PUT /avatar/_layout/widgets/{widgetId}/width` resizes a widget to any width from `1` through `12` that still fits the row.
-- `POST /avatar/_layout/widgets/{widgetId}/width-cycle` remains available as a compatibility endpoint for preset cycling but is no longer the primary UI flow.
-- `DELETE /avatar/_layout/widgets/{widgetId}` removes a widget instance.
+- `GET /avatar` renders the full Avatar shell.
+- `GET /avatar?tab=<dashboard|queue|history|profile|outputs|work-areas>` deep-links the initial tab.
+- `GET /avatar?tab=dashboard&edit=true` renders the dashboard tab in layout edit mode.
+- `GET /avatar/_tab-panel?tab=...`
+- `GET /avatar/_tab-panel/{tab}`
 
-Layout mutations refresh `#avatar-widget-grid` with an out-of-band swap and clear the shared edit container when appropriate. `PUT /avatar/_layout` remains as a deprecated compatibility endpoint that rerenders the edit-mode grid response without accepting the old flat form contract.
+Tab fragment responses return two pieces:
 
-In-place edit mode is the source-of-truth layout workflow. Move, resize, add-row, add-widget, remove-widget, and empty-row delete controls are rendered on the live dashboard surface. Empty persisted rows are skipped in normal mode and render as compact `.avatar-empty-row-insert` affordances in edit mode. Modals remain appropriate for widget-specific detail work and add-widget picker selection, while widget width now uses a small anchored popover rather than a separate layout modal.
+- `#avatar-tab-panel` as the primary swap target;
+- `#avatar-shell-tabs-wrap` as an out-of-band swap so active-tab styling and shell actions stay in sync without rerendering the right chat rail.
 
-Stable widget root IDs:
+`edit=true` is normalized away for all non-dashboard tabs. The shell pushes the canonical tab URL back into browser history with `HX-Push-Url`.
 
-- `avatar-widget-daily-tasks`
-- `avatar-widget-todos`
-- `avatar-widget-calendar`
-- `avatar-widget-notes`
-- `avatar-widget-files`
-- `avatar-widget-outputs`
-- `avatar-widget-system`
-- `avatar-widget-alerts`
-- `avatar-widget-recent-work`
+## Dashboard Layout
 
-## Widget Actions
+- `GET /avatar/_widgets`
+- `GET /avatar/_widgets?edit=true`
+- `GET /avatar/_widgets/{widgetKey}`
+- `GET /avatar/_widgets/{widgetKey}/detail`
+- `GET /avatar/_edit`
+- `POST /avatar/_layout/rows`
+- `POST /avatar/_layout/rows/{rowId}/insert-after`
+- `POST /avatar/_layout/rows/{rowId}/move?direction=up|down`
+- `DELETE /avatar/_layout/rows/{rowId}`
+- `GET /avatar/_layout/rows/{rowId}/catalog`
+- `POST /avatar/_layout/rows/{rowId}/widgets`
+- `POST /avatar/_layout/widgets/{widgetId}/move?direction=left|right|up|down`
+- `GET /avatar/_layout/widgets/{widgetId}/width-picker`
+- `PUT /avatar/_layout/widgets/{widgetId}/width`
+- `POST /avatar/_layout/widgets/{widgetId}/width-cycle`
+- `DELETE /avatar/_layout/widgets/{widgetId}`
 
-- Organizer modal: `GET /avatar/_organizer?tab=planner|todos|calendar|notes`.
-- Planner tasks: `POST /avatar/_planner-tasks` and `POST /avatar/_planner-tasks/{taskId}/subtodos`.
-- Todos: `POST /avatar/_todos`, `POST /avatar/_todos/{todoId}/complete`, `DELETE /avatar/_todos/{todoId}`.
-- Daily tasks: `POST /avatar/_daily-tasks`, `POST /avatar/_daily-tasks/{taskId}/complete`.
-- Notes: `POST /avatar/_notes`.
-- Calendar: `POST /avatar/_calendar`, `DELETE /avatar/_calendar/{calendarId}`.
-- Work Areas: `GET /avatar/_work-areas/{workAreaId}/explorer`, `GET /avatar/_work-areas/{workAreaId}/preview`, `GET /avatar/_work-areas/{workAreaId}/edit`, `PUT /avatar/_work-areas/{workAreaId}/text`, `POST /avatar/_work-areas/{workAreaId}/directories`, `POST /avatar/_work-areas/{workAreaId}/mark`, and `DELETE /avatar/_work-areas/{workAreaId}/files`.
-- Outputs: `GET /avatar/_outputs/{artifactId}` uses `OutputArtifactService` for confined artifact content.
-- Alerts: `POST /avatar/_alerts/{eventId}/dismiss` records an internal Avatar event dismissal and rerenders the alerts widget.
+Only the `Dashboard` tab is layout-editable. Layout mutations refresh `#avatar-widget-grid` with an out-of-band swap and clear the shared `#avatar-edit-container` when appropriate.
 
-The Organizer toolbar action opens a single modal container with tabs for planner tasks, todos, calendar, and notes. Planner task records are distinct from Magenta executable task/work units; v1 supports durable planner records, subtodos, recurrence projection, and optional links to existing project/assignment/job/output ids, but does not schedule new automation.
+Edit chrome contract:
 
-The Work Areas widget reads agent-owned Work Areas from `WorkAreaService` and opens the explorer in the shared modal container. Explorer fragments delegate filesystem behavior to `WorkAreaExplorerService`, so traversal, symlink, safe text editing, and protected delete rules stay in the workspace service layer. The alerts widget reads existing inbox messages and internal Avatar events only. Email ingestion is intentionally out of scope for this route set.
+- widget controls stay in the widget corner;
+- row controls render through `.avatar-row-decoration` above row content;
+- empty rows render as `.avatar-empty-row-insert`;
+- insert-row affordances render as compact separators between populated rows.
+
+The old top-level `Organizer` and `Refresh Widgets` shell actions are intentionally removed from the shell contract.
+
+## Widget And Modal Actions
+
+- Planner tasks: `POST /avatar/_planner-tasks` and `POST /avatar/_planner-tasks/{taskId}/subtodos`
+- Todos: `POST /avatar/_todos`, `POST /avatar/_todos/{todoId}/complete`, `DELETE /avatar/_todos/{todoId}`
+- Daily tasks: `POST /avatar/_daily-tasks`, `POST /avatar/_daily-tasks/{taskId}/complete`
+- Notes: `POST /avatar/_notes`
+- Calendar: `POST /avatar/_calendar`, `DELETE /avatar/_calendar/{calendarId}`
+- Outputs: `GET /avatar/_outputs/{artifactId}`
+- Alerts: `POST /avatar/_alerts/{eventId}/dismiss`
+- Work Areas: `GET /avatar/_work-areas/{workAreaId}/explorer`, `GET /avatar/_work-areas/{workAreaId}/preview`, `GET /avatar/_work-areas/{workAreaId}/edit`, `PUT /avatar/_work-areas/{workAreaId}/text`, `POST /avatar/_work-areas/{workAreaId}/directories`, `POST /avatar/_work-areas/{workAreaId}/text`, `POST /avatar/_work-areas/{workAreaId}/mark`, and `DELETE /avatar/_work-areas/{workAreaId}/files`
+
+Planner, todo, calendar, and note flows still exist, but they are reached from dashboard widgets and detail surfaces rather than from a standalone shell toolbar action.
+
+## Client Assets
+
+- `/js/avatar-chat.js?v=3` owns the compact Avatar chat surface.
+- `/js/avatar-layout-edit.js?v=1` owns in-place dashboard edit helpers.
+- `/js/avatar-shell.js?v=1` owns desktop rail resizing and browser-local width persistence.
+
+`avatar-shell.js` stores the desktop rail width in `localStorage` under `magenta.avatar.chatRailWidthPx`. The shell reads that value only at desktop breakpoints and ignores it on mobile stacked layouts.

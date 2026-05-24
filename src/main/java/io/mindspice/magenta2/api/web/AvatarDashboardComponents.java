@@ -64,20 +64,35 @@ final class AvatarDashboardComponents {
     }
 
     static Component page(AvatarDashboardData data, boolean editMode) {
+        return page(data, "dashboard", editMode);
+    }
+
+    static Component page(AvatarDashboardData data, String activeTab, boolean editMode) {
+        String normalizedTab = normalizeTab(activeTab);
+        boolean dashboardEditMode = editMode && "dashboard".equals(normalizedTab);
         return new Div()
             .withId("avatar-page")
-            .withClass(editMode ? "avatar-page avatar-page-editing" : "avatar-page")
+            .withClass(dashboardEditMode ? "avatar-page avatar-page-editing" : "avatar-page")
             .withAttribute("data-avatar-page", "true")
+            .withAttribute("data-avatar-shell", "true")
+            .withAttribute("data-avatar-active-tab", normalizedTab)
             .withChild(pageHeader(data.profile()))
-            .withChild(new Div().withClass("avatar-layout")
-                .withChild(new Div().withClass("avatar-main")
-                    .withChild(toolbar(editMode))
-                    .withChild(widgetGrid(data, editMode)))
-                .withChild(compactChat(data.defaultModel())))
+            .withChild(new Div().withClass("avatar-shell")
+                .withChild(new Div().withClass("avatar-shell-grid")
+                    .withChild(new Div().withClass("avatar-shell-main")
+                        .withChild(shellTabs(normalizedTab, dashboardEditMode))
+                        .withChild(tabPanel(data, normalizedTab, dashboardEditMode)))
+                    .withChild(new Div().withClass("avatar-shell-rail")
+                        .withChild(new Div()
+                            .withClass("avatar-chat-resizer")
+                            .withAttribute("data-avatar-chat-resizer", "true")
+                            .withAttribute("aria-hidden", "true"))
+                        .withChild(compactChat(data.defaultModel())))))
             .withChild(new Div().withId("avatar-edit-container"))
             .withChild(new Div().withId("avatar-output-preview").withClass("avatar-output-preview"))
             .withChild(moduleScript("/js/avatar-chat.js?v=3"))
-            .withChild(moduleScript("/js/avatar-layout-edit.js?v=1"));
+            .withChild(moduleScript("/js/avatar-layout-edit.js?v=1"))
+            .withChild(moduleScript("/js/avatar-shell.js?v=1"));
     }
 
     static Component widgetGrid(AvatarDashboardData data) {
@@ -572,7 +587,8 @@ final class AvatarDashboardComponents {
             .withAttribute("data-avatar-row-id", dashboardRow.id());
         if (editMode && dashboardRow.widgets().isEmpty()) {
             shell.withClass("avatar-empty-row-shell");
-            shell.withChild(emptyRowInsert(dashboardRow, index, rowCount));
+            shell.withChild(rowDecoration(dashboardRow, index, rowCount));
+            shell.withChild(emptyRowInsert(dashboardRow));
             return shell;
         }
         Row row = new Row().withId("avatar-dashboard-row-" + dashboardRow.id());
@@ -582,9 +598,11 @@ final class AvatarDashboardComponents {
                 .withWidth(rowWidget.columnWidth())
                 .withChild(widget(data, displayWidget(rowWidget), rowWidget, editMode)));
         }
+        if (editMode) {
+            shell.withChild(rowDecoration(dashboardRow, index, rowCount));
+        }
         shell.withChild(row);
         if (editMode) {
-            shell.withChild(rowMicroControls(dashboardRow, index, rowCount));
             shell.withChild(addModuleSection(dashboardRow, index, rowCount));
         }
         return shell;
@@ -595,31 +613,179 @@ final class AvatarDashboardComponents {
         return new Div().withClass("avatar-page-header")
             .withChild(new Div()
                 .withChild(Header.H1(displayName))
-                .withChild(new Paragraph("Personal command surface for chat, organizer work, alerts, and recent outputs.")))
+                .withChild(new Paragraph("Personal command surface for dashboard work, queue flow, chat, and outputs.")))
             .withChild(new HtmlTag("a")
                 .withClass("avatar-dashboard-link")
                 .withAttribute("href", "/dashboard")
                 .withInnerText("Operations Dashboard"));
     }
 
-    private static Component toolbar(boolean editMode) {
-        return new Div().withClass("avatar-toolbar")
-            .withChild(new HtmlTag("button")
-                .withAttribute("type", "button")
-                .withAttribute("hx-get", "/avatar/_organizer?tab=planner")
-                .withAttribute("hx-target", "#avatar-edit-container")
-                .withAttribute("hx-swap", "innerHTML")
-                .withInnerText("Organizer"))
-            .withChild(new HtmlTag("a")
-                .withClass("avatar-toolbar-link")
-                .withAttribute("href", editMode ? "/avatar" : "/avatar?edit=true")
-                .withInnerText(editMode ? "Exit Layout Edit" : "Edit Layout In Place"))
-            .withChild(new HtmlTag("button")
-                .withAttribute("type", "button")
-                .withAttribute("hx-get", editMode ? "/avatar/_widgets?edit=true" : "/avatar/_widgets")
-                .withAttribute("hx-target", "#avatar-widget-grid")
-                .withAttribute("hx-swap", "outerHTML")
-                .withInnerText("Refresh Widgets"));
+    private static Component shellTabs(String activeTab, boolean editMode) {
+        return new Div().withId("avatar-shell-tabs-wrap").withClass("avatar-shell-tabs-wrap")
+            .withChild(new Div().withClass("avatar-shell-strip")
+                .withChild(new Div()
+                    .withChild(Header.H2("Avatar"))
+                    .withChild(small("Operational shell with a persistent assistant rail.")))
+                .withChild("dashboard".equals(activeTab)
+                    ? dashboardActions(editMode)
+                    : new Div().withClass("avatar-shell-actions")
+                        .withChild(new HtmlTag("span").withClass("avatar-shell-note")
+                            .withInnerText(shellNote(activeTab)))))
+            .withChild(new HtmlTag("nav")
+                .withClass("orch-tabs avatar-shell-tabs")
+                .withAttribute("aria-label", "Avatar views")
+                .withChild(shellTab("dashboard", "Dashboard", activeTab, editMode))
+                .withChild(shellTab("queue", "Queue", activeTab, false))
+                .withChild(shellTab("history", "History", activeTab, false))
+                .withChild(shellTab("profile", "Profile", activeTab, false))
+                .withChild(shellTab("outputs", "Outputs", activeTab, false))
+                .withChild(shellTab("work-areas", "Work Areas", activeTab, false)));
+    }
+
+    private static Component shellTab(String tab, String label, String activeTab, boolean editMode) {
+        Button button = Button.create(label);
+        if (tab.equals(activeTab)) {
+            button.withClass("active");
+        }
+        String href = tab.equals("dashboard") && editMode ? "/avatar?tab=dashboard&edit=true" : "/avatar?tab=" + tab;
+        return button
+            .withAttribute("data-avatar-tab", tab)
+            .withAttribute("aria-current", tab.equals(activeTab) ? "page" : "false")
+            .withAttribute("hx-get", "/avatar/_tab-panel/" + tab + (tab.equals("dashboard") && editMode ? "?edit=true" : ""))
+            .withAttribute("hx-target", "#avatar-tab-panel")
+            .withAttribute("hx-swap", "outerHTML")
+            .withAttribute("hx-push-url", href);
+    }
+
+    private static Component dashboardActions(boolean editMode) {
+        Div actions = new Div().withClass("avatar-shell-actions");
+        if (editMode) {
+            actions.withChild(new HtmlTag("span").withClass("avatar-shell-note")
+                .withInnerText("Dashboard edit mode"));
+        }
+        return actions.withChild(iconLink(
+            editMode ? "close" : "settings",
+            editMode ? "Exit dashboard layout edit" : "Edit dashboard layout",
+            editMode ? "/avatar?tab=dashboard" : "/avatar?tab=dashboard&edit=true"
+        ));
+    }
+
+    static Component tabPanel(AvatarDashboardData data, String activeTab, boolean editMode) {
+        String normalizedTab = normalizeTab(activeTab);
+        Div panel = new Div()
+            .withId("avatar-tab-panel")
+            .withClass("avatar-tab-panel avatar-tab-panel-" + normalizedTab)
+            .withAttribute("data-avatar-tab-panel", normalizedTab);
+        return switch (normalizedTab) {
+            case "queue" -> panel.withChild(tabSection("Queue", "Live assignment queue for Avatar-supervised work.")
+                .withChild(queuePanel(data.assignments(), data.agents())));
+            case "history" -> panel.withChild(tabSection("History", "Recent work and published results across the Avatar surface.")
+                .withChild(historyPanel(data.jobs(), data.assignments(), data.outputs())));
+            case "profile" -> panel.withChild(tabSection("Profile", "Avatar identity and assistant defaults.")
+                .withChild(profilePanel(data.profile(), data.agents(), data.defaultModel())));
+            case "outputs" -> panel.withChild(tabSection("Outputs", "Recent generated artifacts and previews.")
+                .withChild(outputsPanel(data.outputs())));
+            case "work-areas" -> panel.withChild(tabSection("Work Areas", "Confined workspaces and files available to Avatar.")
+                .withChild(workAreasPanel(data.workAreas())));
+            default -> panel.withChild(new Div().withClass("avatar-dashboard-panel")
+                .withChild(widgetGrid(data, editMode)));
+        };
+    }
+
+    static Component tabPanelResponse(AvatarDashboardData data, String activeTab, boolean editMode) {
+        Div tabs = (Div) shellTabs(activeTab, editMode);
+        tabs.withAttribute("hx-swap-oob", "true");
+        return new Div()
+            .withChild(tabs)
+            .withChild(tabPanel(data, activeTab, editMode));
+    }
+
+    private static Div tabSection(String title, String subtitle) {
+        return new Div().withClass("avatar-tab-section")
+            .withChild(new Div().withClass("avatar-tab-section-header")
+                .withChild(new Div()
+                    .withChild(Header.H2(title))
+                    .withChild(small(subtitle))));
+    }
+
+    private static Component queuePanel(List<WorkAssignment> assignments, List<AgentProfile> agents) {
+        Div panel = new Div().withClass("avatar-tab-card");
+        List<WorkAssignment> safeAssignments = assignments == null ? List.of() : assignments;
+        if (safeAssignments.isEmpty()) {
+            return panel.withChild(empty("No active assignments are visible to Avatar."));
+        }
+        Map<String, String> agentNames = new LinkedHashMap<>();
+        if (agents != null) {
+            for (AgentProfile agent : agents) {
+                agentNames.put(agent.id(), agent.name() == null ? agent.id() : agent.name());
+            }
+        }
+        Div list = new Div().withClass("avatar-list");
+        for (WorkAssignment assignment : safeAssignments.stream().limit(12).toList()) {
+            String agentName = assignment.agentId() == null ? "agent" : agentNames.getOrDefault(assignment.agentId(), assignment.agentId());
+            String status = assignment.status() == null ? "unknown" : assignment.status().name().toLowerCase(Locale.ROOT);
+            String type = assignment.assignmentType() == null ? "assignment" : assignment.assignmentType().name().toLowerCase(Locale.ROOT);
+            list.withChild(new Div().withClass("avatar-list-row")
+                .withChild(new Div()
+                    .withChild(new HtmlTag("strong").withInnerText(agentName))
+                    .withChild(small(type + " / " + status))));
+        }
+        return panel.withChild(list);
+    }
+
+    private static Component historyPanel(List<JobDefinition> jobs, List<WorkAssignment> assignments, List<RunOutputArtifact> outputs) {
+        Div wrapper = new Div().withClass("avatar-tab-stack");
+        wrapper.withChild(new Div().withClass("avatar-tab-card")
+            .withChild(new HtmlTag("strong").withInnerText("Recent work"))
+            .withChild(small("History expands from existing runtime data first; deeper chat/session history wiring follows this baseline."))
+            .withChild(recentWork(jobs, assignments, outputs)));
+        return wrapper;
+    }
+
+    private static Component profilePanel(AvatarProfile profile, List<AgentProfile> agents, String defaultModel) {
+        Div panel = new Div().withClass("avatar-tab-card avatar-profile-card");
+        AgentProfile avatarAgent = agents == null ? null : agents.stream()
+            .filter(agent -> "avatar".equals(agent.id()))
+            .findFirst()
+            .orElse(null);
+        Div grid = new Div().withClass("avatar-profile-grid");
+        grid.withChild(profileField("Display", profile == null ? "Avatar" : profile.displayName()));
+        grid.withChild(profileField("Timezone", profile == null ? null : profile.timezone()));
+        grid.withChild(profileField("Locale", profile == null ? null : profile.locale()));
+        grid.withChild(profileField("Summary", profile == null ? null : profile.summary()));
+        grid.withChild(profileField("Default Model", defaultModel));
+        grid.withChild(profileField("Backing Agent", avatarAgent == null ? "avatar (not loaded)" : avatarAgent.name()));
+        grid.withChild(profileField("Agent Status", avatarAgent == null || avatarAgent.status() == null
+            ? "unknown"
+            : avatarAgent.status().name().toLowerCase(Locale.ROOT)));
+        return panel.withChild(grid);
+    }
+
+    private static Component profileField(String label, String value) {
+        return new Div().withClass("avatar-profile-field")
+            .withChild(new HtmlTag("span").withClass("avatar-profile-label").withInnerText(label))
+            .withChild(new HtmlTag("strong").withInnerText(value == null || value.isBlank() ? "unset" : value));
+    }
+
+    private static Component outputsPanel(List<RunOutputArtifact> outputs) {
+        return new Div().withClass("avatar-tab-card")
+            .withChild(outputs(outputs));
+    }
+
+    private static Component workAreasPanel(List<WorkArea> workAreas) {
+        return new Div().withClass("avatar-tab-card")
+            .withChild(files(workAreas));
+    }
+
+    private static String shellNote(String activeTab) {
+        return switch (normalizeTab(activeTab)) {
+            case "queue" -> "Avatar-supervised queue view";
+            case "history" -> "Recent execution and output history";
+            case "profile" -> "Assistant identity and defaults";
+            case "outputs" -> "Generated artifacts and previews";
+            case "work-areas" -> "Confined workspace browser";
+            default -> "Dashboard";
+        };
     }
 
     private static Component compactChat(String defaultModel) {
@@ -629,6 +795,7 @@ final class AvatarDashboardComponents {
             .withAttribute("data-avatar-chat", "true")
             .withAttribute("data-chat-surface", "avatar")
             .withAttribute("data-default-model", defaultModel == null ? "" : defaultModel)
+            .withAttribute("data-avatar-chat-rail", "true")
             .withChild(new Div().withClass("avatar-chat-header")
                 .withChild(new Div()
                     .withChild(Header.H2("Avatar Chat"))
@@ -1151,9 +1318,8 @@ final class AvatarDashboardComponents {
                 .withAttribute("hx-swap", "innerHTML"));
     }
 
-    private static Component emptyRowInsert(AvatarDashboardRow row, int index, int rowCount) {
+    private static Component emptyRowInsert(AvatarDashboardRow row) {
         return new Div().withClass("avatar-empty-row-insert")
-            .withChild(rowMicroControls(row, index, rowCount))
             .withChild(new Div()
                 .withChild(new HtmlTag("strong").withInnerText("Empty row"))
                 .withChild(small("Add a widget or remove this row.")))
@@ -1164,11 +1330,16 @@ final class AvatarDashboardComponents {
                 .withAttribute("hx-swap", "innerHTML"));
     }
 
-    private static Component rowMicroControls(AvatarDashboardRow row, int index, int rowCount) {
-        return new Div().withClass("avatar-row-micro-controls")
+    private static Component rowDecoration(AvatarDashboardRow row, int index, int rowCount) {
+        String usage = row.widgets().isEmpty()
+            ? "Empty row"
+            : "Row " + (index + 1) + " · " + row.widgets().stream().mapToInt(AvatarDashboardRowWidget::columnWidth).sum() + "/12";
+        return new Div().withClass("avatar-row-decoration")
+            .withChild(new HtmlTag("span").withClass("avatar-row-decoration-label").withInnerText(usage))
+            .withChild(new Div().withClass("avatar-row-decoration-actions")
             .withChild(rowMoveButton(row.id(), "up", index == 0))
             .withChild(rowMoveButton(row.id(), "down", index >= rowCount - 1))
-            .withChild(rowDeleteButton(row.id(), row.widgets().isEmpty()));
+            .withChild(rowDeleteButton(row.id(), row.widgets().isEmpty())));
     }
 
     private static Component insertRowSection(AvatarDashboardRow row) {
@@ -1192,7 +1363,6 @@ final class AvatarDashboardComponents {
         if (!editMode || layoutWidget == null) {
             return controls;
         }
-        controls.withChild(refreshButton(widgetKey));
         controls.withChild(widgetMoveButton(layoutWidget.id(), "left"));
         controls.withChild(widgetMoveButton(layoutWidget.id(), "right"));
         controls.withChild(widgetMoveButton(layoutWidget.id(), "up"));
@@ -1257,14 +1427,6 @@ final class AvatarDashboardComponents {
         return select;
     }
 
-    private static Component refreshButton(String key) {
-        return iconButton("refresh", "Refresh widget", "Refresh " + definition(key).title())
-            .withAttribute("hx-get", "/avatar/_widgets/" + key)
-            .withAttribute("hx-target", "#" + rootId(key))
-            .withAttribute("hx-swap", "outerHTML")
-            .withAttribute("data-avatar-refresh-trigger", key);
-    }
-
     private static Component detailButton(String key) {
         return iconButton("settings", "Open widget settings", "Open " + definition(key).title() + " settings")
             .withAttribute("data-avatar-detail-trigger", key)
@@ -1292,6 +1454,15 @@ final class AvatarDashboardComponents {
             .withClass("avatar-icon-button avatar-control-button")
             .withAttribute("type", "button")
             .withAttribute("title", title)
+            .withAttribute("aria-label", ariaLabel)
+            .withUnsafeHtml(iconSvg(icon));
+    }
+
+    private static HtmlTag iconLink(String icon, String ariaLabel, String href) {
+        return new HtmlTag("a")
+            .withClass("avatar-icon-link avatar-control-button")
+            .withAttribute("href", href)
+            .withAttribute("title", ariaLabel)
             .withAttribute("aria-label", ariaLabel)
             .withUnsafeHtml(iconSvg(icon));
     }
@@ -1574,6 +1745,16 @@ final class AvatarDashboardComponents {
     }
 
     record WidgetDefinition(String key, String title, String defaultSize) {
+    }
+
+    private static String normalizeTab(String tab) {
+        if (tab == null || tab.isBlank()) {
+            return "dashboard";
+        }
+        return switch (tab) {
+            case "dashboard", "queue", "history", "profile", "outputs", "work-areas" -> tab;
+            default -> "dashboard";
+        };
     }
 
     record AvatarDashboardData(

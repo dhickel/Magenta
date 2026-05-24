@@ -114,17 +114,29 @@ class AvatarDashboardControllerTest {
         assertThat(html).contains("/css/avatar-dashboard.css?v=1");
         assertThat(html).contains("/js/avatar-chat.js?v=3");
         assertThat(html).contains("/js/avatar-layout-edit.js?v=1");
+        assertThat(html).contains("/js/avatar-shell.js?v=1");
         assertThat(html).doesNotContain("/js/chat-client.js");
         assertThat(html).contains("id=\"avatar-chat\"");
         assertThat(html).contains("data-avatar-chat=\"true\"");
+        assertThat(html).contains("data-avatar-shell=\"true\"");
+        assertThat(html).contains("id=\"avatar-tab-panel\"");
+        assertThat(html).contains("data-avatar-tab=\"dashboard\"");
+        assertThat(html).contains("data-avatar-tab=\"queue\"");
+        assertThat(html).contains("data-avatar-tab=\"history\"");
+        assertThat(html).contains("data-avatar-tab=\"profile\"");
+        assertThat(html).contains("data-avatar-tab=\"outputs\"");
+        assertThat(html).contains("data-avatar-tab=\"work-areas\"");
         assertThat(html).contains("/dashboard");
+        assertThat(html).doesNotContain("Organizer");
+        assertThat(html).doesNotContain("Refresh Widgets");
         for (AvatarDashboardComponents.WidgetDefinition widget : AvatarDashboardComponents.WIDGETS) {
             assertThat(html).contains("id=\"avatar-widget-" + widget.key() + "\"");
         }
 
         String editHtml = controller.avatar(true);
         assertThat(editHtml).contains("avatar-widget-grid-editing");
-        assertThat(editHtml).contains("Exit Layout Edit");
+        assertThat(editHtml).contains("Dashboard edit mode");
+        assertThat(editHtml).contains("avatar-icon-link");
 
         controller.addLayoutRow();
         controller.addLayoutWidget(avatarService.dashboardRows().getFirst().id(), "todos", 4);
@@ -132,10 +144,11 @@ class AvatarDashboardControllerTest {
         assertThat(editRowsHtml).contains("editable-row-wrapper");
         assertThat(editRowsHtml).contains("add-module-section");
         assertThat(editRowsHtml).contains("insert-row-section");
+        assertThat(editRowsHtml).contains("avatar-row-decoration");
         assertThat(editRowsHtml).contains("avatar-widget-corner-controls");
         assertThat(editRowsHtml).contains("avatar-chat-status");
         assertThat(editRowsHtml).contains("/width-picker");
-        assertThat(editRowsHtml).doesNotContain("avatar-row-decoration");
+        assertThat(editRowsHtml).doesNotContain("Refresh Widgets");
         assertThat(editRowsHtml).doesNotContain("avatar-widget-decoration");
     }
 
@@ -154,6 +167,27 @@ class AvatarDashboardControllerTest {
             .isInstanceOf(ResponseStatusException.class)
             .extracting(error -> ((ResponseStatusException) error).getStatusCode())
             .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void avatarTabRoutesNormalizeEditModeOutsideDashboard() {
+        String queuePage = controller.avatar("queue", true);
+        assertThat(queuePage).contains("data-avatar-active-tab=\"queue\"");
+        assertThat(queuePage).contains("data-avatar-tab-panel=\"queue\"");
+        assertThat(queuePage).doesNotContain("avatar-widget-grid-editing");
+        assertThat(queuePage).doesNotContain("Dashboard edit mode");
+
+        String queueFragment = controller.avatarTabPanel("queue", true);
+        assertThat(queueFragment).contains("id=\"avatar-tab-panel\"");
+        assertThat(queueFragment).contains("avatar-tab-panel-queue");
+        assertThat(queueFragment).contains("id=\"avatar-shell-tabs-wrap\"");
+        assertThat(queueFragment).contains("hx-swap-oob=\"true\"");
+        assertThat(queueFragment).contains("data-avatar-tab=\"queue\"");
+        assertThat(queueFragment).doesNotContain("avatar-widget-grid-editing");
+
+        String dashboardFragment = controller.avatarTabPanel("dashboard", true);
+        assertThat(dashboardFragment).contains("avatar-widget-grid-editing");
+        assertThat(dashboardFragment).contains("id=\"avatar-tab-panel\"");
     }
 
     @Test

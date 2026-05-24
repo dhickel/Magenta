@@ -47,3 +47,7 @@ The in-place `/avatar` layout editor uses per-action HTMX requests and OOB grid 
 - `DELETE /avatar/_layout/widgets/{widgetId}`
 
 The editor uses SimplyPages row/column layout primitives for the 12-column placement model and keeps mutations scoped to the shared `#avatar-edit-container` overlay/popover surface with `#avatar-widget-grid` refreshed out of band.
+
+Only the `Dashboard` tab enters layout edit mode. The broader `/avatar` shell can switch between `dashboard`, `queue`, `history`, `profile`, `outputs`, and `work-areas`, but non-dashboard tabs intentionally normalize `edit=true` away and remain read-only during this baseline pass.
+
+Row-level edit controls now render as a dedicated `.avatar-row-decoration` strip above row content instead of as a lower-z-index floating control cluster. This keeps row movement and row-level actions above widget edit chrome and aligns row editing with the module decorator pattern.

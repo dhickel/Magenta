@@ -7,10 +7,13 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import jakarta.servlet.http.HttpServletResponse;
+import io.mindspice.magenta2.ai.chat.model.ChatSession;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
@@ -19,6 +22,7 @@ import io.mindspice.magenta2.ai.orchestration.runtime.JobService;
 import io.mindspice.magenta2.ai.orchestration.runtime.WorkAssignment;
 import io.mindspice.magenta2.ai.orchestration.workflow.InboxMessage;
 import io.mindspice.magenta2.ai.orchestration.workflow.InboxService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactQuery;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkArea;
@@ -47,6 +51,7 @@ import io.mindspice.simplypages.builders.BannerBuilder;
 import io.mindspice.simplypages.builders.ShellBuilder;
 import io.mindspice.simplypages.builders.ShellTemplate;
 import io.mindspice.simplypages.builders.TopNavBuilder;
+import io.mindspice.simplypages.components.Div;
 import io.mindspice.simplypages.core.Component;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
@@ -64,6 +69,8 @@ import org.springframework.web.server.ResponseStatusException;
 @Controller
 public class AvatarDashboardController {
     private static final String AVATAR_CSS = "/css/avatar-dashboard.css?v=1";
+    private static final String AVATAR_AGENT_ID = "avatar";
+    private static final String DEFAULT_AVATAR_TAB = "dashboard";
 
     private final AvatarService avatarService;
     private final ChatService chatService;
@@ -115,8 +122,40 @@ public class AvatarDashboardController {
 
     @GetMapping("/avatar")
     @ResponseBody
-    public String avatar(@RequestParam(value = "edit", required = false) boolean edit) {
-        return shell.renderWithContent(AvatarDashboardComponents.page(data(), edit));
+    public String avatar(@RequestParam(value = "tab", required = false) String tab,
+                         @RequestParam(value = "edit", required = false) boolean edit) {
+        AvatarTabState state = normalizeTabState(tab, edit);
+        return shell.renderWithContent(AvatarDashboardComponents.page(data(), state.activeTab(), state.editMode()));
+    }
+
+    public String avatar(boolean edit) {
+        return avatar(DEFAULT_AVATAR_TAB, edit);
+    }
+
+    @GetMapping("/avatar/_tab-panel")
+    @ResponseBody
+    public String avatarTabPanel(@RequestParam(value = "tab", required = false) String tab,
+                                 @RequestParam(value = "edit", required = false) boolean edit,
+                                 HttpServletResponse response) {
+        return avatarTabPanelResponse(tab, edit, response);
+    }
+
+    @GetMapping("/avatar/_tab-panel/{tab}")
+    @ResponseBody
+    public String avatarTabPanelPath(@PathVariable String tab,
+                                     @RequestParam(value = "edit", required = false) boolean edit,
+                                     HttpServletResponse response) {
+        return avatarTabPanelResponse(tab, edit, response);
+    }
+
+    public String avatarTabPanel(String tab, boolean edit) {
+        return renderTabPanel(normalizeTabState(tab, edit));
+    }
+
+    private String avatarTabPanelResponse(String tab, boolean edit, HttpServletResponse response) {
+        AvatarTabState state = normalizeTabState(tab, edit);
+        response.setHeader("HX-Push-Url", avatarUrl(state));
+        return renderTabPanel(state);
     }
 
     @GetMapping("/avatar/_widgets")
@@ -631,6 +670,135 @@ public class AvatarDashboardController {
         );
     }
 
+    private String renderTabPanel(AvatarTabState state) {
+        return AvatarDashboardComponents.tabPanelResponse(data(), state.activeTab(), state.editMode()).render();
+    }
+
+    private Component wrapTabPanel(AvatarTabState state, Component content) {
+        return new Div()
+            .withId("avatar-tab-panel")
+            .withClass("avatar-tab-panel avatar-tab-panel-" + state.activeTab())
+            .withAttribute("data-avatar-active-tab", state.activeTab())
+            .withAttribute("data-avatar-edit-mode", Boolean.toString(state.editMode()))
+            .withChild(content);
+    }
+
+    private Component queueTab() {
+        List<WorkAssignment> queueAssignments = avatarQueueAssignments();
+        AvatarDashboardComponents.AvatarDashboardData base = data();
+        AvatarDashboardComponents.AvatarDashboardData queueData = copyData(
+            base,
+            base.outputs(),
+            base.workAreas(),
+            queueAssignments
+        );
+        return new Div()
+            .withClass("avatar-tab-panel-content avatar-tab-panel-queue")
+            .withChild(AvatarDashboardComponents.widget(
+                queueData,
+                AvatarDashboardComponents.defaultWidget(AvatarDashboardComponents.definition("system"), 0)
+            ))
+            .withChild(AvatarDashboardComponents.widget(
+                queueData,
+                AvatarDashboardComponents.defaultWidget(AvatarDashboardComponents.definition("recent-work"), 1)
+            ));
+    }
+
+    private Component historyTab() {
+        List<WorkAssignment> historyAssignments = avatarHistoryAssignments();
+        List<ChatSession> historySessions = avatarHistorySessions();
+        AvatarDashboardComponents.AvatarDashboardData base = data();
+        AvatarDashboardComponents.AvatarDashboardData historyData = copyData(
+            base,
+            avatarOutputs(),
+            base.workAreas(),
+            historyAssignments
+        );
+        // TODO(avatar-shell-baseline): Replace this fallback summary with a dedicated Avatar history component once
+        // the user-surface transcript read path is available without widening scope beyond this controller.
+        return new Div()
+            .withClass("avatar-tab-panel-content avatar-tab-panel-history")
+            .withChild(AvatarDashboardComponents.statusFragment(
+                "History fallback: "
+                    + historyAssignments.size() + " retained assignments and "
+                    + historySessions.size() + " chat sessions are currently visible.",
+                false
+            ))
+            .withChild(AvatarDashboardComponents.widget(
+                historyData,
+                AvatarDashboardComponents.defaultWidget(AvatarDashboardComponents.definition("recent-work"), 0)
+            ));
+    }
+
+    private Component profileTab() {
+        AgentProfile avatarAgent = avatarAgentProfile();
+        String displayName = avatarService.profile() == null || !StringUtils.hasText(avatarService.profile().displayName())
+            ? "Avatar"
+            : avatarService.profile().displayName().strip();
+        String agentSummary = avatarAgent == null
+            ? "Reserved Avatar agent profile is not currently available."
+            : "Reserved agent status: " + avatarAgent.status()
+                + (StringUtils.hasText(avatarAgent.defaultModel())
+                    ? "; model " + avatarAgent.defaultModel()
+                    : "; model unset");
+        return new Div()
+            .withClass("avatar-tab-panel-content avatar-tab-panel-profile")
+            .withChild(AvatarDashboardComponents.statusFragment(displayName + ". " + agentSummary, false));
+    }
+
+    private Component outputsTab() {
+        AvatarDashboardComponents.AvatarDashboardData base = data();
+        AvatarDashboardComponents.AvatarDashboardData outputsData = copyData(
+            base,
+            avatarOutputs(),
+            base.workAreas(),
+            base.assignments()
+        );
+        return AvatarDashboardComponents.widget(
+            outputsData,
+            AvatarDashboardComponents.defaultWidget(AvatarDashboardComponents.definition("outputs"), 0)
+        );
+    }
+
+    private Component workAreasTab() {
+        AvatarDashboardComponents.AvatarDashboardData base = data();
+        AvatarDashboardComponents.AvatarDashboardData workAreasData = copyData(
+            base,
+            base.outputs(),
+            avatarWorkAreas(base.agents()),
+            base.assignments()
+        );
+        return AvatarDashboardComponents.widget(
+            workAreasData,
+            AvatarDashboardComponents.defaultWidget(AvatarDashboardComponents.definition("files"), 0)
+        );
+    }
+
+    private AvatarDashboardComponents.AvatarDashboardData copyData(
+        AvatarDashboardComponents.AvatarDashboardData base,
+        List<RunOutputArtifact> outputs,
+        List<WorkArea> workAreas,
+        List<WorkAssignment> assignments
+    ) {
+        return new AvatarDashboardComponents.AvatarDashboardData(
+            base.profile(),
+            base.layout(),
+            base.rows(),
+            base.dailyTasks(),
+            base.todos(),
+            base.calendarItems(),
+            base.notes(),
+            base.events(),
+            outputs,
+            base.agents(),
+            workAreas,
+            base.jobs(),
+            assignments,
+            base.userInbox(),
+            base.defaultModel()
+        );
+    }
+
     private List<WorkAssignment> assignments(List<AgentProfile> agents) {
         AssignmentService service = assignmentService.getIfAvailable();
         if (service == null || agents == null || agents.isEmpty()) {
@@ -649,6 +817,66 @@ public class AvatarDashboardController {
         return agents.stream()
             .flatMap(agent -> safeList(() -> service.list(WorkspaceOwnerType.AGENT, agent.id(), false)).stream())
             .toList();
+    }
+
+    private List<WorkAssignment> avatarQueueAssignments() {
+        AssignmentService service = assignmentService.getIfAvailable();
+        if (service == null) {
+            return List.of();
+        }
+        Map<String, WorkAssignment> byId = new LinkedHashMap<>();
+        safeList(() -> service.queueAssignments(AVATAR_AGENT_ID)).forEach(assignment -> byId.put(assignment.id(), assignment));
+        safeList(agentProfileService::list).stream()
+            .flatMap(agent -> safeList(() -> service.queueAssignments(agent.id())).stream())
+            .forEach(assignment -> byId.putIfAbsent(assignment.id(), assignment));
+        return List.copyOf(byId.values());
+    }
+
+    private List<WorkAssignment> avatarHistoryAssignments() {
+        AssignmentService service = assignmentService.getIfAvailable();
+        if (service == null) {
+            return List.of();
+        }
+        Map<String, WorkAssignment> byId = new LinkedHashMap<>();
+        safeList(() -> service.historyAssignments(AVATAR_AGENT_ID)).forEach(assignment -> byId.put(assignment.id(), assignment));
+        return List.copyOf(byId.values());
+    }
+
+    private List<ChatSession> avatarHistorySessions() {
+        Map<String, ChatSession> byId = new LinkedHashMap<>();
+        safeList(chatService::listSessions).forEach(session -> byId.put(session.conversationId(), session));
+        safeList(() -> chatService.listAgentSessions(AVATAR_AGENT_ID)).forEach(session -> byId.put(session.conversationId(), session));
+        return List.copyOf(byId.values());
+    }
+
+    private AgentProfile avatarAgentProfile() {
+        try {
+            return agentProfileService.get(AVATAR_AGENT_ID);
+        } catch (RuntimeException exception) {
+            return null;
+        }
+    }
+
+    private List<RunOutputArtifact> avatarOutputs() {
+        List<RunOutputArtifact> avatarOutputs = safeList(() -> outputArtifactService.query(
+            OutputArtifactQuery.of(AVATAR_AGENT_ID, null, null, null, null, null, null, 20)
+        ));
+        if (!avatarOutputs.isEmpty()) {
+            return avatarOutputs;
+        }
+        return safeList(() -> outputArtifactService.query(null, null, null, 20));
+    }
+
+    private List<WorkArea> avatarWorkAreas(List<AgentProfile> agents) {
+        WorkAreaService service = workAreaService.getIfAvailable();
+        if (service == null) {
+            return List.of();
+        }
+        Map<String, WorkArea> byId = new LinkedHashMap<>();
+        safeList(() -> service.list(WorkspaceOwnerType.AGENT, AVATAR_AGENT_ID, false))
+            .forEach(workArea -> byId.put(workArea.id(), workArea));
+        workAreas(agents).forEach(workArea -> byId.putIfAbsent(workArea.id(), workArea));
+        return List.copyOf(byId.values());
     }
 
     private Map<String, List<PlannerSubtodo>> plannerSubtodos() {
@@ -729,6 +957,27 @@ public class AvatarDashboardController {
         }
     }
 
+    private AvatarTabState normalizeTabState(String tab, boolean edit) {
+        String normalizedTab = normalizeTab(tab);
+        return new AvatarTabState(normalizedTab, "dashboard".equals(normalizedTab) && edit);
+    }
+
+    private String normalizeTab(String value) {
+        String normalized = StringUtils.hasText(value) ? value.strip().toLowerCase(Locale.ROOT) : DEFAULT_AVATAR_TAB;
+        return switch (normalized) {
+            case "dashboard", "queue", "history", "profile", "outputs", "work-areas" -> normalized;
+            default -> DEFAULT_AVATAR_TAB;
+        };
+    }
+
+    private String avatarUrl(AvatarTabState state) {
+        StringBuilder url = new StringBuilder("/avatar?tab=").append(state.activeTab());
+        if (state.editMode()) {
+            url.append("&edit=true");
+        }
+        return url.toString();
+    }
+
     private String normalizeOrganizerTab(String value) {
         String normalized = StringUtils.hasText(value) ? value.strip().toLowerCase(Locale.ROOT) : "planner";
         return switch (normalized) {
@@ -806,5 +1055,8 @@ public class AvatarDashboardController {
     @FunctionalInterface
     private interface ListSupplier<T> {
         List<T> get();
+    }
+
+    private record AvatarTabState(String activeTab, boolean editMode) {
     }
 }
