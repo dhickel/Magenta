@@ -1,7 +1,7 @@
 ---
 schema_version: 1
 document_type: decisions
-last_reviewed: 2026-05-23
+last_reviewed: 2026-05-24
 owner: unassigned
 status: active
 ---
@@ -12,6 +12,7 @@ status: active
 
 | id | decision | status | owner | source | decided_on | knowledge_ref | review_after | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| DECISION-20260524-02 | Advanced planning, orchestration, implementation, and validation/red-team roles live in global Codex custom agents, while `advanced-planner` and `orchestrate-plan` remain compact trigger routers. | active | unassigned | .internal-dev/changelogs/2026-05-24-codex-custom-subagent-routing.md | 2026-05-24 | .internal-dev/knowledge/codex-custom-subagent-routing.md | 2026-06-23 | Repos with `.internal-dev` use `.internal-dev/plans/<task-slug>/` and `.internal-dev/reviews/` as the default durable planning/review stores for these subagent workflows. |
 | DECISION-20260524-01 | Avatar uses an agent-style tabbed shell with a persistent right chat rail, and only the dashboard tab is layout-editable. | active | unassigned | .internal-dev/changelogs/2026-05-24-avatar-shell-baseline-refactor.md | 2026-05-24 | docs/technical/avatar-dashboard-fragments.md | 2026-06-23 | The shell removes the top-level Organizer and manual refresh controls, keeps tab state in the URL, and persists desktop rail width in browser-local state instead of adding a new server-side model. |
 | DECISION-20260523-05 | API enum wire values should be normalized narrowly at the JSON boundary, and empty submitted jobs complete as no-op job runs unless product policy changes to reject them at submission. | active | unassigned | .internal-dev/changelogs/2026-05-23-chat-surface-and-empty-job-run-fixes.md | 2026-05-23 | .internal-dev/knowledge/api-boundary-enums-and-empty-job-run-completion.md | 2026-06-22 | Chat surface values accept known names case-insensitively while rejecting blank/unknown values; empty job submissions leave assignment-owned `job_runs` terminal instead of `RUNNING`. |
 | DECISION-20260523-04 | Long-running email-coordinated work records inbound AgentMail instructions in `.internal-dev/inbox` before dispatching implementation. | active | unassigned | .internal-dev/inbox/README.md | 2026-05-23 | .internal-dev/inbox/README.md | 2026-06-22 | Acknowledge inbound email first, check for additional messages, summarize actionable instructions in the inbox queue, and move handled messages to the read ledger. |
@@ -35,6 +36,7 @@ status: active
 
 | reviewed_on | reviewer | outcome | notes |
 | --- | --- | --- | --- |
+| 2026-05-24 | codex | updated | Added the durable Codex custom-subagent routing decision and `.internal-dev` planning-store requirement for advanced planning/orchestration workflows. |
 | 2026-05-24 | codex | updated | Added the durable Avatar shell decision after landing the tabbed shell, persistent chat rail, dashboard-only edit scope, and browser-local desktop divider persistence. |
 | 2026-05-23 | codex | updated | Added API enum normalization and empty submitted job no-op completion decision from GitHub #6/#7 remediation. |
 | 2026-05-23 | codex | updated | Added durable AgentMail inbox coordination decision after Dwight requested persistent email intake during remote work. |
