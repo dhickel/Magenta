@@ -200,12 +200,14 @@ class AvatarDashboardControllerTest {
 
         String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "agent-1", false).getFirst().id();
         String explorer = controller.workAreaExplorer(workAreaId, ".");
-        assertThat(explorer).contains("New directory");
+        assertThat(explorer).contains("file-explorer-module");
+        assertThat(explorer).contains("New Folder");
+        assertThat(explorer).contains("New Markdown");
 
         String created = controller.createWorkAreaDirectory(workAreaId, ".", "notes");
         assertThat(created).contains("notes");
 
-        String newFileEditor = controller.createWorkAreaTextFile(workAreaId, "notes", "draft.md");
+        String newFileEditor = controller.createWorkAreaTextFile(workAreaId, "notes", "todo.md", "markdown");
         assertThat(newFileEditor).contains("textarea");
 
         String savedPreview = controller.saveWorkAreaText(workAreaId, "notes/todo.md", "hello\n");

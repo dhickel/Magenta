@@ -34,6 +34,6 @@ Routine widget actions such as adding todos, completing daily tasks, saving note
 
 ## Work Areas And Files
 
-The `Work Areas` widget and the top-level `Work Areas` tab both use the existing confined file explorer. The explorer supports browsing directories, previewing and downloading files, safe text edits, creating directories, creating text files, deleting with confirmation, and marking nested directories as Work Areas.
+The `Work Areas` widget and the top-level `Work Areas` tab use the confined workspace file explorer. The browser shows a familiar file-manager layout with breadcrumb navigation, toolbar actions, cards for files and folders, a label inspector, and a preview/editor pane. It supports directory navigation, text and Markdown preview/edit/save, image preview, downloads, directory creation, `.txt`/`.md` creation, rename, copy, move, note labels, and delete confirmation with an extra recursive confirmation for directories.
 
 New assignment work defaults to the selected Home Work Area. During execution, `workspace/` points at the selected Work Area and `root/` points at the broader owned root. Outputs default to the selected Work Area `outputs/` folder unless the submit form redirects them elsewhere.

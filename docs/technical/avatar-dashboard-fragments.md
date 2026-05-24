@@ -56,7 +56,7 @@ The old top-level `Organizer` and `Refresh Widgets` shell actions are intentiona
 - Calendar: `POST /avatar/_calendar`, `DELETE /avatar/_calendar/{calendarId}`
 - Outputs: `GET /avatar/_outputs/{artifactId}`
 - Alerts: `POST /avatar/_alerts/{eventId}/dismiss`
-- Work Areas: `GET /avatar/_work-areas/{workAreaId}/explorer`, `GET /avatar/_work-areas/{workAreaId}/preview`, `GET /avatar/_work-areas/{workAreaId}/edit`, `PUT /avatar/_work-areas/{workAreaId}/text`, `POST /avatar/_work-areas/{workAreaId}/directories`, `POST /avatar/_work-areas/{workAreaId}/text`, `POST /avatar/_work-areas/{workAreaId}/mark`, and `DELETE /avatar/_work-areas/{workAreaId}/files`
+- Work Areas: `GET /avatar/_work-areas/{workAreaId}/explorer`, `GET /avatar/_work-areas/{workAreaId}/explorer/list`, `GET /avatar/_work-areas/{workAreaId}/inspect`, `GET /avatar/_work-areas/{workAreaId}/preview`, `GET /avatar/_work-areas/{workAreaId}/edit`, `GET /avatar/_work-areas/{workAreaId}/modal/{action}`, `PUT /avatar/_work-areas/{workAreaId}/text`, `POST /avatar/_work-areas/{workAreaId}/directories`, `POST /avatar/_work-areas/{workAreaId}/text`, `POST /avatar/_work-areas/{workAreaId}/files/delete`, `POST /avatar/_work-areas/{workAreaId}/files/rename`, `POST /avatar/_work-areas/{workAreaId}/files/action/{copy|move}`, `POST|DELETE /avatar/_work-areas/{workAreaId}/labels/note`, `POST /avatar/_work-areas/{workAreaId}/mark`, and compatibility `DELETE /avatar/_work-areas/{workAreaId}/files`.
 
 Planner, todo, calendar, and note flows still exist, but they are reached from dashboard widgets and detail surfaces rather than from a standalone shell toolbar action.
 

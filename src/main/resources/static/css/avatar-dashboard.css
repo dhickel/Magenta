@@ -856,6 +856,63 @@
     justify-content: flex-start;
 }
 
+.avatar-workarea-panel {
+    width: min(72rem, 100%);
+}
+
+.avatar-workarea-panel .file-explorer-module,
+.avatar-workarea-panel .file-explorer-body,
+.avatar-workarea-panel .file-explorer-list-pane,
+.avatar-workarea-panel .file-explorer-inspector-pane,
+.avatar-workarea-panel .file-explorer-viewer-pane,
+.avatar-workarea-panel .file-explorer-entry,
+.avatar-workarea-panel .file-entry-text {
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.avatar-workarea-panel .file-explorer-body {
+    grid-template-columns: minmax(0, 1.5fr) minmax(14rem, 0.8fr) minmax(16rem, 1fr);
+}
+
+.avatar-workarea-panel .file-explorer-entry {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+}
+
+.avatar-workarea-panel .file-entry-text h4,
+.avatar-workarea-panel .file-entry-text p,
+.avatar-workarea-panel .file-explorer-current-path {
+    overflow-wrap: anywhere;
+}
+
+.avatar-workarea-panel .file-entry-actions,
+.avatar-workarea-panel .file-entry-tags,
+.avatar-workarea-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+.avatar-workarea-panel .file-entry-actions button {
+    flex: 0 1 auto;
+    max-width: 100%;
+}
+
+.avatar-workarea-image {
+    display: block;
+    max-width: 100%;
+    max-height: 62vh;
+    object-fit: contain;
+}
+
+.avatar-workarea-text-preview {
+    max-width: 100%;
+    overflow: auto;
+}
+
 .avatar-widget-width-form select,
 .avatar-catalog-item select {
     min-height: 2rem;
@@ -1127,6 +1184,29 @@
 
     .avatar-row-actions {
         justify-content: flex-start;
+    }
+
+    .avatar-modal {
+        place-items: stretch;
+        padding: 0.5rem;
+    }
+
+    .avatar-workarea-panel {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .avatar-workarea-panel .file-explorer-module {
+        padding: 0.6rem;
+    }
+
+    .avatar-workarea-panel .file-explorer-body {
+        grid-template-columns: 1fr;
+    }
+
+    .avatar-workarea-panel .file-entry-actions button,
+    .avatar-workarea-panel .file-explorer-toolbar button {
+        min-width: 0;
     }
 
     .avatar-list-row {
