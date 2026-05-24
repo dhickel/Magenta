@@ -857,37 +857,140 @@
 }
 
 .avatar-workarea-panel {
-    width: min(72rem, 100%);
+    width: min(76rem, 100%);
 }
 
-.avatar-workarea-panel .file-explorer-module,
-.avatar-workarea-panel .file-explorer-body,
-.avatar-workarea-panel .file-explorer-list-pane,
-.avatar-workarea-panel .file-explorer-inspector-pane,
-.avatar-workarea-panel .file-explorer-viewer-pane,
-.avatar-workarea-panel .file-explorer-entry,
-.avatar-workarea-panel .file-entry-text {
-    min-width: 0;
+.avatar-workarea-explorer-shell,
+.avatar-workarea-explorer-layout,
+.workspace-explorer-table-region,
+.workspace-explorer-table,
+.file-explorer-inspector-pane {
     box-sizing: border-box;
+    min-width: 0;
 }
 
-.avatar-workarea-panel .file-explorer-body {
-    grid-template-columns: minmax(0, 1.5fr) minmax(14rem, 0.8fr) minmax(16rem, 1fr);
+.avatar-workarea-explorer-shell {
+    display: grid;
+    gap: 0.65rem;
 }
 
-.avatar-workarea-panel .file-explorer-entry {
-    grid-template-columns: minmax(0, 1fr);
-    align-items: start;
+.workspace-explorer-toolbar,
+.workspace-explorer-pathbar,
+.workspace-explorer-table-region,
+.file-explorer-inspector-pane {
+    border: 1px solid #d8e2ee;
+    border-radius: 7px;
+    background: #ffffff;
 }
 
-.avatar-workarea-panel .file-entry-text h4,
-.avatar-workarea-panel .file-entry-text p,
-.avatar-workarea-panel .file-explorer-current-path {
+.workspace-explorer-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+    padding: 0.45rem;
+}
+
+.workspace-explorer-toolbar button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.workspace-explorer-pathbar {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-height: 2.35rem;
+    padding: 0.35rem 0.5rem;
+    color: var(--mg-muted);
     overflow-wrap: anywhere;
 }
 
-.avatar-workarea-panel .file-entry-actions,
-.avatar-workarea-panel .file-entry-tags,
+.avatar-workarea-explorer-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(16rem, 0.34fr);
+    gap: 0.75rem;
+    align-items: start;
+}
+
+.workspace-explorer-table-region {
+    overflow: auto;
+    max-width: 100%;
+}
+
+.workspace-explorer-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+}
+
+.workspace-explorer-table th,
+.workspace-explorer-table td {
+    border-bottom: 1px solid #e7edf4;
+    padding: 0.36rem 0.45rem;
+    text-align: left;
+    vertical-align: middle;
+}
+
+.workspace-explorer-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #f7f9fc;
+    color: #42526a;
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.workspace-explorer-row.selected,
+.workspace-explorer-row:hover {
+    background: #eef5ff;
+}
+
+.workspace-explorer-name {
+    min-width: 12rem;
+    max-width: 24rem;
+}
+
+.workspace-explorer-name button {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    text-align: left;
+}
+
+.file-explorer-inspector-pane {
+    display: grid;
+    gap: 0.55rem;
+    padding: 0.75rem;
+}
+
+.file-explorer-inspector-pane h4,
+.file-explorer-inspector-pane p {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.file-explorer-inspector-pane dl {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 0.3rem 0.65rem;
+    margin: 0;
+    font-size: 0.82rem;
+}
+
+.file-explorer-inspector-pane dt {
+    color: var(--mg-muted);
+    font-weight: 700;
+}
+
+.file-explorer-inspector-pane dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.workspace-explorer-table .avatar-row-actions,
+.file-entry-tags,
 .avatar-workarea-tabs {
     display: flex;
     flex-wrap: wrap;
@@ -896,7 +999,12 @@
     justify-content: flex-start;
 }
 
-.avatar-workarea-panel .file-entry-actions button {
+.workspace-explorer-table .avatar-row-actions {
+    min-width: 10rem;
+    flex-wrap: nowrap;
+}
+
+.workspace-explorer-table .avatar-row-actions button {
     flex: 0 1 auto;
     max-width: 100%;
 }
@@ -1196,16 +1304,25 @@
         max-width: 100%;
     }
 
-    .avatar-workarea-panel .file-explorer-module {
-        padding: 0.6rem;
-    }
-
-    .avatar-workarea-panel .file-explorer-body {
+    .avatar-workarea-explorer-layout {
         grid-template-columns: 1fr;
     }
 
-    .avatar-workarea-panel .file-entry-actions button,
-    .avatar-workarea-panel .file-explorer-toolbar button {
+    .workspace-explorer-table {
+        min-width: 44rem;
+    }
+
+    .workspace-explorer-table th,
+    .workspace-explorer-table td {
+        padding: 0.42rem 0.4rem;
+    }
+
+    .workspace-explorer-table .avatar-row-actions {
+        flex-wrap: nowrap;
+    }
+
+    .workspace-explorer-toolbar button,
+    .workspace-explorer-table .avatar-row-actions button {
         min-width: 0;
     }
 

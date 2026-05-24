@@ -1131,7 +1131,8 @@ public class AvatarDashboardController {
 
     private String refreshedExplorer(WorkAreaExplorerService explorer, String workAreaId, String path) {
         WorkAreaExplorerService.DirectoryListing listing = explorer.list(workAreaId, path);
-        return AvatarDashboardComponents.workAreaExplorer(listing, entryLabels(explorer, workAreaId, listing)).render();
+        WorkAreaExplorerService.Entry inspected = selectedOrCurrentEntry(explorer, workAreaId, listing, path);
+        return WorkAreaExplorerFragments.shell(listing, inspected, inspected == null ? null : inspected.path());
     }
 
     private String refreshedExplorerTargets(
@@ -1146,26 +1147,17 @@ public class AvatarDashboardController {
         return WorkAreaExplorerFragments.mutationResponse(listing, inspected, selectedPath, message);
     }
 
-    private Map<String, List<String>> entryLabels(
+    private WorkAreaExplorerService.Entry selectedOrCurrentEntry(
         WorkAreaExplorerService explorer,
         String workAreaId,
-        WorkAreaExplorerService.DirectoryListing listing
+        WorkAreaExplorerService.DirectoryListing listing,
+        String path
     ) {
-        return listing.entries().stream()
-            .collect(java.util.stream.Collectors.toMap(
-                WorkAreaExplorerService.Entry::path,
-                entry -> {
-                    try {
-                        return explorer.labels(workAreaId, entry.path()).stream()
-                            .map(assignment -> assignment.label().slug())
-                            .toList();
-                    } catch (RuntimeException exception) {
-                        return List.of();
-                    }
-                },
-                (left, right) -> left,
-                java.util.LinkedHashMap::new
-            ));
+        try {
+            return explorer.inspect(workAreaId, path);
+        } catch (RuntimeException exception) {
+            return listing.entries().isEmpty() ? null : listing.entries().getFirst();
+        }
     }
 
     private String parentPath(String path) {

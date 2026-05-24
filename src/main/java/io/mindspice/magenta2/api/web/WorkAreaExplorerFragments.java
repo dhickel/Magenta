@@ -30,6 +30,7 @@ final class WorkAreaExplorerFragments {
         String selectedPath
     ) {
         String currentPath = pathOrRoot(listing.path());
+        String selected = selectedPath == null || selectedPath.isBlank() ? inspected == null ? null : inspected.path() : selectedPath;
         return """
             <div id="%s" class="avatar-workarea-explorer-shell">
               <div class="avatar-edit-header">
@@ -40,10 +41,13 @@ final class WorkAreaExplorerFragments {
                 <button type="button" class="button button-secondary small" hx-get="/avatar/_edit?close=true" hx-target="#avatar-edit-container" hx-swap="innerHTML">Close</button>
               </div>
               <div class="workspace-explorer-toolbar">
-                <button type="button" class="button button-secondary small" hx-get="/avatar/_work-areas/%s/explorer?path=%s" hx-target="#%s" hx-swap="outerHTML">Refresh</button>
+                <button type="button" class="button button-secondary small" disabled aria-disabled="true">Back</button>
+                <button type="button" class="button button-secondary small" disabled aria-disabled="true">Forward</button>
                 %s
-                <button type="button" class="button button-secondary small" hx-get="/avatar/_work-areas/%s/modal/rename?path=%s" hx-target="#%s" hx-swap="innerHTML">Rename</button>
-                <button type="button" class="button button-secondary small" hx-get="/avatar/_work-areas/%s/modal/delete?path=%s" hx-target="#%s" hx-swap="innerHTML">Delete</button>
+                <button type="button" class="button button-secondary small" hx-get="/avatar/_work-areas/%s/explorer?path=%s%s" hx-target="#%s" hx-swap="outerHTML">Refresh</button>
+                <button type="button" class="button button-secondary small" hx-get="/avatar/_work-areas/%s/modal/create-folder?path=%s" hx-target="#%s" hx-swap="innerHTML">New Folder</button>
+                <button type="button" class="button button-secondary small" hx-get="/avatar/_work-areas/%s/modal/create-text?path=%s" hx-target="#%s" hx-swap="innerHTML">New Text</button>
+                <button type="button" class="button button-secondary small" hx-get="/avatar/_work-areas/%s/modal/create-markdown?path=%s" hx-target="#%s" hx-swap="innerHTML">New Markdown</button>
               </div>
               <div class="workspace-explorer-pathbar">%s</div>
               <div class="avatar-workarea-explorer-layout">
@@ -56,10 +60,14 @@ final class WorkAreaExplorerFragments {
             SHELL_ID,
             escape(listing.workArea().displayName()),
             escape(currentPath),
+            upButton(listing),
             urlPath(listing.workArea().id()),
             url(currentPath),
+            selected == null ? "" : "&selected=" + url(selected),
             SHELL_ID,
-            upButton(listing),
+            urlPath(listing.workArea().id()),
+            url(currentPath),
+            MODAL_ID,
             urlPath(listing.workArea().id()),
             url(currentPath),
             MODAL_ID,
@@ -67,7 +75,7 @@ final class WorkAreaExplorerFragments {
             url(currentPath),
             MODAL_ID,
             breadcrumbs(listing),
-            list(listing, selectedPath, false),
+            list(listing, selected, false),
             inspector(listing.workArea().id(), inspected, null, false),
             MODAL_ID
         );
@@ -90,7 +98,7 @@ final class WorkAreaExplorerFragments {
             ));
         }
         for (WorkAreaExplorerService.Entry entry : listing.entries()) {
-            rows.append(row(listing.workArea().id(), entry, selectedPath));
+            rows.append(row(listing.workArea().id(), currentPath, entry, selectedPath));
         }
         if (listing.entries().isEmpty()) {
             rows.append("<tr><td colspan=\"7\">No entries available.</td></tr>");
@@ -212,6 +220,8 @@ final class WorkAreaExplorerFragments {
 
     static String actionModal(String workAreaId, String action, String path, WorkAreaExplorerService.DeletePreflight preflight) {
         String body = switch (action) {
+            case "create-folder" -> createFolderForm(workAreaId, path);
+            case "create-text", "create-markdown" -> createTextForm(workAreaId, action, path);
             case "rename" -> form(workAreaId, "/files/rename", path, "name", "New name", "Rename");
             case "copy", "move" -> copyMoveForm(workAreaId, action, path);
             case "tag" -> form(workAreaId, "/files/tags", path, "label", "Tag", "Add Tag");
@@ -252,8 +262,12 @@ final class WorkAreaExplorerFragments {
             """.formatted(LIST_ID, escape(message));
     }
 
-    private static String row(String workAreaId, WorkAreaExplorerService.Entry entry, String selectedPath) {
+    private static String row(String workAreaId, String currentPath, WorkAreaExplorerService.Entry entry, String selectedPath) {
         String selected = entry.path().equals(selectedPath) ? " selected" : "";
+        String nameAction = entry.directory()
+            ? button("Open " + entry.name(), "hx-get", "/avatar/_work-areas/" + urlPath(workAreaId) + "/explorer?path=" + url(entry.path()), "#" + SHELL_ID, "outerHTML")
+            : button(entry.name(), "hx-get", "/avatar/_work-areas/" + urlPath(workAreaId) + "/explorer?path=" + url(currentPath)
+                + "&selected=" + url(entry.path()), "#" + SHELL_ID, "outerHTML");
         String open = entry.directory()
             ? button("Open", "hx-get", "/avatar/_work-areas/" + urlPath(workAreaId) + "/explorer?path=" + url(entry.path()), "#" + SHELL_ID, "outerHTML")
             : entry.canView()
@@ -261,17 +275,14 @@ final class WorkAreaExplorerFragments {
                 : "";
         return """
             <tr class="workspace-explorer-row%s" data-workarea-path="%s">
-              <td><button type="button" class="button button-link small" hx-get="/avatar/_work-areas/%s/inspect?path=%s" hx-target="#%s" hx-swap="outerHTML">%s</button></td>
+              <td class="workspace-explorer-name">%s</td>
               <td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td>
               <td class="avatar-row-actions">%s%s%s</td>
             </tr>
             """.formatted(
             selected,
             escapeAttribute(entry.path()),
-            urlPath(workAreaId),
-            url(entry.path()),
-            INSPECTOR_ID,
-            escape(entry.name()),
+            nameAction,
             escape(entry.fileType()),
             escape(entry.sizeLabel()),
             time(entry.createdAt()),
@@ -281,6 +292,28 @@ final class WorkAreaExplorerFragments {
             modalButton("Rename", workAreaId, "rename", entry.path()),
             modalButton("Delete", workAreaId, "delete", entry.path())
         );
+    }
+
+    private static String createFolderForm(String workAreaId, String path) {
+        return """
+            <form class="avatar-stack-form" hx-post="/avatar/_work-areas/%s/directories" hx-target="#avatar-edit-container" hx-swap="innerHTML">
+              <input type="hidden" name="path" value="%s">
+              <input type="text" name="name" placeholder="Folder name">
+              <button type="submit" class="button">Create Folder</button>
+            </form>
+            """.formatted(urlPath(workAreaId), escapeAttribute(path));
+    }
+
+    private static String createTextForm(String workAreaId, String action, String path) {
+        String kind = "create-markdown".equals(action) ? "markdown" : "text";
+        String label = "markdown".equals(kind) ? "Create Markdown" : "Create Text File";
+        return """
+            <form class="avatar-stack-form" hx-post="/avatar/_work-areas/%s/text?kind=%s" hx-target="#avatar-edit-container" hx-swap="innerHTML">
+              <input type="hidden" name="path" value="%s">
+              <input type="text" name="name" placeholder="File name">
+              <button type="submit" class="button">%s</button>
+            </form>
+            """.formatted(urlPath(workAreaId), urlPath(kind), escapeAttribute(path), escape(label));
     }
 
     private static String form(String workAreaId, String route, String path, String field, String placeholder, String label) {
@@ -458,6 +491,9 @@ final class WorkAreaExplorerFragments {
             case "copy" -> "Copy";
             case "move" -> "Move";
             case "tag" -> "Tags";
+            case "create-folder" -> "Create Folder";
+            case "create-text" -> "Create Text File";
+            case "create-markdown" -> "Create Markdown File";
             case "delete", "delete-recursive" -> "Delete";
             default -> "File Action";
         };

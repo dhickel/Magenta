@@ -72,6 +72,9 @@ YYYY-MM-DD phase=<phase> decision=<decision> rationale=<short rationale> source=
 2026-05-24 phase=Phase 03 decision=mutation routes return modal-clear, list, and inspector fragments with hx-swap-oob rationale=table-only refreshes can leave stale inspect/modal state and violate the target contract source=AvatarDashboardControllerTest
 2026-05-24 phase=Phase 03 fix decision=preserved legacy preview target separately from viewer modal rationale=existing AvatarDashboardComponents callers still target avatar-workarea-preview while the new viewer route owns avatar-workarea-modal source=validation failure summary
 2026-05-24 phase=Phase 03 fix decision=made tag add/remove routes return modal-clear, list, and inspector OOB fragments rationale=tag mutations must not leave stale table/modal/inspector state or swap inspector markup into the modal target source=validation failure summary
+2026-05-24 phase=Phase 04 decision=removed active AvatarDashboardComponents card/module explorer path rationale=Phase 04 details/list contract forbids card-first rendering and string replacement of SimplyPages file explorer output source=AvatarDashboardComponents.java
+2026-05-24 phase=Phase 04 decision=kept Work Area explorer interactions HTMX-only rationale=row selection, directory navigation, toolbar creates, row actions, and inspector actions all map to existing fragment/modal routes without adding JavaScript source=WorkAreaExplorerFragments.java
+2026-05-24 phase=Phase 04 decision=left Playwright/browser proof to validation subagent rationale=worker directive says validation subagent owns browser screenshots and this worker should not run Playwright unless explicitly directed source=phase-04-file-explorer-ui-rewrite.md
 
 ## Validation Evidence
 
@@ -93,6 +96,10 @@ YYYY-MM-DD phase=<phase> command=<command> result=<pass|fail|blocked> evidence=<
 2026-05-24 phase=Phase 03 fix command=mvn test -Dtest=WorkAreaControllerTest,AvatarDashboardControllerTest,WorkAreaExplorerServiceTest result=fail evidence=initial fix attempts exposed incorrect WorkAreaExplorerFragments formatter arguments that rendered inspector fragments with avatar-workarea-modal id
 2026-05-24 phase=Phase 03 fix command=mvn test -Dtest=WorkAreaControllerTest,AvatarDashboardControllerTest,WorkAreaExplorerServiceTest result=pass evidence=33 tests run, 0 failures, 0 errors, 0 skipped; tag add/remove assert OOB modal/list/inspector targets and preview/viewer compatibility is covered
 2026-05-24 phase=Phase 03 fix command=git diff --check result=pass evidence=no whitespace errors reported
+2026-05-24 phase=Phase 04 command=mvn test -Dtest=AvatarDashboardControllerTest,WorkAreaControllerTest result=fail evidence=initial run had one AvatarDashboardControllerTest assertion expecting escaped ampersand in raw hx-get selected parameter; implementation behavior was otherwise structurally correct
+2026-05-24 phase=Phase 04 command=mvn test -Dtest=AvatarDashboardControllerTest,WorkAreaControllerTest result=pass evidence=22 tests run, 0 failures, 0 errors, 0 skipped; tests assert toolbar/pathbar, required headers, no card classes, row actions, selection HTMX, tag overflow, and separate inspector
+2026-05-24 phase=Phase 04 command=git diff --check result=pass evidence=no whitespace errors reported
+2026-05-24 phase=Phase 04 command=Playwright validation subagent result=pass evidence=isolated root /tmp/magenta2-phase04-A1Y9X9; screenshots moved to target/playwright-workspace-file-explorer-phase04/phase04-desktop-workareas-explorer-initial.png, target/playwright-workspace-file-explorer-phase04/phase04-desktop-workareas-explorer-notes-selected-rename-modal.png, target/playwright-workspace-file-explorer-phase04/phase04-mobile-workareas-explorer-notes-selected-rename-modal.png; no console errors; navigated folder, selected notes.md, opened Rename modal; desktop/mobile visual critique passed with no card regression and no page-level mobile horizontal overflow
 
 ## Blockers And Remediation
 

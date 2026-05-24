@@ -212,6 +212,14 @@ class AvatarDashboardControllerTest {
         assertThat(explorer).contains("id=\"avatar-workarea-list-region\"");
         assertThat(explorer).contains("id=\"avatar-workarea-inspector\"");
         assertThat(explorer).contains("id=\"avatar-workarea-modal\"");
+        assertThat(explorer).contains("workspace-explorer-toolbar");
+        assertThat(explorer).contains(">Back</button>");
+        assertThat(explorer).contains(">Forward</button>");
+        assertThat(explorer).contains(">Refresh</button>");
+        assertThat(explorer).contains(">New Folder</button>");
+        assertThat(explorer).contains(">New Text</button>");
+        assertThat(explorer).contains(">New Markdown</button>");
+        assertThat(explorer).contains("workspace-explorer-pathbar");
         assertThat(explorer).contains("<th>Name</th>");
         assertThat(explorer).contains("<th>File Type</th>");
         assertThat(explorer).contains("<th>Size</th>");
@@ -219,6 +227,8 @@ class AvatarDashboardControllerTest {
         assertThat(explorer).contains("<th>Last Modified</th>");
         assertThat(explorer).contains("<th>Tags</th>");
         assertThat(explorer).contains("<th>Actions</th>");
+        assertThat(explorer).doesNotContain("file-explorer-cards");
+        assertThat(explorer).doesNotContain("file-explorer-entry");
 
         String created = controller.createWorkAreaDirectory(workAreaId, ".", "notes");
         assertThat(created).contains("notes");
@@ -257,25 +267,54 @@ class AvatarDashboardControllerTest {
         workAreaExplorerService.createDirectory(workAreaId, "notes");
         workAreaExplorerService.createTextFile(workAreaId, "notes", "todo.txt");
         workAreaExplorerService.saveText(workAreaId, "notes/todo.txt", "hello");
+        workAreaExplorerService.ensureTag("note", "Note");
+        workAreaExplorerService.ensureTag("work-area", "Work Area");
+        workAreaExplorerService.ensureTag("project-alpha", "Project Alpha");
+        workAreaExplorerService.ensureTag("review", "Review");
+        workAreaExplorerService.addLabel(workAreaId, "notes/todo.txt", "note");
+        workAreaExplorerService.addLabel(workAreaId, "notes/todo.txt", "work-area");
+        workAreaExplorerService.addLabel(workAreaId, "notes/todo.txt", "project-alpha");
+        workAreaExplorerService.addLabel(workAreaId, "notes/todo.txt", "review");
 
         String shell = controller.workAreaExplorer(workAreaId, "notes", "notes/todo.txt");
         assertThat(shell).contains("id=\"avatar-workarea-explorer-shell\"");
         assertThat(shell).contains("id=\"avatar-workarea-list-region\"");
         assertThat(shell).contains("id=\"avatar-workarea-inspector\"");
         assertThat(shell).contains("id=\"avatar-workarea-modal\"");
+        assertThat(shell).contains("avatar-workarea-explorer-layout");
+        assertThat(shell).contains("workspace-explorer-table-region");
+        assertThat(shell).contains("file-explorer-inspector-pane");
         assertThat(shell).contains("data-workarea-path=\"notes/todo.txt\"");
+        assertThat(shell).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/explorer?path=notes&selected=notes%2Ftodo.txt\"");
         assertThat(shell).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/viewer?path=notes%2Ftodo.txt\"");
         assertThat(shell).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/rename?path=notes%2Ftodo.txt\"");
         assertThat(shell).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/delete?path=notes%2Ftodo.txt\"");
+        assertThat(shell).contains("+1");
+        assertThat(shell).doesNotContain("file-explorer-cards");
+        assertThat(shell).doesNotContain("file-explorer-entry");
 
         String list = controller.workAreaExplorerList(workAreaId, "notes", "notes/todo.txt");
         assertThat(list).contains("id=\"avatar-workarea-list-region\"");
         assertThat(list).contains("<th>Name</th>");
+        assertThat(list).contains("<th>File Type</th>");
+        assertThat(list).contains("<th>Size</th>");
+        assertThat(list).contains("<th>Created</th>");
+        assertThat(list).contains("<th>Last Modified</th>");
+        assertThat(list).contains("<th>Tags</th>");
+        assertThat(list).contains("<th>Actions</th>");
         assertThat(list).contains("selected");
+        assertThat(list).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/viewer?path=notes%2Ftodo.txt\"");
+        assertThat(list).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/rename?path=notes%2Ftodo.txt\"");
+        assertThat(list).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/delete?path=notes%2Ftodo.txt\"");
+        assertThat(list).doesNotContain("file-explorer-cards");
 
         String inspect = controller.workAreaInspector(workAreaId, "notes/todo.txt");
         assertThat(inspect).contains("id=\"avatar-workarea-inspector\"");
+        assertThat(inspect).contains("file-explorer-inspector-pane");
         assertThat(inspect).contains("hx-post=\"/avatar/_work-areas/" + workAreaId + "/files/tags\"");
+        assertThat(inspect).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/viewer?path=notes%2Ftodo.txt\"");
+        assertThat(inspect).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/rename?path=notes%2Ftodo.txt\"");
+        assertThat(inspect).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/delete?path=notes%2Ftodo.txt\"");
         assertThat(inspect).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/copy?path=notes%2Ftodo.txt\"");
         assertThat(inspect).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/move?path=notes%2Ftodo.txt\"");
 
