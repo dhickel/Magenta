@@ -376,6 +376,24 @@ public class WorkAreaExplorerService {
         return metadataService.removeLabel(area, rootRelative(area, root, target), labelSlug);
     }
 
+    public List<WorkspaceFileLabelAssignment> labels(String workAreaId, String relativePath) {
+        WorkArea area = workAreaService.get(workAreaId);
+        Path root = workAreaService.resolve(area);
+        Path target = resolveExisting(root, relativePath);
+        if (metadataService == null) {
+            throw new IllegalStateException("workspace file metadata service is not available");
+        }
+        return metadataService.labelsForPath(area.workspaceId(), rootRelative(area, root, target));
+    }
+
+    public List<WorkspaceFileActionRecord> recentActions(String workAreaId, int limit) {
+        WorkArea area = workAreaService.get(workAreaId);
+        if (actionLogRepository == null) {
+            throw new IllegalStateException("workspace file action log repository is not available");
+        }
+        return actionLogRepository.recentForWorkspace(area.workspaceId(), Math.max(1, limit));
+    }
+
     private Entry entry(Path root, Path path) {
         try {
             boolean directory = Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS);

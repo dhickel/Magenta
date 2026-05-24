@@ -159,14 +159,23 @@ Source: [`WorkAreaController`](../../src/main/java/io/mindspice/magenta2/api/web
 - `DELETE /api/work-areas/{workAreaId}`: unmark a non-system Work Area.
 - `GET /api/work-areas/{workAreaId}/files?path=`: list a confined Work Area directory.
 - `GET /api/work-areas/{workAreaId}/files/preview?path=`: return bounded safe text content or binary/large-file metadata.
+- `GET /api/work-areas/{workAreaId}/files/view?path=`: inline-view safe image types (png/jpg/jpeg/gif/webp) inside confined roots.
 - `GET /api/work-areas/{workAreaId}/files/download?path=`: download a confined file up to 10 MB.
-- `PUT /api/work-areas/{workAreaId}/files/text?path=`: save safe text file types up to 1 MB.
+- `PUT /api/work-areas/{workAreaId}/files/text?path=`: save safe UTF-8 text/markdown with BOM stripping and LF/CRLF preservation, hard-capped at 25 MB.
 - `POST /api/work-areas/{workAreaId}/directories`: create a confined directory.
+- `POST /api/work-areas/{workAreaId}/files/text`: create `.txt` files in a confined directory.
+- `POST /api/work-areas/{workAreaId}/files/markdown`: create `.md` files in a confined directory.
 - `POST /api/work-areas/{workAreaId}/files/rename`: rename a path to a plain sibling name.
-- `DELETE /api/work-areas/{workAreaId}/files?path=&confirm=`: recursive delete with typed confirmation and protected-path checks.
+- `POST /api/work-areas/{workAreaId}/files/move`: move file or directory with collision checks.
+- `POST /api/work-areas/{workAreaId}/files/copy`: copy file or directory with collision checks.
+- `GET /api/work-areas/{workAreaId}/files/delete/preflight?path=&step=`: modal-step delete preflight (`INTENT`, `FILE_CONFIRM`, `DIRECTORY_RECURSIVE_CONFIRM`).
+- `POST /api/work-areas/{workAreaId}/files/delete`: delete execute using required modal step.
+- `DELETE /api/work-areas/{workAreaId}/files?path=&confirm=`: compatibility delete route with legacy typed confirmation.
+- `GET /api/work-areas/{workAreaId}/files/labels?path=`, `POST /api/work-areas/{workAreaId}/files/labels`, `DELETE /api/work-areas/{workAreaId}/files/labels?path=&label=`: list/add/remove file labels.
+- `GET /api/work-areas/{workAreaId}/files/actions/recent?limit=`: recent mutating action log rows for future explorer visibility.
 - `POST /api/work-areas/{workAreaId}/files/mark-work-area`: mark a nested existing directory as another Work Area.
 
-Explorer routes reject traversal, absolute paths, symlink paths, unsafe text-edit extensions, oversized text saves/downloads, Work Area roots, Home/system Work Areas, marked Work Area descendants, and Work Areas referenced by queued/running assignments or output targets.
+Explorer routes reject traversal, absolute paths, symlink paths, unsafe text-edit extensions, oversized text saves/downloads, Work Area roots, Home/system Work Areas, marked Work Area descendants, and Work Areas referenced by queued/running assignments or output targets. Where distinguishable, invalid requests map to `400`, missing paths map to `404`, and collisions map to `409`.
 
 ## Outputs: `/api/outputs`
 
