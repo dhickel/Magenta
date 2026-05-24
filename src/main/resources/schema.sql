@@ -476,6 +476,71 @@ create table if not exists work_areas (
 create index if not exists idx_work_areas_owner
     on work_areas(owner_type, owner_id, active_flag);
 
+create table if not exists workspace_file_labels (
+    id text primary key,
+    slug text not null unique,
+    display_name text not null,
+    color text,
+    system_flag integer not null default 0,
+    metadata_json text not null default '{}',
+    created_at text not null,
+    updated_at text not null
+);
+
+create table if not exists workspace_file_label_assignments (
+    id text primary key,
+    workspace_id text not null,
+    owner_type text not null,
+    owner_id text not null,
+    root_relative_path text not null,
+    file_relative_path text not null,
+    label_id text not null,
+    metadata_json text not null default '{}',
+    created_at text not null,
+    updated_at text not null,
+    unique(workspace_id, file_relative_path, label_id),
+    foreign key(workspace_id) references workspaces(id),
+    foreign key(label_id) references workspace_file_labels(id)
+);
+
+create index if not exists idx_workspace_file_label_assignments_path
+    on workspace_file_label_assignments(workspace_id, file_relative_path);
+
+create index if not exists idx_workspace_file_label_assignments_label
+    on workspace_file_label_assignments(label_id);
+
+create index if not exists idx_workspace_file_label_assignments_owner
+    on workspace_file_label_assignments(owner_type, owner_id);
+
+create table if not exists workspace_file_actions (
+    id text primary key,
+    workspace_id text not null,
+    owner_type text not null,
+    owner_id text not null,
+    work_area_id text,
+    actor_type text,
+    actor_id text,
+    action_type text not null,
+    source_relative_path text,
+    target_relative_path text,
+    result text not null,
+    payload_json text not null default '{}',
+    created_at text not null,
+    foreign key(workspace_id) references workspaces(id)
+);
+
+create index if not exists idx_workspace_file_actions_workspace
+    on workspace_file_actions(workspace_id, created_at desc);
+
+create index if not exists idx_workspace_file_actions_owner
+    on workspace_file_actions(owner_type, owner_id, created_at desc);
+
+create index if not exists idx_workspace_file_actions_work_area
+    on workspace_file_actions(work_area_id, created_at desc);
+
+create index if not exists idx_workspace_file_actions_type
+    on workspace_file_actions(action_type, created_at desc);
+
 -- Exclusive writable leases on job/project workspaces. Only one active
 -- writable lease per workspace at a time. Extension must verify holder
 -- ownership.

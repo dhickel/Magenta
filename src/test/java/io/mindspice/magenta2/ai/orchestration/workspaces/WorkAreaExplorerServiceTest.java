@@ -35,6 +35,86 @@ class WorkAreaExplorerServiceTest {
     }
 
     @Test
+    void createsRenamesMovesCopiesAndDeletesWithMetadataAndActionLogs() throws Exception {
+        TestContext context = context();
+        WorkArea home = context.workAreaService().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);
+        context.explorer().createDirectory(home.id(), "notes");
+        context.explorer().createDirectory(home.id(), "archive");
+        context.explorer().createMarkdownFile(home.id(), "notes", "todo.md");
+        context.explorer().saveText(home.id(), "notes/todo.md", "hello\n");
+        context.explorer().addLabel(home.id(), "notes/todo.md", "note");
+
+        context.explorer().rename(home.id(), "notes/todo.md", "renamed.md");
+        assertThat(context.metadataRepository().labelsForPath(home.workspaceId(), "home/notes/renamed.md"))
+            .extracting(a -> a.label().slug())
+            .containsExactly("note");
+
+        context.explorer().copy(home.id(), "notes/renamed.md", "archive", "copied.md");
+        assertThat(context.metadataRepository().labelsForPath(home.workspaceId(), "home/archive/copied.md"))
+            .extracting(a -> a.label().slug())
+            .containsExactly("note");
+
+        context.explorer().move(home.id(), "archive/copied.md", "notes", "moved.md");
+        assertThat(context.metadataRepository().labelsForPath(home.workspaceId(), "home/notes/moved.md"))
+            .extracting(a -> a.label().slug())
+            .containsExactly("note");
+
+        WorkAreaExplorerService.DeletePreflight intent =
+            context.explorer().deletePreflight(home.id(), "notes/moved.md", WorkAreaExplorerService.DeleteStep.INTENT);
+        assertThat(intent.executable()).isFalse();
+        assertThat(intent.requiredStep()).isEqualTo(WorkAreaExplorerService.DeleteStep.FILE_CONFIRM);
+
+        context.explorer().delete(home.id(), "notes/moved.md", WorkAreaExplorerService.DeleteStep.FILE_CONFIRM);
+        assertThat(context.metadataRepository().labelsForPath(home.workspaceId(), "home/notes/moved.md")).isEmpty();
+
+        assertThat(context.actionLogRepository().recentForWorkspace(home.workspaceId(), 20))
+            .extracting(WorkspaceFileActionRecord::actionType)
+            .contains(
+                WorkspaceFileActionType.CREATE_FOLDER,
+                WorkspaceFileActionType.CREATE_MARKDOWN_FILE,
+                WorkspaceFileActionType.SAVE_MARKDOWN,
+                WorkspaceFileActionType.TAG_ADD,
+                WorkspaceFileActionType.RENAME,
+                WorkspaceFileActionType.COPY,
+                WorkspaceFileActionType.MOVE,
+                WorkspaceFileActionType.DELETE_FILE
+            );
+    }
+
+    @Test
+    void rejectsMoveIntoDescendantAndCollisions() throws Exception {
+        TestContext context = context();
+        WorkArea home = context.workAreaService().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);
+        context.explorer().createDirectory(home.id(), "parent");
+        context.explorer().createDirectory(home.id(), "parent/child");
+        context.explorer().createTextFile(home.id(), "parent", "a.txt");
+        context.explorer().createTextFile(home.id(), "parent", "b.txt");
+
+        assertThatThrownBy(() -> context.explorer().move(home.id(), "parent", "parent/child", null))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("descendant");
+        assertThatThrownBy(() -> context.explorer().rename(home.id(), "parent/a.txt", "b.txt"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("target already exists");
+        assertThatThrownBy(() -> context.explorer().copy(home.id(), "parent/a.txt", "parent", "b.txt"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("target already exists");
+    }
+
+    @Test
+    void preservesCrLfAndStripsUtf8BomOnSave() throws Exception {
+        TestContext context = context();
+        WorkArea home = context.workAreaService().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);
+        Path file = Files.createDirectories(tempDir.resolve("data/agents/agent-1/workspace/home/notes"))
+            .resolve("crlf.txt");
+        Files.writeString(file, "one\r\ntwo\r\n", java.nio.charset.StandardCharsets.UTF_8);
+
+        context.explorer().saveText(home.id(), "notes/crlf.txt", "\uFEFFalpha\nbeta\n");
+
+        assertThat(Files.readString(file)).isEqualTo("alpha\r\nbeta\r\n");
+    }
+
+    @Test
     void rejectsTraversalBinaryTextSaveAndHomeDelete() throws Exception {
         TestContext context = context();
         WorkArea home = context.workAreaService().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);
@@ -42,6 +122,9 @@ class WorkAreaExplorerServiceTest {
         assertThatThrownBy(() -> context.explorer().list(home.id(), "../outside"))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("escapes Work Area");
+        assertThatThrownBy(() -> context.explorer().list(home.id(), "C:\\Windows\\system32"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("absolute paths");
         assertThatThrownBy(() -> context.explorer().saveText(home.id(), "image.png", "not image"))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("not safe for text editing");
@@ -102,10 +185,36 @@ class WorkAreaExplorerServiceTest {
             .hasMessageContaining("Work Area root is protected");
     }
 
+    @Test
+    void directoryDeleteUsesTwoStepModalSemantics() throws Exception {
+        TestContext context = context();
+        WorkArea home = context.workAreaService().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);
+        context.explorer().createDirectory(home.id(), "delete-me");
+        context.explorer().createTextFile(home.id(), "delete-me", "note.txt");
+
+        WorkAreaExplorerService.DeletePreflight intent =
+            context.explorer().deletePreflight(home.id(), "delete-me", WorkAreaExplorerService.DeleteStep.INTENT);
+
+        assertThat(intent.directory()).isTrue();
+        assertThat(intent.executable()).isFalse();
+        assertThat(intent.requiredStep()).isEqualTo(WorkAreaExplorerService.DeleteStep.DIRECTORY_RECURSIVE_CONFIRM);
+        assertThatThrownBy(() -> context.explorer().delete(home.id(), "delete-me", WorkAreaExplorerService.DeleteStep.INTENT))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("confirmation step");
+
+        WorkAreaExplorerService.DeleteResult result =
+            context.explorer().delete(home.id(), "delete-me", WorkAreaExplorerService.DeleteStep.DIRECTORY_RECURSIVE_CONFIRM);
+        assertThat(result.deletedCount()).isEqualTo(2);
+    }
+
     private TestContext context() throws Exception {
         JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
         WorkspaceRepository workspaceRepository = new WorkspaceRepository(jdbc);
         WorkAreaRepository workAreaRepository = new WorkAreaRepository(jdbc);
+        WorkspaceFileActionLogRepository actionLogRepository = new WorkspaceFileActionLogRepository(jdbc);
+        WorkspaceFileMetadataRepository metadataRepository = new WorkspaceFileMetadataRepository(jdbc);
+        WorkspaceFileMetadataService metadataService =
+            new WorkspaceFileMetadataService(metadataRepository, actionLogRepository);
         Path dataRoot = Files.createDirectories(tempDir.resolve("data"));
         AiConfig aiConfig = new AiConfig(null, null, null, null, null, 10, dataRoot, null, Map.of(), Map.of());
         WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(aiConfig);
@@ -115,9 +224,21 @@ class WorkAreaExplorerServiceTest {
             new RootRelativePathService(directoryService)
         );
         WorkAreaService workAreaService = new WorkAreaService(workAreaRepository, workspaceService, directoryService);
-        return new TestContext(jdbc, workAreaService, new WorkAreaExplorerService(workAreaService));
+        return new TestContext(
+            jdbc,
+            workAreaService,
+            new WorkAreaExplorerService(workAreaService, metadataService, actionLogRepository),
+            metadataRepository,
+            actionLogRepository
+        );
     }
 
-    private record TestContext(JdbcTemplate jdbc, WorkAreaService workAreaService, WorkAreaExplorerService explorer) {
+    private record TestContext(
+        JdbcTemplate jdbc,
+        WorkAreaService workAreaService,
+        WorkAreaExplorerService explorer,
+        WorkspaceFileMetadataRepository metadataRepository,
+        WorkspaceFileActionLogRepository actionLogRepository
+    ) {
     }
 }
