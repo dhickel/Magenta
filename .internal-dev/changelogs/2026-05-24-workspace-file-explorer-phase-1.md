@@ -20,7 +20,7 @@ Implemented Phase 1 workspace file explorer domain foundation for WU-02, WU-03, 
 - `src/test/java/io/mindspice/magenta2/ai/orchestration/workspaces/WorkspaceFileActionLogRepositoryTest.java`
 
 # Behavioral Impact
-- Explorer mutations reject absolute paths, traversal, symlinks, root mutation, active Work Area mutation, directory moves into descendants, and collisions.
+- Explorer mutations reject absolute paths, traversal, symlinks, root mutation, active Work Area mutation, directory moves/copies into descendants, and collisions.
 - Delete now has service-level modal-step preflight/execute semantics while retaining the existing typed-confirmation wrapper for current callers.
 - File labels `note` and `work-area` are system-seeded runtime DB labels; labels follow Magenta-managed rename, move, and copy and are removed on delete subtree.
 - Workspace file action logs are written to `workspace_file_actions` without file contents or host absolute paths.
@@ -31,3 +31,6 @@ Implemented Phase 1 workspace file explorer domain foundation for WU-02, WU-03, 
 
 # Follow-up Items
 - Continue with Phase 2 viewer/editor and API contract work before exposing the new operations through controllers.
+
+# Validation Notes
+- Independent Phase 1 validation found that directory copy could target its own descendant; remediation commit `f6d4bb8` added the service guard and regression coverage.

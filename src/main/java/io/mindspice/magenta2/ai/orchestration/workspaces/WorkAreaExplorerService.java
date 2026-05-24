@@ -260,6 +260,9 @@ public class WorkAreaExplorerService {
         if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
             throw new IllegalArgumentException("target already exists");
         }
+        if (Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS) && target.startsWith(source)) {
+            throw new IllegalArgumentException("directory cannot be copied into itself or a descendant");
+        }
         try {
             rejectSymbolicTree(root, source);
             copyPath(source, target);

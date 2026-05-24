@@ -93,6 +93,9 @@ class WorkAreaExplorerServiceTest {
         assertThatThrownBy(() -> context.explorer().move(home.id(), "parent", "parent/child", null))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("descendant");
+        assertThatThrownBy(() -> context.explorer().copy(home.id(), "parent", "parent/child", "copy"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("descendant");
         assertThatThrownBy(() -> context.explorer().rename(home.id(), "parent/a.txt", "b.txt"))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("target already exists");
