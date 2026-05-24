@@ -35,23 +35,41 @@ class WorkspaceFileMetadataRepositoryTest {
         WorkspaceFileMetadataRepository repository = new WorkspaceFileMetadataRepository(jdbc);
         WorkArea workArea = workArea();
 
+        WorkspaceFileLabel custom = repository.ensureLabel("Project Alpha", "Project Alpha", false);
+        assertThat(custom.slug()).isEqualTo("project-alpha");
+        assertThat(custom.displayName()).isEqualTo("Project Alpha");
+        assertThat(custom.system()).isFalse();
+
+        repository.addLabel(workArea, "home/notes", "home/notes", "project-alpha");
+        assertThat(repository.labelsForPath("workspace-1", "home/notes"))
+            .extracting(a -> a.label().slug())
+            .containsExactly("project-alpha");
+
         repository.addLabel(workArea, "home/notes/a.md", "home/notes/a.md", "note");
         assertThat(repository.labelsForPath("workspace-1", "home/notes/a.md"))
             .extracting(a -> a.label().slug())
             .containsExactly("note");
 
         repository.moveSubtree(workArea, "home/notes", "home/archive");
+        assertThat(repository.labelsForPath("workspace-1", "home/archive"))
+            .extracting(a -> a.label().slug())
+            .containsExactly("project-alpha");
         assertThat(repository.labelsForPath("workspace-1", "home/archive/a.md"))
             .extracting(a -> a.label().slug())
             .containsExactly("note");
 
         repository.copySubtree(workArea, "home/archive", "home/copy");
+        assertThat(repository.labelsForPath("workspace-1", "home/copy"))
+            .extracting(a -> a.label().slug())
+            .containsExactly("project-alpha");
         assertThat(repository.labelsForPath("workspace-1", "home/copy/a.md"))
             .extracting(a -> a.label().slug())
             .containsExactly("note");
 
-        assertThat(repository.deleteSubtree("workspace-1", "home/archive")).isEqualTo(1);
+        assertThat(repository.deleteSubtree("workspace-1", "home/archive")).isEqualTo(2);
+        assertThat(repository.labelsForPath("workspace-1", "home/archive")).isEmpty();
         assertThat(repository.labelsForPath("workspace-1", "home/archive/a.md")).isEmpty();
+        assertThat(repository.labelsForPath("workspace-1", "home/copy")).hasSize(1);
         assertThat(repository.labelsForPath("workspace-1", "home/copy/a.md")).hasSize(1);
     }
 

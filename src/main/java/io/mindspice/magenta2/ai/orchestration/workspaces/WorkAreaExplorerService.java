@@ -5,6 +5,8 @@ import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -54,7 +56,7 @@ public class WorkAreaExplorerService {
         }
         try (var stream = Files.list(dir)) {
             List<Entry> entries = stream
-                .map(path -> entry(root, path))
+                .map(path -> entry(area, root, path))
                 .sorted(Comparator.comparing(Entry::directory).reversed().thenComparing(Entry::name))
                 .toList();
             return new DirectoryListing(area, root.relativize(dir).toString().replace('\\', '/'), entries);
@@ -155,7 +157,7 @@ public class WorkAreaExplorerService {
                 throw new IllegalArgumentException("directory escapes Work Area");
             }
             log(area, WorkspaceFileActionType.CREATE_FOLDER, rootRelative(area, root, created), null, "SUCCEEDED", "{}");
-            return entry(root, created);
+            return entry(area, root, created);
         } catch (IOException exception) {
             throw new IllegalStateException("failed to create directory", exception);
         }
@@ -198,10 +200,11 @@ public class WorkAreaExplorerService {
         try {
             String sourceRootRelative = rootRelative(area, root, source);
             String targetRootRelative = rootRelative(area, root, target);
+            rejectSymbolicTree(root, source);
             movePath(source, target);
             metadataMove(area, sourceRootRelative, targetRootRelative);
             log(area, WorkspaceFileActionType.RENAME, sourceRootRelative, targetRootRelative, "SUCCEEDED", "{}");
-            return entry(root, target.toRealPath());
+            return entry(area, root, target.toRealPath());
         } catch (IOException exception) {
             throw new IllegalStateException("failed to rename path", exception);
         }
@@ -232,10 +235,11 @@ public class WorkAreaExplorerService {
         try {
             String sourceRootRelative = rootRelative(area, root, source);
             String targetRootRelative = rootRelative(area, root, target);
+            rejectSymbolicTree(root, source);
             movePath(source, target);
             metadataMove(area, sourceRootRelative, targetRootRelative);
             log(area, WorkspaceFileActionType.MOVE, sourceRootRelative, targetRootRelative, "SUCCEEDED", "{}");
-            return entry(root, target.toRealPath(LinkOption.NOFOLLOW_LINKS));
+            return entry(area, root, target.toRealPath(LinkOption.NOFOLLOW_LINKS));
         } catch (IOException exception) {
             throw new IllegalStateException("failed to move path", exception);
         }
@@ -269,7 +273,7 @@ public class WorkAreaExplorerService {
             String targetRootRelative = rootRelative(area, root, target);
             metadataCopy(area, sourceRootRelative, targetRootRelative);
             log(area, WorkspaceFileActionType.COPY, sourceRootRelative, targetRootRelative, "SUCCEEDED", "{}");
-            return entry(root, target.toRealPath(LinkOption.NOFOLLOW_LINKS));
+            return entry(area, root, target.toRealPath(LinkOption.NOFOLLOW_LINKS));
         } catch (IOException exception) {
             throw new IllegalStateException("failed to copy path", exception);
         }
@@ -365,6 +369,13 @@ public class WorkAreaExplorerService {
         return metadataService.addLabel(area, rootRelative(area, root, target), labelSlug);
     }
 
+    public WorkspaceFileLabel ensureTag(String labelSlug, String displayName) {
+        if (metadataService == null) {
+            throw new IllegalStateException("workspace file metadata service is not available");
+        }
+        return metadataService.ensureTag(labelSlug, displayName);
+    }
+
     public int removeLabel(String workAreaId, String relativePath, String labelSlug) {
         WorkArea area = workAreaService.get(workAreaId);
         Path root = workAreaService.resolve(area);
@@ -393,14 +404,48 @@ public class WorkAreaExplorerService {
         return actionLogRepository.recentForWorkspace(area.workspaceId(), Math.max(1, limit));
     }
 
-    private Entry entry(Path root, Path path) {
+    public Entry inspect(String workAreaId, String relativePath) {
+        WorkArea area = workAreaService.get(workAreaId);
+        Path root = workAreaService.resolve(area);
+        Path target = resolveExisting(root, relativePath);
+        return entry(area, root, target);
+    }
+
+    private Entry entry(WorkArea area, Path root, Path path) {
         try {
             boolean directory = Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS);
             boolean regular = Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS);
             long size = regular ? Files.size(path) : 0;
-            Instant modified = Files.getLastModifiedTime(path, LinkOption.NOFOLLOW_LINKS).toInstant();
+            BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+            Instant created = createdAt(attributes.creationTime());
+            Instant modified = attributes.lastModifiedTime().toInstant();
             String relative = root.relativize(path).toString().replace('\\', '/');
-            return new Entry(path.getFileName().toString(), relative, directory, regular, size, modified);
+            String rootRelative = rootRelative(area, root, path);
+            ViewerKind viewerKind = viewerKind(path, directory, regular, size);
+            List<WorkspaceFileLabel> tags = labelsForEntry(area, rootRelative);
+            boolean canMutate = !path.equals(root);
+            boolean canView = regular && (viewerKind == ViewerKind.TEXT
+                || viewerKind == ViewerKind.MARKDOWN
+                || viewerKind == ViewerKind.IMAGE);
+            return new Entry(
+                path.getFileName().toString(),
+                relative,
+                directory,
+                regular,
+                size,
+                created,
+                modified,
+                fileType(path, directory, regular),
+                sizeLabel(size, directory),
+                viewerKind,
+                tags,
+                canView,
+                canMutate,
+                canMutate,
+                canMutate,
+                canMutate,
+                true
+            );
         } catch (IOException exception) {
             throw new IllegalStateException("failed to inspect path", exception);
         }
@@ -557,7 +602,7 @@ public class WorkAreaExplorerService {
         try {
             Files.writeString(file, "", StandardCharsets.UTF_8);
             log(area, actionType, rootRelative(area, root, file), null, "SUCCEEDED", "{}");
-            return entry(root, file.toRealPath(LinkOption.NOFOLLOW_LINKS));
+            return entry(area, root, file.toRealPath(LinkOption.NOFOLLOW_LINKS));
         } catch (IOException exception) {
             throw new IllegalStateException("failed to create file", exception);
         }
@@ -694,10 +739,158 @@ public class WorkAreaExplorerService {
         return content.replace("\r\n", "\n").replace("\r", "\n").replace("\n", lineEnding);
     }
 
+    private Instant createdAt(FileTime creationTime) {
+        if (creationTime == null || creationTime.toMillis() <= 0) {
+            return null;
+        }
+        return creationTime.toInstant();
+    }
+
+    private ViewerKind viewerKind(Path path, boolean directory, boolean regular, long size) throws IOException {
+        if (directory || !regular) {
+            return ViewerKind.UNSUPPORTED;
+        }
+        if (isImagePath(path)) {
+            return ViewerKind.IMAGE;
+        }
+        if (!isSafeTextPath(path)) {
+            return ViewerKind.UNSUPPORTED;
+        }
+        if (size > HARD_EDIT_BYTES) {
+            return ViewerKind.TOO_LARGE;
+        }
+        if (readUtf8(path) == null) {
+            return ViewerKind.INVALID_UTF8;
+        }
+        return isMarkdownPath(path) ? ViewerKind.MARKDOWN : ViewerKind.TEXT;
+    }
+
+    private String fileType(Path path, boolean directory, boolean regular) {
+        if (directory) {
+            return "Folder";
+        }
+        if (!regular) {
+            return "Unknown";
+        }
+        String name = path.getFileName().toString().toLowerCase(Locale.ROOT);
+        if (isMarkdownPath(path)) {
+            return "Markdown";
+        }
+        if (isImagePath(path)) {
+            return "Image";
+        }
+        if (name.endsWith(".txt") || name.endsWith(".log") || !name.contains(".")) {
+            return "Text";
+        }
+        if (name.endsWith(".json")) {
+            return "JSON";
+        }
+        if (name.endsWith(".yaml") || name.endsWith(".yml")) {
+            return "YAML";
+        }
+        if (name.endsWith(".csv")) {
+            return "CSV";
+        }
+        if (name.endsWith(".xml")) {
+            return "XML";
+        }
+        if (name.endsWith(".html")) {
+            return "HTML";
+        }
+        if (name.endsWith(".css")) {
+            return "CSS";
+        }
+        if (name.endsWith(".js")) {
+            return "JavaScript";
+        }
+        return "Binary";
+    }
+
+    private String sizeLabel(long size, boolean directory) {
+        if (directory) {
+            return "-";
+        }
+        if (size < 1024) {
+            return size + " B";
+        }
+        if (size < 1024 * 1024) {
+            return String.format(Locale.ROOT, "%.1f KB", size / 1024.0);
+        }
+        if (size < 1024 * 1024 * 1024) {
+            return String.format(Locale.ROOT, "%.1f MB", size / (1024.0 * 1024.0));
+        }
+        return String.format(Locale.ROOT, "%.1f GB", size / (1024.0 * 1024.0 * 1024.0));
+    }
+
+    private List<WorkspaceFileLabel> labelsForEntry(WorkArea area, String rootRelative) {
+        if (metadataService == null) {
+            return List.of();
+        }
+        return metadataService.labelsForPath(area.workspaceId(), rootRelative).stream()
+            .map(WorkspaceFileLabelAssignment::label)
+            .toList();
+    }
+
     public record DirectoryListing(WorkArea workArea, String path, List<Entry> entries) {
     }
 
-    public record Entry(String name, String path, boolean directory, boolean regularFile, long size, Instant modifiedAt) {
+    public record Entry(
+        String name,
+        String path,
+        boolean directory,
+        boolean regularFile,
+        long size,
+        Instant createdAt,
+        Instant modifiedAt,
+        String fileType,
+        String sizeLabel,
+        ViewerKind viewerKind,
+        List<WorkspaceFileLabel> tags,
+        boolean canView,
+        boolean canRename,
+        boolean canDelete,
+        boolean canCopy,
+        boolean canMove,
+        boolean canTag
+    ) {
+        public Entry {
+            tags = tags == null ? List.of() : List.copyOf(tags);
+        }
+
+        public Entry(String name, String path, boolean directory, boolean regularFile, long size, Instant modifiedAt) {
+            this(
+                name,
+                path,
+                directory,
+                regularFile,
+                size,
+                null,
+                modifiedAt,
+                directory ? "Folder" : "File",
+                directory ? "-" : size + " B",
+                ViewerKind.UNSUPPORTED,
+                List.of(),
+                regularFile,
+                true,
+                true,
+                true,
+                true,
+                true
+            );
+        }
+
+        public long sizeBytes() {
+            return size;
+        }
+    }
+
+    public enum ViewerKind {
+        TEXT,
+        MARKDOWN,
+        IMAGE,
+        UNSUPPORTED,
+        TOO_LARGE,
+        INVALID_UTF8
     }
 
     public record FilePreview(String path, long size, boolean text, String content, boolean requiresWarning, String kind) {

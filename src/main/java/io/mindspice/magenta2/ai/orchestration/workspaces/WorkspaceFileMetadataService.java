@@ -17,6 +17,10 @@ public class WorkspaceFileMetadataService {
         this.actionLogRepository = actionLogRepository;
     }
 
+    public WorkspaceFileLabel ensureTag(String labelSlug, String displayName) {
+        return repository.ensureLabel(labelSlug, displayName, false);
+    }
+
     public WorkspaceFileLabelAssignment addLabel(WorkArea workArea, String rootRelativePath, String labelSlug) {
         WorkspaceFileLabelAssignment assignment = repository.addLabel(workArea, rootRelativePath, rootRelativePath, labelSlug);
         actionLogRepository.record(

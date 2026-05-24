@@ -26,11 +26,31 @@ class WorkAreaExplorerServiceTest {
         context.explorer().createDirectory(home.id(), "notes");
         context.explorer().createMarkdownFile(home.id(), "notes", "todo.md");
         context.explorer().saveText(home.id(), "notes/todo.md", "hello\n");
+        context.explorer().ensureTag("research", "Research");
+        context.explorer().addLabel(home.id(), "notes", "research");
+        context.explorer().addLabel(home.id(), "notes/todo.md", "note");
 
         WorkAreaExplorerService.DirectoryListing listing = context.explorer().list(home.id(), "notes");
+        WorkAreaExplorerService.Entry detail = context.explorer().inspect(home.id(), "notes/todo.md");
         WorkAreaExplorerService.FilePreview preview = context.explorer().preview(home.id(), "notes/todo.md");
 
         assertThat(listing.entries()).extracting(WorkAreaExplorerService.Entry::path).contains("notes/todo.md");
+        assertThat(context.explorer().inspect(home.id(), "notes").tags())
+            .extracting(WorkspaceFileLabel::slug)
+            .containsExactly("research");
+        assertThat(detail.fileType()).isEqualTo("Markdown");
+        assertThat(detail.sizeBytes()).isEqualTo(6);
+        assertThat(detail.sizeLabel()).isEqualTo("6 B");
+        assertThat(detail.viewerKind()).isEqualTo(WorkAreaExplorerService.ViewerKind.MARKDOWN);
+        assertThat(detail.canView()).isTrue();
+        assertThat(detail.canRename()).isTrue();
+        assertThat(detail.canDelete()).isTrue();
+        assertThat(detail.canCopy()).isTrue();
+        assertThat(detail.canMove()).isTrue();
+        assertThat(detail.canTag()).isTrue();
+        assertThat(detail.createdAt()).isNotNull();
+        assertThat(detail.modifiedAt()).isNotNull();
+        assertThat(detail.tags()).extracting(WorkspaceFileLabel::slug).containsExactly("note");
         assertThat(preview.text()).isTrue();
         assertThat(preview.content()).isEqualTo("hello\n");
         assertThat(Files.readString(tempDir.resolve("data/agents/agent-1/workspace/home/notes/todo.md")))
@@ -45,10 +65,33 @@ class WorkAreaExplorerServiceTest {
         context.explorer().createDirectory(home.id(), "archive");
         context.explorer().createMarkdownFile(home.id(), "notes", "todo.md");
         context.explorer().saveText(home.id(), "notes/todo.md", "hello\n");
+        context.explorer().ensureTag("project-alpha", "Project Alpha");
+        context.explorer().addLabel(home.id(), "notes", "project-alpha");
         context.explorer().addLabel(home.id(), "notes/todo.md", "note");
+
+        context.explorer().rename(home.id(), "notes", "renamed-notes");
+        assertThat(context.metadataRepository().labelsForPath(home.workspaceId(), "home/renamed-notes"))
+            .extracting(a -> a.label().slug())
+            .containsExactly("project-alpha");
+        assertThat(context.metadataRepository().labelsForPath(home.workspaceId(), "home/renamed-notes/todo.md"))
+            .extracting(a -> a.label().slug())
+            .containsExactly("note");
+
+        context.explorer().move(home.id(), "renamed-notes", ".", "notes");
+        assertThat(context.metadataRepository().labelsForPath(home.workspaceId(), "home/notes"))
+            .extracting(a -> a.label().slug())
+            .containsExactly("project-alpha");
 
         context.explorer().rename(home.id(), "notes/todo.md", "renamed.md");
         assertThat(context.metadataRepository().labelsForPath(home.workspaceId(), "home/notes/renamed.md"))
+            .extracting(a -> a.label().slug())
+            .containsExactly("note");
+
+        context.explorer().copy(home.id(), "notes", "archive", "notes-copy");
+        assertThat(context.metadataRepository().labelsForPath(home.workspaceId(), "home/archive/notes-copy"))
+            .extracting(a -> a.label().slug())
+            .containsExactly("project-alpha");
+        assertThat(context.metadataRepository().labelsForPath(home.workspaceId(), "home/archive/notes-copy/renamed.md"))
             .extracting(a -> a.label().slug())
             .containsExactly("note");
 
@@ -70,6 +113,10 @@ class WorkAreaExplorerServiceTest {
         context.explorer().delete(home.id(), "notes/moved.md", WorkAreaExplorerService.DeleteStep.FILE_CONFIRM);
         assertThat(context.metadataRepository().labelsForPath(home.workspaceId(), "home/notes/moved.md")).isEmpty();
 
+        context.explorer().delete(home.id(), "archive/notes-copy", WorkAreaExplorerService.DeleteStep.DIRECTORY_RECURSIVE_CONFIRM);
+        assertThat(context.metadataRepository().labelsForPath(home.workspaceId(), "home/archive/notes-copy")).isEmpty();
+        assertThat(context.metadataRepository().labelsForPath(home.workspaceId(), "home/archive/notes-copy/renamed.md")).isEmpty();
+
         assertThat(context.actionLogRepository().recentForWorkspace(home.workspaceId(), 20))
             .extracting(WorkspaceFileActionRecord::actionType)
             .contains(
@@ -80,6 +127,7 @@ class WorkAreaExplorerServiceTest {
                 WorkspaceFileActionType.RENAME,
                 WorkspaceFileActionType.COPY,
                 WorkspaceFileActionType.MOVE,
+                WorkspaceFileActionType.DELETE_DIRECTORY,
                 WorkspaceFileActionType.DELETE_FILE
             );
     }
@@ -105,6 +153,33 @@ class WorkAreaExplorerServiceTest {
         assertThatThrownBy(() -> context.explorer().copy(home.id(), "parent/a.txt", "parent", "b.txt"))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("target already exists");
+    }
+
+    @Test
+    void renameMoveCopyAndDeleteRejectNestedSymlinks() throws Exception {
+        TestContext context = context();
+        WorkArea home = context.workAreaService().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);
+        Path parent = Files.createDirectories(tempDir.resolve("data/agents/agent-1/workspace/home/parent"));
+        Files.createDirectories(tempDir.resolve("data/agents/agent-1/workspace/home/archive"));
+        Path outside = Files.createDirectories(tempDir.resolve("outside"));
+        try {
+            Files.createSymbolicLink(parent.resolve("escape"), outside);
+        } catch (UnsupportedOperationException exception) {
+            return;
+        }
+
+        assertThatThrownBy(() -> context.explorer().rename(home.id(), "parent", "renamed"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("symbolic links");
+        assertThatThrownBy(() -> context.explorer().move(home.id(), "parent", "archive", null))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("symbolic links");
+        assertThatThrownBy(() -> context.explorer().copy(home.id(), "parent", "archive", "copy"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("symbolic links");
+        assertThatThrownBy(() -> context.explorer().delete(home.id(), "parent", WorkAreaExplorerService.DeleteStep.DIRECTORY_RECURSIVE_CONFIRM))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("symbolic links");
     }
 
     @Test

@@ -21,12 +21,24 @@ class WorkspaceFileMetadataServiceTest {
             new WorkspaceFileMetadataService(metadataRepository, actionLogRepository);
         WorkArea workArea = workArea();
 
+        WorkspaceFileLabel custom = service.ensureTag("Project Alpha", "Project Alpha");
+        assertThat(custom.slug()).isEqualTo("project-alpha");
+        assertThat(custom.displayName()).isEqualTo("Project Alpha");
+
+        service.addLabel(workArea, "home/folder", "project-alpha");
         service.addLabel(workArea, "home/note.md", "note");
         service.removeLabel(workArea, "home/note.md", "note");
 
+        assertThat(service.labelsForPath("workspace-1", "home/folder"))
+            .extracting(a -> a.label().slug())
+            .containsExactly("project-alpha");
         assertThat(actionLogRepository.recentForWorkspace("workspace-1", 10))
             .extracting(WorkspaceFileActionRecord::actionType)
-            .containsExactly(WorkspaceFileActionType.TAG_REMOVE, WorkspaceFileActionType.TAG_ADD);
+            .containsExactly(
+                WorkspaceFileActionType.TAG_REMOVE,
+                WorkspaceFileActionType.TAG_ADD,
+                WorkspaceFileActionType.TAG_ADD
+            );
     }
 
     @Test

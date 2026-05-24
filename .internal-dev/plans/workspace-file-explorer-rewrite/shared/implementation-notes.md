@@ -16,7 +16,7 @@ Living document. Workers and validators append concise entries here. Email coord
 | phase | status | owner | commit | validation | email gate | notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | Phase 01 research/spec reconciliation | complete | implementation_worker | not committed per directive | command evidence recorded below | not sent by worker directive | Branch/source drift reconciled; only this notes file changed. |
-| Phase 02 domain services and tags | pending | unassigned | pending | pending | pending | Backend/data mutations. |
+| Phase 02 domain services and tags | complete | implementation_worker | not committed per directive | targeted command passed | not sent by worker directive | Rich domain entry data, service-level custom tag ensure, directory/file tag follow-copy-delete tests, nested symlink mutation hardening. |
 | Phase 03 API and fragments | pending | unassigned | pending | pending | pending | Controller/fragment contract. |
 | Phase 04 file explorer UI rewrite | pending | unassigned | pending | pending | pending | Details/list UI, no cards. |
 | Phase 05 viewer/copy/move/rename/delete | pending | unassigned | pending | pending | pending | Viewer and operation completion. |
@@ -64,6 +64,10 @@ Append entries:
 YYYY-MM-DD phase=<phase> decision=<decision> rationale=<short rationale> source=<file/validation/user>
 ```
 
+2026-05-24 phase=Phase 02 decision=kept existing workspace_file_labels/workspace_file_label_assignments schema rationale=existing label schema supports custom tags plus file and directory assignments with subtree move/copy/delete source=WorkspaceFileMetadataRepositoryTest
+2026-05-24 phase=Phase 02 decision=added rich WorkAreaExplorerService.Entry fields instead of a separate index service rationale=UI needs row/detail metadata from confined service without background scanning or controller filesystem logic source=WorkAreaExplorerService.java
+2026-05-24 phase=Phase 02 decision=reject nested symlink trees before rename and move rationale=copy/delete already validated trees; rename/move must not preserve or relocate symlink escapes through managed mutations source=WorkAreaExplorerServiceTest
+
 ## Validation Evidence
 
 Append entries:
@@ -71,6 +75,10 @@ Append entries:
 ```text
 YYYY-MM-DD phase=<phase> command=<command> result=<pass|fail|blocked> evidence=<test names/screenshots/log path>
 ```
+
+2026-05-24 phase=Phase 02 command=mvn test -Dtest=WorkAreaExplorerServiceTest,WorkspaceFileMetadataRepositoryTest,WorkspaceFileMetadataServiceTest,WorkspaceFileActionLogRepositoryTest result=pass evidence=16 tests run, 0 failures, 0 errors, 0 skipped; covered rich entry metadata, custom tag ensure, file/directory tags, tag follow/copy/delete, protected delete, traversal/collision checks, nested symlink mutation rejection, and action logging
+2026-05-24 phase=Phase 02 command=mvn test -Dtest=WorkAreaControllerTest result=pass evidence=9 tests run, 0 failures, 0 errors, 0 skipped; validator used this as API compatibility evidence for expanded Entry record
+2026-05-24 phase=Phase 02 command=validation_redteam_agent result=pass evidence=edit scope allowed, rich row/detail data present, tag lifecycle and subtree semantics covered, root/symlink safety covered, action logging covered, no repo-local email ledger present, git diff --check clean
 
 ## Blockers And Remediation
 
