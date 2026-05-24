@@ -535,14 +535,17 @@ public class AvatarDashboardController {
     @ResponseBody
     public String workAreaExplorer(
         @PathVariable String workAreaId,
-        @RequestParam(value = "path", defaultValue = ".") String path
+        @RequestParam(value = "path", defaultValue = ".") String path,
+        @RequestParam(value = "selected", required = false) String selected
     ) {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
             WorkAreaExplorerService.DirectoryListing listing = explorer.list(workAreaId, path);
-            return AvatarDashboardComponents.workAreaExplorer(listing, entryLabels(explorer, workAreaId, listing)).render();
+            String inspectPath = StringUtils.hasText(selected) ? selected : path;
+            WorkAreaExplorerService.Entry inspected = explorer.inspect(workAreaId, inspectPath);
+            return WorkAreaExplorerFragments.shell(listing, inspected, selected);
         } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+            return WorkAreaExplorerFragments.modalError("Work Area unavailable", exception.getMessage());
         }
     }
 
@@ -550,14 +553,15 @@ public class AvatarDashboardController {
     @ResponseBody
     public String workAreaExplorerList(
         @PathVariable String workAreaId,
-        @RequestParam(value = "path", defaultValue = ".") String path
+        @RequestParam(value = "path", defaultValue = ".") String path,
+        @RequestParam(value = "selected", required = false) String selected
     ) {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
             WorkAreaExplorerService.DirectoryListing listing = explorer.list(workAreaId, path);
-            return AvatarDashboardComponents.workAreaExplorerInner(listing, entryLabels(explorer, workAreaId, listing)).render();
+            return WorkAreaExplorerFragments.list(listing, selected, false);
         } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+            return WorkAreaExplorerFragments.listError(exception.getMessage());
         }
     }
 
@@ -566,9 +570,35 @@ public class AvatarDashboardController {
     public String workAreaInspector(@PathVariable String workAreaId, @RequestParam String path) {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
-            return AvatarDashboardComponents.workAreaInspector(workAreaId, path, explorer.labels(workAreaId, path)).render();
+            return WorkAreaExplorerFragments.inspector(workAreaId, explorer.inspect(workAreaId, path), null, false);
         } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+            return WorkAreaExplorerFragments.inspectorError(exception.getMessage());
+        }
+    }
+
+    @GetMapping("/avatar/_work-areas/{workAreaId}/viewer")
+    @ResponseBody
+    public String workAreaViewer(@PathVariable String workAreaId, @RequestParam String path) {
+        WorkAreaExplorerService explorer = requireExplorerService();
+        try {
+            return WorkAreaExplorerFragments.viewer(workAreaId, explorer.preview(workAreaId, path));
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.modalError("Viewer unavailable", exception.getMessage());
+        }
+    }
+
+    @GetMapping("/avatar/_work-areas/{workAreaId}/viewer/text")
+    @ResponseBody
+    public String workAreaTextViewer(
+        @PathVariable String workAreaId,
+        @RequestParam String path,
+        @RequestParam(value = "tab", defaultValue = "rendered") String tab
+    ) {
+        WorkAreaExplorerService explorer = requireExplorerService();
+        try {
+            return WorkAreaExplorerFragments.textViewer(workAreaId, explorer.preview(workAreaId, path), tab);
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.modalError("Viewer unavailable", exception.getMessage());
         }
     }
 
@@ -579,7 +609,10 @@ public class AvatarDashboardController {
         try {
             return AvatarDashboardComponents.workAreaPreview(workAreaId, explorer.preview(workAreaId, path)).render();
         } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+            return AvatarDashboardComponents.statusFragment(
+                "Preview unavailable: " + exception.getMessage(),
+                true
+            ).render();
         }
     }
 
@@ -588,9 +621,9 @@ public class AvatarDashboardController {
     public String workAreaTextEditor(@PathVariable String workAreaId, @RequestParam String path) {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
-            return AvatarDashboardComponents.workAreaTextEditor(workAreaId, explorer.preview(workAreaId, path), false).render();
+            return WorkAreaExplorerFragments.textViewer(workAreaId, explorer.preview(workAreaId, path), "text");
         } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+            return WorkAreaExplorerFragments.modalError("Editor unavailable", exception.getMessage());
         }
     }
 
@@ -604,9 +637,10 @@ public class AvatarDashboardController {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
             explorer.saveText(workAreaId, path, content);
-            return AvatarDashboardComponents.workAreaPreview(workAreaId, explorer.preview(workAreaId, path)).render();
+            String listPath = parentPath(path);
+            return refreshedExplorerTargets(explorer, workAreaId, listPath, path, "Saved " + path);
         } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+            return WorkAreaExplorerFragments.modalError("Save failed", exception.getMessage());
         }
     }
 
@@ -692,11 +726,12 @@ public class AvatarDashboardController {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
             WorkAreaExplorerService.DeletePreflight preflight = "delete".equals(action)
+                || "delete-recursive".equals(action)
                 ? explorer.deletePreflight(workAreaId, path, WorkAreaExplorerService.DeleteStep.INTENT)
                 : null;
-            return AvatarDashboardComponents.workAreaActionModal(workAreaId, action, path, preflight).render();
+            return WorkAreaExplorerFragments.actionModal(workAreaId, action, path, preflight);
         } catch (IllegalArgumentException exception) {
-            return AvatarDashboardComponents.workAreaUnavailableModal(action, path, exception.getMessage()).render();
+            return WorkAreaExplorerFragments.modalError("Action unavailable", exception.getMessage());
         }
     }
 
@@ -710,9 +745,9 @@ public class AvatarDashboardController {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
             explorer.delete(workAreaId, path, WorkAreaExplorerService.DeleteStep.valueOf(step));
-            return refreshedExplorer(explorer, workAreaId, parentPath(path));
+            return refreshedExplorerTargets(explorer, workAreaId, parentPath(path), parentPath(path), "Deleted " + path);
         } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+            return WorkAreaExplorerFragments.modalError("Delete failed", exception.getMessage());
         }
     }
 
@@ -721,10 +756,10 @@ public class AvatarDashboardController {
     public String renameWorkAreaPath(@PathVariable String workAreaId, @RequestParam String path, @RequestParam String name) {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
-            explorer.rename(workAreaId, path, name);
-            return refreshedExplorer(explorer, workAreaId, parentPath(path));
+            WorkAreaExplorerService.Entry renamed = explorer.rename(workAreaId, path, name);
+            return refreshedExplorerTargets(explorer, workAreaId, parentPath(renamed.path()), renamed.path(), "Renamed to " + renamed.name());
         } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+            return WorkAreaExplorerFragments.modalError("Rename failed", exception.getMessage());
         }
     }
 
@@ -739,16 +774,65 @@ public class AvatarDashboardController {
     ) {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
+            WorkAreaExplorerService.Entry result;
             if ("copy".equals(action)) {
-                explorer.copy(workAreaId, path, destination, name);
+                result = explorer.copy(workAreaId, path, destination, name);
             } else if ("move".equals(action)) {
-                explorer.move(workAreaId, path, destination, name);
+                result = explorer.move(workAreaId, path, destination, name);
             } else {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown file action: " + action);
+                return WorkAreaExplorerFragments.modalError("File action failed", "Unknown file action: " + action);
             }
-            return refreshedExplorer(explorer, workAreaId, parentPath(path));
+            return refreshedExplorerTargets(explorer, workAreaId, parentPath(result.path()), result.path(), action + " completed");
         } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+            return WorkAreaExplorerFragments.modalError("File action failed", exception.getMessage());
+        }
+    }
+
+    @PostMapping("/avatar/_work-areas/{workAreaId}/tags")
+    @ResponseBody
+    public String createWorkAreaTag(
+        @PathVariable String workAreaId,
+        @RequestParam String label,
+        @RequestParam(value = "displayName", required = false) String displayName
+    ) {
+        WorkAreaExplorerService explorer = requireExplorerService();
+        try {
+            explorer.ensureTag(label, displayName);
+            return WorkAreaExplorerFragments.modalMessage("Tag created", "Tag is ready to assign: " + label);
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.modalError("Tag failed", exception.getMessage());
+        }
+    }
+
+    @PostMapping("/avatar/_work-areas/{workAreaId}/files/tags")
+    @ResponseBody
+    public String addWorkAreaTag(
+        @PathVariable String workAreaId,
+        @RequestParam String path,
+        @RequestParam String label
+    ) {
+        WorkAreaExplorerService explorer = requireExplorerService();
+        try {
+            explorer.addLabel(workAreaId, path, label);
+            return refreshedExplorerTargets(explorer, workAreaId, parentPath(path), path, "Tag added");
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.inspectorError(exception.getMessage());
+        }
+    }
+
+    @DeleteMapping("/avatar/_work-areas/{workAreaId}/files/tags")
+    @ResponseBody
+    public String removeWorkAreaTag(
+        @PathVariable String workAreaId,
+        @RequestParam String path,
+        @RequestParam String label
+    ) {
+        WorkAreaExplorerService explorer = requireExplorerService();
+        try {
+            explorer.removeLabel(workAreaId, path, label);
+            return refreshedExplorerTargets(explorer, workAreaId, parentPath(path), path, "Tag removed");
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.inspectorError(exception.getMessage());
         }
     }
 
@@ -758,9 +842,9 @@ public class AvatarDashboardController {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
             explorer.addLabel(workAreaId, path, "note");
-            return AvatarDashboardComponents.workAreaInspector(workAreaId, path, explorer.labels(workAreaId, path)).render();
+            return refreshedExplorerTargets(explorer, workAreaId, parentPath(path), path, "Tag added");
         } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+            return WorkAreaExplorerFragments.inspectorError(exception.getMessage());
         }
     }
 
@@ -770,9 +854,9 @@ public class AvatarDashboardController {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
             explorer.removeLabel(workAreaId, path, "note");
-            return AvatarDashboardComponents.workAreaInspector(workAreaId, path, explorer.labels(workAreaId, path)).render();
+            return refreshedExplorerTargets(explorer, workAreaId, parentPath(path), path, "Tag removed");
         } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+            return WorkAreaExplorerFragments.inspectorError(exception.getMessage());
         }
     }
 
@@ -1048,6 +1132,18 @@ public class AvatarDashboardController {
     private String refreshedExplorer(WorkAreaExplorerService explorer, String workAreaId, String path) {
         WorkAreaExplorerService.DirectoryListing listing = explorer.list(workAreaId, path);
         return AvatarDashboardComponents.workAreaExplorer(listing, entryLabels(explorer, workAreaId, listing)).render();
+    }
+
+    private String refreshedExplorerTargets(
+        WorkAreaExplorerService explorer,
+        String workAreaId,
+        String listPath,
+        String selectedPath,
+        String message
+    ) {
+        WorkAreaExplorerService.DirectoryListing listing = explorer.list(workAreaId, listPath);
+        WorkAreaExplorerService.Entry inspected = explorer.inspect(workAreaId, selectedPath);
+        return WorkAreaExplorerFragments.mutationResponse(listing, inspected, selectedPath, message);
     }
 
     private Map<String, List<String>> entryLabels(

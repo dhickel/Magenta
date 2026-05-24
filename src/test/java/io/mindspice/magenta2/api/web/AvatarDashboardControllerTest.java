@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.nio.file.Path;
@@ -30,6 +31,9 @@ import io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaExplorerService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaRepository;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceFileActionLogRepository;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceFileMetadataRepository;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceFileMetadataService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceOwnerType;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceRepository;
@@ -77,6 +81,10 @@ class AvatarDashboardControllerTest {
         ));
         WorkspaceRepository workspaceRepository = new WorkspaceRepository(runtimeJdbc);
         WorkAreaRepository workAreaRepository = new WorkAreaRepository(runtimeJdbc);
+        WorkspaceFileActionLogRepository actionLogRepository = new WorkspaceFileActionLogRepository(runtimeJdbc);
+        WorkspaceFileMetadataRepository metadataRepository = new WorkspaceFileMetadataRepository(runtimeJdbc);
+        WorkspaceFileMetadataService metadataService =
+            new WorkspaceFileMetadataService(metadataRepository, actionLogRepository);
         AiConfig runtimeConfig = new AiConfig(
             null,
             null,
@@ -93,7 +101,7 @@ class AvatarDashboardControllerTest {
             new RootRelativePathService(directoryService)
         );
         workAreaService = new WorkAreaService(workAreaRepository, workspaceService, directoryService);
-        workAreaExplorerService = new WorkAreaExplorerService(workAreaService);
+        workAreaExplorerService = new WorkAreaExplorerService(workAreaService, metadataService, actionLogRepository);
         controller = new AvatarDashboardController(
             avatarService,
             new StubChatService(),
@@ -199,10 +207,18 @@ class AvatarDashboardControllerTest {
         assertThat(files).contains("/avatar/_work-areas/");
 
         String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "agent-1", false).getFirst().id();
-        String explorer = controller.workAreaExplorer(workAreaId, ".");
-        assertThat(explorer).contains("file-explorer-module");
-        assertThat(explorer).contains("New Folder");
-        assertThat(explorer).contains("New Markdown");
+        String explorer = controller.workAreaExplorer(workAreaId, ".", null);
+        assertThat(explorer).contains("id=\"avatar-workarea-explorer-shell\"");
+        assertThat(explorer).contains("id=\"avatar-workarea-list-region\"");
+        assertThat(explorer).contains("id=\"avatar-workarea-inspector\"");
+        assertThat(explorer).contains("id=\"avatar-workarea-modal\"");
+        assertThat(explorer).contains("<th>Name</th>");
+        assertThat(explorer).contains("<th>File Type</th>");
+        assertThat(explorer).contains("<th>Size</th>");
+        assertThat(explorer).contains("<th>Created</th>");
+        assertThat(explorer).contains("<th>Last Modified</th>");
+        assertThat(explorer).contains("<th>Tags</th>");
+        assertThat(explorer).contains("<th>Actions</th>");
 
         String created = controller.createWorkAreaDirectory(workAreaId, ".", "notes");
         assertThat(created).contains("notes");
@@ -211,20 +227,159 @@ class AvatarDashboardControllerTest {
         assertThat(newFileEditor).contains("textarea");
 
         String savedPreview = controller.saveWorkAreaText(workAreaId, "notes/todo.md", "hello\n");
-        assertThat(savedPreview).contains("id=\"avatar-workarea-preview\"");
-        assertThat(savedPreview).contains("hello");
+        assertThat(savedPreview).contains("id=\"avatar-workarea-list-region\"");
+        assertThat(savedPreview).contains("hx-swap-oob=\"true\"");
+        assertThat(savedPreview).contains("id=\"avatar-workarea-inspector\"");
+        assertThat(savedPreview).contains("id=\"avatar-workarea-modal\"");
 
         String preview = controller.workAreaPreview(workAreaId, "notes/todo.md");
-        assertThat(preview).contains("hello");
-        assertThat(preview).contains("/api/work-areas/" + workAreaId + "/files/download");
+        assertThat(preview).contains("id=\"avatar-workarea-preview\"");
+        assertThat(preview).contains("Rendered");
+
+        String viewer = controller.workAreaViewer(workAreaId, "notes/todo.md");
+        assertThat(viewer).contains("id=\"avatar-workarea-modal\"");
+        assertThat(viewer).doesNotContain("id=\"avatar-workarea-preview\"");
 
         String editor = controller.workAreaTextEditor(workAreaId, "notes/todo.md");
         assertThat(editor).contains("textarea");
+        assertThat(editor).contains("hx-put=\"/avatar/_work-areas/" + workAreaId + "/text?path=notes%2Ftodo.md\"");
 
         String marked = controller.markNestedWorkArea(workAreaId, "notes", "Notes");
         assertThat(marked).contains("notes");
         assertThat(workAreaService.list(WorkspaceOwnerType.AGENT, "agent-1", false))
             .anySatisfy(workArea -> assertThat(workArea.displayName()).isEqualTo("Notes"));
+    }
+
+    @Test
+    void workAreaExplorerFragmentsExposeStableRoutesTargetsAndOperationForms() throws Exception {
+        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Home");
+        String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "agent-1", false).getFirst().id();
+        workAreaExplorerService.createDirectory(workAreaId, "notes");
+        workAreaExplorerService.createTextFile(workAreaId, "notes", "todo.txt");
+        workAreaExplorerService.saveText(workAreaId, "notes/todo.txt", "hello");
+
+        String shell = controller.workAreaExplorer(workAreaId, "notes", "notes/todo.txt");
+        assertThat(shell).contains("id=\"avatar-workarea-explorer-shell\"");
+        assertThat(shell).contains("id=\"avatar-workarea-list-region\"");
+        assertThat(shell).contains("id=\"avatar-workarea-inspector\"");
+        assertThat(shell).contains("id=\"avatar-workarea-modal\"");
+        assertThat(shell).contains("data-workarea-path=\"notes/todo.txt\"");
+        assertThat(shell).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/viewer?path=notes%2Ftodo.txt\"");
+        assertThat(shell).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/rename?path=notes%2Ftodo.txt\"");
+        assertThat(shell).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/delete?path=notes%2Ftodo.txt\"");
+
+        String list = controller.workAreaExplorerList(workAreaId, "notes", "notes/todo.txt");
+        assertThat(list).contains("id=\"avatar-workarea-list-region\"");
+        assertThat(list).contains("<th>Name</th>");
+        assertThat(list).contains("selected");
+
+        String inspect = controller.workAreaInspector(workAreaId, "notes/todo.txt");
+        assertThat(inspect).contains("id=\"avatar-workarea-inspector\"");
+        assertThat(inspect).contains("hx-post=\"/avatar/_work-areas/" + workAreaId + "/files/tags\"");
+        assertThat(inspect).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/copy?path=notes%2Ftodo.txt\"");
+        assertThat(inspect).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/move?path=notes%2Ftodo.txt\"");
+
+        String rename = controller.workAreaActionModal(workAreaId, "rename", "notes/todo.txt");
+        assertThat(rename).contains("hx-post=\"/avatar/_work-areas/" + workAreaId + "/files/rename\"");
+        assertThat(rename).contains("hx-target=\"#avatar-workarea-modal\"");
+
+        String copy = controller.workAreaActionModal(workAreaId, "copy", "notes/todo.txt");
+        assertThat(copy).contains("hx-post=\"/avatar/_work-areas/" + workAreaId + "/files/action/copy\"");
+        assertThat(copy).contains("name=\"destination\"");
+
+        String move = controller.workAreaActionModal(workAreaId, "move", "notes/todo.txt");
+        assertThat(move).contains("hx-post=\"/avatar/_work-areas/" + workAreaId + "/files/action/move\"");
+
+        String delete = controller.workAreaActionModal(workAreaId, "delete", "notes/todo.txt");
+        assertThat(delete).contains("hx-post=\"/avatar/_work-areas/" + workAreaId + "/files/delete\"");
+        assertThat(delete).contains("name=\"step\" value=\"FILE_CONFIRM\"");
+
+        String tag = controller.workAreaActionModal(workAreaId, "tag", "notes/todo.txt");
+        assertThat(tag).contains("hx-post=\"/avatar/_work-areas/" + workAreaId + "/files/tags\"");
+    }
+
+    @Test
+    void workAreaMutationsReturnOobRefreshesForListInspectorAndModal() throws Exception {
+        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Home");
+        String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "agent-1", false).getFirst().id();
+        workAreaExplorerService.createDirectory(workAreaId, "notes");
+        workAreaExplorerService.createDirectory(workAreaId, "archive");
+        workAreaExplorerService.createTextFile(workAreaId, "notes", "todo.txt");
+
+        String renamed = controller.renameWorkAreaPath(workAreaId, "notes/todo.txt", "renamed.txt");
+        assertOobRefresh(renamed);
+        assertThat(renamed).contains("renamed.txt");
+
+        String copied = controller.copyMoveWorkAreaPath(workAreaId, "copy", "notes/renamed.txt", "archive", "copy.txt");
+        assertOobRefresh(copied);
+        assertThat(copied).contains("copy.txt");
+
+        String moved = controller.copyMoveWorkAreaPath(workAreaId, "move", "archive/copy.txt", "notes", "moved.txt");
+        assertOobRefresh(moved);
+        assertThat(moved).contains("moved.txt");
+
+        String deleted = controller.deleteWorkAreaPathStep(workAreaId, "notes/moved.txt", "FILE_CONFIRM");
+        assertOobRefresh(deleted);
+        assertThat(deleted).contains("Deleted notes/moved.txt");
+    }
+
+    @Test
+    void workAreaViewerRejectsUnsupportedFilesAndTextSaveErrorsAreVisible() throws Exception {
+        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Home");
+        String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "agent-1", false).getFirst().id();
+        Files.write(tempDir.resolve("data/agents/agent-1/workspace/home/blob.bin"), new byte[] {0, 1, 2, 3});
+
+        String unsupported = controller.workAreaViewer(workAreaId, "blob.bin");
+        assertThat(unsupported).contains("id=\"avatar-workarea-modal\"");
+        assertThat(unsupported).contains("Viewer unavailable for this file type or size.");
+
+        String save = controller.saveWorkAreaText(workAreaId, "blob.bin", "oops");
+        assertThat(save).contains("id=\"avatar-workarea-modal\"");
+        assertThat(save).contains("Save failed");
+        assertThat(save).contains("not safe for text editing");
+    }
+
+    @Test
+    void workAreaTagRoutesCreateAssignAndRemoveCustomTags() throws Exception {
+        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Home");
+        String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "agent-1", false).getFirst().id();
+        workAreaExplorerService.createDirectory(workAreaId, "notes");
+
+        String created = controller.createWorkAreaTag(workAreaId, "project-alpha", "Project Alpha");
+        assertThat(created).contains("Tag is ready to assign: project-alpha");
+
+        String added = controller.addWorkAreaTag(workAreaId, "notes", "project-alpha");
+        assertOobRefresh(added);
+        assertThat(added).contains("id=\"avatar-workarea-inspector\"");
+        assertThat(added).contains("project-alpha");
+        assertThat(added).contains("hx-delete=\"/avatar/_work-areas/" + workAreaId + "/files/tags?path=notes&amp;label=project-alpha\"");
+
+        String removed = controller.removeWorkAreaTag(workAreaId, "notes", "project-alpha");
+        assertOobRefresh(removed);
+        assertThat(removed).contains("Tag removed");
+        assertThat(removed).contains("No tags");
+    }
+
+    @Test
+    void workAreaFragmentValidationErrorsReturnVisibleFragments() {
+        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Home");
+        String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "agent-1", false).getFirst().id();
+
+        assertThat(controller.workAreaExplorerList(workAreaId, "../escape", null))
+            .contains("id=\"avatar-workarea-list-region\"")
+            .contains("path escapes Work Area");
+        assertThat(controller.workAreaInspector(workAreaId, "../escape"))
+            .contains("id=\"avatar-workarea-inspector\"")
+            .contains("path escapes Work Area");
+        assertThat(controller.workAreaActionModal(workAreaId, "delete", "../escape"))
+            .contains("id=\"avatar-workarea-modal\"")
+            .contains("Action unavailable");
+    }
+
+    private void assertOobRefresh(String html) {
+        assertThat(html).contains("id=\"avatar-workarea-modal\" hx-swap-oob=\"true\"");
+        assertThat(html).contains("id=\"avatar-workarea-list-region\" class=\"workspace-explorer-table-region\" hx-swap-oob=\"true\"");
+        assertThat(html).contains("id=\"avatar-workarea-inspector\" class=\"file-explorer-inspector-pane\" hx-swap-oob=\"true\"");
     }
 
     @Test

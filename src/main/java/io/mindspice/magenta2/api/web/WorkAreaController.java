@@ -11,6 +11,7 @@ import io.mindspice.magenta2.ai.orchestration.workspaces.WorkArea;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaExplorerService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceFileActionRecord;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceFileLabel;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceFileLabelAssignment;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceOwnerType;
 import org.springframework.core.io.InputStreamResource;
@@ -242,6 +243,14 @@ public class WorkAreaController {
         return explorerService.labels(workAreaId, path);
     }
 
+    @PostMapping("/{workAreaId}/tags")
+    public WorkspaceFileLabel createTag(
+        @PathVariable String workAreaId,
+        @RequestBody TagRequest request
+    ) {
+        return explorerService.ensureTag(request.label(), request.displayName());
+    }
+
     @PostMapping("/{workAreaId}/files/labels")
     public WorkspaceFileLabelAssignment addLabel(
         @PathVariable String workAreaId,
@@ -361,5 +370,8 @@ public class WorkAreaController {
     }
 
     public record LabelRequest(String path, String label) {
+    }
+
+    public record TagRequest(String label, String displayName) {
     }
 }

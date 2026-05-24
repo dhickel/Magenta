@@ -17,7 +17,7 @@ Living document. Workers and validators append concise entries here. Email coord
 | --- | --- | --- | --- | --- | --- | --- |
 | Phase 01 research/spec reconciliation | complete | implementation_worker | not committed per directive | command evidence recorded below | not sent by worker directive | Branch/source drift reconciled; only this notes file changed. |
 | Phase 02 domain services and tags | complete | implementation_worker | not committed per directive | targeted command passed | not sent by worker directive | Rich domain entry data, service-level custom tag ensure, directory/file tag follow-copy-delete tests, nested symlink mutation hardening. |
-| Phase 03 API and fragments | pending | unassigned | pending | pending | pending | Controller/fragment contract. |
+| Phase 03 API and fragments | complete | implementation_worker | not committed per directive | targeted command passed | not sent by worker directive | Stable Avatar HTMX fragment contracts, viewer/tag routes, OOB mutation refreshes, and controller tests. |
 | Phase 04 file explorer UI rewrite | pending | unassigned | pending | pending | pending | Details/list UI, no cards. |
 | Phase 05 viewer/copy/move/rename/delete | pending | unassigned | pending | pending | pending | Viewer and operation completion. |
 | Phase 06 docs closeout and gate validation | pending | unassigned | pending | pending | pending | Docs, changelog, focus, final validation. |
@@ -67,6 +67,11 @@ YYYY-MM-DD phase=<phase> decision=<decision> rationale=<short rationale> source=
 2026-05-24 phase=Phase 02 decision=kept existing workspace_file_labels/workspace_file_label_assignments schema rationale=existing label schema supports custom tags plus file and directory assignments with subtree move/copy/delete source=WorkspaceFileMetadataRepositoryTest
 2026-05-24 phase=Phase 02 decision=added rich WorkAreaExplorerService.Entry fields instead of a separate index service rationale=UI needs row/detail metadata from confined service without background scanning or controller filesystem logic source=WorkAreaExplorerService.java
 2026-05-24 phase=Phase 02 decision=reject nested symlink trees before rename and move rationale=copy/delete already validated trees; rename/move must not preserve or relocate symlink escapes through managed mutations source=WorkAreaExplorerServiceTest
+2026-05-24 phase=Phase 03 decision=added Magenta-local WorkAreaExplorerFragments helper under api/web rationale=Phase 03 needed stable HTMX target IDs and OOB fragment contracts without editing SimplyPages upstream or doing a CSS/JS visual rewrite source=WorkAreaExplorerFragments.java
+2026-05-24 phase=Phase 03 decision=kept controllers thin by delegating list/inspect/preview/mutation/tag behavior to WorkAreaExplorerService rationale=negative checks forbid controller filesystem resolution and Phase 02 already exposed the required domain methods source=AvatarDashboardController.java
+2026-05-24 phase=Phase 03 decision=mutation routes return modal-clear, list, and inspector fragments with hx-swap-oob rationale=table-only refreshes can leave stale inspect/modal state and violate the target contract source=AvatarDashboardControllerTest
+2026-05-24 phase=Phase 03 fix decision=preserved legacy preview target separately from viewer modal rationale=existing AvatarDashboardComponents callers still target avatar-workarea-preview while the new viewer route owns avatar-workarea-modal source=validation failure summary
+2026-05-24 phase=Phase 03 fix decision=made tag add/remove routes return modal-clear, list, and inspector OOB fragments rationale=tag mutations must not leave stale table/modal/inspector state or swap inspector markup into the modal target source=validation failure summary
 
 ## Validation Evidence
 
@@ -79,6 +84,15 @@ YYYY-MM-DD phase=<phase> command=<command> result=<pass|fail|blocked> evidence=<
 2026-05-24 phase=Phase 02 command=mvn test -Dtest=WorkAreaExplorerServiceTest,WorkspaceFileMetadataRepositoryTest,WorkspaceFileMetadataServiceTest,WorkspaceFileActionLogRepositoryTest result=pass evidence=16 tests run, 0 failures, 0 errors, 0 skipped; covered rich entry metadata, custom tag ensure, file/directory tags, tag follow/copy/delete, protected delete, traversal/collision checks, nested symlink mutation rejection, and action logging
 2026-05-24 phase=Phase 02 command=mvn test -Dtest=WorkAreaControllerTest result=pass evidence=9 tests run, 0 failures, 0 errors, 0 skipped; validator used this as API compatibility evidence for expanded Entry record
 2026-05-24 phase=Phase 02 command=validation_redteam_agent result=pass evidence=edit scope allowed, rich row/detail data present, tag lifecycle and subtree semantics covered, root/symlink safety covered, action logging covered, no repo-local email ledger present, git diff --check clean
+2026-05-24 phase=Phase 03 command=mvn test -Dtest=WorkAreaControllerTest,AvatarDashboardControllerTest,WorkAreaExplorerServiceTest result=fail evidence=initial run failed at test compilation because AvatarDashboardControllerTest used java.nio.file.Files without import
+2026-05-24 phase=Phase 03 command=mvn test -Dtest=WorkAreaControllerTest,AvatarDashboardControllerTest,WorkAreaExplorerServiceTest result=fail evidence=second run executed tests but found unescaped ampersand in tag removal hx-delete attribute; fixed fragment output
+2026-05-24 phase=Phase 03 command=mvn test -Dtest=WorkAreaControllerTest,AvatarDashboardControllerTest,WorkAreaExplorerServiceTest result=pass evidence=33 tests run, 0 failures, 0 errors, 0 skipped; covered route success, validation fragments, unsupported viewer behavior, tags, operation forms, stable target IDs, and OOB refreshes
+2026-05-24 phase=Phase 03 command=git diff --check result=pass evidence=no whitespace errors reported after final targeted test pass
+2026-05-24 phase=Phase 03 command=git status --short result=pass evidence=dirty files limited to Phase 03 allowed Java/test files, new api/web helper, and shared implementation notes
+2026-05-24 phase=Phase 03 fix command=validation_redteam_agent result=fail evidence=tag add/remove returned only inspector fragments and preview route returned avatar-workarea-modal while legacy callers target avatar-workarea-preview
+2026-05-24 phase=Phase 03 fix command=mvn test -Dtest=WorkAreaControllerTest,AvatarDashboardControllerTest,WorkAreaExplorerServiceTest result=fail evidence=initial fix attempts exposed incorrect WorkAreaExplorerFragments formatter arguments that rendered inspector fragments with avatar-workarea-modal id
+2026-05-24 phase=Phase 03 fix command=mvn test -Dtest=WorkAreaControllerTest,AvatarDashboardControllerTest,WorkAreaExplorerServiceTest result=pass evidence=33 tests run, 0 failures, 0 errors, 0 skipped; tag add/remove assert OOB modal/list/inspector targets and preview/viewer compatibility is covered
+2026-05-24 phase=Phase 03 fix command=git diff --check result=pass evidence=no whitespace errors reported
 
 ## Blockers And Remediation
 
@@ -89,6 +103,7 @@ YYYY-MM-DD phase=<phase> blocker=<description> owner=<worker|validator|user> rem
 ```
 
 2026-05-24 phase=Phase 01 blocker=validator found empty removed email ledger directory still present on disk owner=orchestrator remediation=removed empty directory with rmdir and reran absence check status=resolved
+2026-05-24 phase=Phase 03 fix blocker=tag add/remove responses and preview compatibility failed validation owner=worker remediation=return OOB list/inspector/modal fragments for tag add/remove and restore legacy preview fragment while keeping viewer modal route status=resolved
 
 ## Email Gate Records
 

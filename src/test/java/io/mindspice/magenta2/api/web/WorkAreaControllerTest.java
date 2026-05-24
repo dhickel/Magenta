@@ -67,6 +67,9 @@ class WorkAreaControllerTest {
             "a.txt", "notes/a.txt", false, true, 10, Instant.now()
         );
         WorkspaceFileLabel label = new WorkspaceFileLabel("l1", "note", "Note", null, true, "{}", Instant.now(), Instant.now());
+        WorkspaceFileLabel customLabel = new WorkspaceFileLabel(
+            "l2", "project-alpha", "Project Alpha", null, false, "{}", Instant.now(), Instant.now()
+        );
         WorkspaceFileLabelAssignment assignment = new WorkspaceFileLabelAssignment(
             "as1", "ws1", WorkspaceOwnerType.AGENT, "agent-1", "home/notes/a.txt", "home/notes/a.txt",
             label, "{}", Instant.now(), Instant.now()
@@ -75,6 +78,7 @@ class WorkAreaControllerTest {
         when(explorerService.createMarkdownFile("wa-1", "notes", "a.md")).thenReturn(entry);
         when(explorerService.move("wa-1", "notes/a.txt", "archive", "b.txt")).thenReturn(entry);
         when(explorerService.copy("wa-1", "notes/a.txt", "archive", "c.txt")).thenReturn(entry);
+        when(explorerService.ensureTag("project-alpha", "Project Alpha")).thenReturn(customLabel);
         when(explorerService.addLabel("wa-1", "notes/a.txt", "note")).thenReturn(assignment);
         when(explorerService.labels("wa-1", "notes/a.txt")).thenReturn(List.of(assignment));
         when(explorerService.removeLabel("wa-1", "notes/a.txt", "note")).thenReturn(1);
@@ -87,6 +91,8 @@ class WorkAreaControllerTest {
             .isEqualTo("notes/a.txt");
         assertThat(controller.copy("wa-1", new WorkAreaController.MoveCopyRequest("notes/a.txt", "archive", "c.txt")).path())
             .isEqualTo("notes/a.txt");
+        assertThat(controller.createTag("wa-1", new WorkAreaController.TagRequest("project-alpha", "Project Alpha")).slug())
+            .isEqualTo("project-alpha");
         assertThat(controller.addLabel("wa-1", new WorkAreaController.LabelRequest("notes/a.txt", "note")).label().slug())
             .isEqualTo("note");
         assertThat(controller.labels("wa-1", "notes/a.txt")).hasSize(1);
