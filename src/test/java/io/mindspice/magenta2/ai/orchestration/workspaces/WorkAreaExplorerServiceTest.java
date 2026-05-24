@@ -1,7 +1,9 @@
 package io.mindspice.magenta2.ai.orchestration.workspaces;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Map;
 
 import io.mindspice.magenta2.ai.config.user.AiConfig;
@@ -22,6 +24,7 @@ class WorkAreaExplorerServiceTest {
         TestContext context = context();
         WorkArea home = context.workAreaService().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);
         context.explorer().createDirectory(home.id(), "notes");
+        context.explorer().createMarkdownFile(home.id(), "notes", "todo.md");
         context.explorer().saveText(home.id(), "notes/todo.md", "hello\n");
 
         WorkAreaExplorerService.DirectoryListing listing = context.explorer().list(home.id(), "notes");
@@ -118,6 +121,39 @@ class WorkAreaExplorerServiceTest {
     }
 
     @Test
+    void previewsNormalSizeLargeTextAndMarkdownWithUtf8Validation() throws Exception {
+        TestContext context = context();
+        WorkArea home = context.workAreaService().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);
+        Path notes = Files.createDirectories(tempDir.resolve("data/agents/agent-1/workspace/home/notes"));
+        String largeMarkdown = "# Heading\n" + "body\n".repeat(70_000);
+        Files.writeString(notes.resolve("large.md"), largeMarkdown, StandardCharsets.UTF_8);
+        byte[] invalid = new byte[300 * 1024];
+        Arrays.fill(invalid, (byte) 'a');
+        invalid[invalid.length - 1] = (byte) 0xFF;
+        Files.write(notes.resolve("invalid.txt"), invalid);
+
+        WorkAreaExplorerService.FilePreview markdown = context.explorer().preview(home.id(), "notes/large.md");
+        WorkAreaExplorerService.FilePreview invalidPreview = context.explorer().preview(home.id(), "notes/invalid.txt");
+
+        assertThat(markdown.text()).isTrue();
+        assertThat(markdown.kind()).isEqualTo("markdown");
+        assertThat(markdown.requiresWarning()).isFalse();
+        assertThat(markdown.content()).isEqualTo(largeMarkdown);
+        assertThat(invalidPreview.text()).isFalse();
+        assertThat(invalidPreview.kind()).isEqualTo("invalid_utf8");
+    }
+
+    @Test
+    void saveTextRequiresExistingFile() throws Exception {
+        TestContext context = context();
+        WorkArea home = context.workAreaService().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);
+
+        assertThatThrownBy(() -> context.explorer().saveText(home.id(), "missing/new.txt", "hello"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("does not exist");
+    }
+
+    @Test
     void rejectsTraversalBinaryTextSaveAndHomeDelete() throws Exception {
         TestContext context = context();
         WorkArea home = context.workAreaService().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);
@@ -128,6 +164,7 @@ class WorkAreaExplorerServiceTest {
         assertThatThrownBy(() -> context.explorer().list(home.id(), "C:\\Windows\\system32"))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("absolute paths");
+        Files.writeString(tempDir.resolve("data/agents/agent-1/workspace/home/image.png"), "not image");
         assertThatThrownBy(() -> context.explorer().saveText(home.id(), "image.png", "not image"))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("not safe for text editing");

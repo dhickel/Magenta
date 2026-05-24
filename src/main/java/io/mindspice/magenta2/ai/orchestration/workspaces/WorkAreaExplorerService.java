@@ -24,7 +24,6 @@ public class WorkAreaExplorerService {
     private static final long NORMAL_TEXT_BYTES = 10L * 1024 * 1024;
     private static final long NORMAL_MARKDOWN_BYTES = 5L * 1024 * 1024;
     private static final long HARD_EDIT_BYTES = 25L * 1024 * 1024;
-    private static final long MAX_PREVIEW_BYTES = 256 * 1024;
 
     private final WorkAreaService workAreaService;
     private final WorkspaceFileMetadataService metadataService;
@@ -83,8 +82,9 @@ public class WorkAreaExplorerService {
             }
             long normalLimit = isMarkdownPath(file) ? NORMAL_MARKDOWN_BYTES : NORMAL_TEXT_BYTES;
             boolean requiresWarning = size > normalLimit;
-            if (size > MAX_PREVIEW_BYTES) {
-                return new FilePreview(relative, size, true, null, requiresWarning, "text");
+            String kind = isMarkdownPath(file) ? "markdown" : "text";
+            if (requiresWarning) {
+                return new FilePreview(relative, size, true, null, true, kind);
             }
             String text = readUtf8(file);
             if (text == null) {
@@ -96,7 +96,7 @@ public class WorkAreaExplorerService {
                 true,
                 stripBom(text),
                 requiresWarning,
-                isMarkdownPath(file) ? "markdown" : "text"
+                kind
             );
         } catch (IOException exception) {
             throw new IllegalStateException("failed to preview file", exception);
@@ -115,7 +115,7 @@ public class WorkAreaExplorerService {
     public FilePreview saveText(String workAreaId, String relativePath, String content) {
         WorkArea area = workAreaService.get(workAreaId);
         Path root = workAreaService.resolve(area);
-        Path file = resolveForWrite(root, relativePath);
+        Path file = resolveExisting(root, relativePath);
         if (!isSafeTextPath(file)) {
             throw new IllegalArgumentException("file type is not safe for text editing");
         }
@@ -125,14 +125,13 @@ public class WorkAreaExplorerService {
             throw new IllegalArgumentException("text file is too large");
         }
         try {
-            if (Files.exists(file, LinkOption.NOFOLLOW_LINKS) && !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+            if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
                 throw new IllegalArgumentException("path is not a regular file");
             }
-            if (Files.exists(file, LinkOption.NOFOLLOW_LINKS) && readUtf8(file) == null) {
+            if (readUtf8(file) == null) {
                 throw new IllegalArgumentException("file is not valid UTF-8");
             }
-            String lineEnding = Files.exists(file, LinkOption.NOFOLLOW_LINKS) ? dominantLineEnding(file) : "\n";
-            Files.createDirectories(file.getParent());
+            String lineEnding = dominantLineEnding(file);
             Files.write(file, applyLineEnding(normalizedContent, lineEnding).getBytes(StandardCharsets.UTF_8));
             log(area, isMarkdownPath(file) ? WorkspaceFileActionType.SAVE_MARKDOWN : WorkspaceFileActionType.SAVE_TEXT,
                 rootRelative(area, root, file), null, "SUCCEEDED", "{\"bytes\":" + Files.size(file) + "}");
