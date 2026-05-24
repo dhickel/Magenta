@@ -126,7 +126,7 @@ Current issue:
 
 ## Known Dirty State
 
-- Magenta worktree has user-modified `.internal-dev/inbox/queue.md` and `.internal-dev/inbox/read.md`; do not touch.
+- The previous repo-local email ledger has been removed; use direct AgentMail daemon/wait state.
 - SimplyPages checkout currently has unrelated dirty files (`.idea/workspace.xml`, `demo/pom.xml`, `docs/core/05-css-defaults-overrides-and-structure.md`, `pom.xml`, `simplypages/pom.xml`, `.gemini/`, `demo/.playwright-mcp/`). Upstream implementation must not overwrite these.
 
 ## Risk Summary

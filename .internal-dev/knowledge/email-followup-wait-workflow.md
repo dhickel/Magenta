@@ -17,6 +17,7 @@ Reusable closeout email reports and low-token reply waits should live in a globa
 - `~/.codex/skills/email-followup-wait/SKILL.md`
 - `~/.codex/skills/email-followup-wait/scripts/wait-for-reply`
 - `~/.codex/skills/agentmail/scripts/agentmail`
+- `~/.codex/skills/agentmail/scripts/mailctl`
 - `AGENTS.md`
 
 ## Key Takeaways
@@ -26,10 +27,11 @@ Reusable closeout email reports and low-token reply waits should live in a globa
 - Use script-driven polling for the waiting phase so sleeping and checking mail do not consume model tokens.
 - Default wait policy is a 6-hour cap, 5-minute polling for the first hour, and 10-minute polling afterward.
 - Process qualifying replies on the main thread before dispatching subagents.
+- For long-running remote work, use `mailctl remote-on`, `mailctl status`, `mailctl next`, and `mailctl wait` directly. Do not add a repo-local email ledger between AgentMail and the main-thread dispatcher.
 
 ## Engine Relevance
 
-This pattern supports “email me when done and continue if I reply” without making every repo carry a long email report schema. It also gives Magenta a future durable-wait target if the workflow needs to survive process restarts.
+This pattern supports “email me when done and continue if I reply” without making every repo carry a long email report schema or a separate local message ledger. It also gives Magenta a future durable-wait target if the workflow needs to survive process restarts.
 
 ## Open Questions
 

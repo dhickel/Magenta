@@ -26,7 +26,6 @@ No product code, tests, docs outside this plan directory, schemas, config, or ru
 - Downstream agents must read `00-specification-lock.md` first, then the artifact matching their assigned lane.
 - Implementation must start on a dedicated branch before phase work begins.
 - Commit after each completed implementation phase.
-- Do not touch user-modified `.internal-dev/inbox/queue.md` or `.internal-dev/inbox/read.md` unless the user explicitly asks or the inbox workflow itself becomes the task.
+- Use direct AgentMail daemon/wait state; do not recreate a repo-local email ledger.
 - Magenta-specific services own workspace roots, path confinement, DB metadata, tags, action logging, Work Area semantics, and Avatar integration.
 - SimplyPages owns reusable rendering modules, HTMX fragment patterns, picker/explorer shells, confirmation UI patterns, inspector slots, card/list rendering primitives, and generic viewer/editor shells.
-

@@ -17,7 +17,7 @@ Dependencies:
 Exact targets:
 
 - Create dedicated branch, suggested: `feature/workspace-file-explorer`.
-- Verify Magenta dirty state and preserve `.internal-dev/inbox/queue.md`, `.internal-dev/inbox/read.md`.
+- Verify Magenta dirty state and use direct AgentMail daemon/wait state; do not recreate a repo-local email ledger.
 - Re-read relevant `AGENTS.md` files before code edits.
 - Record any newly discovered blockers in the plan progress artifact if the orchestrator creates one.
 
@@ -33,7 +33,7 @@ Validation:
 Stop conditions:
 
 - Stop if unrelated dirty files overlap intended edit targets.
-- Stop if user-modified inbox files are needed for implementation.
+- Stop if implementation proposes recreating a repo-local email ledger.
 
 Senior Engineer Notes:
 
@@ -539,4 +539,3 @@ Stop conditions:
 Senior Engineer Notes:
 
 Playwright here is not just route smoke testing. The validator must inspect spacing, density, scan hierarchy, mobile stacking, first-viewport usefulness, overflow, and whether the explorer feels like an operational file tool rather than a form-heavy modal.
-

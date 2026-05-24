@@ -95,7 +95,7 @@ Memory-derived guidance:
 
 ## Constraints
 
-- Preserve user-modified `.internal-dev/inbox/queue.md` and `.internal-dev/inbox/read.md`.
+- Use direct AgentMail daemon/wait state; the prior repo-local email ledger has been removed.
 - Use existing Magenta package boundaries: web/API under `io.mindspice.magenta2.api`, workspace behavior under `ai.orchestration.workspaces`, Avatar data under `avatar`, shared utility under `core`.
 - Controllers remain thin; services own use-case behavior; repositories own persistence.
 - Request/response payloads and internal carriers should use Java records where practical.

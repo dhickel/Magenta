@@ -14,7 +14,7 @@ Key execution rule: Magenta mutations run one phase at a time, with a validation
 Current baseline observed for this orchestration pass:
 
 - Magenta branch: `feature/workspace-file-explorer`.
-- Dirty user files to preserve: `.internal-dev/inbox/queue.md`, `.internal-dev/inbox/read.md`.
+- Email workflow: use direct AgentMail daemon/wait state; do not recreate the removed repo-local email ledger.
 - Plan suite is uncommitted under `.internal-dev/plans/workspace-file-explorer/`.
 - Implementation target branch is already the requested `feature/workspace-file-explorer`; Phase 1 may start directly after a final `git status --short` confirms no overlap with assigned files.
 
@@ -68,7 +68,7 @@ Expected changed files: none, unless updating this orchestration artifact.
 Gate:
 
 - Confirm branch is `feature/workspace-file-explorer`; create/switch only if not already there.
-- Confirm `.internal-dev/inbox/queue.md` and `.internal-dev/inbox/read.md` remain untouched by workers.
+- Confirm no repo-local email ledger is recreated by workers.
 - Stop if dirty files overlap Phase 1 targets.
 
 Commit gate: no commit unless planning/progress artifacts are intentionally added.
@@ -108,7 +108,7 @@ git add <Phase 1 changed files only>
 git commit -m "Add workspace file explorer domain foundation"
 ```
 
-Do not stage `.internal-dev/inbox/queue.md` or `.internal-dev/inbox/read.md`.
+Do not recreate or stage a repo-local email ledger.
 
 ### Phase 2: Viewer, Editor, And API Contracts
 
@@ -341,7 +341,7 @@ Read first, in this order:
 8. src/main/java/io/mindspice/magenta2/ai/orchestration/AGENTS.md
 9. src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/AGENTS.md, if present/relevant
 
-Do not touch .internal-dev/inbox/queue.md or .internal-dev/inbox/read.md.
+Do not recreate a repo-local email ledger.
 Do not edit UI, controllers, docs, Avatar files, SimplyPages files, or closeout files in this phase unless a package guide update is required by a material responsibility change.
 
 Ownership boundary:
@@ -398,7 +398,7 @@ Read first:
 7. .internal-dev/plans/workspace-file-explorer/execution-orchestration.md
 8. Phase 1 worker's final report and changed-file list
 
-Do not touch .internal-dev/inbox/queue.md or .internal-dev/inbox/read.md.
+Do not recreate a repo-local email ledger.
 Do not edit product code. Do not run Playwright for Phase 1 unless the orchestrator expands scope; Phase 1 is service/schema/repository validation.
 
 Validate:
@@ -459,4 +459,3 @@ Before final user report after implementation:
 - `.internal-dev/changelogs/`, `.internal-dev/knowledge/`, `.internal-dev/focus/unfinished-work.md`, `.internal-dev/focus/architecture-focus.md`, and `.internal-dev/focus/decisions.md` are updated only where applicable.
 - Bugs discovered out of scope are logged under `.internal-dev/bugs/` and mirrored to GitHub Issues.
 - Final validation report includes command results, Spring startup result, Playwright screenshot paths, pass/fail by AC/VC, browser console/network notes, blocker/remediation history, commits, PR links, and residual risks.
-

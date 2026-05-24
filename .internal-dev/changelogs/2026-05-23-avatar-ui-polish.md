@@ -22,7 +22,7 @@ Implemented the follow-up Avatar UI polish pass approved from the high-level UI 
 - Constrained noisy todo and daily-task lists with bounded scroll areas and summary text when more items exist than are shown.
 - Added a scoped Avatar control baseline so buttons, inputs, selects, and textareas align with the Magenta operational style while preserving micro editor controls.
 - Updated controller tests to assert the new focused picker, compact empty-row behavior, and chat status contract.
-- Added `.internal-dev/inbox` in a preceding commit to track AgentMail instructions during long-running remote work.
+- A preceding commit briefly added a repo-local AgentMail instruction ledger; that workflow was later superseded by direct daemon/wait dispatch.
 
 ## Validation
 

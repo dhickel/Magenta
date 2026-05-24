@@ -21,7 +21,7 @@ Mutating:
 Checks:
 
 - `git status --short`.
-- Confirm user inbox files untouched.
+- Confirm no repo-local email ledger is recreated.
 
 Commit:
 
@@ -168,7 +168,7 @@ Read:
 5. The assigned work-unit section in 03-domain-work-units.md
 6. Any package AGENTS.md for files you edit
 
-Do not touch .internal-dev/inbox/queue.md or .internal-dev/inbox/read.md.
+Do not recreate a repo-local email ledger.
 Keep controllers thin and services responsible.
 Use SimplyPages/HTMX patterns for UI.
 Stop if path confinement, encoding, tag-follow, action logging, or dirty-worktree overlap is uncertain.
@@ -235,4 +235,3 @@ Final implementation report must include:
 - Playwright screenshot artifact paths.
 - Known blockers/deferred items.
 - `.internal-dev` artifacts created/updated.
-
