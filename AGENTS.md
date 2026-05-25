@@ -1,15 +1,20 @@
 <!-- BEGIN INTERNAL-DEV WORKFLOW -->
 ## `.internal-dev` Development Document Store
 
-`.internal-dev/` is the persistent engineering document store for plans, bugs, changelogs, reviews, notes, reusable knowledge, and living focus records.
+`.internal-dev/` is the persistent engineering document store for specifications, plans, bugs, changelogs, reviews, and reusable knowledge.
 
 ### Required workflow
-- Before beginning non-trivial implementation or planning, perform the `.internal-dev` beginning pass: read `.internal-dev/focus/AGENTS.md`, then read only the focus files relevant to the task such as `current-focus.md`, `unfinished-work.md`, `architecture-focus.md`, or `decisions.md`.
-- After each feature implementation or non-trivial fix, complete the full `.internal-dev` workflow: write a changelog entry, record any out-of-scope bugs discovered, capture reusable knowledge, and note deferred ideas.
-- During the closeout workflow, update `.internal-dev/focus/unfinished-work.md` for work intentionally left incomplete, blocked, paused, handed off, resumed, or closed.
-- During closeout, check `.internal-dev/focus/current-focus.md`; if the completed work appears to finish, obsolete, or materially change the long-term focus, report the stale focus to the user instead of silently rewriting the project direction.
-- During closeout, update `.internal-dev/focus/architecture-focus.md` and `.internal-dev/focus/decisions.md` when architecture direction or durable decisions change; back reusable decisions with `.internal-dev/knowledge/` entries when appropriate.
-- After completing the `.internal-dev` workflow for a task, create a git commit that includes both the implementation and the `.internal-dev` updates.
+- Before non-trivial implementation or planning, read the relevant files in `.internal-dev/specifications/` before changing services, APIs, web pages or fragments, SimplyPages modules, architecture, persistence, workflow behavior, or product contracts.
+- Before non-trivial work, list or search `.internal-dev/knowledge/` filenames and read only files whose domain matches the task.
+- When lost, blocked by project context, or correcting a false assumption, search `.internal-dev/knowledge/` filenames again, then run a deeper grep across `.internal-dev/knowledge/` before inventing a new explanation.
+- Use web or official documentation when the missing information is external framework, library, tool, protocol, or platform behavior and local knowledge is absent or stale.
+- Mid-workflow, route intended contracts to specifications, durable tradeoffs to `specifications/decisions.md`, reusable learning to knowledge, prior edit context to changelogs, defects to bugs, and scoped handoffs to plans or reviews.
+- When a false assumption, repeated mistake, major correction, important user correction, or repeated reverification reveals reusable context, update a domain-named knowledge file and link the affected specification or changelog when useful.
+- User hints like "future", "eventually", "later", or "this will become" go to `specifications/horizon-ideas.md` unless accepted as deferred product capability.
+- Accepted future product capability goes to `specifications/deferred-features.md`.
+- Durable architecture, design, product, and workflow decisions go to `specifications/decisions.md` with justification, alternatives or tradeoffs when known, caveats, affected specs, source, and review timing.
+- After each feature implementation or non-trivial fix, complete the full `.internal-dev` closeout: update affected specifications, knowledge, bugs, changelogs, plans, and reviews; do not route active workflow material to retired focus or notes stores.
+- After completing the `.internal-dev` workflow for a task, create a git commit that includes both the implementation and the `.internal-dev` updates unless the user explicitly says not to commit.
 - When beginning implementation of a multi-phase plan, create a dedicated git branch for that plan before phase work starts.
 - For multi-phase plans, commit completed work at the end of each phase on that dedicated branch.
 - For any feature or non-trivial fix, update relevant docs in `docs/`: end-user docs for behavior changes, technical docs for architecture/API/service/schema/config changes, and API docs for route or payload changes.
@@ -18,9 +23,6 @@
 - If this project has a GitHub repository, every `.internal-dev/bugs/` report must be mirrored directly to the GitHub repository as a GitHub Issue when it is created or compiled.
 - When adding or updating a local bug report in a project with a GitHub repository, check for related closed GitHub Issues before finishing; if the corresponding issue is already closed, move the local bug report to `.internal-dev/bugs/.archive/` instead of leaving it active.
 - Finalized work gets a changelog entry in `.internal-dev/changelogs/`.
-- Reusable insights go to `.internal-dev/knowledge/`.
-- Deferred future ideas go to `.internal-dev/notes/` after confirming they are out of scope.
-- Raw or semi-raw ideas that need later triage go to `.internal-dev/focus/ideas-inbox.md`; curated future targets go to `.internal-dev/focus/horizon-ideas.md`.
 - Move finalized bug/plan artifacts to sibling `.archive/` directories.
 
 ### Controlled access
@@ -29,7 +31,7 @@
 
 ### Reference guide
 - Process and templates: `.internal-dev/AGENTS.md`
-- Focus schemas and maintenance rules: `.internal-dev/focus/AGENTS.md`
+- Specification routing and schemas: `.internal-dev/specifications/AGENTS.md`
 
 ### Email work summary reports
 When the user asks for a work summary by email, especially after long-running orchestration plans, multi-hour remediation loops, validation campaigns, or multi-phase implementation work, use the global `email-followup-wait` skill. That skill owns the renderable HTML/plain-text report schema, optional reply-wait workflow, and low-token AgentMail polling cadence.
@@ -83,10 +85,10 @@ This is the style we want to take with our UI.
 - Prefer in-place decorated editing for layout operations. Moving, resizing, adding rows, adding modules/widgets, and deleting layout elements should happen on the real displayed layout whenever practical, not in a separate layout-only modal.
 - Modal or drawer editing is appropriate for deep module-specific iteration, but it must not own dashboard placement, row ordering, or 12-column sizing.
 - For dashboard/module editing, the SimplyPages demo pattern is the baseline: real module cards first, small top-corner decorators, centered add-module controls, and low-emphasis insert-row separators. Do not approve large text-heavy row/widget editor blocks that push content down or make the actual page look like an editor form.
-- When a scratch page is useful for planning or visual experiments, create it as an internal/dev-only surface, keep it out of normal navigation, and use it only to validate ideas with Playwright. Never treat scratch pages as source-of-truth documentation; extract stable examples and lessons into production components, docs, or `.internal-dev/knowledge/`.
+- When a scratch page is useful for planning or visual experiments, create it as an internal/dev-only surface, keep it out of normal navigation, and use it only to validate ideas with Playwright. Never treat scratch pages as source-of-truth documentation; extract stable examples and lessons into production components, docs, `.internal-dev/knowledge/`, or `.internal-dev/specifications/`.
 
 #### Avatar Dashboard Style Reference
-- Before redesigning `/avatar` or adding Avatar dashboard-like surfaces, read `.internal-dev/notes/2026-05-22-avatar-dashboard-ui-style-guidelines.md`.
+- Before redesigning `/avatar` or adding Avatar dashboard-like surfaces, read `.internal-dev/specifications/web.md` and `.internal-dev/specifications/simplypages.md`.
 - Keep Avatar styling aligned with the existing `/dashboard` and per-agent dashboard operational console: dense panels, compact controls, thin blue-gray borders, small radii, semantic chips, and HTMX-first fragments.
 - For Avatar layout/editing work, also read `.internal-dev/knowledge/simplypages-avatar-layout-and-editing.md`.
 - For Avatar Work Area boundary and persistence decisions, read `.internal-dev/knowledge/avatar-work-area-ui-refactor.md`.
@@ -122,7 +124,7 @@ If you find a bug pull the recent version of the library and directly implement 
 - Services should own use-case behavior and avoid persistence or transport details leaking into callers.
 - Repositories should own persistence details and keep schema assumptions localized.
 - Request/response payloads and internal data carriers should use Java records where practical.
-- For workspace, output, project, job, task/plan, and workflow architecture work, read `.internal-dev/notes/current-architecture-focus.md` as the current intended direction before planning or editing. In current code and docs, `task` and `plan` may be used interchangeably; prefer `task` for user-facing executable work while preserving existing compatibility until a deliberate rename is planned.
+- For workspace, output, project, job, task/plan, and workflow architecture work, read `.internal-dev/specifications/architecture.md`, `.internal-dev/specifications/service-graph.md`, `.internal-dev/specifications/services.md`, and `.internal-dev/specifications/api.md` as the current intended direction before planning or editing. In current code and docs, `task` and `plan` may be used interchangeably; prefer `task` for user-facing executable work while preserving existing compatibility until a deliberate rename is planned.
 
 ### Agent and tool direction
 - Treat Magenta as an operational assistant, not a generic framework.

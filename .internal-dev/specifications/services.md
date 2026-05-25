@@ -1,0 +1,46 @@
+---
+schema_version: 1
+document_type: services-specification
+status: active
+owner: services
+created: 2026-05-25
+---
+
+# Services Specification
+
+## Intended Contract
+
+Services own use-case behavior and hide persistence, transport, filesystem, and model-provider details from callers. Add service behavior only for concrete user-facing workflows.
+
+## Service Entries
+
+| id | service_area | status | intended_contract | observed_anchors | ownership_boundary | drift_gaps | validation | related_decisions | related_knowledge |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| SVC-20260525-06 | Workspace file explorer | active | Own confined create, rename, move, copy, preview/save, delete preflight/execute, labels, and action log behavior. | `WorkAreaExplorerService`, metadata/log services | Controllers only map request/response and fragments. | Typed domain errors are deferred. | Service/controller tests. | `DECISION-20260524-03` | `workspace-file-explorer-details-list-rewrite.md` |
+| SVC-20260525-07 | Shell command line parser | deferred | Strengthen `shell_exec` command line validation before wider exposure, explicitly handling or rejecting shell operators and per-command argument policy. | Shell tool service and command parsing | Process execution remains confined by workspace policy. | Current parser only handles whitespace, quotes, and backslash escapes. | Shell tool unit and security tests. | `DECISION-20260522-06` | `shell-tool-confinement-pattern.md` |
+| SVC-20260525-08 | Web search/fetch | active | Web tools may use SearXNG for search and controlled fetch behavior for current-information tasks. | Web search/fetch services and config | Operational deployment details belong in docs/knowledge, not specs. | SearXNG host deployment is environment-specific. | Tool tests and live checks when config changes. | none | `web-fetch-redirect-validation-pattern.md` |
+| SVC-20260525-09 | Task execution SSE | deferred | Consider native reactive or explicit executor-backed streaming if live task runs need higher concurrency. | Task execution SSE controller/service paths | Current blocking bridge is acceptable for current behavior. | HTTP threading scalability is deferred. | SSE tests and startup. | none | `plan-execution-stream-finalization.md` |
+| SVC-20260525-10 | Planner recurrence | deferred | Planner tasks store recurrence and projections but do not automate reminders, user contact, wait-for-input, or assignments until separately designed. | Avatar planner organizer | Automation is out of v1 organizer scope. | Automation product policy unresolved. | Service/UI tests when accepted. | `DECISION-20260523-02` | `avatar-work-area-ui-refactor.md` |
+| SVC-20260525-11 | Workspace leases | deferred | Current runtime uses exclusive writable project leases; job workspace leasing and read leases are future product/service decisions. | Project workspace lease services | Read leases are not current runtime contract. | Future job workspace policy unresolved. | Lease service tests and runtime validation. | none | `project-workspace-lease-runtime-pattern.md` |
+
+## Ownership Boundary
+
+This file owns service behavior. API status codes belong in `api.md`; UI rendering belongs in `web.md`; dependency direction belongs in `service-graph.md`.
+
+## Drift/Gaps
+
+| id | status | observed_drift | routing | review_after |
+| --- | --- | --- | --- | --- |
+| DRIFT-20260525-04 | open | Workspace controller currently relies on message-based error mapping for some file explorer responses. | `DEFERRED-20260525-05` typed domain errors. | 2026-06-23 |
+
+## Validation Expectations
+
+Service changes require focused service tests. If Spring wiring or runtime dependencies change, run bounded startup. If the service is user-visible through web/API surfaces, add controller/browser validation as appropriate.
+
+## Related Decisions
+
+See `decisions.md`.
+
+## Related Knowledge
+
+Search knowledge filenames for `services`, `workspace`, `shell`, `web-fetch`, `task`, `lease`, `docker`, and `orchestration`.

@@ -1,0 +1,41 @@
+---
+schema_version: 1
+document_type: deferred-features-register
+status: active
+owner: product
+created: 2026-05-25
+---
+
+# Deferred Features
+
+## Accepted Future Capabilities
+
+| id | capability | status | owner | source | accepted_scope | out_of_scope_reason | likely_targets | validation_expectation | review_after |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| DEFERRED-20260525-01 | Replace workspace file explorer message-based API error mapping with typed domain errors. | deferred | unassigned | `UNFINISHED-20260524-03` | Introduce explicit domain error codes or typed exceptions and map them in `WorkAreaController`. | Phase 2 kept message mapping as a pragmatic bridge. | Workspace services, `WorkAreaController`, controller tests. | Service/controller tests and API docs if route behavior changes. | 2026-06-23 |
+| DEFERRED-20260525-02 | Expand Avatar history tab beyond the baseline recent-work fallback. | deferred | unassigned | `UNFINISHED-20260524-02` | Combine Avatar user-surface chat history, reserved Avatar-agent runtime history, and output history without a new persistence model. | Shell baseline intentionally shipped compact history fallback first. | Avatar services/fragments. | Controller tests and Playwright. | 2026-06-23 |
+| DEFERRED-20260525-03 | Design Avatar automatic refresh after shell baseline removes manual refresh. | deferred | unassigned | `UNFINISHED-20260524-01` | Define scope, cadence, triggers, and manual-only exceptions. | User chose to defer interval refresh. | Avatar fragments/shell. | Browser validation. | 2026-06-23 |
+| DEFERRED-20260525-04 | Decide whether to migrate historical untagged chat sessions. | deferred | unassigned | `UNFINISHED-20260523-01` | One-time migration or operator repair path for legacy `/chat` history. | Avoid reintroducing cross-surface leakage. | Chat repositories/services. | Migration tests. | 2026-06-22 |
+| DEFERRED-20260525-05 | Decide whether planner recurrence should trigger automation. | deferred | unassigned | `UNFINISHED-20260523-02` | Reminders, user contact, wait-for-input flows, or assignment creation from planner tasks. | V1 organizer records are storage/projection only. | Planner services, scheduler, approval gates. | Service tests, startup, browser if UI changes. | 2026-06-22 |
+| DEFERRED-20260525-06 | Design future email processing through scripting or internal messaging. | deferred | unassigned | `UNFINISHED-20260522-04` | Non-public email ingestion using scripting API, internal messaging, or approved tools. | Public-ish Avatar email endpoint was rejected and removed. | Scripting/API/tooling design. | Security review plus tests. | 2026-06-21 |
+| DEFERRED-20260525-07 | Decide whether to implement an Avatar plugin/scripting runtime. | deferred | unassigned | `UNFINISHED-20260522-03` | Choose Kawa, safer DSL, Java SPI, or no runtime after plugin research. | Sprint scope was research-only. | Plugin runtime, sandbox, docs. | Security and runtime tests. | 2026-06-21 |
+| DEFERRED-20260525-08 | Upgrade to Spring AI 2.0 when stable and remove the local reasoning-content patch. | deferred | unassigned | note migration | Switch to official module support for DeepSeek/reasoning metadata and remove custom jar. | Current patched 1.1.4 keeps behavior working. | `pom.xml`, `ChatModelRouter`, AI config. | Full tests and startup. | 2026-07-01 |
+| DEFERRED-20260525-09 | Add saved-plan execution resume/retry UX. | deferred | unassigned | note migration | Distinguish retry-from-scratch from resume-with-evidence. | Timeout fix only needed state recovery. | Plan execution UI/services. | Controller/service/browser validation. | 2026-06-24 |
+| DEFERRED-20260525-10 | Add shell command line parser hardening. | deferred | unassigned | note migration | Explicitly handle or reject shell operators and add per-command argument policy. | Current parser is intentionally small. | Shell tool service/parser. | Security/unit tests. | 2026-06-24 |
+| DEFERRED-20260525-11 | Add dashboard-aware system chat. | deferred | unassigned | `future_features.md` | Assistant can reason over dashboard summary state and propose confirmed actions. | Immediate dashboard refactors did not include prompt/tool expansion. | Dashboard summary API, prompt service, read-only tools. | Tool/controller/browser validation. | 2026-06-24 |
+| DEFERRED-20260525-12 | Add agent-assisted job and workflow creation. | deferred | unassigned | `future_features.md` | Chat can continue manual job/workflow drafts with structured edits. | Existing plan chat flow remains separate. | Draft prompt service, edit tools, context bridge. | Service/API/browser validation. | 2026-06-24 |
+| DEFERRED-20260525-13 | Add advanced visual workflow canvas after structured builder is dogfooded. | deferred | unassigned | `future_features.md` | Pan/zoom graph canvas, palette, properties, minimap, auto-layout, preview. | Do not add graph stack for aesthetics before need is proven. | Workflow builder UI. | Browser validation and tests. | 2026-07-24 |
+| DEFERRED-20260525-14 | Add project git workspace operations. | deferred | unassigned | `future_features.md` | Clone/pull/fetch/status with explicit confirmation and output links. | Credentials/concurrency/confinement require separate design. | Project workspace services/tools. | Security/service/browser validation. | 2026-07-24 |
+| DEFERRED-20260525-15 | Add output artifact indexing and preview. | deferred | unassigned | `future_features.md` | Full-text output search, rendered previews, lineage, download links, retention. | Output query API can land first. | Output services/API/UI. | Service/API/browser validation. | 2026-07-24 |
+| DEFERRED-20260525-16 | Add richer agent runtime observability. | deferred | unassigned | `future_features.md` | Container history, exit-code distribution, snippets, latency/failure metrics, health timeline. | Docker status visibility can remain minimal. | Runtime event persistence and agent detail history. | Service/browser validation. | 2026-07-24 |
+| DEFERRED-20260525-17 | Add scheduling and event reaction management UI. | deferred | unassigned | `future_features.md` | Schedule editor, reaction rule editor, simulation, audit trail. | APIs exist behind flags but robust UI is separate scope. | Schedule/reaction controllers/fragments. | Controller/browser validation. | 2026-07-24 |
+| DEFERRED-20260525-18 | Add role-aware project collaboration. | deferred | unassigned | `future_features.md` | Agent roles, permissions, project inbox/network timeline, mentions, handoffs, audit. | Current project-agent assignment is simpler. | Project/agent/inbox services/UI. | Service/API/browser validation. | 2026-07-24 |
+| DEFERRED-20260525-19 | Add workflow and plan editor expand/collapse affordances. | deferred | unassigned | `future_features.md` | Expand/collapse workflow node details and plan field rows. | Current flat editors are functional but dense. | Workflow/plan editor fragments. | Browser validation. | 2026-06-24 |
+| DEFERRED-20260525-20 | Add broader orchestration/workflow validation coverage. | deferred | unassigned | note migration | Full UI integration tests, model-backed Docker E2E, JS module tests, deterministic graph fixtures. | Prior validations were intentionally scoped. | Test harnesses and Playwright fixtures. | Focused plus approved broad validation. | 2026-06-24 |
+| DEFERRED-20260525-21 | Add workspace and service/UX follow-up review. | deferred | unassigned | note migration | Review projects, jobs, tasks/plans, workflows, workspaces, outputs, and assignment flows together. | Queued after workspace/file architecture refactor. | Plans/reviews. | Review artifact and follow-up plan. | 2026-06-24 |
+
+## Review Log
+
+| reviewed_on | reviewer | outcome | notes |
+| --- | --- | --- | --- |
+| 2026-05-25 | implementation-worker | migrated | Consolidated accepted future capability from unfinished work and active notes. |
