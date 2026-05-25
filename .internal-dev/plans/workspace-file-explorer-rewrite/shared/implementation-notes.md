@@ -19,7 +19,7 @@ Living document. Workers and validators append concise entries here. Email coord
 | Phase 02 domain services and tags | complete | implementation_worker | not committed per directive | targeted command passed | not sent by worker directive | Rich domain entry data, service-level custom tag ensure, directory/file tag follow-copy-delete tests, nested symlink mutation hardening. |
 | Phase 03 API and fragments | complete | implementation_worker | not committed per directive | targeted command passed | not sent by worker directive | Stable Avatar HTMX fragment contracts, viewer/tag routes, OOB mutation refreshes, and controller tests. |
 | Phase 04 file explorer UI rewrite | complete | orchestrator + validation subagent | c53501f | targeted tests and Playwright passed | sent by orchestrator | Details/list UI, no cards. |
-| Phase 05 viewer/copy/move/rename/delete | complete | orchestrator + validation subagents | 977db55 | targeted tests, styled Playwright, and remediation validation passed | pending | Viewer and operation completion; code-quality findings and browser proof gaps remediated. |
+| Phase 05 viewer/copy/move/rename/delete | complete | orchestrator + validation subagents | 977db55 | targeted tests, styled Playwright, and remediation validation passed | sent | Viewer and operation completion; code-quality findings and browser proof gaps remediated. |
 | Phase 06 docs closeout and gate validation | pending | unassigned | pending | pending | pending | Docs, changelog, focus, final validation. |
 
 ## Phase 01 Research And Spec Reconciliation Evidence
@@ -146,3 +146,5 @@ Append entries:
 ```text
 YYYY-MM-DD gate=<gate name> mailctl_status=<ok|blocked> email=<sent|not-sent> wait=<started|not-needed> notes=<short>
 ```
+
+2026-05-24 gate=Phase 05 viewer/copy/move/rename/delete mailctl_status=ok email=sent wait=not-needed notes=sent P5 gate report to Dwight, AgentMail thread_id cd64aece-e782-4d4d-8f5c-fe47bb63dbcb
