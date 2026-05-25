@@ -27,8 +27,11 @@ This guide defines how agents use persistent engineering records in `.internal-d
 - `plans/`: active implementation plans in nested plan directories.
 - `reviews/`: completed review write-ups.
 - `knowledge/`: reusable domain research, implementation gotchas, validation patterns, and learner-facing summaries.
+- `research/`: legacy transitional store; do not add new files here. Ingest reusable content into `knowledge/` or route scoped analysis to plans/reviews/specifications, then remove the transient research artifact.
 - `changelogs/`: dated change records that summarize completed work.
 - `debug_reports/`: local or committed debug captures when a task requires durable diagnostic evidence.
+
+Retired stores such as repo-local `focus/`, `notes/`, and AgentMail inbox ledgers are not active workflow destinations. Use the specification, knowledge, changelog, bug, plan, and review stores above.
 
 ## Beginning Workflow
 
@@ -83,7 +86,9 @@ When lost, confused, blocked by project context, or correcting a false assumptio
 - Plans in progress should live in their own plan directories and include phase implementation files.
 - When a bug or plan is finalized, move it to a sibling `.archive/` directory in the same parent path.
 - Existing `plans/.completed/` content is legacy/read-only; use `.archive/` going forward.
+- `research/` is legacy/read-only for migration only; do not use it as an active catch-all.
 - Finalized code/documentation changes should have a changelog entry in `changelogs/`.
+- Inbound AgentMail or remote-work coordination uses the global `mailctl status`, `mailctl next`, and `mailctl wait` workflow. Do not create a repo-local `.internal-dev/inbox` ledger.
 
 ## Closeout Workflow
 

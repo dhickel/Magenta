@@ -15,7 +15,8 @@ SimplyPages Avatar layout and editing patterns.
 - `/home/hickelpickle/Code/Java/cannasite/java-html-framework/docs/core/03-template-rendercontext-slotkey-reference.md`
 - `/home/hickelpickle/Code/Java/cannasite/java-html-framework/docs/reference/editing-api-reference.md`
 - `/home/hickelpickle/Code/Java/cannasite/java-html-framework/demo/src/main/java/io/mindspice/demo/EditingDemoController.java`
-- `.internal-dev/notes/2026-05-22-avatar-dashboard-ui-style-guidelines.md`
+- `.internal-dev/specifications/web.md`
+- `.internal-dev/specifications/simplypages.md`
 - Production Avatar UI files under `src/main/java/io/mindspice/magenta2/api/web/` and `src/main/resources/static/css/avatar-dashboard.css`
 
 ## Key Takeaways

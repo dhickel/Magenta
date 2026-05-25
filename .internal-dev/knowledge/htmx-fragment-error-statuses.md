@@ -13,7 +13,7 @@ HTMX mutation fragments should use HTTP error status codes on failed operations.
 
 For operational UI mutations, returning an error fragment with `200 OK` hides failures from HTMX-aware automation and operators inspecting network behavior. Keep the fragment body useful, but set the response status locally in the controller before returning the rendered component.
 
-HTMX 1.9 defaults `shouldSwap=false` for `>=400` responses. When a failed mutation returns a useful server-rendered fragment, the shell needs a narrow `htmx:beforeSwap` opt-in rather than a JSON/JavaScript transport rewrite. In Magenta this lives in `src/main/resources/static/js/alpha-security.js` and is limited to same-origin non-401/403 responses that have an existing target and known operational fragment markers such as `.orch-error`, `.orch-status-error`, or `.agent-lifecycle-panel`.
+HTMX 1.9 defaults `shouldSwap=false` for `>=400` responses. When a failed mutation returns a useful server-rendered fragment, the browser layer needs a narrow `htmx:beforeSwap` opt-in rather than a JSON/JavaScript transport rewrite. In Magenta this behavior belongs in the active shell/client helper for operational fragments and should remain limited to same-origin non-401/403 responses that have an existing target and known operational fragment markers such as `.orch-error`, `.orch-status-error`, or `.agent-lifecycle-panel`.
 
 Use `400` for validation or user-correctable request errors, `409` when the current lifecycle state conflicts with the requested mutation, `404` for scoped not-found or wrong-owner cases when the existing lifecycle helper maps that way, and `500` for unavailable infrastructure or unexpected service failures.
 

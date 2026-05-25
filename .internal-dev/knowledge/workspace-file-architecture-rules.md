@@ -4,7 +4,10 @@ Workspace/file architecture rules after the 2026-05-21 refactor.
 
 # Source References
 
-- `.internal-dev/notes/current-architecture-focus.md`
+- `.internal-dev/specifications/architecture.md`
+- `.internal-dev/specifications/services.md`
+- `.internal-dev/specifications/service-graph.md`
+- `.internal-dev/specifications/decisions.md`
 - `.internal-dev/plans/workspace-file-architecture-refactor/implementation-plan.md`
 - `.internal-dev/plans/workspace-file-architecture-refactor/agent-notes.md`
 - `docs/technical/workspaces-tools-outputs.md`

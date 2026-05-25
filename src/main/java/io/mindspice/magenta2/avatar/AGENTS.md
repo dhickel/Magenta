@@ -17,7 +17,7 @@ This package owns Avatar user-centric data and services.
 - Module-specific detail editing may open a modal or drawer, but row placement and 12-column sizing remain in-place layout concerns.
 
 ### UI Knowledge
-- Before changing Avatar dashboard UI, read `.internal-dev/notes/2026-05-22-avatar-dashboard-ui-style-guidelines.md` and `.internal-dev/knowledge/simplypages-avatar-layout-and-editing.md`.
+- Before changing Avatar dashboard UI, read `.internal-dev/specifications/web.md`, `.internal-dev/specifications/simplypages.md`, `.internal-dev/knowledge/simplypages-avatar-layout-and-editing.md`, and `.internal-dev/knowledge/avatar-work-area-ui-refactor.md` when Work Areas are in scope.
 - Compare Avatar UI code to the SimplyPages docs and demo editing patterns before adding custom structures.
 - For layout editing, use the SimplyPages HTMX editing demo as the concrete visual baseline: small top-corner module controls, in-place add-widget/add-row affordances, and no separate layout-list modal as the main editing interface.
 - Scratch layout pages are allowed only for dev/planning experiments and Playwright visual checks. Do not reference scratch pages as source truth in package docs or knowledge files; extract stable lessons into reusable components or `.internal-dev/knowledge/`.

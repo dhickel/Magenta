@@ -14,7 +14,9 @@ Avatar Work Area UI refactor planning and implementation boundaries.
 
 - `.internal-dev/knowledge/.archive/avatar-work-area-ui-refactor-planning.md`
 - `.internal-dev/knowledge/.archive/avatar-work-area-ui-refactor-implementation.md`
-- `.internal-dev/notes/2026-05-22-avatar-dashboard-ui-style-guidelines.md`
+- `.internal-dev/specifications/web.md`
+- `.internal-dev/specifications/simplypages.md`
+- `.internal-dev/specifications/services.md`
 - `src/main/java/io/mindspice/magenta2/api/web/AvatarDashboardController.java`
 - `src/main/java/io/mindspice/magenta2/avatar/AGENTS.md`
 - `src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/AGENTS.md`

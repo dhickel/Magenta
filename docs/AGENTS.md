@@ -6,7 +6,7 @@ This guide governs files under `docs/`.
 
 - Documentation is user-visible intended truth.
 - Code remains the logical source of truth.
-- If documentation and code diverge, record the mismatch in the current task output and create or update a tracking artifact in `.internal-dev/bugs/` or the active task notes.
+- If documentation and code diverge, record the mismatch in the current task output and create or update the appropriate `.internal-dev` artifact: bugs for defects, specifications for intended contract drift, or plans/reviews for scoped follow-up.
 
 ## Update Policy
 
@@ -15,6 +15,7 @@ This guide governs files under `docs/`.
 - API or controller changes update API docs.
 - New docs must be linked from an index before the task is complete.
 - Avoid speculative future docs unless the content is explicitly marked as future-facing.
+- Do not route current documentation work to retired focus, notes, or inbox stores.
 
 ## Folder Contract
 

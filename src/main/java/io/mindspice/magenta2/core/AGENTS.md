@@ -17,7 +17,7 @@ Follow the repository-level `.internal-dev` workflow in the top-level `AGENTS.md
 Core-package work still participates in the same document-store contract:
 
 - Run the required beginning pass before non-trivial implementation or planning.
-- Write changelog, knowledge, bug, note, and focus updates when the top-level workflow requires them.
+- Write changelog, knowledge, bug, specification, plan, and review updates when the top-level workflow requires them.
 - Keep `.internal-dev` access controlled; read only files needed for the active task.
 - Write plans and reviews to `.internal-dev/plans/` and `.internal-dev/reviews/`.
 - Keep package AGENTS guides aligned when core responsibilities or conventions change.

@@ -11,7 +11,7 @@ This package owns HTTP and web-facing entry points.
 - Expose assignment lifecycle controls, including guarded queue cleanup, retained terminal history, history purge, and read-only audit transcript fragments, through thin orchestration entry points.
 - Expose operational dashboard summary and output artifact query APIs as thin read models for orchestration UI pages.
 - Keep inherited shell compatibility resources local to the web layer when a shell asset reference cannot be removed directly.
-- Own the public-alpha HTTP access gate: read-only routes stay public, while unsafe mutation/control routes require the configured alpha credential and CSRF token.
+- Own the current open-alpha HTTP posture: Magenta does not currently enforce built-in HTTP auth, authorization, or CSRF checks at the web/API layer; unsafe mutation/control routes must rely on explicit controller/service validation and domain ownership guards.
 - Keep controllers thin and delegate behavior to services.
 - Keep HTTP status handling clear and local to the web layer.
 
@@ -24,11 +24,11 @@ This package owns HTTP and web-facing entry points.
 - For SimplyPages-facing web surfaces, prefer reusable components/modules instead of one-off markup patterns.
 - If UI behavior or structure is used in multiple places and is more than bare functionality, promote it into a reusable component/module.
 - For similar views, prefer shared render structures and slot-key based reuse over duplicated near-identical templates.
-- Before changing `/avatar` styling or layout, read `.internal-dev/notes/2026-05-22-avatar-dashboard-ui-style-guidelines.md` and preserve the `/dashboard` plus per-agent dashboard operational style language unless the user explicitly changes direction.
+- Before changing `/avatar` styling or layout, read `.internal-dev/specifications/web.md`, `.internal-dev/specifications/simplypages.md`, and the Avatar layout knowledge files, then preserve the `/dashboard` plus per-agent dashboard operational style language unless the user explicitly changes direction.
 - For `/avatar`, the rendered dashboard is the source of truth for layout. Move, resize, add-row, add-widget, and remove controls should decorate the live dashboard surface; modal or drawer flows are only for module-specific detail/settings work.
 - For `/avatar` layout work, read `.internal-dev/knowledge/simplypages-avatar-layout-and-editing.md` and compare the implementation against SimplyPages `Row`, `Column`, `EditableModule`, HTMX, OOB, and slot-key patterns before changing code.
 - Avatar edit mode should resemble the SimplyPages HTMX editing demo: widget content remains primary, decorator controls sit in the top corner, add-widget controls are centered between row content and row controls, and insert-row controls are quiet separators. Do not reintroduce a layout-list modal or large widget-internal movement/resize panels as the primary editor.
-- Preserve HTMX-compatible security failures and keep CSRF compatibility in the shared shell/client helpers when adding browser mutation routes.
+- Preserve HTMX-compatible error rendering for browser mutation routes without reintroducing stale auth/CSRF shell helpers unless the security posture changes deliberately.
 - Do not put chat, persistence, or orchestration logic in controllers.
 - Keep command parsing small and explicit.
 - Keep this guide updated when web routes, API contracts, or controller conventions change.

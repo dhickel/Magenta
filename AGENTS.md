@@ -13,7 +13,7 @@
 - User hints like "future", "eventually", "later", or "this will become" go to `specifications/horizon-ideas.md` unless accepted as deferred product capability.
 - Accepted future product capability goes to `specifications/deferred-features.md`.
 - Durable architecture, design, product, and workflow decisions go to `specifications/decisions.md` with justification, alternatives or tradeoffs when known, caveats, affected specs, source, and review timing.
-- After each feature implementation or non-trivial fix, complete the full `.internal-dev` closeout: update affected specifications, knowledge, bugs, changelogs, plans, and reviews; do not route active workflow material to retired focus or notes stores.
+- After each feature implementation or non-trivial fix, complete the full `.internal-dev` closeout: update affected specifications, knowledge, bugs, changelogs, plans, and reviews; do not route active workflow material to retired focus, notes, or research stores.
 - After completing the `.internal-dev` workflow for a task, create a git commit that includes both the implementation and the `.internal-dev` updates unless the user explicitly says not to commit.
 - When beginning implementation of a multi-phase plan, create a dedicated git branch for that plan before phase work starts.
 - For multi-phase plans, commit completed work at the end of each phase on that dedicated branch.
