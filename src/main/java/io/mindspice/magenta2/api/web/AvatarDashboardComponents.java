@@ -90,7 +90,7 @@ final class AvatarDashboardComponents {
             .withChild(new Div().withId("avatar-output-preview").withClass("avatar-output-preview"))
             .withChild(moduleScript("/js/avatar-chat.js?v=3"))
             .withChild(moduleScript("/js/avatar-layout-edit.js?v=1"))
-            .withChild(moduleScript("/js/avatar-shell.js?v=5"));
+            .withChild(moduleScript("/js/avatar-shell.js?v=6"));
     }
 
     static Component widgetGrid(AvatarDashboardData data) {
@@ -820,7 +820,7 @@ final class AvatarDashboardComponents {
                 .withAttribute("data-avatar-chat-corner-resizer", "true")
                 .withAttribute("aria-label", "Resize Avatar chat")
                 .withAttribute("title", "Resize Avatar chat")
-                .withChild(new HtmlTag("span").withAttribute("aria-hidden", "true").withInnerText("↔")));
+                .withUnsafeHtml(iconSvg("resize-both")));
     }
 
     private static Component widgetBody(AvatarDashboardData data, String widgetId) {
@@ -1625,6 +1625,18 @@ final class AvatarDashboardComponents {
                 <path d="M17 10l2 2-2 2"/>
                 <path d="M10 8h4"/>
                 <path d="M10 16h4"/>
+                """);
+            case "resize-both" -> strokeIcon("""
+                <path d="M12 4v16"/>
+                <path d="M4 12h16"/>
+                <path d="M12 4l-2.5 2.5"/>
+                <path d="M12 4l2.5 2.5"/>
+                <path d="M12 20l-2.5-2.5"/>
+                <path d="M12 20l2.5-2.5"/>
+                <path d="M4 12l2.5-2.5"/>
+                <path d="M4 12l2.5 2.5"/>
+                <path d="M20 12l-2.5-2.5"/>
+                <path d="M20 12l-2.5 2.5"/>
                 """);
             case "settings" -> strokeIcon("""
                 <path d="M4 7h8"/>

@@ -2,8 +2,9 @@ const AVATAR_RAIL_KEY = "magenta.avatar.chatRailWidthPx";
 const AVATAR_PANEL_HEIGHT_KEY = "magenta.avatar.chatPanelHeightPx";
 // Keep in sync with CSS: .avatar-shell-grid minmax(22.85rem, var(--avatar-chat-rail-width)).
 const AVATAR_RAIL_MIN = 366;
-const AVATAR_RAIL_MAX = 640;
-const AVATAR_MAIN_MIN = 420;
+const AVATAR_RAIL_MAX = 1200;
+const AVATAR_RAIL_MAX_RATIO = 0.78;
+const AVATAR_MAIN_MIN = 300;
 const AVATAR_PANEL_MIN = 360;
 const AVATAR_PANEL_BOTTOM_MARGIN = 24;
 const DRAG_THRESHOLD_PX = 3;
@@ -142,7 +143,8 @@ function clampRailWidth(width, grid) {
     const rect = grid?.getBoundingClientRect?.();
     const containerWidth = Number.isFinite(rect?.width) ? Math.floor(rect.width) : window.innerWidth;
     const maxFromContainer = containerWidth - AVATAR_MAIN_MIN;
-    const boundedMax = Math.min(AVATAR_RAIL_MAX, maxFromContainer);
+    const maxFromRatio = Math.floor(containerWidth * AVATAR_RAIL_MAX_RATIO);
+    const boundedMax = Math.min(AVATAR_RAIL_MAX, maxFromContainer, maxFromRatio);
     const effectiveMax = Math.max(AVATAR_RAIL_MIN, boundedMax);
     return Math.max(AVATAR_RAIL_MIN, Math.min(effectiveMax, safeWidth));
 }
