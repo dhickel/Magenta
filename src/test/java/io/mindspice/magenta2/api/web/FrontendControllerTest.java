@@ -128,6 +128,12 @@ class FrontendControllerTest {
         assertThat(js).contains("Archive chat");
         assertThat(js).contains("method: 'PATCH'");
         assertThat(js).contains("method: 'DELETE'");
+        assertThat(js).contains("pendingMessagesLoadGeneration");
+        assertThat(js).contains("loadGeneration !== pendingMessagesLoadGeneration");
+        assertThat(js).contains("activeConversationId() !== requestedConversationId");
+        assertThat(js).contains("const shouldUpdateConversationUi = function()");
+        assertThat(js).contains("return !sendOptions.queuedClaim");
+        assertThat(js).contains("if (shouldUpdateConversationUi()) {\n                await loadHistory(completedConversationId);");
         assertThat(js).contains("if (!conversationId) {");
         assertThat(js).contains("renderHistory([]);");
         assertThat(js).contains("data-planning-approval-preview");

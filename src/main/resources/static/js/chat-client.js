@@ -4,6 +4,7 @@
     let activeInterruptToken = null;
     let pendingQueueDrainInProgress = false;
     let pendingQueueRetryTimer = null;
+    let pendingMessagesLoadGeneration = 0;
     let titlePollTimer = null;
     let editingSessionId = null;
     let latestSessions = [];
@@ -115,17 +116,27 @@
     }
 
     function clearQueuedMessagesPanel() {
+        pendingMessagesLoadGeneration += 1;
         clearQueuedDrainRetry();
         renderQueuedMessages([]);
     }
 
     async function loadPendingMessages(conversationId) {
-        if (!conversationId) {
+        const requestedConversationId = conversationId ? String(conversationId) : null;
+        const loadGeneration = pendingMessagesLoadGeneration + 1;
+        pendingMessagesLoadGeneration = loadGeneration;
+        if (!requestedConversationId) {
             clearQueuedMessagesPanel();
             return [];
         }
-        const data = await getJson(pendingMessagesUrl(conversationId));
+        const data = await getJson(pendingMessagesUrl(requestedConversationId));
         const messages = data && Array.isArray(data.messages) ? data.messages : [];
+        if (
+            loadGeneration !== pendingMessagesLoadGeneration
+            || activeConversationId() !== requestedConversationId
+        ) {
+            return messages;
+        }
         renderQueuedMessages(messages);
         if (messages.length > 0 && !requestInFlight && !pendingQueueDrainInProgress) {
             scheduleQueuedMessageDrain(0);
@@ -1121,10 +1132,19 @@
             planningModel: sendOptions.planningModel || selectedPlanningModel(),
             surface: sendOptions.surface || chatSurface()
         };
+        let streamConversationId = payload.conversationId || null;
+        const shouldUpdateConversationUi = function() {
+            return !sendOptions.queuedClaim
+                || !streamConversationId
+                || activeConversationId() === streamConversationId;
+        };
 
-        appendPendingUserMessage(message);
-        const assistantEl = appendStreamingAssistantMessage();
-        setStatus();
+        let assistantEl = null;
+        if (shouldUpdateConversationUi()) {
+            appendPendingUserMessage(message);
+            assistantEl = appendStreamingAssistantMessage();
+            setStatus();
+        }
 
         try {
             const response = await fetch('/api/chat/stream', {
@@ -1144,53 +1164,77 @@
             await readSse(response, async function(event) {
                 const data = event.data || {};
                 if (event.name === 'start') {
-                    setActiveConversationId(data.conversationId);
-                    activeTurnId = data.turnId || null;
-                    activeInterruptToken = data.interruptToken || null;
-                    syncModelSelection(data.model);
-                    updateStreamPlanStatus(data);
-                    completedConversationId = data.conversationId;
+                    streamConversationId = data.conversationId || streamConversationId;
+                    completedConversationId = data.conversationId || completedConversationId;
+                    if (shouldUpdateConversationUi()) {
+                        setActiveConversationId(data.conversationId);
+                        activeTurnId = data.turnId || null;
+                        activeInterruptToken = data.interruptToken || null;
+                        syncModelSelection(data.model);
+                        updateStreamPlanStatus(data);
+                    }
                     return;
                 }
                 if (event.name === 'chunk') {
+                    if (!shouldUpdateConversationUi()) {
+                        return;
+                    }
                     updateContextUsageIfPresent(data.contextUsage);
                     updateStreamPlanStatus(data);
                     updateStreamingAssistantMessage(assistantEl, data);
                     return;
                 }
                 if (event.name === 'tool') {
+                    if (!shouldUpdateConversationUi()) {
+                        return;
+                    }
                     appendToolActivity(data, assistantEl);
                     updateContextUsageIfPresent(data.contextUsage);
                     updateStreamPlanStatus(data);
                     return;
                 }
                 if (event.name === 'system') {
+                    if (!shouldUpdateConversationUi()) {
+                        return;
+                    }
                     appendSystemMessage(data, assistantEl);
                     updateContextUsageIfPresent(data.contextUsage);
                     updateStreamPlanStatus(data);
                     return;
                 }
                 if (event.name === 'interrupt') {
+                    if (!shouldUpdateConversationUi()) {
+                        return;
+                    }
                     appendPendingUserMessage(data.text || '');
                     updateContextUsageIfPresent(data.contextUsage);
                     updateStreamPlanStatus(data);
                     return;
                 }
                 if (event.name === 'context') {
+                    if (!shouldUpdateConversationUi()) {
+                        return;
+                    }
                     updateContextUsageIfPresent(data.contextUsage);
                     updateStreamPlanStatus(data);
                     return;
                 }
                 if (event.name === 'interrupt') {
+                    if (!shouldUpdateConversationUi()) {
+                        return;
+                    }
                     appendPendingUserMessage(data.text || '');
                     updateStreamPlanStatus(data);
                     return;
                 }
                 if (event.name === 'done') {
-                    updateStreamingAssistantMessage(assistantEl, data);
-                    updateContextUsage(data.contextUsage);
-                    updateStreamPlanStatus(data);
                     completedConversationId = data.conversationId;
+                    streamConversationId = data.conversationId || streamConversationId;
+                    if (shouldUpdateConversationUi()) {
+                        updateStreamingAssistantMessage(assistantEl, data);
+                        updateContextUsage(data.contextUsage);
+                        updateStreamPlanStatus(data);
+                    }
                     return;
                 }
                 if (event.name === 'error') {
@@ -1198,23 +1242,29 @@
                 }
             });
 
-            await loadHistory(completedConversationId);
+            if (shouldUpdateConversationUi()) {
+                await loadHistory(completedConversationId);
+            }
             await loadSessions();
-            await loadActiveFiles();
-            pollConversationTitle(completedConversationId);
+            if (shouldUpdateConversationUi()) {
+                await loadActiveFiles();
+                pollConversationTitle(completedConversationId);
+            }
             setStatus();
         } catch (error) {
-            clearPendingUserMessage();
-            removeStreamingAssistantMessage(assistantEl);
-            try {
-                const activeId = activeConversationId();
-                if (activeId) {
-                    await loadHistory(activeId);
+            if (shouldUpdateConversationUi()) {
+                clearPendingUserMessage();
+                removeStreamingAssistantMessage(assistantEl);
+                try {
+                    const activeId = activeConversationId();
+                    if (activeId) {
+                        await loadHistory(activeId);
+                    }
+                    await loadSessions();
+                    await loadActiveFiles();
+                } catch (reloadError) {
+                    // Keep the original streaming error visible.
                 }
-                await loadSessions();
-                await loadActiveFiles();
-            } catch (reloadError) {
-                // Keep the original streaming error visible.
             }
             throw error;
         } finally {
