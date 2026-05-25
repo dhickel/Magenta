@@ -183,6 +183,24 @@ class WorkAreaExplorerServiceTest {
     }
 
     @Test
+    void createDirectoryRejectsSymlinkAncestorBeforeExternalMutation() throws Exception {
+        TestContext context = context();
+        WorkArea home = context.workAreaService().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);
+        Path root = tempDir.resolve("data/agents/agent-1/workspace/home");
+        Path outside = Files.createDirectories(tempDir.resolve("outside"));
+        try {
+            Files.createSymbolicLink(root.resolve("escape"), outside);
+        } catch (UnsupportedOperationException exception) {
+            return;
+        }
+
+        assertThatThrownBy(() -> context.explorer().createDirectory(home.id(), "escape/new/leaf"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("symbolic links");
+        assertThat(outside.resolve("new")).doesNotExist();
+    }
+
+    @Test
     void preservesCrLfAndStripsUtf8BomOnSave() throws Exception {
         TestContext context = context();
         WorkArea home = context.workAreaService().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);

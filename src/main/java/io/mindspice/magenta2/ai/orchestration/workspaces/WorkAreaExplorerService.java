@@ -26,6 +26,7 @@ public class WorkAreaExplorerService {
     private static final long NORMAL_TEXT_BYTES = 10L * 1024 * 1024;
     private static final long NORMAL_MARKDOWN_BYTES = 5L * 1024 * 1024;
     private static final long HARD_EDIT_BYTES = 25L * 1024 * 1024;
+    private static final int ROW_UTF8_PROBE_BYTES = 64 * 1024;
 
     private final WorkAreaService workAreaService;
     private final WorkspaceFileMetadataService metadataService;
@@ -469,20 +470,39 @@ public class WorkAreaExplorerService {
         Path resolved = resolveNormalized(root, relativePath);
         Path parent = resolved.getParent();
         try {
-            if (parent != null && !Files.exists(parent, LinkOption.NOFOLLOW_LINKS)) {
-                Files.createDirectories(parent);
-            }
+            ensureWritableParent(root, parent == null ? root : parent);
             Path realParent = (parent == null ? root : parent.toRealPath(LinkOption.NOFOLLOW_LINKS));
             if (!realParent.startsWith(root)) {
                 throw new IllegalArgumentException("path escapes Work Area");
             }
-            rejectSymbolicPath(root, parent == null ? root : parent);
             if (Files.exists(resolved, LinkOption.NOFOLLOW_LINKS) && Files.isSymbolicLink(resolved)) {
                 throw new IllegalArgumentException("symbolic links are not editable through Work Area explorer");
             }
             return resolved;
         } catch (IOException exception) {
             throw new IllegalArgumentException("path cannot be created: " + relativePath, exception);
+        }
+    }
+
+    private void ensureWritableParent(Path root, Path parent) throws IOException {
+        Path normalized = parent.normalize();
+        if (!normalized.startsWith(root)) {
+            throw new IllegalArgumentException("path escapes Work Area");
+        }
+        Path current = root;
+        Path relative = root.relativize(normalized);
+        for (Path segment : relative) {
+            current = current.resolve(segment);
+            if (Files.exists(current, LinkOption.NOFOLLOW_LINKS)) {
+                if (Files.isSymbolicLink(current)) {
+                    throw new IllegalArgumentException("symbolic links are not allowed in Work Area explorer paths");
+                }
+                if (!Files.isDirectory(current, LinkOption.NOFOLLOW_LINKS)) {
+                    throw new IllegalArgumentException("parent path is not a directory");
+                }
+                continue;
+            }
+            Files.createDirectory(current);
         }
     }
 
@@ -759,10 +779,33 @@ public class WorkAreaExplorerService {
         if (size > HARD_EDIT_BYTES) {
             return ViewerKind.TOO_LARGE;
         }
-        if (readUtf8(path) == null) {
+        if (!appearsUtf8(path)) {
             return ViewerKind.INVALID_UTF8;
         }
         return isMarkdownPath(path) ? ViewerKind.MARKDOWN : ViewerKind.TEXT;
+    }
+
+    private boolean appearsUtf8(Path path) throws IOException {
+        long size = Files.size(path);
+        int limit = (int) Math.min(size, ROW_UTF8_PROBE_BYTES);
+        if (limit <= 0) {
+            return true;
+        }
+        byte[] bytes = new byte[limit];
+        try (var input = Files.newInputStream(path)) {
+            int read = input.read(bytes);
+            if (read <= 0) {
+                return true;
+            }
+            int decodeLength = read == ROW_UTF8_PROBE_BYTES && read > 4 ? read - 4 : read;
+            CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT);
+            decoder.decode(java.nio.ByteBuffer.wrap(bytes, 0, decodeLength));
+            return true;
+        } catch (CharacterCodingException exception) {
+            return false;
+        }
     }
 
     private String fileType(Path path, boolean directory, boolean regular) {

@@ -235,19 +235,27 @@ class AvatarDashboardControllerTest {
 
         String newFileEditor = controller.createWorkAreaTextFile(workAreaId, "notes", "todo.md", "markdown");
         assertThat(newFileEditor).contains("textarea");
+        assertThat(newFileEditor).contains("id=\"avatar-workarea-list-region\"");
+        assertThat(newFileEditor).contains("hx-swap-oob=\"true\"");
 
-        String savedPreview = controller.saveWorkAreaText(workAreaId, "notes/todo.md", "hello\n");
+        String savedPreview = controller.saveWorkAreaText(workAreaId, "notes/todo.md", "**hello**\n");
         assertThat(savedPreview).contains("id=\"avatar-workarea-list-region\"");
         assertThat(savedPreview).contains("hx-swap-oob=\"true\"");
         assertThat(savedPreview).contains("id=\"avatar-workarea-inspector\"");
-        assertThat(savedPreview).contains("id=\"avatar-workarea-modal\"");
+        assertThat(savedPreview).contains("class=\"avatar-modal\"");
+        assertThat(savedPreview).doesNotContain("id=\"avatar-workarea-modal\"><div class=\"avatar-modal\"");
+        assertThat(savedPreview).contains("avatar-tab-active\">Rendered");
+        assertThat(savedPreview).contains("data-viewer-kind=\"markdown\"");
+        assertThat(savedPreview).contains("data-active-tab=\"rendered\"");
+        assertThat(savedPreview).contains("<strong>hello</strong>");
 
         String preview = controller.workAreaPreview(workAreaId, "notes/todo.md");
         assertThat(preview).contains("id=\"avatar-workarea-preview\"");
         assertThat(preview).contains("Rendered");
 
         String viewer = controller.workAreaViewer(workAreaId, "notes/todo.md");
-        assertThat(viewer).contains("id=\"avatar-workarea-modal\"");
+        assertThat(viewer).contains("class=\"avatar-modal\"");
+        assertThat(viewer).doesNotContain("id=\"avatar-workarea-modal\"");
         assertThat(viewer).doesNotContain("id=\"avatar-workarea-preview\"");
 
         String editor = controller.workAreaTextEditor(workAreaId, "notes/todo.md");
@@ -315,8 +323,14 @@ class AvatarDashboardControllerTest {
         assertThat(inspect).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/viewer?path=notes%2Ftodo.txt\"");
         assertThat(inspect).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/rename?path=notes%2Ftodo.txt\"");
         assertThat(inspect).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/delete?path=notes%2Ftodo.txt\"");
-        assertThat(inspect).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/copy?path=notes%2Ftodo.txt\"");
-        assertThat(inspect).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/move?path=notes%2Ftodo.txt\"");
+        assertThat(inspect).contains("file-operation-stack");
+        assertThat(inspect).contains("<details class=\"file-operation-group\" open>");
+        assertThat(inspect).contains("data-file-action=\"copy\"");
+        assertThat(inspect).contains("aria-label=\"Copy destination directory\"");
+        assertThat(inspect).contains("required");
+        assertThat(inspect).contains("data-file-action-submit=\"copy\"");
+        assertThat(inspect).contains("hx-post=\"/avatar/_work-areas/" + workAreaId + "/files/action/copy\"");
+        assertThat(inspect).contains("hx-post=\"/avatar/_work-areas/" + workAreaId + "/files/action/move\"");
 
         String rename = controller.workAreaActionModal(workAreaId, "rename", "notes/todo.txt");
         assertThat(rename).contains("hx-post=\"/avatar/_work-areas/" + workAreaId + "/files/rename\"");
@@ -325,6 +339,8 @@ class AvatarDashboardControllerTest {
         String copy = controller.workAreaActionModal(workAreaId, "copy", "notes/todo.txt");
         assertThat(copy).contains("hx-post=\"/avatar/_work-areas/" + workAreaId + "/files/action/copy\"");
         assertThat(copy).contains("name=\"destination\"");
+        assertThat(copy).contains("aria-label=\"Copy destination directory\"");
+        assertThat(copy).contains("required");
 
         String move = controller.workAreaActionModal(workAreaId, "move", "notes/todo.txt");
         assertThat(move).contains("hx-post=\"/avatar/_work-areas/" + workAreaId + "/files/action/move\"");
@@ -343,6 +359,7 @@ class AvatarDashboardControllerTest {
         String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "agent-1", false).getFirst().id();
         workAreaExplorerService.createDirectory(workAreaId, "notes");
         workAreaExplorerService.createDirectory(workAreaId, "archive");
+        workAreaExplorerService.createDirectory(workAreaId, "notes/dest");
         workAreaExplorerService.createTextFile(workAreaId, "notes", "todo.txt");
 
         String renamed = controller.renameWorkAreaPath(workAreaId, "notes/todo.txt", "renamed.txt");
@@ -357,6 +374,21 @@ class AvatarDashboardControllerTest {
         assertOobRefresh(moved);
         assertThat(moved).contains("moved.txt");
 
+        String copiedToSiblingDestination = controller.copyMoveWorkAreaPath(
+            workAreaId,
+            "copy",
+            "notes/renamed.txt",
+            "dest",
+            "sibling-copy.txt"
+        );
+        assertOobRefresh(copiedToSiblingDestination);
+        assertThat(copiedToSiblingDestination).contains("sibling-copy.txt");
+        assertThat(workAreaExplorerService.inspect(workAreaId, "notes/dest/sibling-copy.txt").regularFile()).isTrue();
+
+        String missingDestination = controller.copyMoveWorkAreaPath(workAreaId, "copy", "notes/renamed.txt", "", "bad.txt");
+        assertThat(missingDestination).contains("File action failed");
+        assertThat(missingDestination).contains("destination directory is required");
+
         String deleted = controller.deleteWorkAreaPathStep(workAreaId, "notes/moved.txt", "FILE_CONFIRM");
         assertOobRefresh(deleted);
         assertThat(deleted).contains("Deleted notes/moved.txt");
@@ -369,13 +401,65 @@ class AvatarDashboardControllerTest {
         Files.write(tempDir.resolve("data/agents/agent-1/workspace/home/blob.bin"), new byte[] {0, 1, 2, 3});
 
         String unsupported = controller.workAreaViewer(workAreaId, "blob.bin");
-        assertThat(unsupported).contains("id=\"avatar-workarea-modal\"");
+        assertThat(unsupported).contains("class=\"avatar-modal\"");
+        assertThat(unsupported).doesNotContain("id=\"avatar-workarea-modal\"");
         assertThat(unsupported).contains("Viewer unavailable for this file type or size.");
 
         String save = controller.saveWorkAreaText(workAreaId, "blob.bin", "oops");
-        assertThat(save).contains("id=\"avatar-workarea-modal\"");
+        assertThat(save).contains("class=\"avatar-modal\"");
+        assertThat(save).doesNotContain("id=\"avatar-workarea-modal\"");
         assertThat(save).contains("Save failed");
         assertThat(save).contains("not safe for text editing");
+    }
+
+    @Test
+    void workAreaViewerSupportsMarkdownTextImageAndFriendlyMarkdownFailure() throws Exception {
+        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Home");
+        String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "agent-1", false).getFirst().id();
+        Path root = tempDir.resolve("data/agents/agent-1/workspace/home");
+        Files.writeString(root.resolve("note.md"), "# Heading\n\nbody");
+        Files.writeString(root.resolve("plain.txt"), "raw text");
+        Files.write(root.resolve("pic.png"), new byte[] {1, 2, 3, 4});
+
+        String markdown = controller.workAreaViewer(workAreaId, "note.md");
+        assertThat(markdown).contains("class=\"avatar-modal\"");
+        assertThat(markdown).doesNotContain("id=\"avatar-workarea-modal\"");
+        assertThat(markdown).contains("data-viewer-kind=\"markdown\"");
+        assertThat(markdown).contains("data-active-tab=\"rendered\"");
+        assertThat(markdown).contains("avatar-tab-active\">Rendered");
+        assertThat(markdown).contains(">Text</button>");
+        assertThat(markdown).contains("<h1>Heading</h1>");
+
+        String markdownText = controller.workAreaTextViewer(workAreaId, "note.md", "text");
+        assertThat(markdownText).contains("textarea");
+        assertThat(markdownText).contains("data-viewer-kind=\"markdown\"");
+        assertThat(markdownText).contains("data-active-tab=\"text\"");
+        assertThat(markdownText).contains(">Rendered</button>");
+        assertThat(markdownText).contains("avatar-tab-active\">Text");
+
+        String plainText = controller.workAreaViewer(workAreaId, "plain.txt");
+        assertThat(plainText).contains("textarea");
+        assertThat(plainText).contains("data-viewer-kind=\"text\"");
+        assertThat(plainText).contains("data-active-tab=\"text\"");
+        assertThat(plainText).contains("avatar-tab-active\">Text");
+        assertThat(plainText).doesNotContain(">Rendered</button>");
+
+        String image = controller.workAreaViewer(workAreaId, "pic.png");
+        assertThat(image).contains("avatar-workarea-image-frame");
+        assertThat(image).contains("<img class=\"avatar-workarea-image\"");
+        assertThat(image).contains("/api/work-areas/" + workAreaId + "/files/view?path=pic.png");
+        assertThat(image).contains("/api/work-areas/" + workAreaId + "/files/download?path=pic.png");
+
+        String failedMarkdown = WorkAreaExplorerFragments.renderedMarkdownForTest(
+            "# broken",
+            content -> {
+                throw new RuntimeException("forced");
+            }
+        );
+        assertThat(failedMarkdown).contains("avatar-workarea-render-fallback");
+        assertThat(failedMarkdown).contains("# broken");
+        assertThat(failedMarkdown).contains("avatar-workarea-render-error");
+        assertThat(failedMarkdown).contains("Raw text is still available");
     }
 
     @Test
@@ -411,7 +495,8 @@ class AvatarDashboardControllerTest {
             .contains("id=\"avatar-workarea-inspector\"")
             .contains("path escapes Work Area");
         assertThat(controller.workAreaActionModal(workAreaId, "delete", "../escape"))
-            .contains("id=\"avatar-workarea-modal\"")
+            .contains("class=\"avatar-modal\"")
+            .doesNotContain("id=\"avatar-workarea-modal\"")
             .contains("Action unavailable");
     }
 

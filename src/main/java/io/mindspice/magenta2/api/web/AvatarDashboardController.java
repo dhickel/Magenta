@@ -638,7 +638,10 @@ public class AvatarDashboardController {
         try {
             explorer.saveText(workAreaId, path, content);
             String listPath = parentPath(path);
-            return refreshedExplorerTargets(explorer, workAreaId, listPath, path, "Saved " + path);
+            WorkAreaExplorerService.FilePreview preview = explorer.preview(workAreaId, path);
+            WorkAreaExplorerService.DirectoryListing listing = explorer.list(workAreaId, listPath);
+            WorkAreaExplorerService.Entry inspected = explorer.inspect(workAreaId, path);
+            return WorkAreaExplorerFragments.textSaveResponse(workAreaId, preview, listing, inspected, path, "Saved " + path);
         } catch (IllegalArgumentException exception) {
             return WorkAreaExplorerFragments.modalError("Save failed", exception.getMessage());
         }
@@ -654,10 +657,10 @@ public class AvatarDashboardController {
         WorkAreaExplorerService explorer = requireExplorerService();
         String childPath = joinPath(path, name);
         try {
-            explorer.createDirectory(workAreaId, childPath);
-            return refreshedExplorer(explorer, workAreaId, path);
+            WorkAreaExplorerService.Entry entry = explorer.createDirectory(workAreaId, childPath);
+            return refreshedExplorerTargets(explorer, workAreaId, path, entry.path(), "Created " + entry.name());
         } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+            return WorkAreaExplorerFragments.modalError("Create folder failed", exception.getMessage());
         }
     }
 
@@ -674,9 +677,18 @@ public class AvatarDashboardController {
             WorkAreaExplorerService.Entry entry = "markdown".equalsIgnoreCase(kind)
                 ? explorer.createMarkdownFile(workAreaId, path, name)
                 : explorer.createTextFile(workAreaId, path, name);
-            return AvatarDashboardComponents.workAreaTextEditor(workAreaId, explorer.preview(workAreaId, entry.path()), false).render();
+            WorkAreaExplorerService.DirectoryListing listing = explorer.list(workAreaId, path);
+            WorkAreaExplorerService.Entry inspected = explorer.inspect(workAreaId, entry.path());
+            return WorkAreaExplorerFragments.textCreateResponse(
+                workAreaId,
+                explorer.preview(workAreaId, entry.path()),
+                listing,
+                inspected,
+                entry.path(),
+                "Created " + entry.name()
+            );
         } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+            return WorkAreaExplorerFragments.modalError("Create file failed", exception.getMessage());
         }
     }
 
@@ -774,17 +786,48 @@ public class AvatarDashboardController {
     ) {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
+            String effectiveDestination = effectiveOperationDestination(explorer, workAreaId, path, destination);
             WorkAreaExplorerService.Entry result;
             if ("copy".equals(action)) {
-                result = explorer.copy(workAreaId, path, destination, name);
+                result = explorer.copy(workAreaId, path, effectiveDestination, name);
             } else if ("move".equals(action)) {
-                result = explorer.move(workAreaId, path, destination, name);
+                result = explorer.move(workAreaId, path, effectiveDestination, name);
             } else {
                 return WorkAreaExplorerFragments.modalError("File action failed", "Unknown file action: " + action);
             }
             return refreshedExplorerTargets(explorer, workAreaId, parentPath(result.path()), result.path(), action + " completed");
         } catch (IllegalArgumentException exception) {
             return WorkAreaExplorerFragments.modalError("File action failed", exception.getMessage());
+        }
+    }
+
+    private String effectiveOperationDestination(
+        WorkAreaExplorerService explorer,
+        String workAreaId,
+        String sourcePath,
+        String destination
+    ) {
+        if (!StringUtils.hasText(destination)) {
+            throw new IllegalArgumentException("destination directory is required");
+        }
+        String cleaned = destination.strip().replace('\\', '/');
+        if (destinationDirectoryExists(explorer, workAreaId, cleaned)) {
+            return cleaned;
+        }
+        if (!cleaned.contains("/") && !".".equals(cleaned)) {
+            String siblingDestination = joinPath(parentPath(sourcePath), cleaned);
+            if (destinationDirectoryExists(explorer, workAreaId, siblingDestination)) {
+                return siblingDestination;
+            }
+        }
+        return cleaned;
+    }
+
+    private boolean destinationDirectoryExists(WorkAreaExplorerService explorer, String workAreaId, String destination) {
+        try {
+            return explorer.inspect(workAreaId, destination).directory();
+        } catch (RuntimeException exception) {
+            return false;
         }
     }
 
