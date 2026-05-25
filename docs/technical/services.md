@@ -122,14 +122,17 @@ Sources: [`ai/orchestration/workspaces`](../../src/main/java/io/mindspice/magent
 
 - `WorkspaceService` owns workspace records and links.
 - `WorkspaceDirectoryService` owns data-root-confined path creation and legacy agent directory migration.
+- `WorkAreaService` owns confined Work Area metadata, Home creation, mark/unmark behavior, and active assignment/output target guards.
+- `WorkAreaExplorerService` owns confined Work Area browsing, preview/edit/download policy, file mutations, labels, recent action rows, and nested Work Area marking.
+- `WorkspaceFileMetadataService` and related repositories own reusable file labels, file label assignments, and file action records.
 - `EffectiveWorkspaceResolver` chooses the project workspace when `projectId` is present, otherwise the executing agent workspace.
 - `WorkspaceLeaseService` owns exclusive writable lease acquisition, extension, release request, expiry reconciliation, and release completion.
 - `AgentWorkspaceStatusService` builds agent workspace health/status views.
 - `OutputArtifactService` materializes explicit run outputs into effective workspace output directories, records artifact metadata, queries artifacts, loads content, and keeps loose discovery behind compatibility gating and confinement.
 
-Tables: `workspaces`, `workspace_links`, `workspace_leases`, `run_output_artifacts`.
+Tables: `workspaces`, `workspace_links`, `workspace_leases`, `work_areas`, `workspace_file_labels`, `workspace_file_label_assignments`, `workspace_file_actions`, `run_output_artifacts`.
 
-Controllers: `WorkspaceController`, `OutputController`, project/agent workspace fragments in `OrchestrationController`.
+Controllers: `WorkspaceController`, `WorkAreaController`, `OutputController`, Avatar Work Area fragments, and project/agent workspace fragments in `OrchestrationController`.
 
 ## Runtime Settings and Operations
 

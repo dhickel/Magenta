@@ -2,15 +2,17 @@
 
 These guides explain how to operate Magenta through the current alpha browser UI.
 
-Magenta has two main surfaces:
+Magenta has three main browser surfaces:
 
 - `/chat` for conversations and anonymous ad hoc planning.
+- `/avatar` for the personal assistant shell, Work Areas, outputs, and dashboard widgets.
 - `/dashboard` and the operational pages for agents, plans, workflows, jobs, projects, inboxes, outputs, and runtime settings.
 
 ## Start Here
 
 - New user setup: [Quickstart](quickstart.md)
 - Conversational work and planning: [Chat](chat.md)
+- Personal assistant shell: [Avatar Dashboard](avatar-dashboard.md)
 - Operator overview: [Dashboard](dashboard.md)
 - Build executable work: [Plans and Tasks](plans-and-tasks.md)
 - Chain work together: [Workflows](workflows.md)

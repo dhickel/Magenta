@@ -28,6 +28,8 @@ This package owns filesystem workspace management including effective durable wo
 - `WorkspaceDirectoryService` — filesystem path management and directory creation.
 - `WorkAreaService` — mark/list/unmark confined workspace subdirectories as user-selectable Work Areas.
 - `WorkAreaRepository` — durable `work_areas` metadata and active assignment/output target guard checks.
+- `WorkAreaExplorerService` — confined Work Area browse, preview, edit, download, create, rename, copy, move, delete, label, recent-action, and nested mark operations.
+- `WorkspaceFileMetadataService` and related repositories — reusable file labels, file label assignments, and recent file action records.
 - `EffectiveWorkspaceResolver` — effective durable workspace selection and layout path record creation.
 - `WorkspaceLeaseService` — exclusive writable lease acquisition, extension, and release.
 - `OutputDirectoryService` — typed output directory resolution for task, workflow, and job publications.

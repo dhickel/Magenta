@@ -35,6 +35,8 @@
 When the user asks for a work summary by email, especially after long-running orchestration plans, multi-hour remediation loops, validation campaigns, or multi-phase implementation work, use the global `email-followup-wait` skill. That skill owns the renderable HTML/plain-text report schema, optional reply-wait workflow, and low-token AgentMail polling cadence.
 
 Magenta-specific report safety still applies: keep credentials, API keys, local secrets, ignored config contents, and unrelated private workspace details out of the report. Include relevant `.internal-dev/changelogs/` context when available so the email can stand alone as a durable closeout artifact.
+
+Inbound AgentMail coordination uses the global direct daemon/wait workflow (`mailctl status`, `mailctl next`, and `mailctl wait`). Do not create or restore a repo-local `.internal-dev/inbox` directory or email ledger for AgentMail instructions.
 <!-- END INTERNAL-DEV WORKFLOW -->
 
 
@@ -87,6 +89,7 @@ This is the style we want to take with our UI.
 - Before redesigning `/avatar` or adding Avatar dashboard-like surfaces, read `.internal-dev/notes/2026-05-22-avatar-dashboard-ui-style-guidelines.md`.
 - Keep Avatar styling aligned with the existing `/dashboard` and per-agent dashboard operational console: dense panels, compact controls, thin blue-gray borders, small radii, semantic chips, and HTMX-first fragments.
 - For Avatar layout/editing work, also read `.internal-dev/knowledge/simplypages-avatar-layout-and-editing.md`.
+- For Avatar Work Area boundary and persistence decisions, read `.internal-dev/knowledge/avatar-work-area-ui-refactor.md`.
 
 *Always use the libraries coding style and practices, do not try to shoehorn functionality or use raw html strings, raw html is a fallback for advanced cases most functionality from css, js, htmx
 can be done via functions. The library has a vast set of components and ways to make your own, search the well formated documentation for your operation and read it before any edits, if

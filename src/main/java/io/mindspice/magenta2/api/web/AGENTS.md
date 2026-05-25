@@ -7,7 +7,7 @@ This package owns HTTP and web-facing entry points.
 - Expose chat plan state, queued planning questions/actions, approval/continue actions, validation criteria, deliverables, validation feedback, and execution evidence.
 - Treat `/chat` planning routes as anonymous, session-local, non-saved planning. They must not create saved `/plans` definitions or submit anonymous plans to agents.
 - Treat `/api/plans/*planning-chat*` as saved plan chat routes. These routes are plan-scoped and must not use `/api/chat`, `ai_chat_session_metadata`, or chat session list architecture.
-- Expose runtime settings, agent profile, workspace-link, job, assignment, inbox, schedule, event-reaction, and agent side-panel chat APIs as thin orchestration entry points.
+- Expose runtime settings, agent profile, workspace-link, Work Area/file explorer, job, assignment, inbox, schedule, event-reaction, and agent side-panel chat APIs as thin orchestration entry points.
 - Expose assignment lifecycle controls, including guarded queue cleanup, retained terminal history, history purge, and read-only audit transcript fragments, through thin orchestration entry points.
 - Expose operational dashboard summary and output artifact query APIs as thin read models for orchestration UI pages.
 - Keep inherited shell compatibility resources local to the web layer when a shell asset reference cannot be removed directly.
@@ -20,6 +20,7 @@ This package owns HTTP and web-facing entry points.
 - Public plan/task/workflow run controls submit saved definitions to agent assignments; direct model-backed execution stays internal/test-only when needed.
 - Public task and workflow run stream routes acknowledge queued assignment submission instead of streaming inline model execution.
 - Public operational job APIs use `JobDefinition` records, allow empty `DRAFT` jobs, and expose job item routes separately from run routes.
+- Work Area APIs and Avatar Work Area fragments must keep path traversal, symlink, text-edit, download-size, Home/system, marked-descendant, and active assignment/output target guards in services rather than duplicating filesystem policy in controllers.
 - For SimplyPages-facing web surfaces, prefer reusable components/modules instead of one-off markup patterns.
 - If UI behavior or structure is used in multiple places and is more than bare functionality, promote it into a reusable component/module.
 - For similar views, prefer shared render structures and slot-key based reuse over duplicated near-identical templates.

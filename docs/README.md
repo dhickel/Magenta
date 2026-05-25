@@ -16,6 +16,7 @@ End-user docs:
 - [Quickstart](end-user/quickstart.md)
 - [Chat](end-user/chat.md)
 - [Dashboard](end-user/dashboard.md)
+- [Avatar Dashboard](end-user/avatar-dashboard.md)
 - [Plans and Tasks](end-user/plans-and-tasks.md)
 - [Workflows](end-user/workflows.md)
 - [Jobs](end-user/jobs.md)
@@ -35,6 +36,8 @@ Technical docs:
 - [Workflow Engine](technical/workflow-engine.md)
 - [Workspaces, Tools, and Outputs](technical/workspaces-tools-outputs.md)
 - [Frontend HTMX](technical/frontend-htmx.md)
+- [Avatar Dashboard Fragments](technical/avatar-dashboard-fragments.md)
+- [Avatar Dashboard Layout Persistence](technical/avatar-dashboard-layout-persistence.md)
 - [Security](technical/security.md)
 - [Configuration and Operations](technical/configuration-operations.md)
 

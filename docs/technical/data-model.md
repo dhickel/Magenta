@@ -125,18 +125,24 @@ Source package: [`ai/orchestration/workspaces`](../../src/main/java/io/mindspice
 - `workspaces`: owner type/id, root relative path, display name, metadata JSON, and timestamps.
 - `workspace_links`: labeled readable/writable links from a workspace to external targets.
 - `workspace_leases`: writable/read leases with holder, mode, expiry, release request flag, released timestamp, and timestamps.
+- `work_areas`: user-selectable confined directories inside an agent or project workspace root, including system/Home flags and active state.
+- `workspace_file_labels`: reusable labels for files and directories, including the built-in note label used by the Work Area explorer.
+- `workspace_file_label_assignments`: label assignments scoped to workspace-relative file paths.
+- `workspace_file_actions`: recent Work Area explorer mutation/action rows for diagnostics and future UI visibility.
 - `run_output_artifacts`: output artifact metadata including run id, plan id, optional agent/job/job-assignment/job-run/project/workspace ids, run type, output name, artifact type, file name/path, content JSON, and timestamp.
 
 Important constraints:
 
 - `idx_workspaces_owner` enforces one workspace per owner.
+- `idx_work_areas_owner` supports active Work Area lookup by owner.
 - `idx_workspace_leases_active_write` enforces at most one unreleased `WRITE` lease per workspace.
 - Output artifact queries are indexed by run, agent, job, project, and workspace.
 - New `workspace_links.target` values for `PATH` links and new `run_output_artifacts.file_path` values are stored relative to the configured data root. Non-`PATH` link targets are not filesystem-normalized. Legacy absolute current-root values remain compatibility-readable; stale old-root absolute values fail when used.
 
 Compatibility notes:
 
-- `WorkspaceRepository` can add output scoping columns, `workspace_leases.release_requested`, and migrate old lease/output tables into the current shape.
+- `WorkspaceRepository` can add output scoping columns, `workspace_leases.release_requested`, Work Area/output routing columns on assignments, and migrate old lease/output tables into the current shape.
+- `WorkAreaRepository` and workspace file metadata repositories create Work Area, label, label assignment, and action-log tables defensively for warm databases.
 - `WorkspaceDirectoryService` migrates legacy `agents/<id>/home` and `agents/<id>/outputs` directories into the current `agents/<id>/workspace/` layout when safe.
 
 ## Runtime Settings

@@ -80,7 +80,7 @@ Service behavior:
 - Unmarking refuses Work Areas referenced by queued/running assignments or output targets when those assignment metadata columns exist.
 - Path checks normalize traversal and use real paths so symlink escapes outside the workspace root are rejected.
 
-Current Work Area persistence is the foundation for later assignment runtime routing. Until the assignment metadata phase lands, execution aliases still use the existing effective workspace rule described below.
+Current Work Area persistence is used by assignment runtime routing and the Avatar Work Areas/file explorer surface.
 
 Assignment records now carry first-class Work Area/output routing metadata:
 
