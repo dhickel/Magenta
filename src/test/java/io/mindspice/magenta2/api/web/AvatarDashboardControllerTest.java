@@ -119,20 +119,21 @@ class AvatarDashboardControllerTest {
     void avatarShellRendersCompactChatWidgetRootsAndScopedAssets() {
         String html = controller.avatar(false);
 
-        assertThat(html).contains("/css/avatar-dashboard.css?v=1");
+        assertThat(html).contains("/css/avatar-dashboard.css?v=3");
         assertThat(html).contains("/js/avatar-chat.js?v=3");
         assertThat(html).contains("/js/avatar-layout-edit.js?v=1");
-        assertThat(html).contains("/js/avatar-shell.js?v=1");
+        assertThat(html).contains("/js/avatar-shell.js?v=4");
         assertThat(html).doesNotContain("/js/chat-client.js");
+        assertThat(html).contains("id=\"content-area\" class=\"avatar-content-area\"");
         assertThat(html).contains("id=\"avatar-chat\"");
         assertThat(html).contains("data-avatar-chat=\"true\"");
+        assertThat(html).contains("data-avatar-chat-corner-resizer=\"true\"");
+        assertThat(html).doesNotContain("data-avatar-chat-resizer=\"true\"");
         assertThat(html).contains("data-avatar-shell=\"true\"");
         int railIndex = html.indexOf("class=\"avatar-shell-rail\"");
-        int resizerIndex = html.indexOf("class=\"avatar-chat-resizer\"");
         int mainIndex = html.indexOf("class=\"avatar-shell-main\"");
         assertThat(railIndex).isGreaterThan(-1);
-        assertThat(resizerIndex).isGreaterThan(railIndex);
-        assertThat(mainIndex).isGreaterThan(resizerIndex);
+        assertThat(mainIndex).isGreaterThan(railIndex);
         assertThat(html).contains("id=\"avatar-tab-panel\"");
         assertThat(html).contains("data-avatar-tab=\"dashboard\"");
         assertThat(html).contains("data-avatar-tab=\"queue\"");

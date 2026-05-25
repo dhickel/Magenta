@@ -13,7 +13,7 @@ The Avatar dashboard lives at `/avatar`. It is the personal command surface for 
 - `Outputs` shows recent generated artifacts and previews.
 - `Work Areas` exposes the confined workspace browser.
 
-The chat rail stays visible on every tab. On desktop, it sits on the left with a divider immediately to its right; drag that divider to resize chat width while the dashboard fills the remaining right-side space. On mobile, the shell stacks and the divider is hidden.
+The chat rail stays visible on every tab. On desktop, it sits on the left with a bottom-right resize corner inside the chat panel; drag that corner right or left to change chat width while the dashboard fills the remaining right-side space, or drag it down or up to adjust chat height. On mobile, the shell stacks and the resize corner is hidden.
 
 ## Editing The Dashboard
 

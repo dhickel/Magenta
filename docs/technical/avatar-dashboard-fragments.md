@@ -85,7 +85,7 @@ Copy and move forms expose operation-specific hooks such as `form[data-file-acti
 
 - `/js/avatar-chat.js?v=3` owns the compact Avatar chat surface.
 - `/js/avatar-layout-edit.js?v=1` owns in-place dashboard edit helpers.
-- `/js/avatar-shell.js?v=1` owns desktop rail resizing and browser-local width persistence.
+- `/js/avatar-shell.js?v=4` owns desktop chat corner resizing and browser-local width/height persistence.
 
-`avatar-shell.js` stores the desktop rail width in `localStorage` under `magenta.avatar.chatRailWidthPx`. The shell reads that value only at desktop breakpoints and ignores it on mobile stacked layouts.
-Desktop resize math is relative to `.avatar-shell-grid` bounds so centered/full-width layouts resize deterministically on wide screens.
+`avatar-shell.js` stores the desktop rail width in `localStorage` under `magenta.avatar.chatRailWidthPx` and the desktop chat panel height under `magenta.avatar.chatPanelHeightPx`. The shell reads those values only at desktop breakpoints, clamps them before applying CSS variables, and ignores them on mobile stacked layouts.
+Desktop resize math starts from the chat panel's rendered box and writes `--avatar-chat-rail-width` plus `--avatar-chat-panel-height` on `.avatar-shell`. The rail width variable controls the left grid column so dashboard width responds immediately when the bottom-right chat corner handle moves.

@@ -68,7 +68,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Controller
 public class AvatarDashboardController {
-    private static final String AVATAR_CSS = "/css/avatar-dashboard.css?v=1";
+    private static final String AVATAR_CSS = "/css/avatar-dashboard.css?v=3";
     private static final String AVATAR_AGENT_ID = "avatar";
     private static final String DEFAULT_AVATAR_TAB = "dashboard";
 
@@ -105,6 +105,7 @@ public class AvatarDashboardController {
             .withPageTitle("Avatar Dashboard")
             .withCustomCss("/css/magenta.css?v=5")
             .addCustomCss(AVATAR_CSS)
+            .withContentTargetClass("avatar-content-area")
             .withTopBanner(BannerBuilder.create()
                 .withLayout(BannerBuilder.BannerLayout.CENTERED)
                 .withTitle("Avatar")

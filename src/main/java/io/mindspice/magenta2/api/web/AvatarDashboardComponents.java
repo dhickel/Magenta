@@ -83,10 +83,6 @@ final class AvatarDashboardComponents {
                 .withChild(new Div().withClass("avatar-shell-grid")
                     .withChild(new Div().withClass("avatar-shell-rail")
                         .withChild(compactChat(data.defaultModel())))
-                    .withChild(new Div()
-                        .withClass("avatar-chat-resizer")
-                        .withAttribute("data-avatar-chat-resizer", "true")
-                        .withAttribute("aria-hidden", "true"))
                     .withChild(new Div().withClass("avatar-shell-main")
                         .withChild(shellTabs(normalizedTab, dashboardEditMode))
                         .withChild(tabPanel(data, normalizedTab, dashboardEditMode)))))
@@ -94,7 +90,7 @@ final class AvatarDashboardComponents {
             .withChild(new Div().withId("avatar-output-preview").withClass("avatar-output-preview"))
             .withChild(moduleScript("/js/avatar-chat.js?v=3"))
             .withChild(moduleScript("/js/avatar-layout-edit.js?v=1"))
-            .withChild(moduleScript("/js/avatar-shell.js?v=1"));
+            .withChild(moduleScript("/js/avatar-shell.js?v=4"));
     }
 
     static Component widgetGrid(AvatarDashboardData data) {
@@ -817,7 +813,13 @@ final class AvatarDashboardComponents {
             .withChild(Form.create().withId("avatar-chat-form").withClass("avatar-chat-form")
                 .withChild(TextArea.create("message").withId("avatar-chat-input").withRows(4)
                     .withPlaceholder("Ask Avatar"))
-                .withChild(Button.submit("Send")));
+                .withChild(Button.submit("Send")))
+            .withChild(new HtmlTag("button")
+                .withClass("avatar-chat-corner-resizer")
+                .withAttribute("type", "button")
+                .withAttribute("data-avatar-chat-corner-resizer", "true")
+                .withAttribute("aria-label", "Resize Avatar chat")
+                .withAttribute("title", "Resize Avatar chat"));
     }
 
     private static Component widgetBody(AvatarDashboardData data, String widgetId) {
