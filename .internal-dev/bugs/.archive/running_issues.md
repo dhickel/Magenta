@@ -1,3 +1,0 @@
-- UI completely refreshes on page change.
-  - We can keep the navigation shell and the banner
-  - We should be loading the new page into the page view when we swap a link for a non jarring transition

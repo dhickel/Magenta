@@ -78,7 +78,6 @@ final class AvatarDashboardComponents {
             .withAttribute("data-avatar-page", "true")
             .withAttribute("data-avatar-shell", "true")
             .withAttribute("data-avatar-active-tab", normalizedTab)
-            .withChild(pageHeader(data.profile()))
             .withChild(new Div().withClass("avatar-shell")
                 .withChild(new Div().withClass("avatar-shell-grid")
                     .withChild(new Div().withClass("avatar-shell-rail")
@@ -606,18 +605,6 @@ final class AvatarDashboardComponents {
         return shell;
     }
 
-    private static Component pageHeader(AvatarProfile profile) {
-        String displayName = profile == null || profile.displayName() == null ? "Avatar" : profile.displayName();
-        return new Div().withClass("avatar-page-header")
-            .withChild(new Div()
-                .withChild(Header.H1(displayName))
-                .withChild(new Paragraph("Personal command surface for dashboard work, queue flow, chat, and outputs.")))
-            .withChild(new HtmlTag("a")
-                .withClass("avatar-dashboard-link")
-                .withAttribute("href", "/dashboard")
-                .withInnerText("Operations Dashboard"));
-    }
-
     private static Component shellTabs(String activeTab, boolean editMode) {
         return new Div().withId("avatar-shell-tabs-wrap").withClass("avatar-shell-tabs-wrap")
             .withChild(new Div().withClass("avatar-shell-strip")
@@ -820,7 +807,7 @@ final class AvatarDashboardComponents {
                 .withAttribute("data-avatar-chat-corner-resizer", "true")
                 .withAttribute("aria-label", "Resize Avatar chat")
                 .withAttribute("title", "Resize Avatar chat")
-                .withUnsafeHtml(iconSvg("resize-both")));
+                .withInnerText(""));
     }
 
     private static Component widgetBody(AvatarDashboardData data, String widgetId) {
@@ -1625,18 +1612,6 @@ final class AvatarDashboardComponents {
                 <path d="M17 10l2 2-2 2"/>
                 <path d="M10 8h4"/>
                 <path d="M10 16h4"/>
-                """);
-            case "resize-both" -> strokeIcon("""
-                <path d="M12 4v16"/>
-                <path d="M4 12h16"/>
-                <path d="M12 4l-2.5 2.5"/>
-                <path d="M12 4l2.5 2.5"/>
-                <path d="M12 20l-2.5-2.5"/>
-                <path d="M12 20l2.5-2.5"/>
-                <path d="M4 12l2.5-2.5"/>
-                <path d="M4 12l2.5 2.5"/>
-                <path d="M20 12l-2.5-2.5"/>
-                <path d="M20 12l-2.5 2.5"/>
                 """);
             case "settings" -> strokeIcon("""
                 <path d="M4 7h8"/>

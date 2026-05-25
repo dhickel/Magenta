@@ -12,32 +12,15 @@ This project will act as an assistant to the user and their household.
 
 ## `.internal-dev` Development Document Store
 
-`.internal-dev/` is the persistent engineering document store for plans, bugs, changelogs, reviews, notes, and reusable knowledge.
+Follow the repository-level `.internal-dev` workflow in the top-level `AGENTS.md` and the detailed process/templates in `.internal-dev/AGENTS.md`.
 
-### When you are finish task you must use internal-dev for (after asking the user it if time to first):
-- Making a changelog to: `.internal-dev/changelogs/`:
-- Add any general knowledge to : `.internal-dev/knowledge/`
-- Add any notes to : `.internal-dev/notes/`, using or creating the future_consideration.md for future improvement/concerns that should be addressed
-- Add any out-of-scope bugs to:`.internal-dev/bugs/`
+Core-package work still participates in the same document-store contract:
 
-
-When generating plans or reviews you are to always use  `.internal-dev/plans/` or `.internal-dev/reviews/`, large multistep plans should have their own directory.
-
-- Operating guide and templates: `.internal-dev/AGENTS.md`
-- `.internal-dev/` is intentionally untracked in this repo so the workflow can stay stable across repos.
-- Structure:
-- `.internal-dev/bugs/`: out-of-scope bugs found during other work (log immediately).
-- `.internal-dev/plans/`: active plans in nested plan directories with phase files.
-- `.internal-dev/reviews/`: review outputs.
-- `.internal-dev/notes/`: deferred ideas/future considerations.
-- `.internal-dev/knowledge/`: reusable research and learner-facing summaries.
-- `.internal-dev/changelogs/`: finalized change records.
-- Do not read `.internal-dev` broadly by default.
-- Use controlled access: read only files needed for the active task.
-- Ask before logging future considerations in `notes/` when they are out of scope.
-- Move finalized bug/plan artifacts to sibling `.archive/` directories.
-- Create changelog entries for finalized work.
-- Keep AGENTS and `.internal-dev` documentation aligned with major architecture/process changes.
+- Run the required beginning pass before non-trivial implementation or planning.
+- Write changelog, knowledge, bug, note, and focus updates when the top-level workflow requires them.
+- Keep `.internal-dev` access controlled; read only files needed for the active task.
+- Write plans and reviews to `.internal-dev/plans/` and `.internal-dev/reviews/`.
+- Keep package AGENTS guides aligned when core responsibilities or conventions change.
 
 
 ## Core Package

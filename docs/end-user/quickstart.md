@@ -23,6 +23,7 @@ Start at `/`.
 The home page links to:
 
 - `/chat`: conversation and anonymous ad hoc planning surface.
+- `/avatar`: personal assistant shell with chat, dashboard widgets, Work Areas, outputs, queue, history, and profile tabs.
 - `/dashboard`: operational overview for jobs, agents, inbox messages, outputs, and recent events.
 - `/plans`: saved plan and task definitions.
 - `/workflows`: graph-based workflow definitions.

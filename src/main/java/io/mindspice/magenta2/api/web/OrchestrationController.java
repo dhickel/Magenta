@@ -82,7 +82,6 @@ import io.mindspice.magenta2.api.web.selector.EntitySelectorConfig;
 import io.mindspice.simplypages.builders.BannerBuilder;
 import io.mindspice.simplypages.builders.ShellBuilder;
 import io.mindspice.simplypages.builders.ShellTemplate;
-import io.mindspice.simplypages.builders.TopNavBuilder;
 import io.mindspice.simplypages.components.Div;
 import io.mindspice.simplypages.components.Header;
 import io.mindspice.simplypages.components.Paragraph;
@@ -217,10 +216,7 @@ public class OrchestrationController {
                 .withTitle("Magenta Operations")
                 .withSubtitle("Orchestration dashboard")
                 .build())
-            .withTopNav(TopNavBuilder.create()
-                .withHtmxNavigation(false)
-                .addPrimaryLink("Chat", "/chat")
-                .build())
+            .withTopNav(AppNavigation.primaryTopNav())
             .withSideNav(sideNav, true)
             .buildTemplate();
     }

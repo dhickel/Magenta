@@ -1628,6 +1628,7 @@ class OrchestrationControllerTest {
             assertThat(html).contains("main-sidebar");
             assertThat(html).contains("sidenav");
             assertThat(html).contains("/css/orchestration.css?v=12");
+            assertPrimaryTopNav(html);
             assertThat(html).doesNotContain("/js/alpha-security.js?v=1");
             assertThat(html).doesNotContain("/js/chat-client.js");
         }
@@ -1647,6 +1648,17 @@ class OrchestrationControllerTest {
         assertThat(html).contains("/outputs");
         assertThat(html).contains("/settings");
         assertThat(html).doesNotContain("hx-get=\"/chat\"");
+    }
+
+    private static void assertPrimaryTopNav(String html) {
+        int home = html.indexOf("<a href=\"/\" class=\"navbar-item\">Home</a>");
+        int dashboard = html.indexOf("<a href=\"/dashboard\" class=\"navbar-item\">Dashboard</a>");
+        int chat = html.indexOf("<a href=\"/chat\" class=\"navbar-item\">Chat</a>");
+
+        assertThat(home).isGreaterThanOrEqualTo(0);
+        assertThat(dashboard).isGreaterThan(home);
+        assertThat(chat).isGreaterThan(dashboard);
+        assertThat(html).doesNotContain("<a href=\"/avatar\" class=\"navbar-item\">Avatar</a>");
     }
 
     @Test

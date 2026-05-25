@@ -141,7 +141,7 @@ class AvatarDashboardControllerTest {
         assertThat(html).contains("data-avatar-tab=\"profile\"");
         assertThat(html).contains("data-avatar-tab=\"outputs\"");
         assertThat(html).contains("data-avatar-tab=\"work-areas\"");
-        assertThat(html).contains("/dashboard");
+        assertPrimaryTopNav(html);
         assertThat(html).doesNotContain("Organizer");
         assertThat(html).doesNotContain("Refresh Widgets");
         for (AvatarDashboardComponents.WidgetDefinition widget : AvatarDashboardComponents.WIDGETS) {
@@ -165,6 +165,17 @@ class AvatarDashboardControllerTest {
         assertThat(editRowsHtml).contains("/width-picker");
         assertThat(editRowsHtml).doesNotContain("Refresh Widgets");
         assertThat(editRowsHtml).doesNotContain("avatar-widget-decoration");
+    }
+
+    private static void assertPrimaryTopNav(String html) {
+        int home = html.indexOf("<a href=\"/\" class=\"navbar-item\">Home</a>");
+        int dashboard = html.indexOf("<a href=\"/dashboard\" class=\"navbar-item\">Dashboard</a>");
+        int chat = html.indexOf("<a href=\"/chat\" class=\"navbar-item\">Chat</a>");
+
+        assertThat(home).isGreaterThanOrEqualTo(0);
+        assertThat(dashboard).isGreaterThan(home);
+        assertThat(chat).isGreaterThan(dashboard);
+        assertThat(html).doesNotContain("<a href=\"/avatar\" class=\"navbar-item\">Avatar</a>");
     }
 
     @Test

@@ -4,7 +4,6 @@ import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.simplypages.builders.BannerBuilder;
 import io.mindspice.simplypages.builders.ShellBuilder;
 import io.mindspice.simplypages.builders.ShellTemplate;
-import io.mindspice.simplypages.builders.TopNavBuilder;
 import io.mindspice.simplypages.components.Div;
 import io.mindspice.simplypages.components.Header;
 import io.mindspice.simplypages.components.Paragraph;
@@ -42,13 +41,7 @@ public class FrontendController {
 
     public FrontendController(ChatService chatService) {
         this.chatService = chatService;
-        this.topNavBar = TopNavBuilder.create()
-            .withHtmxNavigation(false)
-            .addPrimaryLink("Home", "/")
-            .addPrimaryLink("Chat", "/chat")
-            .addPrimaryLink("Avatar", "/avatar")
-            .addPrimaryLink("Dashboard", "/dashboard")
-            .build();
+        this.topNavBar = AppNavigation.primaryTopNav();
         this.pageShell = shell("Magenta Portal", "Magenta Portal", "Operational assistant console")
             .buildTemplate();
         this.chatShell = shell("Magenta Chat", "Magenta Chat", "Session-backed assistant workspace")

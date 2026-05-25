@@ -38,6 +38,7 @@ Technical docs:
 - [Frontend HTMX](technical/frontend-htmx.md)
 - [Avatar Dashboard Fragments](technical/avatar-dashboard-fragments.md)
 - [Avatar Dashboard Layout Persistence](technical/avatar-dashboard-layout-persistence.md)
+- [Avatar Planner Organizer](technical/avatar-planner-organizer.md)
 - [Security](technical/security.md)
 - [Configuration and Operations](technical/configuration-operations.md)
 
@@ -47,7 +48,7 @@ API docs:
 
 ## Current Status
 
-These pages establish the documentation structure and ownership rules. Detailed content is intentionally deferred to the technical and end-user documentation phases of the alpha docs plan.
+These pages describe the current alpha UI, API, persistence, and operations contracts. Some surfaces remain intentionally rough, but documented behavior should match implemented controller/service/static-asset behavior rather than future plans.
 
 ## Related Material
 

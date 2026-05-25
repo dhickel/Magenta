@@ -50,7 +50,6 @@ import io.mindspice.magenta2.avatar.PlannerTaskStatus;
 import io.mindspice.simplypages.builders.BannerBuilder;
 import io.mindspice.simplypages.builders.ShellBuilder;
 import io.mindspice.simplypages.builders.ShellTemplate;
-import io.mindspice.simplypages.builders.TopNavBuilder;
 import io.mindspice.simplypages.components.Div;
 import io.mindspice.simplypages.core.Component;
 import org.springframework.beans.factory.ObjectProvider;
@@ -111,13 +110,7 @@ public class AvatarDashboardController {
                 .withTitle("Avatar")
                 .withSubtitle("Personal assistant dashboard")
                 .build())
-            .withTopNav(TopNavBuilder.create()
-                .withHtmxNavigation(false)
-                .addPrimaryLink("Home", "/")
-                .addPrimaryLink("Chat", "/chat")
-                .addPrimaryLink("Avatar", "/avatar")
-                .addPrimaryLink("Dashboard", "/dashboard")
-                .build())
+            .withTopNav(AppNavigation.primaryTopNav())
             .buildTemplate();
     }
 

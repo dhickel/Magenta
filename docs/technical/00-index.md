@@ -15,6 +15,7 @@ These docs explain Magenta internals for contributors. Code remains the source o
 - [Frontend HTMX](frontend-htmx.md)
 - [Avatar Dashboard Fragments](avatar-dashboard-fragments.md)
 - [Avatar Dashboard Layout Persistence](avatar-dashboard-layout-persistence.md)
+- [Avatar Planner Organizer](avatar-planner-organizer.md)
 - [Security](security.md)
 - [Configuration and Operations](configuration-operations.md)
 

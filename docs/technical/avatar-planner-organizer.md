@@ -13,14 +13,16 @@ Recurrence JSON is written explicitly as scalar fields so repository tests and l
 
 ## UI Contract
 
-The Avatar toolbar opens `GET /avatar/_organizer?tab=planner`. The modal uses HTMX tab swaps for:
+Planner, todo, calendar, and note operations are reached from Avatar dashboard widgets and their detail flows. The old top-level shell `Organizer` action is intentionally not part of the current `/avatar` tabbed shell.
+
+The legacy fragment route `GET /avatar/_organizer?tab=planner` still renders the shared organizer modal when called by widget/detail flows or compatibility clients. The modal uses HTMX tab swaps for:
 
 - `planner`: create planner tasks, set recurrence, link existing work ids, and add subtodos.
 - `todos`: view and mutate the existing Avatar todo list.
 - `calendar`: view existing calendar items plus planner projections.
 - `notes`: view and capture existing Avatar notes.
 
-Mutations return the same modal target so the user stays in context. The planner recurrence inputs are rendered from one reusable compact component in `AvatarDashboardComponents`.
+Mutations return the same modal target so the user stays in context. The planner recurrence inputs are rendered from one reusable compact component in `AvatarDashboardComponents`. Top-level `/avatar` shell navigation remains limited to `dashboard`, `queue`, `history`, `profile`, `outputs`, and `work-areas`; only the dashboard tab enters layout edit mode.
 
 ## Deferred Automation
 

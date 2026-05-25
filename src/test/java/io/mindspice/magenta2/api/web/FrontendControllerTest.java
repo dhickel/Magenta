@@ -16,6 +16,17 @@ class FrontendControllerTest {
         return new StubChatService();
     }
 
+    private static void assertPrimaryTopNav(String html) {
+        int home = html.indexOf("<a href=\"/\" class=\"navbar-item\">Home</a>");
+        int dashboard = html.indexOf("<a href=\"/dashboard\" class=\"navbar-item\">Dashboard</a>");
+        int chat = html.indexOf("<a href=\"/chat\" class=\"navbar-item\">Chat</a>");
+
+        assertThat(home).isGreaterThanOrEqualTo(0);
+        assertThat(dashboard).isGreaterThan(home);
+        assertThat(chat).isGreaterThan(dashboard);
+        assertThat(html).doesNotContain("<a href=\"/avatar\" class=\"navbar-item\">Avatar</a>");
+    }
+
     @Test
     void homePageRendersWithDashboardLinks() {
         FrontendController controller = new FrontendController(stubChatService());
@@ -27,6 +38,7 @@ class FrontendControllerTest {
         assertThat(html).contains("/chat");
         assertThat(html).contains("/avatar");
         assertThat(html).contains("/dashboard");
+        assertPrimaryTopNav(html);
         assertThat(html).contains("/webjars/htmx.org/dist/htmx.min.js");
         assertThat(html).doesNotContain("hx-get=\"/chat\"");
         assertThat(html).doesNotContain("/js/avatar-chat.js");
@@ -63,6 +75,7 @@ class FrontendControllerTest {
         assertThat(html).contains("data-active-conversation-id");
         assertThat(html).contains("<code id=\"chat-active-session\">New chat</code>");
         assertThat(html).contains("/webjars/htmx.org/dist/htmx.min.js");
+        assertPrimaryTopNav(html);
         assertThat(html).doesNotContain("<style>");
     }
 
