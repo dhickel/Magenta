@@ -34,6 +34,15 @@ Routine widget actions such as adding todos, completing daily tasks, saving note
 
 ## Work Areas And Files
 
-The `Work Areas` widget and the top-level `Work Areas` tab use the confined workspace file explorer. The browser shows a familiar file-manager layout with breadcrumb navigation, toolbar actions, cards for files and folders, a label inspector, and a preview/editor pane. It supports directory navigation, text and Markdown preview/edit/save, image preview, downloads, directory creation, `.txt`/`.md` creation, rename, copy, move, note labels, and delete confirmation with an extra recursive confirmation for directories.
+The `Work Areas` widget and the top-level `Work Areas` tab use the confined workspace file explorer. The browser uses a familiar details/list file-manager layout:
+
+- toolbar actions for refresh, folder creation, text-file creation, and Markdown-file creation;
+- breadcrumb/path navigation that stays inside the selected Work Area;
+- compact table rows with `Name`, `File Type`, `Size`, `Created`, `Last Modified`, `Tags`, and `Actions`;
+- a separate right-side inspector for selected file or directory metadata, full tags, and operations.
+
+Supported file actions include directory navigation, text and Markdown preview/edit/save, contained image preview, downloads, directory creation, `.txt`/`.md` creation, rename, copy, move, custom tags, note labels, and delete confirmation with an extra recursive confirmation for directories.
+
+Markdown files open with the rendered tab active and a Text tab for raw editing. Plain text opens directly in raw text mode. Unsupported or binary files do not expose a misleading row View action; stale viewer requests show a safe unsupported message instead. Copy and move require an explicit destination directory and stay confined under the selected Work Area.
 
 New assignment work defaults to the selected Home Work Area. During execution, `workspace/` points at the selected Work Area and `root/` points at the broader owned root. Outputs default to the selected Work Area `outputs/` folder unless the submit form redirects them elsewhere.

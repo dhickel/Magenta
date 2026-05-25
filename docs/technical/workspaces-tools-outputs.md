@@ -102,7 +102,21 @@ Runtime alias and output directory resolution consume these columns during task,
 - `WORK_AREA` writes under `<output-work-area>/outputs/...`.
 - `DIRECT_DIRECTORY` writes directly to the existing owner-root-relative directory.
 
-`WorkAreaExplorerService` provides the backend contract for the Avatar Work Areas/file explorer surface. It supports confined directory listings, safe text/Markdown preview and save, image preview/download routing, bounded downloads, directory creation, `.txt` and `.md` creation, sibling rename, copy, move, note labels, recursive delete with typed confirmation, and marking nested directories as Work Areas. The Avatar UI renders these operations through the reusable SimplyPages file explorer shell while keeping filesystem access, path validation, persistence, tags, and audit logging in Magenta. Explorer path resolution rejects absolute paths, traversal, symlink path components, unsafe text-edit extensions, oversized text saves, Home/system roots, marked Work Area descendants, and Work Areas referenced by queued/running assignment or output routing metadata.
+`WorkAreaExplorerService` provides the backend contract for the Avatar Work Areas/file explorer surface. It supports confined directory listings, rich row/inspect metadata, safe text/Markdown preview and save, image preview/download routing, bounded downloads, directory creation, `.txt` and `.md` creation, sibling rename, copy, move, custom file/directory tags, note labels, recursive delete with typed confirmation, and marking nested directories as Work Areas.
+
+The Avatar UI renders these operations as a Magenta-local HTMX details/list explorer with a separate inspector panel, not as a file card grid. Filesystem access, path validation, persistence, tags, and audit logging stay in workspace services. Explorer path resolution rejects absolute paths, traversal, symlink path components, unsafe text-edit extensions, oversized text saves, Home/system roots, marked Work Area descendants, and Work Areas referenced by queued/running assignment or output routing metadata.
+
+Row metadata is intentionally lighter than preview: list/inspect classification uses extension, size, and a bounded UTF-8 probe, while preview/save routes perform full text validation. Directory creation validates symlink ancestors before any filesystem write so a rejected path cannot create directories outside the Work Area.
+
+Viewer behavior:
+
+- Markdown opens with the rendered tab active and a Text tab for raw editing.
+- Markdown render failure is non-fatal and leaves raw text accessible.
+- Plain text opens raw-only without a rendered Markdown tab.
+- Images render through the confined inline image route and expose a download link.
+- Unsupported/binary files do not expose a row View action and stale viewer requests return a safe fallback.
+
+Copy and move forms require a destination directory. A plain child directory name such as `dest` is resolved relative to the selected file's parent when that sibling directory exists; otherwise the submitted destination is resolved under the Work Area root and validated by the service.
 
 ## Workspace Leases
 

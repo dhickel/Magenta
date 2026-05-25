@@ -20,7 +20,7 @@ Living document. Workers and validators append concise entries here. Email coord
 | Phase 03 API and fragments | complete | implementation_worker | not committed per directive | targeted command passed | not sent by worker directive | Stable Avatar HTMX fragment contracts, viewer/tag routes, OOB mutation refreshes, and controller tests. |
 | Phase 04 file explorer UI rewrite | complete | orchestrator + validation subagent | c53501f | targeted tests and Playwright passed | sent by orchestrator | Details/list UI, no cards. |
 | Phase 05 viewer/copy/move/rename/delete | complete | orchestrator + validation subagents | 977db55 | targeted tests, styled Playwright, and remediation validation passed | sent | Viewer and operation completion; code-quality findings and browser proof gaps remediated. |
-| Phase 06 docs closeout and gate validation | pending | unassigned | pending | pending | pending | Docs, changelog, focus, final validation. |
+| Phase 06 docs closeout and gate validation | complete | orchestrator | pending commit | targeted tests, full tests, diff check, bounded startup, and final red-team passed | sent | Docs, changelog, knowledge, focus, decision updates, and prior plan archival passed final P6 gate review. |
 
 ## Phase 01 Research And Spec Reconciliation Evidence
 
@@ -83,6 +83,7 @@ YYYY-MM-DD phase=<phase> decision=<decision> rationale=<short rationale> source=
 2026-05-24 phase=Phase 05 decision=removed duplicate modal container ids from HTMX modal responses rationale=modal fragments target the stable shell container with innerHTML and must not nest a second avatar-workarea-modal id source=AvatarDashboardControllerTest
 2026-05-24 phase=Phase 05 decision=bounded row-level UTF-8 probing rationale=list/inspect row metadata should not read entire candidate text files; full validation remains in preview/save routes source=WorkAreaExplorerService.java
 2026-05-24 phase=Phase 05 decision=expanded inspect copy/move controls by default and added viewer state data hooks rationale=styled browser validation should prove visible operation forms and distinguish Markdown rendered vs plain text raw state without brittle label assumptions source=WorkAreaExplorerFragments.java
+2026-05-24 phase=Phase 06 decision=archived superseded original workspace-file-explorer plan rationale=targeted tests, full tests, diff check, startup, and prior Playwright validation passed; final red-team remediation tracked before P6 email and commit source=.internal-dev/plans/.archive/workspace-file-explorer/
 
 ## Validation Evidence
 
@@ -122,6 +123,13 @@ YYYY-MM-DD phase=<phase> command=<command> result=<pass|fail|blocked> evidence=<
 2026-05-24 phase=Phase 05 command=copy/image/binary Playwright subagent result=fail evidence=image and binary checks passed, but copy proof initially hit stale process behavior and then ambiguous form targeting that copied beside source instead of dest; remediated with required destination, operation-specific labels, and unique-port validation
 2026-05-24 phase=Phase 05 command=mvn test -Dtest=WorkAreaExplorerServiceTest,AvatarDashboardControllerTest,WorkAreaControllerTest result=pass evidence=35 tests run, 0 failures, 0 errors, 0 skipped after required destination and operation-specific copy/move form hooks
 2026-05-24 phase=Phase 05 command=final copy/image/binary Playwright subagent result=pass evidence=unique port 18131; runtime root /tmp/magenta2-phase05-final3-Fvo7D2; live markup contained data-file-action=\"copy\", aria-label=\"Copy destination directory\", required; rows pixel.png/data.bin/source.txt/dest visible; image modal and binary no-view checks passed; copied file existed at root/agents/avatar/workspace/home/dest/source-copied.txt and was visible in dest; duplicate avatar-workarea-modal count remained 1; screenshots target/playwright-workspace-file-explorer-phase05-remaining-final3/01-avatar-work-areas-initial.png through 05-dest-open-with-copied-file.png; no console/page/network errors
+2026-05-24 phase=Phase 06 command=mvn test -Dtest=WorkAreaExplorerServiceTest,WorkAreaControllerTest,AvatarDashboardControllerTest result=pass evidence=35 tests run, 0 failures, 0 errors, 0 skipped; confirms closeout branch still passes explorer service, API, and Avatar fragment controller coverage
+2026-05-24 phase=Phase 06 command=mvn test result=pass evidence=810 tests run, 0 failures, 0 errors, 0 skipped
+2026-05-24 phase=Phase 06 command=git diff --check result=pass evidence=no whitespace errors reported after docs/focus/changelog updates
+2026-05-24 phase=Phase 06 command=timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0 result=pass evidence=Spring Boot started successfully on ephemeral port 33233 and shut down cleanly when the timeout elapsed
+2026-05-24 phase=Phase 06 command=git mv .internal-dev/plans/workspace-file-explorer .internal-dev/plans/.archive/workspace-file-explorer result=pass evidence=superseded original plan suite moved to sibling archive after Maven/startup validation passed; final red-team remediation required before P6 email/commit
+2026-05-24 phase=Phase 06 command=final red-team pass result=fail evidence=found premature Phase 06 completion wording, unstaged/untracked commit-readiness state, stale Alpha Limits workspace-operation wording, and stale SimplyPages-module closeout wording; remediation applied before rerun
+2026-05-24 phase=Phase 06 command=final red-team rerun result=pass evidence=docs/internal-dev accuracy, archived supersession wording, AgentMail daemon/wait workflow, validation evidence, focus consistency, and P6 email/stage/commit readiness cleared; residual risk limited to relying on recorded Maven/startup/Playwright evidence rather than rerunning them in the read-only pass
 
 ## Blockers And Remediation
 
@@ -148,3 +156,4 @@ YYYY-MM-DD gate=<gate name> mailctl_status=<ok|blocked> email=<sent|not-sent> wa
 ```
 
 2026-05-24 gate=Phase 05 viewer/copy/move/rename/delete mailctl_status=ok email=sent wait=not-needed notes=sent P5 gate report to Dwight, AgentMail thread_id cd64aece-e782-4d4d-8f5c-fe47bb63dbcb
+2026-05-24 gate=Phase 06 docs closeout and validation mailctl_status=ok email=sent wait=not-needed notes=sent P6 gate report to Dwight, AgentMail thread_id 78ac631c-abcf-4893-9b7b-d4c909a68b2c

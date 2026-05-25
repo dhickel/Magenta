@@ -42,6 +42,8 @@ Use HTMX for:
 
 HTMX routes should return server-rendered HTML fragments and preserve consistent status/markup behavior for failed requests so operational panels show actionable errors instead of silent failures.
 
+For modal hosts, keep one stable target element in the page and return modal content for `innerHTML` swaps, or return the full target with `outerHTML`. Do not return a second element with the same id inside an `innerHTML` target. The Avatar Work Area explorer uses `#avatar-workarea-modal` as a stable host and returns modal content without duplicating that id.
+
 ## JavaScript Islands
 
 Existing JavaScript is justified where persistent browser state, SSE, or client-side graph/editor interaction is simpler than pure HTMX.
@@ -69,6 +71,7 @@ When adding or changing UI:
 - Use shared render structures and slot keys when the same structure renders request-specific data.
 - Keep controllers thin; rendering helpers/components should assemble view state, while services own domain behavior.
 - Follow existing orchestration page patterns before introducing new markup style.
+- For dense operational explorers, use details/list tables, stable row actions, a separate inspector, and HTMX fragments before reaching for decorative card grids.
 
 If SimplyPages lacks a reasonable primitive, inspect `/home/hickelpickle/Code/Java/cannasite/java-html-framework/docs` and `/home/hickelpickle/Code/Java/cannasite/java-html-framework/demo`. If the library truly has a bug or missing primitive, document or fix the library rather than adding brittle page-level workarounds.
 

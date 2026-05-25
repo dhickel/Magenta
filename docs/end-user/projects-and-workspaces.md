@@ -48,6 +48,22 @@ For existing projects, the workspace section shows:
 
 If a lease is active, the UI may show **Request release after current turn**. This requests release after the current agent turn rather than immediately breaking active work.
 
+## Work Area File Explorer
+
+Avatar Work Areas expose a confined file explorer for agent or project workspace files. The explorer is a details/list view, not a card grid. It shows table columns for name, file type, size, created timestamp, last modified timestamp, tags, and row actions. Selecting a row updates a separate inspector panel with metadata, full tags, and available operations.
+
+The explorer supports:
+
+- Work Area-confined folder navigation through toolbar and breadcrumb controls;
+- creating folders, `.txt` files, and `.md` files;
+- Markdown viewing with Rendered and Text tabs;
+- plain text raw viewing/editing;
+- contained image viewing and safe download links;
+- custom tags and note labels for files and directories;
+- rename, delete confirmation, copy, and move operations.
+
+Copy and move require a destination directory and remain under the selected Work Area. Unsupported or binary files do not show a row View action. The backend rejects traversal, absolute paths, symlink path components, unsafe text-edit extensions, oversized text saves, protected Home/system Work Areas, active Work Area descendants, and Work Areas referenced by queued or running assignment metadata.
+
 ## Project Network And Memberships
 
 The project network section shows linked agents. The agents section lists assigned members and roles, and provides HTMX controls to add a member, choose a role, or remove a member.
@@ -82,4 +98,4 @@ Workspace leases indicate active ownership or use. A lease is an orchestration/r
 
 ## Alpha Limits
 
-Project CRUD and membership editing are available in the UI. Deep workspace operations remain limited to release requests and inspection. Some project summary panels display raw member, lease, run, or job IDs for traceability. Searchable selectors are used in related job/project fields where available, but exact workspace and lease diagnostics may still require reading displayed IDs.
+Project CRUD and membership editing are available in the Projects UI. Project workspace lease controls remain limited to release requests and inspection there; deeper file operations are handled through the Avatar Work Area file explorer. Some project summary panels display raw member, lease, run, or job IDs for traceability. Searchable selectors are used in related job/project fields where available, but exact workspace and lease diagnostics may still require reading displayed IDs.

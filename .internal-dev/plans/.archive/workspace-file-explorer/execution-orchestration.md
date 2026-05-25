@@ -1,13 +1,16 @@
 # Workspace File Explorer Execution Orchestration
 
-Status: ready-for-execution
+Status: archived-superseded
 Created: 2026-05-24
 Scope: orchestration map only; no product implementation
-Source suite: `.internal-dev/plans/workspace-file-explorer/`
+Source suite: `.internal-dev/plans/.archive/workspace-file-explorer/`
+Superseded by: `.internal-dev/plans/workspace-file-explorer-rewrite/`
+
+Archive note: do not execute this orchestration map. It is preserved only as history for the superseded SimplyPages-upstream plan. The active closeout contract is the rewrite suite.
 
 ## Source Plan Summary
 
-The advanced plan suite is sufficient for execution orchestration. It defines the locked workspace-file-explorer scope, acceptance criteria AC1-AC14, validation criteria VC1-VC8, domain work units WU-01 through WU-12, stop rules, closeout duties, and upstream SimplyPages boundary.
+The original advanced plan suite was sufficient for its execution orchestration at the time it was written. It defined the locked workspace-file-explorer scope, acceptance criteria AC1-AC14, validation criteria VC1-VC8, domain work units WU-01 through WU-12, stop rules, closeout duties, and upstream SimplyPages boundary.
 
 Key execution rule: Magenta mutations run one phase at a time, with a validation/red-team gate after each mutating phase. Non-mutating research, validation checklist preparation, and SimplyPages API-shape review may run in parallel. Upstream SimplyPages mutation must not start until the Magenta service/view-model contract is stable enough to avoid redesign churn and the upstream dirty-state gate is resolved.
 
@@ -15,8 +18,8 @@ Current baseline observed for this orchestration pass:
 
 - Magenta branch: `feature/workspace-file-explorer`.
 - Email workflow: use direct AgentMail daemon/wait state; do not recreate the removed repo-local email ledger.
-- Plan suite is uncommitted under `.internal-dev/plans/workspace-file-explorer/`.
-- Implementation target branch is already the requested `feature/workspace-file-explorer`; Phase 1 may start directly after a final `git status --short` confirms no overlap with assigned files.
+- Plan suite is archived under `.internal-dev/plans/.archive/workspace-file-explorer/`.
+- Implementation target branch was already the requested `feature/workspace-file-explorer`; this archived Phase 1 must not start.
 
 ## Missing Gates And Assumptions
 
