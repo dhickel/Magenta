@@ -21,6 +21,7 @@ final class ChatModuleRenderer {
             .withTranscript(new Div().withId("chat-history"))
             .withComposer(new Div()
                 .withChild(new Div().withId("chat-planning-panel").withAttribute("aria-live", "polite"))
+                .withChild(new Div().withId("chat-queued-messages-panel").withAttribute("aria-live", "polite"))
                 .withChild(Form.create().withId("chat-form")
                     .withChild(TextArea.create("message").withId("chat-input").withRows(6)
                         .withPlaceholder("Type a message (Enter to send, Shift+Enter newline)")

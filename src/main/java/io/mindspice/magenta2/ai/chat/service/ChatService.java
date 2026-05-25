@@ -138,6 +138,7 @@ public class ChatService {
     private final AuditService auditService;
     private final RequestResolver requestResolver;
     private final ChatFileService chatFileService;
+    private final ChatPendingMessageService chatPendingMessageService;
     private final Set<String> toolUnsupportedModels = ConcurrentHashMap.newKeySet();
     private final Map<String, Semaphore> streamLocks = new ConcurrentHashMap<>();
 
@@ -160,6 +161,7 @@ public class ChatService {
             chatSessionMetadataRepository,
             chatMarkdownRenderer,
             aiConfig,
+            null,
             null,
             null,
             null,
@@ -218,6 +220,7 @@ public class ChatService {
                 ? new RequestResolver(aiConfig, chatSessionMetadataRepository, chatMemoryRepository, planService, null, null)
                 : null,
             null,
+            null,
             null
         );
     }
@@ -245,6 +248,7 @@ public class ChatService {
         @Autowired(required = false) AuditService auditService,
         @Autowired(required = false) RequestResolver requestResolver,
         @Autowired(required = false) ChatFileService chatFileService,
+        @Autowired(required = false) ChatPendingMessageService chatPendingMessageService,
         @Autowired(required = false) io.mindspice.magenta2.ai.chat.plan.WorkTypeProfileService workTypeProfileService
     ) {
         this.chatMemory = chatMemory;
@@ -268,6 +272,7 @@ public class ChatService {
         this.auditService = auditService;
         this.requestResolver = requestResolver;
         this.chatFileService = chatFileService;
+        this.chatPendingMessageService = chatPendingMessageService;
 
         // Initialize extracted turn components
         this.promptAssembler = new PromptContextAssembler(aiConfig, runtimeSettingsService, planService, taskService, workTypeProfileService);
@@ -557,6 +562,9 @@ public class ChatService {
             }
             if (contextUsageTracker != null) {
                 contextUsageTracker.clear(conversationId);
+            }
+            if (chatPendingMessageService != null) {
+                chatPendingMessageService.deleteByConversationId(conversationId);
             }
         }
     }

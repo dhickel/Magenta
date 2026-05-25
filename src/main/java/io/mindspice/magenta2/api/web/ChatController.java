@@ -15,7 +15,12 @@ import io.mindspice.magenta2.ai.chat.model.ChatResponse;
 import io.mindspice.magenta2.ai.chat.model.ChatSession;
 import io.mindspice.magenta2.ai.chat.model.ChatSessions;
 import io.mindspice.magenta2.ai.chat.model.ChatPlanState;
+import io.mindspice.magenta2.ai.chat.model.ClaimedPendingChatMessage;
+import io.mindspice.magenta2.ai.chat.model.PendingChatMessage;
+import io.mindspice.magenta2.ai.chat.model.PendingMessageAckRequest;
+import io.mindspice.magenta2.ai.chat.model.PendingMessageRequest;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
+import io.mindspice.magenta2.ai.chat.service.ChatPendingMessageService;
 import io.mindspice.magenta2.ai.chat.service.ResolvedChatRequest;
 import io.mindspice.magenta2.ai.chat.service.StoredContextUsage;
 import io.mindspice.magenta2.ai.chat.service.ContextManagementAdvisor;
@@ -50,33 +55,37 @@ import reactor.core.scheduler.Schedulers;
 @RequestMapping("/api/chat")
 public class ChatController {
     private final ChatService chatService;
+    private final ChatPendingMessageService pendingMessageService;
     private final ActiveTurnRegistry activeTurnRegistry;
     private final AuditService auditService;
     private final long planExecutionStreamTimeoutMillis;
 
     public record PlanStartRequest(String conversationId, String model, String planningModel, String userInstruction) { }
     public record PlanExecuteRequest(boolean clearContext) { }
+    public record PendingMessagesResponse(List<PendingChatMessage> messages) { }
 
     public ChatController(ChatService chatService) {
         this(chatService, new ActiveTurnRegistry());
     }
 
     public ChatController(ChatService chatService, ActiveTurnRegistry activeTurnRegistry) {
-        this(chatService, activeTurnRegistry, null, 0);
+        this(chatService, null, activeTurnRegistry, null, 0);
     }
 
     public ChatController(ChatService chatService, ActiveTurnRegistry activeTurnRegistry, long planExecutionStreamTimeoutSeconds) {
-        this(chatService, activeTurnRegistry, null, planExecutionStreamTimeoutSeconds);
+        this(chatService, null, activeTurnRegistry, null, planExecutionStreamTimeoutSeconds);
     }
 
     @Autowired
     public ChatController(
         ChatService chatService,
+        @Autowired(required = false) ChatPendingMessageService pendingMessageService,
         ActiveTurnRegistry activeTurnRegistry,
         @Autowired(required = false) AuditService auditService,
         @Value("${magenta.plan.execution-stream-timeout-seconds:0}") long planExecutionStreamTimeoutSeconds
     ) {
         this.chatService = chatService;
+        this.pendingMessageService = pendingMessageService;
         this.activeTurnRegistry = activeTurnRegistry;
         this.auditService = auditService;
         this.planExecutionStreamTimeoutMillis = planExecutionStreamTimeoutSeconds <= 0
@@ -352,6 +361,73 @@ public class ChatController {
         return activeTurnRegistry.interrupt(turnId, conversationId, token, message);
     }
 
+    @GetMapping("/{conversationId}/pending-messages")
+    public PendingMessagesResponse pendingMessages(@PathVariable String conversationId) {
+        requireValidUuid(conversationId);
+        return new PendingMessagesResponse(requirePendingMessageService().list(conversationId));
+    }
+
+    @PostMapping("/{conversationId}/pending-messages")
+    public PendingMessagesResponse enqueuePendingMessage(
+        @PathVariable String conversationId,
+        @Valid @RequestBody PendingMessageRequest request
+    ) {
+        requireValidUuid(conversationId);
+        String message = normalize(request == null ? null : request.message());
+        if (message == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "message is required");
+        }
+        ChatPendingMessageService service = requirePendingMessageService();
+        service.enqueue(
+            conversationId,
+            message,
+            normalize(request.model()),
+            normalize(request.planningModel()),
+            request.surface()
+        );
+        return new PendingMessagesResponse(service.list(conversationId));
+    }
+
+    @PostMapping("/{conversationId}/pending-messages/claim")
+    public ClaimedPendingChatMessage claimPendingMessage(@PathVariable String conversationId) {
+        requireValidUuid(conversationId);
+        return requirePendingMessageService().claim(conversationId).orElse(null);
+    }
+
+    @PostMapping("/{conversationId}/pending-messages/{messageId}/ack")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void ackPendingMessage(
+        @PathVariable String conversationId,
+        @PathVariable String messageId,
+        @Valid @RequestBody PendingMessageAckRequest request
+    ) {
+        requireValidUuid(conversationId);
+        String claimToken = normalize(request == null ? null : request.claimToken());
+        if (claimToken == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "claimToken is required");
+        }
+        if (!requirePendingMessageService().ack(conversationId, messageId, claimToken)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "pending message claim not found");
+        }
+    }
+
+    @PostMapping("/{conversationId}/pending-messages/{messageId}/release")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void releasePendingMessage(
+        @PathVariable String conversationId,
+        @PathVariable String messageId,
+        @Valid @RequestBody PendingMessageAckRequest request
+    ) {
+        requireValidUuid(conversationId);
+        String claimToken = normalize(request == null ? null : request.claimToken());
+        if (claimToken == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "claimToken is required");
+        }
+        if (!requirePendingMessageService().release(conversationId, messageId, claimToken)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "pending message claim not found");
+        }
+    }
+
     @GetMapping("/sessions")
     public ChatSessions sessions() {
         return new ChatSessions(chatService.listConversationIds(), chatService.listSessions());
@@ -614,6 +690,13 @@ public class ChatController {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private ChatPendingMessageService requirePendingMessageService() {
+        if (pendingMessageService == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "pending message queue is unavailable");
+        }
+        return pendingMessageService;
     }
 
     private void recordStreamError(ResolvedChatRequest request, String errorType, Throwable error) {

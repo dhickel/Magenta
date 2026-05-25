@@ -27,6 +27,7 @@ The backing `agent_profiles` row for `Avatar` remains in the primary Magenta dat
 Source packages: [`ai/chat/repository`](../../src/main/java/io/mindspice/magenta2/ai/chat/repository), [`ai/agent/job`](../../src/main/java/io/mindspice/magenta2/ai/agent/job).
 
 - `ai_chat_memory`: ordered chat messages by `conversation_id` and `message_order`, including message type, text, and metadata JSON.
+- `ai_chat_pending_messages`: browser `/chat` mid-turn message queue rows with deterministic `message_order`, message/model/planning model/surface fields, `PENDING` or `CLAIMED` status, claim token/timestamp, and created/updated timestamps. Rows are not chat memory until the browser claims and sends them through the normal stream route.
 - `ai_chat_session_metadata`: per-conversation model, title, active task run, planning model, favorite/archive flags, origin, agent id, and updated timestamp.
 - `plan_chat_messages`: saved `/plans` planning chat messages by `plan_id`, separate from `/api/chat` session memory.
 - `audit_event`: append-only conversation event log for user/assistant messages, tool execution, compaction/context snapshots, errors, token usage, and result previews.
@@ -35,6 +36,7 @@ Source packages: [`ai/chat/repository`](../../src/main/java/io/mindspice/magenta
 Compatibility notes:
 
 - `ChatMemoryRepository` can add `message_metadata_json`.
+- `ChatPendingMessageRepository` creates the pending-message table and indexes defensively and recovers stale claimed rows before list/claim operations.
 - `ChatSessionMetadataRepository` can add title, favorite, archived, updated, planning model, active task run, origin, and agent columns.
 - `AuditRepository` can add audit columns as the audit event shape evolves.
 

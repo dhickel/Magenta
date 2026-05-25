@@ -10,6 +10,27 @@ create table if not exists ai_chat_memory (
 create index if not exists idx_ai_chat_memory_conversation
     on ai_chat_memory (conversation_id);
 
+create table if not exists ai_chat_pending_messages (
+    id text primary key,
+    conversation_id text not null,
+    message_order integer not null,
+    message_text text not null,
+    model text,
+    planning_model text,
+    surface text,
+    status text not null,
+    claim_token text,
+    claimed_at text,
+    created_at text not null,
+    updated_at text not null
+);
+
+create index if not exists idx_ai_chat_pending_messages_status_order
+    on ai_chat_pending_messages (conversation_id, status, message_order);
+
+create index if not exists idx_ai_chat_pending_messages_order
+    on ai_chat_pending_messages (conversation_id, message_order);
+
 create table if not exists ai_chat_session_metadata (
     conversation_id text primary key,
     model text,

@@ -627,7 +627,8 @@ body {
 }
 
 #chat-plan-status,
-#chat-planning-panel {
+#chat-planning-panel,
+#chat-queued-messages-panel {
     display: none;
     border: 1px solid #cdd7e3;
     border-radius: 8px;
@@ -637,8 +638,16 @@ body {
 }
 
 #chat-plan-status.active,
-#chat-planning-panel.active {
+#chat-planning-panel.active,
+#chat-queued-messages-panel.active {
     display: block;
+}
+
+#chat-queued-messages-panel.active {
+    border: 0;
+    background: transparent;
+    padding: 0 0.75rem;
+    margin-bottom: 1rem;
 }
 
 #chat-planning-panel.question-active {
@@ -711,6 +720,24 @@ body {
     font-weight: 700;
     line-height: 1.35;
     overflow-wrap: anywhere;
+}
+
+.queued-message-card + .queued-message-card {
+    margin-top: 0.55rem;
+}
+
+.queued-message-mark {
+    background: #dcecff;
+    border-color: #a9c7ea;
+    color: #315d91;
+    font-size: 1rem;
+}
+
+.queued-message-status {
+    margin-top: 0.18rem;
+    color: #5d6b7d;
+    font-size: 0.78rem;
+    font-weight: 700;
 }
 
 #chat-plan-document[hidden] {

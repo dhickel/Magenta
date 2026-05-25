@@ -23,6 +23,8 @@ The sidebar only shows browser-surface `/chat` conversations. Avatar chat, agent
 
 Use **Send** to submit a message. Enter sends the message; Shift+Enter inserts a newline.
 
+If you send a normal message while the assistant is still responding, Magenta queues it above the composer and sends it automatically after the active response finishes. Queued cards show their order and survive a page reload or session switch; after a reload, Magenta keeps retrying until the active response is no longer blocking the conversation. Slash commands are not queued mid-turn; wait for the active response to finish before using commands.
+
 Sessions with chat-scoped files show a green `<n> Outputs` badge in the session card. Selecting that session shows the files in the right-side **Outputs** panel with file type, name, relative path when useful, size, modified time, and a **Download** button. The panel lists ordinary chat files created under the chat's persistent file directory; it does not preview or edit file contents.
 
 For installs moved to the root-owned layout, existing chat outputs appear after the operator copies old `chats/` into `<magenta.root.path>/root/chats/`. Magenta does not auto-copy chat files from an old data root.
@@ -69,14 +71,14 @@ Use the sidebar to:
 - Delete sessions that no longer matter.
 - Bulk-select sessions for repeated actions.
 
-Deleting a session removes the visible conversation history for that conversation. It does not automatically delete saved plans, tasks, workflow definitions, jobs, agent history, output artifacts, or persistent chat files created from the conversation.
+Deleting or clearing a session removes the visible conversation history and any pending queued messages for that conversation. It does not automatically delete saved plans, tasks, workflow definitions, jobs, agent history, output artifacts, or persistent chat files created from the conversation.
 
 ## Common Errors
 
 - **Unknown command**: only supported chat commands are available. Use visible UI buttons for planning and saved work.
 - **Conversation not found**: the session was deleted or the URL points at an invalid conversation.
 - **Anonymous chat plans cannot be saved**: create saved plans from `/plans`.
-- **Another stream is active**: wait for the current response to finish, interrupt it if the UI offers that control, or refresh if the stream is stale.
+- **Another stream is active**: direct overlapping stream calls are still rejected, but normal browser messages submitted mid-turn are queued and sent after the active response finishes.
 - **Model unavailable**: choose a model from the dropdown or update model settings.
 
 ## Alpha Limits

@@ -17,6 +17,7 @@ Required schema anchors: specification entry, architecture entry, service entry,
 | id | file | status | owner | intended_contract | observed_anchors | validation | related_decisions | related_knowledge |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | SPEC-20260525-01 | `services.md` | active | services | Services own use-case behavior and hide persistence/transport details. | Service classes under `io.mindspice.magenta2.*` | Focused tests plus startup when behavior changes. | `DECISION-20260522-05` | `services-ux-architecture-rules.md` |
+| SPEC-20260525-02 | `schema.sql` | active | persistence | Browser chat pending messages are stored separately from chat memory until claimed and sent as normal turns. | `ai_chat_pending_messages`, `ChatPendingMessageRepository` | Repository FIFO, claim/ack/release, stale recovery, and clear-conversation tests. | none | `chat-context-management-and-tools.md` |
 
 ## Architecture Entry
 

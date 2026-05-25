@@ -14,6 +14,10 @@ import io.mindspice.magenta2.ai.chat.model.ChatResponse;
 import io.mindspice.magenta2.ai.chat.model.ChatSession;
 import io.mindspice.magenta2.ai.chat.model.ChatSessionSurface;
 import io.mindspice.magenta2.ai.chat.model.ContextUsage;
+import io.mindspice.magenta2.ai.chat.model.PendingMessageAckRequest;
+import io.mindspice.magenta2.ai.chat.model.PendingMessageRequest;
+import io.mindspice.magenta2.ai.chat.repository.ChatPendingMessageRepository;
+import io.mindspice.magenta2.ai.chat.service.ChatPendingMessageService;
 import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.chat.service.ResolvedChatRequest;
 import io.mindspice.magenta2.ai.chat.service.StoredContextUsage;
@@ -21,6 +25,8 @@ import io.mindspice.magenta2.ai.execution.ActiveTurnRegistry;
 import io.mindspice.magenta2.ai.execution.ActiveTurnRegistry.ActiveTurn;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Flux;
@@ -390,6 +396,78 @@ class ChatControllerTest {
         // Emitter completes, guard disposes subscription, turn is cleaned up.
         // The stream completes normally so ActiveTurn is removed.
         assertThat(completableChatService.completed.await(1, TimeUnit.SECONDS)).isTrue();
+    }
+
+    @Test
+    void pendingMessageEndpointsEnqueueListClaimAckAndRelease() {
+        ChatController controller = new ChatController(
+            chatService,
+            pendingMessageService(),
+            new ActiveTurnRegistry(),
+            null,
+            0
+        );
+
+        var enqueued = controller.enqueuePendingMessage(
+            CONVERSATION_ID,
+            new PendingMessageRequest(" queued text ", "main", "planner", ChatSessionSurface.BROWSER)
+        );
+
+        assertThat(enqueued.messages()).hasSize(1);
+        assertThat(enqueued.messages().getFirst().messageText()).isEqualTo("queued text");
+
+        var listed = controller.pendingMessages(CONVERSATION_ID);
+        assertThat(listed.messages()).extracting(message -> message.messageText())
+            .containsExactly("queued text");
+
+        var claimed = controller.claimPendingMessage(CONVERSATION_ID);
+        assertThat(claimed.message().status()).isEqualTo("CLAIMED");
+
+        controller.releasePendingMessage(
+            CONVERSATION_ID,
+            claimed.message().id(),
+            new PendingMessageAckRequest(claimed.claimToken())
+        );
+        var claimedAgain = controller.claimPendingMessage(CONVERSATION_ID);
+        controller.ackPendingMessage(
+            CONVERSATION_ID,
+            claimedAgain.message().id(),
+            new PendingMessageAckRequest(claimedAgain.claimToken())
+        );
+
+        assertThat(controller.pendingMessages(CONVERSATION_ID).messages()).isEmpty();
+    }
+
+    @Test
+    void pendingMessageEndpointsValidateUuidBlankMessageAndClaimToken() {
+        ChatController controller = new ChatController(
+            chatService,
+            pendingMessageService(),
+            new ActiveTurnRegistry(),
+            null,
+            0
+        );
+
+        assertThatThrownBy(() -> controller.pendingMessages("not-a-uuid"))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(exception.getReason()).contains("invalid UUID");
+            });
+        assertThatThrownBy(() -> controller.enqueuePendingMessage(CONVERSATION_ID, new PendingMessageRequest(" ", null, null, null)))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(exception.getReason()).isEqualTo("message is required");
+            });
+        assertThatThrownBy(() -> controller.ackPendingMessage(CONVERSATION_ID, "missing", new PendingMessageAckRequest(" ")))
+            .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(exception.getReason()).isEqualTo("claimToken is required");
+            });
+    }
+
+    private ChatPendingMessageService pendingMessageService() {
+        SingleConnectionDataSource dataSource = new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true);
+        return new ChatPendingMessageService(new ChatPendingMessageRepository(new JdbcTemplate(dataSource)));
     }
 
     private static class StubChatService extends ChatService {

@@ -2,7 +2,8 @@
     let requestInFlight = false;
     let activeTurnId = null;
     let activeInterruptToken = null;
-    const queuedMessages = [];
+    let pendingQueueDrainInProgress = false;
+    let pendingQueueRetryTimer = null;
     let titlePollTimer = null;
     let editingSessionId = null;
     let latestSessions = [];
@@ -43,9 +44,24 @@
         return value ? value : null;
     }
 
+    function syncActiveConversationUrl(conversationId) {
+        if (!window.history || typeof window.history.replaceState !== 'function') {
+            return;
+        }
+        const url = new URL(window.location.href);
+        if (conversationId) {
+            url.searchParams.set('conversationId', conversationId);
+        } else {
+            url.searchParams.delete('conversationId');
+        }
+        url.searchParams.delete('startPlanning');
+        window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+    }
+
     function setActiveConversationId(conversationId, title) {
         const displayValue = conversationId || '';
         root().setAttribute('data-active-conversation-id', displayValue);
+        syncActiveConversationUrl(displayValue);
         const activeEl = byId('chat-active-session');
         if (activeEl) {
             activeEl.textContent = title || conversationId || 'New chat';
@@ -61,6 +77,137 @@
         if (errorEl) {
             errorEl.textContent = message || '';
         }
+    }
+
+    function pendingMessagesUrl(conversationId) {
+        return '/api/chat/' + encodeURIComponent(conversationId) + '/pending-messages';
+    }
+
+    function renderQueuedMessages(messages) {
+        const panel = byId('chat-queued-messages-panel');
+        if (!panel) {
+            return;
+        }
+        const queue = Array.isArray(messages) ? messages : [];
+        if (queue.length === 0) {
+            panel.innerHTML = '';
+            panel.classList.remove('active');
+            return;
+        }
+        panel.innerHTML = queue.map(function(message) {
+            const text = escapeHtml(message.messageText || '');
+            const position = Number(message.position || 0);
+            const total = Number(message.total || queue.length);
+            const label = 'Queued ' + (position > 0 ? position : 1) + '/' + (total > 0 ? total : queue.length);
+            const status = String(message.status || '') === 'CLAIMED'
+                ? 'Sending...'
+                : 'Will send after this turn finishes';
+            return '<div class="planning-question-card queued-message-card" data-pending-message-id="' + escapeHtml(message.id || '') + '">'
+                + '<span class="planning-question-mark queued-message-mark" aria-hidden="true">&#8594;</span>'
+                + '<span class="planning-question-count">' + escapeHtml(label) + '</span>'
+                + '<div class="planning-question-text queued-message-text">'
+                + '<div>' + text + '</div>'
+                + '<div class="queued-message-status">' + escapeHtml(status) + '</div>'
+                + '</div>'
+                + '</div>';
+        }).join('');
+        panel.classList.add('active');
+    }
+
+    function clearQueuedMessagesPanel() {
+        clearQueuedDrainRetry();
+        renderQueuedMessages([]);
+    }
+
+    async function loadPendingMessages(conversationId) {
+        if (!conversationId) {
+            clearQueuedMessagesPanel();
+            return [];
+        }
+        const data = await getJson(pendingMessagesUrl(conversationId));
+        const messages = data && Array.isArray(data.messages) ? data.messages : [];
+        renderQueuedMessages(messages);
+        if (messages.length > 0 && !requestInFlight && !pendingQueueDrainInProgress) {
+            scheduleQueuedMessageDrain(0);
+        }
+        return messages;
+    }
+
+    async function enqueuePendingMessage(message) {
+        const conversationId = activeConversationId();
+        if (!conversationId) {
+            throw new Error('Wait for the active turn to start before queueing another message.');
+        }
+        const data = await getJson(pendingMessagesUrl(conversationId), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                message: message,
+                model: selectedModel(),
+                planningModel: selectedPlanningModel(),
+                surface: chatSurface()
+            })
+        });
+        const messages = data && Array.isArray(data.messages) ? data.messages : [];
+        renderQueuedMessages(messages);
+        setStatus();
+    }
+
+    async function claimPendingMessage(conversationId) {
+        return getJson(pendingMessagesUrl(conversationId) + '/claim', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+    }
+
+    async function ackPendingMessage(conversationId, messageId, claimToken) {
+        const response = await fetch(
+            pendingMessagesUrl(conversationId) + '/' + encodeURIComponent(messageId) + '/ack',
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ claimToken: claimToken })
+            }
+        );
+        if (!response.ok) {
+            throw await responseError(response);
+        }
+    }
+
+    async function releasePendingMessage(conversationId, messageId, claimToken) {
+        const response = await fetch(
+            pendingMessagesUrl(conversationId) + '/' + encodeURIComponent(messageId) + '/release',
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ claimToken: claimToken })
+            }
+        );
+        if (!response.ok) {
+            throw await responseError(response);
+        }
+    }
+
+    function clearQueuedDrainRetry() {
+        if (pendingQueueRetryTimer) {
+            window.clearTimeout(pendingQueueRetryTimer);
+            pendingQueueRetryTimer = null;
+        }
+    }
+
+    function scheduleQueuedMessageDrain(delayMillis) {
+        if (requestInFlight || pendingQueueDrainInProgress || pendingQueueRetryTimer) {
+            return;
+        }
+        pendingQueueRetryTimer = window.setTimeout(function() {
+            pendingQueueRetryTimer = null;
+            sendNextQueuedMessage();
+        }, Math.max(0, Number(delayMillis || 0)));
+    }
+
+    function isActiveStreamConflict(error) {
+        return error && typeof error.message === 'string'
+            && error.message.includes('Another stream is already active for conversation');
     }
 
     function updateContextUsage(usage) {
@@ -714,6 +861,7 @@
             updateContextUsage(null);
             updatePlanStatus(null);
             clearSessionFiles();
+            clearQueuedMessagesPanel();
         }
         await loadSessions();
     }
@@ -751,6 +899,7 @@
             updateContextUsage(null);
             updatePlanStatus(null);
             clearSessionFiles();
+            clearQueuedMessagesPanel();
         }
     }
 
@@ -795,6 +944,7 @@
                     updateContextUsage(null);
                     updatePlanStatus(null);
                     clearSessionFiles();
+                    clearQueuedMessagesPanel();
                 }
             }
         }
@@ -809,6 +959,7 @@
             updateContextUsage(null);
             updatePlanStatus(null);
             clearSessionFiles();
+            clearQueuedMessagesPanel();
             return;
         }
         const data = await getJson('/api/chat/' + encodeURIComponent(conversationId) + '/history');
@@ -817,6 +968,7 @@
         syncModelSelection(data.model);
         updateContextUsage(data.contextUsage);
         updatePlanStatus(data.planState);
+        await loadPendingMessages(data.conversationId);
         await loadActiveFiles();
         return data;
     }
@@ -954,19 +1106,20 @@
         titlePollTimer = window.setTimeout(poll, 750);
     }
 
-    async function sendMessage(message) {
-        if (requestInFlight) {
-            await sendInterruptOrQueue(message);
+    async function sendMessage(message, options) {
+        const sendOptions = options || {};
+        if (requestInFlight && !sendOptions.queuedClaim) {
+            await enqueuePendingMessage(message);
             return;
         }
         requestInFlight = true;
         setFormBusy(true);
         const payload = {
-            conversationId: activeConversationId(),
+            conversationId: sendOptions.conversationId || activeConversationId(),
             message: message,
-            model: selectedModel(),
-            planningModel: selectedPlanningModel(),
-            surface: chatSurface()
+            model: sendOptions.model || selectedModel(),
+            planningModel: sendOptions.planningModel || selectedPlanningModel(),
+            surface: sendOptions.surface || chatSurface()
         };
 
         appendPendingUserMessage(message);
@@ -1069,53 +1222,66 @@
             activeTurnId = null;
             activeInterruptToken = null;
             setFormBusy(false);
-            sendNextQueuedMessage();
-        }
-    }
-
-    async function sendInterruptOrQueue(message) {
-        if (!activeTurnId || !activeInterruptToken || !activeConversationId()) {
-            queueMessage(message);
-            return;
-        }
-        try {
-            const result = await getJson('/api/chat/turns/' + encodeURIComponent(activeTurnId) + '/interrupt', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    conversationId: activeConversationId(),
-                    interruptToken: activeInterruptToken,
-                    message: message
-                })
-            });
-            if (result && result.status === 'ACCEPTED') {
-                setStatus();
-                return;
+            if (!sendOptions.queuedClaim) {
+                sendNextQueuedMessage();
             }
-            queueMessage(message);
-        } catch (error) {
-            queueMessage(message);
         }
-    }
-
-    function queueMessage(message) {
-        queuedMessages.push(message);
-        setError('Message queued for the next turn.');
     }
 
     function sendNextQueuedMessage() {
-        if (requestInFlight || queuedMessages.length === 0) {
+        if (requestInFlight || pendingQueueDrainInProgress) {
             return;
         }
-        const nextMessage = queuedMessages.shift();
-        window.setTimeout(function() {
-            sendMessage(nextMessage).catch(function(error) {
-                const input = byId('chat-input');
-                if (input && !input.value) {
-                    input.value = nextMessage;
+        const conversationId = activeConversationId();
+        if (!conversationId) {
+            clearQueuedMessagesPanel();
+            return;
+        }
+        clearQueuedDrainRetry();
+        pendingQueueDrainInProgress = true;
+        window.setTimeout(async function() {
+            let retryAfterActiveConflict = false;
+            try {
+                while (!requestInFlight) {
+                    const claimed = await claimPendingMessage(conversationId);
+                    if (!claimed || !claimed.message || !claimed.claimToken) {
+                        await loadPendingMessages(conversationId);
+                        break;
+                    }
+                    const pending = claimed.message;
+                    await loadPendingMessages(conversationId);
+                    try {
+                        await sendMessage(pending.messageText || '', {
+                            queuedClaim: true,
+                            conversationId: pending.conversationId,
+                            model: pending.model,
+                            planningModel: pending.planningModel,
+                            surface: pending.surface
+                        });
+                        await ackPendingMessage(pending.conversationId, pending.id, claimed.claimToken);
+                        await loadPendingMessages(pending.conversationId);
+                    } catch (error) {
+                        try {
+                            await releasePendingMessage(pending.conversationId, pending.id, claimed.claimToken);
+                            await loadPendingMessages(pending.conversationId);
+                        } catch (releaseError) {
+                            // Keep the original stream error visible.
+                        }
+                        setError(error.message);
+                        if (isActiveStreamConflict(error)) {
+                            retryAfterActiveConflict = true;
+                        }
+                        break;
+                    }
                 }
+            } catch (error) {
                 setError(error.message);
-            });
+            } finally {
+                pendingQueueDrainInProgress = false;
+                if (retryAfterActiveConflict) {
+                    scheduleQueuedMessageDrain(1500);
+                }
+            }
         }, 0);
     }
 
@@ -1158,6 +1324,13 @@
         renderSessions(data.sessions || data.conversationIds || []);
         updateContextUsage(data.contextUsage);
         updatePlanStatus(data.planState);
+        if (data.conversationId) {
+            loadPendingMessages(data.conversationId).catch(function(error) {
+                setError(error.message);
+            });
+        } else {
+            clearQueuedMessagesPanel();
+        }
         loadActiveFiles();
     }
 

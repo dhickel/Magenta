@@ -48,7 +48,7 @@ For modal hosts, keep one stable target element in the page and return modal con
 
 Existing JavaScript is justified where persistent browser state, SSE, or client-side graph/editor interaction is simpler than pure HTMX.
 
-- `chat-client.js`: chat SSE, active stream state, incremental token rendering, interruption, session-card rendering, selected-session output file refreshes, and chat-specific browser behavior.
+- `chat-client.js`: chat SSE, active stream state, incremental token rendering, server-backed mid-turn queue cards/drain, session-card rendering, selected-session output file refreshes, and chat-specific browser behavior.
 - shared shell helper(s): HTMX error-swap and small shell-level behavior that is simpler than reproducing in every page/module.
 - `orchestration/api.js` and `dom.js`: small shared helpers for operational islands.
 - `orchestration/dashboard.js`: dashboard refresh/poll style behavior.
@@ -62,6 +62,8 @@ Do not turn ordinary CRUD into a JavaScript transport surface. If an interaction
 The chat outputs panel remains in `chat-client.js` because the `/chat` session list, active conversation state, and SSE completion refreshes are already JS-owned. Standard CRUD and operational UI interactions elsewhere remain HTMX-first.
 
 Anonymous `/chat` planning questions are also handled inside `chat-client.js` because the chat composer is already SSE/client-state owned. Saved plan chat keeps HTMX submission in `#plan-chat-form`; both surfaces share the same prompt-card classes for visual consistency.
+
+Normal browser `/chat` messages submitted while a stream is active are queued through `/api/chat/{conversationId}/pending-messages` and rendered in `#chat-queued-messages-panel` between the planning panel and the form. This remains a JavaScript island because the behavior depends on active SSE state, claim/ack/release retry safety, active-conversation URL state, and FIFO drain after the current stream completes. When a page reload sees pending rows but no local stream callback, the client retries the claim/send cycle and releases the claim if the server reports the existing conversation stream is still active. Planning answers and saved plan chat stay on their existing routes, and slash commands submitted mid-turn are rejected with wait feedback instead of queueing.
 
 ## SimplyPages Reuse
 

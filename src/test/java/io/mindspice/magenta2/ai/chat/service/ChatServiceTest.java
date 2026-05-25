@@ -13,6 +13,7 @@ import io.mindspice.magenta2.ai.chat.model.ChatResponse;
 import io.mindspice.magenta2.ai.chat.model.ChatSession;
 import io.mindspice.magenta2.ai.chat.model.ChatSessionSurface;
 import io.mindspice.magenta2.ai.chat.model.ContextUsage;
+import io.mindspice.magenta2.ai.chat.repository.ChatPendingMessageRepository;
 import io.mindspice.magenta2.ai.chat.plan.PlanRepository;
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
 import io.mindspice.magenta2.ai.chat.plan.PlanStatus;
@@ -109,6 +110,52 @@ class ChatServiceTest {
             .extracting(message -> message.getText())
             .containsExactly("User planning request", "Assistant planning response");
     }
+
+    @Test
+    void pendingMessagesAreOutsideHistoryUntilSentAndClearDeletesQueue() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        ChatSessionMetadataRepository metadataRepository = new ChatSessionMetadataRepository(jdbcTemplate);
+        ChatPendingMessageService pendingMessageService = new ChatPendingMessageService(
+            new ChatPendingMessageRepository(jdbcTemplate)
+        );
+        ChatService chatService = new ChatService(
+            new RepositoryBackedChatMemory(memoryRepository),
+            memoryRepository,
+            metadataRepository,
+            null,
+            aiConfig(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            pendingMessageService,
+            null
+        );
+
+        pendingMessageService.enqueue("conversation-1", "queued only", "main", null, ChatSessionSurface.BROWSER);
+
+        assertThat(chatService.history("conversation-1")).isEmpty();
+        assertThat(pendingMessageService.list("conversation-1")).hasSize(1);
+
+        chatService.clearConversation("conversation-1");
+
+        assertThat(pendingMessageService.list("conversation-1")).isEmpty();
+    }
+
 
     @Test
     void resolvingCleanSavedPlanExecutionFlagsPromptContextWithoutClearingTranscriptRows() {
@@ -326,6 +373,7 @@ class ChatServiceTest {
             null,
             null,
             chatFileService,
+            null,
             null
         );
         String conversationId = "00000000-0000-0000-0000-000000000001";

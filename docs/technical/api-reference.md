@@ -10,9 +10,14 @@ Source: [`ChatController`](../../src/main/java/io/mindspice/magenta2/api/web/Cha
 
 - `POST /api/chat`: non-streaming chat turn from `ChatRequest.MsgRequest`.
 - `POST /api/chat/stream`: SSE chat turn. `ChatRequest.MsgRequest` accepts an optional `surface` field so the browser chat page can tag sessions separately from Avatar or other internal chat surfaces. Known surface values (`BROWSER`, `AVATAR`, `INTERNAL`) are accepted case-insensitively; blank or unknown values are rejected.
+- `GET /api/chat/{conversationId}/pending-messages`: list visible browser pending-message rows ordered FIFO.
+- `POST /api/chat/{conversationId}/pending-messages`: enqueue a normal browser message for later delivery. Payload is `PendingMessageRequest(message, model, planningModel, surface)` and returns the refreshed queue list.
+- `POST /api/chat/{conversationId}/pending-messages/claim`: atomically claim the oldest pending row and return `ClaimedPendingChatMessage(message, claimToken)`, or `null` when empty.
+- `POST /api/chat/{conversationId}/pending-messages/{messageId}/ack`: delete a claimed row only when the supplied `claimToken` matches.
+- `POST /api/chat/{conversationId}/pending-messages/{messageId}/release`: return a matching claimed row to pending status after a failed queued send.
 - `POST /api/chat/{conversationId}/plan/execute`: execute an approved anonymous session plan. Payload may set `clearContext=true` for clean execution.
 - `POST /api/chat/{conversationId}/plan/execute/stream`: SSE execution of the current anonymous session plan path. Payload may set `clearContext=true` for clean execution.
-- `POST /api/chat/turns/{turnId}/interrupt`: interrupt an active turn.
+- `POST /api/chat/turns/{turnId}/interrupt`: interrupt an active turn. The browser `/chat` composer does not use this route for ordinary mid-turn messages; it uses the pending-message queue instead.
 - `GET /api/chat/sessions`, `GET /api/chat/{conversationId}/history`: session/history reads.
 - `GET /api/chat/{conversationId}/files`: list ordinary chat files from `chats/<conversationId>/files/` as `ChatFileListing`.
 - `GET /api/chat/{conversationId}/files/download?path=<relativePath>`: download one ordinary chat file as an attachment.
