@@ -25,7 +25,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 import jakarta.servlet.http.HttpServletResponse;
-import java.util.ArrayList;
 import java.util.List;
 
 @Controller
@@ -165,18 +164,17 @@ public class FrontendController {
 
     private Select modelSelect(String id, String defaultModel) {
         Select select = Select.create(id).withId(id);
-        for (String model : models(defaultModel)) {
-            select.addOption(model, model, model.equals(defaultModel));
+        String selectedKey = chatService.modelSelectionKey(defaultModel);
+        boolean selected = false;
+        for (ChatService.ModelOption model : chatService.availableModelOptions()) {
+            boolean isSelected = model.key().equals(selectedKey);
+            select.addOption(model.key(), model.key(), isSelected);
+            selected = selected || isSelected;
+        }
+        if (defaultModel != null && !defaultModel.isBlank() && !selected) {
+            select.addOption(defaultModel, defaultModel + " (missing)", true);
         }
         return select;
-    }
-
-    private List<String> models(String defaultModel) {
-        List<String> models = new ArrayList<>(chatService.availableModels());
-        if (defaultModel != null && !defaultModel.isBlank() && !models.contains(defaultModel)) {
-            models.add(0, defaultModel);
-        }
-        return models;
     }
 
     private Component pageHeader(String title, String subtitle) {

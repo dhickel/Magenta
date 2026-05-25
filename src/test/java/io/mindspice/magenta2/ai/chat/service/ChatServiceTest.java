@@ -3,6 +3,7 @@ package io.mindspice.magenta2.ai.chat.service;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -154,6 +155,33 @@ class ChatServiceTest {
         chatService.clearConversation("conversation-1");
 
         assertThat(pendingMessageService.list("conversation-1")).isEmpty();
+    }
+
+    @Test
+    void modelSelectionKeyPrefersConfiguredDefaultAliasForAmbiguousRemoteNames() {
+        Map<String, ModelConfig> models = new LinkedHashMap<>();
+        models.put("deepseek-v4", new ModelConfig(
+            "deepseek-v4-pro", "https://api.deepseek.com", EndpointType.DEEPSEEK, 128000, 4, "sk-test"
+        ));
+        models.put("deepseek-v4-max", new ModelConfig(
+            "deepseek-v4-pro", "https://api.deepseek.com", EndpointType.DEEPSEEK, 128000, 4, "sk-test"
+        ));
+        AiConfig aiConfig = new AiConfig(
+            "default-agent",
+            "deepseek-v4-max",
+            "deepseek-v4",
+            "deepseek-v4",
+            null,
+            10,
+            Path.of("."),
+            null,
+            models,
+            Map.of("default-agent", new AgentConfig("deepseek-v4", "You are Magenta.", List.of()))
+        );
+        ChatService chatService = new ChatService(null, null, null, null, aiConfig);
+
+        assertThat(chatService.defaultModel()).isEqualTo("deepseek-v4-max");
+        assertThat(chatService.modelSelectionKey("deepseek-v4-pro")).isEqualTo("deepseek-v4-max");
     }
 
 

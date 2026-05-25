@@ -23,6 +23,8 @@ The sidebar only shows browser-surface `/chat` conversations. Avatar chat, agent
 
 Use **Send** to submit a message. Enter sends the message; Shift+Enter inserts a newline.
 
+The model dropdowns show configured alias names, such as `deepseek-v4-max`, rather than provider-specific model names. Magenta resolves the alias to the configured provider model when it sends the request.
+
 If you send a normal message while the assistant is still responding, Magenta queues it above the composer and sends it automatically after the active response finishes. Queued cards show their order and survive a page reload or session switch; after a reload, Magenta keeps retrying until the active response is no longer blocking the conversation. Slash commands are not queued mid-turn; wait for the active response to finish before using commands.
 
 Sessions with chat-scoped files show a green `<n> Outputs` badge in the session card. Selecting that session shows the files in the right-side **Outputs** panel with file type, name, relative path when useful, size, modified time, and a **Download** button. The panel lists ordinary chat files created under the chat's persistent file directory; it does not preview or edit file contents.

@@ -15,9 +15,9 @@ Endpoint-polymorphic model options routing in Spring AI
 
 3. **The router must be the sole code path** — model construction, option building, and endpoint resolution should all flow through `ChatModelRouter`. Any call site that imports or constructs Spring AI Ollama/OpenAI types directly is a code smell. In this codebase, the only file importing those types (in production code) is `ChatModelRouter.java` — that's the correct pattern.
 
-4. **Config-driven endpoint dispatch**: the `EndpointType` enum (`OLLAMA`, `OPENAI_COMPATIBLE`) is stored per-model in `ModelConfig`. The router switches on it at every decision point (model building, options building). This is safer than duck-typing or relying on conventions.
+4. **Config-driven endpoint dispatch**: the `EndpointType` enum (`OLLAMA`, `OPENAI_COMPATIBLE`, `DEEPSEEK`) is stored per-model in `ModelConfig`. The router switches on it at every decision point (model building, options building). This is safer than duck-typing or relying on conventions.
 
-5. **External model keys are local aliases**: entries under `models` use the map key as Magenta's selectable model alias, while `remoteModelName` is the provider/Ollama model name sent to the endpoint. Adding another Ollama model with an existing endpoint only requires a new model entry when no runtime behavior changes.
+5. **External model keys are local aliases**: entries under `models` use the map key as Magenta's selectable model alias, while `remoteModelName` is the provider/Ollama model name sent to the endpoint. UI selectors should submit alias keys and display aliases as the primary label; remote names are routing/provider details. Adding another model with an existing endpoint only requires a new model entry when no runtime behavior changes.
 
 ## Engine Relevance
 When adding a new endpoint type or modifying how models are called:

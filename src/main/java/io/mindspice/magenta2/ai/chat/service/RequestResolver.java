@@ -123,9 +123,11 @@ public class RequestResolver {
         if (runtimeSettingsService != null) {
             return runtimeSettingsService.defaultModel();
         }
+        if (aiConfig != null && StringUtils.hasText(aiConfig.resolvedDefaultModelKey())) {
+            return aiConfig.resolvedDefaultModelKey();
+        }
         String defaultAgentName = aiConfig.defaultAgent();
-        String modelKey = aiConfig.agents().get(defaultAgentName).model();
-        return aiConfig.models().get(modelKey).remoteModelName();
+        return aiConfig.agents().get(defaultAgentName).model();
     }
 
     public String planningModel() {

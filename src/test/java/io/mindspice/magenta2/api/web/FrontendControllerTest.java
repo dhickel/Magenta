@@ -71,6 +71,9 @@ class FrontendControllerTest {
         assertThat(html).doesNotContain(".chat-session-hash-chip");
         assertThat(html).contains("id=\"chat-session-select-all\"");
         assertThat(html).contains("data-bulk-action=\"delete\"");
+        assertThat(html).contains("<option value=\"alias-qwen\" selected>alias-qwen</option>");
+        assertThat(html).contains("<option value=\"alias-planner\" selected>alias-planner</option>");
+        assertThat(html).doesNotContain(">qwen3.6:35b<");
         assertThat(html).doesNotContain("id=\"chat-session-bulk-list\"");
         assertThat(html).contains("data-active-conversation-id");
         assertThat(html).contains("<code id=\"chat-active-session\">New chat</code>");
@@ -193,12 +196,30 @@ class FrontendControllerTest {
 
         @Override
         public String defaultModel() {
-            return "qwen3";
+            return "qwen3.6:35b";
+        }
+
+        @Override
+        public String planningModel() {
+            return "alias-planner";
         }
 
         @Override
         public List<String> availableModels() {
-            return List.of("qwen3");
+            return List.of("qwen3.6:35b", "planner-remote");
+        }
+
+        @Override
+        public List<ModelOption> availableModelOptions() {
+            return List.of(
+                new ModelOption("alias-qwen", "alias-qwen (qwen3.6:35b)"),
+                new ModelOption("alias-planner", "alias-planner (planner-remote)")
+            );
+        }
+
+        @Override
+        public String modelSelectionKey(String model) {
+            return "qwen3.6:35b".equals(model) ? "alias-qwen" : model;
         }
     }
 }

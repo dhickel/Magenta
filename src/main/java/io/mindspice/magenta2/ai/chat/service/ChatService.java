@@ -1260,9 +1260,11 @@ public class ChatService {
         if (runtimeSettingsService != null) {
             return runtimeSettingsService.defaultModel();
         }
+        if (aiConfig != null && StringUtils.hasText(aiConfig.resolvedDefaultModelKey())) {
+            return aiConfig.resolvedDefaultModelKey();
+        }
         String defaultAgentName = aiConfig.defaultAgent();
-        String modelKey = aiConfig.agents().get(defaultAgentName).model();
-        return aiConfig.models().get(modelKey).remoteModelName();
+        return aiConfig.agents().get(defaultAgentName).model();
     }
 
     public String planningModel() {
@@ -1305,6 +1307,38 @@ public class ChatService {
                 entry.getKey() + " (" + entry.getValue().remoteModelName() + ")"))
             .sorted(java.util.Comparator.comparing(ModelOption::label))
             .toList();
+    }
+
+    public String modelSelectionKey(String model) {
+        if (!StringUtils.hasText(model) || aiConfig == null || aiConfig.models() == null) {
+            return model;
+        }
+        if (aiConfig.models().containsKey(model)) {
+            return model;
+        }
+        if (runtimeSettingsService != null) {
+            String runtimeDefault = runtimeSettingsService.get().defaultModel();
+            if (remoteModelNameMatches(runtimeDefault, model)) {
+                return runtimeDefault;
+            }
+        }
+        String configuredDefault = aiConfig.resolvedDefaultModelKey();
+        if (remoteModelNameMatches(configuredDefault, model)) {
+            return configuredDefault;
+        }
+        return aiConfig.models().entrySet().stream()
+            .filter(entry -> model.equals(entry.getValue().remoteModelName()))
+            .map(Map.Entry::getKey)
+            .findFirst()
+            .orElse(model);
+    }
+
+    private boolean remoteModelNameMatches(String modelKey, String remoteModelName) {
+        if (!StringUtils.hasText(modelKey) || !StringUtils.hasText(remoteModelName)) {
+            return false;
+        }
+        ModelConfig config = aiConfig.models().get(modelKey);
+        return config != null && remoteModelName.equals(config.remoteModelName());
     }
 
     private ChatResponse.MsgResponse toolChat(ResolvedChatRequest request, List<ToolCallback> approvedTools) {
