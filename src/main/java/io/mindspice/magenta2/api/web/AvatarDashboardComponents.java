@@ -90,7 +90,7 @@ final class AvatarDashboardComponents {
             .withChild(new Div().withId("avatar-output-preview").withClass("avatar-output-preview"))
             .withChild(moduleScript("/js/avatar-chat.js?v=3"))
             .withChild(moduleScript("/js/avatar-layout-edit.js?v=1"))
-            .withChild(moduleScript("/js/avatar-shell.js?v=4"));
+            .withChild(moduleScript("/js/avatar-shell.js?v=5"));
     }
 
     static Component widgetGrid(AvatarDashboardData data) {
@@ -819,7 +819,8 @@ final class AvatarDashboardComponents {
                 .withAttribute("type", "button")
                 .withAttribute("data-avatar-chat-corner-resizer", "true")
                 .withAttribute("aria-label", "Resize Avatar chat")
-                .withAttribute("title", "Resize Avatar chat"));
+                .withAttribute("title", "Resize Avatar chat")
+                .withChild(new HtmlTag("span").withAttribute("aria-hidden", "true").withInnerText("↔")));
     }
 
     private static Component widgetBody(AvatarDashboardData data, String widgetId) {

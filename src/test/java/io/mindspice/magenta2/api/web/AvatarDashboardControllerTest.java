@@ -122,7 +122,7 @@ class AvatarDashboardControllerTest {
         assertThat(html).contains("/css/avatar-dashboard.css?v=3");
         assertThat(html).contains("/js/avatar-chat.js?v=3");
         assertThat(html).contains("/js/avatar-layout-edit.js?v=1");
-        assertThat(html).contains("/js/avatar-shell.js?v=4");
+        assertThat(html).contains("/js/avatar-shell.js?v=5");
         assertThat(html).doesNotContain("/js/chat-client.js");
         assertThat(html).contains("id=\"content-area\" class=\"avatar-content-area\"");
         assertThat(html).contains("id=\"avatar-chat\"");

@@ -3,7 +3,7 @@ const AVATAR_PANEL_HEIGHT_KEY = "magenta.avatar.chatPanelHeightPx";
 // Keep in sync with CSS: .avatar-shell-grid minmax(22.85rem, var(--avatar-chat-rail-width)).
 const AVATAR_RAIL_MIN = 366;
 const AVATAR_RAIL_MAX = 640;
-const AVATAR_MAIN_MIN = 520;
+const AVATAR_MAIN_MIN = 420;
 const AVATAR_PANEL_MIN = 360;
 const AVATAR_PANEL_BOTTOM_MARGIN = 24;
 const DRAG_THRESHOLD_PX = 3;
