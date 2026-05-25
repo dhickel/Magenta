@@ -13,7 +13,7 @@
 Tab fragment responses return two pieces:
 
 - `#avatar-tab-panel` as the primary swap target;
-- `#avatar-shell-tabs-wrap` as an out-of-band swap so active-tab styling and shell actions stay in sync without rerendering the right chat rail.
+- `#avatar-shell-tabs-wrap` as an out-of-band swap so active-tab styling and shell actions stay in sync without rerendering the left chat rail.
 
 `edit=true` is normalized away for all non-dashboard tabs. The shell pushes the canonical tab URL back into browser history with `HX-Push-Url`.
 
@@ -88,3 +88,4 @@ Copy and move forms expose operation-specific hooks such as `form[data-file-acti
 - `/js/avatar-shell.js?v=1` owns desktop rail resizing and browser-local width persistence.
 
 `avatar-shell.js` stores the desktop rail width in `localStorage` under `magenta.avatar.chatRailWidthPx`. The shell reads that value only at desktop breakpoints and ignores it on mobile stacked layouts.
+Desktop resize math is relative to `.avatar-shell-grid` bounds so centered/full-width layouts resize deterministically on wide screens.

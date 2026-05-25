@@ -51,15 +51,16 @@
 }
 
 .avatar-shell {
-    --avatar-chat-rail-width: 27rem;
-    max-width: 1680px;
-    margin: 0 auto;
+    --avatar-chat-rail-width: 30rem;
+    max-width: none;
+    margin: 0;
 }
 
 .avatar-shell-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(22.85rem, calc(var(--avatar-chat-rail-width) + 1.3rem));
-    gap: 1rem;
+    grid-template-columns: minmax(22.85rem, var(--avatar-chat-rail-width)) 0.85rem minmax(0, 1fr);
+    column-gap: 0.4rem;
+    row-gap: 1rem;
     align-items: start;
 }
 
@@ -119,15 +120,17 @@
 }
 
 .avatar-shell-rail {
-    display: grid;
+    display: block;
     width: 100%;
-    grid-template-columns: 0.85rem minmax(0, 1fr);
-    gap: 0.45rem;
-    align-items: start;
+    position: sticky;
+    top: 0.65rem;
+    align-self: start;
+    min-height: calc(100vh - 1.3rem);
+    max-height: calc(100vh - 1.3rem);
 }
 
 .avatar-chat-resizer {
-    min-height: 100%;
+    min-height: calc(100vh - 1.3rem);
     border-radius: 999px;
     background: linear-gradient(180deg, #dbe5f0 0%, #c9d6e4 100%);
     cursor: col-resize;
@@ -634,10 +637,8 @@
 }
 
 .avatar-chat {
-    position: sticky;
-    top: 0.65rem;
-    min-height: calc(100vh - 1.3rem);
-    max-height: calc(100vh - 1.3rem);
+    min-height: 100%;
+    max-height: 100%;
     border: 1px solid var(--mg-border);
     border-radius: 8px;
     background: var(--mg-panel);
@@ -1308,8 +1309,9 @@
     }
 
     .avatar-shell-rail {
-        grid-template-columns: 1fr;
-        gap: 0;
+        position: static;
+        min-height: 0;
+        max-height: none;
     }
 
     .avatar-chat-resizer {
@@ -1320,12 +1322,6 @@
         position: static;
         min-height: 0;
         max-height: none;
-    }
-}
-
-@media (min-width: 1500px) {
-    .avatar-shell {
-        --avatar-chat-rail-width: 29rem;
     }
 }
 

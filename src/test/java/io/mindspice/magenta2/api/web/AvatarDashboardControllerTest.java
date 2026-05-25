@@ -127,6 +127,12 @@ class AvatarDashboardControllerTest {
         assertThat(html).contains("id=\"avatar-chat\"");
         assertThat(html).contains("data-avatar-chat=\"true\"");
         assertThat(html).contains("data-avatar-shell=\"true\"");
+        int railIndex = html.indexOf("class=\"avatar-shell-rail\"");
+        int resizerIndex = html.indexOf("class=\"avatar-chat-resizer\"");
+        int mainIndex = html.indexOf("class=\"avatar-shell-main\"");
+        assertThat(railIndex).isGreaterThan(-1);
+        assertThat(resizerIndex).isGreaterThan(railIndex);
+        assertThat(mainIndex).isGreaterThan(resizerIndex);
         assertThat(html).contains("id=\"avatar-tab-panel\"");
         assertThat(html).contains("data-avatar-tab=\"dashboard\"");
         assertThat(html).contains("data-avatar-tab=\"queue\"");
