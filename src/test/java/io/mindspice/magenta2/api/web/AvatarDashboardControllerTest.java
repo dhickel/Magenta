@@ -205,10 +205,16 @@ class AvatarDashboardControllerTest {
         String files = controller.widget("files");
         assertThat(files).contains("Work Areas");
         assertThat(files).contains("/avatar/_work-areas/");
+        assertThat(files).contains("id=\"avatar-workarea-surface\"");
+        assertThat(files).contains("hx-target=\"#avatar-workarea-surface\"");
+        assertThat(files).doesNotContain("/explorer\" hx-target=\"#avatar-edit-container\"");
+        assertThat(controller.workAreaPlaceholder()).contains("Select a Work Area");
 
         String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "agent-1", false).getFirst().id();
         String explorer = controller.workAreaExplorer(workAreaId, ".", null);
         assertThat(explorer).contains("id=\"avatar-workarea-explorer-shell\"");
+        assertThat(explorer).contains("hx-get=\"/avatar/_work-areas/placeholder\"");
+        assertThat(explorer).contains("hx-target=\"#avatar-workarea-surface\"");
         assertThat(explorer).contains("id=\"avatar-workarea-list-region\"");
         assertThat(explorer).contains("id=\"avatar-workarea-inspector\"");
         assertThat(explorer).contains("id=\"avatar-workarea-modal\"");

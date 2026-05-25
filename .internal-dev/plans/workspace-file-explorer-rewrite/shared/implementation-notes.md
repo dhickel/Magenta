@@ -15,12 +15,12 @@ Living document. Workers and validators append concise entries here. Email coord
 
 | phase | status | owner | commit | validation | email gate | notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| Phase 01 research/spec reconciliation | complete | implementation_worker | not committed per directive | command evidence recorded below | not sent by worker directive | Branch/source drift reconciled; only this notes file changed. |
-| Phase 02 domain services and tags | complete | implementation_worker | not committed per directive | targeted command passed | not sent by worker directive | Rich domain entry data, service-level custom tag ensure, directory/file tag follow-copy-delete tests, nested symlink mutation hardening. |
-| Phase 03 API and fragments | complete | implementation_worker | not committed per directive | targeted command passed | not sent by worker directive | Stable Avatar HTMX fragment contracts, viewer/tag routes, OOB mutation refreshes, and controller tests. |
+| Phase 01 research/spec reconciliation | complete | implementation_worker | 8c56b29 | command evidence recorded below | not sent by worker directive | Branch/source drift reconciled; only this notes file changed. |
+| Phase 02 domain services and tags | complete | implementation_worker | c96d2fd | targeted command passed | not sent by worker directive | Rich domain entry data, service-level custom tag ensure, directory/file tag follow-copy-delete tests, nested symlink mutation hardening. |
+| Phase 03 API and fragments | complete | implementation_worker | 1977f08 | targeted command passed | not sent by worker directive | Stable Avatar HTMX fragment contracts, viewer/tag routes, OOB mutation refreshes, and controller tests. |
 | Phase 04 file explorer UI rewrite | complete | orchestrator + validation subagent | c53501f | targeted tests and Playwright passed | sent by orchestrator | Details/list UI, no cards. |
 | Phase 05 viewer/copy/move/rename/delete | complete | orchestrator + validation subagents | 977db55 | targeted tests, styled Playwright, and remediation validation passed | sent | Viewer and operation completion; code-quality findings and browser proof gaps remediated. |
-| Phase 06 docs closeout and gate validation | complete | orchestrator | pending commit | targeted tests, full tests, diff check, bounded startup, and final red-team passed | sent | Docs, changelog, knowledge, focus, decision updates, and prior plan archival passed final P6 gate review. |
+| Phase 06 docs closeout and gate validation | complete | orchestrator | 590a86c | targeted tests, full tests, diff check, bounded startup, and final red-team passed | sent | Docs, changelog, knowledge, focus, decision updates, and prior plan archival passed final P6 gate review. |
 
 ## Phase 01 Research And Spec Reconciliation Evidence
 
@@ -84,6 +84,7 @@ YYYY-MM-DD phase=<phase> decision=<decision> rationale=<short rationale> source=
 2026-05-24 phase=Phase 05 decision=bounded row-level UTF-8 probing rationale=list/inspect row metadata should not read entire candidate text files; full validation remains in preview/save routes source=WorkAreaExplorerService.java
 2026-05-24 phase=Phase 05 decision=expanded inspect copy/move controls by default and added viewer state data hooks rationale=styled browser validation should prove visible operation forms and distinguish Markdown rendered vs plain text raw state without brittle label assumptions source=WorkAreaExplorerFragments.java
 2026-05-24 phase=Phase 06 decision=archived superseded original workspace-file-explorer plan rationale=targeted tests, full tests, diff check, startup, and prior Playwright validation passed; final red-team remediation tracked before P6 email and commit source=.internal-dev/plans/.archive/workspace-file-explorer/
+2026-05-24 phase=Final review remediation decision=retarget Work Area Browse into the Work Areas module surface rationale=final quality review found the explorer rendered into global avatar-edit-container below the shell instead of the selected Work Areas surface source=AvatarDashboardComponents.java
 
 ## Validation Evidence
 
@@ -130,6 +131,10 @@ YYYY-MM-DD phase=<phase> command=<command> result=<pass|fail|blocked> evidence=<
 2026-05-24 phase=Phase 06 command=git mv .internal-dev/plans/workspace-file-explorer .internal-dev/plans/.archive/workspace-file-explorer result=pass evidence=superseded original plan suite moved to sibling archive after Maven/startup validation passed; final red-team remediation required before P6 email/commit
 2026-05-24 phase=Phase 06 command=final red-team pass result=fail evidence=found premature Phase 06 completion wording, unstaged/untracked commit-readiness state, stale Alpha Limits workspace-operation wording, and stale SimplyPages-module closeout wording; remediation applied before rerun
 2026-05-24 phase=Phase 06 command=final red-team rerun result=pass evidence=docs/internal-dev accuracy, archived supersession wording, AgentMail daemon/wait workflow, validation evidence, focus consistency, and P6 email/stage/commit readiness cleared; residual risk limited to relying on recorded Maven/startup/Playwright evidence rather than rerunning them in the read-only pass
+2026-05-24 phase=Final quality review command=validation_redteam_agent result=fail evidence=found Work Area explorer opened below the main Avatar shell through global avatar-edit-container instead of inside the Work Areas tab/module surface; also found implementation-notes phase hash drift and stale changelog P6 wording
+2026-05-24 phase=Final review remediation command=mvn test -Dtest=AvatarDashboardControllerTest,WorkAreaControllerTest,WorkAreaExplorerServiceTest result=fail evidence=initial assertion was too broad and caught the widget settings button targeting avatar-edit-container; production behavior was local Browse target
+2026-05-24 phase=Final review remediation command=mvn test -Dtest=AvatarDashboardControllerTest,WorkAreaControllerTest,WorkAreaExplorerServiceTest result=pass evidence=35 tests run, 0 failures, 0 errors, 0 skipped; covers local avatar-workarea-surface Browse target and placeholder close route
+2026-05-24 phase=Final review remediation command=focused Playwright validation subagent result=pass evidence=isolated runtime /tmp/magenta2-pw-20260524-205020-1186949; app http://127.0.0.1:18080/avatar?tab=work-areas; after Browse, avatar-workarea-surface contained avatar-workarea-explorer-shell with gapPx=0, tableVisible=true, rowCount=3, inspectorVisible=true; avatar-edit-container childCount=0; Close restored local placeholder; screenshots target/playwright-workspace-file-explorer-focused/01-desktop-initial-work-areas.png through 04-mobile-after-close.png; no console errors and dynamic network requests were 200s
 
 ## Blockers And Remediation
 
@@ -146,6 +151,7 @@ YYYY-MM-DD phase=<phase> blocker=<description> owner=<worker|validator|user> rem
 2026-05-24 phase=Phase 05 blocker=modal HTMX responses could nest a duplicate avatar-workarea-modal id inside the target container owner=code-quality review remediation=changed modal fragments to return content for the existing shell container and added negative duplicate-id assertions status=resolved
 2026-05-24 phase=Phase 05 blocker=styled modal regression could not prove copy through inspector because operation forms were collapsed by default owner=browser validation remediation=opened copy/move details by default and added viewer state hooks status=resolved
 2026-05-24 phase=Phase 05 blocker=browser copy proof could submit the wrong field or blank destination and copy beside the source owner=browser validation remediation=made destination required, added operation-specific labels/hooks, normalized sibling destination names, and revalidated on unique port 18131 with disk proof in dest status=resolved
+2026-05-24 phase=Final quality review blocker=Work Area Browse rendered explorer below the main shell via global avatar-edit-container owner=validation_redteam_agent remediation=retargeted Browse to avatar-workarea-surface inside the Work Areas module, added local placeholder/close route, added desktop/mobile CSS, and reran focused tests plus Playwright validation status=resolved
 
 ## Email Gate Records
 

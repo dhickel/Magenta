@@ -12,6 +12,7 @@
 - Added user-created custom file and directory tags using existing workspace label tables.
 - Completed Markdown, plain text, image, and unsupported-file viewer behavior.
 - Added confined copy, move, rename, delete, create-folder, create-text, and create-Markdown routes with consistent HTMX refreshes.
+- Retargeted Work Area Browse so the explorer opens inside the Work Areas surface instead of below the full Avatar shell.
 - Removed the repo-local AgentMail ledger workflow from active coordination; long-running email coordination now uses direct `mailctl status`, `mailctl next`, and `mailctl wait`.
 - Consolidated Work Area UI knowledge and refreshed end-user and technical docs.
 
@@ -42,12 +43,13 @@
 - Unsupported/binary files do not expose a row View action.
 - Copy and move require an explicit destination directory and remain Work Area-confined.
 - Directory creation validates symlink ancestors before filesystem writes.
+- Browse opens the details/list explorer in the selected Work Areas surface; Close restores the local placeholder.
 
 ## Risks
 
 - The large-file download cap remains intentionally visible as a follow-up question; current UI exposes safe downloads where the API permits them.
 - Mobile explorer usage is functional and validated, but dense by nature because the details table and inspector carry many controls.
-- The older `.internal-dev/plans/workspace-file-explorer/` suite has been moved to the plan archive as part of Phase 06 closeout and is awaiting the final P6 gate record.
+- The older `.internal-dev/plans/workspace-file-explorer/` suite has been moved to the plan archive and marked as superseded by the rewrite plan.
 
 ## Follow-up Items
 

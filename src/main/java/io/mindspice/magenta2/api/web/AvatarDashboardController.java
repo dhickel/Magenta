@@ -549,6 +549,12 @@ public class AvatarDashboardController {
         }
     }
 
+    @GetMapping("/avatar/_work-areas/placeholder")
+    @ResponseBody
+    public String workAreaPlaceholder() {
+        return AvatarDashboardComponents.workAreaSurfacePlaceholder().render();
+    }
+
     @GetMapping("/avatar/_work-areas/{workAreaId}/explorer/list")
     @ResponseBody
     public String workAreaExplorerList(

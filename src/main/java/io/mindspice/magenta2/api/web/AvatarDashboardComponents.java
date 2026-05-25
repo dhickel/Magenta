@@ -1045,6 +1045,8 @@ final class AvatarDashboardComponents {
         if (workAreas == null || workAreas.isEmpty()) {
             return body.withChild(empty("No agent Work Areas are available."));
         }
+        body.withClass("avatar-workarea-browser");
+        Div layout = new Div().withClass("avatar-workarea-browser-grid");
         Div list = new Div().withClass("avatar-list");
         for (WorkArea workArea : workAreas.stream().limit(8).toList()) {
             list.withChild(new Div().withClass("avatar-list-row")
@@ -1054,10 +1056,21 @@ final class AvatarDashboardComponents {
                 .withChild(Button.create("Browse")
                     .withAttribute("type", "button")
                     .withAttribute("hx-get", "/avatar/_work-areas/" + workArea.id() + "/explorer")
-                    .withAttribute("hx-target", "#avatar-edit-container")
+                    .withAttribute("hx-target", "#avatar-workarea-surface")
                     .withAttribute("hx-swap", "innerHTML")));
         }
-        return body.withChild(list);
+        return body.withChild(layout
+            .withChild(list)
+            .withChild(new Div()
+                .withId("avatar-workarea-surface")
+                .withClass("avatar-workarea-surface")
+                .withChild(workAreaSurfacePlaceholder())));
+    }
+
+    static Component workAreaSurfacePlaceholder() {
+        return new Div().withClass("avatar-workarea-surface-empty")
+            .withChild(Header.H3("Select a Work Area"))
+            .withChild(small("Choose Browse to open the confined file explorer here."));
     }
 
     static Component workAreaInspector(

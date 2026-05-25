@@ -39,7 +39,7 @@ final class WorkAreaExplorerFragments {
                   <h2>%s</h2>
                   <small>%s</small>
                 </div>
-                <button type="button" class="button button-secondary small" hx-get="/avatar/_edit?close=true" hx-target="#avatar-edit-container" hx-swap="innerHTML">Close</button>
+                <button type="button" class="button button-secondary small" hx-get="/avatar/_work-areas/placeholder" hx-target="#avatar-workarea-surface" hx-swap="innerHTML">Close</button>
               </div>
               <div class="workspace-explorer-toolbar">
                 <button type="button" class="button button-secondary small" disabled aria-disabled="true">Back</button>
