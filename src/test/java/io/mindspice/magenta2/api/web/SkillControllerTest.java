@@ -3,6 +3,7 @@ package io.mindspice.magenta2.api.web;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -61,6 +62,7 @@ class SkillControllerTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        deleteRecursively(MAGENTA_ROOT.resolve("skills"));
         Files.createDirectories(MAGENTA_ROOT.resolve("skills"));
         ensureAgent("agent-1", "Agent One");
         ensureAgent("agent-2", "Agent Two");
@@ -219,13 +221,138 @@ class SkillControllerTest {
 
         mockMvc.perform(get("/skills"))
             .andExpect(status().isOk())
-            .andExpect(content().string(containsString("skills-shell")));
+            .andExpect(content().string(containsString("id=\"skills-page\"")))
+            .andExpect(content().string(containsString("href=\"/skills\" class=\"sidenav-item active\"")))
+            .andExpect(content().string(containsString("hx-get=\"/skills/_list\"")));
         mockMvc.perform(get("/skills/_list"))
             .andExpect(status().isOk())
-            .andExpect(content().string(containsString("fragment-skill")));
+            .andExpect(content().string(containsString("fragment-skill")))
+            .andExpect(content().string(containsString("skill-status-badge")))
+            .andExpect(content().string(containsString("0 assigned")));
         mockMvc.perform(get("/skills/_detail/fragment-skill"))
             .andExpect(status().isOk())
-            .andExpect(content().string(containsString("fragment-skill")));
+            .andExpect(content().string(containsString("fragment-skill")))
+            .andExpect(content().string(containsString("skills-file-region")))
+            .andExpect(content().string(containsString("skills-file-viewer")))
+            .andExpect(content().string(containsString("skills-assignment-panel")))
+            .andExpect(content().string(containsString("name=\"content\"")));
+    }
+
+    @Test
+    void webFragmentsFilterShowDiagnosticsAndDirectoryOverview() throws Exception {
+        createSkill("render-skill", "Visible render skill.");
+        Files.createDirectories(MAGENTA_ROOT.resolve("skills/render-skill/references"));
+        Path malformed = Files.createDirectories(MAGENTA_ROOT.resolve("skills/render-broken"));
+        Files.writeString(malformed.resolve("SKILL.md"), """
+            ---
+            name: render-broken
+            ---
+            # Missing Description
+            """);
+        mockMvc.perform(post("/api/skills/refresh")).andExpect(status().isOk());
+
+        mockMvc.perform(get("/skills/_list").param("skillFilter", "render"))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("render-skill")))
+            .andExpect(content().string(containsString("render-broken")))
+            .andExpect(content().string(containsString("valid 1")))
+            .andExpect(content().string(containsString("invalid 1")));
+
+        mockMvc.perform(get("/skills/_detail/render-broken"))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("SKILL_DESCRIPTION_MISSING")))
+            .andExpect(content().string(containsString("Create references/")));
+
+        mockMvc.perform(get("/skills/_detail/render-skill"))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("references/")))
+            .andExpect(content().string(containsString("present")))
+            .andExpect(content().string(containsString("scripts/")))
+            .andExpect(content().string(containsString("absent")));
+    }
+
+    @Test
+    void webEditorSaveAndAddFileFlowsRefreshDetail() throws Exception {
+        createSkill("web-edit-skill", "Before web edit.");
+        mockMvc.perform(post("/api/skills/refresh")).andExpect(status().isOk());
+
+        mockMvc.perform(put("/skills/_files/web-edit-skill/text")
+                .param("path", "SKILL.md")
+                .param("content", """
+                    ---
+                    name: web-edit-skill
+                    description: After web edit.
+                    ---
+                    # Web Edit
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("After web edit.")))
+            .andExpect(content().string(containsString("skill-editor-textarea")));
+
+        mockMvc.perform(post("/skills/_directories/web-edit-skill")
+                .param("directoryName", "references"))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("references/")))
+            .andExpect(content().string(containsString("present")));
+
+        mockMvc.perform(post("/skills/_files/web-edit-skill")
+                .param("parentPath", "references")
+                .param("fileName", "notes.md")
+                .param("content", "reference notes"))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("notes.md")))
+            .andExpect(content().string(containsString("reference notes")));
+    }
+
+    @Test
+    void webAssignmentControlsUseSelectorAndUpdateAssignmentPanel() throws Exception {
+        createSkill("web-assign-skill", "Assign from web.");
+        mockMvc.perform(post("/api/skills/refresh")).andExpect(status().isOk());
+
+        mockMvc.perform(get("/skills/_detail/web-assign-skill"))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("entity-selector-agent-agentId")))
+            .andExpect(content().string(containsString("hx-post=\"/skills/_assignments/web-assign-skill\"")));
+
+        mockMvc.perform(post("/skills/_assignments/web-assign-skill")
+                .param("agentId", "agent-1"))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("Agent One")))
+            .andExpect(content().string(containsString("Unassign")));
+
+        mockMvc.perform(delete("/skills/_assignments/web-assign-skill/agent-1"))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("No agents assigned.")));
+    }
+
+    @Test
+    void guidedCreationWritesSkillMarkdownAndOptionalResourceFiles() throws Exception {
+        mockMvc.perform(post("/skills/_create")
+                .param("skillName", "guided-skill")
+                .param("description", "Use when guided creation is requested.")
+                .param("instructions", "1. Ask for scope.\n2. Perform the workflow.")
+                .param("createReferences", "true")
+                .param("referenceFileName", "REFERENCE.md")
+                .param("referenceContent", "Reference body")
+                .param("createScripts", "true")
+                .param("scriptFileName", "README.md")
+                .param("scriptContent", "Scripts are not executed by this UI.")
+                .param("createAssets", "true"))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("guided-skill")))
+            .andExpect(content().string(containsString("Use when guided creation is requested.")))
+            .andExpect(content().string(containsString("hx-swap-oob=\"true\"")));
+
+        mockMvc.perform(get("/api/skills/guided-skill"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.description").value("Use when guided creation is requested."))
+            .andExpect(jsonPath("$.hasReferences").value(true))
+            .andExpect(jsonPath("$.hasScripts").value(true))
+            .andExpect(jsonPath("$.hasAssets").value(true));
+
+        mockMvc.perform(get("/api/skills/guided-skill/files/view").param("path", "references/REFERENCE.md"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.content").value("Reference body"));
     }
 
     private void createSkill(String slug, String description) throws Exception {
@@ -297,6 +424,21 @@ class SkillControllerTest {
             return AI_CONFIG_PATH;
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to create skill test AI config", exception);
+        }
+    }
+
+    private void deleteRecursively(Path root) throws IOException {
+        if (!Files.exists(root)) {
+            return;
+        }
+        try (var paths = Files.walk(root)) {
+            paths.sorted(Comparator.reverseOrder()).forEach(path -> {
+                try {
+                    Files.deleteIfExists(path);
+                } catch (IOException exception) {
+                    throw new IllegalStateException("Unable to delete test path " + path, exception);
+                }
+            });
         }
     }
 }

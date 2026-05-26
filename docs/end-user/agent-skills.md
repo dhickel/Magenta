@@ -4,8 +4,7 @@ This page documents current Agent Skills status in Magenta MVP.
 
 ## Current Contract Status
 
-- **Implemented now (Phases 02-03 backend):** root skill repository discovery, `SKILL.md` parsing/validation diagnostics, metadata persistence, agent-level assignment persistence, runtime catalog disclosure, and dedicated skill activation with per-conversation deduplication.
-- **Planned next MVP layers:** skill management UI/API.
+- **Implemented now:** root skill repository discovery, `SKILL.md` parsing/validation diagnostics, metadata persistence, agent-level assignment persistence, runtime catalog disclosure, dedicated skill activation with per-conversation deduplication, `/api/skills`, and the `/skills` browser/editor UI.
 - **Deferred:** project-local `.agents/skills`, user-home scopes, layered assignment beyond agent scope, and script/registry trust workflows.
 
 ## MVP Repository And File Shape
@@ -31,12 +30,28 @@ MVP skills live under the Magenta root `skills/` repository:
 
 ## Current Workflow
 
-1. Create or import a skill directory under root `skills/`.
-2. Add `SKILL.md` with valid metadata.
-3. Trigger a catalog refresh path (service/API layer when exposed) to rescan metadata.
-4. Assign enabled skills to the runtime agent profile (MVP target layer is agent-only).
-5. During chat, the model sees a concise `available_skills` catalog and can call `activate_skill` to load full instructions.
-6. Repeat calls to activate the same skill in one conversation are deduplicated.
+1. Open `/skills`.
+2. Use **Guided Create** to scaffold a valid skill, or create/import a skill directory under root `skills/`.
+3. Edit `SKILL.md` in the browser or on disk.
+4. Use **Refresh** to rescan metadata and diagnostics.
+5. Add text files under confined skill directories when needed.
+6. Assign enabled skills to the runtime agent profile (MVP target layer is agent-only).
+7. During chat, the model sees a concise `available_skills` catalog and can call `activate_skill` to load full instructions.
+8. Repeat calls to activate the same skill in one conversation are deduplicated.
+
+## Browser UI
+
+`/skills` provides a compact operational browser:
+
+- filterable skill list with status, assignment count, and diagnostics count;
+- detail view with metadata, diagnostics, optional directory indicators, and root-confined file table;
+- `SKILL.md` and UTF-8 text-file editor with save and refresh;
+- add-file form for the currently selected skill directory;
+- top-level `scripts/`, `references/`, and `assets/` directory creation controls;
+- guided scaffold creation with `SKILL.md`, optional directories, and optional starter text files;
+- agent assignment/unassignment controls.
+
+The UI manages only the Magenta root `skills/` repository. `scripts/` are visible as skill resources, but the browser does not execute scripts.
 
 ## Current API Surface
 
@@ -48,6 +63,8 @@ For operational scripting and integration, the MVP now exposes:
 - `PUT /api/skills/{skillName}/files/text`, `POST /api/skills/{skillName}/files`
 - `GET /api/skills/{skillName}/assignments`
 - `POST|DELETE /api/skills/{skillName}/assignments/agents/{agentId}`
+
+The `/skills` page uses server-rendered HTMX fragments for browser CRUD/list/detail interactions.
 
 ## Validation Behavior
 

@@ -124,7 +124,7 @@ import jakarta.servlet.http.HttpServletResponse;
 @Controller
 public class OrchestrationController {
     private static final Logger log = LoggerFactory.getLogger(OrchestrationController.class);
-    private static final String DASHBOARD_CSS = "/css/orchestration.css?v=13";
+    private static final String DASHBOARD_CSS = AppNavigation.OPERATIONAL_CSS;
     private static final String DASHBOARD_JS = "/js/orchestration/dashboard.js?v=5";
     private static final String AGENTS_JS = "/js/orchestration/agents.js?v=1";
     private static final String AGENT_CHAT_JS = "/js/orchestration/agent-chat.js?v=2";
@@ -272,7 +272,7 @@ public class OrchestrationController {
     }
 
     private ShellTemplate createDashboardShell(String activePath) {
-        SideNav sideNav = buildSideNav(activePath);
+        SideNav sideNav = AppNavigation.operationalSideNav(activePath);
 
         return ShellBuilder.create()
             .withPageTitle("Magenta Dashboard")
@@ -285,27 +285,6 @@ public class OrchestrationController {
             .withTopNav(AppNavigation.primaryTopNav())
             .withSideNav(sideNav, true)
             .buildTemplate();
-    }
-
-    private SideNav buildSideNav(String activePath) {
-        SideNav nav = SideNav.create();
-        nav.addSection("Orchestration");
-        nav.addItem("Dashboard", "/dashboard", isActivePath(activePath, "/dashboard"));
-        nav.addItem("Plans", "/plans", isActivePath(activePath, "/plans"));
-        nav.addItem("Workflows", "/workflows", isActivePath(activePath, "/workflows"));
-        nav.addItem("Jobs", "/jobs", isActivePath(activePath, "/jobs"));
-        nav.addItem("Projects", "/projects", isActivePath(activePath, "/projects"));
-        nav.addSection("Communication");
-        nav.addItem("Inbox", "/inbox", isActivePath(activePath, "/inbox"));
-        nav.addItem("Agents", "/agents", isActivePath(activePath, "/agents"));
-        nav.addSection("Tools");
-        nav.addItem("Outputs", "/outputs", isActivePath(activePath, "/outputs"));
-        nav.addItem("Settings", "/settings", isActivePath(activePath, "/settings"));
-        return nav;
-    }
-
-    private boolean isActivePath(String activePath, String navPath) {
-        return activePath != null && (activePath.equals(navPath) || activePath.startsWith(navPath + "/"));
     }
 
     private String renderPage(Component content) {

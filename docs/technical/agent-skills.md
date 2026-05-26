@@ -1,13 +1,13 @@
-# Agent Skills (Phases 02-04 Backend/API)
+# Agent Skills (Phases 02-05 Backend/API/UI)
 
-This document captures the implemented backend/API foundation from Phase 02 through Phase 04.
+This document captures the implemented Agent Skills foundation from Phase 02 through Phase 05.
 
 ## Scope Boundary
 
 - **Implemented in Phase 02:** root `skills/` repository resolution, `SKILL.md` parsing/validation diagnostics, skill discovery/catalog metadata persistence, optional directory visibility flags, path confinement checks, and refresh-after-edit hashing.
 - **Implemented in Phase 03:** DB-backed agent skill assignments, runtime catalog filtering by assigned+enabled+loadable skills, prompt-time catalog disclosure, dedicated `activate_skill` loading with resource listing, and activation deduplication per conversation.
 - **Implemented in Phase 04:** `/api/skills` list/detail/refresh/create/diagnostics routes, root-confined file tree/view/save/create routes, assignment add/remove/list routes, and minimal `/skills` shell/fragments for phase-05 UI handoff.
-- **Planned next MVP layer:** full guided browser UI flow.
+- **Implemented in Phase 05:** full `/skills` operational browser/editor with list/filter/detail, diagnostics, directory overview, file viewer/editor, add-file flow, optional top-level directory creation, guided scaffold creation, and HTMX assignment controls.
 - **Out of scope for MVP:** project-local `.agents/skills`, user-home/client-native scopes, layered assignment (project/job/task/workflow/chat/session), script trust/execution policy, and registry/package ingestion.
 
 ## Repository Root
@@ -52,6 +52,7 @@ Current ownership boundary:
 - `AgentSkillPromptCatalogAssembler`: concise `available_skills` prompt section injection.
 - `AgentSkillActivationService`: dedicated activation lookup, assignment checks, skill-body loading, resource listing, and dedupe tracking.
 - `AgentSkillManagementService`: API-facing skill lookup, diagnostics, root-confined file operations, skill creation scaffold, and status-classified route-safe errors.
+- `SkillFragments`: server-rendered `/skills` shell and HTMX fragments for catalog browsing, guided creation, file editing, optional-directory creation, and assignment controls.
 
 Chat/web/API layers consume this domain surface; they do not own direct parser/discovery logic.
 
@@ -80,12 +81,16 @@ Implemented surfaces:
 - `PUT /api/skills/{skillName}/files/text`, `POST /api/skills/{skillName}/files`
 - `GET /api/skills/{skillName}/assignments`
 - `POST|DELETE /api/skills/{skillName}/assignments/agents/{agentId}`
-- Minimal HTMX-facing shell/fragments:
+- HTMX-facing shell/fragments:
   - `/skills`
   - `/skills/_list`
+  - `/skills/_refresh`
+  - `/skills/_create`
   - `/skills/_detail/{skillName}`
+  - `/skills/_detail/{skillName}/refresh`
   - `/skills/_files/{skillName}`
   - `/skills/_viewer/{skillName}`
+  - `/skills/_directories/{skillName}`
   - `/skills/_assignments/{skillName}`
 
 Status behavior for file/assignment routes is explicit:
@@ -102,6 +107,22 @@ Path safety rules:
 - no symlink path segments or symlink escapes
 - no binary/script execution routes
 - all file operations confined to `<magenta-root>/skills/<skill>/...`
+- browser optional-directory creation is limited to top-level `scripts/`, `references/`, and `assets/`
+
+## Browser UI Contract (Implemented)
+
+`/skills` uses the operational shell and side navigation shared with `/plans`, `/jobs`, `/projects`, and related surfaces. The browser is HTMX-first:
+
+- filter and refresh replace the skill list fragment;
+- row selection replaces the detail fragment;
+- file table navigation and viewer selection replace only their target fragments;
+- editor saves and add-file actions re-render the selected skill detail;
+- guided creation returns the new detail plus an out-of-band list refresh;
+- assignment/unassignment updates only the assignment panel.
+
+The assignment form reuses the shared `EntitySelectorComponents` agent selector. No custom JavaScript was added for skills; standard SimplyPages/HTMX behavior and the existing selector validation hook cover the interaction.
+
+The page intentionally avoids project-local skill claims, user-home scope claims, layered assignment controls, and browser-driven script execution.
 
 ## Runtime Catalog And Activation Contract (Implemented)
 
@@ -117,7 +138,7 @@ Path safety rules:
 
 ## Validation Expectations
 
-Phase 02-04 evidence:
+Phase 02-05 evidence:
 
 - Parser/discovery/path-confinement service tests.
 - Assignment/catalog/activation tests.
@@ -127,3 +148,4 @@ Phase 02-04 evidence:
   - traversal/symlink path attempts are rejected
   - unknown agent/skill assignment fails safely
   - duplicate assignment is idempotent
+- Phase 05 controller/rendering tests for shell/nav, list filtering, diagnostics, directory overview, `SKILL.md` editing, optional directory creation, add-file flow, assignment selector updates, and guided scaffold creation.

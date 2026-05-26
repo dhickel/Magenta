@@ -199,7 +199,7 @@ Source: [`SkillController`](../../src/main/java/io/mindspice/magenta2/api/web/Sk
 - `POST /api/skills/{skillName}/assignments/agents/{agentId}`: assign (upsert/idempotent) to an agent.
 - `DELETE /api/skills/{skillName}/assignments/agents/{agentId}`: unassign from an agent.
 
-Minimal HTMX shell/fragments are available at `/skills`, `/skills/_list`, `/skills/_detail/{skillName}`, `/skills/_files/{skillName}`, `/skills/_viewer/{skillName}`, and `/skills/_assignments/{skillName}` to support phase-05 UI work.
+HTMX shell/fragments are available at `/skills`, `/skills/_list`, `/skills/_refresh`, `/skills/_create`, `/skills/_detail/{skillName}`, `/skills/_detail/{skillName}/refresh`, `/skills/_files/{skillName}`, `/skills/_viewer/{skillName}`, `/skills/_directories/{skillName}`, and `/skills/_assignments/{skillName}`. These routes render the browser catalog, diagnostics, `SKILL.md` editor, confined file table/editor, guided creation form, and assignment panel.
 
 Skill file routes are confined to `<magenta-root>/skills/<skill>/...` and reject traversal, absolute paths, and symlink escapes. Where distinguishable, invalid requests map to `400`, missing skill/path/agent to `404`, collisions to `409`, and unsupported text/binary operations to `415`.
 

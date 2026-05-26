@@ -363,7 +363,7 @@ class OrchestrationControllerTest {
     void dashboardRendersFullShellWithSidebar() {
         String html = controller().dashboard(null, null);
 
-        assertThat(html).contains("/css/orchestration.css?v=13");
+        assertThat(html).contains(AppNavigation.OPERATIONAL_CSS);
         assertThat(html).doesNotContain("/js/alpha-security.js?v=1");
         assertThat(html).contains("Magenta Operations");
         assertThat(html).contains("Dashboard");
@@ -1143,7 +1143,7 @@ class OrchestrationControllerTest {
         assertThat(html).contains("id=\"agent-chat-form\"");
         assertThat(html).contains("id=\"agent-chat-input\"");
         assertThat(html).contains("Chat with Agent");
-        assertThat(html).contains("/css/orchestration.css?v=13");
+        assertThat(html).contains(AppNavigation.OPERATIONAL_CSS);
         assertThat(html).contains("/js/orchestration/agent-chat.js?v=2");
         assertThat(html).doesNotContain("agent-event-log");
         assertThat(html).doesNotContain("Event Log");
@@ -1741,7 +1741,7 @@ class OrchestrationControllerTest {
         for (String html : pages) {
             assertThat(html).contains("main-sidebar");
             assertThat(html).contains("sidenav");
-            assertThat(html).contains("/css/orchestration.css?v=13");
+            assertThat(html).contains(AppNavigation.OPERATIONAL_CSS);
             assertPrimaryTopNav(html);
             assertThat(html).doesNotContain("/js/alpha-security.js?v=1");
             assertThat(html).doesNotContain("/js/chat-client.js");

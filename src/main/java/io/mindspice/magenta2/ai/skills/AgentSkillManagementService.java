@@ -203,6 +203,30 @@ public class AgentSkillManagementService {
         }
     }
 
+    @Transactional
+    public SkillFileEntry createOptionalDirectory(String skillName, String directoryName) {
+        AgentSkill skill = resolveSkill(skillName);
+        Path skillDirectory = repositoryService.resolveSkillDirectory(skill.directorySlug());
+        String safeName = requirePlainName(directoryName);
+        if (!List.of("scripts", "references", "assets").contains(safeName)) {
+            throw new SkillApiException(HttpStatus.BAD_REQUEST, "directoryName must be scripts, references, or assets");
+        }
+        Path target = repositoryService.resolveRelativePath(skillDirectory, safeName);
+        if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+            if (Files.isDirectory(target, LinkOption.NOFOLLOW_LINKS)) {
+                return toFileEntry(skillDirectory, target);
+            }
+            throw new SkillApiException(HttpStatus.CONFLICT, "target already exists");
+        }
+        try {
+            Files.createDirectory(target);
+            catalogService.refreshCatalog();
+            return toFileEntry(skillDirectory, target);
+        } catch (IOException exception) {
+            throw new SkillApiException(HttpStatus.CONFLICT, "failed to create directory");
+        }
+    }
+
     public List<AgentSkillAssignment> listAgentAssignments(String skillName) {
         String normalizedSkillName = requireSkillName(skillName);
         return catalogService.listAll().stream()
