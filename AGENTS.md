@@ -125,6 +125,8 @@ If you find a bug pull the recent version of the library and directly implement 
 - Repositories should own persistence details and keep schema assumptions localized.
 - Request/response payloads and internal data carriers should use Java records where practical.
 - For workspace, output, project, job, task/plan, and workflow architecture work, read `.internal-dev/specifications/architecture.md`, `.internal-dev/specifications/service-graph.md`, `.internal-dev/specifications/services.md`, and `.internal-dev/specifications/api.md` as the current intended direction before planning or editing. In current code and docs, `task` and `plan` may be used interchangeably; prefer `task` for user-facing executable work while preserving existing compatibility until a deliberate rename is planned.
+- Workspace filesystem contracts use centralized application-owned layout helpers for static structural paths and aliases. Do not hand-concatenate root/workspace/run/output/job paths in services, tools, controllers, prompts, tests, or docs.
+- Current workspace semantics: data root contains `workspace/`, `chats/`, `agents/`, and `projects/`; agent execution roots live under `workspace/<agentWorkspaceId>/`; Work Areas use stable DB ids under `workareas/<workAreaId>/`; model-facing `outputs/` during execution resolves to run-local `runs/<runId>/outputs/`; backend completion/validation/promotion writes final outputs. Jobs bind to an agent, project, and Work Area but do not own workspace directories.
 
 ### Agent and tool direction
 - Treat Magenta as an operational assistant, not a generic framework.

@@ -7,7 +7,7 @@ Use `/jobs` to define ordered work made from plans and workflows, configure opti
 The page has:
 
 - A sidebar with **New Job**, an agent filter, and job rows.
-- An editor for title, summary, owner agent, project, optional persistent workspace, status, manager type, and default model.
+- An editor for title, summary, owner agent, project, status, manager type, and default model.
 - Ordered items for plans and workflows.
 - Recurrence settings.
 - Run, output, and event panels.
@@ -19,13 +19,12 @@ The page has:
 3. Fill **Title** and **Summary**.
 4. Choose an **Owner Agent**.
 5. Choose an optional **Project**.
-6. Enable persistent workspace only when each assignment should keep durable job working files.
-7. Set **Status**, **Manager Type**, and **Default Model**.
-8. Save.
+6. Set **Status**, **Manager Type**, and **Default Model**.
+7. Save.
 
 The project field is selector-backed where available. The owner agent field is currently a plain agent dropdown in the job editor.
 
-Jobs run through an agent. If a project is selected, job outputs and project-facing task/workflow item outputs use the project workspace. Otherwise they use the agent workspace.
+Jobs run through an agent and bind to a project and Work Area when those are selected. Jobs do not own separate workspace directories. If a project is selected, job outputs and project-facing task/workflow item outputs promote to the project or selected Work Area destination. Otherwise they use the executing agent workspace destination.
 
 ## Add Ordered Items
 
@@ -72,9 +71,9 @@ Saved jobs expose two operational actions:
 - **Start Run** creates a job assignment using the job owner agent or the first active agent.
 - **Submit to Agent** opens a form where you choose the agent, priority, optional project override, compatibility workspace metadata, and optional model override before submitting.
 
-The submit form shows the job's saved project, compatibility workspace, and persistent workspace setting. `projectId` chooses the effective project workspace for the assignment. `workspaceId` is compatibility metadata and does not replace project selection.
+The submit form shows the job's saved project and compatibility workspace metadata. `projectId` chooses the effective project workspace for the assignment. `workspaceId` is compatibility metadata and does not replace project selection.
 
-Job outputs are written under the effective workspace at `outputs/jobs/<assignmentId>/<jobRunId>`. When persistent workspace is enabled, durable job working files are kept separately at `jobs/<assignmentId>`. Multiple assignments of the same job definition do not share that persistent workspace.
+During execution, model-facing `outputs/` is the run-local staging area. After successful backend completion, validation, or promotion, job outputs are promoted to the bound Work Area or project output destination. Job definitions do not create or share their own workspace directories.
 
 Recurring jobs also start by creating job assignments. Use the run panel to confirm the assignment id and job run id after a recurrence fires.
 
@@ -82,13 +81,13 @@ Recurring jobs also start by creating job assignments. Use the run panel to conf
 
 The job detail panels show:
 
-- **Runs** with assignment ID, job run ID, status, agent/project context, effective workspace, persistent job workspace state/path, output directory, output count, created time, and cancel action for non-terminal runs.
+- **Runs** with assignment ID, job run ID, status, agent/project context, effective workspace, selected Work Area/output context, output count, created time, and cancel action for non-terminal runs. Legacy rows may still display compatibility workspace/path fields.
 - **Recent Outputs** from job runs, including provenance context where available.
 - **Run Events** summarizing job run state changes.
 
 Use **Cancel** for a non-terminal run when you want Magenta to stop work. Use `/outputs` to browse and download artifacts across jobs, agents, projects, and runs.
 
-While a job has active assignments or non-terminal runs, execution-affecting edits are blocked. This includes item changes, deletion, project/default agent changes, recurrence changes, default model changes, and persistent workspace setting changes. Label-only edits such as title and summary may still be allowed.
+While a job has active assignments or non-terminal runs, execution-affecting edits are blocked. This includes item changes, deletion, project/default agent changes, recurrence changes, and default model changes. Label-only edits such as title and summary may still be allowed.
 
 ## Common Errors
 

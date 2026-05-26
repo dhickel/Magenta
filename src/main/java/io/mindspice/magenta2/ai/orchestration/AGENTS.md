@@ -10,12 +10,13 @@ This package owns durable runtime agent, setting, workspace, and orchestration s
 - Keep orchestration services small, explicit, and usable by existing chat flows.
 - Keep filesystem workspace roots confined under the configured data root.
 - Resolve durable execution files through the effective workspace rule: project workspace when `projectId` is present, otherwise executing agent workspace.
+- Use centralized workspace layout helpers for static structural paths and aliases; do not rebuild data-root, Work Area, run, output, or legacy compatibility paths in runtime services.
+- Treat jobs as task-like executable work bound to an agent, project, and Work Area. New job behavior must not allocate job-owned workspace directories.
 - Keep durable assignment execution resumable at task/workflow/job item boundaries; do not attempt token-level or partial model response resume.
 - Execute task and workflow assignments through the chat task execution service so durable orchestration never fabricates task outputs.
 - Preserve workflow `WAITING` assignment status for resumable approval/wait runs.
 - Persist job item retry policy with explicit retry count and continue-on-failure behavior.
 - Treat public projects as shared workspace/visibility records. `ownerAgentId` is nullable legacy compatibility metadata, not a required execution owner.
-- Keep job persistent workspaces opt-in and assignment-scoped under the effective workspace.
 - Public operational job definitions may be saved as empty `DRAFT` records so the UI can create metadata before ordered items are added.
 
 ### Change guidance

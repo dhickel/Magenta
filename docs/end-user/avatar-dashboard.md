@@ -45,4 +45,4 @@ Supported file actions include directory navigation, text and Markdown preview/e
 
 Markdown files open with the rendered tab active and a Text tab for raw editing. Plain text opens directly in raw text mode. Unsupported or binary files do not expose a misleading row View action; stale viewer requests show a safe unsupported message instead. Copy and move require an explicit destination directory and stay confined under the selected Work Area.
 
-New assignment work defaults to the selected Home Work Area. During execution, `workspace/` points at the selected Work Area and `root/` points at the broader owned root. Outputs default to the selected Work Area `outputs/` folder unless the submit form redirects them elsewhere.
+New assignment work defaults to the selected Home Work Area. During execution, `workspace/` points at the selected Work Area and `root/` points at the broader owned root. Agent-facing `outputs/` is run-local staging at `runs/<runId>/outputs/`; after the run completes, Magenta promotes declared final outputs from that staging area to the selected Work Area, project, or other effective destination chosen by the submit form.

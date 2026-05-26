@@ -1,28 +1,25 @@
 ## Workspace Package
 
-This package owns filesystem workspace management including effective durable workspace resolution, agent/project workspace roots, optional job persistent workspaces, temp task/workflow directories, output directories, artifact metadata, and workspace leases.
+This package owns filesystem workspace management including centralized layout helpers, effective durable workspace resolution, agent/project workspace roots, Work Area directories, run-local output staging, final output promotion destinations, artifact metadata, and workspace leases.
 
 ### Responsibilities
 - Manage all workspace directories and Work Area metadata confined under the configured `dataRoot`.
 - Resolve effective durable workspace centrally: project workspace when `projectId` is present, otherwise executing agent workspace.
-- Provide typed directory paths: agent/project workspace roots, `work/`, `outputs/`, `runs/`, `scratch/`, task temp, workflow temp, opt-in job workspace, task output, workflow output, and job output.
-- Enforce exclusive writable leases on job/project workspaces and reconcile expired leases before they block reacquisition.
+- Provide typed directory paths through centralized structural constants/helpers, including data-root children, agent workspace roots, Home, Work Areas, run roots, run-local outputs, final output destinations, chat files, and project roots.
+- Enforce exclusive writable leases on project workspaces and reconcile expired leases before they block reacquisition. Job workspace leasing is legacy compatibility only and must not be expanded.
 - Materialize explicit run output artifacts into effective workspace output directories and persist metadata.
 - Keep loose artifact discovery compatibility-gated and confined under the real data root and expected run output directory.
-- Clean up temp directories on terminal run states; never delete output directories or persistent job workspaces.
+- Clean up run staging only through retention-aware cleanup; never delete Work Areas, project/agent workspaces, or promoted final outputs.
 
 ### Layout
-- Agent workspace root: `agents/<id>/workspace/`
-- Project workspace root: `projects/<projectId>/workspace/`
-- Default Home Work Area: `<owner-workspace>/home/`
-- Effective workspace directories: `work/`, `outputs/`, `runs/`, `scratch/`, `jobs/`
-- Task outputs: `outputs/tasks/<taskId>/<runId>/`
-- Workflow outputs: `outputs/workflows/<workflowId>/<runId>/`
-- Job outputs: `outputs/jobs/<assignmentId>/<jobRunId>/`
-- Persistent job workspace: `jobs/<assignmentId>/` when enabled
-- Agent project links: `agents/<id>/workspace/projects/<projectId>`
-- Agent scratch: `agents/<id>/workspace/scratch/`
-- Legacy `agents/<id>/home` and `agents/<id>/outputs` are deprecated and migrate into `workspace/` when warm data roots are opened.
+- Data-root children: `workspace/`, `chats/`, `agents/`, and `projects/`.
+- Agent execution root: `workspace/<agentWorkspaceId>/`.
+- Default Home Work Area: `workspace/<agentWorkspaceId>/home/`.
+- User Work Areas: `workspace/<agentWorkspaceId>/workareas/<workAreaId>/`, where `workAreaId` is the stable `work_areas.id` and display names stay DB-owned.
+- Run staging root: `workspace/<agentWorkspaceId>/runs/<runId>/`.
+- Model-facing run outputs: `workspace/<agentWorkspaceId>/runs/<runId>/outputs/`.
+- Final output destinations are backend promotion targets: jobless task/workflow outputs promote to the agent workspace final `outputs/`; job-bound task/workflow/job outputs promote to the bound Work Area or project output destination.
+- Job-owned workspace and `outputs/jobs` style paths are legacy compatibility only, not new-contract layout.
 
 ### Services
 - `WorkspaceDirectoryService` — filesystem path management and directory creation.
@@ -37,15 +34,14 @@ This package owns filesystem workspace management including effective durable wo
 
 ### Change guidance
 - Workspace paths constructed by this package must be confined under `dataRoot` with normalized path checks.
-- Work Areas are metadata around existing confined directories. Do not mark the owner workspace root itself as a Work Area.
+- Work Areas are DB-backed metadata with stable id directories. Do not mark the owner workspace root itself as a Work Area.
 - The `home/` Work Area is system-owned and cannot be unmarked.
 - Unmarking must reject Work Areas referenced by queued/running assignments or active output targets.
 - Source paths supplied for persisted output materialization must also resolve through `toRealPath()` and stay under the real `dataRoot` before copy or artifact registration, so symlinks cannot escape the managed data tree.
 - Copied temp/run publication must skip symlinks, including project workspace links, and must register copied files under `copied_temp/...` artifact names.
 - Always use `Files.createDirectories` before returning a workspace path.
-- Temp directories are deleted after terminal run completion; output directories persist.
-- Waiting workflow temp directories must remain available for resume.
-- Runtime aliases are part of this architecture contract: `workspace/` for the selected Work Area or durable workspace, `root/` for the owner workspace root, `work/`, `outputs/`, `run/`, `scratch/`, and `job/` when an active job assignment/run has an opt-in persistent job workspace.
+- Run staging is retained for at least one day and must remain available for active or resumable work.
+- Runtime aliases are part of this architecture contract: `workspace/` for the selected Work Area or durable workspace, `root/` for the owner workspace root, `outputs/` for the current run-local output staging directory, and `run/` for current run staging. Legacy aliases such as scratch or job workspace are compatibility only when still accepted.
 - Lease extension must verify holder ownership.
 - Do not add UI, scheduling, or agent behavior here.
 

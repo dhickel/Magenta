@@ -17,6 +17,8 @@ This package owns HTTP and web-facing entry points.
 
 ### Change guidance
 - Treat controller request and response changes as public API changes.
+- For workspace, Work Area, run, output, project, task/workflow, or job request/response changes, keep controllers thin and route path/layout policy through workspace/runtime services and centralized layout helpers.
+- MVP browser UX should expose Work Area and project browsing/editing, not internal agent workspace roots, run staging, or structural root management except through explicitly diagnostic/read-only future surfaces.
 - Public plan/task/workflow run controls submit saved definitions to agent assignments; direct model-backed execution stays internal/test-only when needed.
 - Public task and workflow run stream routes acknowledge queued assignment submission instead of streaming inline model execution.
 - Public operational job APIs use `JobDefinition` records, allow empty `DRAFT` jobs, and expose job item routes separately from run routes.

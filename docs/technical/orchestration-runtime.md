@@ -65,7 +65,7 @@ Workspace writable leases are a separate concept in `workspace_leases`; see [Wor
 
 The runtime does not attempt token-level or partial model response resume. Durable recovery is at task, workflow, and job item boundaries using assignment checkpoints and run records.
 
-Every assignment resolves one effective durable workspace before execution: project workspace when `projectId` is present, otherwise the executing agent workspace. Runtime temp directories remain separate from durable outputs.
+Every assignment resolves one effective durable workspace before execution: project workspace when `projectId` is present, otherwise the executing agent workspace. Run staging remains separate from final promoted outputs.
 
 ## Jobs
 
@@ -76,13 +76,13 @@ There are two job-related schemas:
 
 Current public job APIs use `JobDefinition` and `JobWorkItem`. Public job execution submits `AssignmentType.JOB_RUN`. Job items can reference tasks or workflows, include model override and priority, and persist retry count plus continue-on-failure policy. Empty job submissions are valid no-op executions: the assignment-owned `job_runs` row moves to `COMPLETED` with an empty item-run list.
 
-User-facing jobs can opt into persistent per-assignment workspace with `persistentWorkspaceEnabled`. When enabled, job workspace state lives under the effective workspace at `jobs/<assignmentId>`. Job outputs live under `outputs/jobs/<assignmentId>/<jobRunId>` and output artifacts carry job assignment/run attribution. The compatibility `workspaceId` field remains available on definitions and submissions.
+User-facing jobs are task-like executable work bound to an agent, project, and Work Area. Jobs do not own directories, persistent workspaces, or multi-task container filesystem state. During execution, model-facing `outputs/` resolves to the current run-local output staging directory; backend completion, validation, or promotion writes final outputs to the bound Work Area or project output destination. The compatibility `workspaceId` field remains available on definitions and submissions.
 
-`JobExecutionSummary` is the stable read model for operator views. It bridges job definition, assignment id/status, agent/project labels, compatibility workspace id, effective workspace id/kind/path, persistent job workspace state/path, job run id/status, child run ids, output directory/count, and lifecycle timestamps. It covers both the pending gap after assignment creation and the later state after a `job_runs` row exists.
+`JobExecutionSummary` is the stable read model for operator views. It bridges job definition, assignment id/status, agent/project labels, compatibility workspace id, effective workspace id/kind/path, Work Area/output context, job run id/status, child run ids, output count, and lifecycle timestamps. Legacy rows may still expose compatibility job workspace/path fields. It covers both the pending gap after assignment creation and the later state after a `job_runs` row exists.
 
 Job recurrence/start behavior is assignment-routed. Recurrence firing enqueues `JOB_RUN` assignments and advances recurrence timestamps; direct job run allocation is reserved for assignment-owned runner execution.
 
-The alpha mutation policy is conservative. Project deletion and membership removal are blocked while active work references the project or member agent. Job deletion and execution-affecting edits, including item changes, project/default agent, recurrence, model, and persistent workspace flag changes, are blocked while non-terminal job assignments or runs exist. Label-only edits remain allowed where services permit them.
+The alpha mutation policy is conservative. Project deletion and membership removal are blocked while active work references the project or member agent. Job deletion and execution-affecting edits, including item changes, project/default agent, recurrence, and model changes, are blocked while non-terminal job assignments or runs exist. Label-only edits remain allowed where services permit them.
 
 ## Inboxes
 

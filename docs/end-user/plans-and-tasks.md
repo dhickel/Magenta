@@ -96,7 +96,7 @@ Plan submissions create agent assignments and may create task run records. The p
 - `/outputs` for artifacts.
 - `/jobs` when the plan runs as part of a job.
 
-Task output artifacts are written under the effective workspace at `outputs/tasks/<taskId>/<runId>`. Ordinary chat files remain separate from these output artifacts.
+During execution, model-facing `outputs/` is the run-local staging area. After backend completion, validation, or promotion, task output artifacts are promoted to the selected agent, project, or Work Area output destination. Ordinary chat files remain separate from these output artifacts.
 
 ## Anonymous Chat Plan Execution
 

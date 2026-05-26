@@ -128,7 +128,7 @@ Plan runs and task runs preserve execution history:
 - `PlanRun` stores input values, output values, definition snapshot, workspace/output paths, evidence, validation feedback, deliverable evidence, final/error messages, status, and timestamps.
 - `TaskRun` stores task-specific run state and is used by task execution paths.
 
-Runs snapshot their definitions so edits after execution do not rewrite historical meaning. Durable output paths are resolved through the effective workspace rule: project workspace when `projectId` is present, otherwise the executing agent workspace. Task outputs are stored under `outputs/tasks/<taskId>/<runId>` and indexed in `run_output_artifacts`.
+Runs snapshot their definitions so edits after execution do not rewrite historical meaning. During execution, agent-facing `outputs/` resolves to run-local staging at `runs/<runId>/outputs/` under the effective agent workspace. Agents write declared and transient deliverables there; after run completion, backend validation/promotion copies declared final outputs to the effective final destination and indexes the promoted artifacts in `run_output_artifacts`.
 
 ## Submit-To-Agent Semantics
 

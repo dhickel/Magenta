@@ -21,10 +21,10 @@ Services/frontend/UX architecture rules after the 2026-05-21 refactor.
 - `projectId` is first-class assignment state and selects the effective project workspace.
 - `workspaceId` is compatibility metadata and must not be treated as project context.
 - Assignment summaries are the UI read model for queue/history/project/workspace diagnostics.
-- Jobs are hybrid records: definition, assignment, run, optional per-assignment persistent workspace, child work-unit runs, and outputs.
+- Jobs are definition, assignment, and run records bound to an agent, project, and Work Area, with child work-unit runs and direct output attribution.
 - Job recurrence/start behavior should enqueue assignments, not allocate user-facing runs directly.
 - `JobExecutionSummary` is the operator read model for job execution context.
-- Persistent job workspaces are opt-in and scoped by assignment id.
+- Persistent job workspace wording is legacy/compatibility only; new job behavior must not allocate or advertise job-owned workspace directories.
 - Direct output artifact attribution is the primary output query/display contract.
 - Job output fallback is compatibility behavior and must not mask missing direct attribution in new work.
 - Chat files are conversation files, not orchestration output artifacts.

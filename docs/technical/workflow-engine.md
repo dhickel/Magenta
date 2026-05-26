@@ -63,7 +63,7 @@ Validation is exposed at:
 
 Runs persist in `workflow_runs`; per-node rows persist in `workflow_node_runs`.
 
-Workflow execution uses separate runtime temp and durable output paths. Temp execution state stays under runtime workflow-run space, while final durable outputs are written under the effective workspace at `outputs/workflows/<workflowId>/<runId>`.
+Workflow execution uses separate run staging and final output promotion paths. Execution state and model-facing `outputs/` stay under run-local staging, while final outputs are promoted by backend completion, validation, or promotion logic to the selected agent, project, or Work Area output destination.
 
 ## Submission and Execution
 
@@ -108,7 +108,7 @@ Assignment-backed workflow runs preserve `WAITING` assignment status while waiti
 
 ## Output Mapping
 
-Workflow final outputs are stored in `workflow_runs.final_outputs_json`. Output artifacts materialized during runs are stored under the effective workspace output path, indexed in `run_output_artifacts`, and referenced by `artifact_ids_json`.
+Workflow final output metadata is stored in `workflow_runs.final_outputs_json`. During execution, workflow task nodes and agents stage declared or transient files through the active run-local `runs/<runId>/outputs/` alias. After completion/validation, backend promotion copies declared final outputs from staging to the effective final destination, creates or updates `run_output_artifacts` records for the promoted artifacts, and references those artifact ids through `artifact_ids_json`.
 
 Task nodes can produce task output artifacts via the task/plan execution path. The workflow runner gathers relevant output values and artifact ids into the workflow run record.
 

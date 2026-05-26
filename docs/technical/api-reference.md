@@ -61,7 +61,7 @@ Source: [`PlanController`](../../src/main/java/io/mindspice/magenta2/api/web/Pla
 - `POST /api/plans/{planId}/planning-chat/messages`: append a saved plan chat message and run the saved-plan model turn.
 - `GET /api/plans/{planId}/planning-chat`: read saved plan chat state and messages.
 
-Create/update payloads include title, summary, goal, notes, deliverables, inputs, outputs, assumptions, steps, validation criteria, work type/prompt profile, planning model, and execution model. `PlanRunRequest` accepts input values, conversation id, agent id, job id, explicit `projectId`, compatibility `workspaceId`, Work Area/output routing fields, model override, and priority. `SubmitRequest` accepts agent id, model override, priority, `projectId`, `workspaceId`, and Work Area/output routing fields. Browser submit forms use the shared entity selector for selected/output Work Areas, with direct output directories still entered as existing owner-root-relative paths. Saved plan chat input/output questions collect initial user context; the saved-plan model synthesizes typed field definitions with name, type, required flag, array flag, description, examples, and optional schema through plan-scoped tools.
+Create/update payloads include title, summary, goal, notes, deliverables, inputs, outputs, assumptions, steps, validation criteria, work type/prompt profile, planning model, and execution model. `PlanRunRequest` accepts input values, conversation id, agent id, job id, explicit `projectId`, compatibility `workspaceId`, Work Area/output routing fields, `runDisplayName` for non-job runs, model override, and priority. `SubmitRequest` accepts agent id, model override, priority, `projectId`, `workspaceId`, Work Area/output routing fields, and `runDisplayName` for non-job submissions. Browser submit forms use the shared entity selector for selected/output Work Areas, with direct output directories still entered as existing owner-root-relative paths. Saved plan chat input/output questions collect initial user context; the saved-plan model synthesizes typed field definitions with name, type, required flag, array flag, description, examples, and optional schema through plan-scoped tools.
 
 `runs/stream` emits `submitted` with assignment metadata or `failed`. It does not stream inline model output. Assignment responses include first-class project/effective workspace fields where the route returns `WorkAssignment`; `projectId` controls effective workspace selection and `workspaceId` remains compatibility metadata.
 
@@ -76,7 +76,7 @@ Source: [`TaskController`](../../src/main/java/io/mindspice/magenta2/api/web/Tas
 - `GET /api/tasks/{taskId}/runs`, `GET /api/tasks/runs/{runId}`: run reads.
 - `POST /api/tasks/{taskId}/runs/stream`: SSE submit-to-agent path.
 
-Task create/update payloads carry title, summary, goal, notes, input/output descriptions, structured fields, assumptions, steps, and validation criteria. `TaskRunRequest` accepts input values, conversation id, agent id, job id, explicit `projectId`, compatibility `workspaceId`, Work Area/output routing fields, model override, and priority. `runs/stream` emits `submitted` or `failed` with assignment metadata when accepted.
+Task create/update payloads carry title, summary, goal, notes, input/output descriptions, structured fields, assumptions, steps, and validation criteria. `TaskRunRequest` accepts input values, conversation id, agent id, job id, explicit `projectId`, compatibility `workspaceId`, Work Area/output routing fields, `runDisplayName` for non-job runs, model override, and priority. `runs/stream` emits `submitted` or `failed` with assignment metadata when accepted.
 
 ## Workflows: `/api/workflows`, `/api/workflow-runs`, `/api/users/inbox`
 
@@ -91,7 +91,7 @@ Source: [`WorkflowController`](../../src/main/java/io/mindspice/magenta2/api/web
 - `POST /api/workflow-runs/{runId}/resume`: resume paused approval/waiting runs through `WorkflowService`.
 - `GET /api/users/inbox`, `POST /api/users/inbox/{messageId}/respond`: workflow-owned user approval inbox.
 
-Workflow definitions include schema version, title, summary, max concurrency, nodes, routes, and UI layout. `WorkflowRunRequest` accepts agent id, job id, explicit `projectId`, compatibility `workspaceId`, Work Area/output routing fields, model override, and priority. Waiting workflow assignments remain `WAITING` and resumable instead of being treated as failed only because the workflow run is nonterminal. Workflow run records carry nullable agent/job/job-assignment/job-run/project/workspace/run-type attribution for output and context views.
+Workflow definitions include schema version, title, summary, max concurrency, nodes, routes, and UI layout. `WorkflowRunRequest` accepts agent id, job id, explicit `projectId`, compatibility `workspaceId`, Work Area/output routing fields, `runDisplayName` for non-job runs, model override, and priority. Waiting workflow assignments remain `WAITING` and resumable instead of being treated as failed only because the workflow run is nonterminal. Workflow run records carry nullable agent/job/job-assignment/job-run/project/workspace/run-type attribution for output and context views.
 
 ## Jobs: `/api/jobs`, `/api/job-runs`
 
@@ -105,9 +105,9 @@ Source: [`JobController`](../../src/main/java/io/mindspice/magenta2/api/web/JobC
 - `GET /api/jobs/{jobId}/outputs`, `GET /api/jobs/{jobId}/events`: derived output/event views.
 - `POST /api/jobs/{jobId}/recurrence`, `GET /api/jobs/{jobId}/recurrence`: recurrence configuration.
 
-Job definitions include owner agent, optional project, compatibility workspace id, `persistentWorkspaceEnabled`, status, title, summary, items, prompt profile, model, and settings override JSON. `JobRunRequest` accepts agent id, model override, explicit `projectId`, compatibility `workspaceId`, Work Area/output routing fields, and priority. Job item payloads reference task or workflow ids, model override, priority, retry count, continue-on-failure, and config JSON.
+Job definitions include owner agent, optional project, compatibility workspace id, legacy `persistentWorkspaceEnabled`, status, title, summary, items, prompt profile, model, and settings override JSON. `JobRunRequest` accepts agent id, model override, explicit `projectId`, compatibility `workspaceId`, Work Area/output routing fields, and priority. Job item payloads reference task or workflow ids, model override, priority, retry count, continue-on-failure, and config JSON.
 
-Job run reads are summary-backed where operator context is needed. The summary includes job definition id/title/status, assignment id/status/type/priority, agent and project labels, compatibility workspace id, effective workspace id/kind/path, persistent job workspace enabled/present/path state, job run id/status, child run ids, output directory, output count, and lifecycle timestamps. Cancellation keeps assignment-owned job run lifecycle state synchronized.
+Job run reads are summary-backed where operator context is needed. The summary includes job definition id/title/status, assignment id/status/type/priority, agent and project labels, compatibility workspace id, effective workspace id/kind/path, selected Work Area/output context, job run id/status, child run ids, output count, and lifecycle timestamps. Legacy rows may still expose compatibility job workspace/path fields. Cancellation keeps assignment-owned job run lifecycle state synchronized.
 
 ## Agents: `/api/agents` and `/api/agents/{agentId}`
 
@@ -191,6 +191,8 @@ Source: [`OutputController`](../../src/main/java/io/mindspice/magenta2/api/web/O
 - `GET /api/outputs/{artifactId}/download`: download a confined file under the data root.
 
 Output artifacts can carry agent, job, job assignment, job run, project, workspace, run type, and work-unit attribution. Direct stored attribution is used for the expanded filters; job route fallback remains a compatibility bridge only when no direct-only filters are supplied. Content/download enforce a 10 MB limit in the controller. Download resolves real paths and rejects paths outside the output service data root.
+
+During execution, model-facing `outputs/` resolves to run-local staging. Output APIs expose promoted artifacts and metadata after backend completion, validation, or promotion, not arbitrary writes inside run staging.
 
 ## Dashboard, Runtime, Settings, Models
 

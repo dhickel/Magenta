@@ -29,6 +29,10 @@ created: 2026-05-25
 
 When a false assumption, repeated mistake, major correction, important user correction, or repeated reverification reveals reusable context, update a domain-named knowledge file and link the affected specification or changelog when useful.
 
+## Workspace Contract Gate
+
+For workspace, Work Area, run-output, project, job, task/plan, workflow, file-tool, shell-tool, or output-artifact changes, read `architecture.md`, `service-graph.md`, `services.md`, `api.md`, and the workspace knowledge files named by the active plan. Treat compatibility references to old job-owned workspace, scratch, runtime-temp, or final-output paths as legacy unless the active plan explicitly re-accepts them.
+
 ## Closeout Gate
 
 Update affected specifications, knowledge, bugs, changelogs, plans, and reviews. If no specification changed, the changelog must include `Specification Impact: none` with one sentence explaining why.

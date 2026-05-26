@@ -70,7 +70,7 @@ The project field controls the durable workspace for workflow outputs. If a proj
 
 The **Recent Runs** table shows workflow run ID, status, current node, start time, and action. Runs in `WAITING` state can be resumed from the table when the workflow runtime allows it. Approval and wait messages may also appear in `/inbox`.
 
-Workflow temp state is kept while a run is waiting so resume can continue the same run. Durable workflow outputs are written under the effective workspace at `outputs/workflows/<workflowId>/<runId>`.
+Workflow run staging is kept while a run is waiting so resume can continue the same run. During execution, model-facing `outputs/` is run-local staging. After backend completion, validation, or promotion, workflow outputs are promoted to the selected agent, project, or Work Area output destination.
 
 ## Common Errors
 

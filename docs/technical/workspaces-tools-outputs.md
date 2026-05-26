@@ -4,22 +4,17 @@ Workspace and output behavior is owned by [`ai/orchestration/workspaces`](../../
 
 ## Data Root and Directory Layout
 
-Workspace paths are confined under the configured data root managed by `WorkspaceDirectoryService`. If AI config omits `dataRoot`, the default is `<magenta.root.path>/root`; relative AI `dataRoot` values resolve under `magenta.root.path`, and absolute values remain supported. The current layout includes:
+Workspace paths are confined under the configured data root managed by `WorkspaceDirectoryService`. If AI config omits `dataRoot`, the default is `<magenta.root.path>/root`; relative AI `dataRoot` values resolve under `magenta.root.path`, and absolute values remain supported. Static structural path segments are application-owned constants/helpers, not operator configuration. The intended layout is:
 
-- Agent workspace root: `agents/<id>/workspace/`
-- Project workspace root: `projects/<projectId>/workspace/`
-- Effective workspace shared directories: `work/`, `outputs/`, `runs/`, `scratch/`, and `jobs/`.
-- Task outputs: `<effective-workspace>/outputs/tasks/<taskId>/<runId>/`
-- Workflow outputs: `<effective-workspace>/outputs/workflows/<workflowId>/<runId>/`
-- Job outputs: `<effective-workspace>/outputs/jobs/<assignmentId>/<jobRunId>/`
-- Opt-in persistent job workspaces: `<effective-workspace>/jobs/<assignmentId>/`
-- Agent project links: `agents/<id>/workspace/projects/<projectId>`
-- Agent scratch: `agents/<id>/workspace/scratch/`
-- Task temp directories under runtime task-run space.
-- Workflow temp directories under `runtime/workflow-runs/<runId>/`.
-- Persistent chat files: `chats/<conversationId>/files/`
+- Data-root children: `workspace/`, `chats/`, `agents/`, and `projects/`.
+- Agent execution root: `workspace/<agentWorkspaceId>/`.
+- Agent Home Work Area: `workspace/<agentWorkspaceId>/home/`.
+- User Work Areas: `workspace/<agentWorkspaceId>/workareas/<workAreaId>/`.
+- Run staging: `workspace/<agentWorkspaceId>/runs/<runId>/`.
+- Model-facing execution outputs: `workspace/<agentWorkspaceId>/runs/<runId>/outputs/`.
+- Persistent chat files: `chats/<conversationId>/files/`.
 
-Legacy `agents/<id>/home` and `agents/<id>/outputs` directories are deprecated. `WorkspaceDirectoryService` can migrate warm data roots into the current `workspace/` layout when old directories exist and new counterparts do not.
+`agents/` stores agent metadata/internal structures, not execution workspaces. `projects/` stores shared project directories. Legacy agent home/output directories, scratch directories, runtime temp paths, and job-owned workspace/output paths may remain compatibility-readable for old records, but they are not current layout contracts.
 
 `EffectiveWorkspaceResolver` centralizes durable workspace selection:
 
@@ -27,11 +22,7 @@ Legacy `agents/<id>/home` and `agents/<id>/outputs` directories are deprecated. 
 - Otherwise, the executing agent workspace is the effective durable workspace.
 - `workspaceId` is retained as compatibility metadata and is not interpreted as a project id.
 
-`OutputDirectoryService` centralizes output directory selection for tasks, workflows, and jobs. It uses the same effective workspace rule and preserves the existing layouts:
-
-- Task outputs: `<effective-workspace>/outputs/tasks/<taskId>/<runId>/`
-- Workflow outputs: `<effective-workspace>/outputs/workflows/<workflowId>/<runId>/`
-- Job outputs: `<effective-workspace>/outputs/jobs/<assignmentId>/<jobRunId>/`
+Run output staging and final output promotion are separate concepts. During task, workflow, or job execution, model-facing `outputs/` resolves to the current run-local `runs/<runId>/outputs/`. On successful backend completion, validation, or promotion, declared outputs are copied or materialized to final destinations: jobless task/workflow outputs promote to the agent workspace final `outputs/`, while job-bound task/workflow/job outputs promote to the bound Work Area or project output destination.
 
 Projects are shared durable workspace and visibility abstractions. They are not executable work units, and `ownerAgentId` is nullable legacy compatibility metadata.
 
@@ -56,7 +47,7 @@ Project and agent pages consume the same services for workspace summaries.
 
 ## Work Areas
 
-`WorkAreaService` owns durable Work Area metadata for confined directories inside an agent or project workspace root. A Work Area is not a new filesystem root; it is a named pointer to an existing directory under the owner workspace. The default `home/` Work Area is system-owned, created on demand, and is the v1 default selection point for new assignment work.
+`WorkAreaService` owns durable Work Area metadata for confined directories inside an agent or project workspace root. A Work Area is the primary user-facing workspace abstraction. New Work Areas use stable DB ids as disk segments under `workareas/<workAreaId>/`; display names stay in the database. The default `home/` Work Area is system-owned, created on demand, and is the v1 default selection point for new assignment work.
 
 Schema:
 
@@ -73,7 +64,7 @@ Schema:
 Service behavior:
 
 - `ensureHome(...)` creates `<owner-workspace>/home/` and persists it as a system/Home Work Area.
-- `markDirectory(...)` accepts only existing relative directories beneath the owner workspace root.
+- New user Work Areas are created under `workareas/<workAreaId>/`; compatibility marking of pre-existing directories must remain explicit.
 - The owner workspace root itself cannot be marked as a Work Area.
 - Existing inactive Work Areas are reactivated instead of creating duplicate rows.
 - `unmark(...)` deactivates user-created Work Areas but refuses Home/system Work Areas.
@@ -97,10 +88,10 @@ Runtime alias and output directory resolution consume these columns during task,
 
 - `workspace/` resolves to the selected Work Area path when present.
 - `root/` resolves to the broader owner workspace root.
-- `outputs/` resolves to the active run output directory.
-- `DEFAULT` writes under `<selected-work-area>/outputs/...`.
-- `WORK_AREA` writes under `<output-work-area>/outputs/...`.
-- `DIRECT_DIRECTORY` writes directly to the existing owner-root-relative directory.
+- `outputs/` resolves to the active run-local `runs/<runId>/outputs/` staging directory.
+- `DEFAULT` promotes completed outputs to the default final destination.
+- `WORK_AREA` promotes completed outputs to the selected output Work Area.
+- `DIRECT_DIRECTORY` promotes completed outputs to the existing owner-root-relative directory.
 
 `WorkAreaExplorerService` provides the backend contract for the Avatar Work Areas/file explorer surface. It supports confined directory listings, rich row/inspect metadata, safe text/Markdown preview and save, image preview/download routing, bounded downloads, directory creation, `.txt` and `.md` creation, sibling rename, copy, move, custom file/directory tags, note labels, recursive delete with typed confirmation, and marking nested directories as Work Areas.
 
@@ -186,11 +177,10 @@ During task, workflow, or job execution, file and shell tools resolve runtime al
 
 - `workspace/`: selected Work Area when present; otherwise effective durable workspace root.
 - `root/`: effective durable owner root, useful when `workspace/` is narrowed to a Work Area.
-- `work/`: effective workspace `work/`.
 - `outputs/`: current run output directory.
-- `run/`: current run temp/execution directory.
-- `scratch/`: effective workspace `scratch/`.
-- `job/`: current persistent job workspace, only when the active job assignment/run has one.
+- `run/`: current run staging directory.
+
+Legacy aliases such as scratch or job workspace are compatibility-only when still accepted by older callers. New prompts and tool guidance should not advertise them as current workflow paths.
 
 Project-scoped runs therefore expose project files through `workspace/`, while agent-scoped runs expose the agent workspace. Existing project-link access under `projects/<projectId>/...` remains compatibility support for older prompts and run contexts.
 
@@ -282,24 +272,21 @@ Typical task/plan/workflow output flow:
 
 1. Execution service produces structured output values and optional file paths.
 2. The effective workspace resolver selects the project workspace when `projectId` is present, otherwise the executing agent workspace.
-3. Workspace directory service provides a work-unit output directory under `outputs/tasks/...`, `outputs/workflows/...`, or `outputs/jobs/...`.
-4. `OutputArtifactService` copies or writes materialized content into that output directory.
+3. Workspace directory service provides run-local output staging under `runs/<runId>/outputs/`.
+4. Backend completion, validation, or promotion copies or writes declared outputs to the final destination.
 5. Metadata is inserted into `run_output_artifacts`.
 6. Output services and operational pages use run, agent, job, project, workspace, plan, job assignment, job run, or type attribution as needed. Public `GET /api/outputs` exposes the filtered subset documented above.
 
-Temp workspaces can be cleaned up on terminal run states, but output directories persist.
+Run staging is retained for at least one day and can be cleaned only by a retention-aware cleanup path. Final promoted output destinations persist.
 
 Loose artifact discovery exists only as compatibility behavior. It is gated by service policy, confined by real paths under the configured data root and expected run output directory, and should not be used as the primary contract for new work. New code should publish explicit outputs through output materialization or `OutputArtifactService.publishExistingFile(...)`.
 
-Task completion can optionally copy retained temp/run files into the final output publication by passing `includeTempWithOutput=true` through `task_complete`. The copy runs after declared output materialization and before loose artifact discovery and terminal persistence. It copies regular files from the confined temp directory into `copied-temp/` inside the final output directory, registers each copied file as a `copied_temp/...` output artifact, skips symlinks including project workspace links, and fails completion if the requested temp publication cannot be completed safely.
+Task completion can optionally copy retained run-staging files into the final output publication by passing `includeTempWithOutput=true` through `task_complete`. The copy runs after declared output materialization and before loose artifact discovery and terminal persistence. It copies regular files from confined run staging into `copied-temp/` inside the final output destination, registers each copied file as a `copied_temp/...` output artifact, skips symlinks including project workspace links, and fails completion if the requested publication cannot be completed safely.
 
 ## Temp Retention
 
-`RuntimeSettings.retainTempWork` controls cleanup for task temp work:
+Run staging cleanup is retention-aware. Staging must be retained for at least one day; settings may make retention longer, but terminal completion must not immediately delete staging.
 
-- `true`: never auto-delete temp run directories.
-- `false`: delete temp directories only after clean completion.
+When validation or output materialization detects missing required output, missing referenced file deliverables, or missing final-message deliverables, Magenta keeps run staging and marks the run for review instead of silently completing it. Persistent chat files are separate from run staging and are never auto-deleted by this cleanup path.
 
-When validation or output materialization detects missing required output, missing referenced file deliverables, or missing final-message deliverables, Magenta keeps the temp directory and marks the run for review instead of silently completing it. Persistent chat files are separate from temp work and are never auto-deleted by this cleanup path.
-
-Waiting workflow runs keep their runtime temp directory so approval and resume state remains available. Durable output directories and persistent job workspaces are not deleted by run temp cleanup.
+Waiting workflow runs keep their run staging so approval and resume state remains available. Final output destinations are not deleted by run staging cleanup.

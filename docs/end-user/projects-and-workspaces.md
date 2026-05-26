@@ -80,11 +80,9 @@ Use `/jobs` for job editing and `/outputs` for full artifact filtering, inline v
 
 Projects provide shared context and a durable workspace. Agents execute assignments. When a task, workflow, or job submission includes a project, the project workspace is the effective durable workspace for files and outputs. Without a project, the executing agent workspace is used.
 
-Project-scoped outputs appear under project filters and are written under the project workspace:
+During execution, `outputs/` means the active run's staging area. After backend completion, validation, or promotion, project-scoped output artifacts appear under project filters and are promoted to the selected project or Work Area output destination. Jobs do not own separate workspace directories.
 
-- Tasks: `outputs/tasks/<taskId>/<runId>`
-- Workflows: `outputs/workflows/<workflowId>/<runId>`
-- Jobs: `outputs/jobs/<assignmentId>/<jobRunId>`
+The normal user workflow is to browse and edit project directories and Work Areas. Internal agent workspace roots, run staging, and system output structures are diagnostic surfaces rather than normal project management controls.
 
 Workspace leases indicate active ownership or use. A lease is an orchestration/runtime coordination record; it is not the same thing as a container, though container-backed execution may use the workspace while the lease is held.
 

@@ -80,9 +80,9 @@ Sources: [`JobService`](../../src/main/java/io/mindspice/magenta2/ai/orchestrati
 
 - `JobService` owns user-facing job definitions, ordered work items, run records, recurrence, cancellation, and output run id lookup.
 - Public job run routes submit `JOB_RUN` assignments through `AssignmentService`; job execution is coordinated by `OrchestrationRunnerService`.
-- `JobExecutionSummary` is the read model for job run/operator context. It ties job definition, assignment, run, agent/project, effective workspace, compatibility workspace metadata, persistent job workspace, child runs, and output counts together.
+- `JobExecutionSummary` is the read model for job run/operator context. It ties job definition, assignment, run, agent/project, effective workspace, compatibility workspace metadata, Work Area/output context, child runs, and output counts together. Legacy rows may still expose compatibility job workspace/path fields.
 - Recurrence/start paths enqueue assignments; direct run allocation is guarded for assignment-owned execution.
-- Jobs can opt into persistent per-assignment workspace under the effective durable workspace. Job outputs are stored under `outputs/jobs/<assignmentId>/<jobRunId>` and artifacts carry assignment/run attribution.
+- Jobs bind to an agent, project, and Work Area and do not own workspace directories. During execution, model-facing `outputs/` is run-local staging; backend promotion writes final job outputs to the bound Work Area or project output destination and artifacts carry assignment/run attribution.
 - Jobs can be empty `DRAFT` definitions so the UI can save metadata before items are added. If an empty job is submitted, the assignment-owned run completes as a no-op instead of leaving `job_runs` in `RUNNING`.
 
 Tables: `job_definitions`, `job_runs`, `job_recurrences`, `run_output_artifacts`, plus assignment tables when submitted.
@@ -122,13 +122,14 @@ Sources: [`ai/orchestration/workspaces`](../../src/main/java/io/mindspice/magent
 
 - `WorkspaceService` owns workspace records and links.
 - `WorkspaceDirectoryService` owns data-root-confined path creation and legacy agent directory migration.
+- `WorkspacePathLayout` owns static application structural segments and aliases for data-root children, agent workspace roots, Work Areas, run staging, run-local outputs, final output destinations, chat files, and project roots.
 - `WorkAreaService` owns confined Work Area metadata, Home creation, mark/unmark behavior, and active assignment/output target guards.
 - `WorkAreaExplorerService` owns confined Work Area browsing, preview/edit/download policy, file mutations, labels, recent action rows, and nested Work Area marking.
 - `WorkspaceFileMetadataService` and related repositories own reusable file labels, file label assignments, and file action records.
 - `EffectiveWorkspaceResolver` chooses the project workspace when `projectId` is present, otherwise the executing agent workspace.
 - `WorkspaceLeaseService` owns exclusive writable lease acquisition, extension, release request, expiry reconciliation, and release completion.
 - `AgentWorkspaceStatusService` builds agent workspace health/status views.
-- `OutputArtifactService` materializes explicit run outputs into effective workspace output directories, records artifact metadata, queries artifacts, loads content, and keeps loose discovery behind compatibility gating and confinement.
+- `OutputArtifactService` materializes explicit run outputs into final promoted output destinations, records artifact metadata, queries artifacts, loads content, and keeps loose discovery behind compatibility gating and confinement.
 
 Tables: `workspaces`, `workspace_links`, `workspace_leases`, `work_areas`, `workspace_file_labels`, `workspace_file_label_assignments`, `workspace_file_actions`, `run_output_artifacts`.
 

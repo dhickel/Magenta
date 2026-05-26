@@ -11,8 +11,9 @@ File tool workspace scope resolution
 # Key Takeaways
 
 - File tools should resolve their allowed root per call because `OrchestrationTaskContextHolder` is thread-local and changes between normal chat, agent detail actions, and assignment execution.
-- When an active context has `hostWorkspacePath`, the default file scope is the active assignment workspace, not `dataRoot` and not the broader agent workspace.
-- `outputs/...` maps to the active `hostOutputPath` only for contexts that provide one.
+- When an active context has a selected Work Area, the default file scope is that Work Area; otherwise the default is the effective durable workspace, not `dataRoot`.
+- `outputs/...` maps to the active run-local output staging directory only for contexts that provide one. That physical path is `runs/<runId>/outputs/` under the relevant agent workspace root.
+- Final output destinations are backend promotion targets. File tools should not treat final output directories as the model-facing `outputs/` alias.
 - `projects/<projectId>/...` maps only to the current context project id through `WorkspaceDirectoryService.projectWorkspace(projectId)`.
 - If there is an active agent context but no host workspace path, file tools can use that agent's managed workspace.
 - The data-root fallback is intentionally limited to no-context chat/tool usage.
@@ -23,4 +24,4 @@ This pattern keeps model-visible file tools aligned with the filesystem-backed r
 
 # Open Questions
 
-- Later domain 02 project materialization work may change whether project paths are actual workspace links or direct project workspace roots. File tools currently follow the same current-project alias behavior already used by shell confinement.
+- Project materialization may change whether project paths are actual workspace links or direct project workspace roots. File tools should follow centralized workspace layout helpers and the same current-project alias behavior used by shell confinement.
