@@ -154,6 +154,9 @@ public class PromptContextAssembler {
     }
 
     private String runtimeActivePath(OrchestrationTaskContext context) {
+        if (StringUtils.hasText(context.activeRuntimePath())) {
+            return context.activeRuntimePath();
+        }
         String workspaceRootText = StringUtils.hasText(context.hostDurableWorkspacePath())
             ? context.hostDurableWorkspacePath()
             : context.hostWorkspacePath();

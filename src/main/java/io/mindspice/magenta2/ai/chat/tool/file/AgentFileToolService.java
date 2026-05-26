@@ -84,6 +84,7 @@ public class AgentFileToolService {
 
     public FileListResult list(String path, boolean recursive, Integer maxEntries, String glob) throws IOException {
         ResolvedFilePath target = resolveExisting(path);
+        recordActiveRuntimePath(target);
         if (Files.isRegularFile(target.path(), LinkOption.NOFOLLOW_LINKS)) {
             return new FileListResult(
                 displayPath(target),
@@ -118,6 +119,7 @@ public class AgentFileToolService {
 
     public FileReadResult read(String path, Integer startLine, Integer maxLines) throws IOException {
         ResolvedFilePath target = resolveTextFile(path);
+        recordActiveRuntimePath(target);
         int limit = clamp(maxLines, DEFAULT_READ_LINES, 1, MAX_READ_LINES);
         int firstLine = Math.max(1, startLine == null ? 1 : startLine);
         List<String> formattedLines = new ArrayList<>();
@@ -153,6 +155,7 @@ public class AgentFileToolService {
         int context = clamp(contextLines, 0, 0, MAX_CONTEXT_LINES);
         int limit = clamp(maxMatches, DEFAULT_MAX_MATCHES, 1, MAX_MATCHES);
         Pattern pattern = compilePattern(query, regex, caseSensitive);
+        recordActiveRuntimePath(target);
         List<Path> files = searchableFiles(target);
         List<SearchMatch> matches = new ArrayList<>();
         boolean truncated = false;
@@ -242,6 +245,7 @@ public class AgentFileToolService {
 
     public FileWriteResult write(String path, String content, boolean overwrite) throws IOException {
         ResolvedFilePath target = resolveForWrite(path);
+        recordActiveRuntimePath(target);
         boolean existed = Files.exists(target.path(), LinkOption.NOFOLLOW_LINKS);
         if (existed && !overwrite) {
             throw new IllegalArgumentException("file already exists: " + displayPath(target));
@@ -257,6 +261,7 @@ public class AgentFileToolService {
 
     public FileAppendResult append(String path, String content, boolean create) throws IOException {
         ResolvedFilePath target = create ? resolveForWrite(path) : resolveTextFile(path);
+        recordActiveRuntimePath(target);
         boolean existed = Files.exists(target.path(), LinkOption.NOFOLLOW_LINKS);
         if (existed && !Files.isRegularFile(target.path(), LinkOption.NOFOLLOW_LINKS)) {
             throw new IllegalArgumentException("target is not a regular file: " + displayPath(target));
@@ -278,6 +283,7 @@ public class AgentFileToolService {
 
     public FileReplaceResult replace(String path, String startAnchor, String endAnchor, String replacement) throws IOException {
         ResolvedFilePath target = resolveTextFile(path);
+        recordActiveRuntimePath(target);
         long fileSize = Files.size(target.path());
         if (fileSize > MAX_FULL_BUFFER_BYTES) {
             throw new IllegalArgumentException(
@@ -661,6 +667,10 @@ public class AgentFileToolService {
 
     private String displayPath(ResolvedFilePath path) {
         return displayPath(path.path(), path.scope());
+    }
+
+    private void recordActiveRuntimePath(ResolvedFilePath path) {
+        OrchestrationTaskContextHolder.recordActiveRuntimePath(displayPath(path));
     }
 
     private String displayPath(Path path, FileScope scope) {

@@ -114,6 +114,7 @@ public class AgentShellToolService {
 
         if (taskContext != null && taskContext.hasContext()) {
             resolved = resolveContextWorkingDirectory(taskContext, workingDirectory);
+            OrchestrationTaskContextHolder.recordActiveRuntimePath(resolved.displayPath());
         } else {
             Path workingDir = resolveWorkingDirectory(workingDirectory);
             resolved = new ResolvedWorkingDirectory(workingDir, displayPath(workingDir));

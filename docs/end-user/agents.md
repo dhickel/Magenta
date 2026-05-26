@@ -110,7 +110,8 @@ When Magenta creates a brand-new agent execution workspace root, it can seed one
 - The starter file is created once on first workspace-root creation.
 - Existing `AGENTS.md` files are never overwritten, regenerated, or normalized.
 - Starter guidance explains workspace-root expectations, `home/` persistence, run staging under `runs/`, and output staging under `<runId>/outputs`.
-- During model-backed assignment/agent execution with a bound project/workspace root, runtime guidance uses layered `AGENTS.md` context from ancestor to closest path. Closest guidance wins on conflicts, while non-conflicting ancestor guidance remains active. Ordinary chat turns without that runtime binding omit `AGENTS.md` injection.
+- During model-backed assignment/agent execution with a bound project/workspace root, runtime guidance uses layered `AGENTS.md` context from ancestor to closest path. Closest guidance wins on conflicts, while non-conflicting ancestor guidance remains active. This ancestor retention is Magenta runtime behavior; the external AGENTS.md site only states nearest-file precedence and explicit prompt override.
+- File and shell tools update the active path from the confined path they actually touch, so nested guidance follows the current tool target when work moves between sibling directories.
 - Explicit user prompts and assignment instructions override all `AGENTS.md` guidance.
 
 ## Outputs Tab

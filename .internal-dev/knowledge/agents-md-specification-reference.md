@@ -47,16 +47,16 @@ The spec suggests covering:
 - **Large datasets** — where data lives, how to access
 - **Gotchas** — environment-specific facts that defy reasonable assumptions
 
-### 1.5 Resolution Model — Layering with Conflict Resolution
+### 1.5 Resolution Model — Official Rule vs. Magenta Contract
 
-The spec describes a **layering** model, not a replacement model. The operative words are **"takes precedence"** and **"wins"** — conflict-resolution terms, not loading-exclusion terms.
+The official AGENTS.md site documents two resolution rules that Magenta must preserve in user-visible prompt wording:
 
-1. Explicit user chat prompt → **overrides everything**
-2. Closest AGENTS.md to the file being edited → **wins when it conflicts with parent AGENTS.md files**
-3. Root AGENTS.md → **always loaded as baseline; never unloaded**
-4. Nested AGENTS.md → **layered on top of root when working in that subtree; unloaded when leaving**
+1. The closest AGENTS.md to the edited file takes precedence.
+2. Explicit user chat prompts override AGENTS.md guidance.
 
-**All ancestor AGENTS.md files are active simultaneously.** The root provides project-wide conventions (build commands, code style). Nested files **tailor** those conventions for their subtree — they augment and selectively override, they don't replace. A nested `src/test/AGENTS.md` that says "use JUnit 5" doesn't mean the agent forgets the root's `mvn test` command.
+The official site also says nested AGENTS.md files can be placed inside monorepo packages and that agents automatically read the nearest file in the directory tree. It does **not** explicitly require all ancestor AGENTS.md files to remain loaded at the same time.
+
+Magenta intentionally uses an ancestor-retention interpretation for runtime work: it resolves all AGENTS.md files from the bound root to the active target path, orders them root-to-leaf, and tells the model that the closest layer wins only when instructions conflict. This is a Magenta project contract and documented divergence, not official spec text.
 
 ```
 repo/
@@ -70,26 +70,27 @@ repo/
                              "Test framework: JUnit 5, naming: *Test.java"
 ```
 
-**Active set when working on `src/main/java/foo/Bar.java`:**
+**Magenta active set when working on `src/main/java/foo/Bar.java`:**
 - Root AGENTS.md → `mvn test`, 4-space indents (baseline)
 - `src/main/java/AGENTS.md` → Java 17 records, package prefix (layered on top)
 
-**Active set when working on `src/test/java/foo/BarTest.java`:**
+**Magenta active set when working on `src/test/java/foo/BarTest.java`:**
 - Root AGENTS.md → `mvn test`, 4-space indents (baseline)
 - `src/test/java/AGENTS.md` → JUnit 5, naming convention (layered on top)
   - `src/main/java/AGENTS.md` is **no longer active** — the agent left that subtree
 
-**Conflict example:** If root says "indent: 4 spaces" and `src/main/java/AGENTS.md` says "indent: 2 spaces", the nested file **wins** for files under `src/main/java/`. But the root's build commands, PR conventions, and security guidelines remain active because the nested file didn't override them.
+**Conflict example under Magenta's contract:** If root says "indent: 4 spaces" and `src/main/java/AGENTS.md` says "indent: 2 spaces", the nested file wins for files under `src/main/java/`. Magenta still retains the root's non-conflicting build commands, PR conventions, and security guidelines.
 
-**Dynamic load/unload:** As the agent moves between directories, nested AGENTS.md files are loaded and unloaded around the persistent root baseline. The root is never unloaded. The nested files come and go based on the current working context.
+**Dynamic active path:** As the agent uses runtime file or shell tools in different directories, Magenta refreshes the applicable AGENTS.md context for the current confined target path. Sibling nested files should not remain active after the target path moves to another sibling subtree.
 
 ### 1.6 Agent Behavior with AGENTS.md
 
-Based on the spec and ecosystem conventions:
+Based on the official site plus Magenta's implementation contract:
 
-- **Layered loading:** Root AGENTS.md loaded at session start as permanent baseline; nested AGENTS.md files layered on top when the agent enters their subtree
-- **Dynamic load/unload:** Nested AGENTS.md files are loaded when the agent works in their directory and unloaded (or de-emphasized) when the agent leaves — the root baseline persists throughout
-- **Conflict resolution:** When instructions at different levels conflict, the closest (most specific) AGENTS.md wins; non-conflicting instructions from all levels remain active
+- **Official closest precedence:** The nearest AGENTS.md to the edited file takes precedence.
+- **Official user override:** Explicit user chat prompts override AGENTS.md guidance.
+- **Magenta ancestor retention:** Magenta keeps non-conflicting ancestor guidance active from the bound root to the active path. This is project policy, not an official spec requirement.
+- **Dynamic target tracking:** Runtime file and shell tools update the active path from their own confined target resolution so prompt/context assembly can follow real model-backed tool use.
 - **Command execution:** If any active AGENTS.md lists build/test commands, the agent will attempt to run them and fix failures before finishing
 - **Living document:** AGENTS.md can be updated by the agent itself as the project evolves
 - **Complementary to README:** It doesn't replace README — it adds agent-specific context
@@ -205,11 +206,11 @@ When Magenta's agents work on a user's project (via orchestration jobs, workspac
 
 | Decision | Recommendation | Rationale |
 |----------|---------------|-----------|
-| **Load method** | System prompt injection (root) + context notices (nested) | Root AGENTS.md is foundational — always in system prompt. Nested AGENTS.md files are layered context that loads/unloads dynamically. |
-| **Root baseline** | Load root AGENTS.md at workspace initialization, keep in system prompt for session | Root conventions (build commands, code style, PR format) apply everywhere |
-| **Nested layering** | Resolve closest AGENTS.md for the file/directory the agent is currently working with; inject as a context notice or system message | Follows "closest wins" — layered on top of root, unloaded when agent leaves that subtree |
-| **Dynamic trigger** | Re-resolve when agent uses file tools (`file_read`, `file_write`, `file_search`) targeting a different directory subtree than the last resolution | Matches "closest AGENTS.md to the edited file" — changes as working context changes |
-| **Conflict resolution** | Nested instructions override root for the same topic; non-conflicting instructions from both levels remain active | "Closest wins" is conflict resolution, not exclusion |
+| **Load method** | Runtime prompt/context injection of resolved bound-root-to-target layers | Magenta implementation policy; not an official AGENTS.md loading mandate. |
+| **Root baseline** | Include root AGENTS.md when it is inside the bound root and applicable to the active target path | Root conventions (build commands, code style, PR format) remain useful under Magenta's ancestor-retention policy. |
+| **Nested layering** | Resolve AGENTS.md files from the bound root through the current file/directory target; inject as runtime prompt context | Magenta contract: retain ancestors while making the closest layer authoritative on conflicts |
+| **Dynamic trigger** | Re-resolve when runtime file or shell tools target a different confined path than the last resolution | Aligns prompt context with real model-backed tool targets instead of a static workspace root |
+| **Conflict resolution** | Nested instructions override root for the same topic; non-conflicting instructions from both levels remain active | Magenta divergence from official text; official site only states closest precedence and user override |
 | **Scope** | Only project-level AGENTS.md (not user-level) | AGENTS.md is a project convention. User-level preferences belong in Magenta's own config. |
 | **Trust** | Always load if the workspace is configured | Workspaces are explicitly set up by the user — implicit trust |
 | **Size limit** | Root: ~4,000 tokens; nested: ~2,000 tokens each | Keeps total AGENTS.md budget manageable; root provides the essentials, nested files are targeted |
@@ -466,7 +467,7 @@ public record AgentConfig(
 |--------|-----------|--------------|
 | **Format** | Plain Markdown, no schema | YAML frontmatter + Markdown body in SKILL.md |
 | **Location** | Project root, subdirectories | `.agents/skills/`, `~/.agents/skills/`, client-specific dirs |
-| **Loading** | Root always loaded (system prompt baseline); nested layered dynamically (load/unload by subtree) | Progressive disclosure (catalog → body → resources) |
+| **Loading** | Official site documents nearest-file precedence; Magenta loads bound-root-to-target ancestor layers dynamically | Progressive disclosure (catalog → body → resources) |
 | **Scope** | Project-wide conventions, build commands, style | Task-specific workflows, domain expertise |
 | **Activation** | Always active | On-demand when task matches description |
 | **Granularity** | One per project/sub-project | Many per project (different skills for different tasks) |
@@ -501,9 +502,9 @@ public record AgentConfig(
 
 2. **Trust boundary.** Unlike the Agent Skills spec (which explicitly mentions trust gates for project-level skills), AGENTS.md loading has no trust model. Since Magenta agents already operate in user-configured workspaces, this is acceptable — the user explicitly set up the workspace.
 
-3. **Conflicting instructions.** AGENTS.md might contain instructions that conflict with Magenta's own agent instructions (e.g., "never use tool X" when the agent needs tool X). The spec says "explicit user chat prompts override everything," which provides an escape hatch. We should also position AGENTS.md content after the core system prompt so the agent's foundational instructions take precedence. For nested AGENTS.md, the "closest wins" rule applies: nested overrides root on the same topic, but core agent instructions still take priority over everything.
+3. **Conflicting instructions.** AGENTS.md might contain instructions that conflict with Magenta's own agent instructions (e.g., "never use tool X" when the agent needs tool X). The official site says explicit user chat prompts override AGENTS.md guidance. Magenta prompt wording should also keep core runtime instructions above project guidance.
 
-4. **Layering semantics.** The spec says "closest AGENTS.md wins" — this is conflict resolution, not loading exclusion. Root and nested AGENTS.md files are layered: both are active, and when they conflict on the same topic, the closer (more specific) one wins. Non-conflicting instructions from all levels apply simultaneously. This is the key insight that shapes the two-tier architecture (root baseline + nested layering).
+4. **Layering semantics.** The official site says the closest AGENTS.md wins, but does not explicitly require ancestor retention. Magenta deliberately resolves ancestor layers from the bound root to the active target path and treats closest-wins as conflict precedence within that retained set. Keep that wording clear in specs, docs, and prompts.
 
 5. **Dynamic load/unload granularity.** Re-resolving on every file touch would be chatty. The `AgentsMdLayer` approach only injects context when the *closest AGENTS.md changes* — which typically only happens when crossing major directory boundaries (e.g., `src/main/` → `src/test/`). Within the same subtree, no changes occur.
 
@@ -566,7 +567,7 @@ The AGENTS.md specification is intentionally minimal. There are no "MUST" requir
 - [ ] Create a symlink `AGENT.md → AGENTS.md` automatically if only the old name exists
 - [ ] Display which AGENTS.md files are active in the chat UI
 - [ ] Allow the agent to update AGENTS.md when conventions change
-- [ ] Layer nested AGENTS.md content on top of root baseline with dynamic load/unload by working directory
+- [ ] Magenta-specific: retain ancestor AGENTS.md layers from bound root to active runtime target, with sibling layers dropped when the target path moves
 
 ### 7.3 What We Should NOT Do
 

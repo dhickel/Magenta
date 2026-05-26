@@ -23,6 +23,7 @@ import io.mindspice.magenta2.ai.chat.repository.ChatSessionMetadataRepository;
 import io.mindspice.magenta2.ai.chat.repository.RepositoryBackedChatMemory;
 import io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer;
 import io.mindspice.magenta2.ai.chat.tool.ChatToolRegistry;
+import io.mindspice.magenta2.ai.chat.tool.file.AgentFileToolService;
 import io.mindspice.magenta2.ai.chat.tool.ToolTranscriptService;
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
@@ -30,11 +31,15 @@ import io.mindspice.magenta2.ai.config.user.EndpointType;
 import io.mindspice.magenta2.ai.config.user.ModelConfig;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileStatus;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
+import io.mindspice.magenta2.ai.orchestration.workspaces.AgentsMdResolver;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.Generation;
@@ -42,6 +47,7 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.content.MediaContent;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.model.tool.ToolCallingManager;
+import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
 import org.springframework.ai.retry.NonTransientAiException;
 import org.springframework.ai.tokenizer.TokenCountEstimator;
@@ -577,6 +583,102 @@ class ChatServiceTest {
     }
 
     @Test
+    void toolLoopRefreshesAgentsMdContextFromActualFileToolTargets() throws Exception {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ObjectMapper objectMapper = new ObjectMapper();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, objectMapper);
+        ChatSessionMetadataRepository metadataRepository = new ChatSessionMetadataRepository(jdbcTemplate);
+        ToolTranscriptService transcriptService = new ToolTranscriptService(objectMapper);
+        ContextUsageTracker usageTracker = new ContextUsageTracker();
+        Path dataRoot = Files.createDirectories(tempDir.resolve("agents-md-tool-loop"));
+        Path workspaceRoot = Files.createDirectories(dataRoot.resolve("workspace/agent-1"));
+        Path outputRoot = Files.createDirectories(workspaceRoot.resolve("runs/run-1/outputs"));
+        Files.createDirectories(workspaceRoot.resolve("a"));
+        Files.createDirectories(workspaceRoot.resolve("b"));
+        Files.writeString(workspaceRoot.resolve("AGENTS.md"), "workspace-root-guidance");
+        Files.writeString(workspaceRoot.resolve("a/AGENTS.md"), "nested-a-guidance");
+        Files.writeString(workspaceRoot.resolve("b/AGENTS.md"), "nested-b-guidance");
+        Files.writeString(workspaceRoot.resolve("a/file.txt"), "a\n");
+        Files.writeString(workspaceRoot.resolve("b/file.txt"), "b\n");
+
+        AiConfig config = aiConfig(dataRoot, List.of("file_read"));
+        AgentFileToolService fileTool = new AgentFileToolService(config);
+        FileToolPathSwitchChatModel chatModel = new FileToolPathSwitchChatModel();
+        ChatModelRouter router = new TestChatModelRouter(chatModel);
+        ContextManagementAdvisor contextAdvisor = new ContextManagementAdvisor(
+            memoryRepository,
+            config,
+            router,
+            new CharacterTokenEstimator(),
+            usageTracker,
+            transcriptService,
+            null
+        );
+        ChatToolRegistry toolRegistry = new ChatToolRegistry(List.of(new NamedToolCallback("file_read")), List.of());
+        RequestResolver requestResolver = new RequestResolver(
+            config,
+            metadataRepository,
+            memoryRepository,
+            null,
+            null,
+            null
+        );
+        ChatService chatService = new ChatService(
+            new RepositoryBackedChatMemory(memoryRepository),
+            memoryRepository,
+            metadataRepository,
+            new ChatMarkdownRenderer(),
+            config,
+            contextAdvisor,
+            usageTracker,
+            router,
+            new RuntimeFileToolCallingManager(fileTool, objectMapper),
+            toolRegistry,
+            transcriptService,
+            null,
+            null,
+            null,
+            null,
+            null,
+            objectMapper,
+            null,
+            null,
+            requestResolver,
+            null,
+            null,
+            null,
+            new AgentsMdResolver()
+        );
+        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
+            "agent-1",
+            "TestAgent",
+            null,
+            null,
+            null,
+            "TASK_RUN",
+            workspaceRoot.toString(),
+            outputRoot.toString(),
+            workspaceRoot.toString(),
+            workspaceRoot.resolve("runs/run-1").toString()
+        ));
+
+        try {
+            ChatResponse.MsgResponse response = chatService.chat("conversation-1", "read both files", "main");
+
+            assertThat(response.response()).isEqualTo("done");
+            assertThat(chatModel.prompts()).hasSize(3);
+            assertThat(chatModel.prompts().get(1)).contains("nested-a-guidance");
+            assertThat(chatModel.prompts().get(1)).doesNotContain("nested-b-guidance");
+            assertThat(chatModel.prompts().get(2)).contains("nested-b-guidance");
+            assertThat(chatModel.prompts().get(2)).doesNotContain("nested-a-guidance");
+            assertThat(OrchestrationTaskContextHolder.current().activeRuntimePath())
+                .isEqualTo("workspace/b/file.txt");
+        } finally {
+            OrchestrationTaskContextHolder.clear();
+        }
+    }
+
+    @Test
     void wrappedIoFailuresAreRetriedAsTransientModelFailures() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         ObjectMapper objectMapper = new ObjectMapper();
@@ -967,6 +1069,80 @@ class ChatServiceTest {
 
         List<String> prompts() {
             return prompts;
+        }
+    }
+
+    private static final class FileToolPathSwitchChatModel implements ChatModel {
+        private final AtomicInteger calls = new AtomicInteger();
+        private final List<String> prompts = new java.util.ArrayList<>();
+
+        @Override
+        public org.springframework.ai.chat.model.ChatResponse call(Prompt prompt) {
+            prompts.add(prompt.getInstructions().stream()
+                .map(Message::getText)
+                .collect(Collectors.joining("\n")));
+            int call = calls.getAndIncrement();
+            if (call == 0) {
+                return toolCallResponse("call-a", "{\"path\":\"workspace/a/file.txt\",\"startLine\":1,\"maxLines\":10}");
+            }
+            if (call == 1) {
+                return toolCallResponse("call-b", "{\"path\":\"workspace/b/file.txt\",\"startLine\":1,\"maxLines\":10}");
+            }
+            return new org.springframework.ai.chat.model.ChatResponse(List.of(
+                new Generation(new AssistantMessage("done"))
+            ));
+        }
+
+        List<String> prompts() {
+            return prompts;
+        }
+
+        private org.springframework.ai.chat.model.ChatResponse toolCallResponse(String id, String arguments) {
+            AssistantMessage toolCallMessage = AssistantMessage.builder()
+                .content("")
+                .toolCalls(List.of(new AssistantMessage.ToolCall(id, "function", "file_read", arguments)))
+                .build();
+            return new org.springframework.ai.chat.model.ChatResponse(List.of(new Generation(toolCallMessage)));
+        }
+    }
+
+    private static final class RuntimeFileToolCallingManager implements ToolCallingManager {
+        private final AgentFileToolService fileTool;
+        private final ObjectMapper objectMapper;
+
+        private RuntimeFileToolCallingManager(AgentFileToolService fileTool, ObjectMapper objectMapper) {
+            this.fileTool = fileTool;
+            this.objectMapper = objectMapper;
+        }
+
+        @Override
+        public List<ToolDefinition> resolveToolDefinitions(ToolCallingChatOptions options) {
+            return List.of(new DefaultToolDefinition("file_read", "Read a file", "{\"type\":\"object\"}"));
+        }
+
+        @Override
+        public ToolExecutionResult executeToolCalls(Prompt prompt, org.springframework.ai.chat.model.ChatResponse response) {
+            AssistantMessage assistantMessage = response.getResult().getOutput();
+            AssistantMessage.ToolCall toolCall = assistantMessage.getToolCalls().getFirst();
+            try {
+                String path = objectMapper.readTree(toolCall.arguments()).path("path").asText();
+                AgentFileToolService.FileReadResult result = fileTool.read(path, 1, 10);
+                ToolResponseMessage toolResponse = ToolResponseMessage.builder()
+                    .responses(List.of(new ToolResponseMessage.ToolResponse(
+                        toolCall.id(),
+                        toolCall.name(),
+                        objectMapper.writeValueAsString(result)
+                    )))
+                    .build();
+                List<Message> history = new java.util.ArrayList<>(prompt.getInstructions());
+                history.add(assistantMessage);
+                history.add(toolResponse);
+                return ToolExecutionResult.builder()
+                    .conversationHistory(history)
+                    .build();
+            } catch (Exception exception) {
+                throw new RuntimeException(exception);
+            }
         }
     }
 

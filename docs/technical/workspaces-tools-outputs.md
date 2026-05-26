@@ -35,7 +35,8 @@ For Magenta runtime behavior, the contract is:
 - Starter generation is first-create-only for new agent execution workspaces. A starter `AGENTS.md` is written once at workspace-root creation time and is never overwritten, regenerated, normalized, or compared by hash later.
 - Starter guidance is hard-coded for this phase and describes workspace-root expectations, `home/` persistence, `runs/` staging, `<runId>/outputs` staging semantics, `workareas/` user-controlled areas, and project/job binding expectations.
 - Resolution is confined to the bound root for the current run context (project root, selected Work Area root when narrowed, or effective agent workspace root). Runtime resolution must fail closed for traversal, symlink escape, or absolute paths outside that root.
-- Applicable files are layered from bound root toward the active path. Ancestor guidance remains active context; the closest applicable file has precedence only when instructions conflict.
+- Applicable files are layered from bound root toward the active path. Ancestor guidance remains active context; the closest applicable file has precedence only when instructions conflict. This ancestor retention is Magenta runtime policy; the external site only states nearest-file precedence and explicit prompt override.
+- File and shell runtime tools update the active path from their own confined target resolution. Subsequent tool-loop model prompts use that updated path so sibling nested `AGENTS.md` context follows actual `workspace/...`, `root/...`, `outputs/...`, `run/...`, or current-project tool targets instead of a stale workspace root.
 - Prompt/context injection runs only for model-backed agent runtime contexts (assignment/agent-bound orchestration context with an agent id). If the turn has no bound root or is ordinary chat without that runtime binding, runtime `AGENTS.md` resolution is omitted.
 
 ## Workspace Records and Links

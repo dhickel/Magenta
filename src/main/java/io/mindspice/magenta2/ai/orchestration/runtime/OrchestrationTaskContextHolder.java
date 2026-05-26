@@ -19,6 +19,13 @@ public final class OrchestrationTaskContextHolder {
         return CONTEXT.get();
     }
 
+    public static void recordActiveRuntimePath(String activeRuntimePath) {
+        OrchestrationTaskContext current = CONTEXT.get();
+        if (current != null && current.hasContext()) {
+            CONTEXT.set(current.withActiveRuntimePath(activeRuntimePath));
+        }
+    }
+
     public static void clear() {
         CONTEXT.remove();
     }

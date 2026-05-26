@@ -403,6 +403,33 @@ class AgentShellToolServiceTest {
     }
 
     @Test
+    void recordsActiveRuntimePathFromConfinedWorkingDirectory() throws Exception {
+        Path durableWorkspace = Files.createDirectories(tempDir.resolve("workspace/agent-1"));
+        Path nested = Files.createDirectories(durableWorkspace.resolve("nested"));
+        Path outputDir = Files.createDirectories(durableWorkspace.resolve("runs/run-1/outputs"));
+
+        AiConfig aiConfig = new AiConfig(null, null, null, null, null, null, tempDir, null, null, null);
+        WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(aiConfig);
+        AgentShellToolService service = new AgentShellToolService(tempDir, List.of("pwd"), dirService);
+
+        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
+            "agent-1", "TestAgent", null, null, null, "TASK_RUN",
+            durableWorkspace.toString(), outputDir.toString(), durableWorkspace.toString(),
+            durableWorkspace.resolve("runs/run-1").toString()));
+
+        try {
+            AgentShellToolService.ShellExecResult result = service.exec("pwd", "workspace/nested", 5);
+
+            assertThat(result.exitCode()).isZero();
+            assertThat(result.stdout().trim()).isEqualTo(nested.toRealPath().toString());
+            assertThat(OrchestrationTaskContextHolder.current().activeRuntimePath())
+                .isEqualTo("workspace/nested");
+        } finally {
+            OrchestrationTaskContextHolder.clear();
+        }
+    }
+
+    @Test
     void resolvesOnlyCurrentProjectScopeInAssignmentContext() throws Exception {
         Path runWorkspace = Files.createDirectories(tempDir.resolve("workspace/agent-1/runs/run-1"));
         Path outputDir = Files.createDirectories(runWorkspace.resolve("outputs"));

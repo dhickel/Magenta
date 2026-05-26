@@ -62,3 +62,25 @@ Remediation validation rerun:
 - `mvn test` (PASS, 849 tests)
 - `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` (PASS)
 - `git diff --check` (PASS)
+
+## Targeted Escalation Repair Update
+
+Final spec-adherence validation reported two remaining issues: active-path resolution was still not proven through real model-backed file/shell runtime use, and knowledge/research wording presented Magenta ancestor retention as official AGENTS.md truth.
+
+Repair applied:
+
+- Added an active runtime path to `OrchestrationTaskContext` and a holder helper for runtime tools to publish the confined path they actually touched.
+- Updated file and shell tool services to publish active runtime paths after their existing service-owned confinement/alias resolution.
+- Updated the tool loop to refresh system instructions after tool execution, so subsequent model invocations see `AGENTS.md` layers for the current tool target path.
+- Added model-backed chat/tool-loop regression coverage proving `file_read` on `workspace/a/file.txt` then `workspace/b/file.txt` switches nested AGENTS.md context from `a` to `b`.
+- Added direct file/shell service tests for active runtime path capture.
+- Corrected knowledge/spec/docs wording to distinguish official nearest-file precedence and user-prompt override from Magenta's ancestor-retention policy.
+- Relabeled misleading claims in untracked `.internal-dev/research/agents-md-specification-research.md`; it remains untracked and is not part of the committed closeout.
+
+Escalation validation:
+
+- `mvn -Dtest='ChatServiceTest,*PromptContext*Test,*AgentsMd*Test,*AgentFileToolServiceTest,*AgentShellToolServiceTest' test` (PASS, 92 tests)
+- `mvn -Dtest='ChatServiceTest,*PromptContext*Test,*AgentsMd*Test,*Workspace*Test,*Orchestration*Test,*AgentFileToolServiceTest,*AgentShellToolServiceTest' test` (PASS, 317 tests)
+- `mvn test` (PASS, 853 tests)
+- `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` (PASS; app started and graceful shutdown was triggered by timeout)
+- `git diff --check` (PASS)

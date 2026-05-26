@@ -359,6 +359,30 @@ class AgentFileToolServiceTest {
     }
 
     @Test
+    void recordsActiveRuntimePathFromConfinedFileTarget() throws Exception {
+        Path durableWorkspace = Files.createDirectories(tempDir.resolve("workspace/agent-1"));
+        Path outputDir = Files.createDirectories(durableWorkspace.resolve("runs/run-1/outputs"));
+        Files.createDirectories(durableWorkspace.resolve("a"));
+        Files.createDirectories(durableWorkspace.resolve("b"));
+        Files.writeString(durableWorkspace.resolve("a/file.txt"), "a\n");
+        Files.writeString(durableWorkspace.resolve("b/file.txt"), "b\n");
+
+        AgentFileToolService service = serviceWithWorkspaceDirectory();
+        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
+            "agent-1", "TestAgent", null, null, null, "TASK_RUN",
+            durableWorkspace.toString(), outputDir.toString(), durableWorkspace.toString(),
+            durableWorkspace.resolve("runs/run-1").toString()));
+
+        service.read("workspace/a/file.txt", 1, 10);
+        assertThat(OrchestrationTaskContextHolder.current().activeRuntimePath())
+            .isEqualTo("workspace/a/file.txt");
+
+        service.read("workspace/b/file.txt", 1, 10);
+        assertThat(OrchestrationTaskContextHolder.current().activeRuntimePath())
+            .isEqualTo("workspace/b/file.txt");
+    }
+
+    @Test
     void noContextKeepsLegacyDataRootFallback() throws Exception {
         Path otherAgent = Files.createDirectories(tempDir.resolve("agents/agent-2/workspace"));
         Files.writeString(otherAgent.resolve("legacy.txt"), "legacy fallback\n");

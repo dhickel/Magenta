@@ -1563,6 +1563,7 @@ public class ChatService {
             s.activeToolMessages.addAll(
                 s.conversationHistory.subList(promptMessageCount, s.conversationHistory.size()));
         }
+        s.currentSystemInstructions = currentSystemInstructions(s.request);
 
         phase(s.activeTurn, ActiveTurnPhase.TOOL_CHECKPOINT);
         if (s.activeTurn != null) {
@@ -1929,6 +1930,12 @@ public class ChatService {
     private List<Message> currentInstructions(ResolvedChatRequest request) {
         String systemPrompt = effectiveSystemPrompt(request);
         return promptAssembler.assembleTurnInstructions(request, systemPrompt);
+    }
+
+    private List<Message> currentSystemInstructions(ResolvedChatRequest request) {
+        return currentInstructions(request).stream()
+            .filter(SystemMessage.class::isInstance)
+            .toList();
     }
 
     private ChatMessage toolChatMessage(
@@ -2396,7 +2403,7 @@ public class ChatService {
         final ActiveTurn activeTurn;
         final PlanMode mode;
         final ToolCallingChatOptions toolOptions;
-        final List<Message> currentSystemInstructions;
+        List<Message> currentSystemInstructions;
 
         // ── Current phase ──
         TurnPhase phase = TurnPhase.PREPARE;

@@ -6,6 +6,8 @@ import java.nio.file.Path;
 import java.util.Optional;
 
 import io.mindspice.magenta2.ai.chat.model.PlanMode;
+import io.mindspice.magenta2.ai.chat.tool.file.AgentFileToolService;
+import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
 import io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettingsService;
@@ -132,6 +134,53 @@ class PromptContextAssemblerTest {
     }
 
     @Test
+    void fileToolTargetPathUpdatesAgentsMdContextDuringModelBackedRun() throws Exception {
+        Path workspaceRoot = Files.createDirectories(tempDir.resolve("workspace/agent-1"));
+        Path nestedA = Files.createDirectories(workspaceRoot.resolve("a"));
+        Path nestedB = Files.createDirectories(workspaceRoot.resolve("b"));
+        Path outputRoot = Files.createDirectories(workspaceRoot.resolve("runs/run-1/outputs"));
+        Files.writeString(workspaceRoot.resolve("AGENTS.md"), "workspace-root-guidance");
+        Files.writeString(nestedA.resolve("AGENTS.md"), "nested-a-guidance");
+        Files.writeString(nestedB.resolve("AGENTS.md"), "nested-b-guidance");
+        Files.writeString(nestedA.resolve("file.txt"), "a\n");
+        Files.writeString(nestedB.resolve("file.txt"), "b\n");
+        AgentFileToolService fileTool = new AgentFileToolService(aiConfig());
+        PromptContextAssembler assembler = assemblerWithResolver(new AgentsMdResolver());
+        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
+            "agent-1",
+            "Agent One",
+            null,
+            null,
+            null,
+            "TASK_RUN",
+            workspaceRoot.toString(),
+            outputRoot.toString(),
+            workspaceRoot.toString(),
+            workspaceRoot.resolve("runs/run-1").toString(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+        ));
+
+        fileTool.read("workspace/a/file.txt", 1, 10);
+        String promptA = assembler.mergeModePrompt(PlanMode.NORMAL, "conversation-1");
+        fileTool.read("workspace/b/file.txt", 1, 10);
+        String promptB = assembler.mergeModePrompt(PlanMode.NORMAL, "conversation-1");
+
+        assertThat(OrchestrationTaskContextHolder.current().activeRuntimePath())
+            .isEqualTo("workspace/b/file.txt");
+        assertThat(promptA).contains("workspace-root-guidance");
+        assertThat(promptA).contains("nested-a-guidance");
+        assertThat(promptA).doesNotContain("nested-b-guidance");
+        assertThat(promptB).contains("workspace-root-guidance");
+        assertThat(promptB).contains("nested-b-guidance");
+        assertThat(promptB).doesNotContain("nested-a-guidance");
+    }
+
+    @Test
     void omitsAgentsMdContextWhenNoLayersExist() throws Exception {
         Path workspaceRoot = Files.createDirectories(tempDir.resolve("workspace/agent-1"));
         OrchestrationTaskContext context = new OrchestrationTaskContext(
@@ -213,6 +262,10 @@ class PromptContextAssemblerTest {
             null,
             resolver
         );
+    }
+
+    private AiConfig aiConfig() {
+        return new AiConfig(null, null, null, null, null, null, tempDir, null, null, null);
     }
 
     private OrchestrationTaskContext projectContext(Path projectRoot, Path workAreaRoot, String workAreaId) {

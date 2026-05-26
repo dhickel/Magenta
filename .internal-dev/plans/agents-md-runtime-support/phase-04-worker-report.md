@@ -76,3 +76,29 @@ Magenta-locked divergence retained per plan/spec lock:
 ## Residual Items / Blockers
 
 - Directive-required independent final spec-adherence validator (`gpt-5.5`, xhigh) was not executed in this worker run and remains pending for downstream validation gate.
+
+## Targeted Escalation Repair Update
+
+Validator follow-up reported that the first remediation still did not prove active-path behavior through real model-backed file/shell runtime use, and that knowledge/research wording overclaimed Magenta ancestor retention as official AGENTS.md spec truth.
+
+Repair applied:
+
+- Added `OrchestrationTaskContext.activeRuntimePath` plus `OrchestrationTaskContextHolder.recordActiveRuntimePath(...)`.
+- Updated `AgentFileToolService` and `AgentShellToolService` to record the active runtime path from their own confined file target or working-directory resolution.
+- Updated `ChatService` tool-loop handling to refresh current system instructions after tool execution, so subsequent model calls see `AGENTS.md` context for the actual target path touched by runtime tools.
+- Updated `PromptContextAssembler` to prefer the active runtime path captured by tool services, with the prior host-path derivation retained only as fallback.
+- Added tests proving:
+  - file tools record `workspace/a/file.txt` then `workspace/b/file.txt`,
+  - shell tools record their confined runtime working directory,
+  - prompt assembly follows real `AgentFileToolService` reads,
+  - a model-backed tool loop using `file_read` switches AGENTS.md context from sibling `a` to sibling `b`.
+- Corrected `.internal-dev/knowledge/agents-md-specification-reference.md`, specs, docs, and package guides so official AGENTS.md behavior is stated as nearest-file precedence plus explicit user-prompt override, while Magenta ancestor retention is described as project policy/divergence.
+- Relabeled the untracked `.internal-dev/research/agents-md-specification-research.md` research context but left it untracked and unstaged.
+
+Escalation validation:
+
+- `mvn -Dtest='ChatServiceTest,*PromptContext*Test,*AgentsMd*Test,*AgentFileToolServiceTest,*AgentShellToolServiceTest' test` (PASS, 92 tests)
+- `mvn -Dtest='ChatServiceTest,*PromptContext*Test,*AgentsMd*Test,*Workspace*Test,*Orchestration*Test,*AgentFileToolServiceTest,*AgentShellToolServiceTest' test` (PASS, 317 tests)
+- `mvn test` (PASS, 853 tests)
+- `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` (PASS; app started on random port and was terminated by timeout)
+- `git diff --check` (PASS)
