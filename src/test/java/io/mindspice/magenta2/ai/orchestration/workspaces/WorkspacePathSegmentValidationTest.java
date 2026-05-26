@@ -90,6 +90,50 @@ class WorkspacePathSegmentValidationTest {
     }
 
     @Test
+    void agentWorkspaceStarterFileIsWrittenOnFirstWorkspaceCreation() throws Exception {
+        WorkspaceDirectoryService service = new WorkspaceDirectoryService(aiConfig());
+
+        Path root = service.agentWorkspace("agent-1");
+        Path agentsFile = root.resolve("AGENTS.md");
+
+        assertThat(Files.isRegularFile(agentsFile)).isTrue();
+        String content = Files.readString(agentsFile);
+        assertThat(content).contains("plain Markdown guidance");
+        assertThat(content).contains("home/");
+        assertThat(content).contains("runs/");
+        assertThat(content).contains("runs/<runId>/outputs/");
+        assertThat(content).contains("workareas/");
+        assertThat(content).contains("Jobs bind to an agent, project, and optional Work Area context.");
+        assertThat(content).contains("Explicit user prompts and task instructions override");
+    }
+
+    @Test
+    void repeatedAgentWorkspaceEnsureNeverOverwritesExistingAgentsFile() throws Exception {
+        WorkspaceDirectoryService service = new WorkspaceDirectoryService(aiConfig());
+
+        Path root = service.agentWorkspace("agent-1");
+        Path agentsFile = root.resolve("AGENTS.md");
+        String custom = "# Custom AGENTS\n\nKeep this exact content.\n";
+        Files.writeString(agentsFile, custom);
+
+        service.agentWorkspace("agent-1");
+        service.agentWorkspaceRoot("agent-1");
+
+        assertThat(Files.readString(agentsFile)).isEqualTo(custom);
+    }
+
+    @Test
+    void preexistingWorkspaceRootDoesNotReceiveRetroactiveStarterFile() throws Exception {
+        WorkspaceDirectoryService service = new WorkspaceDirectoryService(aiConfig());
+        Path preexisting = Files.createDirectories(tempDir.resolve("workspace/agent-preexisting"));
+        Path agentsFile = preexisting.resolve("AGENTS.md");
+
+        service.agentWorkspace("agent-preexisting");
+
+        assertThat(Files.exists(agentsFile)).isFalse();
+    }
+
+    @Test
     void projectLinkMaterializationCreatesUsableAssignmentPathAndCleanupRemovesLink() throws Exception {
         WorkspaceDirectoryService service = new WorkspaceDirectoryService(aiConfig());
         Path assignmentWorkspace = service.taskTemp("run-1");

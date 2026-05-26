@@ -1,10 +1,12 @@
 package io.mindspice.magenta2.ai.orchestration.workspaces;
 
 import java.io.IOException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.core.util.PlainPathSegmentValidator;
@@ -31,6 +33,35 @@ import org.springframework.util.StringUtils;
  */
 @Service
 public class WorkspaceDirectoryService {
+    private static final String AGENTS_MD_FILE_NAME = "AGENTS.md";
+    private static final String AGENT_WORKSPACE_STARTER_AGENTS_MD = """
+        # AGENTS.md
+
+        ## Workspace Scope
+
+        This file is plain Markdown guidance for this agent workspace root and its subdirectories.
+        Update it as the workspace evolves.
+
+        ## Workspace Layout
+
+        Paths below are relative to this workspace root:
+
+        - `home/` is for persistent agent-owned files and scripts.
+        - `runs/` is for run staging directories.
+        - During execution, model-facing `outputs/` maps to `runs/<runId>/outputs/`.
+        - `workareas/` contains user-controlled Work Areas.
+        - Final outputs are promoted by backend completion/validation logic.
+
+        ## Project And Job Context
+
+        Jobs bind to an agent, project, and optional Work Area context.
+        Jobs do not create or own a separate workspace root.
+
+        ## Precedence
+
+        Explicit user prompts and task instructions override this guidance.
+        """;
+
     private final Path dataRoot;
 
     public WorkspaceDirectoryService(AiConfig aiConfig) throws IOException {
@@ -50,7 +81,24 @@ public class WorkspaceDirectoryService {
      */
     public Path agentWorkspace(String agentId) {
         requireId(agentId, "agentId");
-        return ensureDir(confined(WorkspacePathLayout.agentWorkspaceRoot(agentId)));
+        Path workspaceDir = confined(WorkspacePathLayout.agentWorkspaceRoot(agentId));
+        boolean createdInThisCall = !Files.exists(workspaceDir, LinkOption.NOFOLLOW_LINKS);
+        Path ensured = ensureDir(workspaceDir);
+        if (createdInThisCall) {
+            writeAgentWorkspaceStarterFile(ensured);
+        }
+        return ensured;
+    }
+
+    void ensureAgentWorkspaceStarterFile(Path workspaceRoot) {
+        if (workspaceRoot == null) {
+            throw new IllegalArgumentException("workspaceRoot is required");
+        }
+        Path normalized = workspaceRoot.normalize();
+        if (!normalized.startsWith(dataRoot)) {
+            throw new IllegalArgumentException("workspaceRoot escapes data root");
+        }
+        writeAgentWorkspaceStarterFile(normalized);
     }
 
     /**
@@ -505,6 +553,22 @@ public class WorkspaceDirectoryService {
             return Files.createDirectories(path);
         } catch (IOException e) {
             throw new IllegalStateException("Failed to create directory: " + path, e);
+        }
+    }
+
+    private void writeAgentWorkspaceStarterFile(Path workspaceRoot) {
+        Path starterFile = workspaceRoot.resolve(AGENTS_MD_FILE_NAME);
+        try {
+            Files.writeString(
+                starterFile,
+                AGENT_WORKSPACE_STARTER_AGENTS_MD,
+                StandardOpenOption.CREATE_NEW,
+                StandardOpenOption.WRITE
+            );
+        } catch (FileAlreadyExistsException ignored) {
+            // Existing file is user-owned; preserve as-is.
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to write workspace starter file: " + starterFile, e);
         }
     }
 
