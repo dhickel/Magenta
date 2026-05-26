@@ -25,6 +25,8 @@ This package owns chat-scoped tool execution support.
 - Keep web tool names and outputs compact, citation-friendly, and explicit about failures/truncation.
 - Keep planning tools narrow; they should set the goal/current planning task, add/replace/delete one keyed plan item, queue free-response questions, mark approval readiness, or request completion validation, not orchestrate execution.
 - Keep plan execution evidence concise, user-auditable, and tied to the active saved plan.
+- For Agent Skills MVP, keep activation tooling focused on skill instruction loading and metadata/resource disclosure. Do not embed project/user scope discovery or script-trust policy enforcement in ad hoc tool code.
+- Treat `allowed-tools` metadata as experimental until an explicit enforcement policy is accepted in specs.
 
 ### Validation
 - Add focused tests for tool registry resolution, transcript rendering, and truncation policy changes.

@@ -6,6 +6,7 @@ This package owns the Spring Boot application entry point for Magenta.
 - Keep application bootstrap small and conventional.
 - Put feature behavior in domain packages instead of the application class.
 - Use Spring configuration classes for bean wiring when setup grows beyond simple bootstrapping.
+- Keep Agent Skills bootstrap wiring in dedicated skill-domain configuration and services; do not place parser/discovery or assignment logic in the app entry package.
 
 ### Change guidance
 - Do not add cross-cutting runtime behavior here unless it truly affects the whole application.

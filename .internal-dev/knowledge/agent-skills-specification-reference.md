@@ -2,10 +2,32 @@
 
 > **Source:** [Agent Skills Specification](https://agentskills.io/specification)
 > **Client Implementation Guide:** [Adding Skills Support](https://agentskills.io/client-implementation/adding-skills-support.md)
-> **Date:** 2025-07-17
-> **Status:** Research — for implementation team review
+> **Date:** 2026-05-26
+> **Status:** Research + Phase-01 contract-validation notes
 
 ---
+
+## 0. Phase-01 Contract Validation Notes (2026-05-26)
+
+These notes are the reusable contract baseline for the `agent-skills-system` Phase 01 docs update. Official `agentskills.io` pages are authoritative for format/lifecycle behavior; local research is implementation context only.
+
+### 0.1 Official facts re-verified
+
+- A skill is a directory with required `SKILL.md` and optional `scripts/`, `references/`, and `assets/`.
+- `SKILL.md` requires YAML frontmatter with `name` and `description`; `allowed-tools` is explicitly marked experimental.
+- Progressive disclosure is the core lifecycle: catalog at startup, full instructions on activation, resources on demand.
+- Client implementation guidance says directory locations are client-defined, while `.agents/skills/` is a widely adopted interoperability convention.
+- Client guidance documents project-over-user precedence for name collisions and recommends trust-gating project-level skills.
+- Activation patterns include file-read activation and dedicated activation tool; structured wrapping and resource listing are recommended for dedicated-tool paths.
+- Context management guidance explicitly recommends protecting skill content from compaction and deduplicating activations.
+- Script guidance requires relative paths from the skill root and recommends declaring prerequisites/compatibility explicitly.
+- Best-practice guidance recommends concise `SKILL.md` content and progressive disclosure for larger skills (keep core instructions compact and move details to references).
+
+### 0.2 MVP vs deferred boundary used in Magenta specs/docs
+
+- MVP active contract in this phase: Magenta-managed root repository `MagentaRootProperties.path()/skills` + agent-profile assignment + catalog/activation contract docs.
+- Deferred in this phase: project-local `.agents/skills`, user-home/client-native scopes, layered assignment (project/job/task/workflow/chat/session), script trust/execution policy, and registry/package/marketplace ingestion.
+- `allowed-tools` is documented as experimental and not treated as enforced permission policy in MVP.
 
 ## 1. Specification Summary
 

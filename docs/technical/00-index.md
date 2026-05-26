@@ -8,6 +8,7 @@ These docs explain Magenta internals for contributors. Code remains the source o
 - [API Reference](api-reference.md)
 - [Data Model](data-model.md)
 - [Services](services.md)
+- [Agent Skills](agent-skills.md)
 - [Chat, Planning, and Tasks](chat-planning-tasks.md)
 - [Orchestration Runtime](orchestration-runtime.md)
 - [Workflow Engine](workflow-engine.md)

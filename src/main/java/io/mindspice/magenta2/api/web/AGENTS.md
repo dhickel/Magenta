@@ -10,6 +10,7 @@ This package owns HTTP and web-facing entry points.
 - Expose runtime settings, agent profile, workspace-link, Work Area/file explorer, job, assignment, inbox, schedule, event-reaction, and agent side-panel chat APIs as thin orchestration entry points.
 - Expose assignment lifecycle controls, including guarded queue cleanup, retained terminal history, history purge, and read-only audit transcript fragments, through thin orchestration entry points.
 - Expose operational dashboard summary and output artifact query APIs as thin read models for orchestration UI pages.
+- Expose Agent Skills management and agent-assignment endpoints as thin service adapters when that surface is implemented.
 - Keep inherited shell compatibility resources local to the web layer when a shell asset reference cannot be removed directly.
 - Own the current open-alpha HTTP posture: Magenta does not currently enforce built-in HTTP auth, authorization, or CSRF checks at the web/API layer; unsafe mutation/control routes must rely on explicit controller/service validation and domain ownership guards.
 - Keep controllers thin and delegate behavior to services.
@@ -19,11 +20,13 @@ This package owns HTTP and web-facing entry points.
 - Treat controller request and response changes as public API changes.
 - For workspace, Work Area, run, output, project, task/workflow, or job request/response changes, keep controllers thin and route path/layout policy through workspace/runtime services and centralized layout helpers.
 - MVP browser UX should expose Work Area and project browsing/editing, not internal agent workspace roots, run staging, or structural root management except through explicitly diagnostic/read-only future surfaces.
+- Agent Skills MVP browser UX should manage the root `skills/` repository and agent assignment only. Do not imply project-local/user scope loading, layered assignment, or browser-driven script execution before those deferred capabilities are accepted and implemented.
 - Public plan/task/workflow run controls submit saved definitions to agent assignments; direct model-backed execution stays internal/test-only when needed.
 - Public task and workflow run stream routes acknowledge queued assignment submission instead of streaming inline model execution.
 - Public operational job APIs use `JobDefinition` records, allow empty `DRAFT` jobs, and expose job item routes separately from run routes.
 - Work Area APIs and Avatar Work Area fragments must keep path traversal, symlink, text-edit, download-size, Home/system, marked-descendant, and active assignment/output target guards in services rather than duplicating filesystem policy in controllers.
 - For SimplyPages-facing web surfaces, prefer reusable components/modules instead of one-off markup patterns.
+- For planned skills surfaces, use reusable HTMX-first fragments for list/detail/editor/assignment flows and keep JavaScript narrow to clear path-of-least-resistance interactions.
 - If UI behavior or structure is used in multiple places and is more than bare functionality, promote it into a reusable component/module.
 - For similar views, prefer shared render structures and slot-key based reuse over duplicated near-identical templates.
 - Before changing `/avatar` styling or layout, read `.internal-dev/specifications/web.md`, `.internal-dev/specifications/simplypages.md`, and the Avatar layout knowledge files, then preserve the `/dashboard` plus per-agent dashboard operational style language unless the user explicitly changes direction.

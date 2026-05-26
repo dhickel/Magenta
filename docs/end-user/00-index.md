@@ -18,6 +18,7 @@ Magenta has three main browser surfaces:
 - Chain work together: [Workflows](workflows.md)
 - Coordinate repeated or ordered work: [Jobs](jobs.md)
 - Manage execution capacity: [Agents](agents.md)
+- Manage reusable agent capabilities: [Agent Skills](agent-skills.md)
 - Organize workspace-backed work: [Projects and Workspaces](projects-and-workspaces.md)
 - Handle messages, artifacts, and defaults: [Inbox, Outputs, and Settings](inbox-outputs-settings.md)
 

@@ -4,10 +4,12 @@ This package owns durable runtime agent, setting, workspace, and orchestration s
 
 ### Responsibilities
 - Store runtime settings, agent profiles, and managed workspace metadata in SQLite.
+- Own agent-profile skill assignment persistence and lifecycle for Agent Skills MVP.
 - Store user-facing jobs, ordered job items, durable work assignments, inbox messages, schedules, event reactions, and orchestration events in SQLite.
 - Store durable assignment-to-conversation links so queue and retained history transcripts remain visible even when checkpoint output is incomplete.
 - Treat file AI configuration as the source for model endpoint definitions and legacy agent import only.
 - Keep orchestration services small, explicit, and usable by existing chat flows.
+- For Agent Skills MVP, keep assignment scope at the agent profile level only; project/job/task/workflow/chat/session layering is deferred.
 - Keep filesystem workspace roots confined under the configured data root.
 - Resolve durable execution files through the effective workspace rule: project workspace when `projectId` is present, otherwise executing agent workspace.
 - Use centralized workspace layout helpers for static structural paths and aliases; do not rebuild data-root, Work Area, run, output, or legacy compatibility paths in runtime services.
@@ -25,6 +27,7 @@ This package owns durable runtime agent, setting, workspace, and orchestration s
 - Keep controllers thin and delegate validation and persistence to services.
 - Validate runtime model keys against configured file models.
 - Validate chat tool allowlists through `ChatToolRegistry`.
+- Do not add project-local or user-home skill scope resolution in orchestration runtime without explicit deferred-feature acceptance and specification updates.
 
 ### Validation
 - Add focused repository and service tests for persistence, model resolution, seeding, and path confinement.
