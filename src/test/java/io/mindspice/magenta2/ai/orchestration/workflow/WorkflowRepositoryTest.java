@@ -113,6 +113,7 @@ class WorkflowRepositoryTest {
         repository.saveRun(new WorkflowRun(
             "run-1",
             definition.id(),
+            "Workflow display run",
             WorkflowRunStatus.COMPLETED,
             0,
             java.util.List.of(),
@@ -137,6 +138,7 @@ class WorkflowRepositoryTest {
         ));
 
         WorkflowRun run = repository.findRun("run-1").orElseThrow();
+        assertThat(run.runDisplayName()).isEqualTo("Workflow display run");
         assertThat(run.agentId()).isEqualTo("agent-1");
         assertThat(run.jobId()).isEqualTo("job-1");
         assertThat(run.jobAssignmentId()).isEqualTo("assignment-1");

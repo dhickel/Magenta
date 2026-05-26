@@ -30,7 +30,7 @@ class WorkAreaServiceTest {
         assertThat(home.system()).isTrue();
         assertThat(home.home()).isTrue();
         assertThat(home.active()).isTrue();
-        assertThat(Files.isDirectory(context.dataRoot().resolve("agents/agent-1/workspace/home"))).isTrue();
+        assertThat(Files.isDirectory(context.dataRoot().resolve("workspace/agent-1/home"))).isTrue();
         assertThat(context.service().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null).id()).isEqualTo(home.id());
     }
 
@@ -38,8 +38,6 @@ class WorkAreaServiceTest {
     void marksExistingConfinedDirectoryAndReactivatesDuplicate() throws Exception {
         TestContext context = context();
         context.service().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);
-        Files.createDirectories(context.dataRoot().resolve("agents/agent-1/workspace/docs/research"));
-
         WorkArea marked = context.service().markDirectory(
             WorkspaceOwnerType.AGENT,
             "agent-1",
@@ -50,11 +48,13 @@ class WorkAreaServiceTest {
         WorkArea reactivated = context.service().markDirectory(
             WorkspaceOwnerType.AGENT,
             "agent-1",
-            "docs/research",
+            marked.areaRelativePath(),
             "Research Again"
         );
 
-        assertThat(marked.areaRelativePath()).isEqualTo("docs/research");
+        assertThat(marked.areaRelativePath()).isEqualTo("workareas/" + marked.id());
+        assertThat(Files.isDirectory(context.dataRoot().resolve("workspace/agent-1").resolve(marked.areaRelativePath())))
+            .isTrue();
         assertThat(marked.home()).isFalse();
         assertThat(deactivated.active()).isFalse();
         assertThat(reactivated.id()).isEqualTo(marked.id());
@@ -99,15 +99,15 @@ class WorkAreaServiceTest {
         TestContext context = context();
         context.service().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);
         Path outside = Files.createDirectories(tempDir.resolve("outside"));
-        Path link = context.dataRoot().resolve("agents/agent-1/workspace/escape-link");
+        Path link = context.dataRoot().resolve("workspace/agent-1/escape-link");
         try {
             Files.createSymbolicLink(link, outside);
         } catch (UnsupportedOperationException exception) {
             assumeTrue(false, "symlinks unsupported");
         }
 
-        assertThatThrownBy(() -> context.service().markDirectory(
-            WorkspaceOwnerType.AGENT, "agent-1", "escape-link", "Escape"))
+        assertThatThrownBy(() -> context.service().requireExistingOwnerDirectory(
+            WorkspaceOwnerType.AGENT, "agent-1", "escape-link", "escape link"))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("escapes workspace root");
     }
@@ -116,7 +116,6 @@ class WorkAreaServiceTest {
     void refusesToUnmarkHomeAndActiveWorkAreas() throws Exception {
         TestContext context = context();
         WorkArea home = context.service().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);
-        Files.createDirectories(context.dataRoot().resolve("agents/agent-1/workspace/docs"));
         WorkArea docs = context.service().markDirectory(WorkspaceOwnerType.AGENT, "agent-1", "docs", "Docs");
 
         context.jdbc().execute("""
@@ -150,7 +149,6 @@ class WorkAreaServiceTest {
     void refusesToUnmarkActiveOutputTargetWorkArea() throws Exception {
         TestContext context = context();
         context.service().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);
-        Files.createDirectories(context.dataRoot().resolve("agents/agent-1/workspace/outputs-target"));
         WorkArea target = context.service().markDirectory(
             WorkspaceOwnerType.AGENT, "agent-1", "outputs-target", "Outputs Target");
 

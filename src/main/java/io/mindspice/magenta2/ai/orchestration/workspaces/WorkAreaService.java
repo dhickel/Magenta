@@ -12,7 +12,7 @@ import org.springframework.util.StringUtils;
 
 @Service
 public class WorkAreaService {
-    private static final String HOME_AREA = "home";
+    private static final String HOME_AREA = WorkspacePathLayout.HOME;
 
     private final WorkAreaRepository repository;
     private final WorkspaceService workspaceService;
@@ -61,10 +61,9 @@ public class WorkAreaService {
         requireOwnerId(ownerId);
         Workspace workspace = workspace(ownerType, ownerId, null);
         String normalizedArea = normalizeAreaRelativePath(areaRelativePath);
-        Path areaPath = requireExistingDirectory(workspace, normalizedArea);
         String resolvedDisplay = StringUtils.hasText(displayName)
             ? displayName.trim()
-            : areaPath.getFileName().toString();
+            : Path.of(normalizedArea).getFileName().toString();
 
         return repository.findByOwnerAndPath(ownerType, ownerId, normalizedArea)
             .map(existing -> repository.save(new WorkArea(
@@ -82,21 +81,7 @@ public class WorkAreaService {
                 existing.createdAt(),
                 existing.updatedAt()
             )))
-            .orElseGet(() -> repository.save(new WorkArea(
-                UUID.randomUUID().toString(),
-                ownerType,
-                ownerId,
-                workspace.id(),
-                workspace.rootRelativePath(),
-                normalizedArea,
-                resolvedDisplay,
-                false,
-                HOME_AREA.equals(normalizedArea),
-                true,
-                "{}",
-                null,
-                null
-            )));
+            .orElseGet(() -> createIdBackedWorkArea(ownerType, ownerId, workspace, resolvedDisplay));
     }
 
     public WorkArea unmark(String workAreaId) {
@@ -157,7 +142,7 @@ public class WorkAreaService {
     private WorkArea createHome(WorkspaceOwnerType ownerType, String ownerId, String displayName) {
         Workspace workspace = workspace(ownerType, ownerId, displayName);
         Path root = rootPath(workspace.rootRelativePath());
-        Path home = root.resolve(HOME_AREA).normalize();
+        Path home = root.resolve(WorkspacePathLayout.HOME).normalize();
         if (!home.startsWith(root)) {
             throw new IllegalArgumentException("Home Work Area escapes workspace root");
         }
@@ -172,10 +157,45 @@ public class WorkAreaService {
             ownerId,
             workspace.id(),
             workspace.rootRelativePath(),
-            HOME_AREA,
+            WorkspacePathLayout.HOME,
             StringUtils.hasText(displayName) ? displayName.trim() : "Home",
             true,
             true,
+            true,
+            "{}",
+            null,
+            null
+        ));
+    }
+
+    private WorkArea createIdBackedWorkArea(
+        WorkspaceOwnerType ownerType,
+        String ownerId,
+        Workspace workspace,
+        String displayName
+    ) {
+        String id = UUID.randomUUID().toString();
+        String areaRelativePath = WorkspacePathLayout.relativeString(WorkspacePathLayout.workAreaRelative(id));
+        Path root = rootPath(workspace.rootRelativePath());
+        Path areaPath = root.resolve(areaRelativePath).normalize();
+        if (!areaPath.startsWith(root)) {
+            throw new IllegalArgumentException("Work Area path escapes workspace root");
+        }
+        try {
+            Files.createDirectories(areaPath);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to create Work Area: " + areaPath, exception);
+        }
+        return repository.save(new WorkArea(
+            id,
+            ownerType,
+            ownerId,
+            workspace.id(),
+            workspace.rootRelativePath(),
+            areaRelativePath,
+            displayName,
+            false,
+            false,
             true,
             "{}",
             null,

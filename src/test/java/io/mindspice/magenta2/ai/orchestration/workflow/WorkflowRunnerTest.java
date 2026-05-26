@@ -506,6 +506,34 @@ class WorkflowRunnerTest {
     }
 
     @Test
+    void workflowAndDelegatedTaskRunsCopyDisplayNameFromOrchestrationContext() throws Exception {
+        PlanDefinition childTask = task("named child", List.of(), List.of());
+        WorkflowNode node = delegationNode("named-child-node", childTask.id());
+        WorkflowDefinition def = workflowService.saveDefinitionValidated(new WorkflowDefinition(
+            null, 2, "Named Workflow", "", 1,
+            List.of(node), List.of(), Map.of(), null, null
+        ));
+
+        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
+            "agent-1", "Agent 1", null, null, "workspace-1", "WORKFLOW_RUN",
+            "Daily workflow run",
+            tempDir.resolve("caller-workspace").toString(),
+            tempDir.resolve("caller-outputs").toString(),
+            null, null, null, null, null, null, null, null
+        ));
+        try {
+            WorkflowRun run = workflowService.startRun(def.id());
+            WorkflowRun finished = pollForTerminal(run.id());
+
+            assertThat(finished.runDisplayName()).isEqualTo("Daily workflow run");
+            String childRunId = finished.nodeRuns().getFirst().outputValues().get("childRunId").toString();
+            assertThat(planService.getRun(childRunId).runDisplayName()).isEqualTo("Daily workflow run");
+        } finally {
+            OrchestrationTaskContextHolder.clear();
+        }
+    }
+
+    @Test
     void delegationChildRunUsesActiveEffectiveWorkspaceContext() throws Exception {
         PlanDefinition childTask = task("delegated", List.of(), List.of());
         WorkflowNode delegation = new WorkflowNode(
@@ -716,6 +744,23 @@ class WorkflowRunnerTest {
         return new WorkflowNode(
             key,
             WorkflowNodeType.TASK,
+            planId,
+            key,
+            null,
+            List.of(),
+            List.of(),
+            Map.of(),
+            false,
+            List.of(),
+            null,
+            null
+        );
+    }
+
+    private WorkflowNode delegationNode(String key, String planId) {
+        return new WorkflowNode(
+            key,
+            WorkflowNodeType.DELEGATION,
             planId,
             key,
             null,

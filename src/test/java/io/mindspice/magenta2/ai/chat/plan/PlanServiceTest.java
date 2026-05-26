@@ -959,6 +959,32 @@ class PlanServiceTest {
     }
 
     @Test
+    void taskRunCopiesDisplayNameFromOrchestrationContext() {
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());
+        PlanRepository planRepository = new PlanRepository(jdbcTemplate, new ObjectMapper());
+        PlanService service = new PlanService(planRepository, memoryRepository);
+
+        PlanDefinition task = service.saveTask(new PlanDefinition(
+            null, PlanKind.TASK_TEMPLATE, PlanStatus.APPROVED,
+            "Named Task", "Do it.", "Goal.", null,
+            List.of(), List.of(), List.of(),
+            List.of(), List.of(new PlanStep(1, "Do it.")), List.of(),
+            List.of(), List.of(), null, null, null, null,
+            null, List.of(), 0, 0, null, null, null, null
+        ));
+
+        PlanRun run = service.startRun(task.id(), Map.of(), new OrchestrationTaskContext(
+            "agent-1", "Agent 1", null, null, "workspace-1", "TASK_RUN",
+            "Daily research run", null, null, null, null, null, null, null, null, null, null
+        ));
+
+        assertThat(run.runDisplayName()).isEqualTo("Daily research run");
+        assertThat(planRepository.findRun(run.id()).orElseThrow().runDisplayName())
+            .isEqualTo("Daily research run");
+    }
+
+    @Test
     void modeResolutionHandlesAllStates() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         ChatMemoryRepository memoryRepository = new ChatMemoryRepository(jdbcTemplate, new ObjectMapper());

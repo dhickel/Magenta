@@ -53,7 +53,7 @@ class WorkAreaExplorerServiceTest {
         assertThat(detail.tags()).extracting(WorkspaceFileLabel::slug).containsExactly("note");
         assertThat(preview.text()).isTrue();
         assertThat(preview.content()).isEqualTo("hello\n");
-        assertThat(Files.readString(tempDir.resolve("data/agents/agent-1/workspace/home/notes/todo.md")))
+        assertThat(Files.readString(tempDir.resolve("data/workspace/agent-1/home/notes/todo.md")))
             .isEqualTo("hello\n");
     }
 
@@ -159,8 +159,8 @@ class WorkAreaExplorerServiceTest {
     void renameMoveCopyAndDeleteRejectNestedSymlinks() throws Exception {
         TestContext context = context();
         WorkArea home = context.workAreaService().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);
-        Path parent = Files.createDirectories(tempDir.resolve("data/agents/agent-1/workspace/home/parent"));
-        Files.createDirectories(tempDir.resolve("data/agents/agent-1/workspace/home/archive"));
+        Path parent = Files.createDirectories(tempDir.resolve("data/workspace/agent-1/home/parent"));
+        Files.createDirectories(tempDir.resolve("data/workspace/agent-1/home/archive"));
         Path outside = Files.createDirectories(tempDir.resolve("outside"));
         try {
             Files.createSymbolicLink(parent.resolve("escape"), outside);
@@ -186,7 +186,7 @@ class WorkAreaExplorerServiceTest {
     void createDirectoryRejectsSymlinkAncestorBeforeExternalMutation() throws Exception {
         TestContext context = context();
         WorkArea home = context.workAreaService().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);
-        Path root = tempDir.resolve("data/agents/agent-1/workspace/home");
+        Path root = tempDir.resolve("data/workspace/agent-1/home");
         Path outside = Files.createDirectories(tempDir.resolve("outside"));
         try {
             Files.createSymbolicLink(root.resolve("escape"), outside);
@@ -204,7 +204,7 @@ class WorkAreaExplorerServiceTest {
     void preservesCrLfAndStripsUtf8BomOnSave() throws Exception {
         TestContext context = context();
         WorkArea home = context.workAreaService().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);
-        Path file = Files.createDirectories(tempDir.resolve("data/agents/agent-1/workspace/home/notes"))
+        Path file = Files.createDirectories(tempDir.resolve("data/workspace/agent-1/home/notes"))
             .resolve("crlf.txt");
         Files.writeString(file, "one\r\ntwo\r\n", java.nio.charset.StandardCharsets.UTF_8);
 
@@ -217,7 +217,7 @@ class WorkAreaExplorerServiceTest {
     void previewsNormalSizeLargeTextAndMarkdownWithUtf8Validation() throws Exception {
         TestContext context = context();
         WorkArea home = context.workAreaService().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);
-        Path notes = Files.createDirectories(tempDir.resolve("data/agents/agent-1/workspace/home/notes"));
+        Path notes = Files.createDirectories(tempDir.resolve("data/workspace/agent-1/home/notes"));
         String largeMarkdown = "# Heading\n" + "body\n".repeat(70_000);
         Files.writeString(notes.resolve("large.md"), largeMarkdown, StandardCharsets.UTF_8);
         byte[] invalid = new byte[300 * 1024];
@@ -257,7 +257,7 @@ class WorkAreaExplorerServiceTest {
         assertThatThrownBy(() -> context.explorer().list(home.id(), "C:\\Windows\\system32"))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("absolute paths");
-        Files.writeString(tempDir.resolve("data/agents/agent-1/workspace/home/image.png"), "not image");
+        Files.writeString(tempDir.resolve("data/workspace/agent-1/home/image.png"), "not image");
         assertThatThrownBy(() -> context.explorer().saveText(home.id(), "image.png", "not image"))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("not safe for text editing");
@@ -270,7 +270,7 @@ class WorkAreaExplorerServiceTest {
     void recursiveDeleteRequiresConfirmationAndRejectsSymlinkEscape() throws Exception {
         TestContext context = context();
         WorkArea home = context.workAreaService().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);
-        Path deleteMe = Files.createDirectories(tempDir.resolve("data/agents/agent-1/workspace/home/delete-me"));
+        Path deleteMe = Files.createDirectories(tempDir.resolve("data/workspace/agent-1/home/delete-me"));
         Files.writeString(deleteMe.resolve("note.txt"), "x");
 
         assertThatThrownBy(() -> context.explorer().deleteRecursive(home.id(), "delete-me", "wrong"))
@@ -282,7 +282,7 @@ class WorkAreaExplorerServiceTest {
         assertThat(Files.exists(deleteMe)).isFalse();
 
         Path outside = Files.createDirectories(tempDir.resolve("outside"));
-        Path link = tempDir.resolve("data/agents/agent-1/workspace/home/link");
+        Path link = tempDir.resolve("data/workspace/agent-1/home/link");
         try {
             Files.createSymbolicLink(link, outside);
         } catch (UnsupportedOperationException exception) {
@@ -297,7 +297,23 @@ class WorkAreaExplorerServiceTest {
         TestContext context = context();
         WorkArea home = context.workAreaService().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);
         context.explorer().createDirectory(home.id(), "parent/active");
-        WorkArea active = context.explorer().mark(home.id(), "parent/active", "Active");
+        context.jdbc().update("""
+                insert into work_areas (
+                    id, owner_type, owner_id, workspace_id, root_relative_path, area_relative_path,
+                    display_name, system_flag, home_flag, active_flag, metadata_json, created_at, updated_at
+                )
+                values (?, ?, ?, ?, ?, ?, ?, 0, 0, 1, '{}', ?, ?)
+                """,
+            "legacy-active",
+            home.ownerType().name(),
+            home.ownerId(),
+            home.workspaceId(),
+            home.rootRelativePath(),
+            "home/parent/active",
+            "Active",
+            java.time.Instant.now().toString(),
+            java.time.Instant.now().toString()
+        );
         context.jdbc().execute("""
             create table work_assignments (
                 selected_work_area_id text,
@@ -307,13 +323,13 @@ class WorkAreaExplorerServiceTest {
             """);
         context.jdbc().update(
             "insert into work_assignments(selected_work_area_id, status) values (?, 'QUEUED')",
-            active.id()
+            "legacy-active"
         );
 
         assertThatThrownBy(() -> context.explorer().deleteRecursive(home.id(), "parent", "parent"))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("active Work Area paths are protected");
-        assertThatThrownBy(() -> context.explorer().deleteRecursive(active.id(), ".", "active"))
+        assertThatThrownBy(() -> context.explorer().deleteRecursive("legacy-active", ".", "active"))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("Work Area root is protected");
     }

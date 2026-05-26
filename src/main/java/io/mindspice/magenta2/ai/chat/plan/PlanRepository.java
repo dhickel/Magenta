@@ -216,7 +216,7 @@ public class PlanRepository {
         }
         return jdbcTemplate.query(
             """
-                select id, plan_id, status, input_values_json, output_values_json,
+                select id, plan_id, run_display_name, status, input_values_json, output_values_json,
                        plan_snapshot_json, workspace_id, output_directory,
                        temp_workspace_path,
                        execution_evidence_json, validation_feedback_json,
@@ -233,7 +233,7 @@ public class PlanRepository {
     public List<PlanRun> findRunsByPlanId(String planId) {
         return jdbcTemplate.query(
             """
-                select id, plan_id, status, input_values_json, output_values_json,
+                select id, plan_id, run_display_name, status, input_values_json, output_values_json,
                        plan_snapshot_json, workspace_id, output_directory,
                        temp_workspace_path,
                        execution_evidence_json, validation_feedback_json,
@@ -255,15 +255,16 @@ public class PlanRepository {
         jdbcTemplate.update(
             """
                 insert into plan_runs (
-                    id, plan_id, status, input_values_json, output_values_json,
+                    id, plan_id, run_display_name, status, input_values_json, output_values_json,
                     plan_snapshot_json, workspace_id, output_directory,
                     temp_workspace_path,
                     execution_evidence_json, validation_feedback_json,
                     deliverable_evidence_json, final_message, error_text,
                     created_at, updated_at, started_at, completed_at
                 )
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict(id) do update set
+                    run_display_name = excluded.run_display_name,
                     status = excluded.status,
                     input_values_json = excluded.input_values_json,
                     output_values_json = excluded.output_values_json,
@@ -282,6 +283,7 @@ public class PlanRepository {
                 """,
             run.id(),
             run.planId(),
+            run.runDisplayName(),
             run.status().name(),
             json(run.inputValues()),
             json(run.outputValues()),
@@ -300,7 +302,7 @@ public class PlanRepository {
             instant(run.completedAt())
         );
         return new PlanRun(
-            run.id(), run.planId(), run.status(), run.inputValues(), run.outputValues(),
+            run.id(), run.planId(), run.runDisplayName(), run.status(), run.inputValues(), run.outputValues(),
             run.planSnapshot(), run.workspaceId(), run.outputDirectory(),
             run.tempWorkspacePath(),
             run.executionEvidence(), run.validationFeedback(), run.deliverableEvidence(),
@@ -347,6 +349,7 @@ public class PlanRepository {
         return new PlanRun(
             rs.getString("id"),
             rs.getString("plan_id"),
+            rs.getString("run_display_name"),
             PlanRunStatus.valueOf(rs.getString("status")),
             read(rs.getString("input_values_json"), VALUE_MAP, Map.of()),
             read(rs.getString("output_values_json"), VALUE_MAP, Map.of()),
@@ -470,6 +473,7 @@ public class PlanRepository {
             create table if not exists plan_runs (
                 id text primary key,
                 plan_id text not null,
+                run_display_name text,
                 status text not null,
                 input_values_json text not null,
                 output_values_json text not null,
@@ -491,5 +495,7 @@ public class PlanRepository {
             """);
         addColumnIfMissing("plan_runs", "temp_workspace_path",
             "alter table plan_runs add column temp_workspace_path text");
+        addColumnIfMissing("plan_runs", "run_display_name",
+            "alter table plan_runs add column run_display_name text");
     }
 }

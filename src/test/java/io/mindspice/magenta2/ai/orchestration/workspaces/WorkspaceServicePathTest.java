@@ -25,9 +25,9 @@ class WorkspaceServicePathTest {
         Workspace project = context.service().projectWorkspace("project-1", "Project One");
         Workspace job = context.service().jobWorkspace("job-1", "Job One");
 
-        assertThat(agent.rootRelativePath()).isEqualTo("agents/agent-1/workspace");
-        assertThat(project.rootRelativePath()).isEqualTo("projects/project-1/workspace");
-        assertThat(job.rootRelativePath()).isEqualTo("jobs/job-1");
+        assertThat(agent.rootRelativePath()).isEqualTo("workspace/agent-1");
+        assertThat(project.rootRelativePath()).isEqualTo("projects/project-1");
+        assertThat(job.rootRelativePath()).isEqualTo("jobs/job-1/workspace");
     }
 
     @Test
@@ -37,7 +37,7 @@ class WorkspaceServicePathTest {
 
         WorkspaceLink saved = context.service().addLink(workspace.id(), link(workspace.id(), WorkspaceLinkType.PATH, "docs"));
 
-        assertThat(saved.target()).isEqualTo("agents/agent-1/workspace/docs");
+        assertThat(saved.target()).isEqualTo("workspace/agent-1/docs");
         assertThat(Path.of(saved.target()).isAbsolute()).isFalse();
         assertThat(saved.target()).doesNotContain(context.dataRoot().toString());
     }
@@ -46,14 +46,14 @@ class WorkspaceServicePathTest {
     void newPathLinkWithAbsoluteCurrentRootTargetPersistsDataRootRelativeTarget() throws Exception {
         TestContext context = context();
         Workspace workspace = context.service().agentWorkspace("agent-1", "Agent One");
-        Path target = context.dataRoot().resolve("agents/agent-1/workspace/docs");
+        Path target = context.dataRoot().resolve("workspace/agent-1/docs");
 
         WorkspaceLink saved = context.service().addLink(
             workspace.id(),
             link(workspace.id(), WorkspaceLinkType.PATH, target.toString())
         );
 
-        assertThat(saved.target()).isEqualTo("agents/agent-1/workspace/docs");
+        assertThat(saved.target()).isEqualTo("workspace/agent-1/docs");
         assertThat(Path.of(saved.target()).isAbsolute()).isFalse();
     }
 
@@ -61,7 +61,7 @@ class WorkspaceServicePathTest {
     void existingAbsoluteCurrentRootPathLinkSeededDirectlyListsAsRootRelativeWithoutRewrite() throws Exception {
         TestContext context = context();
         Workspace workspace = context.service().agentWorkspace("agent-1", "Agent One");
-        String absoluteTarget = context.dataRoot().resolve("agents/agent-1/workspace/legacy-docs").toString();
+        String absoluteTarget = context.dataRoot().resolve("workspace/agent-1/legacy-docs").toString();
         context.repository().saveLink(new WorkspaceLink(
             "legacy-link",
             workspace.id(),
@@ -77,7 +77,7 @@ class WorkspaceServicePathTest {
         List<WorkspaceLink> links = context.service().links(workspace.id());
 
         assertThat(links).extracting(WorkspaceLink::target)
-            .containsExactly("agents/agent-1/workspace/legacy-docs");
+            .containsExactly("workspace/agent-1/legacy-docs");
         assertThat(context.repository().findLink("legacy-link")).get().extracting(WorkspaceLink::target)
             .isEqualTo(absoluteTarget);
     }
@@ -91,7 +91,7 @@ class WorkspaceServicePathTest {
             workspace.id(),
             "Current Docs",
             WorkspaceLinkType.PATH,
-            "agents/agent-1/workspace/docs",
+            "workspace/agent-1/docs",
             true,
             false,
             null,
@@ -113,7 +113,7 @@ class WorkspaceServicePathTest {
 
         assertThat(links).extracting(WorkspaceLink::id).containsExactly("current-link");
         assertThat(links).extracting(WorkspaceLink::target)
-            .containsExactly("agents/agent-1/workspace/docs");
+            .containsExactly("workspace/agent-1/docs");
         assertThat(context.repository().findLink("stale-link")).isPresent();
     }
 

@@ -143,6 +143,7 @@ public class AssignmentService {
             request.jobId(),
             request.jobItemId(),
             request.assignmentType(),
+            request.runDisplayName(),
             request.priority(),
             request.modelOverride(),
             projectId,
@@ -159,6 +160,7 @@ public class AssignmentService {
             normalize(request.jobId()),
             normalize(request.jobItemId()),
             request.assignmentType(),
+            normalize(request.runDisplayName()),
             request.priority() == null ? 0 : request.priority(),
             OrchestrationStatus.QUEUED,
             normalize(request.modelOverride()),
@@ -416,7 +418,7 @@ public class AssignmentService {
         }
         return repository.saveAssignment(new WorkAssignment(
             assignment.id(), assignment.agentId(), assignment.jobId(), assignment.jobItemId(),
-            assignment.assignmentType(), assignment.priority(), assignment.status(), assignment.modelOverride(),
+            assignment.assignmentType(), assignment.runDisplayName(), assignment.priority(), assignment.status(), assignment.modelOverride(),
             assignment.workspaceId(), projectId, effectiveWorkspace.workspaceId(), effectiveWorkspace.ownerType().name(),
             assignment.selectedWorkAreaId(), assignment.outputRouteType(), assignment.outputWorkAreaId(),
             assignment.outputDirectRelativePath(),
@@ -532,7 +534,7 @@ public class AssignmentService {
     ) {
         return new WorkAssignment(
             assignment.id(), assignment.agentId(), assignment.jobId(), assignment.jobItemId(),
-            assignment.assignmentType(), assignment.priority(), status, assignment.modelOverride(), assignment.workspaceId(),
+            assignment.assignmentType(), assignment.runDisplayName(), assignment.priority(), status, assignment.modelOverride(), assignment.workspaceId(),
             assignment.projectId(), assignment.effectiveWorkspaceId(), assignment.effectiveWorkspaceKind(),
             assignment.selectedWorkAreaId(), assignment.outputRouteType(), assignment.outputWorkAreaId(),
             assignment.outputDirectRelativePath(),

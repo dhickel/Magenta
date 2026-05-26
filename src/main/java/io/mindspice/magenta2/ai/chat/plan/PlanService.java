@@ -919,6 +919,7 @@ public class PlanService {
         String runId = UUID.randomUUID().toString();
         OrchestrationTaskContext effectiveContext = context;
         OrchestrationTaskContext previousContext = OrchestrationTaskContextHolder.current();
+        String runDisplayName = context == null ? null : context.runDisplayName();
 
         // Allocate workspace directories
         String tempWorkspacePath = null;
@@ -976,7 +977,7 @@ public class PlanService {
             } catch (Exception e) {
                 return saveAllocationFailureRun(
                     runId, definition, cleanInputs, effectiveWorkspaceId,
-                    tempWorkspacePath, outputDirectoryPath, now, e, previousContext);
+                    tempWorkspacePath, outputDirectoryPath, runDisplayName, now, e, previousContext);
             }
         }
         try {
@@ -992,12 +993,13 @@ public class PlanService {
         } catch (Exception e) {
             return saveAllocationFailureRun(
                 runId, definition, cleanInputs, effectiveWorkspaceId,
-                tempWorkspacePath, outputDirectoryPath, now, e, previousContext);
+                tempWorkspacePath, outputDirectoryPath, runDisplayName, now, e, previousContext);
         }
 
         return planRepository.saveRun(new PlanRun(
             runId,
             definition.id(),
+            runDisplayName,
             PlanRunStatus.RUNNING,
             cleanInputs,
             Map.of(),
@@ -1024,6 +1026,7 @@ public class PlanService {
         String effectiveWorkspaceId,
         String tempWorkspacePath,
         String outputDirectoryPath,
+        String runDisplayName,
         Instant startedAt,
         Exception exception,
         OrchestrationTaskContext previousContext
@@ -1038,6 +1041,7 @@ public class PlanService {
         return planRepository.saveRun(new PlanRun(
             runId,
             definition.id(),
+            runDisplayName,
             PlanRunStatus.FAILED,
             cleanInputs,
             Map.of(),

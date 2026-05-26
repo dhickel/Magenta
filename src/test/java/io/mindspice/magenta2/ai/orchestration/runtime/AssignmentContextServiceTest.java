@@ -103,7 +103,31 @@ class AssignmentContextServiceTest {
             .projectWorkspace("project-1", "Project project-1").id());
         assertThat(context.leaseService().activeWritableLease(assignment.effectiveWorkspaceId())).isEmpty();
         assertThat(context.assignmentService().summary(assignment.id()).effectiveWorkspaceDisplayPath())
-            .isEqualTo("projects/project-1/workspace");
+            .isEqualTo("projects/project-1");
+    }
+
+    @Test
+    void assignmentCreationAndStatusTransitionsPreserveRunDisplayName() {
+        Context context = context();
+
+        WorkAssignment assignment = context.assignmentService().create(new AssignmentRequest(
+            "agent-1", null, null, AssignmentType.TASK_RUN, "Daily research run", 3, null,
+            "project-1", null, null, null, null, null, Map.of("taskId", "task-1")
+        ));
+
+        assertThat(assignment.runDisplayName()).isEqualTo("Daily research run");
+        assertThat(context.repository().findAssignment(assignment.id()).orElseThrow().runDisplayName())
+            .isEqualTo("Daily research run");
+
+        WorkAssignment running = context.assignmentService().saveStatus(assignment, OrchestrationStatus.RUNNING);
+        assertThat(running.runDisplayName()).isEqualTo("Daily research run");
+        assertThat(context.repository().findAssignment(assignment.id()).orElseThrow().runDisplayName())
+            .isEqualTo("Daily research run");
+
+        WorkAssignment completed = context.assignmentService().saveStatus(running, OrchestrationStatus.COMPLETED);
+        assertThat(completed.runDisplayName()).isEqualTo("Daily research run");
+        assertThat(context.repository().findAssignment(assignment.id()).orElseThrow().runDisplayName())
+            .isEqualTo("Daily research run");
     }
 
     @Test
@@ -177,14 +201,13 @@ class AssignmentContextServiceTest {
         assertThat(assignment.outputRouteType()).isEqualTo(AssignmentRequest.OUTPUT_ROUTE_DEFAULT);
         assertThat(assignment.outputWorkAreaId()).isNull();
         assertThat(assignment.outputDirectRelativePath()).isNull();
-        assertThat(Files.isDirectory(tempDir.resolve("agents/agent-1/workspace/home"))).isTrue();
+        assertThat(Files.isDirectory(tempDir.resolve("workspace/agent-1/home"))).isTrue();
     }
 
     @Test
     void assignmentCreationPersistsOutputWorkAreaRoute() throws Exception {
         Context context = context();
         context.workAreaService().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);
-        Files.createDirectories(tempDir.resolve("agents/agent-1/workspace/review"));
         WorkArea outputArea = context.workAreaService()
             .markDirectory(WorkspaceOwnerType.AGENT, "agent-1", "review", "Review");
 
@@ -203,7 +226,7 @@ class AssignmentContextServiceTest {
     @Test
     void assignmentCreationValidatesDirectOutputDirectory() throws Exception {
         Context context = context();
-        Files.createDirectories(tempDir.resolve("agents/agent-1/workspace/manual-out"));
+        Files.createDirectories(tempDir.resolve("workspace/agent-1/manual-out"));
 
         WorkAssignment assignment = context.assignmentService().create(new AssignmentRequest(
             "agent-1", null, null, AssignmentType.REPORT, 1, null,

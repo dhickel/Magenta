@@ -61,7 +61,7 @@ class PlanRepositoryTest {
         repository.saveDefinition(def);
 
         PlanRun run = new PlanRun(
-            "run-1", "task-3", PlanRunStatus.RUNNING,
+            "run-1", "task-3", "Weekly research run", PlanRunStatus.RUNNING,
             Map.of("topic", "test"), Map.of(), def,
             null, null, null,
             List.of("Started"), List.of(), List.of(),
@@ -72,6 +72,7 @@ class PlanRepositoryTest {
 
         PlanRun saved = repository.findRun("run-1").orElseThrow();
         assertThat(saved.planSnapshot().title()).isEqualTo("Run Task");
+        assertThat(saved.runDisplayName()).isEqualTo("Weekly research run");
         assertThat(saved.inputValues()).containsEntry("topic", "test");
         assertThat(saved.status()).isEqualTo(PlanRunStatus.RUNNING);
     }

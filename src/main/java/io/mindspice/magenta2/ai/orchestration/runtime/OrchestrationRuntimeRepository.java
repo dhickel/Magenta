@@ -134,13 +134,13 @@ public class OrchestrationRuntimeRepository {
             """
                 insert into work_assignments (
                     id, agent_id, job_id, job_item_id, assignment_type, priority, status, model_override,
-                    workspace_id, project_id, effective_workspace_id, effective_workspace_kind,
+                    run_display_name, workspace_id, project_id, effective_workspace_id, effective_workspace_kind,
                     selected_work_area_id, output_route_type, output_work_area_id, output_direct_relative_path,
                     current_item_index, checkpoint_json, input_json, output_json, evidence_json,
                     error_text, lease_owner, lease_expires_at, last_progress_at, last_heartbeat_at,
                     created_at, updated_at, started_at, completed_at
                 )
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict(id) do update set
                     agent_id = excluded.agent_id,
                     job_id = excluded.job_id,
@@ -149,6 +149,7 @@ public class OrchestrationRuntimeRepository {
                     priority = excluded.priority,
                     status = excluded.status,
                     model_override = excluded.model_override,
+                    run_display_name = excluded.run_display_name,
                     workspace_id = excluded.workspace_id,
                     project_id = excluded.project_id,
                     effective_workspace_id = excluded.effective_workspace_id,
@@ -173,7 +174,7 @@ public class OrchestrationRuntimeRepository {
                 """,
             assignment.id(), assignment.agentId(), assignment.jobId(), assignment.jobItemId(),
             assignment.assignmentType().name(), assignment.priority(), assignment.status().name(),
-            assignment.modelOverride(), assignment.workspaceId(), assignment.projectId(),
+            assignment.modelOverride(), assignment.runDisplayName(), assignment.workspaceId(), assignment.projectId(),
             assignment.effectiveWorkspaceId(), assignment.effectiveWorkspaceKind(),
             assignment.selectedWorkAreaId(), assignment.outputRouteType(), assignment.outputWorkAreaId(),
             assignment.outputDirectRelativePath(), assignment.currentItemIndex(),
@@ -212,6 +213,7 @@ public class OrchestrationRuntimeRepository {
                     priority = ?,
                     status = ?,
                     model_override = ?,
+                    run_display_name = ?,
                     workspace_id = ?,
                     project_id = ?,
                     effective_workspace_id = ?,
@@ -232,8 +234,8 @@ public class OrchestrationRuntimeRepository {
                 where id = ? and status in (?, ?) and lease_owner = ?
                 """,
             assignment.agentId(), assignment.jobId(), assignment.jobItemId(), assignment.assignmentType().name(),
-            assignment.priority(), assignment.status().name(), assignment.modelOverride(), assignment.workspaceId(),
-            assignment.projectId(), assignment.effectiveWorkspaceId(), assignment.effectiveWorkspaceKind(),
+            assignment.priority(), assignment.status().name(), assignment.modelOverride(), assignment.runDisplayName(),
+            assignment.workspaceId(), assignment.projectId(), assignment.effectiveWorkspaceId(), assignment.effectiveWorkspaceKind(),
             assignment.currentItemIndex(), jsonOrNull(assignment.checkpoint()), jsonOrNull(assignment.input()),
             jsonOrNull(assignment.output()), jsonOrNull(assignment.evidence()), assignment.errorText(),
             assignment.leaseOwner(), instant(assignment.leaseExpiresAt()), instant(lastProgressAt),
@@ -967,7 +969,7 @@ public class OrchestrationRuntimeRepository {
     private WorkAssignment toAssignment(ResultSet rs) throws SQLException {
         return new WorkAssignment(
             rs.getString("id"), rs.getString("agent_id"), rs.getString("job_id"), rs.getString("job_item_id"),
-            AssignmentType.valueOf(rs.getString("assignment_type")), rs.getInt("priority"),
+            AssignmentType.valueOf(rs.getString("assignment_type")), rs.getString("run_display_name"), rs.getInt("priority"),
             OrchestrationStatus.valueOf(rs.getString("status")), rs.getString("model_override"),
             rs.getString("workspace_id"), rs.getString("project_id"), rs.getString("effective_workspace_id"),
             rs.getString("effective_workspace_kind"), rs.getString("selected_work_area_id"),
@@ -1130,6 +1132,7 @@ public class OrchestrationRuntimeRepository {
                 priority integer not null,
                 status text not null,
                 model_override text,
+                run_display_name text,
                 workspace_id text,
                 project_id text,
                 effective_workspace_id text,
@@ -1168,6 +1171,9 @@ public class OrchestrationRuntimeRepository {
         }
         if (!assignmentColumns.contains("project_id")) {
             jdbcTemplate.execute("alter table work_assignments add column project_id text");
+        }
+        if (!assignmentColumns.contains("run_display_name")) {
+            jdbcTemplate.execute("alter table work_assignments add column run_display_name text");
         }
         if (!assignmentColumns.contains("effective_workspace_id")) {
             jdbcTemplate.execute("alter table work_assignments add column effective_workspace_id text");

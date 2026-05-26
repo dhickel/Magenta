@@ -139,6 +139,7 @@ public class WorkflowRunner {
         WorkflowRun run = repository.saveRun(new WorkflowRun(
             runId,
             definition.id(),
+            currentContext == null ? null : currentContext.runDisplayName(),
             WorkflowRunStatus.RUNNING,
             0,
             nodeRuns,
@@ -225,7 +226,7 @@ public class WorkflowRunner {
         ));
 
         WorkflowRun resumed = repository.saveRun(new WorkflowRun(
-            run.id(), run.workflowId(), WorkflowRunStatus.RUNNING,
+            run.id(), run.workflowId(), run.runDisplayName(), WorkflowRunStatus.RUNNING,
             Math.max(0, index), updatedRuns,
             run.workspacePath(), run.outputDir(),
             run.agentId(), run.jobId(), run.jobAssignmentId(), run.jobRunId(),
@@ -262,7 +263,7 @@ public class WorkflowRunner {
             log.error("Workflow run {} failed", run.id(), e);
             WorkflowRun current = repository.findRun(run.id()).orElse(run);
             repository.saveRun(new WorkflowRun(
-                current.id(), current.workflowId(), WorkflowRunStatus.FAILED,
+                current.id(), current.workflowId(), current.runDisplayName(), WorkflowRunStatus.FAILED,
                 current.currentNodeIndex(), current.nodeRuns(),
                 current.workspacePath(), current.outputDir(),
                 current.agentId(), current.jobId(), current.jobAssignmentId(), current.jobRunId(),
@@ -707,6 +708,7 @@ public class WorkflowRunner {
         WorkflowRun persisted = repository.saveRun(new WorkflowRun(
             base.id(),
             base.workflowId(),
+            base.runDisplayName(),
             status,
             currentNodeIndex(orderedRuns),
             orderedRuns,

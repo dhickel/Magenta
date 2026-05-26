@@ -13,6 +13,7 @@ import java.util.Map;
 public record WorkflowRun(
     String id,
     String workflowId,
+    String runDisplayName,
     WorkflowRunStatus status,
     int currentNodeIndex,
     List<WorkflowNodeRun> nodeRuns,
@@ -69,7 +70,7 @@ public record WorkflowRun(
         Instant startedAt,
         Instant completedAt
     ) {
-        this(id, workflowId, status, currentNodeIndex, nodeRuns, workspacePath, outputDir,
+        this(id, workflowId, null, status, currentNodeIndex, nodeRuns, workspacePath, outputDir,
             null, null, null, null, null, null, null,
             workflowSnapshot, finalOutputs, artifactIds, finalMessage, errorText,
             createdAt, updatedAt, startedAt, completedAt);
@@ -95,10 +96,40 @@ public record WorkflowRun(
         Instant startedAt,
         Instant completedAt
     ) {
-        this(id, workflowId, status, currentNodeIndex, nodeRuns,
+        this(id, workflowId, null, status, currentNodeIndex, nodeRuns,
             workspacePath, outputDir, null, null, null, null, null, null, null, workflowSnapshot,
             Map.of(), List.of(), finalMessage, errorText,
             createdAt, updatedAt, startedAt, completedAt);
+    }
+
+    public WorkflowRun(
+        String id,
+        String workflowId,
+        WorkflowRunStatus status,
+        int currentNodeIndex,
+        List<WorkflowNodeRun> nodeRuns,
+        String workspacePath,
+        String outputDir,
+        String agentId,
+        String jobId,
+        String jobAssignmentId,
+        String jobRunId,
+        String projectId,
+        String workspaceId,
+        String runType,
+        WorkflowDefinition workflowSnapshot,
+        Map<String, Object> finalOutputs,
+        List<String> artifactIds,
+        String finalMessage,
+        String errorText,
+        Instant createdAt,
+        Instant updatedAt,
+        Instant startedAt,
+        Instant completedAt
+    ) {
+        this(id, workflowId, null, status, currentNodeIndex, nodeRuns, workspacePath, outputDir,
+            agentId, jobId, jobAssignmentId, jobRunId, projectId, workspaceId, runType, workflowSnapshot,
+            finalOutputs, artifactIds, finalMessage, errorText, createdAt, updatedAt, startedAt, completedAt);
     }
 
     public WorkflowNodeRun currentNodeRun() {

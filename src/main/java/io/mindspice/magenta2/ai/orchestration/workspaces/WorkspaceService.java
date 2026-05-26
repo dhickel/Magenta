@@ -56,27 +56,42 @@ public class WorkspaceService {
     public Workspace agentWorkspace(String agentId, String displayName) {
         PlainPathSegmentValidator.requirePlainSegment(agentId, "agentId");
         return repository.findByOwner(WorkspaceOwnerType.AGENT, agentId)
-            .orElseGet(() -> createWorkspace(WorkspaceOwnerType.AGENT, agentId, "agents/" + agentId + "/workspace", displayName));
+            .orElseGet(() -> createWorkspace(
+                WorkspaceOwnerType.AGENT,
+                agentId,
+                WorkspacePathLayout.relativeString(WorkspacePathLayout.agentWorkspaceRoot(agentId)),
+                displayName
+            ));
     }
 
     public Workspace jobWorkspace(String jobId, String displayName) {
         PlainPathSegmentValidator.requirePlainSegment(jobId, "jobId");
         return repository.findByOwner(WorkspaceOwnerType.JOB, jobId)
-            .orElseGet(() -> createWorkspace(WorkspaceOwnerType.JOB, jobId, "jobs/" + jobId, displayName));
+            .orElseGet(() -> createWorkspace(
+                WorkspaceOwnerType.JOB,
+                jobId,
+                WorkspacePathLayout.relativeString(WorkspacePathLayout.legacyJobWorkspace(jobId)),
+                displayName
+            ));
     }
 
     public Workspace projectWorkspace(String projectId, String displayName) {
         PlainPathSegmentValidator.requirePlainSegment(projectId, "projectId");
         return repository.findByOwner(WorkspaceOwnerType.PROJECT, projectId)
             .orElseGet(() -> createWorkspace(
-                WorkspaceOwnerType.PROJECT, projectId, "projects/" + projectId + "/workspace", displayName
+                WorkspaceOwnerType.PROJECT,
+                projectId,
+                WorkspacePathLayout.relativeString(WorkspacePathLayout.projectRoot(projectId)),
+                displayName
             ));
     }
 
     public Path assignmentPath(String agentId, String assignmentId) {
         PlainPathSegmentValidator.requirePlainSegment(agentId, "agentId");
         PlainPathSegmentValidator.requirePlainSegment(assignmentId, "assignmentId");
-        return confined("agents/" + agentId + "/work/" + assignmentId);
+        return confined(WorkspacePathLayout.relativeString(
+            WorkspacePathLayout.agentWork(agentId).resolve(assignmentId)
+        ));
     }
 
     public List<WorkspaceLink> links(String workspaceId) {
@@ -119,11 +134,11 @@ public class WorkspaceService {
 
     public Path archiveAgentWorkspaceData(String agentId) {
         PlainPathSegmentValidator.requirePlainSegment(agentId, "agentId");
-        Path source = confined("agents/" + agentId);
+        Path source = confined(WorkspacePathLayout.relativeString(WorkspacePathLayout.agentWorkspaceRoot(agentId)));
         if (!Files.exists(source)) {
             return source;
         }
-        Path archiveRoot = confined("agents/.archive");
+        Path archiveRoot = confined(WorkspacePathLayout.WORKSPACE + "/.archive");
         try {
             Files.createDirectories(archiveRoot);
             String stamp = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").format(
@@ -138,7 +153,7 @@ public class WorkspaceService {
 
     public void deleteAgentWorkspaceData(String agentId) {
         PlainPathSegmentValidator.requirePlainSegment(agentId, "agentId");
-        Path source = confined("agents/" + agentId);
+        Path source = confined(WorkspacePathLayout.relativeString(WorkspacePathLayout.agentWorkspaceRoot(agentId)));
         if (!Files.exists(source)) {
             return;
         }

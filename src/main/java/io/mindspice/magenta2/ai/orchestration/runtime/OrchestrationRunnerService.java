@@ -301,6 +301,7 @@ public class OrchestrationRunnerService {
             projectId,
             firstText(leased.effectiveWorkspaceId(), leased.workspaceId()),
             leased.assignmentType().name(),
+            leased.runDisplayName(),
             null, // hostWorkspacePath — resolved by PlanService during startRun
             null, // hostOutputPath — resolved by PlanService during startRun
             null,

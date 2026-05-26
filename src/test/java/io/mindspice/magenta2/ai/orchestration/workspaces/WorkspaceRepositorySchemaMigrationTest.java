@@ -59,7 +59,8 @@ class WorkspaceRepositorySchemaMigrationTest {
         new PlanRepository(jdbc, new ObjectMapper());
         new WorkspaceRepository(jdbc);
 
-        assertThat(columns(jdbc, "plan_runs")).isEqualTo(planRunColumns);
+        assertThat(columns(jdbc, "plan_runs")).containsAll(planRunColumns);
+        assertThat(columns(jdbc, "plan_runs")).contains("run_display_name");
         assertThat(columns(jdbc, "run_output_artifacts")).isEqualTo(artifactColumns);
         assertThat(foreignKeyTargets(jdbc, "run_output_artifacts")).doesNotContain("plan_runs");
     }
@@ -152,6 +153,26 @@ class WorkspaceRepositorySchemaMigrationTest {
         assertThat(columns(jdbc, "agent_inbox_messages")).isEqualTo(runtimeInboxColumns);
         assertThat(indexes(jdbc, "inbox_messages")).contains("idx_inbox_messages_to");
         assertThat(indexes(jdbc, "agent_inbox_messages")).contains("idx_agent_inbox_messages_to");
+    }
+
+    @Test
+    void repositoriesAddRunDisplayNameColumnsCompatibly() throws Exception {
+        JdbcTemplate jdbc = jdbc();
+        ObjectMapper mapper = new ObjectMapper();
+
+        applySchema(jdbc);
+
+        assertThat(columns(jdbc, "work_assignments")).doesNotContain("run_display_name");
+        assertThat(columns(jdbc, "plan_runs")).doesNotContain("run_display_name");
+        assertThat(columns(jdbc, "workflow_runs")).doesNotContain("run_display_name");
+
+        new OrchestrationRuntimeRepository(jdbc, mapper);
+        new PlanRepository(jdbc, mapper);
+        new WorkflowRepository(jdbc, mapper);
+
+        assertThat(columns(jdbc, "work_assignments")).contains("run_display_name");
+        assertThat(columns(jdbc, "plan_runs")).contains("run_display_name");
+        assertThat(columns(jdbc, "workflow_runs")).contains("run_display_name");
     }
 
     @Test

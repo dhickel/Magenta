@@ -23,8 +23,8 @@ class WorkspacePathSegmentValidationTest {
 
         Workspace workspace = service.agentWorkspace("agent-1", "Agent One");
 
-        assertThat(workspace.rootRelativePath()).isEqualTo("agents/agent-1/workspace");
-        assertThat(Files.isDirectory(tempDir.resolve("agents/agent-1/workspace"))).isTrue();
+        assertThat(workspace.rootRelativePath()).isEqualTo("workspace/agent-1");
+        assertThat(Files.isDirectory(tempDir.resolve("workspace/agent-1"))).isTrue();
     }
 
     @Test
@@ -71,7 +71,7 @@ class WorkspacePathSegmentValidationTest {
         WorkspaceDirectoryService service = new WorkspaceDirectoryService(aiConfig());
 
         assertThat(service.agentWorkspace("agent-1"))
-            .isEqualTo(tempDir.resolve("agents/agent-1/workspace").toRealPath());
+            .isEqualTo(tempDir.resolve("workspace/agent-1").toRealPath());
         for (String invalid : invalidSegments()) {
             assertThatThrownBy(() -> service.agentWorkspace(invalid))
                 .as("invalid directory agent id %s", invalid)
@@ -131,7 +131,7 @@ class WorkspacePathSegmentValidationTest {
         assertThat(effective.agentId()).isEqualTo("agent-1");
         assertThat(effective.projectId()).isEqualTo("project-1");
         assertThat(effective.workspaceId()).isNotBlank();
-        assertThat(effective.root()).isEqualTo(tempDir.resolve("projects/project-1/workspace").toRealPath());
+        assertThat(effective.root()).isEqualTo(tempDir.resolve("projects/project-1").toRealPath());
         assertThat(effective.workDir()).isEqualTo(effective.root().resolve("work"));
         assertThat(effective.outputsDir()).isEqualTo(effective.root().resolve("outputs"));
         assertThat(effective.runsDir()).isEqualTo(effective.root().resolve("runs"));
@@ -153,7 +153,7 @@ class WorkspacePathSegmentValidationTest {
         assertThat(effective.ownerType()).isEqualTo(WorkspaceOwnerType.AGENT);
         assertThat(effective.ownerId()).isEqualTo("agent-1");
         assertThat(effective.projectId()).isNull();
-        assertThat(effective.root()).isEqualTo(tempDir.resolve("agents/agent-1/workspace").toRealPath());
+        assertThat(effective.root()).isEqualTo(tempDir.resolve("workspace/agent-1").toRealPath());
         assertThat(workspaceService.get(effective.workspaceId()).ownerType()).isEqualTo(WorkspaceOwnerType.AGENT);
     }
 
@@ -162,7 +162,7 @@ class WorkspacePathSegmentValidationTest {
         WorkspaceDirectoryService service = new WorkspaceDirectoryService(aiConfig());
         Path root = service.agentWorkspaceRoot("agent-1");
 
-        assertThat(root).isEqualTo(tempDir.resolve("agents/agent-1/workspace").toRealPath());
+        assertThat(root).isEqualTo(tempDir.resolve("workspace/agent-1").toRealPath());
         assertThat(service.workDir(root)).isEqualTo(root.resolve("work"));
         assertThat(service.outputsDir(root)).isEqualTo(root.resolve("outputs"));
         assertThat(service.runsDir(root)).isEqualTo(root.resolve("runs"));
@@ -175,6 +175,29 @@ class WorkspacePathSegmentValidationTest {
         assertThatThrownBy(() -> service.workDir(tempDir.resolve("../escape").normalize()))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("workspaceRoot");
+    }
+
+    @Test
+    void workspacePathLayoutProducesTargetRelativePathsAndValidatesSegments() {
+        assertThat(WorkspacePathLayout.relativeString(WorkspacePathLayout.agentWorkspaceRoot("agent-1")))
+            .isEqualTo("workspace/agent-1");
+        assertThat(WorkspacePathLayout.relativeString(WorkspacePathLayout.agentHome("agent-1")))
+            .isEqualTo("workspace/agent-1/home");
+        assertThat(WorkspacePathLayout.relativeString(WorkspacePathLayout.workArea("agent-1", "area-1")))
+            .isEqualTo("workspace/agent-1/workareas/area-1");
+        assertThat(WorkspacePathLayout.relativeString(WorkspacePathLayout.runOutputs("agent-1", "run-1")))
+            .isEqualTo("workspace/agent-1/runs/run-1/outputs");
+        assertThat(WorkspacePathLayout.relativeString(WorkspacePathLayout.chatFiles("conversation-1")))
+            .isEqualTo("chats/conversation-1/files");
+        assertThat(WorkspacePathLayout.relativeString(WorkspacePathLayout.projectRoot("project-1")))
+            .isEqualTo("projects/project-1");
+
+        assertThatThrownBy(() -> WorkspacePathLayout.agentWorkspaceRoot("../agent"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("agentWorkspaceId");
+        assertThatThrownBy(() -> WorkspacePathLayout.workArea("agent-1", "area/bad"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("workAreaId");
     }
 
     @Test

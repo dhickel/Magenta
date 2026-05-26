@@ -11,6 +11,7 @@ import java.util.Map;
 public record PlanRun(
     String id,
     String planId,
+    String runDisplayName,
     PlanRunStatus status,
     Map<String, Object> inputValues,
     Map<String, Object> outputValues,
@@ -36,10 +37,35 @@ public record PlanRun(
         deliverableEvidence = deliverableEvidence == null ? List.of() : List.copyOf(deliverableEvidence);
     }
 
+    public PlanRun(
+        String id,
+        String planId,
+        PlanRunStatus status,
+        Map<String, Object> inputValues,
+        Map<String, Object> outputValues,
+        PlanDefinition planSnapshot,
+        String workspaceId,
+        String outputDirectory,
+        String tempWorkspacePath,
+        List<String> executionEvidence,
+        List<String> validationFeedback,
+        List<String> deliverableEvidence,
+        String finalMessage,
+        String errorText,
+        Instant createdAt,
+        Instant updatedAt,
+        Instant startedAt,
+        Instant completedAt
+    ) {
+        this(id, planId, null, status, inputValues, outputValues, planSnapshot, workspaceId, outputDirectory,
+            tempWorkspacePath, executionEvidence, validationFeedback, deliverableEvidence, finalMessage, errorText,
+            createdAt, updatedAt, startedAt, completedAt);
+    }
+
     // --- Wither helpers ---
 
     public PlanRun withStatus(PlanRunStatus newStatus) {
-        return new PlanRun(id, planId, newStatus, inputValues, outputValues, planSnapshot,
+        return new PlanRun(id, planId, runDisplayName, newStatus, inputValues, outputValues, planSnapshot,
             workspaceId, outputDirectory, tempWorkspacePath,
             executionEvidence, validationFeedback,
             deliverableEvidence, finalMessage, errorText,
@@ -47,7 +73,7 @@ public record PlanRun(
     }
 
     public PlanRun withOutputValues(Map<String, Object> newOutputValues) {
-        return new PlanRun(id, planId, status, inputValues, newOutputValues, planSnapshot,
+        return new PlanRun(id, planId, runDisplayName, status, inputValues, newOutputValues, planSnapshot,
             workspaceId, outputDirectory, tempWorkspacePath,
             executionEvidence, validationFeedback,
             deliverableEvidence, finalMessage, errorText,
@@ -55,7 +81,7 @@ public record PlanRun(
     }
 
     public PlanRun withExecutionEvidence(List<String> newEvidence) {
-        return new PlanRun(id, planId, status, inputValues, outputValues, planSnapshot,
+        return new PlanRun(id, planId, runDisplayName, status, inputValues, outputValues, planSnapshot,
             workspaceId, outputDirectory, tempWorkspacePath,
             newEvidence, validationFeedback,
             deliverableEvidence, finalMessage, errorText,
@@ -63,7 +89,7 @@ public record PlanRun(
     }
 
     public PlanRun withValidationFeedback(List<String> newFeedback) {
-        return new PlanRun(id, planId, status, inputValues, outputValues, planSnapshot,
+        return new PlanRun(id, planId, runDisplayName, status, inputValues, outputValues, planSnapshot,
             workspaceId, outputDirectory, tempWorkspacePath,
             executionEvidence, newFeedback,
             deliverableEvidence, finalMessage, errorText,
@@ -71,7 +97,7 @@ public record PlanRun(
     }
 
     public PlanRun withFinalMessage(String newFinalMessage) {
-        return new PlanRun(id, planId, status, inputValues, outputValues, planSnapshot,
+        return new PlanRun(id, planId, runDisplayName, status, inputValues, outputValues, planSnapshot,
             workspaceId, outputDirectory, tempWorkspacePath,
             executionEvidence, validationFeedback,
             deliverableEvidence, newFinalMessage, errorText,
@@ -79,7 +105,7 @@ public record PlanRun(
     }
 
     public PlanRun withErrorText(String newErrorText) {
-        return new PlanRun(id, planId, status, inputValues, outputValues, planSnapshot,
+        return new PlanRun(id, planId, runDisplayName, status, inputValues, outputValues, planSnapshot,
             workspaceId, outputDirectory, tempWorkspacePath,
             executionEvidence, validationFeedback,
             deliverableEvidence, finalMessage, newErrorText,
@@ -87,7 +113,7 @@ public record PlanRun(
     }
 
     public PlanRun withStartedAt(Instant newStartedAt) {
-        return new PlanRun(id, planId, status, inputValues, outputValues, planSnapshot,
+        return new PlanRun(id, planId, runDisplayName, status, inputValues, outputValues, planSnapshot,
             workspaceId, outputDirectory, tempWorkspacePath,
             executionEvidence, validationFeedback,
             deliverableEvidence, finalMessage, errorText,
@@ -95,7 +121,7 @@ public record PlanRun(
     }
 
     public PlanRun withCompletedAt(Instant newCompletedAt) {
-        return new PlanRun(id, planId, status, inputValues, outputValues, planSnapshot,
+        return new PlanRun(id, planId, runDisplayName, status, inputValues, outputValues, planSnapshot,
             workspaceId, outputDirectory, tempWorkspacePath,
             executionEvidence, validationFeedback,
             deliverableEvidence, finalMessage, errorText,
@@ -103,7 +129,7 @@ public record PlanRun(
     }
 
     public PlanRun withDeliverableEvidence(List<String> newDeliverableEvidence) {
-        return new PlanRun(id, planId, status, inputValues, outputValues, planSnapshot,
+        return new PlanRun(id, planId, runDisplayName, status, inputValues, outputValues, planSnapshot,
             workspaceId, outputDirectory, tempWorkspacePath,
             executionEvidence, validationFeedback,
             newDeliverableEvidence, finalMessage, errorText,

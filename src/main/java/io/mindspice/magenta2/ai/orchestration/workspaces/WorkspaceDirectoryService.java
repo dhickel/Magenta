@@ -5,7 +5,6 @@ import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.util.UUID;
 
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.core.util.PlainPathSegmentValidator;
@@ -19,18 +18,15 @@ import org.springframework.util.StringUtils;
  *
  * <h3>Layout</h3>
  * <ul>
- *   <li>Agent workspace: {@code data/agents/{agentId}/workspace}</li>
- *   <li>Durable workspace layout: {@code work/}, {@code outputs/}, {@code runs/}, {@code scratch/}</li>
- *   <li>Agent outputs: {@code data/agents/{agentId}/workspace/outputs/{slug}-{runId}/}</li>
- *   <li>Agent project links: {@code data/agents/{agentId}/workspace/projects/{projectId}}</li>
- *   <li>Agent scratch: {@code data/agents/{agentId}/workspace/scratch}</li>
- *   <li>Task temp: {@code data/runtime/task-runs/{runId}}</li>
+ *   <li>Agent workspace: {@code data/workspace/{agentWorkspaceId}}</li>
+ *   <li>Durable workspace layout: {@code work/}, {@code outputs/}, {@code runs/}</li>
+ *   <li>Agent outputs: {@code data/workspace/{agentWorkspaceId}/outputs/{slug}-{runId}/}</li>
+ *   <li>Agent project links: {@code data/workspace/{agentWorkspaceId}/projects/{projectId}}</li>
+ *   <li>Task temp compatibility: {@code data/runtime/task-runs/{runId}}</li>
  *   <li>Chat files: {@code data/chats/{conversationId}/files}</li>
- *   <li>Workflow temp: {@code data/runtime/workflow-runs/{runId}}</li>
- *   <li>Job workspace: {@code data/jobs/{jobId}/workspace}</li>
- *   <li>Job outputs: {@code data/jobs/{jobId}/outputs/{slug}-{runId}/}</li>
- *   <li>Persistent job assignment workspace: {@code <effective-workspace>/jobs/{assignmentId}}</li>
- *   <li>Project workspace: {@code data/projects/{projectId}/workspace}</li>
+ *   <li>Workflow temp compatibility: {@code data/runtime/workflow-runs/{runId}}</li>
+ *   <li>Legacy job workspace compatibility: {@code data/jobs/{jobId}/workspace}</li>
+ *   <li>Project workspace: {@code data/projects/{projectId}}</li>
  * </ul>
  */
 @Service
@@ -47,14 +43,14 @@ public class WorkspaceDirectoryService {
     // ── Agent ──
 
     /**
-     * Agent execution root: {@code agents/<id>/workspace}.
+     * Agent execution root: {@code workspace/<id>}.
      * Does not auto-migrate legacy directories; call
      * {@link #migrateLegacyAgentDirs(String)} explicitly when a warm
      * data root still contains pre-workspace directories.
      */
     public Path agentWorkspace(String agentId) {
         requireId(agentId, "agentId");
-        return ensureDir(confined("agents/" + agentId + "/workspace"));
+        return ensureDir(confined(WorkspacePathLayout.agentWorkspaceRoot(agentId)));
     }
 
     /**
@@ -64,7 +60,7 @@ public class WorkspaceDirectoryService {
     @Deprecated
     public Path agentHome(String agentId) {
         requireId(agentId, "agentId");
-        return ensureDir(confined("agents/" + agentId + "/home"));
+        return ensureDir(confined(WorkspacePathLayout.legacyAgentHome(agentId)));
     }
 
     public Path agentWorkspaceRoot(String agentId) {
@@ -73,33 +69,33 @@ public class WorkspaceDirectoryService {
 
     public Path agentWorkspaceOutputs(String agentId) {
         requireId(agentId, "agentId");
-        return ensureDir(confined("agents/" + agentId + "/workspace/outputs"));
+        return ensureDir(confined(WorkspacePathLayout.agentFinalOutputs(agentId)));
     }
 
     public Path agentProjectLinks(String agentId) {
         requireId(agentId, "agentId");
-        return ensureDir(confined("agents/" + agentId + "/workspace/projects"));
+        return ensureDir(confined(WorkspacePathLayout.agentProjectLinks(agentId)));
     }
 
     public Path agentScratch(String agentId) {
         requireId(agentId, "agentId");
-        return ensureDir(confined("agents/" + agentId + "/workspace/scratch"));
+        return ensureDir(confined(WorkspacePathLayout.agentWorkspaceRoot(agentId).resolve(WorkspacePathLayout.LEGACY_SCRATCH)));
     }
 
     public Path workDir(Path workspaceRoot) {
-        return ensureDir(confinedWorkspaceChild(workspaceRoot, "work"));
+        return ensureDir(confinedWorkspaceChild(workspaceRoot, WorkspacePathLayout.WORK));
     }
 
     public Path outputsDir(Path workspaceRoot) {
-        return ensureDir(confinedWorkspaceChild(workspaceRoot, "outputs"));
+        return ensureDir(confinedWorkspaceChild(workspaceRoot, WorkspacePathLayout.OUTPUTS));
     }
 
     public Path runsDir(Path workspaceRoot) {
-        return ensureDir(confinedWorkspaceChild(workspaceRoot, "runs"));
+        return ensureDir(confinedWorkspaceChild(workspaceRoot, WorkspacePathLayout.RUNS));
     }
 
     public Path scratchDir(Path workspaceRoot) {
-        return ensureDir(confinedWorkspaceChild(workspaceRoot, "scratch"));
+        return ensureDir(confinedWorkspaceChild(workspaceRoot, WorkspacePathLayout.LEGACY_SCRATCH));
     }
 
     public Path taskOutput(Path workspaceRoot, String taskId, String runId) {
@@ -132,18 +128,18 @@ public class WorkspaceDirectoryService {
     @Deprecated
     public Path agentOutputRoot(String agentId) {
         requireId(agentId, "agentId");
-        return ensureDir(confined("agents/" + agentId + "/outputs"));
+        return ensureDir(confined(WorkspacePathLayout.legacyAgentOutputs(agentId)));
     }
 
     /**
      * Output directory for an agent's run. Never deleted after terminal state.
-     * Layout: data/agents/{agentId}/workspace/outputs/{slug}-{runId}/
+     * Layout: data/workspace/{agentId}/outputs/{slug}-{runId}/
      */
     public Path agentOutput(String agentId, String planSlug, String runId) {
         requireId(agentId, "agentId");
         requireId(runId, "runId");
         String slug = StringUtils.hasText(planSlug) ? sanitize(planSlug) : "run";
-        return ensureDir(confined("agents/" + agentId + "/workspace/outputs/" + slug + "-" + runId));
+        return ensureDir(confined(WorkspacePathLayout.agentFinalOutputs(agentId).resolve(slug + "-" + runId)));
     }
 
     /**
@@ -153,19 +149,25 @@ public class WorkspaceDirectoryService {
      */
     public void migrateLegacyAgentDirs(String agentId) {
         requireId(agentId, "agentId");
-        Path workspaceDir = confined("agents/" + agentId + "/workspace");
+        Path workspaceDir = confined(WorkspacePathLayout.agentWorkspaceRoot(agentId));
         if (Files.exists(workspaceDir)) {
             return; // already migrated
         }
-        Path legacyHome = confined("agents/" + agentId + "/home");
-        Path legacyOutputs = confined("agents/" + agentId + "/outputs");
+        Path legacyWorkspace = confined(WorkspacePathLayout.legacyAgentWorkspaceRoot(agentId));
+        Path legacyHome = confined(WorkspacePathLayout.legacyAgentHome(agentId));
+        Path legacyOutputs = confined(WorkspacePathLayout.legacyAgentOutputs(agentId));
         try {
+            if (Files.isDirectory(legacyWorkspace)) {
+                Files.createDirectories(workspaceDir.getParent());
+                Files.move(legacyWorkspace, workspaceDir);
+                return;
+            }
             if (Files.isDirectory(legacyHome)) {
                 Files.createDirectories(workspaceDir.getParent());
                 Files.move(legacyHome, workspaceDir);
             }
             if (Files.isDirectory(legacyOutputs)) {
-                Path wsOutputs = workspaceDir.resolve("outputs");
+                Path wsOutputs = workspaceDir.resolve(WorkspacePathLayout.OUTPUTS);
                 if (!Files.exists(wsOutputs)) {
                     Files.createDirectories(wsOutputs.getParent());
                     Files.move(legacyOutputs, wsOutputs);
@@ -185,7 +187,7 @@ public class WorkspaceDirectoryService {
      */
     public Path taskTemp(String runId) {
         requireId(runId, "runId");
-        return ensureDir(confined("runtime/task-runs/" + runId));
+        return ensureDir(confined(WorkspacePathLayout.legacyTaskRun(runId)));
     }
 
     /**
@@ -194,7 +196,7 @@ public class WorkspaceDirectoryService {
      */
     public String taskTempPath(String runId) {
         requireId(runId, "runId");
-        return confined("runtime/task-runs/" + runId).toString();
+        return confined(WorkspacePathLayout.legacyTaskRun(runId)).toString();
     }
 
     /**
@@ -204,7 +206,7 @@ public class WorkspaceDirectoryService {
      */
     public Path workflowTemp(String runId) {
         requireId(runId, "runId");
-        return ensureDir(confined("runtime/workflow-runs/" + runId));
+        return ensureDir(confined(WorkspacePathLayout.legacyWorkflowRun(runId)));
     }
 
     /**
@@ -213,28 +215,28 @@ public class WorkspaceDirectoryService {
      */
     public Path chatFiles(String conversationId) {
         requireId(conversationId, "conversationId");
-        return ensureDir(confined("chats/" + conversationId + "/files"));
+        return ensureDir(confined(WorkspacePathLayout.chatFiles(conversationId)));
     }
 
     // ── Job ──
 
     public Path jobWorkspace(String jobId) {
         requireId(jobId, "jobId");
-        return ensureDir(confined("jobs/" + jobId + "/workspace"));
+        return ensureDir(confined(WorkspacePathLayout.legacyJobWorkspace(jobId)));
     }
 
     public Path jobOutput(String jobId, String planSlug, String runId) {
         requireId(jobId, "jobId");
         requireId(runId, "runId");
         String slug = StringUtils.hasText(planSlug) ? sanitize(planSlug) : "run";
-        return ensureDir(confined("jobs/" + jobId + "/outputs/" + slug + "-" + runId));
+        return ensureDir(confined(WorkspacePathLayout.legacyJobOutputRoot(jobId).resolve(slug + "-" + runId)));
     }
 
     // ── Project ──
 
     public Path projectWorkspace(String projectId) {
         requireId(projectId, "projectId");
-        return ensureDir(confined("projects/" + projectId + "/workspace"));
+        return ensureDir(confined(WorkspacePathLayout.projectRoot(projectId)));
     }
 
     public Path projectWorkspaceRoot(String projectId) {
@@ -251,7 +253,7 @@ public class WorkspaceDirectoryService {
         requireId(projectId, "projectId");
         try {
             Path assignmentWorkspace = existingConfinedDirectory(assignmentWorkspacePath, "assignment workspace");
-            Path projectsDir = ensureDir(confinedChild(assignmentWorkspace, "projects"));
+            Path projectsDir = ensureDir(confinedChild(assignmentWorkspace, WorkspacePathLayout.PROJECTS));
             Path link = confinedChild(projectsDir, projectId);
             Path target = projectWorkspace(projectId).toRealPath();
             removeExistingProjectLink(link, target);
@@ -271,7 +273,7 @@ public class WorkspaceDirectoryService {
         requireId(projectId, "projectId");
         try {
             Path assignmentWorkspace = existingConfinedDirectory(assignmentWorkspacePath, "assignment workspace");
-            Path projectsDir = confinedChild(assignmentWorkspace, "projects");
+            Path projectsDir = confinedChild(assignmentWorkspace, WorkspacePathLayout.PROJECTS);
             Path link = confinedChild(projectsDir, projectId);
             if (!Files.exists(link, LinkOption.NOFOLLOW_LINKS)) {
                 throw new IllegalArgumentException("Project workspace is not materialized for this assignment: " + projectId);
@@ -297,7 +299,7 @@ public class WorkspaceDirectoryService {
             return;
         }
         try {
-            Path projectsDir = confinedChild(assignmentWorkspace, "projects");
+            Path projectsDir = confinedChild(assignmentWorkspace, WorkspacePathLayout.PROJECTS);
             Path link = confinedChild(projectsDir, projectId);
             if (Files.isSymbolicLink(link)) {
                 Files.deleteIfExists(link);
@@ -353,7 +355,7 @@ public class WorkspaceDirectoryService {
             return;
         }
         Path normalized = dir.toRealPath();
-        Path runtimeDir = dataRoot.resolve("runtime").toRealPath();
+        Path runtimeDir = dataRoot.resolve(WorkspacePathLayout.LEGACY_RUNTIME).toRealPath();
         if (!normalized.startsWith(runtimeDir)) {
             throw new IllegalArgumentException(
                 "Refusing to delete non-temp directory: " + normalized);
@@ -377,13 +379,16 @@ public class WorkspaceDirectoryService {
     }
 
     private Path confined(String relativePath) {
-        Path relative = Path.of(relativePath);
+        return confined(Path.of(relativePath));
+    }
+
+    private Path confined(Path relative) {
         if (relative.isAbsolute()) {
             throw new IllegalArgumentException("Workspace path must be relative to data root");
         }
         Path resolved = dataRoot.resolve(relative).normalize();
         if (!resolved.startsWith(dataRoot)) {
-            throw new IllegalArgumentException("Workspace path escapes data root: " + relativePath);
+            throw new IllegalArgumentException("Workspace path escapes data root: " + relative);
         }
         return resolved;
     }
