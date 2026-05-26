@@ -55,11 +55,16 @@ import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowService;
 import io.mindspice.magenta2.ai.orchestration.workflow.WorkflowValidator;
 import io.mindspice.magenta2.ai.orchestration.workspaces.LeaseMode;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.RootRelativePathService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.AgentWorkspaceStatus;
 import io.mindspice.magenta2.ai.orchestration.workspaces.AgentWorkspaceStatusService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaExplorerService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaRepository;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLease;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLink;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLinkType;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceOwnerType;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceRepository;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
@@ -221,6 +226,37 @@ class OrchestrationControllerTest {
         );
     }
 
+    private static OrchestrationController controllerWithProjectFiles(
+        ProjectService projectService,
+        WorkAreaService workAreaService,
+        WorkAreaExplorerService workAreaExplorerService
+    ) {
+        return new OrchestrationController(
+            new StubChatService(),
+            projectService,
+            new StubJobService(),
+            new StubAgentProfileService(),
+            new StubInboxService(),
+            new StubRuntimeInboxService(),
+            new StubOutputArtifactService(),
+            new StubRuntimeSettingsService(),
+            workspaceService(),
+            emptyProvider(),
+            providerOf(workAreaService),
+            providerOf(workAreaExplorerService),
+            new StubPlanService(),
+            new StubAssignmentService(),
+            new StubScheduleService(),
+            new StubEventReactionService(),
+            new StubWorkflowService(),
+            selectorLookup(),
+            new EntitySelectorComponents(),
+            emptyProvider(),
+            true,
+            true
+        );
+    }
+
     private static OrchestrationController controllerWithRuntimeSettingsService(RuntimeSettingsService runtimeSettingsService) {
         return new OrchestrationController(
             new StubChatService(),
@@ -327,7 +363,7 @@ class OrchestrationControllerTest {
     void dashboardRendersFullShellWithSidebar() {
         String html = controller().dashboard(null, null);
 
-        assertThat(html).contains("/css/orchestration.css?v=12");
+        assertThat(html).contains("/css/orchestration.css?v=13");
         assertThat(html).doesNotContain("/js/alpha-security.js?v=1");
         assertThat(html).contains("Magenta Operations");
         assertThat(html).contains("Dashboard");
@@ -629,7 +665,10 @@ class OrchestrationControllerTest {
         assertThat(validationHtml).contains("at least one executable node");
         assertThat(validationHtml).doesNotContain("Valid: no errors found.");
 
-        String submitHtml = ctrl.workflowSubmitToAgent("workflow-draft", Map.of("agentId", "agent-1"));
+        String submitHtml = ctrl.workflowSubmitToAgent("workflow-draft", Map.of(
+            "agentId", "agent-1",
+            "runDisplayName", "Draft workflow run"
+        ));
         assertThat(submitHtml).contains("Validation failed");
         assertThat(submitHtml).contains("at least one executable node");
         assertThat(submitHtml).doesNotContain("Assignment Created");
@@ -778,7 +817,7 @@ class OrchestrationControllerTest {
 
         // Has submit and delete buttons
         assertThat(html).contains("Submit to Agent");
-        assertThat(html).contains("Persistent job workspace");
+        assertThat(html).doesNotContain("Persistent").doesNotContain("job" + " workspace");
         assertThat(html).contains("Delete");
 
         // No Run button
@@ -821,7 +860,7 @@ class OrchestrationControllerTest {
         String html = controller().jobSubmitForm("job-abc");
 
         assertThat(html).contains("Saved project:");
-        assertThat(html).contains("Persistent job workspace:");
+        assertThat(html).doesNotContain("Persistent").doesNotContain("job" + " workspace:");
         assertThat(html).contains("Project Override");
         assertThat(html).contains("Compatibility Workspace");
         assertThat(html).contains("name=\"projectId\"");
@@ -895,6 +934,13 @@ class OrchestrationControllerTest {
         assertThat(html).contains("Agents");
         assertThat(html).contains("Active Jobs");
         assertThat(html).contains("Recent Outputs");
+        assertThat(html).contains("Project Directory");
+        assertThat(html).contains("hx-target=\"#project-network-section\"");
+        assertThat(html).contains("hx-target=\"#project-agents-section\"");
+        assertThat(html).contains("hx-target=\"#project-jobs-section\"");
+        assertThat(html).contains("hx-target=\"#project-outputs-section\"");
+        assertThat(html).contains("hx-get=\"/projects/_detail/proj-xyz/files\"");
+        assertThat(html).contains("hx-target=\"#project-files-section\"");
 
         // Has delete button
         assertThat(html).contains("Delete");
@@ -908,6 +954,52 @@ class OrchestrationControllerTest {
         assertThat(html).contains("Add Member");
         assertThat(html).contains("hx-delete=\"/projects/_detail/proj-xyz/agents/agent-1\"");
         assertThat(html).contains("Remove");
+    }
+
+    @Test
+    void projectFilesFragmentBrowsesAndEditsActualProjectRoot() throws Exception {
+        Path dataRoot = Files.createTempDirectory("project-root-browser");
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
+        AiConfig config = new AiConfig(null, null, 10, dataRoot, Map.of(), Map.of());
+        WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(config);
+        WorkspaceService workspaceService = new WorkspaceService(
+            new WorkspaceRepository(jdbc),
+            config,
+            new RootRelativePathService(directoryService)
+        );
+        WorkAreaService workAreaService = new WorkAreaService(
+            new WorkAreaRepository(jdbc),
+            workspaceService,
+            directoryService
+        );
+        WorkAreaExplorerService explorerService = new WorkAreaExplorerService(workAreaService);
+        Path projectRoot = workAreaService.ownerRoot(WorkspaceOwnerType.PROJECT, "proj-xyz");
+        Files.writeString(projectRoot.resolve("root-note.txt"), "before", StandardCharsets.UTF_8);
+
+        OrchestrationController ctrl = controllerWithProjectFiles(
+            new StubProjectService(),
+            workAreaService,
+            explorerService
+        );
+
+        String listHtml = ctrl.projectFilesFragment("proj-xyz", ".");
+        assertThat(listHtml).contains("root-note.txt");
+        assertThat(listHtml).doesNotContain("Path: home");
+        assertThat(listHtml).contains("name=\"directoryName\"");
+        assertThat(listHtml).doesNotContain("id=\"project-new-folder-name\" name=\"name\"");
+
+        String editorHtml = ctrl.projectFileEditorFragment("proj-xyz", "root-note.txt");
+        assertThat(editorHtml).contains("Editing root-note.txt");
+        assertThat(editorHtml).contains("before");
+
+        String savedHtml = ctrl.saveProjectTextFile("proj-xyz", "root-note.txt", "after");
+        assertThat(savedHtml).contains("Saved root-note.txt.");
+        assertThat(Files.readString(projectRoot.resolve("root-note.txt"), StandardCharsets.UTF_8)).isEqualTo("after");
+
+        String folderHtml = ctrl.createProjectDirectory("proj-xyz", ".", "folder-exact");
+        assertThat(folderHtml).contains("Created folder-exact.");
+        assertThat(Files.isDirectory(projectRoot.resolve("folder-exact"))).isTrue();
+        assertThat(Files.exists(projectRoot.resolve("Project Name,folder-exact"))).isFalse();
     }
 
     @Test
@@ -1051,7 +1143,7 @@ class OrchestrationControllerTest {
         assertThat(html).contains("id=\"agent-chat-form\"");
         assertThat(html).contains("id=\"agent-chat-input\"");
         assertThat(html).contains("Chat with Agent");
-        assertThat(html).contains("/css/orchestration.css?v=12");
+        assertThat(html).contains("/css/orchestration.css?v=13");
         assertThat(html).contains("/js/orchestration/agent-chat.js?v=2");
         assertThat(html).doesNotContain("agent-event-log");
         assertThat(html).doesNotContain("Event Log");
@@ -1164,8 +1256,8 @@ class OrchestrationControllerTest {
         assertThat(html).contains("Workspace ID:");
         assertThat(html).contains("Owner: AGENT:agent-1");
         assertThat(html).contains("Display Name: Test Agent");
-        assertThat(html).contains("Root Relative Path: agents/agent-1/workspace");
-        assertThat(html).contains("Output Directory Hint: agents/agent-1/workspace/outputs");
+        assertThat(html).contains("Diagnostic Path: workspace/agent-1");
+        assertThat(html).contains("Final Output Target: workspace/agent-1/outputs");
         assertThat(html).contains("Active Leases");
         assertThat(html).contains("TASK_RUN:run-1");
         assertThat(html).contains("Workspace Links");
@@ -1546,6 +1638,7 @@ class OrchestrationControllerTest {
         assertThat(html).contains("targetId");
         assertThat(html).contains("priority");
         assertThat(html).contains("modelOverride");
+        assertThat(html).contains("runDisplayName");
         assertThat(html).contains("projectId");
         assertThat(html).contains("Compatibility Workspace");
         assertThat(html).contains("data-selector-kind=\"work-area\"");
@@ -1565,13 +1658,34 @@ class OrchestrationControllerTest {
             assignmentService
         );
 
-        String html = ctrl.submitToAgent("agent-1", "TASK_RUN", "plan-abc", 5, "local-qwen", "proj-xyz", "");
+        String html = ctrl.submitToAgent("agent-1", "TASK_RUN", "plan-abc", 5, "local-qwen", "proj-xyz", "",
+            "", "", "", "", "Projected task run");
 
         assertThat(html).contains("Assignment created");
         assertThat(html).contains("Project: proj-xyz");
         assertThat(html).contains("Effective workspace: PROJECT proj-xyz");
         assertThat(assignmentService.lastRequest.projectId()).isEqualTo("proj-xyz");
+        assertThat(assignmentService.lastRequest.runDisplayName()).isEqualTo("Projected task run");
         assertThat(assignmentService.lastRequest.workspaceId()).isBlank();
+    }
+
+    @Test
+    void agentSubmitRequiresRunNameForNonJobAssignments() {
+        StubAssignmentService assignmentService = new StubAssignmentService();
+        OrchestrationController ctrl = controller(
+            true,
+            true,
+            new StubScheduleService(),
+            new StubEventReactionService(),
+            new StubJobService(),
+            assignmentService
+        );
+
+        String html = ctrl.submitToAgent("agent-1", "TASK_RUN", "plan-abc", 5, "local-qwen", "proj-xyz", "",
+            "", "", "", "", "");
+
+        assertThat(html).contains("Run name is required for task/workflow submissions.");
+        assertThat(assignmentService.lastRequest).isNull();
     }
 
     @Test
@@ -1627,7 +1741,7 @@ class OrchestrationControllerTest {
         for (String html : pages) {
             assertThat(html).contains("main-sidebar");
             assertThat(html).contains("sidenav");
-            assertThat(html).contains("/css/orchestration.css?v=12");
+            assertThat(html).contains("/css/orchestration.css?v=13");
             assertPrimaryTopNav(html);
             assertThat(html).doesNotContain("/js/alpha-security.js?v=1");
             assertThat(html).doesNotContain("/js/chat-client.js");
@@ -2686,8 +2800,10 @@ class OrchestrationControllerTest {
                 request.modelOverride(), request.workspaceId(), request.projectId(),
                 request.projectId() != null && !request.projectId().isBlank() ? request.projectId() : "workspace-agent-1",
                 request.projectId() != null && !request.projectId().isBlank() ? "PROJECT" : "AGENT",
-                0, Map.of(), request.input() != null ? request.input() : Map.of(),
-                Map.of(), Map.of(), null, null, null,
+                request.selectedWorkAreaId(), request.outputRouteType(), request.outputWorkAreaId(),
+                request.outputDirectRelativePath(),
+                0, Map.<String, Object>of(), request.input() != null ? request.input() : Map.<String, Object>of(),
+                Map.<String, Object>of(), Map.<String, Object>of(), null, null, null,
                 Instant.now(), Instant.now(), null, null);
         }
 

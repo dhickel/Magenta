@@ -162,6 +162,34 @@ class PublicRunSubmissionControllerTest {
     }
 
     @Test
+    void taskRunStreamRejectsMissingRunNameForNonJobSubmission() throws Exception {
+        CapturingAssignmentService assignmentService = new CapturingAssignmentService();
+        TaskController controller = new TaskController(
+            new TaskService(new StubPlanService()),
+            null,
+            null,
+            assignmentService,
+            new StubAgentProfileService()
+        );
+
+        SseEmitter emitter = controller.streamRun("plan-1", new TaskController.TaskRunRequest(
+            Map.of("prompt", "ship it"),
+            null,
+            null,
+            null,
+            "project-1",
+            null,
+            null,
+            null
+        ));
+        CapturedSse captured = initializeEmitter(emitter);
+
+        assertThat(captured.completed.await(1, TimeUnit.SECONDS)).isTrue();
+        assertThat(captured.events).anyMatch(event -> event.contains("Run name is required for task submissions."));
+        assertThat(assignmentService.lastRequest).isNull();
+    }
+
+    @Test
     void workflowRunSubmitsHighPriorityWorkflowAssignment() {
         CapturingAssignmentService assignmentService = new CapturingAssignmentService();
         WorkflowController controller = new WorkflowController(
@@ -177,15 +205,44 @@ class PublicRunSubmissionControllerTest {
             "project-1",
             "workspace-1",
             null,
+            null,
+            null,
+            null,
+            "Daily workflow run",
+            null,
             null
         ));
 
         assertThat(assignment.assignmentType()).isEqualTo(AssignmentType.WORKFLOW_RUN);
         assertThat(assignment.priority()).isEqualTo(9);
+        assertThat(assignmentService.lastRequest.runDisplayName()).isEqualTo("Daily workflow run");
         assertThat(assignmentService.lastRequest.agentId()).isEqualTo("agent-1");
         assertThat(assignmentService.lastRequest.projectId()).isEqualTo("project-1");
         assertThat(assignmentService.lastRequest.workspaceId()).isEqualTo("workspace-1");
         assertThat(assignmentService.lastRequest.input()).containsEntry("workflowId", "workflow-1");
+    }
+
+    @Test
+    void workflowRunRejectsMissingRunNameForNonJobSubmission() {
+        CapturingAssignmentService assignmentService = new CapturingAssignmentService();
+        WorkflowController controller = new WorkflowController(
+            new StubWorkflowService(),
+            (InboxService) null,
+            assignmentService,
+            new StubAgentProfileService()
+        );
+
+        assertThatThrownBy(() -> controller.startRun("workflow-1", new WorkflowController.WorkflowRunRequest(
+            null,
+            null,
+            "project-1",
+            "workspace-1",
+            null,
+            null
+        )))
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("Run name is required for workflow submissions.");
+        assertThat(assignmentService.lastRequest).isNull();
     }
 
     @Test
@@ -243,7 +300,19 @@ class PublicRunSubmissionControllerTest {
             new EmptyAgentProfileService()
         );
 
-        assertThatThrownBy(() -> controller.startRun("workflow-1", null))
+        assertThatThrownBy(() -> controller.startRun("workflow-1", new WorkflowController.WorkflowRunRequest(
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "No agent workflow run",
+            null,
+            null
+        )))
             .isInstanceOf(ResponseStatusException.class)
             .hasMessageContaining("No active agents available");
     }
@@ -512,11 +581,18 @@ class PublicRunSubmissionControllerTest {
                 OrchestrationStatus.QUEUED,
                 request.modelOverride(),
                 request.workspaceId(),
+                request.projectId(),
+                null,
+                null,
+                request.selectedWorkAreaId(),
+                request.outputRouteType(),
+                request.outputWorkAreaId(),
+                request.outputDirectRelativePath(),
                 0,
-                Map.of(),
+                Map.<String, Object>of(),
                 request.input() == null ? Map.of() : request.input(),
-                Map.of(),
-                Map.of(),
+                Map.<String, Object>of(),
+                Map.<String, Object>of(),
                 null,
                 null,
                 null,

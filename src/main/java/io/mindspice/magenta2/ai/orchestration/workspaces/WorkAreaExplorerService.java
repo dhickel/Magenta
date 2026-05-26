@@ -50,6 +50,14 @@ public class WorkAreaExplorerService {
 
     public DirectoryListing list(String workAreaId, String relativePath) {
         WorkArea area = workAreaService.get(workAreaId);
+        return list(area, relativePath);
+    }
+
+    public DirectoryListing listOwnerRoot(WorkspaceOwnerType ownerType, String ownerId, String displayName, String relativePath) {
+        return list(workAreaService.ownerRootDescriptor(ownerType, ownerId, displayName), relativePath);
+    }
+
+    private DirectoryListing list(WorkArea area, String relativePath) {
         Path root = workAreaService.resolve(area);
         Path dir = resolveExisting(root, relativePath);
         if (!Files.isDirectory(dir, LinkOption.NOFOLLOW_LINKS)) {
@@ -68,6 +76,14 @@ public class WorkAreaExplorerService {
 
     public FilePreview preview(String workAreaId, String relativePath) {
         WorkArea area = workAreaService.get(workAreaId);
+        return preview(area, relativePath);
+    }
+
+    public FilePreview previewOwnerRoot(WorkspaceOwnerType ownerType, String ownerId, String displayName, String relativePath) {
+        return preview(workAreaService.ownerRootDescriptor(ownerType, ownerId, displayName), relativePath);
+    }
+
+    private FilePreview preview(WorkArea area, String relativePath) {
         Path root = workAreaService.resolve(area);
         Path file = resolveExisting(root, relativePath);
         requireRegularFile(file);
@@ -117,6 +133,21 @@ public class WorkAreaExplorerService {
     @Transactional
     public FilePreview saveText(String workAreaId, String relativePath, String content) {
         WorkArea area = workAreaService.get(workAreaId);
+        return saveText(area, relativePath, content);
+    }
+
+    @Transactional
+    public FilePreview saveTextOwnerRoot(
+        WorkspaceOwnerType ownerType,
+        String ownerId,
+        String displayName,
+        String relativePath,
+        String content
+    ) {
+        return saveText(workAreaService.ownerRootDescriptor(ownerType, ownerId, displayName), relativePath, content);
+    }
+
+    private FilePreview saveText(WorkArea area, String relativePath, String content) {
         Path root = workAreaService.resolve(area);
         Path file = resolveExisting(root, relativePath);
         if (!isSafeTextPath(file)) {
@@ -138,7 +169,7 @@ public class WorkAreaExplorerService {
             Files.write(file, applyLineEnding(normalizedContent, lineEnding).getBytes(StandardCharsets.UTF_8));
             log(area, isMarkdownPath(file) ? WorkspaceFileActionType.SAVE_MARKDOWN : WorkspaceFileActionType.SAVE_TEXT,
                 rootRelative(area, root, file), null, "SUCCEEDED", "{\"bytes\":" + Files.size(file) + "}");
-            return preview(workAreaId, relativePath);
+            return preview(area, relativePath);
         } catch (IOException exception) {
             throw new IllegalStateException("failed to save text file", exception);
         }
@@ -147,6 +178,15 @@ public class WorkAreaExplorerService {
     @Transactional
     public Entry createDirectory(String workAreaId, String relativePath) {
         WorkArea area = workAreaService.get(workAreaId);
+        return createDirectory(area, relativePath);
+    }
+
+    @Transactional
+    public Entry createDirectoryOwnerRoot(WorkspaceOwnerType ownerType, String ownerId, String displayName, String relativePath) {
+        return createDirectory(workAreaService.ownerRootDescriptor(ownerType, ownerId, displayName), relativePath);
+    }
+
+    private Entry createDirectory(WorkArea area, String relativePath) {
         Path root = workAreaService.resolve(area);
         Path dir = resolveForWrite(root, relativePath);
         try {
@@ -171,7 +211,28 @@ public class WorkAreaExplorerService {
         if (!name.toLowerCase(Locale.ROOT).endsWith(".txt")) {
             throw new IllegalArgumentException("text file name must end with .txt");
         }
-        return createEmptyFile(workAreaId, parentRelativePath, name, WorkspaceFileActionType.CREATE_TEXT_FILE);
+        return createEmptyFile(workAreaService.get(workAreaId), parentRelativePath, name, WorkspaceFileActionType.CREATE_TEXT_FILE);
+    }
+
+    @Transactional
+    public Entry createTextFileOwnerRoot(
+        WorkspaceOwnerType ownerType,
+        String ownerId,
+        String displayName,
+        String parentRelativePath,
+        String fileName
+    ) {
+        requirePlainName(fileName);
+        String name = fileName.trim();
+        if (!name.toLowerCase(Locale.ROOT).endsWith(".txt")) {
+            throw new IllegalArgumentException("text file name must end with .txt");
+        }
+        return createEmptyFile(
+            workAreaService.ownerRootDescriptor(ownerType, ownerId, displayName),
+            parentRelativePath,
+            name,
+            WorkspaceFileActionType.CREATE_TEXT_FILE
+        );
     }
 
     @Transactional
@@ -181,7 +242,7 @@ public class WorkAreaExplorerService {
         if (!name.toLowerCase(Locale.ROOT).endsWith(".md")) {
             throw new IllegalArgumentException("markdown file name must end with .md");
         }
-        return createEmptyFile(workAreaId, parentRelativePath, name, WorkspaceFileActionType.CREATE_MARKDOWN_FILE);
+        return createEmptyFile(workAreaService.get(workAreaId), parentRelativePath, name, WorkspaceFileActionType.CREATE_MARKDOWN_FILE);
     }
 
     @Transactional
@@ -601,12 +662,11 @@ public class WorkAreaExplorerService {
     }
 
     private Entry createEmptyFile(
-        String workAreaId,
+        WorkArea area,
         String parentRelativePath,
         String fileName,
         WorkspaceFileActionType actionType
     ) {
-        WorkArea area = workAreaService.get(workAreaId);
         Path root = workAreaService.resolve(area);
         Path parent = resolveExisting(root, parentRelativePath);
         if (!Files.isDirectory(parent, LinkOption.NOFOLLOW_LINKS)) {
@@ -686,6 +746,9 @@ public class WorkAreaExplorerService {
 
     private String rootRelative(WorkArea area, Path root, Path path) {
         String withinArea = root.relativize(path.normalize()).toString().replace('\\', '/');
+        if (!StringUtils.hasText(area.areaRelativePath()) || ".".equals(area.areaRelativePath())) {
+            return StringUtils.hasText(withinArea) ? withinArea : ".";
+        }
         if (!StringUtils.hasText(withinArea)) {
             return area.areaRelativePath();
         }

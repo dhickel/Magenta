@@ -1,6 +1,8 @@
 package io.mindspice.magenta2.api.web;
 
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -9,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -71,9 +74,13 @@ import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact;
 import io.mindspice.magenta2.ai.orchestration.workspaces.AgentWorkspaceStatus;
 import io.mindspice.magenta2.ai.orchestration.workspaces.AgentWorkspaceStatusService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkArea;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaExplorerService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.Workspace;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLease;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLink;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceOwnerType;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceService;
 import io.mindspice.magenta2.api.web.selector.EntityKind;
 import io.mindspice.magenta2.api.web.selector.EntityLookupService;
@@ -89,7 +96,6 @@ import io.mindspice.simplypages.components.TextNode;
 import io.mindspice.simplypages.components.display.Modal;
 import io.mindspice.simplypages.components.display.Table;
 import io.mindspice.simplypages.components.forms.Button;
-import io.mindspice.simplypages.components.forms.Checkbox;
 import io.mindspice.simplypages.components.forms.Form;
 import io.mindspice.simplypages.components.forms.Select;
 import io.mindspice.simplypages.components.forms.TextArea;
@@ -118,7 +124,7 @@ import jakarta.servlet.http.HttpServletResponse;
 @Controller
 public class OrchestrationController {
     private static final Logger log = LoggerFactory.getLogger(OrchestrationController.class);
-    private static final String DASHBOARD_CSS = "/css/orchestration.css?v=12";
+    private static final String DASHBOARD_CSS = "/css/orchestration.css?v=13";
     private static final String DASHBOARD_JS = "/js/orchestration/dashboard.js?v=5";
     private static final String AGENTS_JS = "/js/orchestration/agents.js?v=1";
     private static final String AGENT_CHAT_JS = "/js/orchestration/agent-chat.js?v=2";
@@ -139,6 +145,8 @@ public class OrchestrationController {
     private final RuntimeSettingsService runtimeSettingsService;
     private final WorkspaceService workspaceService;
     private final ObjectProvider<AgentWorkspaceStatusService> workspaceStatusServiceRef;
+    private final ObjectProvider<WorkAreaService> workAreaServiceRef;
+    private final ObjectProvider<WorkAreaExplorerService> workAreaExplorerServiceRef;
     private final EntityLookupService entityLookupService;
     private final EntitySelectorComponents entitySelectorComponents;
 
@@ -178,6 +186,55 @@ public class OrchestrationController {
                                    ObjectProvider<AgentShellToolService> execShellServiceRef,
                                    @Value("${magenta.features.schedules-enabled:false}") boolean schedulesEnabled,
                                    @Value("${magenta.features.reactions-enabled:false}") boolean reactionsEnabled) {
+        this(
+            chatService,
+            projectService,
+            jobService,
+            agentProfileService,
+            inboxService,
+            runtimeInboxService,
+            outputArtifactService,
+            runtimeSettingsService,
+            workspaceService,
+            workspaceStatusServiceRef,
+            emptyObjectProvider(),
+            emptyObjectProvider(),
+            planService,
+            assignmentService,
+            scheduleService,
+            eventReactionService,
+            workflowService,
+            entityLookupService,
+            entitySelectorComponents,
+            execShellServiceRef,
+            schedulesEnabled,
+            reactionsEnabled
+        );
+    }
+
+    @Autowired
+    public OrchestrationController(ChatService chatService,
+                                   ProjectService projectService,
+                                   JobService jobService,
+                                   AgentProfileService agentProfileService,
+                                   InboxService inboxService,
+                                   io.mindspice.magenta2.ai.orchestration.runtime.InboxService runtimeInboxService,
+                                   OutputArtifactService outputArtifactService,
+                                   RuntimeSettingsService runtimeSettingsService,
+                                   WorkspaceService workspaceService,
+                                   ObjectProvider<AgentWorkspaceStatusService> workspaceStatusServiceRef,
+                                   ObjectProvider<WorkAreaService> workAreaServiceRef,
+                                   ObjectProvider<WorkAreaExplorerService> workAreaExplorerServiceRef,
+                                   PlanService planService,
+                                   AssignmentService assignmentService,
+                                   ScheduleService scheduleService,
+                                   EventReactionService eventReactionService,
+                                   WorkflowService workflowService,
+                                   EntityLookupService entityLookupService,
+                                   EntitySelectorComponents entitySelectorComponents,
+                                   ObjectProvider<AgentShellToolService> execShellServiceRef,
+                                   @Value("${magenta.features.schedules-enabled:false}") boolean schedulesEnabled,
+                                   @Value("${magenta.features.reactions-enabled:false}") boolean reactionsEnabled) {
         this.chatService = chatService;
         this.projectService = projectService;
         this.jobService = jobService;
@@ -188,6 +245,8 @@ public class OrchestrationController {
         this.runtimeSettingsService = runtimeSettingsService;
         this.workspaceService = workspaceService;
         this.workspaceStatusServiceRef = workspaceStatusServiceRef;
+        this.workAreaServiceRef = workAreaServiceRef;
+        this.workAreaExplorerServiceRef = workAreaExplorerServiceRef;
         this.planService = planService;
         this.assignmentService = assignmentService;
         this.scheduleService = scheduleService;
@@ -199,6 +258,13 @@ public class OrchestrationController {
         this.schedulesEnabled = schedulesEnabled;
         this.reactionsEnabled = reactionsEnabled;
         this.dashboardShell = createDashboardShell(null);
+    }
+
+    private static <T> ObjectProvider<T> emptyObjectProvider() {
+        return new ObjectProvider<>() {
+            @Override public T getObject() { return null; }
+            @Override public T getIfAvailable() { return null; }
+        };
     }
 
     void setSavedPlanChatServiceForTesting(SavedPlanChatService savedPlanChatService) {
@@ -1678,8 +1744,10 @@ public class OrchestrationController {
             validateSelectedEntity(EntityKind.PROJECT, params.get("projectId"), false, "Project");
             validateSelectedEntity(EntityKind.WORKSPACE, params.get("workspaceId"), false, "Workspace");
             Map<String, Object> inputValues = parsePlanInputValues(plan, params);
+            String runDisplayName = requireRunDisplayName(params.get("runDisplayName"), "task submissions");
             WorkAssignment assignment = assignmentService.create(new AssignmentRequest(
                 agentId, null, null, AssignmentType.TASK_RUN,
+                runDisplayName,
                 priority,
                 nn(params.get("modelOverride")),
                 nn(params.get("projectId")),
@@ -2252,6 +2320,8 @@ public class OrchestrationController {
                 "modelOverride", null, chatService.availableModels())))
             .withChild(label("Priority", TextInput.number("priority")
                 .withValue("9").withMin("0").withMax("100")))
+            .withChild(label("Run Name", TextInput.create("runDisplayName")
+                .withPlaceholder("e.g. Weekly research pass")))
             .withChild(entitySelector("projectId", EntityKind.PROJECT, null,
                 "Project", "optional project context", false))
             .withChild(entitySelector("workspaceId", EntityKind.WORKSPACE, null,
@@ -2750,8 +2820,10 @@ public class OrchestrationController {
             validateSelectedEntity(EntityKind.MODEL, params.get("modelOverride"), false, "Model Override");
             validateSelectedEntity(EntityKind.PROJECT, params.get("projectId"), false, "Project");
             validateSelectedEntity(EntityKind.WORKSPACE, params.get("workspaceId"), false, "Workspace");
+            String runDisplayName = requireRunDisplayName(params.get("runDisplayName"), "workflow submissions");
             WorkAssignment assignment = assignmentService.create(new AssignmentRequest(
                 agentId, null, null, AssignmentType.WORKFLOW_RUN,
+                runDisplayName,
                 priority,
                 nn(params.get("modelOverride")),
                 nn(params.get("projectId")),
@@ -3330,6 +3402,8 @@ public class OrchestrationController {
                 "modelOverride", null, chatService.availableModels())))
             .withChild(label("Priority", TextInput.number("priority")
                 .withValue("9").withMin("0").withMax("100")))
+            .withChild(label("Run Name", TextInput.create("runDisplayName")
+                .withPlaceholder("e.g. Nightly workflow review")))
             .withChild(entitySelector("projectId", EntityKind.PROJECT, null,
                 "Project", "optional project context", false))
             .withChild(entitySelector("workspaceId", EntityKind.WORKSPACE, null,
@@ -3745,9 +3819,7 @@ public class OrchestrationController {
         panel.withChild(Header.H2("Submit to Agent"));
         panel.withChild(new Div().withClass("orch-meta")
             .withChild(new HtmlTag("span").withInnerText("Saved project: " + displayValue(job.projectId())))
-            .withChild(new HtmlTag("span").withInnerText("Compatibility workspace: " + displayValue(job.workspaceId())))
-            .withChild(new HtmlTag("span").withInnerText("Persistent job workspace: "
-                + (job.persistentWorkspaceEnabled() ? "enabled" : "disabled"))));
+            .withChild(new HtmlTag("span").withInnerText("Compatibility workspace: " + displayValue(job.workspaceId()))));
 
         Form form = Form.create()
             .withHxPost("/jobs/_submit/" + jobId)
@@ -3902,12 +3974,6 @@ public class OrchestrationController {
         form.withHxTarget("#job-editor-container");
         form.withHxSwap("innerHTML");
 
-        // Scalar fields
-        Checkbox persistentWorkspaceToggle = Checkbox.create("persistentWorkspaceEnabled", "true")
-            .withLabel("Persistent job workspace");
-        if (!isNew && job.persistentWorkspaceEnabled()) {
-            persistentWorkspaceToggle.checked();
-        }
         form.withChild(new Div().withClass("orch-form-stack")
             .withChild(label("Title", TextInput.create("title")
                 .withId("job-title")
@@ -3923,7 +3989,6 @@ public class OrchestrationController {
                 .withAttribute("type", "hidden")
                 .withAttribute("name", "persistentWorkspaceEnabledPresent")
                 .withAttribute("value", "true"))
-            .withChild(persistentWorkspaceToggle)
             .withChild(label("Status", TextInput.create("status")
                 .withId("job-status")
                 .withValue(isNew ? "DRAFT" : nn(job.status())))));
@@ -3945,8 +4010,8 @@ public class OrchestrationController {
                     .withChild(label("Status", statusBadgeHtml(job.status())))
                     .withChild(label("Workspace ID", new HtmlTag("code")
                         .withInnerText(job.workspaceId() != null ? job.workspaceId() : "—")))
-                    .withChild(label("Persistent Workspace", new HtmlTag("span")
-                        .withInnerText(job.persistentWorkspaceEnabled() ? "enabled" : "disabled")))
+                    .withChild(label("Legacy Workspace Flag", new HtmlTag("span")
+                        .withInnerText(job.persistentWorkspaceEnabled() ? "compatibility true" : "compatibility false")))
                     .withChild(label("Created", new HtmlTag("span")
                         .withInnerText(job.createdAt() != null ? job.createdAt().toString() : "—")))));
             form.withChild(advanced);
@@ -4093,7 +4158,7 @@ public class OrchestrationController {
             return new Div().withClass("dashboard-empty").withInnerText("No runs yet.").render();
         }
         Table table = Table.create()
-            .withHeaders("Assignment", "Run", "Status", "Agent / Project", "Workspace", "Job Workspace", "Outputs", "Created", "Action")
+            .withHeaders("Assignment", "Run", "Status", "Agent / Project", "Execution Context", "Outputs", "Created", "Action")
             .withClass("dashboard-table");
         for (JobExecutionSummary summary : summaries) {
             Component action = summary.jobRunStatus() != null && !summary.jobRunStatus().isTerminal()
@@ -4119,13 +4184,10 @@ public class OrchestrationController {
                     .withChild(new HtmlTag("span").withInnerText("Compatibility: "
                         + displayValue(summary.compatibilityWorkspaceId()))),
                 new Div().withClass("orch-meta")
-                    .withChild(new HtmlTag("span").withInnerText(summary.persistentWorkspaceEnabled()
-                        ? "Persistent enabled" : "Persistent disabled"))
-                    .withChild(new HtmlTag("span").withInnerText(summary.persistentJobWorkspacePresent()
-                        ? "Workspace present" : "Workspace pending"))
-                    .withChild(new HtmlTag("span").withInnerText(displayValue(summary.persistentJobWorkspacePath())))
-                    .withChild(new HtmlTag("span").withInnerText("Output dir: "
-                        + displayValue(summary.outputDirectory()))),
+                    .withChild(new HtmlTag("span").withInnerText("Promoted output target: "
+                        + displayValue(summary.outputDirectory())))
+                    .withChild(new HtmlTag("span").withInnerText("Child runs: "
+                        + Integer.toString(summary.childRunIds() == null ? 0 : summary.childRunIds().size()))),
                 new HtmlTag("span").withInnerText(Integer.toString(summary.outputCount())),
                 new HtmlTag("span").withInnerText(summary.queuedAt() != null ? formatSince(summary.queuedAt()) : "—"),
                 action
@@ -4610,6 +4672,286 @@ public class OrchestrationController {
         }
     }
 
+    @GetMapping("/projects/_detail/{projectId}/files")
+    @ResponseBody
+    public String projectFilesFragment(
+        @PathVariable String projectId,
+        @RequestParam(defaultValue = ".") String path
+    ) {
+        try {
+            WorkAreaExplorerService explorer = requireWorkAreaExplorerService();
+            String displayName = projectDirectoryDisplayName(projectId);
+            return projectFilesPanel(
+                projectId,
+                explorer.listOwnerRoot(WorkspaceOwnerType.PROJECT, projectId, displayName, path),
+                null,
+                null
+            ).render();
+        } catch (Exception e) {
+            return new Div().withId("project-files-section")
+                .withChild(new Div().withClass("orch-error").withInnerText("Project directory unavailable: " + e.getMessage()))
+                .render();
+        }
+    }
+
+    @GetMapping("/projects/_detail/{projectId}/files/edit")
+    @ResponseBody
+    public String projectFileEditorFragment(
+        @PathVariable String projectId,
+        @RequestParam String path
+    ) {
+        try {
+            WorkAreaExplorerService explorer = requireWorkAreaExplorerService();
+            WorkAreaExplorerService.FilePreview preview = explorer.previewOwnerRoot(
+                WorkspaceOwnerType.PROJECT,
+                projectId,
+                projectDirectoryDisplayName(projectId),
+                path
+            );
+            return projectFileEditor(projectId, preview).render();
+        } catch (Exception e) {
+            return new Div().withId("project-file-editor")
+                .withChild(new Div().withClass("orch-error").withInnerText("Cannot edit file: " + e.getMessage()))
+                .render();
+        }
+    }
+
+    @PutMapping("/projects/_detail/{projectId}/files/text")
+    @ResponseBody
+    public String saveProjectTextFile(
+        @PathVariable String projectId,
+        @RequestParam String path,
+        @RequestParam(defaultValue = "") String content
+    ) {
+        try {
+            WorkAreaExplorerService explorer = requireWorkAreaExplorerService();
+            String displayName = projectDirectoryDisplayName(projectId);
+            explorer.saveTextOwnerRoot(WorkspaceOwnerType.PROJECT, projectId, displayName, path, content);
+            String listPath = parentPath(path);
+            return projectFilesPanel(
+                projectId,
+                explorer.listOwnerRoot(WorkspaceOwnerType.PROJECT, projectId, displayName, listPath),
+                "Saved " + path + ".",
+                null
+            ).render();
+        } catch (Exception e) {
+            return new Div().withId("project-files-section")
+                .withChild(new Div().withClass("orch-error").withInnerText("Save failed: " + e.getMessage()))
+                .render();
+        }
+    }
+
+    @PostMapping("/projects/_detail/{projectId}/files/text")
+    @ResponseBody
+    public String createProjectTextFile(
+        @PathVariable String projectId,
+        @RequestParam(defaultValue = ".") String path,
+        @RequestParam String fileName
+    ) {
+        try {
+            WorkAreaExplorerService explorer = requireWorkAreaExplorerService();
+            String displayName = projectDirectoryDisplayName(projectId);
+            WorkAreaExplorerService.Entry created = explorer.createTextFileOwnerRoot(
+                WorkspaceOwnerType.PROJECT,
+                projectId,
+                displayName,
+                path,
+                fileName
+            );
+            return projectFilesPanel(
+                projectId,
+                explorer.listOwnerRoot(WorkspaceOwnerType.PROJECT, projectId, displayName, path),
+                "Created " + created.path() + ".",
+                null
+            ).render();
+        } catch (Exception e) {
+            return new Div().withId("project-files-section")
+                .withChild(new Div().withClass("orch-error").withInnerText("Create file failed: " + e.getMessage()))
+                .render();
+        }
+    }
+
+    @PostMapping("/projects/_detail/{projectId}/directories")
+    @ResponseBody
+    public String createProjectDirectory(
+        @PathVariable String projectId,
+        @RequestParam(defaultValue = ".") String path,
+        @RequestParam String directoryName
+    ) {
+        try {
+            WorkAreaExplorerService explorer = requireWorkAreaExplorerService();
+            String displayName = projectDirectoryDisplayName(projectId);
+            String childPath = ".".equals(projectPath(path)) ? directoryName : projectPath(path) + "/" + directoryName;
+            WorkAreaExplorerService.Entry created = explorer.createDirectoryOwnerRoot(
+                WorkspaceOwnerType.PROJECT,
+                projectId,
+                displayName,
+                childPath
+            );
+            return projectFilesPanel(
+                projectId,
+                explorer.listOwnerRoot(WorkspaceOwnerType.PROJECT, projectId, displayName, path),
+                "Created " + created.path() + ".",
+                null
+            ).render();
+        } catch (Exception e) {
+            return new Div().withId("project-files-section")
+                .withChild(new Div().withClass("orch-error").withInnerText("Create folder failed: " + e.getMessage()))
+                .render();
+        }
+    }
+
+    private String projectDirectoryDisplayName(String projectId) {
+        Project project = projectService.getProject(projectId);
+        return StringUtils.hasText(project.name()) ? project.name() + " Directory" : "Project Directory";
+    }
+
+    private WorkAreaExplorerService requireWorkAreaExplorerService() {
+        WorkAreaExplorerService service = workAreaExplorerServiceRef == null ? null : workAreaExplorerServiceRef.getIfAvailable();
+        if (service == null) {
+            throw new IllegalStateException("Work Area explorer service is unavailable");
+        }
+        return service;
+    }
+
+    private Component projectFilesPanel(
+        String projectId,
+        WorkAreaExplorerService.DirectoryListing listing,
+        String status,
+        Component editor
+    ) {
+        String currentPath = projectPath(listing.path());
+        Div panel = new Div().withId("project-files-section").withClass("project-files-panel");
+        Div toolbar = new Div().withClass("project-files-toolbar")
+            .withChild(new HtmlTag("span").withClass("project-files-path").withInnerText("Path: " + currentPath));
+        if (!".".equals(currentPath)) {
+            toolbar.withChild(Button.create("Up")
+                .withAttribute("type", "button")
+                .withAttribute("hx-get", "/projects/_detail/" + escapeAttr(projectId) + "/files?path=" + url(parentPath(currentPath)))
+                .withAttribute("hx-target", "#project-files-section")
+                .withAttribute("hx-swap", "outerHTML"));
+        }
+        toolbar.withChild(Button.create("Refresh")
+            .withAttribute("type", "button")
+            .withAttribute("hx-get", "/projects/_detail/" + escapeAttr(projectId) + "/files?path=" + url(currentPath))
+            .withAttribute("hx-target", "#project-files-section")
+            .withAttribute("hx-swap", "outerHTML"));
+        panel.withChild(toolbar);
+
+        String inputSuffix = Integer.toHexString(Objects.hash(projectId, currentPath));
+        String folderInputId = "project-new-folder-name-" + inputSuffix;
+        String textInputId = "project-new-text-name-" + inputSuffix;
+        Div createRow = new Div().withClass("project-file-create-row")
+            .withChild(TextInput.create("directoryName")
+                .withId(folderInputId)
+                .withAttribute("placeholder", "Folder name"))
+            .withChild(Button.create("New Folder")
+                .withAttribute("type", "button")
+                .withAttribute("hx-post", "/projects/_detail/" + escapeAttr(projectId) + "/directories?path=" + url(currentPath))
+                .withAttribute("hx-include", "#" + folderInputId)
+                .withAttribute("hx-target", "#project-files-section")
+                .withAttribute("hx-swap", "outerHTML"))
+            .withChild(TextInput.create("fileName")
+                .withId(textInputId)
+                .withAttribute("placeholder", "Text file name"))
+            .withChild(Button.create("New Text")
+                .withAttribute("type", "button")
+                .withAttribute("hx-post", "/projects/_detail/" + escapeAttr(projectId) + "/files/text?path=" + url(currentPath))
+                .withAttribute("hx-include", "#" + textInputId)
+                .withAttribute("hx-target", "#project-files-section")
+                .withAttribute("hx-swap", "outerHTML"));
+        panel.withChild(createRow);
+
+        if (StringUtils.hasText(status)) {
+            panel.withChild(new Div().withClass("orch-status").withInnerText(status));
+        }
+
+        Div rows = new Div().withClass("project-file-list");
+        if (!".".equals(currentPath)) {
+            rows.withChild(projectDirectoryRow(projectId, "..", parentPath(currentPath)));
+        }
+        for (WorkAreaExplorerService.Entry entry : listing.entries()) {
+            rows.withChild(projectFileRow(projectId, currentPath, entry));
+        }
+        if (listing.entries().isEmpty() && ".".equals(currentPath)) {
+            rows.withChild(new Div().withClass("dashboard-empty").withInnerText("No files yet."));
+        }
+        panel.withChild(rows);
+        panel.withChild(editor == null
+            ? new Div().withId("project-file-editor").withClass("project-file-editor-empty")
+                .withInnerText("Select Edit on a text file to modify it here.")
+            : editor);
+        return panel;
+    }
+
+    private Component projectDirectoryRow(String projectId, String label, String path) {
+        return new Div().withClass("project-file-row")
+            .withChild(new Div().withClass("project-file-name")
+                .withChild(new HtmlTag("strong").withInnerText(label))
+                .withChild(new HtmlTag("span").withInnerText("Folder")))
+            .withChild(Button.create("Open")
+                .withAttribute("type", "button")
+                .withAttribute("hx-get", "/projects/_detail/" + escapeAttr(projectId) + "/files?path=" + url(path))
+                .withAttribute("hx-target", "#project-files-section")
+                .withAttribute("hx-swap", "outerHTML"));
+    }
+
+    private Component projectFileRow(String projectId, String currentPath, WorkAreaExplorerService.Entry entry) {
+        if (entry.directory()) {
+            return projectDirectoryRow(projectId, entry.name(), entry.path());
+        }
+        Div actions = new Div().withClass("project-file-actions");
+        if (entry.canView()) {
+            actions.withChild(Button.create("Edit")
+                .withAttribute("type", "button")
+                .withAttribute("hx-get", "/projects/_detail/" + escapeAttr(projectId) + "/files/edit?path=" + url(entry.path()))
+                .withAttribute("hx-target", "#project-file-editor")
+                .withAttribute("hx-swap", "outerHTML"));
+        }
+        return new Div().withClass("project-file-row")
+            .withChild(new Div().withClass("project-file-name")
+                .withChild(new HtmlTag("strong").withInnerText(entry.name()))
+                .withChild(new HtmlTag("span").withInnerText(entry.fileType() + " · " + entry.sizeLabel()
+                    + " · modified " + (entry.modifiedAt() == null ? "unknown" : formatSince(entry.modifiedAt())))))
+            .withChild(actions);
+    }
+
+    private Component projectFileEditor(String projectId, WorkAreaExplorerService.FilePreview preview) {
+        Div editor = new Div().withId("project-file-editor").withClass("project-file-editor");
+        editor.withChild(new Div().withClass("project-file-editor-header")
+            .withChild(Header.H3("Editing " + preview.path()))
+            .withChild(Button.create("Save")
+                .withAttribute("type", "button")
+                .withAttribute("hx-put", "/projects/_detail/" + escapeAttr(projectId) + "/files/text?path=" + url(preview.path()))
+                .withAttribute("hx-include", "#project-file-editor [name='content']")
+                .withAttribute("hx-target", "#project-files-section")
+                .withAttribute("hx-swap", "outerHTML")));
+        if (!preview.text()) {
+            editor.withChild(new Div().withClass("dashboard-empty").withInnerText("This file cannot be edited as text."));
+            return editor;
+        }
+        editor.withChild(TextArea.create("content").withRows(12)
+            .withInnerText(preview.content() == null ? "" : preview.content()));
+        return editor;
+    }
+
+    private String projectPath(String path) {
+        return path == null || path.isBlank() ? "." : path;
+    }
+
+    private String parentPath(String path) {
+        String clean = projectPath(path);
+        int idx = clean.lastIndexOf('/');
+        if (idx < 0) {
+            return ".";
+        }
+        return idx == 0 ? clean.substring(0, 1) : clean.substring(0, idx);
+    }
+
+    private String url(String value) {
+        return URLEncoder.encode(projectPath(value), StandardCharsets.UTF_8);
+    }
+
     // ── Project editor rendering ──
 
     private Component projectEditorFragment(Project project) {
@@ -4693,6 +5035,7 @@ public class OrchestrationController {
             form.withChild(sectionHeader("Project Network", "Linked agents and membership context for this project."));
             form.withChild(new Div().withId("project-network-section")
                 .hxGet("/projects/_detail/" + projectId + "/network")
+                .hxTarget("#project-network-section")
                 .hxTrigger("load")
                 .hxSwap("innerHTML")
                 .withChild(loadingPlaceholder()));
@@ -4701,6 +5044,7 @@ public class OrchestrationController {
             form.withChild(sectionHeader("Agents", "Members assigned to this project."));
             form.withChild(new Div().withId("project-agents-section")
                 .hxGet("/projects/_detail/" + projectId + "/agents")
+                .hxTarget("#project-agents-section")
                 .hxTrigger("load")
                 .hxSwap("innerHTML")
                 .withChild(loadingPlaceholder()));
@@ -4709,6 +5053,7 @@ public class OrchestrationController {
             form.withChild(sectionHeader("Active Jobs", "Jobs associated with this project."));
             form.withChild(new Div().withId("project-jobs-section")
                 .hxGet("/projects/_detail/" + projectId + "/jobs")
+                .hxTarget("#project-jobs-section")
                 .hxTrigger("load")
                 .hxSwap("innerHTML")
                 .withChild(loadingPlaceholder()));
@@ -4717,6 +5062,15 @@ public class OrchestrationController {
             form.withChild(sectionHeader("Recent Outputs", "Output artifacts attributed to this project workspace."));
             form.withChild(new Div().withId("project-outputs-section")
                 .hxGet("/projects/_detail/" + projectId + "/outputs")
+                .hxTarget("#project-outputs-section")
+                .hxTrigger("load")
+                .hxSwap("innerHTML")
+                .withChild(loadingPlaceholder()));
+
+            form.withChild(sectionHeader("Project Directory", "Browse and edit files in this project's confined directory."));
+            form.withChild(new Div().withId("project-files-section")
+                .hxGet("/projects/_detail/" + projectId + "/files")
+                .hxTarget("#project-files-section")
                 .hxTrigger("load")
                 .hxSwap("innerHTML")
                 .withChild(loadingPlaceholder()));
@@ -6350,8 +6704,8 @@ public class OrchestrationController {
                 + (workspace.ownerType() != null ? workspace.ownerType().name() : "—")
                 + ":" + nn(workspace.ownerId())))
             .withChild(new HtmlTag("span").withInnerText("Display Name: " + nn(workspace.displayName())))
-            .withChild(new HtmlTag("span").withInnerText("Root Relative Path: " + nn(workspace.rootRelativePath())))
-            .withChild(new HtmlTag("span").withInnerText("Output Directory Hint: " + outputHint))
+            .withChild(new HtmlTag("span").withInnerText("Diagnostic Path: " + nn(workspace.rootRelativePath())))
+            .withChild(new HtmlTag("span").withInnerText("Final Output Target: " + outputHint))
             .withChild(new HtmlTag("span").withInnerText("Metadata: " + nn(workspace.metadataJson())))
             .withChild(new HtmlTag("span").withInnerText("Updated: "
                 + (workspace.updatedAt() != null ? formatSince(workspace.updatedAt()) : "—"))));
@@ -6403,9 +6757,9 @@ public class OrchestrationController {
             return "—";
         }
         return switch (workspace.ownerType()) {
-            case AGENT -> "agents/" + workspace.ownerId() + "/workspace/outputs";
-            case JOB -> "jobs/" + workspace.ownerId() + "/outputs";
-            case PROJECT -> "projects/" + workspace.ownerId() + "/workspace";
+            case AGENT -> "workspace/" + workspace.ownerId() + "/outputs";
+            case JOB -> "job-bound outputs promote through the selected Work Area or project";
+            case PROJECT -> "projects/" + workspace.ownerId();
         };
     }
 
@@ -6786,10 +7140,11 @@ public class OrchestrationController {
         panel.withChild(Header.H3("Assignment Diagnostics"));
         Div meta = new Div().withClass("orch-form-grid");
         meta.withChild(agentMetaItem("Assignment", a.id()));
+        meta.withChild(agentMetaItem("Run Name", displayValue(a.runDisplayName())));
         meta.withChild(agentMetaItem("Status", a.status() != null ? a.status().name() : "unknown"));
         meta.withChild(agentMetaItem("Project", displayValue(a.projectId())));
         meta.withChild(agentMetaItem("Effective Workspace", effectiveWorkspaceLabel(a.effectiveWorkspaceKind(), a.effectiveWorkspaceId())));
-        meta.withChild(agentMetaItem("Workspace Path", displayValue(workspaceDisplayPath(a.effectiveWorkspaceId()))));
+        meta.withChild(agentMetaItem("Diagnostic Workspace Path", displayValue(workspaceDisplayPath(a.effectiveWorkspaceId()))));
         meta.withChild(agentMetaItem("Compatibility Workspace", displayValue(a.workspaceId())));
         meta.withChild(agentMetaItem("Workspace Blocker",
             a.checkpoint() != null && a.checkpoint().containsKey("workspaceBlocker")
@@ -7223,6 +7578,9 @@ public class OrchestrationController {
         form.withChild(label("Model Override", modelSelectWithCurrent(
             "modelOverride", null, chatService.availableModels())));
 
+        form.withChild(label("Run Name", TextInput.create("runDisplayName")
+            .withPlaceholder("required for task/workflow runs")));
+
         form.withChild(entitySelector("projectId", EntityKind.PROJECT, null,
             "Project", "optional project context", false, Map.of("agentId", agent.id())));
         form.withChild(entitySelector("workspaceId", EntityKind.WORKSPACE, null,
@@ -7248,7 +7606,7 @@ public class OrchestrationController {
         String workspaceId
     ) {
         return submitToAgent(agentId, assignmentType, targetId, priority, modelOverride, projectId, workspaceId,
-            "", "", "", "");
+            "", "", "", "", "");
     }
 
     @PostMapping("/agents/_submit/{agentId}")
@@ -7264,7 +7622,8 @@ public class OrchestrationController {
         @RequestParam(value = "selectedWorkAreaId", defaultValue = "") String selectedWorkAreaId,
         @RequestParam(value = "outputRouteType", defaultValue = "") String outputRouteType,
         @RequestParam(value = "outputWorkAreaId", defaultValue = "") String outputWorkAreaId,
-        @RequestParam(value = "outputDirectRelativePath", defaultValue = "") String outputDirectRelativePath
+        @RequestParam(value = "outputDirectRelativePath", defaultValue = "") String outputDirectRelativePath,
+        @RequestParam(value = "runDisplayName", defaultValue = "") String runDisplayName
     ) {
         try {
             AgentProfile agent = agentProfileService.get(agentId);
@@ -7284,8 +7643,11 @@ public class OrchestrationController {
             }
 
             String jobId = type == AssignmentType.JOB_RUN ? targetId : null;
+            String normalizedRunDisplayName = type == AssignmentType.JOB_RUN
+                ? normalize(runDisplayName)
+                : requireRunDisplayName(runDisplayName, "task/workflow submissions");
             WorkAssignment created = assignmentService.create(new AssignmentRequest(
-                agentId, jobId, null, type, priority,
+                agentId, jobId, null, type, normalizedRunDisplayName, priority,
                 modelOverride.isBlank() ? null : modelOverride.trim(),
                 nn(projectId),
                 nn(workspaceId),
@@ -7519,13 +7881,14 @@ public class OrchestrationController {
 
     private Component assignmentContextMeta(WorkAssignment assignment) {
         Div meta = new Div().withClass("orch-meta");
+        meta.withChild(new HtmlTag("span").withInnerText("Run name: " + displayValue(assignment.runDisplayName())));
         meta.withChild(new HtmlTag("span").withInnerText("Project: " + displayValue(assignment.projectId())));
         meta.withChild(new HtmlTag("span").withInnerText("Effective workspace: "
             + effectiveWorkspaceLabel(assignment.effectiveWorkspaceKind(), assignment.effectiveWorkspaceId())));
-        String displayPath = workspaceDisplayPath(assignment.effectiveWorkspaceId());
-        if (StringUtils.hasText(displayPath)) {
-            meta.withChild(new HtmlTag("span").withInnerText("Workspace path: " + displayPath));
-        }
+        meta.withChild(new HtmlTag("span").withInnerText("Selected Work Area: "
+            + displayValue(assignment.selectedWorkAreaId())));
+        meta.withChild(new HtmlTag("span").withInnerText("Output route: "
+            + displayValue(assignment.outputRouteType())));
         meta.withChild(new HtmlTag("span").withInnerText("Compatibility workspace: "
             + displayValue(assignment.workspaceId())));
         if (assignment.status() == OrchestrationStatus.WAITING
@@ -7555,6 +7918,14 @@ public class OrchestrationController {
         } catch (RuntimeException exception) {
             return null;
         }
+    }
+
+    private String requireRunDisplayName(String value, String context) {
+        String normalized = normalize(value);
+        if (!StringUtils.hasText(normalized)) {
+            throw new IllegalArgumentException("Run name is required for " + context + ".");
+        }
+        return normalized;
     }
 
     private String displayValue(String value) {

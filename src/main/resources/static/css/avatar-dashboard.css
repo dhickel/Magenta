@@ -893,9 +893,15 @@
 
 .avatar-workarea-browser-grid {
     display: grid;
-    grid-template-columns: minmax(13rem, 0.28fr) minmax(0, 1fr);
+    grid-template-columns: 1fr;
     gap: 0.75rem;
     align-items: start;
+}
+
+.avatar-workarea-browser-widget {
+    position: relative;
+    z-index: 2;
+    overflow: hidden;
 }
 
 .avatar-workarea-surface {
@@ -950,6 +956,12 @@
     gap: 0.35rem;
     flex-wrap: wrap;
     padding: 0.45rem;
+}
+
+.workspace-explorer-toolbar button,
+.workspace-explorer-table .avatar-row-actions button {
+    min-height: 2.15rem;
+    padding-inline: 0.55rem;
 }
 
 .workspace-explorer-toolbar button:disabled {
@@ -1442,7 +1454,20 @@
     }
 
     .workspace-explorer-table {
-        min-width: 44rem;
+        min-width: 0;
+        table-layout: fixed;
+    }
+
+    .workspace-explorer-table th:nth-child(2),
+    .workspace-explorer-table td:nth-child(2),
+    .workspace-explorer-table th:nth-child(3),
+    .workspace-explorer-table td:nth-child(3) {
+        display: none;
+    }
+
+    .workspace-explorer-name {
+        min-width: 0;
+        max-width: none;
     }
 
     .workspace-explorer-table th,
@@ -1451,12 +1476,14 @@
     }
 
     .workspace-explorer-table .avatar-row-actions {
-        flex-wrap: nowrap;
+        min-width: 0;
+        flex-wrap: wrap;
     }
 
     .workspace-explorer-toolbar button,
     .workspace-explorer-table .avatar-row-actions button {
-        min-width: 0;
+        min-width: 4.25rem;
+        padding-inline: 0.45rem;
     }
 
     .avatar-list-row {

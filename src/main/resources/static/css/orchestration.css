@@ -986,6 +986,86 @@
     font-size: 0.78rem;
 }
 
+.project-files-panel {
+    display: grid;
+    gap: 0.65rem;
+    min-width: 0;
+}
+
+.project-files-toolbar,
+.project-file-create-row,
+.project-file-editor-header,
+.project-file-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+}
+
+.project-files-path {
+    border: 1px solid #d8e2ee;
+    border-radius: 5px;
+    background: #f7fafc;
+    padding: 0.28rem 0.45rem;
+    color: #405066;
+    font-size: 0.82rem;
+}
+
+.project-file-create-row input {
+    width: min(13rem, 100%);
+}
+
+.project-file-list {
+    display: grid;
+    gap: 0.35rem;
+}
+
+.project-file-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.55rem;
+    align-items: center;
+    border: 1px solid #dde5ef;
+    border-radius: 6px;
+    background: #fbfcfe;
+    padding: 0.5rem 0.6rem;
+}
+
+.project-file-name {
+    min-width: 0;
+}
+
+.project-file-name strong,
+.project-file-name span {
+    display: block;
+    overflow-wrap: anywhere;
+}
+
+.project-file-name span,
+.project-file-editor-empty {
+    color: #5c6675;
+    font-size: 0.8rem;
+}
+
+.project-file-editor,
+.project-file-editor-empty {
+    border: 1px solid #d9e0ea;
+    border-radius: 6px;
+    background: #ffffff;
+    padding: 0.65rem;
+}
+
+.project-file-editor-header {
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+}
+
+.project-file-editor-header h3 {
+    margin: 0;
+    font-size: 0.95rem;
+    overflow-wrap: anywhere;
+}
+
 .plan-card-list {
     display: flex;
     flex-direction: column;

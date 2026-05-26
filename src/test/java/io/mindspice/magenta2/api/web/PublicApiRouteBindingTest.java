@@ -187,7 +187,7 @@ class PublicApiRouteBindingTest {
         MvcResult stream = mockMvc.perform(post("/api/tasks/" + taskId + "/runs/stream")
                 .contentType(MediaType.APPLICATION_JSON)
                 .accept(MediaType.TEXT_EVENT_STREAM)
-                .content(json(Map.of("agentId", agentId))))
+                .content(json(Map.of("agentId", agentId, "runDisplayName", "Route task run"))))
             .andExpect(request().asyncStarted())
             .andReturn();
 

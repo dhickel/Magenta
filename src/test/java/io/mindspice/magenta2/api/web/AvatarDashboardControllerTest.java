@@ -119,7 +119,7 @@ class AvatarDashboardControllerTest {
     void avatarShellRendersCompactChatWidgetRootsAndScopedAssets() {
         String html = controller.avatar(false);
 
-        assertThat(html).contains("/css/avatar-dashboard.css?v=3");
+        assertThat(html).contains("/css/avatar-dashboard.css?v=4");
         assertThat(html).contains("/js/avatar-chat.js?v=3");
         assertThat(html).contains("/js/avatar-layout-edit.js?v=1");
         assertThat(html).contains("/js/avatar-shell.js?v=6");
@@ -420,9 +420,10 @@ class AvatarDashboardControllerTest {
 
     @Test
     void workAreaViewerRejectsUnsupportedFilesAndTextSaveErrorsAreVisible() throws Exception {
-        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Home");
-        String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "agent-1", false).getFirst().id();
-        Files.write(tempDir.resolve("data/agents/agent-1/workspace/home/blob.bin"), new byte[] {0, 1, 2, 3});
+        var home = workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Home");
+        String workAreaId = home.id();
+        Path root = workAreaService.resolve(home);
+        Files.write(root.resolve("blob.bin"), new byte[] {0, 1, 2, 3});
 
         String unsupported = controller.workAreaViewer(workAreaId, "blob.bin");
         assertThat(unsupported).contains("class=\"avatar-modal\"");
@@ -438,9 +439,9 @@ class AvatarDashboardControllerTest {
 
     @Test
     void workAreaViewerSupportsMarkdownTextImageAndFriendlyMarkdownFailure() throws Exception {
-        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Home");
-        String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "agent-1", false).getFirst().id();
-        Path root = tempDir.resolve("data/agents/agent-1/workspace/home");
+        var home = workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Home");
+        String workAreaId = home.id();
+        Path root = workAreaService.resolve(home);
         Files.writeString(root.resolve("note.md"), "# Heading\n\nbody");
         Files.writeString(root.resolve("plain.txt"), "raw text");
         Files.write(root.resolve("pic.png"), new byte[] {1, 2, 3, 4});

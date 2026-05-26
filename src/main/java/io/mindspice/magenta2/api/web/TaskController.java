@@ -182,11 +182,14 @@ public class TaskController {
         try {
             requireSubmissionServices();
             taskService.getTask(taskId);
+            String jobId = normalize(request == null ? null : request.jobId());
+            String runDisplayName = requireRunDisplayName(request == null ? null : request.runDisplayName(), jobId);
             WorkAssignment assignment = assignmentService.create(new AssignmentRequest(
                 resolveAgentId(request == null ? null : request.agentId()),
-                normalize(request == null ? null : request.jobId()),
+                jobId,
                 null,
                 AssignmentType.TASK_RUN,
+                runDisplayName,
                 request == null || request.priority() == null ? PUBLIC_SUBMIT_PRIORITY : request.priority(),
                 normalize(request == null ? null : request.modelOverride()),
                 normalize(request == null ? null : request.projectId()),
@@ -201,6 +204,7 @@ public class TaskController {
                 "event", "submitted",
                 "assignmentId", assignment.id(),
                 "taskId", taskId,
+                "runDisplayName", displayValue(assignment.runDisplayName()),
                 "status", assignment.status().name(),
                 "priority", assignment.priority()
             ));
@@ -254,6 +258,18 @@ public class TaskController {
         return value.trim();
     }
 
+    private String requireRunDisplayName(String value, String jobId) {
+        String normalized = normalize(value);
+        if (normalized == null && !StringUtils.hasText(jobId)) {
+            throw new IllegalArgumentException("Run name is required for task submissions.");
+        }
+        return normalized;
+    }
+
+    private String displayValue(String value) {
+        return StringUtils.hasText(value) ? value : "";
+    }
+
     public record DraftRequest(String prePlanningModel, String executionModel) {
     }
 
@@ -271,6 +287,7 @@ public class TaskController {
         String outputRouteType,
         String outputWorkAreaId,
         String outputDirectRelativePath,
+        String runDisplayName,
         String modelOverride,
         Integer priority
     ) {
@@ -285,7 +302,7 @@ public class TaskController {
             Integer priority
         ) {
             this(inputValues, conversationId, agentId, jobId, projectId, workspaceId,
-                null, null, null, null, modelOverride, priority);
+                null, null, null, null, null, modelOverride, priority);
         }
     }
 

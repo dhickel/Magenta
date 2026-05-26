@@ -113,11 +113,14 @@ public class WorkflowController {
             if (!validation.valid()) {
                 throw new IllegalArgumentException(String.join("; ", validation.errors()));
             }
+            String jobId = normalize(request == null ? null : request.jobId());
+            String runDisplayName = requireRunDisplayName(request == null ? null : request.runDisplayName(), jobId);
             return assignmentService.create(new AssignmentRequest(
                 resolveAgentId(request == null ? null : request.agentId()),
-                normalize(request == null ? null : request.jobId()),
+                jobId,
                 null,
                 AssignmentType.WORKFLOW_RUN,
+                runDisplayName,
                 request == null || request.priority() == null ? PUBLIC_SUBMIT_PRIORITY : request.priority(),
                 normalize(request == null ? null : request.modelOverride()),
                 normalize(request == null ? null : request.projectId()),
@@ -143,6 +146,7 @@ public class WorkflowController {
                 "event", "submitted",
                 "assignmentId", assignment.id(),
                 "workflowId", workflowId,
+                "runDisplayName", displayValue(assignment.runDisplayName()),
                 "status", assignment.status().name(),
                 "priority", assignment.priority()
             ));
@@ -183,6 +187,18 @@ public class WorkflowController {
             return null;
         }
         return value.trim();
+    }
+
+    private String requireRunDisplayName(String value, String jobId) {
+        String normalized = normalize(value);
+        if (normalized == null && !StringUtils.hasText(jobId)) {
+            throw new IllegalArgumentException("Run name is required for workflow submissions.");
+        }
+        return normalized;
+    }
+
+    private String displayValue(String value) {
+        return StringUtils.hasText(value) ? value : "";
     }
 
     @GetMapping("/api/workflow-runs/{runId}")
@@ -247,6 +263,7 @@ public class WorkflowController {
         String outputRouteType,
         String outputWorkAreaId,
         String outputDirectRelativePath,
+        String runDisplayName,
         String modelOverride,
         Integer priority
     ) {
@@ -258,7 +275,7 @@ public class WorkflowController {
             String modelOverride,
             Integer priority
         ) {
-            this(agentId, jobId, projectId, workspaceId, null, null, null, null, modelOverride, priority);
+            this(agentId, jobId, projectId, workspaceId, null, null, null, null, null, modelOverride, priority);
         }
     }
 

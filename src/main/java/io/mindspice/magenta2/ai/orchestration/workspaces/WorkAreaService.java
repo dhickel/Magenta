@@ -113,6 +113,29 @@ public class WorkAreaService {
         return rootPath(workspace(ownerType, ownerId, null).rootRelativePath());
     }
 
+    public WorkArea ownerRootDescriptor(WorkspaceOwnerType ownerType, String ownerId, String displayName) {
+        requireSupportedOwner(ownerType);
+        requireOwnerId(ownerId);
+        Workspace workspace = workspace(ownerType, ownerId, displayName);
+        rootPath(workspace.rootRelativePath());
+        String label = StringUtils.hasText(displayName) ? displayName.trim() : "Root";
+        return new WorkArea(
+            workspace.id() + ":root",
+            ownerType,
+            ownerId,
+            workspace.id(),
+            workspace.rootRelativePath(),
+            "",
+            label,
+            true,
+            false,
+            true,
+            "{}",
+            null,
+            null
+        );
+    }
+
     public WorkArea requireActiveOwned(String workAreaId, WorkspaceOwnerType ownerType, String ownerId, String label) {
         WorkArea workArea = get(workAreaId);
         if (workArea.ownerType() != ownerType || !workArea.ownerId().equals(ownerId)) {

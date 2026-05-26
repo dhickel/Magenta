@@ -1035,7 +1035,7 @@ final class AvatarDashboardComponents {
         if (workAreas == null || workAreas.isEmpty()) {
             return body.withChild(empty("No agent Work Areas are available."));
         }
-        body.withClass("avatar-workarea-browser");
+        body.withClass("avatar-workarea-browser avatar-workarea-browser-widget");
         Div layout = new Div().withClass("avatar-workarea-browser-grid");
         Div list = new Div().withClass("avatar-list");
         for (WorkArea workArea : workAreas.stream().limit(8).toList()) {
