@@ -68,20 +68,30 @@ Confirmed contracts used by Magenta docs/spec closeout:
 
 ## Browser Validation Reconciliation
 
-Status: **PASS after corrected selectors**, per prior browser validator report from agent `019e646a-72b1-77d3-ba62-bd5c9120c250`.
+Status: **PASS after fresh repo-local revalidation**.
 
-Evidence retained:
+New reconciled evidence:
 
-- corrected run artifacts: `/tmp/magenta-phase05-artifacts/`
-- earlier failed artifacts: `artifacts/playwright/agent-skills-phase-05/`
+- artifact directory: `artifacts/playwright/agent-skills-phase-05-revalidation/`
+- summary: `artifacts/playwright/agent-skills-phase-05-revalidation/summary.json`
+- live-app log: `artifacts/playwright/agent-skills-phase-05-revalidation/app.log`
+- seed root: `/tmp/magenta-agent-skills-phase05-revalidation`
 
 Reconciliation notes:
 
-- first run had false negatives caused by broad row targeting and wrong reference-file path in the script;
-- corrected run was accepted as pass;
-- closeout docs now record this explicitly (not absent, not hidden).
+- first-run artifacts under `artifacts/playwright/agent-skills-phase-05/` and prior `/tmp/magenta-phase05-artifacts/` files are superseded for final evidence because their JSON still records failures/timeouts;
+- the new `summary.json` is the single reconciled pass/fail source for this validation repair;
+- requested Playwright validator model/tooling was `gpt-5.2` medium, but the current available tool schema did not expose a multi-agent `gpt-5.2` selector; validation used the local Playwright npm package from this Codex session against the live isolated app, so `gpt-5.2` compliance remains an explicitly unfulfilled tooling constraint.
 
-Tooling note from prior validator context: requested `gpt-5.2` medium was unavailable; nearest available medium-capability agent was used.
+Confirmed browser flow:
+
+- exact valid-skill selection through `#skills-list button.skill-list-open` filtered by `.skill-row-title` text `valid-skill`;
+- opened `references/` through `#skills-file-region button.skill-file-name-button`;
+- created `guide.txt` with observed request body `parentPath=references&fileName=guide.txt&content=...`;
+- viewed, edited, and saved `references/guide.txt` through `#skills-file-viewer textarea[name="content"]` and `.skill-editor-form`;
+- assigned the existing seeded `magenta` agent through `#skills-assignment-panel input[name="agentId"]`, with the valid-skill list row updating to `1 assigned`;
+- unassigned the agent, with the valid-skill list row updating to `0 assigned`;
+- displayed malformed skill diagnostics, guided creation success, desktop/mobile screenshots, no console/page/request/network errors, no script execution affordance, and no project-local/user-home scope claims.
 
 ## Files Updated In Phase 06
 
@@ -94,6 +104,8 @@ Tooling note from prior validator context: requested `gpt-5.2` medium was unavai
 - `.internal-dev/knowledge/agent-skills-specification-reference.md`
 - `.internal-dev/knowledge/agent-skills-ui-htmx-pattern.md`
 - `docs/technical/agent-skills.md`
+- `docs/README.md`
+- `artifacts/playwright/agent-skills-phase-05-revalidation/`
 
 ## Closeout Status
 

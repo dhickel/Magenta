@@ -21,6 +21,7 @@ End-user docs:
 - [Workflows](end-user/workflows.md)
 - [Jobs](end-user/jobs.md)
 - [Agents](end-user/agents.md)
+- [Agent Skills](end-user/agent-skills.md)
 - [Projects and Workspaces](end-user/projects-and-workspaces.md)
 - [Inbox, Outputs, and Settings](end-user/inbox-outputs-settings.md)
 
@@ -31,6 +32,7 @@ Technical docs:
 - [API Reference](technical/api-reference.md)
 - [Data Model](technical/data-model.md)
 - [Services](technical/services.md)
+- [Agent Skills](technical/agent-skills.md)
 - [Chat, Planning, and Tasks](technical/chat-planning-tasks.md)
 - [Orchestration Runtime](technical/orchestration-runtime.md)
 - [Workflow Engine](technical/workflow-engine.md)
