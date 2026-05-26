@@ -9,6 +9,8 @@ Agent Skills browser/editor HTMX implementation pattern.
 - `src/main/java/io/mindspice/magenta2/api/web/selector/EntitySelectorComponents.java`
 - `src/main/java/io/mindspice/magenta2/api/web/WorkAreaExplorerFragments.java`
 - `src/main/resources/static/css/orchestration.css`
+- `/tmp/magenta-phase05-artifacts/`
+- `artifacts/playwright/agent-skills-phase-05/`
 - `/home/hickelpickle/Code/Java/cannasite/java-html-framework/docs/patterns/03-htmx-endpoint-and-swap-patterns.md`
 - `/home/hickelpickle/Code/Java/cannasite/java-html-framework/docs/reference/components-and-modules-catalog.md`
 
@@ -22,6 +24,8 @@ Agent Skills browser/editor HTMX implementation pattern.
 - Reuse the shared `EntitySelectorComponents` agent selector for assignment forms instead of a page-specific lookup widget.
 - Do not add custom JavaScript for skills CRUD. The existing selector validation hook and SimplyPages/HTMX behavior are sufficient for the current UI.
 - File tables should follow the Work Area explorer information pattern: stable rows, path labels, separate viewer/editor panel, and backend-owned path confinement.
+- Playwright checks for this HTMX surface must avoid broad row selectors and ambiguous file-path assertions. The first phase-05 browser run reported false negatives from broad targeting and a wrong reference-file path. Stable checks should target the selected-skill region, wait for HTMX settle before clicking dynamic rows, and assert against the active directory path.
+- Keep first-run failed artifacts and corrected artifacts together in evidence. For this phase, initial failures are under `artifacts/playwright/agent-skills-phase-05/`, while corrected evidence is under `/tmp/magenta-phase05-artifacts/`.
 
 # Engine Relevance
 

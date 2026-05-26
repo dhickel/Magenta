@@ -3,7 +3,7 @@
 > **Source:** [Agent Skills Specification](https://agentskills.io/specification)
 > **Client Implementation Guide:** [Adding Skills Support](https://agentskills.io/client-implementation/adding-skills-support.md)
 > **Date:** 2026-05-26
-> **Status:** Research + Phase-01 contract-validation notes
+> **Status:** Research + Phase-01 contract-validation notes + Phase-06 closeout revalidation notes
 
 ---
 
@@ -28,6 +28,25 @@ These notes are the reusable contract baseline for the `agent-skills-system` Pha
 - MVP active contract in this phase: Magenta-managed root repository `MagentaRootProperties.path()/skills` + agent-profile assignment + catalog/activation contract docs.
 - Deferred in this phase: project-local `.agents/skills`, user-home/client-native scopes, layered assignment (project/job/task/workflow/chat/session), script trust/execution policy, and registry/package/marketplace ingestion.
 - `allowed-tools` is documented as experimental and not treated as enforced permission policy in MVP.
+
+### 0.3 Phase-06 closeout revalidation notes (2026-05-26)
+
+- Official pages re-opened during closeout:
+  - `https://agentskills.io/specification`
+  - `https://agentskills.io/client-implementation/adding-skills-support`
+  - `https://agentskills.io/skill-creation/best-practices`
+  - `https://agentskills.io/skill-creation/using-scripts`
+- Confirmed still-valid requirements used in Magenta closeout:
+  - required `SKILL.md` shape and required `name`/`description`;
+  - optional `license`, `compatibility`, `metadata`, and experimental `allowed-tools`;
+  - progressive disclosure (catalog metadata first, full instructions on activation, resources on demand);
+  - dedicated activation tool is valid and may return body-only content;
+  - no-skill behavior should omit empty catalog/tool exposure;
+  - scripts/references path usage is relative to skill root.
+- Closeout documentation keeps Magenta-specific divergences explicit:
+  - root repository policy is `MagentaRootProperties.path()/skills` for MVP;
+  - project/user scopes and layered assignment remain deferred;
+  - `allowed-tools` remains non-authoritative metadata in MVP.
 
 ## 1. Specification Summary
 

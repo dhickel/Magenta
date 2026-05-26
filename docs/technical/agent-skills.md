@@ -1,6 +1,6 @@
-# Agent Skills (Phases 02-05 Backend/API/UI)
+# Agent Skills (Phases 02-06 Backend/API/UI/Closeout)
 
-This document captures the implemented Agent Skills foundation from Phase 02 through Phase 05.
+This document captures the implemented Agent Skills foundation from Phase 02 through Phase 06 closeout.
 
 ## Scope Boundary
 
@@ -8,6 +8,7 @@ This document captures the implemented Agent Skills foundation from Phase 02 thr
 - **Implemented in Phase 03:** DB-backed agent skill assignments, runtime catalog filtering by assigned+enabled+loadable skills, prompt-time catalog disclosure, dedicated `activate_skill` loading with resource listing, and activation deduplication per conversation.
 - **Implemented in Phase 04:** `/api/skills` list/detail/refresh/create/diagnostics routes, root-confined file tree/view/save/create routes, assignment add/remove/list routes, and minimal `/skills` shell/fragments for phase-05 UI handoff.
 - **Implemented in Phase 05:** full `/skills` operational browser/editor with list/filter/detail, diagnostics, directory overview, file viewer/editor, add-file flow, optional top-level directory creation, guided scaffold creation, and HTMX assignment controls.
+- **Implemented in Phase 06 closeout:** full-suite validation, bounded startup proof, official-spec re-verification pass notes, browser-evidence reconciliation, and docs/spec/knowledge/changelog synchronization.
 - **Out of scope for MVP:** project-local `.agents/skills`, user-home/client-native scopes, layered assignment (project/job/task/workflow/chat/session), script trust/execution policy, and registry/package ingestion.
 
 ## Repository Root
@@ -137,9 +138,9 @@ The page intentionally avoids project-local skill claims, user-home scope claims
   - no eager resource file reads
 - Repeated activation of the same skill in the same conversation returns `ALREADY_ACTIVE` and does not re-inject duplicate content.
 
-## Validation Expectations
+## Validation Evidence
 
-Phase 02-05 evidence:
+Phase 02-06 evidence:
 
 - Parser/discovery/path-confinement service tests.
 - Assignment/catalog/activation tests.
@@ -150,3 +151,10 @@ Phase 02-05 evidence:
   - unknown agent/skill assignment fails safely
   - duplicate assignment is idempotent
 - Phase 05 controller/rendering tests for shell/nav, list filtering, diagnostics, directory overview, `SKILL.md` editing, optional directory creation, add-file flow, assignment selector updates, and guided scaffold creation.
+- Focused skill-domain tests in Phase 06 closeout: `mvn -Dtest='*AgentSkill*Parser*,*AgentSkill*Validation*,*AgentSkill*Catalog*' test` (15 tests, 0 failures).
+- Full integration gate in Phase 06 closeout: `mvn test` (888 tests, 0 failures, 0 errors, 0 skipped).
+- Startup gate in Phase 06 closeout: `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` started successfully on ephemeral port `36065` and shut down gracefully on timeout.
+- Browser validation evidence reconciliation in Phase 06 closeout:
+  - first Playwright run had false negatives from broad row targeting and a wrong reference-file path in the validation script;
+  - corrected run from browser agent `019e646a-72b1-77d3-ba62-bd5c9120c250` is treated as pass and backed by updated artifact set at `/tmp/magenta-phase05-artifacts/`;
+  - initial failing artifacts are retained at `artifacts/playwright/agent-skills-phase-05/` for traceability.
