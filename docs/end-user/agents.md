@@ -103,6 +103,16 @@ The workspace tab shows:
 
 Use this tab to verify where agent work is mounted and whether a lease is active. A lease is a runtime hold on workspace use; it is not a Docker container by itself.
 
+## Workspace AGENTS.md Guidance
+
+When Magenta creates a brand-new agent execution workspace root, it can seed one starter `AGENTS.md` file at that workspace root.
+
+- The starter file is created once on first workspace-root creation.
+- Existing `AGENTS.md` files are never overwritten, regenerated, or normalized.
+- Starter guidance explains workspace-root expectations, `home/` persistence, run staging under `runs/`, and output staging under `<runId>/outputs`.
+- During model-backed assignment execution with a bound project/workspace root, runtime guidance uses layered `AGENTS.md` context from ancestor to closest path. Closest guidance wins on conflicts, while non-conflicting ancestor guidance remains active.
+- Explicit user prompts and assignment instructions override all `AGENTS.md` guidance.
+
 ## Outputs Tab
 
 The outputs tab lists recent artifacts associated with the agent. For filtering, downloading, and reading text or JSON outputs inline, use `/outputs`.

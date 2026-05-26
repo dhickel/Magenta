@@ -26,6 +26,18 @@ Run output staging and final output promotion are separate concepts. During task
 
 Projects are shared durable workspace and visibility abstractions. They are not executable work units, and `ownerAgentId` is nullable legacy compatibility metadata.
 
+## Runtime AGENTS.md Guidance
+
+Magenta runtime `AGENTS.md` support follows the external `agents.md` format baseline: plain Markdown with no required schema, root and nested file placement, and explicit user prompt precedence.
+
+For Magenta runtime behavior, the contract is:
+
+- Starter generation is first-create-only for new agent execution workspaces. A starter `AGENTS.md` is written once at workspace-root creation time and is never overwritten, regenerated, normalized, or compared by hash later.
+- Starter guidance is hard-coded for this phase and describes workspace-root expectations, `home/` persistence, `runs/` staging, `<runId>/outputs` staging semantics, `workareas/` user-controlled areas, and project/job binding expectations.
+- Resolution is confined to the bound root for the current run context (project root, selected Work Area root when narrowed, or effective agent workspace root). Runtime resolution must fail closed for traversal, symlink escape, or absolute paths outside that root.
+- Applicable files are layered from bound root toward the active path. Ancestor guidance remains active context; the closest applicable file has precedence only when instructions conflict.
+- If the turn has no bound root (for example, ordinary chat without project/workspace runtime context), runtime `AGENTS.md` resolution is omitted.
+
 ## Workspace Records and Links
 
 `WorkspaceService` owns `Workspace` and `WorkspaceLink` records:
