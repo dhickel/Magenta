@@ -4,6 +4,7 @@ import io.mindspice.magenta2.ai.chat.model.PlanMode;
 import io.mindspice.magenta2.ai.chat.plan.PlanService;
 import io.mindspice.magenta2.ai.chat.task.TaskService;
 import io.mindspice.magenta2.ai.chat.tool.ChatToolRegistry;
+import io.mindspice.magenta2.ai.skills.AgentSkillRuntimeCatalogService;
 import org.springframework.ai.tool.ToolCallback;
 
 import java.util.List;
@@ -42,11 +43,22 @@ public class ToolAccessPolicy {
     private final ChatToolRegistry chatToolRegistry;
     private final PlanService planService;
     private final TaskService taskService;
+    private final AgentSkillRuntimeCatalogService skillRuntimeCatalogService;
 
     public ToolAccessPolicy(ChatToolRegistry chatToolRegistry, PlanService planService, TaskService taskService) {
+        this(chatToolRegistry, planService, taskService, null);
+    }
+
+    public ToolAccessPolicy(
+        ChatToolRegistry chatToolRegistry,
+        PlanService planService,
+        TaskService taskService,
+        AgentSkillRuntimeCatalogService skillRuntimeCatalogService
+    ) {
         this.chatToolRegistry = chatToolRegistry;
         this.planService = planService;
         this.taskService = taskService;
+        this.skillRuntimeCatalogService = skillRuntimeCatalogService;
     }
 
     /**
@@ -66,28 +78,38 @@ public class ToolAccessPolicy {
      * Preserves the exact branch order: PLAN → TASK → EXECUTE_PLAN → EXECUTE_TASK → NORMAL.
      */
     public List<ToolCallback> filterToolsByMode(List<String> approvedToolNames, PlanMode mode) {
+        return filterToolsByMode(approvedToolNames, mode, null);
+    }
+
+    public List<ToolCallback> filterToolsByMode(List<String> approvedToolNames, PlanMode mode, String conversationId) {
         if (chatToolRegistry == null) {
             return List.of();
         }
         if (mode == PlanMode.PLAN) {
-            return withoutOperationalTools(chatToolRegistry.resolveApprovedTools(approvedToolNames, PLAN_MODE_TOOLS));
+            return hideSkillActivationWhenUnavailable(
+                withoutOperationalTools(chatToolRegistry.resolveApprovedTools(approvedToolNames, PLAN_MODE_TOOLS)),
+                conversationId
+            );
         }
         if (mode == PlanMode.TASK) {
-            return withoutOperationalTools(chatToolRegistry.resolveApprovedTools(approvedToolNames, TASK_MODE_TOOLS));
+            return hideSkillActivationWhenUnavailable(
+                withoutOperationalTools(chatToolRegistry.resolveApprovedTools(approvedToolNames, TASK_MODE_TOOLS)),
+                conversationId
+            );
         }
         if (mode == PlanMode.EXECUTE_PLAN) {
-            return chatToolRegistry.resolveApprovedTools(approvedToolNames).stream()
+            return hideSkillActivationWhenUnavailable(chatToolRegistry.resolveApprovedTools(approvedToolNames).stream()
                 .filter(callback -> !EXECUTION_BLOCKED_TOOLS.contains(callback.getToolDefinition().name()))
-                .toList();
+                .toList(), conversationId);
         }
         if (mode == PlanMode.EXECUTE_TASK) {
-            return chatToolRegistry.resolveApprovedTools(approvedToolNames).stream()
+            return hideSkillActivationWhenUnavailable(chatToolRegistry.resolveApprovedTools(approvedToolNames).stream()
                 .filter(callback -> !EXECUTION_BLOCKED_TOOLS.contains(callback.getToolDefinition().name()))
-                .toList();
+                .toList(), conversationId);
         }
-        return chatToolRegistry.resolveApprovedTools(approvedToolNames).stream()
+        return hideSkillActivationWhenUnavailable(chatToolRegistry.resolveApprovedTools(approvedToolNames).stream()
             .filter(callback -> !NORMAL_BLOCKED_TOOLS.contains(callback.getToolDefinition().name()))
-            .toList();
+            .toList(), conversationId);
     }
 
     private List<ToolCallback> withoutOperationalTools(List<ToolCallback> callbacks) {
@@ -98,5 +120,14 @@ public class ToolAccessPolicy {
 
     private boolean isOperationalTool(String toolName) {
         return toolName != null && (toolName.startsWith("agent_") || toolName.startsWith("avatar_"));
+    }
+
+    private List<ToolCallback> hideSkillActivationWhenUnavailable(List<ToolCallback> callbacks, String conversationId) {
+        if (skillRuntimeCatalogService == null || skillRuntimeCatalogService.hasAvailableSkillsForConversation(conversationId)) {
+            return callbacks;
+        }
+        return callbacks.stream()
+            .filter(callback -> !"activate_skill".equals(callback.getToolDefinition().name()))
+            .toList();
     }
 }

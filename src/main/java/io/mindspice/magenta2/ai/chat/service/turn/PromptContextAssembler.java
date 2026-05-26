@@ -16,6 +16,7 @@ import io.mindspice.magenta2.ai.orchestration.workspaces.AgentsMdLayer;
 import io.mindspice.magenta2.ai.orchestration.workspaces.AgentsMdResolution;
 import io.mindspice.magenta2.ai.orchestration.workspaces.AgentsMdResolver;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspacePathLayout;
+import io.mindspice.magenta2.ai.skills.AgentSkillPromptCatalogAssembler;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
@@ -39,6 +40,7 @@ public class PromptContextAssembler {
     private final TaskService taskService;
     private final WorkTypeProfileService workTypeProfileService;
     private final AgentsMdResolver agentsMdResolver;
+    private final AgentSkillPromptCatalogAssembler skillPromptCatalogAssembler;
 
     public PromptContextAssembler(
         AiConfig aiConfig,
@@ -48,12 +50,33 @@ public class PromptContextAssembler {
         WorkTypeProfileService workTypeProfileService,
         AgentsMdResolver agentsMdResolver
     ) {
+        this(
+            aiConfig,
+            runtimeSettingsService,
+            planService,
+            taskService,
+            workTypeProfileService,
+            agentsMdResolver,
+            null
+        );
+    }
+
+    public PromptContextAssembler(
+        AiConfig aiConfig,
+        RuntimeSettingsService runtimeSettingsService,
+        PlanService planService,
+        TaskService taskService,
+        WorkTypeProfileService workTypeProfileService,
+        AgentsMdResolver agentsMdResolver,
+        AgentSkillPromptCatalogAssembler skillPromptCatalogAssembler
+    ) {
         this.aiConfig = aiConfig;
         this.runtimeSettingsService = runtimeSettingsService;
         this.planService = planService;
         this.taskService = taskService;
         this.workTypeProfileService = workTypeProfileService;
         this.agentsMdResolver = agentsMdResolver;
+        this.skillPromptCatalogAssembler = skillPromptCatalogAssembler;
     }
 
     /**
@@ -107,6 +130,12 @@ public class PromptContextAssembler {
         } else if (StringUtils.hasText(agentsMdAppend)) {
             result = agentsMdAppend;
         }
+        String skillCatalogAppend = skillPromptCatalogAppend(conversationId, mode);
+        if (StringUtils.hasText(skillCatalogAppend) && StringUtils.hasText(result)) {
+            result = result.stripTrailing() + "\n\n" + skillCatalogAppend;
+        } else if (StringUtils.hasText(skillCatalogAppend)) {
+            result = skillCatalogAppend;
+        }
         return result;
     }
 
@@ -151,6 +180,16 @@ public class PromptContextAssembler {
         } catch (RuntimeException | IOException ignored) {
             return "";
         }
+    }
+
+    private String skillPromptCatalogAppend(String conversationId, PlanMode mode) {
+        if (skillPromptCatalogAssembler == null) {
+            return "";
+        }
+        if (mode == PlanMode.PLAN || mode == PlanMode.TASK) {
+            return "";
+        }
+        return skillPromptCatalogAssembler.promptAppend(conversationId);
     }
 
     private String runtimeActivePath(OrchestrationTaskContext context) {

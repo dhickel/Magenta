@@ -17,12 +17,16 @@ import io.mindspice.magenta2.ai.chat.tool.file.AgentFileTools;
 import io.mindspice.magenta2.ai.chat.tool.shell.AgentShellToolConfiguration;
 import io.mindspice.magenta2.ai.chat.tool.shell.AgentShellToolService;
 import io.mindspice.magenta2.ai.chat.tool.shell.AgentShellTools;
+import io.mindspice.magenta2.ai.chat.tool.skills.AgentSkillActivationTools;
+import io.mindspice.magenta2.ai.chat.tool.skills.AgentSkillToolConfiguration;
 import io.mindspice.magenta2.ai.chat.tool.web.AgentWebToolConfiguration;
 import io.mindspice.magenta2.ai.chat.tool.web.AgentWebToolService;
 import io.mindspice.magenta2.ai.chat.tool.web.AgentWebTools;
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.ai.config.user.WebSearchConfig;
+import io.mindspice.magenta2.ai.skills.AgentSkillActivationResult;
+import io.mindspice.magenta2.ai.skills.AgentSkillActivationService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.ai.tool.ToolCallback;
@@ -30,6 +34,8 @@ import org.springframework.ai.tool.ToolCallbackProvider;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class ChatToolRegistryTest {
 
@@ -168,6 +174,24 @@ class ChatToolRegistryTest {
         assertThat(callbacks.get("web_fetch").getToolDefinition().description())
             .contains("http or https URL")
             .contains("cite");
+    }
+
+    @Test
+    void exposesActivateSkillToolWithSkillNameInput() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        AgentSkillActivationService activationService = mock(AgentSkillActivationService.class);
+        when(activationService.activateSkill(null, "pdf-processing"))
+            .thenReturn(AgentSkillActivationResult.failure(null, "pdf-processing", "ok"));
+        AgentSkillActivationTools tools = new AgentSkillActivationTools(activationService, objectMapper);
+        ToolCallbackProvider provider = new AgentSkillToolConfiguration().agentSkillToolCallbackProvider(tools);
+        Map<String, ToolCallback> callbacks = Arrays.stream(provider.getToolCallbacks())
+            .collect(Collectors.toMap(callback -> callback.getToolDefinition().name(), Function.identity()));
+
+        assertThat(callbacks.keySet()).containsExactly("activate_skill");
+        assertTool(callbacks.get("activate_skill"), objectMapper, List.of("skillName"), "skillName");
+        assertThat(callbacks.get("activate_skill").getToolDefinition().description())
+            .contains("assigned Agent Skill")
+            .contains("resource listing");
     }
 
     private AiConfig aiConfig() {

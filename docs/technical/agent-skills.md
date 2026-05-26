@@ -1,11 +1,12 @@
-# Agent Skills (Phase 02 Foundation)
+# Agent Skills (Phases 02-03 Backend)
 
-This document captures the implemented backend foundation from Phase 02 and the remaining planned MVP layers.
+This document captures the implemented backend foundation from Phase 02 plus Phase 03 runtime assignment/catalog/activation behavior.
 
 ## Scope Boundary
 
 - **Implemented in Phase 02:** root `skills/` repository resolution, `SKILL.md` parsing/validation diagnostics, skill discovery/catalog metadata persistence, optional directory visibility flags, path confinement checks, and refresh-after-edit hashing.
-- **Planned next MVP layers:** agent-level assignment, runtime catalog filtering/disclosure injection, activation lifecycle, API/file management, and browser UI.
+- **Implemented in Phase 03:** DB-backed agent skill assignments, runtime catalog filtering by assigned+enabled+loadable skills, prompt-time catalog disclosure, dedicated `activate_skill` loading with resource listing, and activation deduplication per conversation.
+- **Planned next MVP layers:** API/file management and browser UI.
 - **Out of scope for MVP:** project-local `.agents/skills`, user-home/client-native scopes, layered assignment (project/job/task/workflow/chat/session), script trust/execution policy, and registry/package ingestion.
 
 ## Repository Root
@@ -29,6 +30,14 @@ Persisted metadata currently includes:
 - `has_scripts`, `has_references`, `has_assets`
 - `content_hash`, `discovered_at`, `last_scanned_at`, `created_at`, `updated_at`
 
+Phase 03 adds `agent_skill_assignments` metadata:
+
+- `skill_id`, `skill_name`
+- `target_type` (`AGENT` in MVP), `target_id` (agent id)
+- `enabled`
+- `created_at`, `updated_at`
+- uniqueness on `(skill_name, target_type, target_id)` to prevent duplicate rows
+
 ## Service Ownership (Implemented)
 
 Current ownership boundary:
@@ -37,6 +46,10 @@ Current ownership boundary:
 - `AgentSkillParser`: frontmatter/body extraction, YAML parse fallback, validation, and stable diagnostics.
 - `AgentSkillCatalogService`: discovery scan, malformed isolation, optional-directory flags, and metadata refresh persistence.
 - `AgentSkillRepository`: SQLite persistence for discovered skill metadata and diagnostics.
+- `AgentSkillAssignmentRepository` + `AgentSkillAssignmentService`: assignment persistence and lookup independent from tool approval metadata.
+- `AgentSkillRuntimeCatalogService`: assigned/enabled/loadable catalog construction for the effective agent context.
+- `AgentSkillPromptCatalogAssembler`: concise `available_skills` prompt section injection.
+- `AgentSkillActivationService`: dedicated activation lookup, assignment checks, skill-body loading, resource listing, and dedupe tracking.
 
 Chat/web/API layers consume this domain surface; they do not own direct parser/discovery logic.
 
@@ -62,6 +75,18 @@ Pending phases will add:
 - Skill list/read/create/update/delete in root repository.
 - Guided skill creation/editing for `SKILL.md`.
 - Agent-skill assignment and removal.
+
+## Runtime Catalog And Activation Contract (Implemented)
+
+- Runtime catalog is metadata-only and contains `name` + `description` for assigned+enabled+loadable skills.
+- Unassigned, disabled, invalid, malformed, or missing skills are hidden from the runtime catalog.
+- If no skills are available for the conversation/agent context, prompt catalog disclosure is omitted.
+- `activate_skill` is hidden from mode-filtered tool exposure when no available skills exist for that conversation.
+- Dedicated activation returns **body-only** instructions (frontmatter stripped) wrapped in `<skill_content ...>` with:
+  - skill directory hint (`skills/<slug>`)
+  - `<skill_resources>` listing for files under `scripts/`, `references/`, and `assets/`
+  - no eager resource file reads
+- Repeated activation of the same skill in the same conversation returns `ALREADY_ACTIVE` and does not re-inject duplicate content.
 
 ## Validation Expectations
 

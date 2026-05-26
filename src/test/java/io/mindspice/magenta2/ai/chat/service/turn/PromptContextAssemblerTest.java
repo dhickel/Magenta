@@ -3,6 +3,7 @@ package io.mindspice.magenta2.ai.chat.service.turn;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 
 import io.mindspice.magenta2.ai.chat.model.PlanMode;
@@ -13,6 +14,9 @@ import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHo
 import io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettingsService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.AgentsMdResolution;
 import io.mindspice.magenta2.ai.orchestration.workspaces.AgentsMdResolver;
+import io.mindspice.magenta2.ai.skills.AgentSkillCatalogEntry;
+import io.mindspice.magenta2.ai.skills.AgentSkillPromptCatalogAssembler;
+import io.mindspice.magenta2.ai.skills.AgentSkillRuntimeCatalogService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -249,6 +253,81 @@ class PromptContextAssemblerTest {
 
         assertThat(prompt).isEqualTo("base-system-prompt");
         assertThat(prompt).doesNotContain("Runtime AGENTS.md Context");
+    }
+
+    @Test
+    void appendsSkillCatalogWhenAssignedSkillsExist() {
+        AgentSkillRuntimeCatalogService runtimeCatalogService = mock(AgentSkillRuntimeCatalogService.class);
+        when(runtimeCatalogService.catalogForConversation("conversation-1")).thenReturn(List.of(
+            new AgentSkillCatalogEntry("pdf-processing", "Use when extracting or merging PDFs.")
+        ));
+        AgentSkillPromptCatalogAssembler catalogAssembler = new AgentSkillPromptCatalogAssembler(runtimeCatalogService);
+        RuntimeSettingsService runtimeSettingsService = mock(RuntimeSettingsService.class);
+        when(runtimeSettingsService.defaultSystemPrompt()).thenReturn("base-system-prompt");
+        PromptContextAssembler assembler = new PromptContextAssembler(
+            null,
+            runtimeSettingsService,
+            null,
+            null,
+            null,
+            null,
+            catalogAssembler
+        );
+
+        String prompt = assembler.mergeModePrompt(PlanMode.NORMAL, "conversation-1");
+
+        assertThat(prompt).contains("## Available Agent Skills");
+        assertThat(prompt).contains("activate_skill");
+        assertThat(prompt).contains("<available_skills>");
+        assertThat(prompt).contains("<name>pdf-processing</name>");
+    }
+
+    @Test
+    void omitsSkillCatalogWhenNoSkillsAreAssigned() {
+        AgentSkillRuntimeCatalogService runtimeCatalogService = mock(AgentSkillRuntimeCatalogService.class);
+        when(runtimeCatalogService.catalogForConversation("conversation-1")).thenReturn(List.of());
+        AgentSkillPromptCatalogAssembler catalogAssembler = new AgentSkillPromptCatalogAssembler(runtimeCatalogService);
+        RuntimeSettingsService runtimeSettingsService = mock(RuntimeSettingsService.class);
+        when(runtimeSettingsService.defaultSystemPrompt()).thenReturn("base-system-prompt");
+        PromptContextAssembler assembler = new PromptContextAssembler(
+            null,
+            runtimeSettingsService,
+            null,
+            null,
+            null,
+            null,
+            catalogAssembler
+        );
+
+        String prompt = assembler.mergeModePrompt(PlanMode.NORMAL, "conversation-1");
+
+        assertThat(prompt).isEqualTo("base-system-prompt");
+        assertThat(prompt).doesNotContain("available_skills");
+    }
+
+    @Test
+    void omitsSkillCatalogInPlanMode() {
+        AgentSkillRuntimeCatalogService runtimeCatalogService = mock(AgentSkillRuntimeCatalogService.class);
+        when(runtimeCatalogService.catalogForConversation("conversation-1")).thenReturn(List.of(
+            new AgentSkillCatalogEntry("pdf-processing", "Use when extracting or merging PDFs.")
+        ));
+        AgentSkillPromptCatalogAssembler catalogAssembler = new AgentSkillPromptCatalogAssembler(runtimeCatalogService);
+        RuntimeSettingsService runtimeSettingsService = mock(RuntimeSettingsService.class);
+        when(runtimeSettingsService.defaultSystemPrompt()).thenReturn("base-system-prompt");
+        PromptContextAssembler assembler = new PromptContextAssembler(
+            null,
+            runtimeSettingsService,
+            null,
+            null,
+            null,
+            null,
+            catalogAssembler
+        );
+
+        String prompt = assembler.mergeModePrompt(PlanMode.PLAN, "conversation-1");
+
+        assertThat(prompt).isEmpty();
+        assertThat(prompt).doesNotContain("available_skills");
     }
 
     private PromptContextAssembler assemblerWithResolver(AgentsMdResolver resolver) {

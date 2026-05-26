@@ -66,6 +66,9 @@ import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
 import io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettingsService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.AgentsMdResolver;
+import io.mindspice.magenta2.ai.skills.AgentSkillActivationService;
+import io.mindspice.magenta2.ai.skills.AgentSkillPromptCatalogAssembler;
+import io.mindspice.magenta2.ai.skills.AgentSkillRuntimeCatalogService;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.memory.ChatMemory;
@@ -140,6 +143,7 @@ public class ChatService {
     private final RequestResolver requestResolver;
     private final ChatFileService chatFileService;
     private final ChatPendingMessageService chatPendingMessageService;
+    private final AgentSkillActivationService agentSkillActivationService;
     private final Set<String> toolUnsupportedModels = ConcurrentHashMap.newKeySet();
     private final Map<String, Semaphore> streamLocks = new ConcurrentHashMap<>();
 
@@ -178,6 +182,66 @@ public class ChatService {
             null,
             null,
             null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+        );
+    }
+
+    public ChatService(
+        ChatMemory chatMemory,
+        ChatMemoryRepository chatMemoryRepository,
+        ChatSessionMetadataRepository chatSessionMetadataRepository,
+        ChatMarkdownRenderer chatMarkdownRenderer,
+        AiConfig aiConfig,
+        ContextManagementAdvisor contextManagementAdvisor,
+        ContextUsageTracker contextUsageTracker,
+        ChatModelRouter chatModelRouter,
+        ToolCallingManager toolCallingManager,
+        ChatToolRegistry chatToolRegistry,
+        ToolTranscriptService toolTranscriptService,
+        PlanService planService,
+        TaskService taskService,
+        AgentJobService agentJobService,
+        ConversationTurnCoordinator turnCoordinator,
+        AuditRepository auditRepository,
+        ObjectMapper objectMapper,
+        RuntimeSettingsService runtimeSettingsService,
+        AuditService auditService,
+        RequestResolver requestResolver,
+        ChatFileService chatFileService,
+        ChatPendingMessageService chatPendingMessageService,
+        io.mindspice.magenta2.ai.chat.plan.WorkTypeProfileService workTypeProfileService,
+        AgentsMdResolver agentsMdResolver
+    ) {
+        this(
+            chatMemory,
+            chatMemoryRepository,
+            chatSessionMetadataRepository,
+            chatMarkdownRenderer,
+            aiConfig,
+            contextManagementAdvisor,
+            contextUsageTracker,
+            chatModelRouter,
+            toolCallingManager,
+            chatToolRegistry,
+            toolTranscriptService,
+            planService,
+            taskService,
+            agentJobService,
+            turnCoordinator,
+            auditRepository,
+            objectMapper,
+            runtimeSettingsService,
+            auditService,
+            requestResolver,
+            chatFileService,
+            chatPendingMessageService,
+            workTypeProfileService,
+            agentsMdResolver,
             null,
             null,
             null
@@ -224,6 +288,9 @@ public class ChatService {
             null,
             null,
             null,
+            null,
+            null,
+            null,
             null
         );
     }
@@ -253,7 +320,10 @@ public class ChatService {
         @Autowired(required = false) ChatFileService chatFileService,
         @Autowired(required = false) ChatPendingMessageService chatPendingMessageService,
         @Autowired(required = false) io.mindspice.magenta2.ai.chat.plan.WorkTypeProfileService workTypeProfileService,
-        @Autowired(required = false) AgentsMdResolver agentsMdResolver
+        @Autowired(required = false) AgentsMdResolver agentsMdResolver,
+        @Autowired(required = false) AgentSkillRuntimeCatalogService skillRuntimeCatalogService,
+        @Autowired(required = false) AgentSkillPromptCatalogAssembler skillPromptCatalogAssembler,
+        @Autowired(required = false) AgentSkillActivationService agentSkillActivationService
     ) {
         this.chatMemory = chatMemory;
         this.chatMemoryRepository = chatMemoryRepository;
@@ -277,6 +347,7 @@ public class ChatService {
         this.requestResolver = requestResolver;
         this.chatFileService = chatFileService;
         this.chatPendingMessageService = chatPendingMessageService;
+        this.agentSkillActivationService = agentSkillActivationService;
 
         // Initialize extracted turn components
         this.promptAssembler = new PromptContextAssembler(
@@ -285,9 +356,10 @@ public class ChatService {
             planService,
             taskService,
             workTypeProfileService,
-            agentsMdResolver
+            agentsMdResolver,
+            skillPromptCatalogAssembler
         );
-        this.toolAccessPolicy = new ToolAccessPolicy(chatToolRegistry, planService, taskService);
+        this.toolAccessPolicy = new ToolAccessPolicy(chatToolRegistry, planService, taskService, skillRuntimeCatalogService);
         this.turnRepair = new TerminalTurnRepair(planService, taskService);
         this.turnAuditWriter = new TurnAuditWriter(auditService, auditRepository);
     }
@@ -341,6 +413,9 @@ public class ChatService {
             chatFileService,
             chatPendingMessageService,
             workTypeProfileService,
+            null,
+            null,
+            null,
             null
         );
     }
@@ -629,6 +704,9 @@ public class ChatService {
             }
             if (chatPendingMessageService != null) {
                 chatPendingMessageService.deleteByConversationId(conversationId);
+            }
+            if (agentSkillActivationService != null) {
+                agentSkillActivationService.clearConversationActivations(conversationId);
             }
         }
     }
@@ -2164,7 +2242,7 @@ public class ChatService {
 
     private List<ToolCallback> filterApprovedTools(List<String> approvedToolNames, ResolvedChatRequest request) {
         PlanMode mode = interactionMode(request.conversationId());
-        return toolAccessPolicy.filterToolsByMode(approvedToolNames, mode);
+        return toolAccessPolicy.filterToolsByMode(approvedToolNames, mode, request.conversationId());
     }
 
     private boolean supportsTools(String model) {

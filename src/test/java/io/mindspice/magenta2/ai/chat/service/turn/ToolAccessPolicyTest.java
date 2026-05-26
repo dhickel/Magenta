@@ -2,6 +2,7 @@ package io.mindspice.magenta2.ai.chat.service.turn;
 
 import io.mindspice.magenta2.ai.chat.model.PlanMode;
 import io.mindspice.magenta2.ai.chat.tool.ChatToolRegistry;
+import io.mindspice.magenta2.ai.skills.AgentSkillRuntimeCatalogService;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.DefaultToolDefinition;
@@ -10,6 +11,8 @@ import org.springframework.ai.tool.definition.ToolDefinition;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class ToolAccessPolicyTest {
 
@@ -50,6 +53,50 @@ class ToolAccessPolicyTest {
             .toList();
 
         assertThat(toolNames).containsExactly("agent_queue_list", "avatar_system_overview");
+    }
+
+    @Test
+    void hidesActivateSkillWhenNoSkillsAreAvailable() {
+        AgentSkillRuntimeCatalogService skillCatalogService = mock(AgentSkillRuntimeCatalogService.class);
+        when(skillCatalogService.hasAvailableSkillsForConversation("conversation-1")).thenReturn(false);
+
+        ToolAccessPolicy policy = new ToolAccessPolicy(
+            new ChatToolRegistry(List.of(
+                new NamedToolCallback("file_read"),
+                new NamedToolCallback("activate_skill")
+            ), List.of()),
+            null,
+            null,
+            skillCatalogService
+        );
+
+        List<String> toolNames = policy.filterToolsByMode(List.of("*"), PlanMode.NORMAL, "conversation-1").stream()
+            .map(callback -> callback.getToolDefinition().name())
+            .toList();
+
+        assertThat(toolNames).containsExactly("file_read");
+    }
+
+    @Test
+    void keepsActivateSkillWhenSkillsAreAvailable() {
+        AgentSkillRuntimeCatalogService skillCatalogService = mock(AgentSkillRuntimeCatalogService.class);
+        when(skillCatalogService.hasAvailableSkillsForConversation("conversation-1")).thenReturn(true);
+
+        ToolAccessPolicy policy = new ToolAccessPolicy(
+            new ChatToolRegistry(List.of(
+                new NamedToolCallback("file_read"),
+                new NamedToolCallback("activate_skill")
+            ), List.of()),
+            null,
+            null,
+            skillCatalogService
+        );
+
+        List<String> toolNames = policy.filterToolsByMode(List.of("*"), PlanMode.NORMAL, "conversation-1").stream()
+            .map(callback -> callback.getToolDefinition().name())
+            .toList();
+
+        assertThat(toolNames).containsExactly("file_read", "activate_skill");
     }
 
     private static final class NamedToolCallback implements ToolCallback {
