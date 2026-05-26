@@ -65,6 +65,7 @@ import io.mindspice.magenta2.ai.execution.MagentaWorkRequest;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
 import io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettingsService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.AgentsMdResolver;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.memory.ChatMemory;
@@ -178,6 +179,7 @@ public class ChatService {
             null,
             null,
             null,
+            null,
             null
         );
     }
@@ -221,6 +223,7 @@ public class ChatService {
                 : null,
             null,
             null,
+            null,
             null
         );
     }
@@ -249,7 +252,8 @@ public class ChatService {
         @Autowired(required = false) RequestResolver requestResolver,
         @Autowired(required = false) ChatFileService chatFileService,
         @Autowired(required = false) ChatPendingMessageService chatPendingMessageService,
-        @Autowired(required = false) io.mindspice.magenta2.ai.chat.plan.WorkTypeProfileService workTypeProfileService
+        @Autowired(required = false) io.mindspice.magenta2.ai.chat.plan.WorkTypeProfileService workTypeProfileService,
+        @Autowired(required = false) AgentsMdResolver agentsMdResolver
     ) {
         this.chatMemory = chatMemory;
         this.chatMemoryRepository = chatMemoryRepository;
@@ -275,10 +279,70 @@ public class ChatService {
         this.chatPendingMessageService = chatPendingMessageService;
 
         // Initialize extracted turn components
-        this.promptAssembler = new PromptContextAssembler(aiConfig, runtimeSettingsService, planService, taskService, workTypeProfileService);
+        this.promptAssembler = new PromptContextAssembler(
+            aiConfig,
+            runtimeSettingsService,
+            planService,
+            taskService,
+            workTypeProfileService,
+            agentsMdResolver
+        );
         this.toolAccessPolicy = new ToolAccessPolicy(chatToolRegistry, planService, taskService);
         this.turnRepair = new TerminalTurnRepair(planService, taskService);
         this.turnAuditWriter = new TurnAuditWriter(auditService, auditRepository);
+    }
+
+    public ChatService(
+        ChatMemory chatMemory,
+        ChatMemoryRepository chatMemoryRepository,
+        ChatSessionMetadataRepository chatSessionMetadataRepository,
+        ChatMarkdownRenderer chatMarkdownRenderer,
+        AiConfig aiConfig,
+        ContextManagementAdvisor contextManagementAdvisor,
+        ContextUsageTracker contextUsageTracker,
+        ChatModelRouter chatModelRouter,
+        ToolCallingManager toolCallingManager,
+        ChatToolRegistry chatToolRegistry,
+        ToolTranscriptService toolTranscriptService,
+        PlanService planService,
+        TaskService taskService,
+        AgentJobService agentJobService,
+        ConversationTurnCoordinator turnCoordinator,
+        AuditRepository auditRepository,
+        ObjectMapper objectMapper,
+        RuntimeSettingsService runtimeSettingsService,
+        AuditService auditService,
+        RequestResolver requestResolver,
+        ChatFileService chatFileService,
+        ChatPendingMessageService chatPendingMessageService,
+        io.mindspice.magenta2.ai.chat.plan.WorkTypeProfileService workTypeProfileService
+    ) {
+        this(
+            chatMemory,
+            chatMemoryRepository,
+            chatSessionMetadataRepository,
+            chatMarkdownRenderer,
+            aiConfig,
+            contextManagementAdvisor,
+            contextUsageTracker,
+            chatModelRouter,
+            toolCallingManager,
+            chatToolRegistry,
+            toolTranscriptService,
+            planService,
+            taskService,
+            agentJobService,
+            turnCoordinator,
+            auditRepository,
+            objectMapper,
+            runtimeSettingsService,
+            auditService,
+            requestResolver,
+            chatFileService,
+            chatPendingMessageService,
+            workTypeProfileService,
+            null
+        );
     }
 
     public ChatResponse chat(ChatRequest request) {

@@ -36,7 +36,7 @@ For Magenta runtime behavior, the contract is:
 - Starter guidance is hard-coded for this phase and describes workspace-root expectations, `home/` persistence, `runs/` staging, `<runId>/outputs` staging semantics, `workareas/` user-controlled areas, and project/job binding expectations.
 - Resolution is confined to the bound root for the current run context (project root, selected Work Area root when narrowed, or effective agent workspace root). Runtime resolution must fail closed for traversal, symlink escape, or absolute paths outside that root.
 - Applicable files are layered from bound root toward the active path. Ancestor guidance remains active context; the closest applicable file has precedence only when instructions conflict.
-- If the turn has no bound root (for example, ordinary chat without project/workspace runtime context), runtime `AGENTS.md` resolution is omitted.
+- Prompt/context injection runs only for model-backed agent runtime contexts (assignment/agent-bound orchestration context with an agent id). If the turn has no bound root or is ordinary chat without that runtime binding, runtime `AGENTS.md` resolution is omitted.
 
 ## Workspace Records and Links
 

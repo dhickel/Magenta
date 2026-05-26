@@ -9,14 +9,22 @@ import io.mindspice.magenta2.ai.chat.service.ResolvedChatRequest;
 import io.mindspice.magenta2.ai.chat.task.TaskService;
 import io.mindspice.magenta2.ai.config.user.AgentConfig;
 import io.mindspice.magenta2.ai.config.user.AiConfig;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
 import io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettingsService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.AgentsMdLayer;
+import io.mindspice.magenta2.ai.orchestration.workspaces.AgentsMdResolution;
+import io.mindspice.magenta2.ai.orchestration.workspaces.AgentsMdResolver;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspacePathLayout;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.util.StringUtils;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Composes the system prompt and turn instructions by merging the default agent
@@ -29,19 +37,22 @@ public class PromptContextAssembler {
     private final PlanService planService;
     private final TaskService taskService;
     private final WorkTypeProfileService workTypeProfileService;
+    private final AgentsMdResolver agentsMdResolver;
 
     public PromptContextAssembler(
         AiConfig aiConfig,
         RuntimeSettingsService runtimeSettingsService,
         PlanService planService,
         TaskService taskService,
-        WorkTypeProfileService workTypeProfileService
+        WorkTypeProfileService workTypeProfileService,
+        AgentsMdResolver agentsMdResolver
     ) {
         this.aiConfig = aiConfig;
         this.runtimeSettingsService = runtimeSettingsService;
         this.planService = planService;
         this.taskService = taskService;
         this.workTypeProfileService = workTypeProfileService;
+        this.agentsMdResolver = agentsMdResolver;
     }
 
     /**
@@ -89,6 +100,12 @@ public class PromptContextAssembler {
         if (StringUtils.hasText(worktypeAppend) && StringUtils.hasText(result)) {
             result = result.stripTrailing() + "\n\n" + worktypeAppend;
         }
+        String agentsMdAppend = agentsMdPromptAppend();
+        if (StringUtils.hasText(agentsMdAppend) && StringUtils.hasText(result)) {
+            result = result.stripTrailing() + "\n\n" + agentsMdAppend;
+        } else if (StringUtils.hasText(agentsMdAppend)) {
+            result = agentsMdAppend;
+        }
         return result;
     }
 
@@ -110,6 +127,46 @@ public class PromptContextAssembler {
             return workTypeProfileService.getSystemPromptAppendForPlan(plan.promptProfile());
         }
         return "";
+    }
+
+    private String agentsMdPromptAppend() {
+        if (agentsMdResolver == null) {
+            return "";
+        }
+        OrchestrationTaskContext context = OrchestrationTaskContextHolder.current();
+        if (context == null || !context.hasAgentContext()) {
+            return "";
+        }
+        try {
+            Optional<AgentsMdResolution> resolved = agentsMdResolver.resolveForContext(context, WorkspacePathLayout.WORKSPACE);
+            if (resolved.isEmpty()) {
+                return "";
+            }
+            AgentsMdResolution resolution = resolved.orElseThrow();
+            if (!resolution.hasLayers()) {
+                return "";
+            }
+            return formatAgentsMdPromptBlock(resolution);
+        } catch (RuntimeException | IOException ignored) {
+            return "";
+        }
+    }
+
+    private String formatAgentsMdPromptBlock(AgentsMdResolution resolution) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("## Runtime AGENTS.md Context\n\n");
+        builder.append("Explicit user prompts and current task instructions override all AGENTS.md guidance.\n");
+        builder.append("Layers are ordered from bound root to closest path. ");
+        builder.append("The closest layer wins only on conflicts, and non-conflicting ancestor guidance remains active.\n\n");
+        for (int i = 0; i < resolution.layers().size(); i++) {
+            AgentsMdLayer layer = resolution.layers().get(i);
+            String source = layer.isRootLayer() ? "AGENTS.md" : layer.relativeDirectory() + "/AGENTS.md";
+            String label = layer.isRootLayer() ? "root" : layer.relativeDirectory();
+            builder.append("### Layer ").append(i + 1).append(" — ").append(label).append("\n");
+            builder.append("Source: ").append(source).append("\n\n");
+            builder.append(layer.content().strip()).append("\n\n");
+        }
+        return builder.toString().stripTrailing();
     }
 
     /**
