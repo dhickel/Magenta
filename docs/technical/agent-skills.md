@@ -155,6 +155,7 @@ Phase 02-06 evidence:
 - Full integration gate in Phase 06 closeout: `mvn test` (888 tests, 0 failures, 0 errors, 0 skipped).
 - Startup gate in Phase 06 closeout: `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` started successfully on ephemeral port `36065` and shut down gracefully on timeout.
 - Browser validation evidence reconciliation in Phase 06 closeout:
-  - first Playwright run had false negatives from broad row targeting and a wrong reference-file path in the validation script;
-  - corrected run from browser agent `019e646a-72b1-77d3-ba62-bd5c9120c250` is treated as pass and backed by updated artifact set at `/tmp/magenta-phase05-artifacts/`;
-  - initial failing artifacts are retained at `artifacts/playwright/agent-skills-phase-05/` for traceability.
+  - first Playwright runs had false negatives from broad row targeting, wrong reference-file path setup, and HTMX swap timing in the validation script;
+  - final browser evidence is the reconciled repo-local artifact set at `artifacts/playwright/agent-skills-phase-05-revalidation/`, especially `summary.json`, `validate.mjs`, and `app.log`;
+  - older failed/timeout artifacts under `artifacts/playwright/agent-skills-phase-05/` and `/tmp/magenta-phase05-artifacts/` are superseded for sign-off and retained only for traceability;
+  - the requested `gpt-5.2` medium Playwright validator model was not exposed by the available orchestration tool schema, so the revalidation records that tooling constraint instead of claiming normal model compliance.
