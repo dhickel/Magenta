@@ -7,6 +7,8 @@
 - Added `SKILL.md` parser/validation with diagnostics, YAML fallback for colon-delimited scalar compatibility, and official/lenient validation behavior.
 - Added SQLite-backed skill metadata persistence and discovery refresh with optional directory flags and content hash updates after edits.
 - Added focused parser/discovery/path-confinement tests for valid and malformed skill handling.
+- Hardened relative-path confinement to reject symlink ancestors for both existing paths and write-intent/nonexistent targets.
+- Expanded tests for missing name, invalid/too-long name warnings, `assets/` detection, top-level symlink diagnostics, and write-path symlink escape attempts.
 
 # Files
 - `src/main/java/io/mindspice/magenta2/core/config/MagentaRootProperties.java`

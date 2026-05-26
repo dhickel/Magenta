@@ -36,6 +36,7 @@ class AgentSkillCatalogServiceTest {
             """, StandardCharsets.UTF_8);
         Files.createDirectories(valid.resolve("scripts"));
         Files.createDirectories(valid.resolve("references"));
+        Files.createDirectories(valid.resolve("assets"));
         Path missingSkillMd = Files.createDirectories(skillsRoot.resolve("missing-markdown"));
         Path missingDescription = Files.createDirectories(skillsRoot.resolve("missing-description"));
         Files.writeString(missingDescription.resolve("SKILL.md"), """
@@ -57,7 +58,7 @@ class AgentSkillCatalogServiceTest {
         assertThat(validSkill.status()).isEqualTo(AgentSkillStatus.VALID);
         assertThat(validSkill.hasScripts()).isTrue();
         assertThat(validSkill.hasReferences()).isTrue();
-        assertThat(validSkill.hasAssets()).isFalse();
+        assertThat(validSkill.hasAssets()).isTrue();
         assertThat(validSkill.metadata()).containsEntry("author", "test");
         assertThat(validSkill.skillMdRootRelativePath()).isEqualTo("valid-skill/SKILL.md");
         assertThat(validSkill.contentHash()).isNotBlank();
@@ -156,6 +157,58 @@ class AgentSkillCatalogServiceTest {
         assertThatThrownBy(() -> repositoryService.resolveExistingRelativePath("safe-skill", "escape"))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("symbolic links");
+    }
+
+    @Test
+    void resolveRelativePathRejectsWritePathThroughSymlinkAncestor() throws Exception {
+        AgentSkillRepositoryService repositoryService = new AgentSkillRepositoryService(
+            new MagentaRootProperties(tempDir.resolve(".magenta"))
+        );
+        Path root = repositoryService.ensureSkillsRoot();
+        Path skillDir = Files.createDirectories(root.resolve("safe-skill"));
+        Path outside = Files.createDirectories(tempDir.resolve("outside"));
+        Path link = skillDir.resolve("link");
+        try {
+            Files.createSymbolicLink(link, outside);
+        } catch (UnsupportedOperationException exception) {
+            return;
+        }
+
+        assertThatThrownBy(() -> repositoryService.resolveRelativePath(skillDir, "link/new.txt"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("symbolic links");
+    }
+
+    @Test
+    void refreshCatalogMarksTopLevelSkillDirectorySymlinkInvalid() throws Exception {
+        AgentSkillCatalogService service = service();
+        Path skillsRoot = tempDir.resolve(".magenta/skills");
+        Files.createDirectories(skillsRoot.resolve("valid-skill"));
+        Files.writeString(skillsRoot.resolve("valid-skill/SKILL.md"), """
+            ---
+            name: valid-skill
+            description: Valid
+            ---
+            body
+            """, StandardCharsets.UTF_8);
+        Path outside = Files.createDirectories(tempDir.resolve("outside-skill"));
+        Path symlink = skillsRoot.resolve("linked-skill");
+        try {
+            Files.createSymbolicLink(symlink, outside);
+        } catch (UnsupportedOperationException exception) {
+            return;
+        }
+
+        service.refreshCatalog();
+        AgentSkill linked = service.listAll().stream()
+            .filter(skill -> skill.directorySlug().equals("linked-skill"))
+            .findFirst()
+            .orElseThrow();
+
+        assertThat(linked.status()).isEqualTo(AgentSkillStatus.INVALID);
+        assertThat(linked.diagnostics())
+            .extracting(AgentSkillDiagnostic::code)
+            .contains(AgentSkillDiagnosticCode.SKILL_SYMLINK_REJECTED);
     }
 
     private AgentSkillCatalogService service() {

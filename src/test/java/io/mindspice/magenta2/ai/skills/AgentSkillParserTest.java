@@ -107,4 +107,44 @@ class AgentSkillParserTest {
             .extracting(AgentSkillDiagnostic::code)
             .contains(AgentSkillDiagnosticCode.SKILL_FRONTMATTER_YAML_INVALID);
     }
+
+    @Test
+    void marksMissingNameAsInvalid() {
+        String markdown = """
+            ---
+            description: Description exists but name is missing.
+            ---
+            body
+            """;
+
+        AgentSkillParseResult result = parser.parse(markdown, "missing-name", "missing-name/SKILL.md");
+
+        assertThat(result.status()).isEqualTo(AgentSkillStatus.INVALID);
+        assertThat(result.diagnostics())
+            .extracting(AgentSkillDiagnostic::code)
+            .contains(AgentSkillDiagnosticCode.SKILL_NAME_MISSING);
+    }
+
+    @Test
+    void invalidNameShapeAndTooLongProduceWarnings() {
+        String tooLongAndInvalid = "a".repeat(65) + "_bad";
+        String markdown = """
+            ---
+            name: %s
+            description: Valid description.
+            ---
+            body
+            """.formatted(tooLongAndInvalid);
+
+        AgentSkillParseResult result = parser.parse(markdown, "directory-name", "directory-name/SKILL.md");
+
+        assertThat(result.status()).isEqualTo(AgentSkillStatus.WARNING);
+        assertThat(result.diagnostics())
+            .extracting(AgentSkillDiagnostic::code)
+            .contains(
+                AgentSkillDiagnosticCode.SKILL_NAME_TOO_LONG,
+                AgentSkillDiagnosticCode.SKILL_NAME_INVALID,
+                AgentSkillDiagnosticCode.SKILL_NAME_DIRECTORY_MISMATCH
+            );
+    }
 }

@@ -113,25 +113,36 @@ public class AgentSkillRepositoryService {
         }
         try {
             Path realDirectory = directory.toRealPath(LinkOption.NOFOLLOW_LINKS);
-            Path parent = resolved.getParent();
-            if (parent != null && Files.exists(parent, LinkOption.NOFOLLOW_LINKS)) {
-                Path realParent = parent.toRealPath(LinkOption.NOFOLLOW_LINKS);
-                if (!realParent.startsWith(realDirectory)) {
+            rejectSymbolicAncestors(realDirectory, resolved);
+            Path existing = nearestExistingAncestor(resolved);
+            if (existing != null) {
+                Path realExisting = existing.toRealPath();
+                if (!realExisting.startsWith(realDirectory)) {
                     throw new IllegalArgumentException("path escapes skill directory");
                 }
-            }
-            if (Files.exists(resolved, LinkOption.NOFOLLOW_LINKS)) {
-                Path realResolved = resolved.toRealPath(LinkOption.NOFOLLOW_LINKS);
-                if (!realResolved.startsWith(realDirectory)) {
-                    throw new IllegalArgumentException("path escapes skill directory");
-                }
-            }
-            if (Files.isSymbolicLink(resolved)) {
-                throw new IllegalArgumentException("symbolic links are not allowed in skill paths");
             }
             return resolved;
         } catch (IOException exception) {
             throw new IllegalArgumentException("invalid relative path", exception);
         }
+    }
+
+    private void rejectSymbolicAncestors(Path directory, Path target) {
+        Path relative = directory.relativize(target.normalize());
+        Path current = directory;
+        for (Path segment : relative) {
+            current = current.resolve(segment);
+            if (Files.exists(current, LinkOption.NOFOLLOW_LINKS) && Files.isSymbolicLink(current)) {
+                throw new IllegalArgumentException("symbolic links are not allowed in skill paths");
+            }
+        }
+    }
+
+    private Path nearestExistingAncestor(Path path) {
+        Path current = path;
+        while (current != null && !Files.exists(current, LinkOption.NOFOLLOW_LINKS)) {
+            current = current.getParent();
+        }
+        return current;
     }
 }
