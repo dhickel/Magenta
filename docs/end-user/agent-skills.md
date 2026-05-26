@@ -1,14 +1,12 @@
 # Agent Skills
 
-This page documents the intended Agent Skills behavior for Magenta MVP while implementation work is in progress.
+This page documents current Agent Skills status in Magenta MVP.
 
 ## Current Contract Status
 
-- **Implemented now:** not yet.
-- **Intended MVP contract:** manage skills from a Magenta-owned root repository and assign skills to agents.
+- **Implemented now (Phase 02 backend):** root skill repository discovery, `SKILL.md` parsing/validation diagnostics, metadata persistence, optional directory visibility flags, and manual refresh/update behavior.
+- **Planned next MVP layers:** assignment flows, runtime activation, and skill management UI/API.
 - **Deferred:** project-local `.agents/skills`, user-home scopes, layered assignment beyond agent scope, and script/registry trust workflows.
-
-Until implementation lands, treat this page and `.internal-dev/specifications/*` as the intended behavior contract.
 
 ## MVP Repository And File Shape
 
@@ -31,21 +29,19 @@ MVP skills live under the Magenta root `skills/` repository:
 - `description` (required): non-empty, max 1024 chars, describes what the skill does and when to use it.
 - Optional fields may include `license`, `compatibility`, `metadata`, and experimental `allowed-tools`.
 
-## Intended MVP User Workflow
+## Current Workflow
 
-1. Open the skills surface.
-2. Create or import a skill directory in root `skills/`.
-3. Edit metadata and instructions in `SKILL.md`.
-4. Optionally add `scripts/`, `references/`, and `assets/`.
-5. Assign selected skills to one or more agents.
-6. Use assigned agents in chat/task execution flows that can activate relevant skills.
+1. Create or import a skill directory under root `skills/`.
+2. Add `SKILL.md` with valid metadata.
+3. Trigger a catalog refresh path (service/API layer when exposed) to rescan metadata.
+4. Review status/diagnostics for valid, warning, or malformed skills.
 
-## Activation Expectations
+## Validation Behavior
 
-- Skills are disclosed as a compact catalog first.
-- Full skill instructions load only when activated.
-- Supporting files are loaded on demand when referenced.
-- Activation behavior is agent-assignment driven in MVP, not project/job/task/session layered assignment.
+- Name mismatch and some name-shape issues are warning-level and still load.
+- Missing/empty `description` or unparseable YAML marks the skill invalid.
+- Malformed skills stay visible as diagnostics and do not crash discovery.
+- Optional directories (`scripts/`, `references/`, `assets/`) are detected but not eagerly loaded.
 
 ## Important MVP Limits
 

@@ -17,4 +17,8 @@ public record MagentaRootProperties(Path path) {
     public Path defaultDataRoot() {
         return path.resolve("root").normalize();
     }
+
+    public Path skillsRoot() {
+        return path.resolve("skills").normalize();
+    }
 }

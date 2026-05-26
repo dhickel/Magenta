@@ -1,10 +1,11 @@
-# Agent Skills (Planned MVP Contract)
+# Agent Skills (Phase 02 Foundation)
 
-This document captures the intended technical contract for Agent Skills before full runtime implementation lands.
+This document captures the implemented backend foundation from Phase 02 and the remaining planned MVP layers.
 
 ## Scope Boundary
 
-- **In scope for MVP contract:** root `skills/` repository, `SKILL.md` parsing contract, skill metadata/catalog surface, agent-level assignment, and activation lifecycle guidance.
+- **Implemented in Phase 02:** root `skills/` repository resolution, `SKILL.md` parsing/validation diagnostics, skill discovery/catalog metadata persistence, optional directory visibility flags, path confinement checks, and refresh-after-edit hashing.
+- **Planned next MVP layers:** agent-level assignment, runtime catalog filtering/disclosure injection, activation lifecycle, API/file management, and browser UI.
 - **Out of scope for MVP:** project-local `.agents/skills`, user-home/client-native scopes, layered assignment (project/job/task/workflow/chat/session), script trust/execution policy, and registry/package ingestion.
 
 ## Repository Root
@@ -19,58 +20,53 @@ This is an intentional client policy choice. Agent Skills format is still aligne
 
 ## Skill Record Contract
 
-Minimum persisted/disclosed metadata per discovered skill:
+Persisted metadata currently includes:
 
-- `name`
-- `description`
-- `location` (absolute `SKILL.md` path or equivalent canonical identifier)
+- `name`, `directory_slug`, `description`
+- optional `license`, `compatibility`, `metadata`, experimental `allowed-tools`
+- `skill_root_relative_path`, `skill_md_root_relative_path`
+- `status`, `diagnostics_json`
+- `has_scripts`, `has_references`, `has_assets`
+- `content_hash`, `discovered_at`, `last_scanned_at`, `created_at`, `updated_at`
 
-Optional metadata is retained when available (`license`, `compatibility`, `metadata`, experimental `allowed-tools`).
+## Service Ownership (Implemented)
 
-## Service Ownership (Planned)
+Current ownership boundary:
 
-Expected ownership boundary:
-
-- Skill discovery and parser services scan root `skills/`, parse frontmatter/body, and emit diagnostics.
-- Catalog services provide compact discovery payloads for prompt/tool disclosure.
-- Assignment services bind skills to agent profiles.
-- Activation services load selected skill instructions and track activation state.
+- `AgentSkillRepositoryService`: root path resolution and confined skill-path access.
+- `AgentSkillParser`: frontmatter/body extraction, YAML parse fallback, validation, and stable diagnostics.
+- `AgentSkillCatalogService`: discovery scan, malformed isolation, optional-directory flags, and metadata refresh persistence.
+- `AgentSkillRepository`: SQLite persistence for discovered skill metadata and diagnostics.
 
 Chat/web/API layers consume this domain surface; they do not own direct parser/discovery logic.
 
-## Disclosure And Activation Contract
+## Parser/Discovery Validation Behavior
 
-Intended behavior follows progressive disclosure:
+Current behavior:
 
-1. Catalog only (`name`, `description`, optional `location`) at startup.
-2. Full `SKILL.md` instructions when activated.
-3. Supporting files loaded on demand when referenced.
+1. Discovery scans immediate child directories under root `skills/`.
+2. A valid or warning skill is persisted with metadata and diagnostics.
+3. Malformed skills are persisted as `INVALID` with diagnostics and never crash refresh.
+4. Optional `scripts/`, `references/`, and `assets/` are flagged by existence only; resources are not loaded.
+5. Refresh recomputes hash/metadata and preserves first-discovered timestamp.
 
-MVP keeps both activation patterns available in contract discussions:
+Lenient validation currently follows the client implementation guide:
 
-- Dedicated activation tool (preferred baseline for control and structured wrapping).
-- File-read activation compatibility for environments/models where direct file reads are preferred.
+- directory/name mismatch and name-shape issues warn but load,
+- missing description or unparseable YAML mark the skill invalid/skip for runtime use.
 
-## API/Web Contract (Planned)
+## API/Web/Runtime Contract (Pending)
 
-Planned API/web surfaces cover:
+Pending phases will add:
 
 - Skill list/read/create/update/delete in root repository.
 - Guided skill creation/editing for `SKILL.md`.
 - Agent-skill assignment and removal.
 
-Planned MVP constraints:
-
-- No script execution control surface in browser.
-- No claims that `allowed-tools` is an enforced permission policy.
-- Deferred scope must be explicitly labeled as deferred in API/web docs.
-
 ## Validation Expectations
 
-When implementation starts, validate with:
+Phase 02 evidence:
 
 - Parser and discovery service tests.
-- Catalog/activation service tests (including compaction protection hooks and dedupe behavior).
-- Controller/API tests for skill and assignment endpoints.
-- Focused Playwright validation for skill browser/editor/assignment flows.
-- Bounded Spring startup smoke when wiring/config changes.
+- Metadata repository tests against SQLite.
+- Path confinement tests for traversal/symlink rejection.
