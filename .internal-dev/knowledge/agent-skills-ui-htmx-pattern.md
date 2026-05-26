@@ -16,6 +16,7 @@ Agent Skills browser/editor HTMX implementation pattern.
 
 - The `/skills` UI should remain an operational master/detail surface: filterable list on the left, selected skill detail/editor on the right, and stacked mobile behavior through CSS.
 - Standard interactions stay HTMX-first: list refresh/filter, detail selection, file viewer swaps, editor saves, file creation, guided creation, and assignment updates all return server-rendered fragments.
+- Catalog-affecting detail mutations must refresh the left list out-of-band. `SKILL.md` save, detail refresh/revalidate, guided creation, assignment, and unassignment should include an OOB `#skills-list` fragment so description/status/diagnostics/assignment indicators do not go stale.
 - Guided creation can use a single server-backed form for the MVP as long as it asks for skill name, when-to-use description, workflow instructions, optional directories, and optional starter files, then writes a valid `SKILL.md` scaffold.
 - Optional directory creation in the browser is intentionally limited to top-level `scripts/`, `references/`, and `assets/`. This supports skill-resource visibility without turning `/skills` into a general file manager.
 - Reuse the shared `EntitySelectorComponents` agent selector for assignment forms instead of a page-specific lookup widget.

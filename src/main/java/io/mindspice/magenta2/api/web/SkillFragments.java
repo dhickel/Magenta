@@ -186,11 +186,13 @@ public class SkillFragments {
     @ResponseBody
     public String refreshDetail(
         @PathVariable String skillName,
-        @RequestParam(value = "selectedPath", required = false) String selectedPath
+        @RequestParam(value = "selectedPath", required = false) String selectedPath,
+        @RequestParam(value = "skillFilter", required = false) String filter
     ) {
         try {
             managementService.refreshSkills();
-            return renderDetail(skillName, selectedPath);
+            return renderDetail(skillName, selectedPath)
+                + listFragment(filter, true).render();
         } catch (RuntimeException exception) {
             return errorDetail(errorMessage(exception)).render();
         }
@@ -228,11 +230,13 @@ public class SkillFragments {
     public String saveTextFile(
         @PathVariable String skillName,
         @RequestParam String path,
-        @RequestParam(defaultValue = "") String content
+        @RequestParam(defaultValue = "") String content,
+        @RequestParam(value = "skillFilter", required = false) String filter
     ) {
         try {
             managementService.saveText(skillName, path, content);
-            return renderDetail(skillName, path);
+            return renderDetail(skillName, path)
+                + skillListRefresh(path, filter);
         } catch (RuntimeException exception) {
             return detailWithMessage(skillName, path, errorMessage(exception), true);
         }
@@ -272,11 +276,13 @@ public class SkillFragments {
     @ResponseBody
     public String assignAgent(
         @PathVariable String skillName,
-        @RequestParam String agentId
+        @RequestParam String agentId,
+        @RequestParam(value = "skillFilter", required = false) String filter
     ) {
         try {
             managementService.assignToAgent(skillName, agentId, true);
-            return assignmentPanel(skillName, "Assigned " + agentLabel(agentId) + ".", false).render();
+            return assignmentPanel(skillName, "Assigned " + agentLabel(agentId) + ".", false).render()
+                + listFragment(filter, true).render();
         } catch (RuntimeException exception) {
             return assignmentPanel(skillName, errorMessage(exception), true).render();
         }
@@ -286,11 +292,13 @@ public class SkillFragments {
     @ResponseBody
     public String unassignAgent(
         @PathVariable String skillName,
-        @PathVariable String agentId
+        @PathVariable String agentId,
+        @RequestParam(value = "skillFilter", required = false) String filter
     ) {
         try {
             managementService.unassignFromAgent(skillName, agentId);
-            return assignmentPanel(skillName, "Unassigned " + agentLabel(agentId) + ".", false).render();
+            return assignmentPanel(skillName, "Unassigned " + agentLabel(agentId) + ".", false).render()
+                + listFragment(filter, true).render();
         } catch (RuntimeException exception) {
             return assignmentPanel(skillName, errorMessage(exception), true).render();
         }
@@ -362,7 +370,8 @@ public class SkillFragments {
                     .withChild(Button.create("Refresh")
                         .withAttribute("hx-post", "/skills/_detail/" + urlPath(key(skill)) + "/refresh?selectedPath=" + url(path))
                         .withAttribute("hx-target", "#" + DETAIL_ID)
-                        .withAttribute("hx-swap", "outerHTML"))))
+                        .withAttribute("hx-swap", "outerHTML")
+                        .withAttribute("hx-include", "#skill-filter"))))
             .withChild(new Div().withClass("skill-summary-grid")
                 .withChild(summaryItem("Directory", skill.directorySlug()))
                 .withChild(summaryItem("License", first(skill.license(), "none")))
@@ -559,6 +568,7 @@ public class SkillFragments {
                     .withAttribute("hx-get", "/skills/_viewer/" + urlPath(skillName) + "?path=" + url(view.path()))
                     .withAttribute("hx-target", "#" + VIEWER_ID)
                     .withAttribute("hx-swap", "outerHTML")));
+        form.withAttribute("hx-include", "#skill-filter");
         viewer.withChild(form);
         return viewer;
     }
@@ -580,7 +590,8 @@ public class SkillFragments {
                     .withChild(Button.create("Unassign")
                         .withAttribute("hx-delete", "/skills/_assignments/" + urlPath(skillName) + "/" + urlPath(assignment.targetId()))
                         .withAttribute("hx-target", "#" + ASSIGNMENT_ID)
-                        .withAttribute("hx-swap", "outerHTML")));
+                        .withAttribute("hx-swap", "outerHTML")
+                        .withAttribute("hx-include", "#skill-filter")));
             }
             panel.withChild(list);
         }
@@ -599,6 +610,7 @@ public class SkillFragments {
                 Map.of()
             ), null))
             .withChild(Button.submit("Assign").withClass("orch-primary"));
+        form.withAttribute("hx-include", "#skill-filter");
         panel.withChild(form);
         if (StringUtils.hasText(message)) {
             panel.withChild(status(message, error));
@@ -706,6 +718,10 @@ public class SkillFragments {
         status.withAttribute("hx-swap-oob", "true");
         status.withChild(status(message, error));
         return status;
+    }
+
+    private String skillListRefresh(String path, String filter) {
+        return "SKILL.md".equals(path) ? listFragment(filter, true).render() : "";
     }
 
     private Component status(String message, boolean error) {

@@ -116,9 +116,10 @@ Path safety rules:
 - filter and refresh replace the skill list fragment;
 - row selection replaces the detail fragment;
 - file table navigation and viewer selection replace only their target fragments;
-- editor saves and add-file actions re-render the selected skill detail;
+- `SKILL.md` editor saves and detail refresh/revalidate actions re-render the selected detail plus an out-of-band list refresh;
+- add-file actions re-render the selected skill detail;
 - guided creation returns the new detail plus an out-of-band list refresh;
-- assignment/unassignment updates only the assignment panel.
+- assignment/unassignment updates the assignment panel plus an out-of-band list refresh.
 
 The assignment form reuses the shared `EntitySelectorComponents` agent selector. No custom JavaScript was added for skills; standard SimplyPages/HTMX behavior and the existing selector validation hook cover the interaction.
 

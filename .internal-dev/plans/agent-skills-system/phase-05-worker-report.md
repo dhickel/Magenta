@@ -11,6 +11,7 @@ Phase 04 context was reviewed from the previous commit and changelog because no 
 - Added a full operational `/skills` shell using the shared Magenta Operations top banner, top nav, and side nav.
 - Added a shared operational side-nav builder in `AppNavigation`, then reused it from `OrchestrationController` so `/skills` appears under Tools without duplicating nav markup.
 - Implemented HTMX fragments for catalog list/filter/refresh, skill detail, diagnostics, directory overview, file table, text viewer/editor, add file, optional directory creation, assignment/unassignment, and guided scaffold creation.
+- Added OOB `#skills-list` refreshes for catalog-affecting mutations so left-list description, status, diagnostics, and assignment indicators stay in sync after assignment/unassignment, `SKILL.md` saves, and detail refresh/revalidation.
 - Reused Phase 04 service APIs for skill catalog, diagnostics, root-confined file operations, refresh, and assignment behavior.
 - Added one tiny UI wiring gap in `AgentSkillManagementService`: `createOptionalDirectory`, limited to top-level `scripts`, `references`, and `assets`.
 - Reused `EntitySelectorComponents` for assignment controls.
@@ -76,7 +77,7 @@ The implementation uses HTMX/server fragments for CRUD, filtering, detail refres
 - Passed: `mvn -Dtest='*Skill*Controller*,*Skill*Web*,*OrchestrationController*' test`
   - Result: 136 tests, 0 failures, 0 errors, 0 skipped.
 - Passed startup smoke: `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0`
-  - Result: Spring Boot started successfully on ephemeral port `43035` and graceful shutdown completed when `timeout` ended the process.
+  - Result: Spring Boot started successfully on ephemeral port `39515` and graceful shutdown completed when `timeout` ended the process.
 - Passed: `git diff --check`.
 
 ## Playwright Checklist For Browser Agent
@@ -99,6 +100,7 @@ Desktop checks:
 - Open `references/`, add a safe text file, view it, edit it, and confirm the file table/editor stay confined to the selected skill.
 - Create missing `scripts/`, `references/`, or `assets/` from directory chips when absent and confirm the UI does not imply script execution.
 - Assign the valid skill to an agent through the selector, then unassign it and confirm the assignment panel updates by HTMX.
+- Confirm assignment/unassignment also updates the left-list assignment count without a full page reload.
 - Run guided creation with a new slug, description, workflow instructions, and optional starter file; confirm the new skill appears and opens with a valid detail view.
 
 Mobile checks:

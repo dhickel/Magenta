@@ -7,6 +7,7 @@
 - Added shared operational navigation support so `/skills` appears beside other operations tools and the orchestration shell uses one side-nav source.
 - Added focused controller/rendering tests for the skills shell, filters, diagnostics, file operations, guided creation, and assignment fragments.
 - Updated user, technical, API, web, SimplyPages, services, and architecture docs/specs for implemented Phase 05 behavior.
+- Remediated code-level validator feedback by returning out-of-band `#skills-list` refreshes after assignment/unassignment, `SKILL.md` saves, and detail refresh/revalidation so list indicators do not go stale.
 
 # Files
 - `src/main/java/io/mindspice/magenta2/api/web/SkillFragments.java`
@@ -39,8 +40,9 @@
 
 # Validation
 - Passed: `mvn -Dtest='*Skill*Controller*,*Skill*Web*,*OrchestrationController*' test` with 136 tests, 0 failures.
-- Passed startup smoke: `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` started Spring Boot on ephemeral port `43035`; the command then exited with timeout code 124 after graceful shutdown.
+- Passed startup smoke: `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` started Spring Boot on ephemeral port `39515`; the command then exited with timeout code 124 after graceful shutdown.
 - Passed: `git diff --check`.
+- Remediation tests added focused assertions for OOB list refresh on assignment, unassignment, `SKILL.md` save, and detail refresh.
 - Browser/Playwright validation was not run inline by this worker; the required browser-agent checklist is recorded in the Phase 05 worker report.
 
 # Risks

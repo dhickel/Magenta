@@ -278,6 +278,7 @@ class SkillControllerTest {
 
         mockMvc.perform(put("/skills/_files/web-edit-skill/text")
                 .param("path", "SKILL.md")
+                .param("skillFilter", "web-edit")
                 .param("content", """
                     ---
                     name: web-edit-skill
@@ -287,7 +288,25 @@ class SkillControllerTest {
                     """))
             .andExpect(status().isOk())
             .andExpect(content().string(containsString("After web edit.")))
-            .andExpect(content().string(containsString("skill-editor-textarea")));
+            .andExpect(content().string(containsString("skill-editor-textarea")))
+            .andExpect(content().string(containsString("id=\"skills-list\"")))
+            .andExpect(content().string(containsString("hx-swap-oob=\"true\"")))
+            .andExpect(content().string(containsString("0 assigned")));
+
+        Files.writeString(MAGENTA_ROOT.resolve("skills/web-edit-skill/SKILL.md"), """
+            ---
+            name: web-edit-skill
+            description: After web refresh.
+            ---
+            # Web Edit
+            """);
+        mockMvc.perform(post("/skills/_detail/web-edit-skill/refresh")
+                .param("selectedPath", "SKILL.md")
+                .param("skillFilter", "web-edit"))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("After web refresh.")))
+            .andExpect(content().string(containsString("id=\"skills-list\"")))
+            .andExpect(content().string(containsString("hx-swap-oob=\"true\"")));
 
         mockMvc.perform(post("/skills/_directories/web-edit-skill")
                 .param("directoryName", "references"))
@@ -315,14 +334,22 @@ class SkillControllerTest {
             .andExpect(content().string(containsString("hx-post=\"/skills/_assignments/web-assign-skill\"")));
 
         mockMvc.perform(post("/skills/_assignments/web-assign-skill")
-                .param("agentId", "agent-1"))
+                .param("agentId", "agent-1")
+                .param("skillFilter", "web-assign"))
             .andExpect(status().isOk())
             .andExpect(content().string(containsString("Agent One")))
-            .andExpect(content().string(containsString("Unassign")));
+            .andExpect(content().string(containsString("Unassign")))
+            .andExpect(content().string(containsString("id=\"skills-list\"")))
+            .andExpect(content().string(containsString("hx-swap-oob=\"true\"")))
+            .andExpect(content().string(containsString("1 assigned")));
 
-        mockMvc.perform(delete("/skills/_assignments/web-assign-skill/agent-1"))
+        mockMvc.perform(delete("/skills/_assignments/web-assign-skill/agent-1")
+                .param("skillFilter", "web-assign"))
             .andExpect(status().isOk())
-            .andExpect(content().string(containsString("No agents assigned.")));
+            .andExpect(content().string(containsString("No agents assigned.")))
+            .andExpect(content().string(containsString("id=\"skills-list\"")))
+            .andExpect(content().string(containsString("hx-swap-oob=\"true\"")))
+            .andExpect(content().string(containsString("0 assigned")));
     }
 
     @Test
