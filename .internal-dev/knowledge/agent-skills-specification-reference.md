@@ -78,16 +78,16 @@ Skills are loaded in **three tiers**, each progressively larger:
 
 **Key insight:** An agent with 20 installed skills pays only the catalog cost upfront (~1,000-2,000 tokens), not 20× full instruction sets. The full instructions load only for skills actually used in a conversation.
 
-### 1.4 Skill Discovery — Directory Scanning
+### 1.4 Skill Discovery — Client Directory Scanning Examples
 
-Skills live in scoped directories. The spec defines two canonical scopes, plus client-specific directories:
+The Agent Skills specification defines what goes inside a skill directory; it does not mandate where clients store or discover those directories. The client implementation guide describes common client-chosen project and user scopes, and treats `.agents/skills/` as a widely adopted cross-client interoperability convention rather than a specification-defined mandatory location:
 
-| Scope | Path | Purpose |
-|-------|------|---------|
-| Project (client-native) | `<project>/.<client>/skills/` | Your client's location |
-| Project (cross-client) | `<project>/.agents/skills/` | Cross-client interoperability |
-| User (client-native) | `~/.<client>/skills/` | Your client's location |
-| User (cross-client) | `~/.agents/skills/` | Cross-client interoperability |
+| Client-guide example scope | Path | Purpose |
+|----------------------------|------|---------|
+| Project (client-native) | `<project>/.<client>/skills/` | Client-specific repository location chosen by the implementor |
+| Project (cross-client convention) | `<project>/.agents/skills/` | Cross-client interoperability convention/example |
+| User (client-native) | `~/.<client>/skills/` | Client-specific user location chosen by the implementor |
+| User (cross-client convention) | `~/.agents/skills/` | Cross-client interoperability convention/example |
 
 **Scanning rules:**
 - Look for subdirectories containing a file named exactly `SKILL.md`
