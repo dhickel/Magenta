@@ -182,6 +182,27 @@ Source: [`WorkAreaController`](../../src/main/java/io/mindspice/magenta2/api/web
 
 Explorer routes reject traversal, absolute paths, symlink paths, unsafe text-edit extensions, oversized text saves/downloads, Work Area roots, Home/system Work Areas, marked Work Area descendants, and Work Areas referenced by queued/running assignments or output targets. Where distinguishable, invalid requests map to `400`, missing paths map to `404`, and collisions map to `409`.
 
+## Agent Skills: `/api/skills` and `/skills`
+
+Source: [`SkillController`](../../src/main/java/io/mindspice/magenta2/api/web/SkillController.java), [`SkillFragments`](../../src/main/java/io/mindspice/magenta2/api/web/SkillFragments.java), [`AgentSkillManagementService`](../../src/main/java/io/mindspice/magenta2/ai/skills/AgentSkillManagementService.java).
+
+- `GET /api/skills`: list discovered skill metadata plus valid/warning/invalid counts.
+- `POST /api/skills/refresh`: rescan root `skills/` repository and refresh metadata/diagnostics.
+- `POST /api/skills`: create a new skill directory and starter `SKILL.md`.
+- `GET /api/skills/{skillName}`: skill detail by name or directory slug.
+- `GET /api/skills/{skillName}/diagnostics`: diagnostics for malformed/warning skills.
+- `GET /api/skills/{skillName}/files?path=`: list a confined skill subdirectory.
+- `GET /api/skills/{skillName}/files/view?path=`: read bounded UTF-8 file view metadata/content.
+- `PUT /api/skills/{skillName}/files/text?path=`: save UTF-8 text to an existing confined file.
+- `POST /api/skills/{skillName}/files`: create a confined text file.
+- `GET /api/skills/{skillName}/assignments`: list assignment rows for that skill.
+- `POST /api/skills/{skillName}/assignments/agents/{agentId}`: assign (upsert/idempotent) to an agent.
+- `DELETE /api/skills/{skillName}/assignments/agents/{agentId}`: unassign from an agent.
+
+Minimal HTMX shell/fragments are available at `/skills`, `/skills/_list`, `/skills/_detail/{skillName}`, `/skills/_files/{skillName}`, `/skills/_viewer/{skillName}`, and `/skills/_assignments/{skillName}` to support phase-05 UI work.
+
+Skill file routes are confined to `<magenta-root>/skills/<skill>/...` and reject traversal, absolute paths, and symlink escapes. Where distinguishable, invalid requests map to `400`, missing skill/path/agent to `404`, collisions to `409`, and unsupported text/binary operations to `415`.
+
 ## Outputs: `/api/outputs`
 
 Source: [`OutputController`](../../src/main/java/io/mindspice/magenta2/api/web/OutputController.java), [`OutputArtifactService`](../../src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/OutputArtifactService.java).

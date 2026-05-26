@@ -45,6 +45,10 @@ public class AgentSkillAssignmentService {
         return assignmentRepository.findByTarget(AgentSkillTargetType.AGENT, requireAgentId(agentId));
     }
 
+    public List<AgentSkillAssignment> listAssignmentsForSkill(String skillName) {
+        return assignmentRepository.findBySkillName(requireSkillName(skillName));
+    }
+
     public List<String> listEnabledAgentSkillNames(String agentId) {
         return assignmentRepository.findEnabledSkillNames(AgentSkillTargetType.AGENT, requireAgentId(agentId));
     }

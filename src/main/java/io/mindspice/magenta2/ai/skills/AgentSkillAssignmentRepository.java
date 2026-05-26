@@ -83,6 +83,22 @@ public class AgentSkillAssignmentRepository {
         );
     }
 
+    public List<AgentSkillAssignment> findBySkillName(String skillName) {
+        if (!StringUtils.hasText(skillName)) {
+            return List.of();
+        }
+        return jdbcTemplate.query(
+            """
+                select *
+                from agent_skill_assignments
+                where skill_name = ?
+                order by target_type, target_id
+                """,
+            (rs, rowNum) -> toAssignment(rs),
+            skillName
+        );
+    }
+
     public List<String> findEnabledSkillNames(AgentSkillTargetType targetType, String targetId) {
         if (targetType == null || !StringUtils.hasText(targetId)) {
             return List.of();

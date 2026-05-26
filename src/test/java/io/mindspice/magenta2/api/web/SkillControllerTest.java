@@ -1,0 +1,302 @@
+package io.mindspice.magenta2.api.web;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
+import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
+import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileStatus;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.web.servlet.MockMvc;
+
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.hasSize;
+import static org.springframework.http.MediaType.APPLICATION_JSON;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@SpringBootTest
+@AutoConfigureMockMvc
+class SkillControllerTest {
+    private static final Path MAGENTA_ROOT = Path.of(
+        System.getProperty("java.io.tmpdir"),
+        "magenta-skill-controller-test-root-" + UUID.randomUUID()
+    );
+    private static final Path DB_PATH = MAGENTA_ROOT.resolve("magenta.sqlite");
+    private static final Path AI_CONFIG_PATH = MAGENTA_ROOT.resolve("config/ai-config.json");
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Autowired
+    private AgentProfileService agentProfileService;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @DynamicPropertySource
+    static void configure(DynamicPropertyRegistry registry) {
+        registry.add("magenta.root.path", () -> MAGENTA_ROOT.toString());
+        registry.add("spring.datasource.url", () -> "jdbc:sqlite:" + DB_PATH + "?foreign_keys=true");
+        registry.add("app.ai.config-path", () -> aiConfigPath().toString());
+    }
+
+    @BeforeEach
+    void setUp() throws Exception {
+        Files.createDirectories(MAGENTA_ROOT.resolve("skills"));
+        ensureAgent("agent-1", "Agent One");
+        ensureAgent("agent-2", "Agent Two");
+        mockMvc.perform(post("/api/skills/refresh")).andExpect(status().isOk());
+    }
+
+    @Test
+    void refreshAndListIncludeMalformedSkillsWithDiagnostics() throws Exception {
+        Path valid = Files.createDirectories(MAGENTA_ROOT.resolve("skills/valid-skill"));
+        Files.writeString(valid.resolve("SKILL.md"), """
+            ---
+            name: valid-skill
+            description: Valid skill.
+            ---
+            # Valid
+            """);
+        Path malformed = Files.createDirectories(MAGENTA_ROOT.resolve("skills/malformed-skill"));
+        Files.writeString(malformed.resolve("SKILL.md"), """
+            ---
+            name: malformed-skill
+            ---
+            # Missing Description
+            """);
+
+        mockMvc.perform(post("/api/skills/refresh"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.skills", hasSize(2)))
+            .andExpect(jsonPath("$.invalidCount").value(1));
+
+        mockMvc.perform(get("/api/skills/malformed-skill/diagnostics"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.diagnostics[0].code").value("SKILL_DESCRIPTION_MISSING"));
+    }
+
+    @Test
+    void saveSkillMarkdownTriggersCatalogRefresh() throws Exception {
+        createSkill("refresh-skill", "Before refresh.");
+        mockMvc.perform(post("/api/skills/refresh")).andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/skills/refresh-skill/files/text")
+                .param("path", "SKILL.md")
+                .contentType(APPLICATION_JSON)
+                .content(json(Map.of(
+                    "content", """
+                        ---
+                        name: refresh-skill
+                        description: After refresh.
+                        ---
+                        # Refresh
+                        """
+                ))))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/skills/refresh-skill"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.description").value("After refresh."));
+    }
+
+    @Test
+    void fileTreeViewSaveAndCreateRoutesWorkForTextFiles() throws Exception {
+        createSkill("file-skill", "File operations.");
+        mockMvc.perform(post("/api/skills/refresh")).andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/skills/file-skill/files")
+                .contentType(APPLICATION_JSON)
+                .content(json(Map.of(
+                    "parentPath", ".",
+                    "fileName", "notes.txt",
+                    "content", "hello"
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.path").value("notes.txt"));
+
+        mockMvc.perform(get("/api/skills/file-skill/files"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.entries[?(@.name == 'notes.txt')]").exists());
+
+        mockMvc.perform(get("/api/skills/file-skill/files/view").param("path", "notes.txt"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.text").value(true))
+            .andExpect(jsonPath("$.content").value("hello"));
+
+        mockMvc.perform(put("/api/skills/file-skill/files/text")
+                .param("path", "notes.txt")
+                .contentType(APPLICATION_JSON)
+                .content(json(Map.of("content", "updated"))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.content").value("updated"));
+    }
+
+    @Test
+    void traversalPathsAreRejected() throws Exception {
+        createSkill("path-skill", "Path guards.");
+        mockMvc.perform(post("/api/skills/refresh")).andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/skills/path-skill/files/view")
+                .param("path", "../outside.txt"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error", containsString("path escapes skill directory")));
+    }
+
+    @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    void symlinkPathsAreRejected() throws Exception {
+        createSkill("symlink-skill", "Symlink guards.");
+        Path linkTarget = Files.writeString(MAGENTA_ROOT.resolve("outside-link-target.txt"), "secret");
+        Path skillDir = MAGENTA_ROOT.resolve("skills/symlink-skill");
+        Files.createSymbolicLink(skillDir.resolve("link.txt"), linkTarget);
+        mockMvc.perform(post("/api/skills/refresh")).andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/skills/symlink-skill/files/view")
+                .param("path", "link.txt"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error", containsString("symbolic links are not allowed")));
+    }
+
+    @Test
+    void assignmentEndpointsRejectUnknownAgentAndUnknownSkill() throws Exception {
+        createSkill("assign-skill", "Assignment routes.");
+        mockMvc.perform(post("/api/skills/refresh")).andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/skills/assign-skill/assignments/agents/missing-agent"))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.error", containsString("not found")));
+
+        mockMvc.perform(post("/api/skills/missing-skill/assignments/agents/agent-1"))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.error", containsString("skill not found")));
+    }
+
+    @Test
+    void duplicateAssignmentIsIdempotentAndUnassignRouteRemovesIt() throws Exception {
+        createSkill("dedupe-skill", "Assignment dedupe.");
+        mockMvc.perform(post("/api/skills/refresh")).andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/skills/dedupe-skill/assignments/agents/agent-1"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.enabled").value(true));
+        mockMvc.perform(post("/api/skills/dedupe-skill/assignments/agents/agent-1"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.enabled").value(true));
+
+        mockMvc.perform(get("/api/skills/dedupe-skill/assignments"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.assignments", hasSize(1)));
+
+        mockMvc.perform(delete("/api/skills/dedupe-skill/assignments/agents/agent-1"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.removed").value(true));
+    }
+
+    @Test
+    void minimalFragmentRoutesRender() throws Exception {
+        createSkill("fragment-skill", "Fragment routes.");
+        mockMvc.perform(post("/api/skills/refresh")).andExpect(status().isOk());
+
+        mockMvc.perform(get("/skills"))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("skills-shell")));
+        mockMvc.perform(get("/skills/_list"))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("fragment-skill")));
+        mockMvc.perform(get("/skills/_detail/fragment-skill"))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("fragment-skill")));
+    }
+
+    private void createSkill(String slug, String description) throws Exception {
+        Path dir = Files.createDirectories(MAGENTA_ROOT.resolve("skills").resolve(slug));
+        Files.writeString(dir.resolve("SKILL.md"), """
+            ---
+            name: %s
+            description: %s
+            ---
+            # %s
+            """.formatted(slug, description, slug));
+    }
+
+    private void ensureAgent(String id, String name) {
+        boolean exists = agentProfileService.list().stream().anyMatch(agent -> id.equals(agent.id()));
+        if (exists) {
+            return;
+        }
+        agentProfileService.create(new AgentProfile(
+            id,
+            name,
+            AgentProfileStatus.ACTIVE,
+            null,
+            null,
+            List.of(),
+            List.of(),
+            false,
+            null,
+            null
+        ));
+    }
+
+    private String json(Object value) throws Exception {
+        return objectMapper.writeValueAsString(value);
+    }
+
+    private static Path aiConfigPath() {
+        try {
+            Files.createDirectories(AI_CONFIG_PATH.getParent().resolve("prompts"));
+            Files.writeString(AI_CONFIG_PATH.getParent().resolve("prompts/system.md"), "Skill controller test agent.");
+            Files.writeString(AI_CONFIG_PATH, """
+                {
+                  "defaultAgent": "magenta",
+                  "defaultModel": "local-qwen",
+                  "summaryModel": "local-qwen",
+                  "planningModel": "local-qwen",
+                  "compactionModel": "local-qwen",
+                  "contextBufferPercent": 33,
+                  "unsafeAllowWildcardShellCommands": false,
+                  "models": {
+                    "local-qwen": {
+                      "remoteModelName": "qwen3.6:35b",
+                      "remoteEndpoint": "http://127.0.0.1:11434",
+                      "endpointType": "OLLAMA",
+                      "contextLength": 32000,
+                      "thinkLevel": 0
+                    }
+                  },
+                  "agents": {
+                    "magenta": {
+                      "model": "local-qwen",
+                      "systemPrompt": "prompts/system.md",
+                      "approvedTools": [],
+                      "allowedShellCommands": []
+                    }
+                  }
+                }
+                """);
+            return AI_CONFIG_PATH;
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to create skill test AI config", exception);
+        }
+    }
+}

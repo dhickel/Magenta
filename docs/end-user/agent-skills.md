@@ -38,6 +38,17 @@ MVP skills live under the Magenta root `skills/` repository:
 5. During chat, the model sees a concise `available_skills` catalog and can call `activate_skill` to load full instructions.
 6. Repeat calls to activate the same skill in one conversation are deduplicated.
 
+## Current API Surface
+
+For operational scripting and integration, the MVP now exposes:
+
+- `GET /api/skills`, `POST /api/skills/refresh`, `POST /api/skills`
+- `GET /api/skills/{skillName}`, `GET /api/skills/{skillName}/diagnostics`
+- `GET /api/skills/{skillName}/files`, `GET /api/skills/{skillName}/files/view`
+- `PUT /api/skills/{skillName}/files/text`, `POST /api/skills/{skillName}/files`
+- `GET /api/skills/{skillName}/assignments`
+- `POST|DELETE /api/skills/{skillName}/assignments/agents/{agentId}`
+
 ## Validation Behavior
 
 - Name mismatch and some name-shape issues are warning-level and still load.

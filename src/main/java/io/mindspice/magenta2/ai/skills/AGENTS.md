@@ -1,6 +1,6 @@
 ## Agent Skills Package
 
-This package owns Agent Skills filesystem discovery, `SKILL.md` parsing/validation, metadata persistence, agent assignment metadata, runtime catalog filtering, and dedicated activation behavior for the Magenta root skill repository.
+This package owns Agent Skills filesystem discovery, `SKILL.md` parsing/validation, metadata persistence, agent assignment metadata, runtime catalog filtering, root-confined file management, and dedicated activation behavior for the Magenta root skill repository.
 
 ### Responsibilities
 - Resolve the Magenta-owned skill repository at `<magenta-root>/skills`.
@@ -8,6 +8,7 @@ This package owns Agent Skills filesystem discovery, `SKILL.md` parsing/validati
 - Parse and validate `SKILL.md` frontmatter/body with stable diagnostics.
 - Discover skill directories and persist metadata, diagnostics, and optional-directory visibility flags.
 - Persist agent skill assignments separately from approved tool metadata.
+- Provide API-facing skill management/file operations through backend services while keeping controllers thin.
 - Build runtime skill catalogs using assigned, enabled, loadable skills only.
 - Activate assigned skills by returning the parsed `SKILL.md` body plus resource listings without eager resource reads.
 - Deduplicate repeat activations per conversation/session context.
@@ -25,3 +26,4 @@ This package owns Agent Skills filesystem discovery, `SKILL.md` parsing/validati
 - Parser tests for valid/invalid frontmatter, required fields, and lenient warning behavior.
 - Discovery tests for root scan behavior, malformed safety, optional-directory flags, and refresh-after-edit metadata changes.
 - Path-confinement tests for traversal/symlink escape rejection.
+- Controller/API tests for skill file tree/view/save/create and assignment route behavior.

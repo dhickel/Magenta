@@ -1,12 +1,13 @@
-# Agent Skills (Phases 02-03 Backend)
+# Agent Skills (Phases 02-04 Backend/API)
 
-This document captures the implemented backend foundation from Phase 02 plus Phase 03 runtime assignment/catalog/activation behavior.
+This document captures the implemented backend/API foundation from Phase 02 through Phase 04.
 
 ## Scope Boundary
 
 - **Implemented in Phase 02:** root `skills/` repository resolution, `SKILL.md` parsing/validation diagnostics, skill discovery/catalog metadata persistence, optional directory visibility flags, path confinement checks, and refresh-after-edit hashing.
 - **Implemented in Phase 03:** DB-backed agent skill assignments, runtime catalog filtering by assigned+enabled+loadable skills, prompt-time catalog disclosure, dedicated `activate_skill` loading with resource listing, and activation deduplication per conversation.
-- **Planned next MVP layers:** API/file management and browser UI.
+- **Implemented in Phase 04:** `/api/skills` list/detail/refresh/create/diagnostics routes, root-confined file tree/view/save/create routes, assignment add/remove/list routes, and minimal `/skills` shell/fragments for phase-05 UI handoff.
+- **Planned next MVP layer:** full guided browser UI flow.
 - **Out of scope for MVP:** project-local `.agents/skills`, user-home/client-native scopes, layered assignment (project/job/task/workflow/chat/session), script trust/execution policy, and registry/package ingestion.
 
 ## Repository Root
@@ -50,6 +51,7 @@ Current ownership boundary:
 - `AgentSkillRuntimeCatalogService`: assigned/enabled/loadable catalog construction for the effective agent context.
 - `AgentSkillPromptCatalogAssembler`: concise `available_skills` prompt section injection.
 - `AgentSkillActivationService`: dedicated activation lookup, assignment checks, skill-body loading, resource listing, and dedupe tracking.
+- `AgentSkillManagementService`: API-facing skill lookup, diagnostics, root-confined file operations, skill creation scaffold, and status-classified route-safe errors.
 
 Chat/web/API layers consume this domain surface; they do not own direct parser/discovery logic.
 
@@ -68,13 +70,38 @@ Lenient validation currently follows the client implementation guide:
 - directory/name mismatch and name-shape issues warn but load,
 - missing description or unparseable YAML mark the skill invalid/skip for runtime use.
 
-## API/Web/Runtime Contract (Pending)
+## API and Fragment Contract (Implemented)
 
-Pending phases will add:
+Implemented surfaces:
 
-- Skill list/read/create/update/delete in root repository.
-- Guided skill creation/editing for `SKILL.md`.
-- Agent-skill assignment and removal.
+- `GET /api/skills`, `POST /api/skills/refresh`, `POST /api/skills`
+- `GET /api/skills/{skillName}`, `GET /api/skills/{skillName}/diagnostics`
+- `GET /api/skills/{skillName}/files`, `GET /api/skills/{skillName}/files/view`
+- `PUT /api/skills/{skillName}/files/text`, `POST /api/skills/{skillName}/files`
+- `GET /api/skills/{skillName}/assignments`
+- `POST|DELETE /api/skills/{skillName}/assignments/agents/{agentId}`
+- Minimal HTMX-facing shell/fragments:
+  - `/skills`
+  - `/skills/_list`
+  - `/skills/_detail/{skillName}`
+  - `/skills/_files/{skillName}`
+  - `/skills/_viewer/{skillName}`
+  - `/skills/_assignments/{skillName}`
+
+Status behavior for file/assignment routes is explicit:
+
+- `400` invalid input/path format
+- `404` missing skill/path/agent
+- `409` collision or write conflict
+- `415` unsupported text/binary operation
+
+Path safety rules:
+
+- no absolute paths
+- no traversal outside skill root
+- no symlink path segments or symlink escapes
+- no binary/script execution routes
+- all file operations confined to `<magenta-root>/skills/<skill>/...`
 
 ## Runtime Catalog And Activation Contract (Implemented)
 
@@ -90,8 +117,13 @@ Pending phases will add:
 
 ## Validation Expectations
 
-Phase 02 evidence:
+Phase 02-04 evidence:
 
-- Parser and discovery service tests.
-- Metadata repository tests against SQLite.
-- Path confinement tests for traversal/symlink rejection.
+- Parser/discovery/path-confinement service tests.
+- Assignment/catalog/activation tests.
+- Phase-04 controller tests for success and required negatives:
+  - malformed skill remains listed with diagnostics
+  - `SKILL.md` save refreshes catalog metadata
+  - traversal/symlink path attempts are rejected
+  - unknown agent/skill assignment fails safely
+  - duplicate assignment is idempotent
