@@ -42,3 +42,23 @@ Completed Phase 04 prompt/context integration and validation closeout for `agent
 # Follow-up Items
 - Run the independent final spec-adherence validator against <https://agents.md/> per Phase 04 directive.
 - After validator pass, proceed with main-thread archive/merge closeout.
+
+## Remediation Update (Phase 04 Validation Gap)
+
+Validator reported that prompt assembly always resolved `AGENTS.md` from `workspace/` root and could not honor deeper active paths such as `workspace/a/file.txt`.
+
+Remediation applied:
+
+- `PromptContextAssembler` now derives an active runtime alias path from `OrchestrationTaskContext.hostWorkspacePath` relative to `hostDurableWorkspacePath` when that active path is inside the durable workspace root, then passes that path into `AgentsMdResolver.resolveForContext(...)`.
+- Fallback remains `workspace` when no deeper path is present or derivation is invalid.
+- Added a focused regression test proving subtree switch behavior under one bound root with sibling nested files:
+  - `workspace/a/AGENTS.md` + active path `workspace/a/file.txt`
+  - then `workspace/b/AGENTS.md` + active path `workspace/b/file.txt`
+  - stale nested layer is absent after the switch.
+
+Remediation validation rerun:
+
+- `mvn -Dtest='*PromptContext*Test,*AgentsMd*Test,*Workspace*Test,*Orchestration*Test' test` (PASS, 241 tests)
+- `mvn test` (PASS, 849 tests)
+- `timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0` (PASS)
+- `git diff --check` (PASS)

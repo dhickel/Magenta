@@ -74,6 +74,64 @@ class PromptContextAssemblerTest {
     }
 
     @Test
+    void switchingSiblingNestedFilesInSameBoundRootDropsStaleLayer() throws Exception {
+        Path workspaceRoot = Files.createDirectories(tempDir.resolve("workspace/agent-1"));
+        Path nestedA = Files.createDirectories(workspaceRoot.resolve("a"));
+        Path nestedB = Files.createDirectories(workspaceRoot.resolve("b"));
+        Files.writeString(workspaceRoot.resolve("AGENTS.md"), "workspace-root-guidance");
+        Files.writeString(nestedA.resolve("AGENTS.md"), "nested-a-guidance");
+        Files.writeString(nestedB.resolve("AGENTS.md"), "nested-b-guidance");
+        PromptContextAssembler assembler = assemblerWithResolver(new AgentsMdResolver());
+
+        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
+            "agent-1",
+            "Agent One",
+            null,
+            null,
+            null,
+            "TASK_RUN",
+            workspaceRoot.resolve("a/file.txt").toString(),
+            workspaceRoot.resolve("runs/run-1/outputs").toString(),
+            workspaceRoot.toString(),
+            workspaceRoot.resolve("runs/run-1").toString(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+        ));
+        String promptA = assembler.mergeModePrompt(PlanMode.NORMAL, "conversation-1");
+
+        OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
+            "agent-1",
+            "Agent One",
+            null,
+            null,
+            null,
+            "TASK_RUN",
+            workspaceRoot.resolve("b/file.txt").toString(),
+            workspaceRoot.resolve("runs/run-1/outputs").toString(),
+            workspaceRoot.toString(),
+            workspaceRoot.resolve("runs/run-1").toString(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+        ));
+        String promptB = assembler.mergeModePrompt(PlanMode.NORMAL, "conversation-1");
+
+        assertThat(promptA).contains("workspace-root-guidance");
+        assertThat(promptA).contains("nested-a-guidance");
+        assertThat(promptA).doesNotContain("nested-b-guidance");
+        assertThat(promptB).contains("workspace-root-guidance");
+        assertThat(promptB).contains("nested-b-guidance");
+        assertThat(promptB).doesNotContain("nested-a-guidance");
+    }
+
+    @Test
     void omitsAgentsMdContextWhenNoLayersExist() throws Exception {
         Path workspaceRoot = Files.createDirectories(tempDir.resolve("workspace/agent-1"));
         OrchestrationTaskContext context = new OrchestrationTaskContext(

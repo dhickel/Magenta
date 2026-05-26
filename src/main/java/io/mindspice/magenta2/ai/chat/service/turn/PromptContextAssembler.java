@@ -22,6 +22,7 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.util.StringUtils;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -138,7 +139,7 @@ public class PromptContextAssembler {
             return "";
         }
         try {
-            Optional<AgentsMdResolution> resolved = agentsMdResolver.resolveForContext(context, WorkspacePathLayout.WORKSPACE);
+            Optional<AgentsMdResolution> resolved = agentsMdResolver.resolveForContext(context, runtimeActivePath(context));
             if (resolved.isEmpty()) {
                 return "";
             }
@@ -149,6 +150,29 @@ public class PromptContextAssembler {
             return formatAgentsMdPromptBlock(resolution);
         } catch (RuntimeException | IOException ignored) {
             return "";
+        }
+    }
+
+    private String runtimeActivePath(OrchestrationTaskContext context) {
+        String workspaceRootText = StringUtils.hasText(context.hostDurableWorkspacePath())
+            ? context.hostDurableWorkspacePath()
+            : context.hostWorkspacePath();
+        if (!StringUtils.hasText(workspaceRootText) || !StringUtils.hasText(context.hostWorkspacePath())) {
+            return WorkspacePathLayout.WORKSPACE;
+        }
+        try {
+            Path workspaceRoot = Path.of(workspaceRootText).normalize();
+            Path activeWorkspacePath = Path.of(context.hostWorkspacePath()).normalize();
+            if (!activeWorkspacePath.startsWith(workspaceRoot)) {
+                return WorkspacePathLayout.WORKSPACE;
+            }
+            String relative = workspaceRoot.relativize(activeWorkspacePath).toString().replace('\\', '/');
+            if (!StringUtils.hasText(relative) || ".".equals(relative)) {
+                return WorkspacePathLayout.WORKSPACE;
+            }
+            return WorkspacePathLayout.WORKSPACE + "/" + relative;
+        } catch (RuntimeException ignored) {
+            return WorkspacePathLayout.WORKSPACE;
         }
     }
 
