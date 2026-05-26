@@ -98,7 +98,7 @@ class OutputArtifactServiceAttributionTest {
             new ObjectMapper().findAndRegisterModules()
         );
         Path projectRoot = directoryService.projectWorkspaceRoot("project-1");
-        Path outputDir = directoryService.jobAssignmentOutput(projectRoot, "assignment-1", "job-run-1");
+        Path outputDir = directoryService.outputsDir(projectRoot);
 
         service.materialize(
             "job-run-1",
@@ -114,7 +114,7 @@ class OutputArtifactServiceAttributionTest {
 
         RunOutputArtifact artifact = repository.findArtifactsByRunId("job-run-1").getFirst();
         assertThat(artifact.filePath())
-            .startsWith("projects/project-1/workspace/outputs/jobs/assignment-1/job-run-1/");
+            .startsWith("projects/project-1/outputs/");
         assertThat(Path.of(artifact.filePath()).isAbsolute()).isFalse();
         assertThat(artifact.jobId()).isEqualTo("job-1");
         assertThat(artifact.jobAssignmentId()).isEqualTo("assignment-1");
@@ -269,8 +269,8 @@ class OutputArtifactServiceAttributionTest {
             new ObjectMapper().findAndRegisterModules()
         );
 
-        Path sourceDir = Files.createDirectories(dataRoot.resolve("runtime/task-runs/run-copy"));
-        Path outputDir = Files.createDirectories(dataRoot.resolve("agents/agent-1/workspace/outputs/run-copy"));
+        Path sourceDir = Files.createDirectories(dataRoot.resolve("workspace/agent-1/runs/run-copy"));
+        Path outputDir = Files.createDirectories(dataRoot.resolve("workspace/agent-1/outputs/run-copy"));
         Path source = sourceDir.resolve("result.txt");
         Files.writeString(source, "safe output");
 
@@ -286,7 +286,7 @@ class OutputArtifactServiceAttributionTest {
 
         Path artifactPath = Path.of(artifact.filePath());
         assertThat(artifact.fileName()).isEqualTo("result.txt");
-        assertThat(artifact.filePath()).isEqualTo("agents/agent-1/workspace/outputs/run-copy/result.txt");
+        assertThat(artifact.filePath()).isEqualTo("workspace/agent-1/outputs/run-copy/result.txt");
         assertThat(dataRoot.resolve(artifactPath)).isEqualTo(outputDir.resolve("result.txt"));
         assertThat(Files.readString(dataRoot.resolve(artifactPath))).isEqualTo("safe output");
         assertThat(dataRoot.resolve(artifactPath)).isNotEqualTo(source);
@@ -555,9 +555,9 @@ class OutputArtifactServiceAttributionTest {
             new ObjectMapper().findAndRegisterModules()
         );
 
-        Path runDir = Files.createDirectories(dataRoot.resolve("runtime/task-runs/run-publish"));
+        Path runDir = Files.createDirectories(dataRoot.resolve("workspace/agent-1/runs/run-publish"));
         Path source = Files.writeString(runDir.resolve("report.md"), "# report");
-        Path outputDir = Files.createDirectories(dataRoot.resolve("projects/project-1/workspace/outputs/tasks/task-1/run-publish"));
+        Path outputDir = Files.createDirectories(dataRoot.resolve("projects/project-1/outputs/run-publish"));
 
         RunOutputArtifact artifact = service.publishExistingFile(
             "run-publish",
@@ -572,7 +572,7 @@ class OutputArtifactServiceAttributionTest {
         assertThat(artifact.outputName()).isEqualTo("report");
         assertThat(artifact.artifactType()).isEqualTo("user_message");
         assertThat(artifact.projectId()).isEqualTo("project-1");
-        assertThat(artifact.filePath()).isEqualTo("projects/project-1/workspace/outputs/tasks/task-1/run-publish/report.md");
+        assertThat(artifact.filePath()).isEqualTo("projects/project-1/outputs/run-publish/report.md");
         assertThat(Files.readString(outputDir.resolve("report.md"))).isEqualTo("# report");
     }
 
@@ -590,11 +590,11 @@ class OutputArtifactServiceAttributionTest {
             new ObjectMapper().findAndRegisterModules()
         );
 
-        Path sourceDir = Files.createDirectories(dataRoot.resolve("runtime/task-runs/run-temp"));
+        Path sourceDir = Files.createDirectories(dataRoot.resolve("workspace/agent-1/runs/run-temp"));
         Files.writeString(sourceDir.resolve("report.md"), "# report");
         Path nested = Files.createDirectories(sourceDir.resolve("nested"));
         Files.writeString(nested.resolve("data.json"), "{\"ok\":true}");
-        Path outputDir = Files.createDirectories(dataRoot.resolve("agents/agent-1/workspace/outputs/tasks/task-1/run-temp"));
+        Path outputDir = Files.createDirectories(dataRoot.resolve("workspace/agent-1/outputs/run-temp"));
 
         List<RunOutputArtifact> artifacts = service.publishDirectoryContents(
             "run-temp",
@@ -629,14 +629,14 @@ class OutputArtifactServiceAttributionTest {
             new ObjectMapper().findAndRegisterModules()
         );
 
-        Path sourceDir = Files.createDirectories(dataRoot.resolve("runtime/task-runs/run-temp-symlink"));
+        Path sourceDir = Files.createDirectories(dataRoot.resolve("workspace/agent-1/runs/run-temp-symlink"));
         Files.writeString(sourceDir.resolve("safe.txt"), "safe");
         Files.createSymbolicLink(sourceDir.resolve("outside-link.txt"), Files.writeString(tempDir.resolve("outside.txt"), "outside"));
-        Path projectWorkspace = Files.createDirectories(dataRoot.resolve("projects/project-1/workspace"));
+        Path projectWorkspace = Files.createDirectories(dataRoot.resolve("projects/project-1"));
         Files.writeString(projectWorkspace.resolve("project-data.txt"), "project");
         Files.createDirectories(sourceDir.resolve("projects"));
         Files.createSymbolicLink(sourceDir.resolve("projects/project-1"), projectWorkspace);
-        Path outputDir = Files.createDirectories(dataRoot.resolve("projects/project-1/workspace/outputs/tasks/task-1/run-temp-symlink"));
+        Path outputDir = Files.createDirectories(dataRoot.resolve("projects/project-1/outputs/run-temp-symlink"));
 
         List<RunOutputArtifact> artifacts = service.publishDirectoryContents(
             "run-temp-symlink",
@@ -665,7 +665,7 @@ class OutputArtifactServiceAttributionTest {
             directoryService,
             new ObjectMapper().findAndRegisterModules()
         );
-        Path sourceDir = Files.createDirectories(dataRoot.resolve("runtime/task-runs/run-temp-reject"));
+        Path sourceDir = Files.createDirectories(dataRoot.resolve("workspace/agent-1/runs/run-temp-reject"));
         Files.writeString(sourceDir.resolve("safe.txt"), "safe");
         Path outputDir = Files.createDirectories(dataRoot.resolve("outputs-temp-reject"));
         Files.createSymbolicLink(outputDir.resolve("copied-temp"), tempDir.resolve("outside-dest"));

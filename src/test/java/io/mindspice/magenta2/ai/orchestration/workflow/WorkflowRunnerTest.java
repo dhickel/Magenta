@@ -389,28 +389,27 @@ class WorkflowRunnerTest {
         WorkflowRun finished = pollForTerminal(run.id());
 
         assertThat(finished.status()).isEqualTo(WorkflowRunStatus.COMPLETED);
-        assertStoredRelative(finished.workspacePath(), "runtime/workflow-runs/");
+        assertStoredRelative(finished.workspacePath(), "workspace/system/runs/");
         Path resolvedWorkspace = resolveStored(finished.workspacePath());
         assertThat(resolvedWorkspace)
-            .startsWith(workspaceDirectoryService.dataRoot().resolve("runtime").resolve("workflow-runs"));
+            .startsWith(workspaceDirectoryService.dataRoot().resolve("workspace/system/runs"));
         assertThat(finished.outputDir()).isNotEqualTo(finished.workspacePath());
-        assertStoredRelative(finished.outputDir(), "agents/system/workspace/outputs/workflows/");
+        assertStoredRelative(finished.outputDir(), "workspace/system/runs/");
         Path resolvedOutput = resolveStored(finished.outputDir());
         assertThat(resolvedOutput)
-            .startsWith(workspaceDirectoryService.dataRoot()
-                .resolve("agents/system/workspace/outputs/workflows")
-                .resolve(def.id())
-                .resolve(finished.id()));
-        assertThat(finished.artifactIds()).hasSize(1);
-        RunOutputArtifact artifact = outputArtifactService.getArtifact(finished.artifactIds().getFirst());
-        assertStoredRelative(artifact.filePath(), "agents/system/workspace/outputs/workflows/");
-        assertThat(resolveStored(artifact.filePath()).toRealPath())
-            .startsWith(resolvedOutput.toRealPath());
-
-        workspaceDirectoryService.deleteTempDir(resolvedWorkspace);
-        assertThat(Files.exists(resolvedWorkspace)).isFalse();
+            .isEqualTo(resolvedWorkspace.resolve("outputs"));
+        assertThat(finished.artifactIds()).hasSize(2);
+        List<RunOutputArtifact> artifacts = finished.artifactIds().stream()
+            .map(outputArtifactService::getArtifact)
+            .toList();
+        assertThat(artifacts)
+            .extracting(RunOutputArtifact::filePath)
+            .anySatisfy(path -> assertStoredRelative(path, "workspace/system/runs/"))
+            .anySatisfy(path -> assertStoredRelative(path, "workspace/system/outputs/"));
+        assertThat(Files.exists(resolvedWorkspace)).isTrue();
         assertThat(Files.isDirectory(resolvedOutput)).isTrue();
-        assertThat(Files.isRegularFile(resolveStored(artifact.filePath()))).isTrue();
+        assertThat(artifacts)
+            .allSatisfy(artifact -> assertThat(Files.isRegularFile(resolveStored(artifact.filePath()))).isTrue());
     }
 
     @Test
@@ -493,13 +492,13 @@ class WorkflowRunnerTest {
             assertThat(seen).isNotNull();
             assertThat(seen.agentId()).isEqualTo("agent-1");
             assertThat(seen.projectId()).isEqualTo("project-1");
-            assertStoredRelative(finished.workspacePath(), "runtime/workflow-runs/");
-            assertStoredRelative(finished.outputDir(), "projects/project-1/workspace/outputs/workflows/");
+            assertStoredRelative(finished.workspacePath(), "workspace/agent-1/runs/");
+            assertStoredRelative(finished.outputDir(), "workspace/agent-1/runs/");
             assertThat(seen.hostWorkspacePath()).isEqualTo(resolveStored(finished.workspacePath()).toString());
             assertThat(seen.hostRunPath()).isEqualTo(resolveStored(finished.workspacePath()).toString());
             assertThat(seen.hostOutputPath()).isEqualTo(resolveStored(finished.outputDir()).toString());
             assertThat(seen.hostDurableWorkspacePath())
-                .isEqualTo(workspaceDirectoryService.dataRoot().resolve("projects/project-1/workspace").toString());
+                .isEqualTo(workspaceDirectoryService.dataRoot().resolve("projects/project-1").toString());
         } finally {
             OrchestrationTaskContextHolder.clear();
         }
@@ -572,10 +571,10 @@ class WorkflowRunnerTest {
                 .get("childRunId")
                 .toString();
             PlanRun childRun = planService.getRun(childRunId);
-            assertStoredRelative(childRun.outputDirectory(), "projects/project-1/workspace/outputs/tasks/");
+            assertStoredRelative(childRun.outputDirectory(), "workspace/agent-1/runs/");
             assertThat(resolveStored(childRun.outputDirectory()))
                 .startsWith(workspaceDirectoryService.dataRoot()
-                    .resolve("projects/project-1/workspace/outputs/tasks"));
+                    .resolve("workspace/agent-1/runs"));
             assertThat(childRun.workspaceId()).isNotBlank();
         } finally {
             OrchestrationTaskContextHolder.clear();
@@ -607,8 +606,8 @@ class WorkflowRunnerTest {
         WorkflowRun run = workflowService.startRun(def.id());
         WorkflowRun waiting = pollForWaiting(run.id());
         assertThat(waiting.outputDir()).isNotEqualTo(waiting.workspacePath());
-        assertStoredRelative(waiting.workspacePath(), "runtime/workflow-runs/");
-        assertStoredRelative(waiting.outputDir(), "agents/system/workspace/outputs/workflows/");
+        assertStoredRelative(waiting.workspacePath(), "workspace/system/runs/");
+        assertStoredRelative(waiting.outputDir(), "workspace/system/runs/");
         assertThat(Files.isDirectory(resolveStored(waiting.workspacePath()))).isTrue();
         assertThat(Files.isDirectory(resolveStored(waiting.outputDir()))).isTrue();
         String messageId = String.valueOf(waiting.nodeRuns().stream()

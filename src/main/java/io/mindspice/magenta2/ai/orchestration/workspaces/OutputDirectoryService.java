@@ -40,18 +40,8 @@ public class OutputDirectoryService {
         }
         EffectiveWorkspace workspace = effectiveWorkspaceResolver.resolve(target.agentId(), target.projectId());
         WorkAreaPaths workAreaPaths = resolveWorkAreaPaths(target, workspace);
-        Path outputDirectory = workAreaPaths.directOutput()
-            ? workAreaPaths.outputRoot()
-            : switch (target.kind()) {
-                case TASK -> workspaceDirectoryService.taskOutput(
-                    workAreaPaths.outputRoot(), requireSegment(target.workUnitId(), "taskId"), requireSegment(target.runId(), "runId"));
-                case WORKFLOW -> workspaceDirectoryService.workflowOutput(
-                    workAreaPaths.outputRoot(), requireSegment(target.workUnitId(), "workflowId"), requireSegment(target.runId(), "runId"));
-                case JOB -> workspaceDirectoryService.jobAssignmentOutput(
-                    workAreaPaths.outputRoot(),
-                    requireSegment(target.jobAssignmentId(), "jobAssignmentId"),
-                    requireSegment(target.jobRunId(), "jobRunId"));
-            };
+        requireTargetIdentifiers(target);
+        Path outputDirectory = finalOutputDirectory(workAreaPaths, workspace);
         return new ResolvedOutputDirectory(
             workspace.ownerType(),
             workspace.ownerId(),
@@ -63,6 +53,30 @@ public class OutputDirectoryService {
             outputDirectory,
             artifactContext(target, workspace)
         );
+    }
+
+    private Path finalOutputDirectory(WorkAreaPaths workAreaPaths, EffectiveWorkspace workspace) {
+        if (workAreaPaths.routed()) {
+            return ensureRealDirectory(workAreaPaths.outputRoot());
+        }
+        return ensureRealDirectory(workspace.outputsDir());
+    }
+
+    private void requireTargetIdentifiers(OutputPublicationTarget target) {
+        switch (target.kind()) {
+            case TASK -> {
+                requireSegment(target.workUnitId(), "taskId");
+                requireSegment(target.runId(), "runId");
+            }
+            case WORKFLOW -> {
+                requireSegment(target.workUnitId(), "workflowId");
+                requireSegment(target.runId(), "runId");
+            }
+            case JOB -> {
+                requireSegment(target.jobAssignmentId(), "jobAssignmentId");
+                requireSegment(target.jobRunId(), "jobRunId");
+            }
+        }
     }
 
     private WorkAreaPaths resolveWorkAreaPaths(OutputPublicationTarget target, EffectiveWorkspace workspace) {
@@ -78,7 +92,7 @@ public class OutputDirectoryService {
         String routeType = StringUtils.hasText(target.outputRouteType())
             ? target.outputRouteType()
             : AssignmentRequest.OUTPUT_ROUTE_DEFAULT;
-        boolean directOutput = AssignmentRequest.OUTPUT_ROUTE_DIRECT_DIRECTORY.equals(routeType);
+        boolean routed = !AssignmentRequest.OUTPUT_ROUTE_DEFAULT.equals(routeType);
         Path outputRoot = switch (routeType) {
             case AssignmentRequest.OUTPUT_ROUTE_WORK_AREA -> {
                 WorkArea outputArea = workAreaService.requireActiveOwned(
@@ -91,7 +105,7 @@ public class OutputDirectoryService {
             default -> executionRoot;
         };
         outputRoot = ensureRealDirectory(outputRoot);
-        return new WorkAreaPaths(ownerRoot, executionRoot, outputRoot, directOutput);
+        return new WorkAreaPaths(ownerRoot, executionRoot, outputRoot, routed || StringUtils.hasText(target.selectedWorkAreaId()));
     }
 
     private Path ensureRealDirectory(Path path) {
@@ -130,6 +144,6 @@ public class OutputDirectoryService {
         return value.trim();
     }
 
-    private record WorkAreaPaths(Path ownerRoot, Path executionRoot, Path outputRoot, boolean directOutput) {
+    private record WorkAreaPaths(Path ownerRoot, Path executionRoot, Path outputRoot, boolean routed) {
     }
 }

@@ -5,7 +5,7 @@ import java.util.List;
 
 /**
  * Stable read model that bridges a job definition, assignment-owned execution,
- * persistent job workspace state, and currently indexed outputs.
+ * legacy compatibility workspace fields, and currently indexed outputs.
  */
 public record JobExecutionSummary(
     String jobId,

@@ -22,6 +22,7 @@ import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
 import io.mindspice.magenta2.ai.orchestration.settings.RuntimeSettingsService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspacePathLayout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -130,7 +131,6 @@ public class AgentShellToolService {
      *   <li>blank / "." → agent workspace root</li>
      *   <li>"workspace" → agent workspace root</li>
      *   <li>"outputs" → workspace/outputs</li>
-     *   <li>"scratch" → workspace/scratch</li>
      *   <li>"projects/&lt;id&gt;/..." → workspace/projects/&lt;id&gt;/...</li>
      * </ul>
      *
@@ -154,64 +154,50 @@ public class AgentShellToolService {
         String requested = StringUtils.hasText(workingDirectory) ? workingDirectory.trim() : "";
         String normalized = normalizeWorkspaceRequest(requested);
 
-        if (normalized.isEmpty() || ".".equals(normalized) || "workspace".equals(normalized)) {
-            return new ResolvedWorkingDirectory(workspaceRoot, "workspace");
+        if (normalized.isEmpty() || ".".equals(normalized) || WorkspacePathLayout.WORKSPACE.equals(normalized)) {
+            return new ResolvedWorkingDirectory(workspaceRoot, WorkspacePathLayout.WORKSPACE);
         }
-        if (normalized.startsWith("workspace/")) {
-            normalized = normalized.substring("workspace/".length());
+        if (normalized.startsWith(WorkspacePathLayout.WORKSPACE + "/")) {
+            normalized = normalized.substring((WorkspacePathLayout.WORKSPACE + "/").length());
             if (normalized.isEmpty()) {
-                return new ResolvedWorkingDirectory(workspaceRoot, "workspace");
+                return new ResolvedWorkingDirectory(workspaceRoot, WorkspacePathLayout.WORKSPACE);
             }
         }
-        if ("root".equals(normalized) || normalized.startsWith("root/")) {
+        if (WorkspacePathLayout.ROOT_ALIAS.equals(normalized) || normalized.startsWith(WorkspacePathLayout.ROOT_ALIAS + "/")) {
             Path ownerRoot = activeScopeRoot(contextRootPath(ctx), "active owner root");
-            String remainder = "root".equals(normalized) ? "" : normalized.substring("root/".length());
+            String remainder = WorkspacePathLayout.ROOT_ALIAS.equals(normalized) ? "" : normalized.substring((WorkspacePathLayout.ROOT_ALIAS + "/").length());
             Path resolved = resolveScopedDirectory(ownerRoot, remainder, workingDirectory);
-            return new ResolvedWorkingDirectory(resolved, displayScoped("root", ownerRoot, resolved));
+            return new ResolvedWorkingDirectory(resolved, displayScoped(WorkspacePathLayout.ROOT_ALIAS, ownerRoot, resolved));
         }
         rejectUnsafeRelativePath(normalized, "Working directory escapes active durable workspace: " + workingDirectory);
 
-        if ("outputs".equals(normalized) || normalized.startsWith("outputs/")) {
+        if (WorkspacePathLayout.OUTPUTS.equals(normalized) || normalized.startsWith(WorkspacePathLayout.OUTPUTS + "/")) {
             Path outputRoot = activeScopeRoot(ctx.hostOutputPath(), "active assignment output directory");
-            String remainder = "outputs".equals(normalized) ? "" : normalized.substring("outputs/".length());
+            String remainder = WorkspacePathLayout.OUTPUTS.equals(normalized) ? "" : normalized.substring((WorkspacePathLayout.OUTPUTS + "/").length());
             Path resolved = resolveScopedDirectory(outputRoot, remainder, workingDirectory);
-            return new ResolvedWorkingDirectory(resolved, displayScoped("outputs", outputRoot, resolved));
+            return new ResolvedWorkingDirectory(resolved, displayScoped(WorkspacePathLayout.OUTPUTS, outputRoot, resolved));
         }
 
-        if ("run".equals(normalized) || normalized.startsWith("run/")) {
+        if (WorkspacePathLayout.RUN_ALIAS.equals(normalized) || normalized.startsWith(WorkspacePathLayout.RUN_ALIAS + "/")) {
             Path runRoot = activeScopeRoot(contextRunPath(ctx), "active run workspace");
-            String remainder = "run".equals(normalized) ? "" : normalized.substring("run/".length());
+            String remainder = WorkspacePathLayout.RUN_ALIAS.equals(normalized) ? "" : normalized.substring((WorkspacePathLayout.RUN_ALIAS + "/").length());
             Path resolved = resolveScopedDirectory(runRoot, remainder, workingDirectory);
-            return new ResolvedWorkingDirectory(resolved, displayScoped("run", runRoot, resolved));
+            return new ResolvedWorkingDirectory(resolved, displayScoped(WorkspacePathLayout.RUN_ALIAS, runRoot, resolved));
         }
 
-        if ("job".equals(normalized) || normalized.startsWith("job/")) {
-            Path jobRoot = activeScopeRoot(ctx.hostJobWorkspacePath(), "active job workspace");
-            String remainder = "job".equals(normalized) ? "" : normalized.substring("job/".length());
-            Path resolved = resolveScopedDirectory(jobRoot, remainder, workingDirectory);
-            return new ResolvedWorkingDirectory(resolved, displayScoped("job", jobRoot, resolved));
-        }
-
-        if ("work".equals(normalized) || normalized.startsWith("work/")) {
-            Path workRoot = durableChildScope(workspaceRoot, "work");
-            String remainder = "work".equals(normalized) ? "" : normalized.substring("work/".length());
+        if (WorkspacePathLayout.WORK.equals(normalized) || normalized.startsWith(WorkspacePathLayout.WORK + "/")) {
+            Path workRoot = durableChildScope(workspaceRoot, WorkspacePathLayout.WORK);
+            String remainder = WorkspacePathLayout.WORK.equals(normalized) ? "" : normalized.substring((WorkspacePathLayout.WORK + "/").length());
             Path resolved = resolveScopedDirectory(workRoot, remainder, workingDirectory);
-            return new ResolvedWorkingDirectory(resolved, displayScoped("work", workRoot, resolved));
+            return new ResolvedWorkingDirectory(resolved, displayScoped(WorkspacePathLayout.WORK, workRoot, resolved));
         }
 
-        if ("scratch".equals(normalized) || normalized.startsWith("scratch/")) {
-            Path scratchRoot = durableChildScope(workspaceRoot, "scratch");
-            String remainder = "scratch".equals(normalized) ? "" : normalized.substring("scratch/".length());
-            Path resolved = resolveScopedDirectory(scratchRoot, remainder, workingDirectory);
-            return new ResolvedWorkingDirectory(resolved, displayScoped("scratch", scratchRoot, resolved));
-        }
-
-        if (normalized.startsWith("projects/")) {
+        if (normalized.startsWith(WorkspacePathLayout.PROJECTS + "/")) {
             return resolveProjectWorkingDirectory(ctx, normalized, workingDirectory);
         }
 
         Path resolved = resolveScopedDirectory(workspaceRoot, normalized, workingDirectory);
-        return new ResolvedWorkingDirectory(resolved, displayScoped("workspace", workspaceRoot, resolved));
+        return new ResolvedWorkingDirectory(resolved, displayScoped(WorkspacePathLayout.WORKSPACE, workspaceRoot, resolved));
     }
 
     private Path resolveAgentWorkingDirectory(OrchestrationTaskContext ctx, String workingDirectory) throws IOException {
@@ -225,17 +211,17 @@ public class AgentShellToolService {
             return workspaceRoot;
         }
         String normalized = normalizeWorkspaceRequest(requested);
-        if ("workspace".equals(normalized)) {
+        if (WorkspacePathLayout.WORKSPACE.equals(normalized)) {
             return workspaceRoot;
         }
-        if (normalized.startsWith("workspace/")) {
-            normalized = normalized.substring("workspace/".length());
+        if (normalized.startsWith(WorkspacePathLayout.WORKSPACE + "/")) {
+            normalized = normalized.substring((WorkspacePathLayout.WORKSPACE + "/").length());
             if (normalized.isEmpty()) {
                 return workspaceRoot;
             }
         }
         rejectUnsafeRelativePath(normalized, "Working directory escapes agent workspace: " + workingDirectory);
-        if (normalized.startsWith("projects/")) {
+        if (normalized.startsWith(WorkspacePathLayout.PROJECTS + "/")) {
             return resolveProjectWorkingDirectory(ctx, normalized, workingDirectory).path();
         }
         return resolveScopedDirectory(workspaceRoot, normalized, workingDirectory);
@@ -246,7 +232,7 @@ public class AgentShellToolService {
         if (workspaceDirectoryService == null || !StringUtils.hasText(ctx.projectId())) {
             throw new IllegalArgumentException("Project workspace is not available for this assignment");
         }
-        String projectPrefix = "projects/" + ctx.projectId();
+        String projectPrefix = WorkspacePathLayout.PROJECTS + "/" + ctx.projectId();
         if (!normalized.equals(projectPrefix) && !normalized.startsWith(projectPrefix + "/")) {
             throw new IllegalArgumentException("Project working directory is not linked to this assignment: " + workingDirectory);
         }
@@ -580,7 +566,7 @@ public class AgentShellToolService {
         Path workspaceRoot = workspaceDirectoryService.agentWorkspace(agentId);
         Path relative = workspaceRoot.relativize(path.toAbsolutePath().normalize());
         String rel = relative.toString();
-        return rel.isEmpty() ? "workspace" : rel;
+        return rel.isEmpty() ? WorkspacePathLayout.WORKSPACE : rel;
     }
 
     private String displayScoped(String label, Path scopeRoot, Path path) {

@@ -10,6 +10,7 @@ import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspacePathLayout;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -238,10 +239,7 @@ class AgentShellToolServiceTest {
 
     @Test
     void executesInAgentWorkspaceWhenOrchestrationContextHasAgentId() throws Exception {
-        // Create agent workspace dir structure inside tempDir
-        Path agentWs = Files.createDirectories(tempDir.resolve("agents/agent-1/workspace"));
-        Files.createDirectories(tempDir.resolve("agents/agent-1/workspace/outputs"));
-        Files.createDirectories(tempDir.resolve("agents/agent-1/workspace/scratch"));
+        Files.createDirectories(tempDir.resolve("workspace/agent-1"));
 
         AiConfig aiConfig = new AiConfig(null, null, null, null, null, null, tempDir, null, null, null);
         WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(aiConfig);
@@ -255,7 +253,7 @@ class AgentShellToolServiceTest {
 
             assertThat(result.executionType()).isEqualTo("bash");
             assertThat(result.exitCode()).isZero();
-            assertThat(result.stdout().trim()).endsWith("agents/agent-1/workspace");
+            assertThat(result.stdout().trim()).endsWith("workspace/agent-1");
             assertThat(result.workingDirectory()).isEqualTo("workspace");
         } finally {
             OrchestrationTaskContextHolder.clear();
@@ -264,8 +262,7 @@ class AgentShellToolServiceTest {
 
     @Test
     void resolvesWorkspaceAliasInAgentContext() throws Exception {
-        Files.createDirectories(tempDir.resolve("agents/agent-1/workspace"));
-        Files.createDirectories(tempDir.resolve("agents/agent-1/workspace/outputs"));
+        Files.createDirectories(tempDir.resolve("workspace/agent-1"));
 
         AiConfig aiConfig = new AiConfig(null, null, null, null, null, null, tempDir, null, null, null);
         WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(aiConfig);
@@ -278,7 +275,7 @@ class AgentShellToolServiceTest {
             AgentShellToolService.ShellExecResult result = service.exec("pwd", "workspace", 5);
 
             assertThat(result.exitCode()).isZero();
-            assertThat(result.stdout().trim()).endsWith("agents/agent-1/workspace");
+            assertThat(result.stdout().trim()).endsWith("workspace/agent-1");
             assertThat(result.workingDirectory()).isEqualTo("workspace");
         } finally {
             OrchestrationTaskContextHolder.clear();
@@ -287,8 +284,8 @@ class AgentShellToolServiceTest {
 
     @Test
     void resolvesOutputsAliasInAgentContext() throws Exception {
-        Path agentWs = Files.createDirectories(tempDir.resolve("agents/agent-1/workspace"));
-        Path outputsDir = Files.createDirectories(tempDir.resolve("agents/agent-1/workspace/outputs"));
+        Files.createDirectories(tempDir.resolve("workspace/agent-1"));
+        Files.createDirectories(tempDir.resolve("workspace/agent-1/outputs"));
 
         AiConfig aiConfig = new AiConfig(null, null, null, null, null, null, tempDir, null, null, null);
         WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(aiConfig);
@@ -301,16 +298,15 @@ class AgentShellToolServiceTest {
             AgentShellToolService.ShellExecResult result = service.exec("pwd", "outputs", 5);
 
             assertThat(result.exitCode()).isZero();
-            assertThat(result.stdout().trim()).endsWith("agents/agent-1/workspace/outputs");
+            assertThat(result.stdout().trim()).endsWith("workspace/agent-1/outputs");
         } finally {
             OrchestrationTaskContextHolder.clear();
         }
     }
 
     @Test
-    void resolvesScratchAliasInAgentContext() throws Exception {
-        Files.createDirectories(tempDir.resolve("agents/agent-1/workspace"));
-        Files.createDirectories(tempDir.resolve("agents/agent-1/workspace/scratch"));
+    void rejectsLegacyScratchAliasInAgentContext() throws Exception {
+        Files.createDirectories(tempDir.resolve("workspace/agent-1"));
 
         AiConfig aiConfig = new AiConfig(null, null, null, null, null, null, tempDir, null, null, null);
         WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(aiConfig);
@@ -320,10 +316,8 @@ class AgentShellToolServiceTest {
             "agent-1", "TestAgent", null, null, null, "TASK_RUN", null, null));
 
         try {
-            AgentShellToolService.ShellExecResult result = service.exec("pwd", "scratch", 5);
-
-            assertThat(result.exitCode()).isZero();
-            assertThat(result.stdout().trim()).endsWith("agents/agent-1/workspace/scratch");
+            assertThatThrownBy(() -> service.exec("pwd", WorkspacePathLayout.LEGACY_SCRATCH, 5))
+                .isInstanceOf(IOException.class);
         } finally {
             OrchestrationTaskContextHolder.clear();
         }
@@ -331,8 +325,8 @@ class AgentShellToolServiceTest {
 
     @Test
     void executesInActiveAssignmentWorkspaceWhenHostPathIsPresent() throws Exception {
-        Path runWorkspace = Files.createDirectories(tempDir.resolve("runtime/task-runs/run-1"));
-        Path outputDir = Files.createDirectories(tempDir.resolve("agents/agent-1/workspace/outputs/run-1"));
+        Path runWorkspace = Files.createDirectories(tempDir.resolve("workspace/agent-1/runs/run-1"));
+        Path outputDir = Files.createDirectories(runWorkspace.resolve("outputs"));
         Files.createDirectories(runWorkspace.resolve("nested"));
 
         AiConfig aiConfig = new AiConfig(null, null, null, null, null, null, tempDir, null, null, null);
@@ -347,7 +341,7 @@ class AgentShellToolServiceTest {
             AgentShellToolService.ShellExecResult result = service.exec("pwd", "nested", 5);
 
             assertThat(result.exitCode()).isZero();
-            assertThat(result.stdout().trim()).endsWith("runtime/task-runs/run-1/nested");
+            assertThat(result.stdout().trim()).endsWith("workspace/agent-1/runs/run-1/nested");
             assertThat(result.workingDirectory()).isEqualTo("workspace/nested");
         } finally {
             OrchestrationTaskContextHolder.clear();
@@ -356,8 +350,8 @@ class AgentShellToolServiceTest {
 
     @Test
     void resolvesRunOutputAliasWhenHostOutputPathIsPresent() throws Exception {
-        Path runWorkspace = Files.createDirectories(tempDir.resolve("runtime/task-runs/run-1"));
-        Path outputDir = Files.createDirectories(tempDir.resolve("agents/agent-1/workspace/outputs/run-1"));
+        Path runWorkspace = Files.createDirectories(tempDir.resolve("workspace/agent-1/runs/run-1"));
+        Path outputDir = Files.createDirectories(runWorkspace.resolve("outputs"));
 
         AiConfig aiConfig = new AiConfig(null, null, null, null, null, null, tempDir, null, null, null);
         WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(aiConfig);
@@ -371,7 +365,7 @@ class AgentShellToolServiceTest {
             AgentShellToolService.ShellExecResult result = service.exec("pwd", "outputs", 5);
 
             assertThat(result.exitCode()).isZero();
-            assertThat(result.stdout().trim()).endsWith("agents/agent-1/workspace/outputs/run-1");
+            assertThat(result.stdout().trim()).endsWith("workspace/agent-1/runs/run-1/outputs");
             assertThat(result.workingDirectory()).isEqualTo("outputs");
         } finally {
             OrchestrationTaskContextHolder.clear();
@@ -382,10 +376,8 @@ class AgentShellToolServiceTest {
     void activeTaskContextAliasesDurableWorkspaceRunTempAndCurrentOutputs() throws Exception {
         Path durableWorkspace = Files.createDirectories(tempDir.resolve("projects/project-1/workspace"));
         Path workDir = Files.createDirectories(durableWorkspace.resolve("work"));
-        Path scratchDir = Files.createDirectories(durableWorkspace.resolve("scratch"));
-        Path jobDir = Files.createDirectories(durableWorkspace.resolve("jobs/assignment-1"));
-        Path runWorkspace = Files.createDirectories(tempDir.resolve("runtime/task-runs/run-1"));
-        Path outputDir = Files.createDirectories(durableWorkspace.resolve("outputs/tasks/task-1/run-1"));
+        Path runWorkspace = Files.createDirectories(tempDir.resolve("workspace/agent-1/runs/run-1"));
+        Path outputDir = Files.createDirectories(runWorkspace.resolve("outputs"));
 
         AiConfig aiConfig = new AiConfig(null, null, null, null, null, null, tempDir, null, null, null);
         WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(aiConfig);
@@ -394,17 +386,13 @@ class AgentShellToolServiceTest {
         OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
             "agent-1", "TestAgent", null, "project-1", "workspace-1", "TASK_RUN",
             runWorkspace.toString(), outputDir.toString(), durableWorkspace.toString(), runWorkspace.toString(),
-            jobDir.toString()));
+            null));
 
         try {
             assertThat(service.exec("pwd", "workspace", 5).stdout().trim())
                 .isEqualTo(durableWorkspace.toRealPath().toString());
             assertThat(service.exec("pwd", "work", 5).stdout().trim())
                 .isEqualTo(workDir.toRealPath().toString());
-            assertThat(service.exec("pwd", "scratch", 5).stdout().trim())
-                .isEqualTo(scratchDir.toRealPath().toString());
-            assertThat(service.exec("pwd", "job", 5).stdout().trim())
-                .isEqualTo(jobDir.toRealPath().toString());
             assertThat(service.exec("pwd", "run", 5).stdout().trim())
                 .isEqualTo(runWorkspace.toRealPath().toString());
             assertThat(service.exec("pwd", "outputs", 5).stdout().trim())
@@ -416,8 +404,8 @@ class AgentShellToolServiceTest {
 
     @Test
     void resolvesOnlyCurrentProjectScopeInAssignmentContext() throws Exception {
-        Path runWorkspace = Files.createDirectories(tempDir.resolve("runtime/task-runs/run-1"));
-        Path outputDir = Files.createDirectories(tempDir.resolve("agents/agent-1/workspace/outputs/run-1"));
+        Path runWorkspace = Files.createDirectories(tempDir.resolve("workspace/agent-1/runs/run-1"));
+        Path outputDir = Files.createDirectories(runWorkspace.resolve("outputs"));
 
         AiConfig aiConfig = new AiConfig(null, null, null, null, null, null, tempDir, null, null, null);
         WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(aiConfig);
@@ -445,7 +433,7 @@ class AgentShellToolServiceTest {
 
     @Test
     void rejectsAbsoluteWorkingDirectoryInAgentContext() throws Exception {
-        Files.createDirectories(tempDir.resolve("agents/agent-1/workspace"));
+        Files.createDirectories(tempDir.resolve("workspace/agent-1"));
 
         AiConfig aiConfig = new AiConfig(null, null, null, null, null, null, tempDir, null, null, null);
         WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(aiConfig);
@@ -465,7 +453,7 @@ class AgentShellToolServiceTest {
 
     @Test
     void rejectsTraversalPathInAgentContext() throws Exception {
-        Files.createDirectories(tempDir.resolve("agents/agent-1/workspace"));
+        Files.createDirectories(tempDir.resolve("workspace/agent-1"));
 
         AiConfig aiConfig = new AiConfig(null, null, null, null, null, null, tempDir, null, null, null);
         WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(aiConfig);

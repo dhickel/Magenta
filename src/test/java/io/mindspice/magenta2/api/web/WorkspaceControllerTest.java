@@ -45,7 +45,6 @@ class WorkspaceControllerTest {
     void listSupportsOwnerFilteringAndLimitBounds() {
         workspaceService.agentWorkspace("agent-1", "Agent One");
         workspaceService.agentWorkspace("agent-2", "Agent Two");
-        workspaceService.jobWorkspace("job-1", "Job One");
 
         List<Workspace> filtered = controller.list("AGENT", "agent-1", 500);
 

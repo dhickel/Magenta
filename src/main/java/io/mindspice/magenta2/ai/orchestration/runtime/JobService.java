@@ -37,7 +37,9 @@ import org.springframework.util.StringUtils;
 
 /**
  * Manages job definitions, runs, and recurrence scheduling.
- * Jobs own persistent workspaces and coordinate multiple plan/workflow work items.
+ * Jobs coordinate task-like plan/workflow work items. Legacy persistent
+ * workspace fields are retained for compatibility only and are not allocated
+ * by active runtime paths.
  */
 @Service
 public class JobService {
@@ -177,7 +179,7 @@ public class JobService {
             normalize(def.ownerAgentId()),
             normalize(def.projectId()),
             normalize(def.workspaceId()),
-            Boolean.TRUE.equals(def.persistentWorkspaceEnabled()),
+            false,
             StringUtils.hasText(def.status()) ? def.status().trim() : "DRAFT",
             def.title(), def.summary(),
             orderedItems(items),
@@ -296,11 +298,6 @@ public class JobService {
         try {
             EffectiveWorkspace effectiveWorkspace = effectiveWorkspace(effectiveAgentId, effectiveProjectId);
             effectiveWorkspaceId = effectiveWorkspace.workspaceId();
-            if (Boolean.TRUE.equals(def.persistentWorkspaceEnabled())) {
-                Path wsPath = workspaceDirectoryService.jobAssignmentWorkspace(
-                    effectiveWorkspace.root(), assignmentKey);
-                workspacePath = storePath(wsPath.toRealPath());
-            }
             Path outPath;
             if (outputDirectoryService != null) {
                 ResolvedOutputDirectory resolved = outputDirectoryService.resolve(OutputPublicationTarget.job(
@@ -318,12 +315,11 @@ public class JobService {
                 effectiveWorkspaceId = resolved.workspaceId();
                 outPath = resolved.outputDirectory();
             } else {
-                outPath = workspaceDirectoryService.jobAssignmentOutput(
-                    effectiveWorkspace.root(), assignmentKey, runId);
+                outPath = effectiveWorkspace.outputsDir();
             }
             outputDir = storePath(outPath.toRealPath());
-            log.info("Allocated persistentJobWorkspace={} output={} agent={} project={} assignment={} for job run={}",
-                workspacePath, outputDir, effectiveAgentId, effectiveProjectId, assignmentKey, runId);
+            log.info("Allocated job output={} agent={} project={} assignment={} for job run={}",
+                outputDir, effectiveAgentId, effectiveProjectId, assignmentKey, runId);
         } catch (Exception e) {
             log.error("Failed to allocate output/workspace for job run={}: {}", runId, e.getMessage());
         }
@@ -579,10 +575,8 @@ public class JobService {
             firstText(assignment == null ? null : assignment.effectiveWorkspaceKind(),
                 StringUtils.hasText(projectId) ? "PROJECT" : StringUtils.hasText(effectiveWorkspaceId) ? "AGENT" : null),
             effectiveWorkspaceDisplayPath(effectiveWorkspaceId),
-            Boolean.TRUE.equals(job.persistentWorkspaceEnabled()),
-            Boolean.TRUE.equals(job.persistentWorkspaceEnabled())
-                ? assignment == null ? run == null ? null : run.jobAssignmentId() : assignment.id()
-                : null,
+            false,
+            null,
             run == null ? null : run.workspacePath(),
             StringUtils.hasText(run == null ? null : run.workspacePath()),
             run == null ? null : run.id(),
@@ -879,7 +873,7 @@ public class JobService {
             workspaceDirectoryService.workDir(root),
             workspaceDirectoryService.outputsDir(root),
             workspaceDirectoryService.runsDir(root),
-            workspaceDirectoryService.scratchDir(root)
+            null
         );
     }
 

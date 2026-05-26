@@ -25,6 +25,7 @@ import io.mindspice.magenta2.ai.config.user.AiConfig;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspacePathLayout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -399,50 +400,38 @@ public class AgentFileToolService {
     private FileScope resolveAssignmentScope(OrchestrationTaskContext ctx, String normalized, String requested)
         throws IOException {
         Path workspaceRoot = activeScopeRoot(contextWorkspacePath(ctx), "active durable workspace");
-        if (isRootAlias(normalized, "workspace")) {
-            return new FileScope(workspaceRoot, "workspace", "active durable workspace", "");
+        if (isRootAlias(normalized, WorkspacePathLayout.WORKSPACE)) {
+            return new FileScope(workspaceRoot, WorkspacePathLayout.WORKSPACE, "active durable workspace", "");
         }
-        if (normalized.startsWith("workspace/")) {
-            return workspaceScope(workspaceRoot, normalized.substring("workspace/".length()), requested,
+        if (normalized.startsWith(WorkspacePathLayout.WORKSPACE + "/")) {
+            return workspaceScope(workspaceRoot, normalized.substring((WorkspacePathLayout.WORKSPACE + "/").length()), requested,
                 "active durable workspace");
         }
-        if ("root".equals(normalized) || normalized.startsWith("root/")) {
+        if (WorkspacePathLayout.ROOT_ALIAS.equals(normalized) || normalized.startsWith(WorkspacePathLayout.ROOT_ALIAS + "/")) {
             Path ownerRoot = activeScopeRoot(contextRootPath(ctx), "active owner root");
-            String remainder = "root".equals(normalized) ? "" : normalized.substring("root/".length());
+            String remainder = WorkspacePathLayout.ROOT_ALIAS.equals(normalized) ? "" : normalized.substring((WorkspacePathLayout.ROOT_ALIAS + "/").length());
             rejectUnsafeRelativePath(remainder, "path escapes active owner root: " + requested);
-            return new FileScope(ownerRoot, "root", "active owner root", remainder);
+            return new FileScope(ownerRoot, WorkspacePathLayout.ROOT_ALIAS, "active owner root", remainder);
         }
-        if ("outputs".equals(normalized) || normalized.startsWith("outputs/")) {
+        if (WorkspacePathLayout.OUTPUTS.equals(normalized) || normalized.startsWith(WorkspacePathLayout.OUTPUTS + "/")) {
             Path outputRoot = activeScopeRoot(ctx.hostOutputPath(), "active assignment output directory");
-            String remainder = "outputs".equals(normalized) ? "" : normalized.substring("outputs/".length());
+            String remainder = WorkspacePathLayout.OUTPUTS.equals(normalized) ? "" : normalized.substring((WorkspacePathLayout.OUTPUTS + "/").length());
             rejectUnsafeRelativePath(remainder, "path escapes active assignment output directory: " + requested);
-            return new FileScope(outputRoot, "outputs", "active assignment output directory", remainder);
+            return new FileScope(outputRoot, WorkspacePathLayout.OUTPUTS, "active assignment output directory", remainder);
         }
-        if ("run".equals(normalized) || normalized.startsWith("run/")) {
+        if (WorkspacePathLayout.RUN_ALIAS.equals(normalized) || normalized.startsWith(WorkspacePathLayout.RUN_ALIAS + "/")) {
             Path runRoot = activeScopeRoot(contextRunPath(ctx), "active run workspace");
-            String remainder = "run".equals(normalized) ? "" : normalized.substring("run/".length());
+            String remainder = WorkspacePathLayout.RUN_ALIAS.equals(normalized) ? "" : normalized.substring((WorkspacePathLayout.RUN_ALIAS + "/").length());
             rejectUnsafeRelativePath(remainder, "path escapes active run workspace: " + requested);
-            return new FileScope(runRoot, "run", "active run workspace", remainder);
+            return new FileScope(runRoot, WorkspacePathLayout.RUN_ALIAS, "active run workspace", remainder);
         }
-        if ("job".equals(normalized) || normalized.startsWith("job/")) {
-            Path jobRoot = activeScopeRoot(ctx.hostJobWorkspacePath(), "active job workspace");
-            String remainder = "job".equals(normalized) ? "" : normalized.substring("job/".length());
-            rejectUnsafeRelativePath(remainder, "path escapes active job workspace: " + requested);
-            return new FileScope(jobRoot, "job", "active job workspace", remainder);
-        }
-        if ("work".equals(normalized) || normalized.startsWith("work/")) {
-            Path workRoot = durableChildScope(workspaceRoot, "work");
-            String remainder = "work".equals(normalized) ? "" : normalized.substring("work/".length());
+        if (WorkspacePathLayout.WORK.equals(normalized) || normalized.startsWith(WorkspacePathLayout.WORK + "/")) {
+            Path workRoot = durableChildScope(workspaceRoot, WorkspacePathLayout.WORK);
+            String remainder = WorkspacePathLayout.WORK.equals(normalized) ? "" : normalized.substring((WorkspacePathLayout.WORK + "/").length());
             rejectUnsafeRelativePath(remainder, "path escapes active durable work directory: " + requested);
-            return new FileScope(workRoot, "work", "active durable work directory", remainder);
+            return new FileScope(workRoot, WorkspacePathLayout.WORK, "active durable work directory", remainder);
         }
-        if ("scratch".equals(normalized) || normalized.startsWith("scratch/")) {
-            Path scratchRoot = durableChildScope(workspaceRoot, "scratch");
-            String remainder = "scratch".equals(normalized) ? "" : normalized.substring("scratch/".length());
-            rejectUnsafeRelativePath(remainder, "path escapes active durable scratch directory: " + requested);
-            return new FileScope(scratchRoot, "scratch", "active durable scratch directory", remainder);
-        }
-        if (normalized.startsWith("projects/")) {
+        if (normalized.startsWith(WorkspacePathLayout.PROJECTS + "/")) {
             return resolveProjectScope(ctx, normalized, requested);
         }
         return workspaceScope(workspaceRoot, normalized, requested, "active durable workspace");
@@ -454,25 +443,13 @@ public class AgentFileToolService {
             throw new IllegalStateException("Workspace directory service is not available");
         }
         Path workspaceRoot = workspaceDirectoryService.agentWorkspace(ctx.agentId()).toRealPath();
-        if (isRootAlias(normalized, "workspace")) {
-            return new FileScope(workspaceRoot, "workspace", "agent workspace", "");
+        if (isRootAlias(normalized, WorkspacePathLayout.WORKSPACE)) {
+            return new FileScope(workspaceRoot, WorkspacePathLayout.WORKSPACE, "agent workspace", "");
         }
-        if (normalized.startsWith("workspace/")) {
-            return workspaceScope(workspaceRoot, normalized.substring("workspace/".length()), requested, "agent workspace");
+        if (normalized.startsWith(WorkspacePathLayout.WORKSPACE + "/")) {
+            return workspaceScope(workspaceRoot, normalized.substring((WorkspacePathLayout.WORKSPACE + "/").length()), requested, "agent workspace");
         }
-        if ("outputs".equals(normalized) || normalized.startsWith("outputs/")) {
-            Path outputRoot = workspaceDirectoryService.agentWorkspaceOutputs(ctx.agentId()).toRealPath();
-            String remainder = "outputs".equals(normalized) ? "" : normalized.substring("outputs/".length());
-            rejectUnsafeRelativePath(remainder, "path escapes agent output directory: " + requested);
-            return new FileScope(outputRoot, "outputs", "agent output directory", remainder);
-        }
-        if ("scratch".equals(normalized) || normalized.startsWith("scratch/")) {
-            Path scratchRoot = workspaceDirectoryService.agentScratch(ctx.agentId()).toRealPath();
-            String remainder = "scratch".equals(normalized) ? "" : normalized.substring("scratch/".length());
-            rejectUnsafeRelativePath(remainder, "path escapes agent scratch directory: " + requested);
-            return new FileScope(scratchRoot, "scratch", "agent scratch directory", remainder);
-        }
-        if (normalized.startsWith("projects/")) {
+        if (normalized.startsWith(WorkspacePathLayout.PROJECTS + "/")) {
             return resolveProjectScope(ctx, normalized, requested);
         }
         return workspaceScope(workspaceRoot, normalized, requested, "agent workspace");
@@ -488,7 +465,7 @@ public class AgentFileToolService {
         if (workspaceDirectoryService == null || !StringUtils.hasText(ctx.projectId())) {
             throw new IllegalArgumentException("Project workspace is not available for this assignment");
         }
-        String projectPrefix = "projects/" + ctx.projectId();
+        String projectPrefix = WorkspacePathLayout.PROJECTS + "/" + ctx.projectId();
         if (!normalized.equals(projectPrefix) && !normalized.startsWith(projectPrefix + "/")) {
             throw new IllegalArgumentException("Project path is not linked to this assignment: " + requested);
         }

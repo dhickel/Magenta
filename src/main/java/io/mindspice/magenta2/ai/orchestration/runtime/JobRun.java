@@ -6,15 +6,15 @@ import java.util.Map;
 
 /**
  * A single execution run of a {@link JobDefinition}. Tracks per-item progress,
- * workspace paths, and terminal output.
+ * legacy compatibility workspace fields, and terminal output.
  *
  * @param id             unique run identifier
  * @param jobId          parent job definition id
- * @param jobAssignmentId assignment/run owner used for persistent job workspace isolation
+ * @param jobAssignmentId assignment/run owner
  * @param workspaceId    effective durable workspace id
  * @param status         current run status
  * @param workItemRuns   ordered list of per-item run state
- * @param workspacePath  job workspace path on disk
+ * @param workspacePath  legacy job workspace path; active runtime leaves this unset
  * @param outputDir      job output directory on disk
  * @param finalMessage   human-readable completion message
  * @param errorText      error description if failed

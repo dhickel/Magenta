@@ -23,11 +23,12 @@ class WorkspaceServicePathTest {
 
         Workspace agent = context.service().agentWorkspace("agent-1", "Agent One");
         Workspace project = context.service().projectWorkspace("project-1", "Project One");
-        Workspace job = context.service().jobWorkspace("job-1", "Job One");
 
         assertThat(agent.rootRelativePath()).isEqualTo("workspace/agent-1");
         assertThat(project.rootRelativePath()).isEqualTo("projects/project-1");
-        assertThat(job.rootRelativePath()).isEqualTo("jobs/job-1/workspace");
+        assertThatThrownBy(() -> context.service().jobWorkspace("job-1", "Job One"))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("Job-owned workspaces are retired");
     }
 
     @Test

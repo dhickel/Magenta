@@ -222,14 +222,15 @@ public class WorkspaceDirectoryService {
 
     public Path jobWorkspace(String jobId) {
         requireId(jobId, "jobId");
-        return ensureDir(confined(WorkspacePathLayout.legacyJobWorkspace(jobId)));
+        throw new IllegalStateException(
+            "Job-owned workspace directories are retired; bind jobs to an agent, project, or Work Area instead.");
     }
 
     public Path jobOutput(String jobId, String planSlug, String runId) {
         requireId(jobId, "jobId");
         requireId(runId, "runId");
-        String slug = StringUtils.hasText(planSlug) ? sanitize(planSlug) : "run";
-        return ensureDir(confined(WorkspacePathLayout.legacyJobOutputRoot(jobId).resolve(slug + "-" + runId)));
+        throw new IllegalStateException(
+            "Job-owned output directories are retired; route job outputs through the bound workspace instead.");
     }
 
     // ── Project ──
@@ -348,15 +349,19 @@ public class WorkspaceDirectoryService {
 
     /**
      * Deletes a temp directory recursively. Never deletes output directories.
-     * Safe — rejects paths that are not under {@code data/runtime/}.
+     * Safe — rejects paths that are neither legacy {@code data/runtime/}
+     * directories nor run-local {@code data/workspace/<agent>/runs/<runId>}
+     * staging roots.
      */
     public void deleteTempDir(Path dir) throws IOException {
         if (dir == null || !Files.exists(dir)) {
             return;
         }
         Path normalized = dir.toRealPath();
-        Path runtimeDir = dataRoot.resolve(WorkspacePathLayout.LEGACY_RUNTIME).toRealPath();
-        if (!normalized.startsWith(runtimeDir)) {
+        Path runtimeDir = dataRoot.resolve(WorkspacePathLayout.LEGACY_RUNTIME);
+        boolean legacyRuntimeTemp = Files.exists(runtimeDir) && normalized.startsWith(runtimeDir.toRealPath());
+        boolean runLocalStaging = isRunLocalStagingRoot(normalized);
+        if (!legacyRuntimeTemp && !runLocalStaging) {
             throw new IllegalArgumentException(
                 "Refusing to delete non-temp directory: " + normalized);
         }
@@ -370,6 +375,25 @@ public class WorkspaceDirectoryService {
                     }
                 });
         }
+    }
+
+    private boolean isRunLocalStagingRoot(Path normalized) {
+        if (!normalized.startsWith(dataRoot)) {
+            return false;
+        }
+        if (WorkspacePathLayout.OUTPUTS.equals(fileName(normalized))) {
+            return false;
+        }
+        Path parent = normalized.getParent();
+        return parent != null
+            && WorkspacePathLayout.RUNS.equals(fileName(parent))
+            && parent.getParent() != null
+            && parent.getParent().getParent() != null
+            && WorkspacePathLayout.WORKSPACE.equals(fileName(parent.getParent().getParent()));
+    }
+
+    private String fileName(Path path) {
+        return path == null || path.getFileName() == null ? null : path.getFileName().toString();
     }
 
     // ── Helpers ──

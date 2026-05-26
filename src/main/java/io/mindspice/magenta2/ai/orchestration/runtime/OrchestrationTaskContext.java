@@ -7,13 +7,13 @@ import org.springframework.util.StringUtils;
  * tool implementations (shell, file) during model-backed task execution.
  *
  * <p>Contains agent, job, project, and workspace identifiers plus the
- * host filesystem paths for the task workspace and output directories.
+ * host filesystem paths for the run workspace and output staging directories.
  * Tool implementations use this context to resolve working directories.
  * The legacy {@code hostWorkspacePath} field is retained as the active
  * run/assignment workspace path; {@code hostDurableWorkspacePath} is the
- * effective durable workspace root exposed as {@code workspace/}. When a job
- * has an opt-in persistent workspace, {@code hostJobWorkspacePath} is exposed
- * through the {@code job/} alias.
+ * effective durable workspace root exposed as {@code workspace/}.
+ * {@code hostJobWorkspacePath} is legacy compatibility only and should remain
+ * unset in active runtime paths.
  */
 public record OrchestrationTaskContext(
     String agentId,
@@ -209,6 +209,7 @@ public record OrchestrationTaskContext(
         );
     }
 
+    @Deprecated
     public OrchestrationTaskContext withJobWorkspacePath(String hostJobWorkspacePath) {
         return new OrchestrationTaskContext(
             agentId, agentName, jobId, jobAssignmentId, jobRunId, projectId, workspaceId, runType,

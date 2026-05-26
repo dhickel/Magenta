@@ -67,12 +67,8 @@ public class WorkspaceService {
     public Workspace jobWorkspace(String jobId, String displayName) {
         PlainPathSegmentValidator.requirePlainSegment(jobId, "jobId");
         return repository.findByOwner(WorkspaceOwnerType.JOB, jobId)
-            .orElseGet(() -> createWorkspace(
-                WorkspaceOwnerType.JOB,
-                jobId,
-                WorkspacePathLayout.relativeString(WorkspacePathLayout.legacyJobWorkspace(jobId)),
-                displayName
-            ));
+            .orElseThrow(() -> new IllegalStateException(
+                "Job-owned workspaces are retired; bind jobs to an agent, project, or Work Area instead."));
     }
 
     public Workspace projectWorkspace(String projectId, String displayName) {

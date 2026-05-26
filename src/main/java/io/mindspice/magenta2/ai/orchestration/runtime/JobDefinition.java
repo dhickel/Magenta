@@ -5,8 +5,8 @@ import java.util.List;
 
 /**
  * Defines a durable job that coordinates multiple work items (plans or workflows).
- * Jobs can opt into a persistent per-assignment workspace and route child
- * outputs into the effective durable workspace.
+ * The persistent workspace flag is a legacy compatibility field; active job
+ * runtime does not allocate job-owned workspace directories.
  *
  * @param id              unique identifier
  * @param title           human-readable title

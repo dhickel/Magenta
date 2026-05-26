@@ -26,7 +26,7 @@ class OutputDirectoryServiceTest {
         assertThat(resolved.workspaceOwnerType()).isEqualTo(WorkspaceOwnerType.PROJECT);
         assertThat(resolved.workspaceOwnerId()).isEqualTo("project-1");
         assertThat(resolved.outputDirectory())
-            .isEqualTo(fixture.dataRoot().resolve("projects/project-1/workspace/outputs/tasks/task-1/run-1"));
+            .isEqualTo(fixture.dataRoot().resolve("projects/project-1/outputs"));
         assertThat(resolved.workspaceId()).isNotEqualTo("legacy-workspace-id");
         assertThat(resolved.artifactContext().workspaceId()).isEqualTo(resolved.workspaceId());
         assertThat(resolved.artifactContext().projectId()).isEqualTo("project-1");
@@ -43,7 +43,7 @@ class OutputDirectoryServiceTest {
         assertThat(resolved.workspaceOwnerType()).isEqualTo(WorkspaceOwnerType.AGENT);
         assertThat(resolved.workspaceOwnerId()).isEqualTo("agent-1");
         assertThat(resolved.outputDirectory())
-            .isEqualTo(fixture.dataRoot().resolve("agents/agent-1/workspace/outputs/workflows/workflow-1/run-2"));
+            .isEqualTo(fixture.dataRoot().resolve("workspace/agent-1/outputs"));
         assertThat(resolved.artifactContext().agentId()).isEqualTo("agent-1");
         assertThat(resolved.artifactContext().projectId()).isNull();
         assertThat(resolved.artifactContext().runType()).isEqualTo("WORKFLOW_RUN");
@@ -56,7 +56,7 @@ class OutputDirectoryServiceTest {
             "job-1", "assignment-1", "job-run-1", "agent-1", "project-1", null));
 
         assertThat(resolved.outputDirectory())
-            .isEqualTo(fixture.dataRoot().resolve("projects/project-1/workspace/outputs/jobs/assignment-1/job-run-1"));
+            .isEqualTo(fixture.dataRoot().resolve("projects/project-1/outputs"));
         assertThat(resolved.artifactContext().jobId()).isEqualTo("job-1");
         assertThat(resolved.artifactContext().jobAssignmentId()).isEqualTo("assignment-1");
         assertThat(resolved.artifactContext().jobRunId()).isEqualTo("job-run-1");
@@ -66,7 +66,7 @@ class OutputDirectoryServiceTest {
     @Test
     void selectedWorkAreaBecomesWorkspaceRootAndDefaultOutputsStayUnderSelectedOutputs() throws Exception {
         Fixture fixture = fixture("selected-work-area");
-        Files.createDirectories(fixture.dataRoot().resolve("agents/agent-1/workspace/research"));
+        Files.createDirectories(fixture.dataRoot().resolve("workspace/agent-1/research"));
         WorkArea selected = fixture.workAreaService()
             .markDirectory(WorkspaceOwnerType.AGENT, "agent-1", "research", "Research");
 
@@ -75,18 +75,18 @@ class OutputDirectoryServiceTest {
             selected.id(), AssignmentRequest.OUTPUT_ROUTE_DEFAULT, null, null));
 
         assertThat(resolved.ownerRoot())
-            .isEqualTo(fixture.dataRoot().resolve("agents/agent-1/workspace"));
+            .isEqualTo(fixture.dataRoot().resolve("workspace/agent-1"));
         assertThat(resolved.workspaceRoot())
-            .isEqualTo(fixture.dataRoot().resolve("agents/agent-1/workspace/research"));
+            .isEqualTo(fixture.workAreaService().resolve(selected));
         assertThat(resolved.outputDirectory())
-            .isEqualTo(fixture.dataRoot().resolve("agents/agent-1/workspace/research/outputs/tasks/task-1/run-1"));
+            .isEqualTo(fixture.workAreaService().resolve(selected));
     }
 
     @Test
     void outputWorkAreaRedirectUsesTargetWorkAreaOutputs() throws Exception {
         Fixture fixture = fixture("output-work-area");
-        Files.createDirectories(fixture.dataRoot().resolve("agents/agent-1/workspace/home"));
-        Files.createDirectories(fixture.dataRoot().resolve("agents/agent-1/workspace/review"));
+        Files.createDirectories(fixture.dataRoot().resolve("workspace/agent-1/home"));
+        Files.createDirectories(fixture.dataRoot().resolve("workspace/agent-1/review"));
         WorkArea selected = fixture.workAreaService()
             .markDirectory(WorkspaceOwnerType.AGENT, "agent-1", "home", "Home");
         WorkArea output = fixture.workAreaService()
@@ -97,16 +97,16 @@ class OutputDirectoryServiceTest {
             selected.id(), AssignmentRequest.OUTPUT_ROUTE_WORK_AREA, output.id(), null));
 
         assertThat(resolved.workspaceRoot())
-            .isEqualTo(fixture.dataRoot().resolve("agents/agent-1/workspace/home"));
+            .isEqualTo(fixture.workAreaService().resolve(selected));
         assertThat(resolved.outputDirectory())
-            .isEqualTo(fixture.dataRoot().resolve("agents/agent-1/workspace/review/outputs/workflows/workflow-1/run-1"));
+            .isEqualTo(fixture.workAreaService().resolve(output));
     }
 
     @Test
     void directOutputRouteUsesExistingDirectoryDirectly() throws Exception {
         Fixture fixture = fixture("direct-output");
-        Files.createDirectories(fixture.dataRoot().resolve("agents/agent-1/workspace/home"));
-        Files.createDirectories(fixture.dataRoot().resolve("agents/agent-1/workspace/manual"));
+        Files.createDirectories(fixture.dataRoot().resolve("workspace/agent-1/home"));
+        Files.createDirectories(fixture.dataRoot().resolve("workspace/agent-1/manual"));
         WorkArea selected = fixture.workAreaService()
             .markDirectory(WorkspaceOwnerType.AGENT, "agent-1", "home", "Home");
 
@@ -115,7 +115,7 @@ class OutputDirectoryServiceTest {
             selected.id(), AssignmentRequest.OUTPUT_ROUTE_DIRECT_DIRECTORY, null, "manual"));
 
         assertThat(resolved.outputDirectory())
-            .isEqualTo(fixture.dataRoot().resolve("agents/agent-1/workspace/manual"));
+            .isEqualTo(fixture.dataRoot().resolve("workspace/agent-1/manual"));
     }
 
     private Fixture fixture(String name) throws Exception {

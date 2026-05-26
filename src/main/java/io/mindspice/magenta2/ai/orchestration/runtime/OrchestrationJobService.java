@@ -5,7 +5,6 @@ import java.util.Map;
 import java.util.UUID;
 
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
-import io.mindspice.magenta2.ai.orchestration.workspaces.Workspace;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceService;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -45,11 +44,10 @@ public class OrchestrationJobService {
         agentProfileService.get(job.ownerAgentId());
         String id = StringUtils.hasText(job.id()) ? job.id() : UUID.randomUUID().toString();
         String workspaceId = job.workspaceId();
-        if (!StringUtils.hasText(workspaceId)) {
-            Workspace workspace = workspaceService.jobWorkspace(id, job.title().trim());
-            workspaceId = workspace.id();
-        } else {
+        if (StringUtils.hasText(workspaceId)) {
             workspaceService.get(workspaceId);
+        } else {
+            workspaceId = null;
         }
         return repository.saveJob(new OrchestrationJob(
             id,

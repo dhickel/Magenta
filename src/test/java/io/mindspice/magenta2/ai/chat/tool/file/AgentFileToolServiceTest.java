@@ -288,10 +288,10 @@ class AgentFileToolServiceTest {
 
     @Test
     void activeAssignmentContextUsesRunWorkspaceAndNotDataRootFallback() throws Exception {
-        Path runWorkspace = Files.createDirectories(tempDir.resolve("runtime/task-runs/run-1"));
-        Path outputDir = Files.createDirectories(tempDir.resolve("agents/agent-1/workspace/outputs/run-1"));
+        Path runWorkspace = Files.createDirectories(tempDir.resolve("workspace/agent-1/runs/run-1"));
+        Path outputDir = Files.createDirectories(runWorkspace.resolve("outputs"));
         Files.writeString(runWorkspace.resolve("notes.txt"), "workspace note\n");
-        Path unrelatedRuntime = Files.createDirectories(tempDir.resolve("runtime/task-runs/run-2"));
+        Path unrelatedRuntime = Files.createDirectories(tempDir.resolve("workspace/agent-1/runs/run-2"));
         Files.writeString(unrelatedRuntime.resolve("secret.txt"), "other run\n");
 
         AgentFileToolService service = serviceWithWorkspaceDirectory();
@@ -303,15 +303,15 @@ class AgentFileToolServiceTest {
 
         assertThat(result.path()).isEqualTo("workspace/notes.txt");
         assertThat(result.lines().getFirst()).endsWith("|workspace note");
-        assertThatThrownBy(() -> service.read("runtime/task-runs/run-2/secret.txt", 1, 10))
+        assertThatThrownBy(() -> service.read("runs/run-2/secret.txt", 1, 10))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("workspace/runtime/task-runs/run-2/secret.txt");
+            .hasMessageContaining("workspace/runs/run-2/secret.txt");
     }
 
     @Test
     void activeAssignmentContextAllowsOutputAliasButDeniesOtherAgentWorkspace() throws Exception {
-        Path runWorkspace = Files.createDirectories(tempDir.resolve("runtime/task-runs/run-1"));
-        Path outputDir = Files.createDirectories(tempDir.resolve("agents/agent-1/workspace/outputs/run-1"));
+        Path runWorkspace = Files.createDirectories(tempDir.resolve("workspace/agent-1/runs/run-1"));
+        Path outputDir = Files.createDirectories(runWorkspace.resolve("outputs"));
         Path otherAgent = Files.createDirectories(tempDir.resolve("agents/agent-2/workspace"));
         Files.writeString(otherAgent.resolve("secret.txt"), "other agent\n");
 
@@ -334,15 +334,11 @@ class AgentFileToolServiceTest {
         Path durableWorkspace = Files.createDirectories(tempDir.resolve("projects/project-1/workspace"));
         Path selectedWorkArea = Files.createDirectories(durableWorkspace.resolve("home"));
         Path workDir = Files.createDirectories(selectedWorkArea.resolve("work"));
-        Path scratchDir = Files.createDirectories(selectedWorkArea.resolve("scratch"));
-        Path jobDir = Files.createDirectories(durableWorkspace.resolve("jobs/assignment-1"));
-        Path runWorkspace = Files.createDirectories(tempDir.resolve("runtime/task-runs/run-1"));
-        Path outputDir = Files.createDirectories(selectedWorkArea.resolve("outputs/tasks/task-1/run-1"));
+        Path runWorkspace = Files.createDirectories(tempDir.resolve("workspace/agent-1/runs/run-1"));
+        Path outputDir = Files.createDirectories(runWorkspace.resolve("outputs"));
         Files.writeString(durableWorkspace.resolve("root.txt"), "owner root\n");
         Files.writeString(selectedWorkArea.resolve("selected.txt"), "selected root\n");
         Files.writeString(workDir.resolve("notes.txt"), "durable work\n");
-        Files.writeString(scratchDir.resolve("scratch.txt"), "durable scratch\n");
-        Files.writeString(jobDir.resolve("job-notes.txt"), "job workspace\n");
         Files.writeString(runWorkspace.resolve("temp.txt"), "run temp\n");
         Files.writeString(outputDir.resolve("result.txt"), "run output\n");
 
@@ -350,13 +346,11 @@ class AgentFileToolServiceTest {
         OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
             "agent-1", "TestAgent", null, "project-1", "workspace-1", "TASK_RUN",
             runWorkspace.toString(), outputDir.toString(), selectedWorkArea.toString(), runWorkspace.toString(),
-            jobDir.toString(), durableWorkspace.toString(), "work-area-1", "DEFAULT", null, null));
+            null, durableWorkspace.toString(), "work-area-1", "DEFAULT", null, null));
         try {
             assertThat(service.read("workspace/selected.txt", 1, 10).lines().getFirst()).endsWith("|selected root");
             assertThat(service.read("root/root.txt", 1, 10).lines().getFirst()).endsWith("|owner root");
             assertThat(service.read("work/notes.txt", 1, 10).lines().getFirst()).endsWith("|durable work");
-            assertThat(service.read("scratch/scratch.txt", 1, 10).lines().getFirst()).endsWith("|durable scratch");
-            assertThat(service.read("job/job-notes.txt", 1, 10).lines().getFirst()).endsWith("|job workspace");
             assertThat(service.read("run/temp.txt", 1, 10).lines().getFirst()).endsWith("|run temp");
             assertThat(service.read("outputs/result.txt", 1, 10).lines().getFirst()).endsWith("|run output");
         } finally {
@@ -378,8 +372,8 @@ class AgentFileToolServiceTest {
 
     @Test
     void activeAssignmentContextAllowsOnlyCurrentProjectScope() throws Exception {
-        Path runWorkspace = Files.createDirectories(tempDir.resolve("runtime/task-runs/run-1"));
-        Path outputDir = Files.createDirectories(tempDir.resolve("agents/agent-1/workspace/outputs/run-1"));
+        Path runWorkspace = Files.createDirectories(tempDir.resolve("workspace/agent-1/runs/run-1"));
+        Path outputDir = Files.createDirectories(runWorkspace.resolve("outputs"));
         WorkspaceDirectoryService dirService = workspaceDirectoryService();
         Path projectOne = dirService.projectWorkspace("project-1");
         Path projectTwo = dirService.projectWorkspace("project-2");
@@ -419,8 +413,8 @@ class AgentFileToolServiceTest {
 
     @Test
     void activeContextRejectsTraversalAbsolutePathsAndSymlinkEscapes() throws Exception {
-        Path runWorkspace = Files.createDirectories(tempDir.resolve("runtime/task-runs/run-1"));
-        Path outputDir = Files.createDirectories(tempDir.resolve("agents/agent-1/workspace/outputs/run-1"));
+        Path runWorkspace = Files.createDirectories(tempDir.resolve("workspace/agent-1/runs/run-1"));
+        Path outputDir = Files.createDirectories(runWorkspace.resolve("outputs"));
         Path outsideScope = Files.createDirectories(tempDir.resolve("agents/agent-2/workspace"));
         Files.writeString(outsideScope.resolve("secret.txt"), "do not read\n");
         try {

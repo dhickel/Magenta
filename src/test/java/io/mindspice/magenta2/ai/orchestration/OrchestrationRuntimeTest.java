@@ -191,7 +191,7 @@ class OrchestrationRuntimeTest {
             null, workspace.id(), "notes", WorkspaceLinkType.PATH, "notes", true, false, null, null
         ));
 
-        assertThat(Files.isDirectory(tempDir.resolve("agents/agent-1"))).isTrue();
+        assertThat(Files.isDirectory(tempDir.resolve("workspace/agent-1"))).isTrue();
         assertThat(link.label()).isEqualTo("notes");
         assertThatThrownBy(() -> service.addLink(workspace.id(), new WorkspaceLink(
             null, workspace.id(), "bad", WorkspaceLinkType.PATH, "../../../../escape", true, false, null, null
@@ -214,7 +214,7 @@ class OrchestrationRuntimeTest {
         Project project = projectService.createProject("Leaseable", "desc", "agent-1", null);
         Workspace workspace = workspaceRepository.findByOwner(WorkspaceOwnerType.PROJECT, project.id()).orElseThrow();
 
-        assertThat(workspace.rootRelativePath()).isEqualTo("projects/" + project.id() + "/workspace");
+        assertThat(workspace.rootRelativePath()).isEqualTo("projects/" + project.id());
         assertThat(Files.isDirectory(tempDir.resolve(workspace.rootRelativePath()))).isTrue();
     }
 
@@ -225,7 +225,8 @@ class OrchestrationRuntimeTest {
 
         Workspace a1 = service.agentWorkspace("agent-1", "Agent 1");
         service.agentWorkspace("agent-2", "Agent 2");
-        service.jobWorkspace("job-1", "Job 1");
+        assertThatThrownBy(() -> service.jobWorkspace("job-1", "Job 1"))
+            .hasMessageContaining("Job-owned workspaces are retired");
         repository.saveLease(new WorkspaceLease(
             "lease-1",
             a1.id(),
@@ -242,7 +243,7 @@ class OrchestrationRuntimeTest {
         assertThat(service.list(io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceOwnerType.AGENT, null, 500))
             .hasSize(2);
         assertThat(service.list(null, null, 1)).hasSize(1);
-        assertThat(service.list(null, null, -10)).hasSize(3);
+        assertThat(service.list(null, null, -10)).hasSize(2);
         assertThat(service.activeLeases(a1.id()))
             .extracting(WorkspaceLease::holderId)
             .containsExactly("run-1");
@@ -1117,8 +1118,9 @@ class OrchestrationRuntimeTest {
         String workflowRunId = waiting.checkpoint().get("workflowRunId").toString();
         WorkflowRun waitingRun = workflowService.getRun(workflowRunId);
         assertThat(waitingRun.status()).isEqualTo(WorkflowRunStatus.WAITING);
-        assertThat(waitingRun.workspacePath()).startsWith("runtime/workflow-runs/");
-        assertThat(waitingRun.outputDir()).startsWith("agents/agent-1/workspace/outputs/workflows/");
+        assertThat(waitingRun.workspacePath()).startsWith("workspace/agent-1/runs/");
+        assertThat(waitingRun.outputDir()).startsWith("workspace/agent-1/runs/");
+        assertThat(waitingRun.outputDir()).endsWith("/outputs");
         assertThat(Files.isDirectory(resolveStored(directoryService, waitingRun.workspacePath()))).isTrue();
         assertThat(Files.isDirectory(resolveStored(directoryService, waitingRun.outputDir()))).isTrue();
         String messageId = waitingRun.nodeRuns().stream()
@@ -1156,7 +1158,7 @@ class OrchestrationRuntimeTest {
             assertThat(node.status()).isEqualTo(WorkflowNodeRunStatus.COMPLETED);
         });
         assertThat(resolveStored(directoryService, completedRun.outputDir()))
-            .startsWith(directoryService.dataRoot().resolve("agents/agent-1/workspace/outputs/workflows"));
+            .startsWith(directoryService.dataRoot().resolve("workspace/agent-1/runs"));
         assertThat(Files.isDirectory(resolveStored(directoryService, completedRun.workspacePath()))).isTrue();
     }
 
@@ -1336,20 +1338,15 @@ class OrchestrationRuntimeTest {
         assertThat(secondRun.completedAt()).isNotNull();
         assertThat(firstRun.finalMessage()).isEqualTo("Job run completed");
         assertThat(secondRun.finalMessage()).isEqualTo("Job run completed");
-        Path projectWorkspace = directoryService.projectWorkspace(project.id()).toRealPath();
-        assertThat(firstRun.workspacePath()).isEqualTo("projects/" + project.id() + "/workspace/jobs/assignment-job-a");
-        assertThat(secondRun.workspacePath()).isEqualTo("projects/" + project.id() + "/workspace/jobs/assignment-job-b");
-        assertThat(resolveStored(directoryService, firstRun.workspacePath()))
-            .isEqualTo(projectWorkspace.resolve("jobs/assignment-job-a"));
-        assertThat(resolveStored(directoryService, secondRun.workspacePath()))
-            .isEqualTo(projectWorkspace.resolve("jobs/assignment-job-b"));
-        assertThat(firstRun.outputDir()).startsWith("projects/" + project.id() + "/workspace/outputs/jobs/assignment-job-a");
-        assertThat(secondRun.outputDir()).startsWith("projects/" + project.id() + "/workspace/outputs/jobs/assignment-job-b");
-        assertThat(firstRun.workspacePath()).isNotEqualTo(secondRun.workspacePath());
+        assertThat(firstRun.workspacePath()).isNull();
+        assertThat(secondRun.workspacePath()).isNull();
+        assertThat(firstRun.outputDir()).isEqualTo("projects/" + project.id() + "/outputs");
+        assertThat(secondRun.outputDir()).isEqualTo("projects/" + project.id() + "/outputs");
+        assertThat(Files.isDirectory(resolveStored(directoryService, firstRun.outputDir()))).isTrue();
     }
 
     @Test
-    void persistentJobWorkspacePathIsAvailableInChildTaskContext() throws Exception {
+    void jobWorkspacePathIsNotAvailableInChildTaskContext() throws Exception {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         ObjectMapper objectMapper = new ObjectMapper();
         AiConfig aiConfig = aiConfig();
@@ -1415,9 +1412,7 @@ class OrchestrationRuntimeTest {
         WorkAssignment result = runner.runAssignment("assignment-job-context");
 
         assertThat(result.status()).as(result.errorText()).isEqualTo(OrchestrationStatus.COMPLETED);
-        assertThat(jobWorkspaceSeen.get()).isNotBlank();
-        assertThat(Path.of(jobWorkspaceSeen.get()))
-            .isEqualTo(directoryService.agentWorkspace(agent.id()).resolve("jobs/assignment-job-context").toRealPath());
+        assertThat(jobWorkspaceSeen.get()).isNull();
     }
 
     @Test

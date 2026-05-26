@@ -469,7 +469,6 @@ public class OrchestrationRunnerService {
             "jobId", job.id(),
             "jobRunId", jobRun.id(),
             "jobAssignmentId", jobRun.jobAssignmentId(),
-            "jobWorkspacePath", nullableText(jobRun.workspacePath()),
             "jobOutputDir", nullableText(jobRun.outputDir()),
             "workspaceId", nullableText(jobRun.workspaceId())
         )), outputs, evidence);
@@ -559,11 +558,7 @@ public class OrchestrationRunnerService {
         if (context == null || jobRun == null) {
             return;
         }
-        OrchestrationTaskContext updated = context.withJobRun(jobRun.jobAssignmentId(), jobRun.id());
-        if (StringUtils.hasText(jobRun.workspacePath())) {
-            updated = updated.withJobWorkspacePath(resolveStoredPath(jobRun.workspacePath()));
-        }
-        OrchestrationTaskContextHolder.set(updated);
+        OrchestrationTaskContextHolder.set(context.withJobRun(jobRun.jobAssignmentId(), jobRun.id()));
     }
 
     private String resolveStoredPath(String storedPath) {

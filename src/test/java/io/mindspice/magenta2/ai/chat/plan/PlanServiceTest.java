@@ -1,7 +1,9 @@
 package io.mindspice.magenta2.ai.chat.plan;
 
+import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -1104,16 +1106,16 @@ class PlanServiceTest {
 
         assertThat(run.outputDirectory())
             .isNotNull()
-            .startsWith("agents/agent-1/workspace/outputs/");
-        assertStoredRelative(run.outputDirectory(), dataRoot, "agents/agent-1/workspace/outputs/");
+            .startsWith("workspace/agent-1/runs/" + run.id() + "/outputs");
+        assertStoredRelative(run.outputDirectory(), dataRoot, "workspace/agent-1/runs/");
         assertThat(Files.isDirectory(resolveStored(dataRoot, run.outputDirectory()))).isTrue();
         // Verify it's NOT under system
-        assertThat(run.outputDirectory()).doesNotContain("agents/system");
+        assertThat(run.outputDirectory()).doesNotContain("workspace/system");
 
         // Verify temp workspace path is stored
         assertThat(run.tempWorkspacePath())
             .isNotNull()
-            .isEqualTo("runtime/task-runs/" + run.id());
+            .isEqualTo("workspace/agent-1/runs/" + run.id());
     }
 
     @Test
@@ -1157,7 +1159,7 @@ class PlanServiceTest {
             Path resolvedOutput = resolveStored(dataRoot, run.outputDirectory()).toRealPath();
             Path resolvedTemp = resolveStored(dataRoot, run.tempWorkspacePath()).toRealPath();
             assertThat(resolvedOutput)
-                .isEqualTo(projectWorkspace.resolve("outputs/tasks/" + task.id() + "/" + run.id()));
+                .isEqualTo(resolvedTemp.resolve("outputs"));
             assertThat(resolvedOutput)
                 .isNotEqualTo(dirService.agentWorkspaceRoot("agent-1").toRealPath());
             assertThat(updated.hostWorkspacePath()).isEqualTo(resolvedTemp.toString());
@@ -1208,14 +1210,13 @@ class PlanServiceTest {
         var projectWorkspace = workspaceRepository.findByOwner(WorkspaceOwnerType.PROJECT, "project-1").orElseThrow();
         assertThat(projectRun.workspaceId()).isEqualTo(projectWorkspace.id());
         assertThat(projectRun.workspaceId()).isNotEqualTo("legacy-ws");
-        assertStoredRelative(projectRun.outputDirectory(), dataRoot, "projects/project-1/workspace/outputs/tasks/");
+        assertStoredRelative(projectRun.outputDirectory(), dataRoot, "workspace/agent-1/runs/");
         assertThat(resolveStored(dataRoot, projectRun.outputDirectory()).toRealPath())
-            .isEqualTo(dirService.projectWorkspaceRoot("project-1").toRealPath()
-                .resolve("outputs/tasks/" + task.id() + "/" + projectRun.id()));
-        assertThat(Files.isDirectory(dataRoot.resolve("projects/project-1/workspace/work"))).isTrue();
-        assertThat(Files.isDirectory(dataRoot.resolve("projects/project-1/workspace/outputs"))).isTrue();
-        assertThat(Files.isDirectory(dataRoot.resolve("projects/project-1/workspace/runs"))).isTrue();
-        assertThat(Files.isDirectory(dataRoot.resolve("projects/project-1/workspace/scratch"))).isTrue();
+            .isEqualTo(dirService.agentWorkspaceRoot("agent-1").toRealPath()
+                .resolve("runs/" + projectRun.id() + "/outputs"));
+        assertThat(Files.isDirectory(dataRoot.resolve("projects/project-1/work"))).isTrue();
+        assertThat(Files.isDirectory(dataRoot.resolve("projects/project-1/outputs"))).isTrue();
+        assertThat(Files.isDirectory(dataRoot.resolve("projects/project-1/runs"))).isTrue();
 
         PlanRun agentRun = service.startRun(task.id(), Map.of(),
             new OrchestrationTaskContext("agent-2", "TestAgent", null, null, "legacy-agent-ws",
@@ -1224,10 +1225,10 @@ class PlanServiceTest {
         var agentWorkspace = workspaceRepository.findByOwner(WorkspaceOwnerType.AGENT, "agent-2").orElseThrow();
         assertThat(agentRun.workspaceId()).isEqualTo(agentWorkspace.id());
         assertThat(agentRun.workspaceId()).isNotEqualTo("legacy-agent-ws");
-        assertStoredRelative(agentRun.outputDirectory(), dataRoot, "agents/agent-2/workspace/outputs/tasks/");
+        assertStoredRelative(agentRun.outputDirectory(), dataRoot, "workspace/agent-2/runs/");
         assertThat(resolveStored(dataRoot, agentRun.outputDirectory()).toRealPath())
             .isEqualTo(dirService.agentWorkspaceRoot("agent-2").toRealPath()
-                .resolve("outputs/tasks/" + task.id() + "/" + agentRun.id()));
+                .resolve("runs/" + agentRun.id() + "/outputs"));
         assertThat(planRepository.findRun(projectRun.id()).orElseThrow().workspaceId()).isEqualTo(projectWorkspace.id());
         assertThat(planRepository.findRun(agentRun.id()).orElseThrow().workspaceId()).isEqualTo(agentWorkspace.id());
     }
@@ -1263,8 +1264,8 @@ class PlanServiceTest {
 
         assertThat(run.outputDirectory())
             .isNotNull()
-            .startsWith("agents/system/workspace/outputs/");
-        assertStoredRelative(run.outputDirectory(), dataRoot, "agents/system/workspace/outputs/");
+            .startsWith("workspace/system/runs/" + run.id() + "/outputs");
+        assertStoredRelative(run.outputDirectory(), dataRoot, "workspace/system/runs/");
         assertThat(Files.isDirectory(resolveStored(dataRoot, run.outputDirectory()))).isTrue();
     }
 
@@ -1298,7 +1299,7 @@ class PlanServiceTest {
             new OrchestrationTaskContext("agent-1", "TestAgent", null, null, null,
                 "TASK_RUN", null, null));
 
-        assertThat(run.outputDirectory()).contains("agents/agent-1/workspace/outputs/");
+        assertThat(run.outputDirectory()).contains("workspace/agent-1/runs/");
 
         service.completeRun(run.id(), Map.of("result", "done"), "Done", List.of());
 
@@ -1311,7 +1312,7 @@ class PlanServiceTest {
         assertThat(artifactService.query(OutputArtifactQuery.of(
             "agent-1", null, null, null, null, null, null, 10)))
             .extracting(RunOutputArtifact::id)
-            .containsExactly(artifact.id());
+            .contains(artifact.id());
     }
 
     @Test
@@ -1343,7 +1344,7 @@ class PlanServiceTest {
         PlanRun run = service.startRun(task.id(), Map.of(),
             new OrchestrationTaskContext("path-agent", "PathAgent", null, null, null,
                 "TASK_RUN", null, null));
-        assertThat(run.outputDirectory()).contains("agents/path-agent/workspace/outputs/");
+        assertThat(run.outputDirectory()).contains("workspace/path-agent/runs/");
 
         OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
             "explicit-agent", "ExplicitAgent", "job-1", "project-1", "workspace-1",
@@ -1476,7 +1477,7 @@ class PlanServiceTest {
         PlanRun run = service.startRun(task.id(), Map.of("result", "ok"));
         String tempPath = run.tempWorkspacePath();
         assertThat(tempPath).isNotNull();
-        assertStoredRelative(tempPath, dataRoot, "runtime/task-runs/");
+        assertStoredRelative(tempPath, dataRoot, "workspace/system/runs/");
         Path resolvedTemp = resolveStored(dataRoot, tempPath);
         assertThat(Files.isDirectory(resolvedTemp)).isTrue();
 
@@ -1488,13 +1489,53 @@ class PlanServiceTest {
         PlanRun completed = service.completeRun(run.id(), Map.of("result", "done"), "Done", List.of());
 
         assertThat(completed.status()).isEqualTo(PlanRunStatus.COMPLETED);
-        // Temp directory should be cleaned
-        assertThat(Files.exists(resolvedTemp)).isFalse();
+        // Run staging is retained after terminal completion until retention cleanup is eligible.
+        assertThat(Files.exists(resolvedTemp)).isTrue();
         // Loose artifact should be discovered
         List<?> artifacts = artifactService.artifactsForRun(run.id()).stream()
             .filter(a -> a.fileName().equals("extra.txt"))
             .toList();
-        assertThat(artifacts).hasSize(1);
+        assertThat(artifacts).hasSize(2);
+    }
+
+    @Test
+    void runStagingCleanupDeletesOnlyAfterOneDayRetentionThreshold() throws Exception {
+        Path dataRoot = Files.createDirectories(tempDir.resolve("data-retention-threshold"));
+        WorkspaceDirectoryService dirService = new WorkspaceDirectoryService(
+            new AiConfig(null, null, null, null, dataRoot, null, null));
+        JdbcTemplate jdbcTemplate = jdbcTemplate();
+        WorkspaceRepository workspaceRepository = new WorkspaceRepository(jdbcTemplate);
+        OutputArtifactService artifactService = new OutputArtifactService(
+            workspaceRepository, dirService, new ObjectMapper().findAndRegisterModules());
+        PlanRepository planRepository = new PlanRepository(jdbcTemplate, new ObjectMapper());
+
+        PlanService service = new PlanService(
+            planRepository,
+            new ChatMemoryRepository(jdbcTemplate, new ObjectMapper()),
+            null, new io.mindspice.magenta2.ai.chat.rendering.ChatMarkdownRenderer(),
+            dirService, artifactService);
+
+        PlanDefinition task = service.saveTask(new PlanDefinition(
+            null, PlanKind.TASK_TEMPLATE, PlanStatus.APPROVED,
+            "Retention Task", "Do it.", "Goal.", null,
+            List.of(), List.of(),
+            List.of(new PlanFieldDefinition("result", PlanFieldType.STRING, false, "Result", true, null)),
+            List.of(), List.of(new PlanStep(1, "Do it.")), List.of("Result present."),
+            List.of(), List.of(), null, null, null, null,
+            null, List.of(), 0, 0, null, null, null, null));
+
+        PlanRun run = service.startRun(task.id(), Map.of());
+        Path tempRunDir = resolveStored(dataRoot, run.tempWorkspacePath());
+        PlanRun completed = service.completeRun(run.id(), Map.of("result", "done"), "Done", List.of());
+        assertThat(Files.exists(tempRunDir)).isTrue();
+
+        PlanRun oldTerminalRun = completed.withCompletedAt(Instant.now().minusSeconds(90_000));
+        planRepository.saveRun(oldTerminalRun);
+        Method cleanup = PlanService.class.getDeclaredMethod("cleanupTempForRun", PlanRun.class, boolean.class);
+        cleanup.setAccessible(true);
+        cleanup.invoke(service, oldTerminalRun, true);
+
+        assertThat(Files.exists(tempRunDir)).isFalse();
     }
 
     @Test
@@ -1535,7 +1576,7 @@ class PlanServiceTest {
         PlanRun completed = service.completeRun(run.id(), Map.of("result", "done"), "Done", List.of(), true);
 
         assertThat(completed.status()).isEqualTo(PlanRunStatus.COMPLETED);
-        assertThat(Files.exists(tempRunDir)).isFalse();
+        assertThat(Files.exists(tempRunDir)).isTrue();
         Path outputDir = resolveStored(dataRoot, run.outputDirectory());
         assertThat(Files.readString(outputDir.resolve("copied-temp/notes.md"))).isEqualTo("# notes");
         assertThat(Files.readString(outputDir.resolve("copied-temp/nested/result.json"))).isEqualTo("{\"ok\":true}");
@@ -1579,8 +1620,8 @@ class PlanServiceTest {
         PlanRun completed = service.completeRun(run.id(), Map.of("result", "done"), "Done", List.of());
 
         assertThat(completed.status()).isEqualTo(PlanRunStatus.COMPLETED);
-        assertThat(Files.exists(tempDir)).isFalse();
-        assertThat(artifactService.artifactsForRun(run.id())).hasSize(1);
+        assertThat(Files.exists(tempDir)).isTrue();
+        assertThat(artifactService.artifactsForRun(run.id())).isNotEmpty();
     }
 
     @Test
@@ -1654,10 +1695,19 @@ class PlanServiceTest {
         service.completeRun(run.id(), Map.of("result", "done"), "Done", List.of());
 
         assertThat(Files.exists(chatFile)).isTrue();
-        assertThat(artifactService.artifactsForRun(run.id()))
+        List<RunOutputArtifact> artifacts = artifactService.artifactsForRun(run.id());
+        assertThat(artifacts)
             .extracting(RunOutputArtifact::fileName)
-            .containsExactly("result.txt")
+            .contains("result.txt")
             .doesNotContain("uploaded-notes.md");
+        assertThat(artifacts.stream()
+            .filter(artifact -> artifact.fileName().equals("result.txt"))
+            .map(RunOutputArtifact::filePath)
+            .toList())
+            .hasSize(2)
+            .doesNotHaveDuplicates()
+            .anySatisfy(path -> assertStoredRelative(path, dataRoot, "workspace/system/runs/"))
+            .anySatisfy(path -> assertStoredRelative(path, dataRoot, "workspace/system/outputs/"));
     }
 
     // ── Phase 03: Draft/finalize lifecycle tests ──
@@ -1786,7 +1836,7 @@ class PlanServiceTest {
         }
 
         @Override
-        public Path taskTemp(String runId) {
+        public Path agentWorkspaceRoot(String agentId) {
             throw new IllegalStateException("simulated temp allocation failure");
         }
     }

@@ -352,9 +352,6 @@ public class OutputArtifactService {
         Path realDataRoot = directoryService.dataRoot().toRealPath();
         Path realSourceRoot = requireConfinedSourceDirectory(sourceDir, realDataRoot);
         Path realOutputDir = requireConfinedOutputDirectory(outputDir);
-        if (realOutputDir.startsWith(realSourceRoot)) {
-            throw new IllegalArgumentException("Output directory must not be inside copied source directory: " + outputDir);
-        }
         Path copiedTempDir = realOutputDir.resolve("copied-temp").normalize();
         if (!copiedTempDir.startsWith(realOutputDir)) {
             throw new IllegalArgumentException("Copied temp directory escapes output directory: " + outputDir);
@@ -377,6 +374,9 @@ public class OutputArtifactService {
                 Path realDir = dir.toRealPath();
                 if (!realDir.startsWith(realDataRoot) || !realDir.startsWith(realSourceRoot)) {
                     throw new IllegalArgumentException("Source directory escapes source root: " + dir);
+                }
+                if (!realSourceRoot.equals(realDir) && (realDir.equals(realOutputDir) || realDir.startsWith(realOutputDir))) {
+                    return FileVisitResult.SKIP_SUBTREE;
                 }
                 return FileVisitResult.CONTINUE;
             }
@@ -419,6 +419,94 @@ public class OutputArtifactService {
                     null,
                     context
                 ));
+                return FileVisitResult.CONTINUE;
+            }
+        });
+        return artifacts;
+    }
+
+    /**
+     * Promotes run-local staged outputs into a backend-owned final output
+     * directory and registers the promoted copies as artifacts.
+     */
+    public synchronized List<RunOutputArtifact> promoteDirectoryContents(
+        String runId,
+        String planId,
+        Path sourceDir,
+        Path outputDir,
+        OutputArtifactContext context
+    ) throws IOException {
+        requireId(runId, "runId");
+        requireId(planId, "planId");
+        if (sourceDir == null) {
+            throw new IllegalArgumentException("sourceDir is required");
+        }
+        Path realDataRoot = directoryService.dataRoot().toRealPath();
+        Path realSourceRoot = requireConfinedSourceDirectory(sourceDir, realDataRoot);
+        Path realOutputDir = requireConfinedOutputDirectory(outputDir);
+        if (realOutputDir.equals(realSourceRoot) || realOutputDir.startsWith(realSourceRoot)) {
+            return List.of();
+        }
+
+        java.util.Set<String> registeredFilePaths = repository.findArtifactsByRunId(runId).stream()
+            .map(RunOutputArtifact::filePath)
+            .collect(java.util.stream.Collectors.toSet());
+        List<RunOutputArtifact> artifacts = new ArrayList<>();
+        Files.walkFileTree(realSourceRoot, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                if (!realSourceRoot.equals(dir) && Files.isSymbolicLink(dir)) {
+                    return FileVisitResult.SKIP_SUBTREE;
+                }
+                Path realDir = dir.toRealPath();
+                if (!realDir.startsWith(realDataRoot) || !realDir.startsWith(realSourceRoot)) {
+                    throw new IllegalArgumentException("Source directory escapes source root: " + dir);
+                }
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                if (Files.isSymbolicLink(file)) {
+                    return FileVisitResult.CONTINUE;
+                }
+                Path realFile = file.toRealPath();
+                if (!realFile.startsWith(realDataRoot) || !realFile.startsWith(realSourceRoot)) {
+                    throw new IllegalArgumentException("Source file escapes source root: " + file);
+                }
+                Path relative = realSourceRoot.relativize(file);
+                Path destination = realOutputDir.resolve(relative).normalize();
+                if (!destination.startsWith(realOutputDir)) {
+                    throw new IllegalArgumentException("Promoted destination escapes output directory: " + relative);
+                }
+                if (Files.isSymbolicLink(destination)) {
+                    throw new IllegalArgumentException("Promoted destination must not be a symlink: " + relative);
+                }
+                Path parent = Files.createDirectories(destination.getParent()).toRealPath();
+                if (!parent.startsWith(realOutputDir)) {
+                    throw new IllegalArgumentException("Promoted destination parent escapes output directory: " + relative);
+                }
+                Files.copy(realFile, destination, StandardCopyOption.REPLACE_EXISTING);
+                Path realDestination = destination.toRealPath();
+                if (!realDestination.startsWith(realOutputDir)) {
+                    throw new IllegalArgumentException("Promoted destination escapes output directory: " + relative);
+                }
+                String storedDestination = rootRelativePathService.store(realDestination);
+                if (registeredFilePaths.contains(storedDestination)) {
+                    return FileVisitResult.CONTINUE;
+                }
+                String relativeName = relativePathWithSlashes(relative);
+                artifacts.add(saveArtifact(
+                    runId,
+                    planId,
+                    "promoted/" + relativeName,
+                    inferArtifactType(realDestination.getFileName().toString()),
+                    realDestination.getFileName().toString(),
+                    realDestination,
+                    null,
+                    context
+                ));
+                registeredFilePaths.add(storedDestination);
                 return FileVisitResult.CONTINUE;
             }
         });
