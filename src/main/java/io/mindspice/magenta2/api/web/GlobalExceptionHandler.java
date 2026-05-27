@@ -135,6 +135,7 @@ public class GlobalExceptionHandler {
                 }
             }
         } catch (Exception ignored) {
+            log.debug("Failed to extract conversation ID from request", ignored);
         }
         return null;
     }
