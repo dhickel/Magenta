@@ -1717,8 +1717,7 @@ public class OrchestrationController {
             if (agentId == null || agentId.isBlank()) {
                 return new Div().withClass("orch-status").withInnerText("No active agents available. Create an agent first.").render();
             }
-            int priority = 9;
-            try { priority = Integer.parseInt(params.getOrDefault("priority", "9")); } catch (NumberFormatException ignored) {}
+            int priority = parseIntOrDefault(params.get("priority"), 9);
             validateSelectedEntity(EntityKind.MODEL, params.get("modelOverride"), false, "Model Override");
             validateSelectedEntity(EntityKind.PROJECT, params.get("projectId"), false, "Project");
             validateSelectedEntity(EntityKind.WORKSPACE, params.get("workspaceId"), false, "Workspace");
@@ -2794,8 +2793,7 @@ public class OrchestrationController {
             if (agentId == null || agentId.isBlank()) {
                 return new Div().withClass("orch-status").withInnerText("No active agents available. Create an agent first.").render();
             }
-            int priority = 9;
-            try { priority = Integer.parseInt(params.getOrDefault("priority", "9")); } catch (NumberFormatException ignored) {}
+            int priority = parseIntOrDefault(params.get("priority"), 9);
             validateSelectedEntity(EntityKind.MODEL, params.get("modelOverride"), false, "Model Override");
             validateSelectedEntity(EntityKind.PROJECT, params.get("projectId"), false, "Project");
             validateSelectedEntity(EntityKind.WORKSPACE, params.get("workspaceId"), false, "Workspace");

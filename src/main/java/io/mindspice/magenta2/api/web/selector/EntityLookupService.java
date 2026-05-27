@@ -235,14 +235,11 @@ public class EntityLookupService {
     }
 
     private EntityOption findRun(String id) {
-        for (JobDefinition job : jobService.listDefinitions()) {
-            for (JobRun run : jobService.listRuns(job.id())) {
-                if (run.id().equals(id)) {
-                    return option(run);
-                }
-            }
+        try {
+            return option(jobService.getRun(id));
+        } catch (IllegalArgumentException e) {
+            return null;
         }
-        return null;
     }
 
     private List<EntityOption> filterAndLimit(EntityKind kind, List<EntityOption> options, SelectorQuery query) {

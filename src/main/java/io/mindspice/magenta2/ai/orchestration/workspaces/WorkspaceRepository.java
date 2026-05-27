@@ -835,8 +835,9 @@ public class WorkspaceRepository {
             throw new IllegalArgumentException("Unsupported table/column identifier");
         }
         Integer count = jdbcTemplate.queryForObject(
-            "select count(*) from pragma_table_info('" + table + "') where name = ?",
+            "select count(*) from pragma_table_info(?) where name = ?",
             Integer.class,
+            table,
             column
         );
         return count != null && count > 0;
