@@ -57,7 +57,7 @@ The explorer supports:
 - opening a Work Area by clicking its card (no separate Browse button);
 - Work Area-confined folder navigation through toolbar and breadcrumb controls;
 - creating folders, `.txt` files, and `.md` files;
-- Markdown viewing with Rendered and Text tabs;
+- Markdown editing with Edit, Preview, and Split modes (preview uses current unsaved text);
 - plain text raw viewing/editing;
 - contained image viewing and safe download links;
 - custom tags and note labels for files and directories;

@@ -627,6 +627,25 @@ public class AvatarDashboardController {
         }
     }
 
+    @PostMapping("/avatar/_work-areas/{workAreaId}/viewer/markdown-preview")
+    @ResponseBody
+    public String workAreaMarkdownPreview(
+        @PathVariable String workAreaId,
+        @RequestParam String path,
+        @RequestParam(required = false) String content
+    ) {
+        WorkAreaExplorerService explorer = requireExplorerService();
+        try {
+            WorkAreaExplorerService.FilePreview preview = explorer.preview(workAreaId, path);
+            if (!preview.text() || !"markdown".equals(preview.kind())) {
+                return "<div class=\"avatar-status-error\">Preview unavailable for this file.</div>";
+            }
+            return WorkAreaExplorerFragments.markdownPreview(content);
+        } catch (IllegalArgumentException exception) {
+            return "<div class=\"avatar-status-error\">Preview unavailable for this file.</div>";
+        }
+    }
+
     @GetMapping("/avatar/_work-areas/{workAreaId}/preview")
     @ResponseBody
     public String workAreaPreview(@PathVariable String workAreaId, @RequestParam String path) {

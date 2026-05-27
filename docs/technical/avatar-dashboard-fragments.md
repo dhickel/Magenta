@@ -56,7 +56,7 @@ The old top-level `Organizer` and `Refresh Widgets` shell actions are intentiona
 - Calendar: `POST /avatar/_calendar`, `DELETE /avatar/_calendar/{calendarId}`
 - Outputs: `GET /avatar/_outputs/{artifactId}`
 - Alerts: `POST /avatar/_alerts/{eventId}/dismiss`
-- Work Areas: `GET /avatar/_work-areas/{workAreaId}/explorer`, `GET /avatar/_work-areas/{workAreaId}/explorer/list`, `GET /avatar/_work-areas/{workAreaId}/inspect`, `GET /avatar/_work-areas/{workAreaId}/viewer`, `GET /avatar/_work-areas/{workAreaId}/viewer/text`, legacy `GET /avatar/_work-areas/{workAreaId}/preview`, `GET /avatar/_work-areas/{workAreaId}/edit`, `GET /avatar/_work-areas/{workAreaId}/modal/{action}`, `GET /avatar/_work-areas/{workAreaId}/modal/tag-editor`, `POST /avatar/_work-areas/{workAreaId}/modal/tag-editor/tags`, `POST /avatar/_work-areas/{workAreaId}/modal/tag-editor/assign`, `PUT /avatar/_work-areas/{workAreaId}/text`, `POST /avatar/_work-areas/{workAreaId}/directories`, `POST /avatar/_work-areas/{workAreaId}/text`, `POST /avatar/_work-areas/{workAreaId}/files/delete`, `POST /avatar/_work-areas/{workAreaId}/files/rename`, `POST /avatar/_work-areas/{workAreaId}/files/action/{copy|move}`, `POST /avatar/_work-areas/{workAreaId}/tags`, `POST|DELETE /avatar/_work-areas/{workAreaId}/files/tags`, `POST|DELETE /avatar/_work-areas/{workAreaId}/labels/note`, `POST /avatar/_work-areas/{workAreaId}/mark`, and compatibility `DELETE /avatar/_work-areas/{workAreaId}/files`.
+- Work Areas: `GET /avatar/_work-areas/{workAreaId}/explorer`, `GET /avatar/_work-areas/{workAreaId}/explorer/list`, `GET /avatar/_work-areas/{workAreaId}/inspect`, `GET /avatar/_work-areas/{workAreaId}/viewer`, `GET /avatar/_work-areas/{workAreaId}/viewer/text`, `POST /avatar/_work-areas/{workAreaId}/viewer/markdown-preview`, legacy `GET /avatar/_work-areas/{workAreaId}/preview`, `GET /avatar/_work-areas/{workAreaId}/edit`, `GET /avatar/_work-areas/{workAreaId}/modal/{action}`, `GET /avatar/_work-areas/{workAreaId}/modal/tag-editor`, `POST /avatar/_work-areas/{workAreaId}/modal/tag-editor/tags`, `POST /avatar/_work-areas/{workAreaId}/modal/tag-editor/assign`, `PUT /avatar/_work-areas/{workAreaId}/text`, `POST /avatar/_work-areas/{workAreaId}/directories`, `POST /avatar/_work-areas/{workAreaId}/text`, `POST /avatar/_work-areas/{workAreaId}/files/delete`, `POST /avatar/_work-areas/{workAreaId}/files/rename`, `POST /avatar/_work-areas/{workAreaId}/files/action/{copy|move}`, `POST /avatar/_work-areas/{workAreaId}/tags`, `POST|DELETE /avatar/_work-areas/{workAreaId}/files/tags`, `POST|DELETE /avatar/_work-areas/{workAreaId}/labels/note`, `POST /avatar/_work-areas/{workAreaId}/mark`, and compatibility `DELETE /avatar/_work-areas/{workAreaId}/files`.
 
 Planner, todo, calendar, and note flows still exist, but they are reached from dashboard widgets and detail surfaces rather than from a standalone shell toolbar action.
 
@@ -75,9 +75,9 @@ The visible explorer contract is a details/list layout with `Name`, `File Type`,
 
 Viewer modals expose explicit state hooks:
 
-- Markdown rendered tab: `data-viewer-kind="markdown"` and `data-active-tab="rendered"`.
-- Markdown raw tab: `data-viewer-kind="markdown"` and `data-active-tab="text"`.
-- Plain text raw view: `data-viewer-kind="text"` and `data-active-tab="text"`.
+- Markdown editor: `data-viewer-kind="markdown"` with `data-active-tab="edit|preview|split"` and `data-avatar-workarea-editor="true"`.
+- Plain text editor: `data-viewer-kind="text"` with `data-active-tab="edit"` and no markdown preview controls.
+- Preview target: `POST /viewer/markdown-preview` returns sanitized rendered markdown only and does not persist file content.
 
 Copy and move forms expose operation-specific hooks such as `form[data-file-action="copy"]`, `input[aria-label="Copy destination directory"]`, and `button[data-file-action-submit="copy"]`. Destination is required; blank copy/move destinations are rejected instead of defaulting silently.
 
@@ -85,6 +85,7 @@ Copy and move forms expose operation-specific hooks such as `form[data-file-acti
 
 - `/js/avatar-chat.js?v=3` owns the compact Avatar chat surface.
 - `/js/avatar-layout-edit.js?v=1` owns in-place dashboard edit helpers.
+- `/js/avatar-workarea-editor.js?v=1` owns local Work Area editor mode switching, dirty state, undo/redo/revert, and debounced unsaved markdown preview synchronization.
 - `/js/avatar-shell.js?v=6` owns desktop chat corner resizing and browser-local width/height persistence.
 
 `avatar-shell.js` stores the desktop rail width in `localStorage` under `magenta.avatar.chatRailWidthPx` and the desktop chat panel height under `magenta.avatar.chatPanelHeightPx`. The shell reads those values only at desktop breakpoints, clamps them before applying CSS variables, and ignores them on mobile stacked layouts.

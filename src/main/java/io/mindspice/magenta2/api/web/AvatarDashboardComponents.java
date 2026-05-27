@@ -89,6 +89,7 @@ final class AvatarDashboardComponents {
             .withChild(new Div().withId("avatar-output-preview").withClass("avatar-output-preview"))
             .withChild(moduleScript("/js/avatar-chat.js?v=3"))
             .withChild(moduleScript("/js/avatar-layout-edit.js?v=1"))
+            .withChild(moduleScript("/js/avatar-workarea-editor.js?v=1"))
             .withChild(moduleScript("/js/avatar-shell.js?v=6"));
     }
 

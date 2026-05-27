@@ -114,9 +114,12 @@ Row metadata is intentionally lighter than preview: list/inspect classification 
 
 Viewer behavior:
 
-- Markdown opens with the rendered tab active and a Text tab for raw editing.
+- Markdown opens in an Avatar-style editor shell with `Edit`, `Preview`, and `Split` modes.
+- Markdown preview mode uses the current unsaved textarea content through a non-persistent, sanitized preview fragment route.
+- Save remains explicit via `PUT /avatar/_work-areas/{workAreaId}/text` and persists raw source content.
+- Local Undo/Redo/Revert controls are browser-local session behavior; they do not persist until Save.
 - Markdown render failure is non-fatal and leaves raw text accessible.
-- Plain text opens raw-only without a rendered Markdown tab.
+- Plain text opens in Edit mode without markdown preview controls.
 - Images render through the confined inline image route and expose a download link.
 - Unsupported/binary files do not expose a row View action and stale viewer requests return a safe fallback.
 

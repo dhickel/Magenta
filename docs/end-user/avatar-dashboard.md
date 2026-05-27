@@ -44,7 +44,7 @@ The `Work Areas` widget and the top-level `Work Areas` tab use the confined work
 
 Supported file actions include directory navigation, text and Markdown preview/edit/save, contained image preview, downloads, directory creation, `.txt`/`.md` creation, rename, copy, move, custom tags, note labels, and delete confirmation with an extra recursive confirmation for directories.
 
-Markdown files open with the rendered tab active and a Text tab for raw editing. Plain text opens directly in raw text mode. Unsupported or binary files do not expose a misleading row View action; stale viewer requests show a safe unsupported message instead. Copy and move open a directory-picker popover/module and stay confined under the selected Work Area without typing internal destination paths.
+Markdown and text files open in a compact editor modal with explicit **Save File**, local **Undo/Redo**, and **Revert Unsaved** controls. Markdown supports **Edit**, **Preview**, and **Split** modes; Preview and Split render your current unsaved text before you save. Plain text stays in Edit mode without markdown preview controls. Unsupported or binary files do not expose a misleading row View action; stale viewer requests show a safe unsupported message instead. Copy and move open a directory-picker popover/module and stay confined under the selected Work Area without typing internal destination paths.
 
 Rows are selectable by clicking anywhere on the row except explicit controls (buttons/links/forms), so selection does not accidentally trigger row actions.
 

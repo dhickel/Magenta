@@ -124,6 +124,7 @@ class AvatarDashboardControllerTest {
         assertThat(html).contains("/css/avatar-dashboard.css?v=4");
         assertThat(html).contains("/js/avatar-chat.js?v=3");
         assertThat(html).contains("/js/avatar-layout-edit.js?v=1");
+        assertThat(html).contains("/js/avatar-workarea-editor.js?v=1");
         assertThat(html).contains("/js/avatar-shell.js?v=6");
         assertThat(html).doesNotContain("/js/chat-client.js");
         assertThat(html).contains("id=\"content-area\" class=\"avatar-content-area\"");
@@ -261,6 +262,10 @@ class AvatarDashboardControllerTest {
 
         String newFileEditor = controller.createWorkAreaTextFile(workAreaId, "notes", "todo.md", "markdown");
         assertThat(newFileEditor).contains("textarea");
+        assertThat(newFileEditor).contains("data-avatar-workarea-editor=\"true\"");
+        assertThat(newFileEditor).contains("data-editor-mode=\"edit\"");
+        assertThat(newFileEditor).contains("data-editor-mode=\"preview\"");
+        assertThat(newFileEditor).contains("data-editor-mode=\"split\"");
         assertThat(newFileEditor).contains("id=\"avatar-workarea-list-region\"");
         assertThat(newFileEditor).contains("hx-swap-oob=\"true\"");
 
@@ -270,9 +275,9 @@ class AvatarDashboardControllerTest {
         assertThat(savedPreview).contains("id=\"avatar-workarea-inspector\"");
         assertThat(savedPreview).contains("class=\"avatar-modal\"");
         assertThat(savedPreview).doesNotContain("id=\"avatar-workarea-modal\"><div class=\"avatar-modal\"");
-        assertThat(savedPreview).contains("avatar-tab-active\">Rendered");
+        assertThat(savedPreview).contains("avatar-tab-active");
         assertThat(savedPreview).contains("data-viewer-kind=\"markdown\"");
-        assertThat(savedPreview).contains("data-active-tab=\"rendered\"");
+        assertThat(savedPreview).contains("data-active-tab=\"preview\"");
         assertThat(savedPreview).contains("<strong>hello</strong>");
 
         String preview = controller.workAreaPreview(workAreaId, "notes/todo.md");
@@ -287,6 +292,9 @@ class AvatarDashboardControllerTest {
         String editor = controller.workAreaTextEditor(workAreaId, "notes/todo.md");
         assertThat(editor).contains("textarea");
         assertThat(editor).contains("hx-put=\"/avatar/_work-areas/" + workAreaId + "/text?path=notes%2Ftodo.md\"");
+        assertThat(editor).contains("data-editor-undo=\"true\"");
+        assertThat(editor).contains("data-editor-redo=\"true\"");
+        assertThat(editor).contains("data-editor-revert=\"true\"");
 
         String marked = controller.markNestedWorkArea(workAreaId, "notes", "Notes");
         assertThat(marked).contains("notes");
@@ -469,24 +477,27 @@ class AvatarDashboardControllerTest {
         assertThat(markdown).contains("class=\"avatar-modal\"");
         assertThat(markdown).doesNotContain("id=\"avatar-workarea-modal\"");
         assertThat(markdown).contains("data-viewer-kind=\"markdown\"");
-        assertThat(markdown).contains("data-active-tab=\"rendered\"");
-        assertThat(markdown).contains("avatar-tab-active\">Rendered");
-        assertThat(markdown).contains(">Text</button>");
+        assertThat(markdown).contains("data-active-tab=\"preview\"");
+        assertThat(markdown).contains("data-editor-mode=\"edit\"");
+        assertThat(markdown).contains("data-editor-mode=\"preview\"");
+        assertThat(markdown).contains("data-editor-mode=\"split\"");
         assertThat(markdown).contains("<h1>Heading</h1>");
 
         String markdownText = controller.workAreaTextViewer(workAreaId, "note.md", "text");
         assertThat(markdownText).contains("textarea");
         assertThat(markdownText).contains("data-viewer-kind=\"markdown\"");
-        assertThat(markdownText).contains("data-active-tab=\"text\"");
-        assertThat(markdownText).contains(">Rendered</button>");
-        assertThat(markdownText).contains("avatar-tab-active\">Text");
+        assertThat(markdownText).contains("data-active-tab=\"edit\"");
+        assertThat(markdownText).contains("data-editor-mode=\"edit\"");
+        assertThat(markdownText).contains("data-editor-mode=\"preview\"");
+        assertThat(markdownText).contains("data-editor-mode=\"split\"");
+        assertThat(markdownText).contains("data-editor-source=\"true\"");
 
         String plainText = controller.workAreaViewer(workAreaId, "plain.txt");
         assertThat(plainText).contains("textarea");
         assertThat(plainText).contains("data-viewer-kind=\"text\"");
-        assertThat(plainText).contains("data-active-tab=\"text\"");
-        assertThat(plainText).contains("avatar-tab-active\">Text");
-        assertThat(plainText).doesNotContain(">Rendered</button>");
+        assertThat(plainText).contains("data-active-tab=\"edit\"");
+        assertThat(plainText).contains("avatar-tab-active\">Edit");
+        assertThat(plainText).doesNotContain("data-editor-mode=\"preview\"");
 
         String image = controller.workAreaViewer(workAreaId, "pic.png");
         assertThat(image).contains("avatar-workarea-image-frame");
@@ -504,6 +515,28 @@ class AvatarDashboardControllerTest {
         assertThat(failedMarkdown).contains("# broken");
         assertThat(failedMarkdown).contains("avatar-workarea-render-error");
         assertThat(failedMarkdown).contains("Raw text is still available");
+    }
+
+    @Test
+    void markdownPreviewRouteRendersUnsavedContentWithoutPersistingAndSanitizesHtml() throws Exception {
+        var home = workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Home");
+        String workAreaId = home.id();
+        Path root = workAreaService.resolve(home);
+        Files.writeString(root.resolve("note.md"), "# Stored\n\nsafe");
+
+        String unsavedPreview = controller.workAreaMarkdownPreview(
+            workAreaId,
+            "note.md",
+            "# Unsaved\n\n<script>alert('x')</script>\n\n|A|B|\n|-|-|\n|1|2|"
+        );
+        assertThat(unsavedPreview).contains("magenta-rendered-markdown");
+        assertThat(unsavedPreview).contains("<h1>Unsaved</h1>");
+        assertThat(unsavedPreview).contains("<table>");
+        assertThat(unsavedPreview).doesNotContain("<script>");
+
+        String persisted = controller.workAreaViewer(workAreaId, "note.md");
+        assertThat(persisted).contains("<h1>Stored</h1>");
+        assertThat(persisted).doesNotContain("<h1>Unsaved</h1>");
     }
 
     @Test

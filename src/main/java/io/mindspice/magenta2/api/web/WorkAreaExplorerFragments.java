@@ -301,14 +301,9 @@ final class WorkAreaExplorerFragments {
                 url(preview.path())
             );
         } else if ("markdown".equals(preview.kind()) && preview.text()) {
-            body = """
-                <div class="avatar-workarea-viewer" data-viewer-kind="markdown" data-active-tab="rendered">
-                  <div class="avatar-workarea-tabs"><span class="avatar-tab-active">Rendered</span><button type="button" class="button button-secondary small" hx-get="/avatar/_work-areas/%s/viewer/text?path=%s&tab=text" hx-target="#%s" hx-swap="innerHTML">Text</button></div>
-                  <div class="avatar-workarea-rendered">%s</div>
-                </div>
-                """.formatted(urlPath(workAreaId), url(preview.path()), MODAL_ID, safeMarkdown(preview.content()));
+            body = textEditor(workAreaId, preview, true, "preview");
         } else if ("text".equals(preview.kind()) && preview.text()) {
-            body = textEditor(workAreaId, preview, false);
+            body = textEditor(workAreaId, preview, false, "edit");
         } else {
             body = unsupportedViewerBody(preview);
         }
@@ -320,18 +315,7 @@ final class WorkAreaExplorerFragments {
             return modal("Viewer unavailable", "<p>This file cannot be opened as editable text.</p>", false);
         }
         boolean markdown = "markdown".equals(preview.kind());
-        boolean rendered = markdown && !"text".equalsIgnoreCase(tab);
-        String body;
-        if (rendered) {
-            body = """
-                <div class="avatar-workarea-viewer" data-viewer-kind="markdown" data-active-tab="rendered">
-                  <div class="avatar-workarea-tabs"><span class="avatar-tab-active">Rendered</span><button type="button" class="button button-secondary small" hx-get="/avatar/_work-areas/%s/viewer/text?path=%s&tab=text" hx-target="#%s" hx-swap="innerHTML">Text</button></div>
-                  <div class="avatar-workarea-rendered">%s</div>
-                </div>
-                """.formatted(urlPath(workAreaId), url(preview.path()), MODAL_ID, safeMarkdown(preview.content()));
-        } else {
-            body = textEditor(workAreaId, preview, markdown);
-        }
+        String body = textEditor(workAreaId, preview, markdown, markdown ? markdownMode(tab) : "edit");
         return modal("View " + fileName(preview.path()), body, false);
     }
 
@@ -920,21 +904,128 @@ final class WorkAreaExplorerFragments {
         return "<p>Delete is unavailable for this path.</p>";
     }
 
-    private static String textEditor(String workAreaId, WorkAreaExplorerService.FilePreview preview, boolean markdown) {
-        String tabs = markdown
-            ? "<button type=\"button\" class=\"button button-secondary small\" hx-get=\"/avatar/_work-areas/" + urlPath(workAreaId)
-                + "/viewer/text?path=" + url(preview.path()) + "&tab=rendered\" hx-target=\"#" + MODAL_ID
-                + "\" hx-swap=\"innerHTML\">Rendered</button><span class=\"avatar-tab-active\">Text</span>"
-            : "<span class=\"avatar-tab-active\">Text</span>";
+    private static String textEditor(
+        String workAreaId,
+        WorkAreaExplorerService.FilePreview preview,
+        boolean markdown,
+        String initialMode
+    ) {
+        String safeMode = markdown ? normalizeMarkdownMode(initialMode) : "edit";
+        String formId = "avatar-workarea-editor-form-" + urlPath(workAreaId) + "-"
+            + urlPath(preview.path()).replace("%", "_");
+        String modeControls = markdown
+            ? """
+                <div class="avatar-workarea-mode-controls" role="tablist" aria-label="Editor mode">
+                  %s
+                  %s
+                  %s
+                </div>
+                """.formatted(
+                modeButton("Edit", "edit", safeMode),
+                modeButton("Preview", "preview", safeMode),
+                modeButton("Split", "split", safeMode)
+            )
+            : """
+                <div class="avatar-workarea-mode-controls" role="tablist" aria-label="Editor mode">
+                  <span class="avatar-tab-active">Edit</span>
+                </div>
+                """;
+        String previewPane = markdown
+            ? """
+                <div class="avatar-workarea-editor-pane avatar-workarea-editor-pane-preview" data-editor-preview-pane="true">
+                  %s
+                </div>
+                """.formatted(renderedMarkdownPanel(preview.content()))
+            : "";
+        String previewUrl = markdown
+            ? "/avatar/_work-areas/" + urlPath(workAreaId) + "/viewer/markdown-preview?path=" + url(preview.path())
+            : "";
         return """
-            <div class="avatar-workarea-viewer" data-viewer-kind="%s" data-active-tab="text">
-              <div class="avatar-workarea-tabs">%s</div>
-              <form class="avatar-stack-form" hx-put="/avatar/_work-areas/%s/text?path=%s" hx-target="#%s" hx-swap="innerHTML">
-                <textarea name="content" rows="14">%s</textarea>
-                <button type="submit" class="button">Save File</button>
+            <div class="avatar-workarea-viewer avatar-workarea-editor mode-%s"
+                 data-avatar-workarea-editor="true"
+                 data-viewer-kind="%s"
+                 data-active-tab="%s"
+                 data-editor-preview-url="%s">
+              <div class="avatar-workarea-editor-toolbar">
+                %s
+                <div class="avatar-workarea-editor-actions">
+                  <button type="submit" class="button small" form="%s">Save File</button>
+                  <button type="button" class="button button-secondary small" data-editor-undo="true">Undo</button>
+                  <button type="button" class="button button-secondary small" data-editor-redo="true">Redo</button>
+                  <button type="button" class="button button-secondary small" data-editor-revert="true">Revert Unsaved</button>
+                  <button type="button" class="button button-secondary small"
+                          hx-get="/avatar/_edit?close=true"
+                          hx-target="#%s"
+                          hx-swap="innerHTML">Close</button>
+                </div>
+              </div>
+              <p class="avatar-workarea-editor-status" data-editor-status="true">Saved copy loaded.</p>
+              <form id="%s"
+                    class="avatar-stack-form avatar-workarea-editor-form"
+                    data-editor-form="true"
+                    hx-put="/avatar/_work-areas/%s/text?path=%s"
+                    hx-target="#%s"
+                    hx-swap="innerHTML">
+                <div class="avatar-workarea-editor-layout">
+                  <div class="avatar-workarea-editor-pane avatar-workarea-editor-pane-source" data-editor-source-pane="true">
+                    <textarea name="content"
+                              class="%s"
+                              rows="16"
+                              spellcheck="false"
+                              data-editor-source="true"%s>%s</textarea>
+                  </div>
+                  %s
+                </div>
               </form>
             </div>
-            """.formatted(markdown ? "markdown" : "text", tabs, urlPath(workAreaId), url(preview.path()), MODAL_ID, escape(preview.content() == null ? "" : preview.content()));
+            """.formatted(
+            safeMode,
+            markdown ? "markdown" : "text",
+            safeMode,
+            escapeAttribute(previewUrl),
+            modeControls,
+            escapeAttribute(formId),
+            MODAL_ID,
+            escapeAttribute(formId),
+            urlPath(workAreaId),
+            url(preview.path()),
+            MODAL_ID,
+            markdown ? "avatar-workarea-source avatar-workarea-source-markdown" : "avatar-workarea-source",
+            markdown ? " data-markdown-source=\"true\"" : "",
+            escape(preview.content() == null ? "" : preview.content()),
+            previewPane
+        );
+    }
+
+    private static String modeButton(String label, String mode, String activeMode) {
+        boolean active = mode.equals(activeMode);
+        return """
+            <button type="button"
+                    class="%s"
+                    data-editor-mode="%s"
+                    aria-pressed="%s">%s</button>
+            """.formatted(
+            active ? "button small avatar-tab-active" : "button button-secondary small",
+            escapeAttribute(mode),
+            active ? "true" : "false",
+            escape(label)
+        );
+    }
+
+    private static String markdownMode(String tab) {
+        if (tab == null || tab.isBlank()) {
+            return "preview";
+        }
+        return switch (tab.strip().toLowerCase(Locale.ROOT)) {
+            case "text", "edit" -> "edit";
+            case "split" -> "split";
+            default -> "preview";
+        };
+    }
+
+    private static String normalizeMarkdownMode(String mode) {
+        String normalized = markdownMode(mode);
+        return "edit".equals(normalized) || "split".equals(normalized) ? normalized : "preview";
     }
 
     private static String unsupportedViewerBody(WorkAreaExplorerService.FilePreview preview) {
@@ -1134,6 +1225,16 @@ final class WorkAreaExplorerFragments {
 
     static String renderedMarkdownForTest(String content, Function<String, String> renderer) {
         return renderMarkdown(content, renderer);
+    }
+
+    static String markdownPreview(String content) {
+        return renderedMarkdownPanel(content);
+    }
+
+    private static String renderedMarkdownPanel(String content) {
+        return """
+            <div class="avatar-workarea-rendered magenta-rendered-markdown">%s</div>
+            """.formatted(safeMarkdown(content));
     }
 
     private static String safeMarkdown(String content) {

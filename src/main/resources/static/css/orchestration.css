@@ -246,7 +246,8 @@
 
 .chat-message-body,
 .planning-preview-document,
-.chat-thinking-body {
+.chat-thinking-body,
+.magenta-rendered-markdown {
     box-sizing: border-box;
     max-width: 100%;
 }
@@ -256,7 +257,9 @@
 .planning-preview-document ol,
 .planning-preview-document ul,
 .chat-thinking-body ol,
-.chat-thinking-body ul {
+.chat-thinking-body ul,
+.magenta-rendered-markdown ol,
+.magenta-rendered-markdown ul {
     margin: 0.55rem 0;
     padding-left: 1.45rem;
     list-style-position: outside;
@@ -264,13 +267,15 @@
 
 .chat-message-body li,
 .planning-preview-document li,
-.chat-thinking-body li {
+.chat-thinking-body li,
+.magenta-rendered-markdown li {
     margin: 0.25rem 0;
 }
 
 .chat-message-body blockquote,
 .planning-preview-document blockquote,
-.chat-thinking-body blockquote {
+.chat-thinking-body blockquote,
+.magenta-rendered-markdown blockquote {
     margin: 0.65rem 0;
     padding: 0.1rem 0 0.1rem 0.85rem;
     border-left: 3px solid #d7e0ea;
@@ -278,9 +283,71 @@
 
 .chat-message-body pre,
 .planning-preview-document pre,
-.chat-thinking-body pre {
+.chat-thinking-body pre,
+.magenta-rendered-markdown pre {
     max-width: 100%;
     overflow-x: auto;
+}
+
+.magenta-rendered-markdown > :first-child {
+    margin-top: 0;
+}
+
+.magenta-rendered-markdown > :last-child {
+    margin-bottom: 0;
+}
+
+.magenta-rendered-markdown p,
+.magenta-rendered-markdown h1,
+.magenta-rendered-markdown h2,
+.magenta-rendered-markdown h3,
+.magenta-rendered-markdown h4,
+.magenta-rendered-markdown h5,
+.magenta-rendered-markdown h6,
+.magenta-rendered-markdown table {
+    margin: 0.65rem 0;
+}
+
+.magenta-rendered-markdown ul ul,
+.magenta-rendered-markdown ul ol,
+.magenta-rendered-markdown ol ul,
+.magenta-rendered-markdown ol ol {
+    margin: 0.25rem 0;
+}
+
+.magenta-rendered-markdown code {
+    padding: 0.05rem 0.3rem;
+    border-radius: 4px;
+    background: #f3f6fb;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.86em;
+}
+
+.magenta-rendered-markdown pre code {
+    display: block;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+.magenta-rendered-markdown table {
+    display: block;
+    width: max-content;
+    min-width: 100%;
+    overflow-x: auto;
+    border-collapse: collapse;
+}
+
+.magenta-rendered-markdown th,
+.magenta-rendered-markdown td {
+    border: 1px solid #d8e2ee;
+    padding: 0.3rem 0.5rem;
+    text-align: left;
+}
+
+.magenta-rendered-markdown img {
+    max-width: 100%;
+    height: auto;
 }
 
 .chat-thinking,

@@ -1132,6 +1132,87 @@
     justify-content: flex-start;
 }
 
+.avatar-workarea-editor {
+    display: grid;
+    gap: 0.55rem;
+}
+
+.avatar-workarea-editor-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.avatar-workarea-mode-controls,
+.avatar-workarea-editor-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+
+.avatar-workarea-editor-actions button {
+    min-height: 1.95rem;
+}
+
+.avatar-workarea-editor-status {
+    margin: 0;
+    font-size: 0.76rem;
+    color: var(--mg-muted);
+}
+
+.avatar-workarea-editor-form {
+    margin: 0;
+}
+
+.avatar-workarea-editor-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.6rem;
+    min-width: 0;
+}
+
+.avatar-workarea-editor.mode-split .avatar-workarea-editor-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.avatar-workarea-editor.mode-preview .avatar-workarea-editor-pane-source,
+.avatar-workarea-editor.mode-edit .avatar-workarea-editor-pane-preview {
+    display: none;
+}
+
+.avatar-workarea-editor-pane {
+    min-width: 0;
+}
+
+.avatar-workarea-source {
+    width: 100%;
+    min-height: 24rem;
+    resize: vertical;
+    border: 1px solid #d8e2ee;
+    border-radius: 7px;
+    background: #fbfdff;
+    color: var(--mg-text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    tab-size: 4;
+}
+
+.avatar-workarea-source-markdown {
+    background-image: linear-gradient(180deg, rgba(29, 78, 216, 0.03) 0, rgba(29, 78, 216, 0) 2.5rem);
+    border-color: #cfdcf0;
+    box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.08);
+}
+
+.avatar-workarea-source:focus {
+    outline: 2px solid rgba(59, 130, 246, 0.28);
+    outline-offset: 1px;
+}
+
 .workspace-tag-selector {
     gap: 0.35rem;
 }
@@ -1346,6 +1427,8 @@
 .avatar-workarea-rendered {
     max-height: 58vh;
     overflow: auto;
+    max-width: 100%;
+    min-width: 0;
     border: 1px solid #dfe7f0;
     border-radius: 7px;
     background: #ffffff;
@@ -1654,6 +1737,24 @@
 
     .avatar-workarea-explorer-layout {
         grid-template-columns: 1fr;
+    }
+
+    .avatar-workarea-editor-toolbar {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .avatar-workarea-mode-controls,
+    .avatar-workarea-editor-actions {
+        width: 100%;
+    }
+
+    .avatar-workarea-editor.mode-split .avatar-workarea-editor-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .avatar-workarea-source {
+        min-height: 16rem;
     }
 
     .workspace-explorer-table {
