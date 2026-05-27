@@ -21,8 +21,31 @@ public class WorkspaceFileMetadataService {
         return repository.ensureLabel(labelSlug, displayName, false);
     }
 
+    public WorkspaceFileLabel ensureTag(
+        String labelSlug,
+        String displayName,
+        WorkspaceFileLabelTargetType targetType
+    ) {
+        return repository.ensureLabel(labelSlug, displayName, false, targetType);
+    }
+
     public WorkspaceFileLabelAssignment addLabel(WorkArea workArea, String rootRelativePath, String labelSlug) {
-        WorkspaceFileLabelAssignment assignment = repository.addLabel(workArea, rootRelativePath, rootRelativePath, labelSlug);
+        return addLabel(workArea, rootRelativePath, labelSlug, null);
+    }
+
+    public WorkspaceFileLabelAssignment addLabel(
+        WorkArea workArea,
+        String rootRelativePath,
+        String labelSlug,
+        WorkspaceFileLabelTargetType targetType
+    ) {
+        WorkspaceFileLabelAssignment assignment = repository.addLabel(
+            workArea,
+            rootRelativePath,
+            rootRelativePath,
+            labelSlug,
+            targetType
+        );
         actionLogRepository.record(
             workArea,
             WorkspaceFileActionType.TAG_ADD,
@@ -61,5 +84,13 @@ public class WorkspaceFileMetadataService {
 
     public void onDelete(WorkArea workArea, String sourceRootRelativePath) {
         repository.deleteSubtree(workArea.workspaceId(), sourceRootRelativePath);
+    }
+
+    public List<WorkspaceFileLabel> listLabelsForTarget(
+        WorkspaceFileLabelTargetType targetType,
+        String query,
+        int limit
+    ) {
+        return repository.listLabelsForTarget(targetType, query, limit);
     }
 }

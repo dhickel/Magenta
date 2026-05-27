@@ -36,13 +36,16 @@ Routine widget actions such as adding todos, completing daily tasks, saving note
 
 The `Work Areas` widget and the top-level `Work Areas` tab use the confined workspace file explorer. The browser uses a familiar details/list file-manager layout:
 
-- toolbar actions for refresh, folder creation, text-file creation, and Markdown-file creation;
+- clickable Work Area cards that open the explorer directly;
+- compact icon toolbar actions for Back (parent directory only), refresh, folder creation, and a new-file menu (`.txt` or `.md`);
 - breadcrumb/path navigation that stays inside the selected Work Area;
 - compact table rows with `Name`, `File Type`, `Size`, `Created`, `Last Modified`, `Tags`, and `Actions`;
-- a separate right-side inspector for selected file or directory metadata, full tags, and operations.
+- a separate right-side inspector panel with collapse/expand controls, selected full name/path, tag editor, preview hints, and metadata.
 
 Supported file actions include directory navigation, text and Markdown preview/edit/save, contained image preview, downloads, directory creation, `.txt`/`.md` creation, rename, copy, move, custom tags, note labels, and delete confirmation with an extra recursive confirmation for directories.
 
-Markdown files open with the rendered tab active and a Text tab for raw editing. Plain text opens directly in raw text mode. Unsupported or binary files do not expose a misleading row View action; stale viewer requests show a safe unsupported message instead. Copy and move require an explicit destination directory and stay confined under the selected Work Area.
+Markdown files open with the rendered tab active and a Text tab for raw editing. Plain text opens directly in raw text mode. Unsupported or binary files do not expose a misleading row View action; stale viewer requests show a safe unsupported message instead. Copy and move open a directory-picker popover/module and stay confined under the selected Work Area without typing internal destination paths.
+
+Tag editing uses the progressive search selector pattern. You can select existing tags or type a new tag to create-and-assign it. File-only and directory-only tags are filtered by the selected item type, and mismatched assignments are rejected server-side.
 
 New assignment work defaults to the selected Home Work Area. During execution, `workspace/` points at the selected Work Area and `root/` points at the broader owned root. Agent-facing `outputs/` is run-local staging at `runs/<runId>/outputs/`; after the run completes, Magenta promotes declared final outputs from that staging area to the selected Work Area, project, or other effective destination chosen by the submit form.

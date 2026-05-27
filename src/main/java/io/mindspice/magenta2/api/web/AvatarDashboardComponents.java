@@ -1039,15 +1039,15 @@ final class AvatarDashboardComponents {
         Div layout = new Div().withClass("avatar-workarea-browser-grid");
         Div list = new Div().withClass("avatar-list");
         for (WorkArea workArea : workAreas.stream().limit(8).toList()) {
-            list.withChild(new Div().withClass("avatar-list-row")
+            list.withChild(new Div().withClass("avatar-list-row avatar-workarea-entry")
+                .withAttribute("role", "button")
+                .withAttribute("tabindex", "0")
+                .withAttribute("hx-get", "/avatar/_work-areas/" + workArea.id() + "/explorer")
+                .withAttribute("hx-trigger", "click, keyup[key=='Enter']")
+                .withAttribute("hx-target", "#avatar-workarea-surface")
+                .withAttribute("hx-swap", "innerHTML")
                 .withChild(new Div()
-                    .withChild(new HtmlTag("strong").withInnerText(workArea.displayName()))
-                    .withChild(small(workArea.ownerId() + " / " + workArea.areaRelativePath())))
-                .withChild(Button.create("Browse")
-                    .withAttribute("type", "button")
-                    .withAttribute("hx-get", "/avatar/_work-areas/" + workArea.id() + "/explorer")
-                    .withAttribute("hx-target", "#avatar-workarea-surface")
-                    .withAttribute("hx-swap", "innerHTML")));
+                    .withChild(new HtmlTag("strong").withInnerText(workArea.displayName()))));
         }
         return body.withChild(layout
             .withChild(list)
@@ -1060,7 +1060,7 @@ final class AvatarDashboardComponents {
     static Component workAreaSurfacePlaceholder() {
         return new Div().withClass("avatar-workarea-surface-empty")
             .withChild(Header.H3("Select a Work Area"))
-            .withChild(small("Choose Browse to open the confined file explorer here."));
+            .withChild(small("Click a Work Area card to open the confined explorer."));
     }
 
     static Component workAreaInspector(

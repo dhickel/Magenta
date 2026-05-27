@@ -28,6 +28,7 @@ import io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkArea;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaExplorerService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceFileLabelTargetType;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceOwnerType;
 import io.mindspice.magenta2.avatar.AvatarCalendarItem;
 import io.mindspice.magenta2.avatar.AvatarCalendarStatus;
@@ -530,14 +531,15 @@ public class AvatarDashboardController {
     public String workAreaExplorer(
         @PathVariable String workAreaId,
         @RequestParam(value = "path", defaultValue = ".") String path,
-        @RequestParam(value = "selected", required = false) String selected
+        @RequestParam(value = "selected", required = false) String selected,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
     ) {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
             WorkAreaExplorerService.DirectoryListing listing = explorer.list(workAreaId, path);
             String inspectPath = StringUtils.hasText(selected) ? selected : path;
             WorkAreaExplorerService.Entry inspected = explorer.inspect(workAreaId, inspectPath);
-            return WorkAreaExplorerFragments.shell(listing, inspected, selected);
+            return WorkAreaExplorerFragments.shell(listing, inspected, selected, panelState(panel));
         } catch (IllegalArgumentException exception) {
             return WorkAreaExplorerFragments.modalError("Work Area unavailable", exception.getMessage());
         }
@@ -554,12 +556,18 @@ public class AvatarDashboardController {
     public String workAreaExplorerList(
         @PathVariable String workAreaId,
         @RequestParam(value = "path", defaultValue = ".") String path,
-        @RequestParam(value = "selected", required = false) String selected
+        @RequestParam(value = "selected", required = false) String selected,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
     ) {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
             WorkAreaExplorerService.DirectoryListing listing = explorer.list(workAreaId, path);
-            return WorkAreaExplorerFragments.list(listing, selected, false);
+            return WorkAreaExplorerFragments.list(
+                listing,
+                selected,
+                WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_COLLAPSED.equalsIgnoreCase(panelState(panel)),
+                false
+            );
         } catch (IllegalArgumentException exception) {
             return WorkAreaExplorerFragments.listError(exception.getMessage());
         }
@@ -567,10 +575,26 @@ public class AvatarDashboardController {
 
     @GetMapping("/avatar/_work-areas/{workAreaId}/inspect")
     @ResponseBody
-    public String workAreaInspector(@PathVariable String workAreaId, @RequestParam String path) {
+    public String workAreaInspector(
+        @PathVariable String workAreaId,
+        @RequestParam String path,
+        @RequestParam(value = "listPath", defaultValue = ".") String listPath,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
+    ) {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
-            return WorkAreaExplorerFragments.inspector(workAreaId, explorer.inspect(workAreaId, path), null, false);
+            boolean collapsed = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_COLLAPSED.equalsIgnoreCase(panelState(panel));
+            return WorkAreaExplorerFragments.inspector(
+                workAreaId,
+                listPath,
+                explorer.inspect(workAreaId, path),
+                null,
+                collapsed,
+                collapsed
+                    ? WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED
+                    : WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_COLLAPSED,
+                false
+            );
         } catch (IllegalArgumentException exception) {
             return WorkAreaExplorerFragments.inspectorError(exception.getMessage());
         }
@@ -632,7 +656,8 @@ public class AvatarDashboardController {
     public String saveWorkAreaText(
         @PathVariable String workAreaId,
         @RequestParam String path,
-        @RequestParam String content
+        @RequestParam String content,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
     ) {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
@@ -641,7 +666,15 @@ public class AvatarDashboardController {
             WorkAreaExplorerService.FilePreview preview = explorer.preview(workAreaId, path);
             WorkAreaExplorerService.DirectoryListing listing = explorer.list(workAreaId, listPath);
             WorkAreaExplorerService.Entry inspected = explorer.inspect(workAreaId, path);
-            return WorkAreaExplorerFragments.textSaveResponse(workAreaId, preview, listing, inspected, path, "Saved " + path);
+            return WorkAreaExplorerFragments.textSaveResponse(
+                workAreaId,
+                preview,
+                listing,
+                inspected,
+                path,
+                panelState(panel),
+                "Saved " + path
+            );
         } catch (IllegalArgumentException exception) {
             return WorkAreaExplorerFragments.modalError("Save failed", exception.getMessage());
         }
@@ -652,13 +685,21 @@ public class AvatarDashboardController {
     public String createWorkAreaDirectory(
         @PathVariable String workAreaId,
         @RequestParam String path,
-        @RequestParam String name
+        @RequestParam String name,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
     ) {
         WorkAreaExplorerService explorer = requireExplorerService();
         String childPath = joinPath(path, name);
         try {
             WorkAreaExplorerService.Entry entry = explorer.createDirectory(workAreaId, childPath);
-            return refreshedExplorerTargets(explorer, workAreaId, path, entry.path(), "Created " + entry.name());
+            return refreshedExplorerTargets(
+                explorer,
+                workAreaId,
+                path,
+                entry.path(),
+                panelState(panel),
+                "Created " + entry.name()
+            );
         } catch (IllegalArgumentException exception) {
             return WorkAreaExplorerFragments.modalError("Create folder failed", exception.getMessage());
         }
@@ -670,7 +711,8 @@ public class AvatarDashboardController {
         @PathVariable String workAreaId,
         @RequestParam String path,
         @RequestParam String name,
-        @RequestParam(value = "kind", defaultValue = "text") String kind
+        @RequestParam(value = "kind", defaultValue = "text") String kind,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
     ) {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
@@ -685,6 +727,7 @@ public class AvatarDashboardController {
                 listing,
                 inspected,
                 entry.path(),
+                panelState(panel),
                 "Created " + entry.name()
             );
         } catch (IllegalArgumentException exception) {
@@ -693,7 +736,13 @@ public class AvatarDashboardController {
     }
 
     String createWorkAreaTextFile(String workAreaId, String path, String name) {
-        return createWorkAreaTextFile(workAreaId, path, name, "text");
+        return createWorkAreaTextFile(
+            workAreaId,
+            path,
+            name,
+            "text",
+            WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED
+        );
     }
 
     @PostMapping("/avatar/_work-areas/{workAreaId}/mark")
@@ -701,12 +750,13 @@ public class AvatarDashboardController {
     public String markNestedWorkArea(
         @PathVariable String workAreaId,
         @RequestParam String path,
-        @RequestParam(value = "displayName", required = false) String displayName
+        @RequestParam(value = "displayName", required = false) String displayName,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
     ) {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
             explorer.mark(workAreaId, path, displayName);
-            return refreshedExplorer(explorer, workAreaId, parentPath(path));
+            return refreshedExplorer(explorer, workAreaId, parentPath(path), panelState(panel));
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
@@ -717,12 +767,13 @@ public class AvatarDashboardController {
     public String deleteWorkAreaPath(
         @PathVariable String workAreaId,
         @RequestParam String path,
-        @RequestParam String confirm
+        @RequestParam String confirm,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
     ) {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
             explorer.deleteRecursive(workAreaId, path, confirm);
-            return refreshedExplorer(explorer, workAreaId, parentPath(path));
+            return refreshedExplorer(explorer, workAreaId, parentPath(path), panelState(panel));
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
@@ -733,7 +784,8 @@ public class AvatarDashboardController {
     public String workAreaActionModal(
         @PathVariable String workAreaId,
         @PathVariable String action,
-        @RequestParam String path
+        @RequestParam String path,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
     ) {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
@@ -741,9 +793,75 @@ public class AvatarDashboardController {
                 || "delete-recursive".equals(action)
                 ? explorer.deletePreflight(workAreaId, path, WorkAreaExplorerService.DeleteStep.INTENT)
                 : null;
-            return WorkAreaExplorerFragments.actionModal(workAreaId, action, path, preflight);
+            return WorkAreaExplorerFragments.actionModal(workAreaId, action, path, panelState(panel), preflight);
         } catch (IllegalArgumentException exception) {
             return WorkAreaExplorerFragments.modalError("Action unavailable", exception.getMessage());
+        }
+    }
+
+    @GetMapping("/avatar/_work-areas/{workAreaId}/files/action/{action}/picker")
+    @ResponseBody
+    public String copyMovePicker(
+        @PathVariable String workAreaId,
+        @PathVariable String action,
+        @RequestParam String path,
+        @RequestParam(value = "browse", defaultValue = ".") String browse,
+        @RequestParam(value = "destination", defaultValue = ".") String destination,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel,
+        @RequestParam(value = "x", defaultValue = "48") int x,
+        @RequestParam(value = "y", defaultValue = "96") int y
+    ) {
+        if (!"copy".equals(action) && !"move".equals(action)) {
+            return WorkAreaExplorerFragments.modalError("File action failed", "Unknown file action: " + action);
+        }
+        WorkAreaExplorerService explorer = requireExplorerService();
+        try {
+            explorer.inspect(workAreaId, path);
+            WorkAreaExplorerService.DirectoryListing listing = explorer.list(workAreaId, browse);
+            explorer.inspect(workAreaId, destination);
+            return WorkAreaExplorerFragments.copyMovePicker(
+                workAreaId,
+                action,
+                path,
+                listing.path(),
+                destination,
+                panelState(panel),
+                x,
+                y
+            );
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.modalError("File action failed", exception.getMessage());
+        }
+    }
+
+    @GetMapping("/avatar/_work-areas/{workAreaId}/files/directories")
+    @ResponseBody
+    public String directoryPickerOptions(
+        @PathVariable String workAreaId,
+        @RequestParam(value = "path", defaultValue = ".") String browse,
+        @RequestParam String source,
+        @RequestParam String action,
+        @RequestParam(value = "destination", defaultValue = ".") String destination,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel,
+        @RequestParam(value = "x", defaultValue = "48") int x,
+        @RequestParam(value = "y", defaultValue = "96") int y
+    ) {
+        WorkAreaExplorerService explorer = requireExplorerService();
+        try {
+            WorkAreaExplorerService.DirectoryListing listing = explorer.list(workAreaId, browse);
+            return WorkAreaExplorerFragments.directoryPickerOptions(
+                listing,
+                action,
+                source,
+                destination,
+                panelState(panel),
+                x,
+                y
+            );
+        } catch (IllegalArgumentException exception) {
+            return "<div class=\"avatar-status-error\">"
+                + org.springframework.web.util.HtmlUtils.htmlEscape(exception.getMessage())
+                + "</div>";
         }
     }
 
@@ -752,12 +870,20 @@ public class AvatarDashboardController {
     public String deleteWorkAreaPathStep(
         @PathVariable String workAreaId,
         @RequestParam String path,
-        @RequestParam String step
+        @RequestParam String step,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
     ) {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
             explorer.delete(workAreaId, path, WorkAreaExplorerService.DeleteStep.valueOf(step));
-            return refreshedExplorerTargets(explorer, workAreaId, parentPath(path), parentPath(path), "Deleted " + path);
+            return refreshedExplorerTargets(
+                explorer,
+                workAreaId,
+                parentPath(path),
+                parentPath(path),
+                panelState(panel),
+                "Deleted " + path
+            );
         } catch (IllegalArgumentException exception) {
             return WorkAreaExplorerFragments.modalError("Delete failed", exception.getMessage());
         }
@@ -765,11 +891,23 @@ public class AvatarDashboardController {
 
     @PostMapping("/avatar/_work-areas/{workAreaId}/files/rename")
     @ResponseBody
-    public String renameWorkAreaPath(@PathVariable String workAreaId, @RequestParam String path, @RequestParam String name) {
+    public String renameWorkAreaPath(
+        @PathVariable String workAreaId,
+        @RequestParam String path,
+        @RequestParam String name,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
+    ) {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
             WorkAreaExplorerService.Entry renamed = explorer.rename(workAreaId, path, name);
-            return refreshedExplorerTargets(explorer, workAreaId, parentPath(renamed.path()), renamed.path(), "Renamed to " + renamed.name());
+            return refreshedExplorerTargets(
+                explorer,
+                workAreaId,
+                parentPath(renamed.path()),
+                renamed.path(),
+                panelState(panel),
+                "Renamed to " + renamed.name()
+            );
         } catch (IllegalArgumentException exception) {
             return WorkAreaExplorerFragments.modalError("Rename failed", exception.getMessage());
         }
@@ -782,7 +920,8 @@ public class AvatarDashboardController {
         @PathVariable String action,
         @RequestParam String path,
         @RequestParam String destination,
-        @RequestParam(value = "name", required = false) String name
+        @RequestParam(value = "name", required = false) String name,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
     ) {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
@@ -795,7 +934,14 @@ public class AvatarDashboardController {
             } else {
                 return WorkAreaExplorerFragments.modalError("File action failed", "Unknown file action: " + action);
             }
-            return refreshedExplorerTargets(explorer, workAreaId, parentPath(result.path()), result.path(), action + " completed");
+            return refreshedExplorerTargets(
+                explorer,
+                workAreaId,
+                parentPath(result.path()),
+                result.path(),
+                panelState(panel),
+                action + " completed"
+            );
         } catch (IllegalArgumentException exception) {
             return WorkAreaExplorerFragments.modalError("File action failed", exception.getMessage());
         }
@@ -836,11 +982,16 @@ public class AvatarDashboardController {
     public String createWorkAreaTag(
         @PathVariable String workAreaId,
         @RequestParam String label,
+        @RequestParam(value = "targetType", required = false) String targetType,
         @RequestParam(value = "displayName", required = false) String displayName
     ) {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
-            explorer.ensureTag(label, displayName);
+            if (StringUtils.hasText(targetType)) {
+                explorer.ensureTag(label, displayName, WorkspaceFileLabelTargetType.fromWireName(targetType));
+            } else {
+                explorer.ensureTag(label, displayName);
+            }
             return WorkAreaExplorerFragments.modalMessage("Tag created", "Tag is ready to assign: " + label);
         } catch (IllegalArgumentException exception) {
             return WorkAreaExplorerFragments.modalError("Tag failed", exception.getMessage());
@@ -852,14 +1003,46 @@ public class AvatarDashboardController {
     public String addWorkAreaTag(
         @PathVariable String workAreaId,
         @RequestParam String path,
-        @RequestParam String label
+        @RequestParam String label,
+        @RequestParam(value = "targetType", required = false) String targetType,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
     ) {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
-            explorer.addLabel(workAreaId, path, label);
-            return refreshedExplorerTargets(explorer, workAreaId, parentPath(path), path, "Tag added");
+            WorkspaceFileLabelTargetType requestedType = StringUtils.hasText(targetType)
+                ? WorkspaceFileLabelTargetType.fromWireName(targetType)
+                : null;
+            explorer.addLabel(workAreaId, path, label, requestedType);
+            return refreshedExplorerTargets(
+                explorer,
+                workAreaId,
+                parentPath(path),
+                path,
+                panelState(panel),
+                "Tag added"
+            );
         } catch (IllegalArgumentException exception) {
             return WorkAreaExplorerFragments.inspectorError(exception.getMessage());
+        }
+    }
+
+    @GetMapping("/avatar/_work-areas/{workAreaId}/tags/options")
+    @ResponseBody
+    public String workAreaTagOptions(
+        @PathVariable String workAreaId,
+        @RequestParam String path,
+        @RequestParam(value = "label", required = false) String label
+    ) {
+        WorkAreaExplorerService explorer = requireExplorerService();
+        try {
+            return WorkAreaExplorerFragments.tagOptions(
+                workAreaId,
+                path,
+                label,
+                explorer.availableTags(workAreaId, path, label, 12)
+            );
+        } catch (IllegalArgumentException exception) {
+            return "<div class=\"entity-selector-empty\">Unable to load tags: " + exception.getMessage() + "</div>";
         }
     }
 
@@ -868,15 +1051,152 @@ public class AvatarDashboardController {
     public String removeWorkAreaTag(
         @PathVariable String workAreaId,
         @RequestParam String path,
-        @RequestParam String label
+        @RequestParam String label,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
     ) {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
             explorer.removeLabel(workAreaId, path, label);
-            return refreshedExplorerTargets(explorer, workAreaId, parentPath(path), path, "Tag removed");
+            return refreshedExplorerTargets(
+                explorer,
+                workAreaId,
+                parentPath(path),
+                path,
+                panelState(panel),
+                "Tag removed"
+            );
         } catch (IllegalArgumentException exception) {
             return WorkAreaExplorerFragments.inspectorError(exception.getMessage());
         }
+    }
+
+    String workAreaExplorer(String workAreaId, String path, String selected) {
+        return workAreaExplorer(
+            workAreaId,
+            path,
+            selected,
+            WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED
+        );
+    }
+
+    String workAreaExplorerList(String workAreaId, String path, String selected) {
+        return workAreaExplorerList(
+            workAreaId,
+            path,
+            selected,
+            WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED
+        );
+    }
+
+    String workAreaInspector(String workAreaId, String path) {
+        return workAreaInspector(
+            workAreaId,
+            path,
+            parentPath(path),
+            WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED
+        );
+    }
+
+    String saveWorkAreaText(String workAreaId, String path, String content) {
+        return saveWorkAreaText(
+            workAreaId,
+            path,
+            content,
+            WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED
+        );
+    }
+
+    String createWorkAreaDirectory(String workAreaId, String path, String name) {
+        return createWorkAreaDirectory(
+            workAreaId,
+            path,
+            name,
+            WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED
+        );
+    }
+
+    String createWorkAreaTextFile(String workAreaId, String path, String name, String kind) {
+        return createWorkAreaTextFile(
+            workAreaId,
+            path,
+            name,
+            kind,
+            WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED
+        );
+    }
+
+    String markNestedWorkArea(String workAreaId, String path, String displayName) {
+        return markNestedWorkArea(
+            workAreaId,
+            path,
+            displayName,
+            WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED
+        );
+    }
+
+    String workAreaActionModal(String workAreaId, String action, String path) {
+        return workAreaActionModal(
+            workAreaId,
+            action,
+            path,
+            WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED
+        );
+    }
+
+    String deleteWorkAreaPathStep(String workAreaId, String path, String step) {
+        return deleteWorkAreaPathStep(
+            workAreaId,
+            path,
+            step,
+            WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED
+        );
+    }
+
+    String renameWorkAreaPath(String workAreaId, String path, String name) {
+        return renameWorkAreaPath(
+            workAreaId,
+            path,
+            name,
+            WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED
+        );
+    }
+
+    String copyMoveWorkAreaPath(String workAreaId, String action, String path, String destination, String name) {
+        return copyMoveWorkAreaPath(
+            workAreaId,
+            action,
+            path,
+            destination,
+            name,
+            WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED
+        );
+    }
+
+    String createWorkAreaTag(String workAreaId, String label, String displayName) {
+        return createWorkAreaTag(workAreaId, label, null, displayName);
+    }
+
+    String addWorkAreaTag(String workAreaId, String path, String label) {
+        return addWorkAreaTag(workAreaId, path, label, null);
+    }
+
+    String addWorkAreaTag(String workAreaId, String path, String label, String targetType) {
+        return addWorkAreaTag(
+            workAreaId,
+            path,
+            label,
+            targetType,
+            WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED
+        );
+    }
+
+    String removeWorkAreaTag(String workAreaId, String path, String label) {
+        return removeWorkAreaTag(
+            workAreaId,
+            path,
+            label,
+            WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED
+        );
     }
 
     @PostMapping("/avatar/_work-areas/{workAreaId}/labels/note")
@@ -885,7 +1205,14 @@ public class AvatarDashboardController {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
             explorer.addLabel(workAreaId, path, "note");
-            return refreshedExplorerTargets(explorer, workAreaId, parentPath(path), path, "Tag added");
+            return refreshedExplorerTargets(
+                explorer,
+                workAreaId,
+                parentPath(path),
+                path,
+                WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED,
+                "Tag added"
+            );
         } catch (IllegalArgumentException exception) {
             return WorkAreaExplorerFragments.inspectorError(exception.getMessage());
         }
@@ -897,7 +1224,14 @@ public class AvatarDashboardController {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
             explorer.removeLabel(workAreaId, path, "note");
-            return refreshedExplorerTargets(explorer, workAreaId, parentPath(path), path, "Tag removed");
+            return refreshedExplorerTargets(
+                explorer,
+                workAreaId,
+                parentPath(path),
+                path,
+                WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED,
+                "Tag removed"
+            );
         } catch (IllegalArgumentException exception) {
             return WorkAreaExplorerFragments.inspectorError(exception.getMessage());
         }
@@ -1172,10 +1506,20 @@ public class AvatarDashboardController {
         return service;
     }
 
-    private String refreshedExplorer(WorkAreaExplorerService explorer, String workAreaId, String path) {
+    private String refreshedExplorer(
+        WorkAreaExplorerService explorer,
+        String workAreaId,
+        String path,
+        String panelState
+    ) {
         WorkAreaExplorerService.DirectoryListing listing = explorer.list(workAreaId, path);
         WorkAreaExplorerService.Entry inspected = selectedOrCurrentEntry(explorer, workAreaId, listing, path);
-        return WorkAreaExplorerFragments.shell(listing, inspected, inspected == null ? null : inspected.path());
+        return WorkAreaExplorerFragments.shell(
+            listing,
+            inspected,
+            inspected == null ? null : inspected.path(),
+            panelState(panelState)
+        );
     }
 
     private String refreshedExplorerTargets(
@@ -1183,11 +1527,18 @@ public class AvatarDashboardController {
         String workAreaId,
         String listPath,
         String selectedPath,
+        String panelState,
         String message
     ) {
         WorkAreaExplorerService.DirectoryListing listing = explorer.list(workAreaId, listPath);
         WorkAreaExplorerService.Entry inspected = explorer.inspect(workAreaId, selectedPath);
-        return WorkAreaExplorerFragments.mutationResponse(listing, inspected, selectedPath, message);
+        return WorkAreaExplorerFragments.mutationResponse(
+            listing,
+            inspected,
+            selectedPath,
+            panelState(panelState),
+            message
+        );
     }
 
     private WorkAreaExplorerService.Entry selectedOrCurrentEntry(
@@ -1220,6 +1571,12 @@ public class AvatarDashboardController {
         String child = name.strip().replace('\\', '/');
         String prefix = StringUtils.hasText(base) && !".".equals(base.strip()) ? base.strip().replace('\\', '/') + "/" : "";
         return prefix + child;
+    }
+
+    private String panelState(String panel) {
+        return WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_COLLAPSED.equalsIgnoreCase(panel)
+            ? WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_COLLAPSED
+            : WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED;
     }
 
     private int directionValue(String direction) {

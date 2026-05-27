@@ -1,0 +1,14 @@
+{
+  "style": {
+    "text": "x",
+    "classes": "button button-link small workspace-tag-remove",
+    "color": "rgb(198, 40, 40)",
+    "display": "flex",
+    "alignItems": "center",
+    "justifyContent": "center",
+    "width": 14.203125,
+    "height": 15.328125
+  },
+  "consoleErrorCount": 0,
+  "networkErrorCount": 0
+}

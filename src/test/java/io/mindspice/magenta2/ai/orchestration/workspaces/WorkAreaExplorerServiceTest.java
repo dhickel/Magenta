@@ -356,6 +356,52 @@ class WorkAreaExplorerServiceTest {
         assertThat(result.deletedCount()).isEqualTo(2);
     }
 
+    @Test
+    void typedTagsRejectWrongTargetAssignments() throws Exception {
+        TestContext context = context();
+        WorkArea home = context.workAreaService().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);
+        context.explorer().createDirectory(home.id(), "notes");
+        context.explorer().createTextFile(home.id(), "notes", "typed.txt");
+        context.explorer().ensureTag("file-only", "File Only", WorkspaceFileLabelTargetType.FILE);
+        context.explorer().addLabel(home.id(), "notes/typed.txt", "file-only");
+
+        assertThatThrownBy(() -> context.explorer().addLabel(home.id(), "notes", "file-only"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("label target type mismatch");
+    }
+
+    @Test
+    void addLabelRejectsForgedRequestedTypeBeforeCreatingAssignments() throws Exception {
+        TestContext context = context();
+        WorkArea home = context.workAreaService().ensureHome(WorkspaceOwnerType.AGENT, "agent-1", null);
+        context.explorer().createDirectory(home.id(), "notes");
+        context.explorer().createTextFile(home.id(), "notes", "typed.txt");
+
+        assertThatThrownBy(() -> context.explorer().addLabel(
+            home.id(),
+            "notes/typed.txt",
+            "pw-directory-for-file",
+            WorkspaceFileLabelTargetType.DIRECTORY
+        ))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("tag target type mismatch");
+        assertThat(context.metadataRepository().labelsForPath(home.workspaceId(), "home/notes/typed.txt")).isEmpty();
+        assertThat(context.metadataRepository().listLabelsForTarget(WorkspaceFileLabelTargetType.DIRECTORY, "pw-directory-for-file", 12))
+            .isEmpty();
+
+        assertThatThrownBy(() -> context.explorer().addLabel(
+            home.id(),
+            "notes",
+            "pw-file-for-directory",
+            WorkspaceFileLabelTargetType.FILE
+        ))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("tag target type mismatch");
+        assertThat(context.metadataRepository().labelsForPath(home.workspaceId(), "home/notes")).isEmpty();
+        assertThat(context.metadataRepository().listLabelsForTarget(WorkspaceFileLabelTargetType.FILE, "pw-file-for-directory", 12))
+            .isEmpty();
+    }
+
     private TestContext context() throws Exception {
         JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
         WorkspaceRepository workspaceRepository = new WorkspaceRepository(jdbc);

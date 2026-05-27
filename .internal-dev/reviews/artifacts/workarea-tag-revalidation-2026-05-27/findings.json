@@ -1,0 +1,53 @@
+{
+  "timestamp": "2026-05-27T10:02:49.409Z",
+  "url": "http://localhost:18080/avatar",
+  "workAreaId": "67524694-8572-4b7a-8c99-f401ee1cf06f",
+  "selectedPaths": {
+    "filePath": "pw-note-1779524229756.txt",
+    "directoryPath": "pw-dir-268278"
+  },
+  "wrongType": {
+    "filePathWithDirectoryTargetType": {
+      "responseStatus": 200,
+      "responseHasInspectorError": false,
+      "labelAssigned": false
+    },
+    "directoryPathWithFileTargetType": {
+      "responseStatus": 200,
+      "responseHasInspectorError": false,
+      "labelAssigned": false
+    }
+  },
+  "normalFlow": {
+    "file": {
+      "addStatus": 200,
+      "addResponseHasSuccessToast": false,
+      "assignedAfterAdd": true,
+      "removeStatus": 200,
+      "removedAfterDelete": true
+    },
+    "directory": {
+      "addStatus": 200,
+      "addResponseHasSuccessToast": false,
+      "assignedAfterAdd": true,
+      "removeStatus": 200,
+      "removedAfterDelete": true
+    }
+  },
+  "chipStyle": {
+    "file": {
+      "removeText": "x",
+      "removeColor": "rgb(0, 0, 0)",
+      "removeLineHeight": "normal",
+      "chipAlignItems": "normal"
+    },
+    "directory": {
+      "removeText": "x",
+      "removeColor": "rgb(0, 0, 0)",
+      "removeLineHeight": "normal",
+      "chipAlignItems": "normal"
+    }
+  },
+  "blocked": [],
+  "errors": []
+}

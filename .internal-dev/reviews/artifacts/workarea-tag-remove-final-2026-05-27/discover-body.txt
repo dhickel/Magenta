@@ -1,0 +1,69 @@
+Avatar
+
+Personal assistant dashboard
+
+Home
+Dashboard
+Chat
+Avatar Chat
+Personal assistant channel
+surface avatar
+new chat
+Ready
+model qwen3.6:35b
+Ask Avatar for a quick update.
+Send
+Avatar
+Operational shell with a persistent assistant rail.
+Dashboard
+Queue
+History
+Profile
+Outputs
+Work Areas
+Todos
+Normal
+High
+Urgent
+Low
+Add Todo
+PW Rerun3 mobile 1779492048985
+normal
+PW Rerun3 desktop 1779492033471
+normal
+pw rerun2 todo 1779491724852
+normal
+pw rerun2 todo 1779491711125
+normal
+pw rerun todo 1779491635959
+normal
+pw rerun todo 1779491601967
+normal
+Daily Tasks
+Add Daily
+No daily tasks for today.
+Notes
+Save Note
+No notes yet.
+Calendar
+Add Event
+No calendar items.
+Work Areas
+Home
+pw-dir-1779524229756
+Home
+Select a Work Area
+Click a Work Area card to open the confined explorer.
+Outputs
+No recent outputs.
+System
+2
+Active agents
+0
+Open jobs
+0
+Queued work
+Alerts
+No alerts.
+Recent Work
+No recent work.

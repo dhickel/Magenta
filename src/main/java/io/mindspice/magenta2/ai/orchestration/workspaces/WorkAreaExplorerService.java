@@ -422,13 +422,30 @@ public class WorkAreaExplorerService {
     }
 
     public WorkspaceFileLabelAssignment addLabel(String workAreaId, String relativePath, String labelSlug) {
+        return addLabel(workAreaId, relativePath, labelSlug, null);
+    }
+
+    public WorkspaceFileLabelAssignment addLabel(
+        String workAreaId,
+        String relativePath,
+        String labelSlug,
+        WorkspaceFileLabelTargetType requestedType
+    ) {
         WorkArea area = workAreaService.get(workAreaId);
         Path root = workAreaService.resolve(area);
         Path target = resolveExisting(root, relativePath);
         if (metadataService == null) {
             throw new IllegalStateException("workspace file metadata service is not available");
         }
-        return metadataService.addLabel(area, rootRelative(area, root, target), labelSlug);
+        WorkspaceFileLabelTargetType targetType = WorkspaceFileLabelTargetType.forDirectory(
+            Files.isDirectory(target, LinkOption.NOFOLLOW_LINKS)
+        );
+        if (requestedType != null && requestedType != targetType) {
+            throw new IllegalArgumentException(
+                "tag target type mismatch: requested " + requestedType.wireName() + " for " + targetType.wireName() + " path"
+            );
+        }
+        return metadataService.addLabel(area, rootRelative(area, root, target), labelSlug, targetType);
     }
 
     public WorkspaceFileLabel ensureTag(String labelSlug, String displayName) {
@@ -436,6 +453,17 @@ public class WorkAreaExplorerService {
             throw new IllegalStateException("workspace file metadata service is not available");
         }
         return metadataService.ensureTag(labelSlug, displayName);
+    }
+
+    public WorkspaceFileLabel ensureTag(
+        String labelSlug,
+        String displayName,
+        WorkspaceFileLabelTargetType targetType
+    ) {
+        if (metadataService == null) {
+            throw new IllegalStateException("workspace file metadata service is not available");
+        }
+        return metadataService.ensureTag(labelSlug, displayName, targetType);
     }
 
     public int removeLabel(String workAreaId, String relativePath, String labelSlug) {
@@ -464,6 +492,19 @@ public class WorkAreaExplorerService {
             throw new IllegalStateException("workspace file action log repository is not available");
         }
         return actionLogRepository.recentForWorkspace(area.workspaceId(), Math.max(1, limit));
+    }
+
+    public List<WorkspaceFileLabel> availableTags(String workAreaId, String relativePath, String query, int limit) {
+        WorkArea area = workAreaService.get(workAreaId);
+        Path root = workAreaService.resolve(area);
+        Path target = resolveExisting(root, relativePath);
+        if (metadataService == null) {
+            throw new IllegalStateException("workspace file metadata service is not available");
+        }
+        WorkspaceFileLabelTargetType targetType = WorkspaceFileLabelTargetType.forDirectory(
+            Files.isDirectory(target, LinkOption.NOFOLLOW_LINKS)
+        );
+        return metadataService.listLabelsForTarget(targetType, query, limit);
     }
 
     public Entry inspect(String workAreaId, String relativePath) {

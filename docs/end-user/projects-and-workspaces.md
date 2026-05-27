@@ -54,6 +54,7 @@ Avatar Work Areas expose a confined file explorer for agent or project workspace
 
 The explorer supports:
 
+- opening a Work Area by clicking its card (no separate Browse button);
 - Work Area-confined folder navigation through toolbar and breadcrumb controls;
 - creating folders, `.txt` files, and `.md` files;
 - Markdown viewing with Rendered and Text tabs;
@@ -62,7 +63,9 @@ The explorer supports:
 - custom tags and note labels for files and directories;
 - rename, delete confirmation, copy, and move operations.
 
-Copy and move require a destination directory and remain under the selected Work Area. Unsupported or binary files do not show a row View action. The backend rejects traversal, absolute paths, symlink path components, unsafe text-edit extensions, oversized text saves, protected Home/system Work Areas, active Work Area descendants, and Work Areas referenced by queued or running assignment metadata.
+Copy and move use a directory-picker popover and remain under the selected Work Area; users do not type internal destination paths. Unsupported or binary files do not show a row View action. The backend rejects traversal, absolute paths, symlink path components, unsafe text-edit extensions, oversized text saves, protected Home/system Work Areas, active Work Area descendants, and Work Areas referenced by queued or running assignment metadata.
+
+Tag editing follows the shared progressive search selector interaction. Existing tags and create-new flows are both supported, tag options are filtered by selected item type (file or directory), and wrong-type assignments are rejected server-side.
 
 ## Project Network And Memberships
 

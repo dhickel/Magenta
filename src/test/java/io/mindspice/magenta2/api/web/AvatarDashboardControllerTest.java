@@ -237,12 +237,12 @@ class AvatarDashboardControllerTest {
         assertThat(explorer).contains("id=\"avatar-workarea-inspector\"");
         assertThat(explorer).contains("id=\"avatar-workarea-modal\"");
         assertThat(explorer).contains("workspace-explorer-toolbar");
-        assertThat(explorer).contains(">Back</button>");
-        assertThat(explorer).contains(">Forward</button>");
-        assertThat(explorer).contains(">Refresh</button>");
-        assertThat(explorer).contains(">New Folder</button>");
-        assertThat(explorer).contains(">New Text</button>");
-        assertThat(explorer).contains(">New Markdown</button>");
+        assertThat(explorer).contains("title=\"Back\"");
+        assertThat(explorer).contains("title=\"Refresh\"");
+        assertThat(explorer).contains("title=\"New Folder\"");
+        assertThat(explorer).contains("title=\"New File\"");
+        assertThat(explorer).contains("Text (.txt)");
+        assertThat(explorer).contains("Markdown (.md)");
         assertThat(explorer).contains("workspace-explorer-pathbar");
         assertThat(explorer).contains("<th>Name</th>");
         assertThat(explorer).contains("<th>File Type</th>");
@@ -317,10 +317,16 @@ class AvatarDashboardControllerTest {
         assertThat(shell).contains("workspace-explorer-table-region");
         assertThat(shell).contains("file-explorer-inspector-pane");
         assertThat(shell).contains("data-workarea-path=\"notes/todo.txt\"");
-        assertThat(shell).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/explorer?path=notes&selected=notes%2Ftodo.txt\"");
+        assertThat(shell).contains(
+            "hx-get=\"/avatar/_work-areas/" + workAreaId + "/explorer?path=notes&selected=notes%2Ftodo.txt&panel=expanded\""
+        );
         assertThat(shell).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/viewer?path=notes%2Ftodo.txt\"");
-        assertThat(shell).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/rename?path=notes%2Ftodo.txt\"");
-        assertThat(shell).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/delete?path=notes%2Ftodo.txt\"");
+        assertThat(shell).contains(
+            "hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/rename?path=notes%2Ftodo.txt&panel=expanded\""
+        );
+        assertThat(shell).contains(
+            "hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/delete?path=notes%2Ftodo.txt&panel=expanded\""
+        );
         assertThat(shell).contains("+1");
         assertThat(shell).doesNotContain("file-explorer-cards");
         assertThat(shell).doesNotContain("file-explorer-entry");
@@ -336,25 +342,31 @@ class AvatarDashboardControllerTest {
         assertThat(list).contains("<th>Actions</th>");
         assertThat(list).contains("selected");
         assertThat(list).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/viewer?path=notes%2Ftodo.txt\"");
-        assertThat(list).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/rename?path=notes%2Ftodo.txt\"");
-        assertThat(list).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/delete?path=notes%2Ftodo.txt\"");
+        assertThat(list).contains(
+            "hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/rename?path=notes%2Ftodo.txt&panel=expanded\""
+        );
+        assertThat(list).contains(
+            "hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/delete?path=notes%2Ftodo.txt&panel=expanded\""
+        );
         assertThat(list).doesNotContain("file-explorer-cards");
 
         String inspect = controller.workAreaInspector(workAreaId, "notes/todo.txt");
         assertThat(inspect).contains("id=\"avatar-workarea-inspector\"");
         assertThat(inspect).contains("file-explorer-inspector-pane");
-        assertThat(inspect).contains("hx-post=\"/avatar/_work-areas/" + workAreaId + "/files/tags\"");
+        assertThat(inspect).contains("workspace-tag-selector");
+        assertThat(inspect).contains(
+            "hx-get=\"/avatar/_work-areas/" + workAreaId + "/tags/options?path=notes%2Ftodo.txt\""
+        );
         assertThat(inspect).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/viewer?path=notes%2Ftodo.txt\"");
-        assertThat(inspect).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/rename?path=notes%2Ftodo.txt\"");
-        assertThat(inspect).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/delete?path=notes%2Ftodo.txt\"");
-        assertThat(inspect).contains("file-operation-stack");
-        assertThat(inspect).contains("<details class=\"file-operation-group\" open>");
-        assertThat(inspect).contains("data-file-action=\"copy\"");
-        assertThat(inspect).contains("aria-label=\"Copy destination directory\"");
-        assertThat(inspect).contains("required");
-        assertThat(inspect).contains("data-file-action-submit=\"copy\"");
-        assertThat(inspect).contains("hx-post=\"/avatar/_work-areas/" + workAreaId + "/files/action/copy\"");
-        assertThat(inspect).contains("hx-post=\"/avatar/_work-areas/" + workAreaId + "/files/action/move\"");
+        assertThat(inspect).contains(
+            "hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/rename?path=notes%2Ftodo.txt&panel=expanded\""
+        );
+        assertThat(inspect).contains(
+            "hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/delete?path=notes%2Ftodo.txt&panel=expanded\""
+        );
+        assertThat(inspect).contains("/files/action/copy/picker?path=notes%2Ftodo.txt");
+        assertThat(inspect).contains("/files/action/move/picker?path=notes%2Ftodo.txt");
+        assertThat(inspect).contains("workspace-tag-remove");
 
         String rename = controller.workAreaActionModal(workAreaId, "rename", "notes/todo.txt");
         assertThat(rename).contains("hx-post=\"/avatar/_work-areas/" + workAreaId + "/files/rename\"");
@@ -362,9 +374,8 @@ class AvatarDashboardControllerTest {
 
         String copy = controller.workAreaActionModal(workAreaId, "copy", "notes/todo.txt");
         assertThat(copy).contains("hx-post=\"/avatar/_work-areas/" + workAreaId + "/files/action/copy\"");
+        assertThat(copy).contains("workspace-directory-picker");
         assertThat(copy).contains("name=\"destination\"");
-        assertThat(copy).contains("aria-label=\"Copy destination directory\"");
-        assertThat(copy).contains("required");
 
         String move = controller.workAreaActionModal(workAreaId, "move", "notes/todo.txt");
         assertThat(move).contains("hx-post=\"/avatar/_work-areas/" + workAreaId + "/files/action/move\"");
@@ -506,6 +517,36 @@ class AvatarDashboardControllerTest {
         assertOobRefresh(removed);
         assertThat(removed).contains("Tag removed");
         assertThat(removed).contains("No tags");
+    }
+
+    @Test
+    void workAreaTagAssignmentRejectsForgedTargetTypeAndDoesNotAssign() throws Exception {
+        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Home");
+        String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "agent-1", false).getFirst().id();
+        workAreaExplorerService.createDirectory(workAreaId, "notes");
+        workAreaExplorerService.createTextFile(workAreaId, "notes", "todo.txt");
+
+        String fileMismatch = controller.addWorkAreaTag(
+            workAreaId,
+            "notes/todo.txt",
+            "pw-wrongtype-test-file",
+            "directory"
+        );
+        assertThat(fileMismatch).contains("tag target type mismatch");
+        assertThat(workAreaExplorerService.inspect(workAreaId, "notes/todo.txt").tags())
+            .extracting(tag -> tag.slug())
+            .doesNotContain("pw-wrongtype-test-file");
+
+        String directoryMismatch = controller.addWorkAreaTag(
+            workAreaId,
+            "notes",
+            "pw-wrongtype-test-dir",
+            "file"
+        );
+        assertThat(directoryMismatch).contains("tag target type mismatch");
+        assertThat(workAreaExplorerService.inspect(workAreaId, "notes").tags())
+            .extracting(tag -> tag.slug())
+            .doesNotContain("pw-wrongtype-test-dir");
     }
 
     @Test

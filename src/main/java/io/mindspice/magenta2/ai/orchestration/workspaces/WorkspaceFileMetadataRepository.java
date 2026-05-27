@@ -26,24 +26,39 @@ public class WorkspaceFileMetadataRepository {
     }
 
     public WorkspaceFileLabel ensureLabel(String slug, String displayName, boolean system) {
+        return ensureLabel(slug, displayName, system, null);
+    }
+
+    public WorkspaceFileLabel ensureLabel(
+        String slug,
+        String displayName,
+        boolean system,
+        WorkspaceFileLabelTargetType targetType
+    ) {
         String normalizedSlug = normalizeSlug(slug);
         Optional<WorkspaceFileLabel> existing = findLabel(normalizedSlug);
         if (existing.isPresent()) {
+            WorkspaceFileLabel label = existing.orElseThrow();
+            assertTargetTypeCompatibility(label, targetType);
             return existing.orElseThrow();
         }
         Instant now = Instant.now();
+        String metadataJson = targetType == null
+            ? "{}"
+            : "{\"targetType\":\"" + targetType.wireName() + "\"}";
         jdbcTemplate.update(
             """
                 insert into workspace_file_labels (
                     id, slug, display_name, color, system_flag, metadata_json, created_at, updated_at
                 )
-                values (?, ?, ?, ?, ?, '{}', ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
             UUID.randomUUID().toString(),
             normalizedSlug,
             StringUtils.hasText(displayName) ? displayName.trim() : normalizedSlug,
             null,
             system ? 1 : 0,
+            metadataJson,
             now.toString(),
             now.toString()
         );
@@ -56,7 +71,18 @@ public class WorkspaceFileMetadataRepository {
         String fileRelativePath,
         String labelSlug
     ) {
-        WorkspaceFileLabel label = ensureLabel(labelSlug, labelSlug, false);
+        return addLabel(workArea, rootRelativePath, fileRelativePath, labelSlug, null);
+    }
+
+    public WorkspaceFileLabelAssignment addLabel(
+        WorkArea workArea,
+        String rootRelativePath,
+        String fileRelativePath,
+        String labelSlug,
+        WorkspaceFileLabelTargetType targetType
+    ) {
+        WorkspaceFileLabel label = ensureLabel(labelSlug, labelSlug, false, targetType);
+        assertTargetTypeCompatibility(label, targetType);
         Optional<WorkspaceFileLabelAssignment> existing = findAssignment(
             workArea.workspaceId(), normalizePath(fileRelativePath), label.id());
         if (existing.isPresent()) {
@@ -193,6 +219,36 @@ public class WorkspaceFileMetadataRepository {
         );
     }
 
+    public List<WorkspaceFileLabel> listLabelsForTarget(WorkspaceFileLabelTargetType targetType, String query, int limit) {
+        int boundedLimit = Math.max(1, Math.min(limit, 100));
+        String normalizedQuery = StringUtils.hasText(query) ? query.trim().toLowerCase() : null;
+        String like = normalizedQuery == null ? null : "%" + normalizedQuery + "%";
+        String target = targetType.wireName();
+        return jdbcTemplate.query(
+            """
+                select *
+                from workspace_file_labels
+                where (
+                    json_extract(metadata_json, '$.targetType') is null
+                    or json_extract(metadata_json, '$.targetType') = ?
+                )
+                  and (
+                    ? is null
+                    or lower(slug) like ?
+                    or lower(display_name) like ?
+                  )
+                order by system_flag desc, slug
+                limit ?
+                """,
+            (rs, rowNum) -> toLabel(rs),
+            target,
+            normalizedQuery,
+            like,
+            like,
+            boundedLimit
+        );
+    }
+
     private Optional<WorkspaceFileLabel> findLabel(String slug) {
         return jdbcTemplate.query(
             "select * from workspace_file_labels where slug = ?",
@@ -277,6 +333,16 @@ public class WorkspaceFileMetadataRepository {
             throw new IllegalArgumentException("label slug is invalid");
         }
         return normalized;
+    }
+
+    private void assertTargetTypeCompatibility(WorkspaceFileLabel label, WorkspaceFileLabelTargetType requestedType) {
+        if (requestedType == null || label == null || !StringUtils.hasText(label.metadataJson())) {
+            return;
+        }
+        String marker = "\"targetType\":\"" + requestedType.wireName() + "\"";
+        if (label.metadataJson().contains("\"targetType\"") && !label.metadataJson().contains(marker)) {
+            throw new IllegalArgumentException("label target type mismatch for " + label.slug());
+        }
     }
 
     private String normalizePath(String path) {

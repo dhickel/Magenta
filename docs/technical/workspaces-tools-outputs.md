@@ -108,7 +108,7 @@ Runtime alias and output directory resolution consume these columns during task,
 
 `WorkAreaExplorerService` provides the backend contract for the Avatar Work Areas/file explorer surface. It supports confined directory listings, rich row/inspect metadata, safe text/Markdown preview and save, image preview/download routing, bounded downloads, directory creation, `.txt` and `.md` creation, sibling rename, copy, move, custom file/directory tags, note labels, recursive delete with typed confirmation, and marking nested directories as Work Areas.
 
-The Avatar UI renders these operations as a Magenta-local HTMX details/list explorer with a separate inspector panel, not as a file card grid. Filesystem access, path validation, persistence, tags, and audit logging stay in workspace services. Explorer path resolution rejects absolute paths, traversal, symlink path components, unsafe text-edit extensions, oversized text saves, Home/system roots, marked Work Area descendants, and Work Areas referenced by queued/running assignment or output routing metadata.
+The Avatar UI renders these operations as a Magenta-local HTMX details/list explorer with a separate inspector panel, not as a file card grid. Work Area cards are direct click targets, the toolbar uses icon controls, and the inspector supports collapsed/expanded modes while preserving selected entry context. Filesystem access, path validation, persistence, tags, and audit logging stay in workspace services. Explorer path resolution rejects absolute paths, traversal, symlink path components, unsafe text-edit extensions, oversized text saves, Home/system roots, marked Work Area descendants, and Work Areas referenced by queued/running assignment or output routing metadata.
 
 Row metadata is intentionally lighter than preview: list/inspect classification uses extension, size, and a bounded UTF-8 probe, while preview/save routes perform full text validation. Directory creation validates symlink ancestors before any filesystem write so a rejected path cannot create directories outside the Work Area.
 
@@ -120,7 +120,9 @@ Viewer behavior:
 - Images render through the confined inline image route and expose a download link.
 - Unsupported/binary files do not expose a row View action and stale viewer requests return a safe fallback.
 
-Copy and move forms require a destination directory. A plain child directory name such as `dest` is resolved relative to the selected file's parent when that sibling directory exists; otherwise the submitted destination is resolved under the Work Area root and validated by the service.
+Copy and move are driven by an HTMX directory-picker popover/module. The user selects a destination directory inside the current Work Area scope, and the service validates confinement, traversal/symlink safety, destination type, collisions, and descendant rules.
+
+Tag editing uses a progressive-search selector flow in the inspector. Tag options are filtered by selected entry target type (`file` or `directory`) with compatibility inclusion for legacy untyped tags. New typed labels persist target type in `workspace_file_labels.metadata_json.targetType`, and server-side assignment rejects mismatched typed labels.
 
 ## Workspace Leases
 
