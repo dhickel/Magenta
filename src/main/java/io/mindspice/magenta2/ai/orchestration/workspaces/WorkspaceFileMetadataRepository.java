@@ -35,6 +35,16 @@ public class WorkspaceFileMetadataRepository {
         boolean system,
         WorkspaceFileLabelTargetType targetType
     ) {
+        return ensureLabel(slug, displayName, system, targetType, null);
+    }
+
+    public WorkspaceFileLabel ensureLabel(
+        String slug,
+        String displayName,
+        boolean system,
+        WorkspaceFileLabelTargetType targetType,
+        String description
+    ) {
         String normalizedSlug = normalizeSlug(slug);
         Optional<WorkspaceFileLabel> existing = findLabel(normalizedSlug);
         if (existing.isPresent()) {
@@ -43,9 +53,7 @@ public class WorkspaceFileMetadataRepository {
             return existing.orElseThrow();
         }
         Instant now = Instant.now();
-        String metadataJson = targetType == null
-            ? "{}"
-            : "{\"targetType\":\"" + targetType.wireName() + "\"}";
+        String metadataJson = labelMetadataJson(targetType, description);
         jdbcTemplate.update(
             """
                 insert into workspace_file_labels (
@@ -123,6 +131,30 @@ public class WorkspaceFileMetadataRepository {
             workArea.workspaceId(),
             normalizePath(fileRelativePath),
             label.orElseThrow().id()
+        );
+    }
+
+    public List<WorkspaceFileLabel> listLabels(String query, int limit) {
+        int boundedLimit = Math.max(1, Math.min(limit, 250));
+        String normalizedQuery = StringUtils.hasText(query) ? query.trim().toLowerCase() : null;
+        String like = normalizedQuery == null ? null : "%" + normalizedQuery + "%";
+        return jdbcTemplate.query(
+            """
+                select *
+                from workspace_file_labels
+                where (
+                    ? is null
+                    or lower(slug) like ?
+                    or lower(display_name) like ?
+                )
+                order by system_flag desc, slug
+                limit ?
+                """,
+            (rs, rowNum) -> toLabel(rs),
+            normalizedQuery,
+            like,
+            like,
+            boundedLimit
         );
     }
 
@@ -350,6 +382,38 @@ public class WorkspaceFileMetadataRepository {
             throw new IllegalArgumentException("file path is required");
         }
         return path.trim().replace('\\', '/');
+    }
+
+    private String labelMetadataJson(WorkspaceFileLabelTargetType targetType, String description) {
+        StringBuilder metadata = new StringBuilder("{");
+        boolean appended = false;
+        if (targetType != null) {
+            metadata.append("\"targetType\":\"").append(escapeJson(targetType.wireName())).append('"');
+            appended = true;
+        }
+        if (StringUtils.hasText(description)) {
+            if (appended) {
+                metadata.append(',');
+            }
+            metadata.append("\"description\":\"").append(escapeJson(description.trim())).append('"');
+            appended = true;
+        }
+        if (!appended) {
+            return "{}";
+        }
+        metadata.append('}');
+        return metadata.toString();
+    }
+
+    private String escapeJson(String value) {
+        return value
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("\b", "\\b")
+            .replace("\f", "\\f")
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t");
     }
 
     private void ensureSchema() {

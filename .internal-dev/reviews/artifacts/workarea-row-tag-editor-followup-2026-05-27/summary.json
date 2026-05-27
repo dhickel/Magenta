@@ -1,0 +1,21 @@
+{
+  "checks": {
+    "workAreaCardVisible": true,
+    "demoFixturesVisible": true,
+    "rowAvailable": true,
+    "wholeRowSelects": true,
+    "inlineFindOrCreateRemoved": true,
+    "tagEditorButtonVisible": true,
+    "modalHasDirectoryGroup": true,
+    "modalHasFileGroup": true,
+    "modalHasDescription": true,
+    "modalHasCreateForm": true,
+    "noDeleteUi": true,
+    "modalCreateWorks": true
+  },
+  "details": {
+    "rowCount": 4,
+    "selectedRows": 1,
+    "createdSlug": "manual-validate-1779880335551"
+  }
+}

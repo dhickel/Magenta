@@ -7,9 +7,12 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaExplorerService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceFileLabel;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceFileLabelTargetType;
 import io.mindspice.simplypages.components.Markdown;
 
 final class WorkAreaExplorerFragments {
@@ -23,6 +26,8 @@ final class WorkAreaExplorerFragments {
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter
         .ofPattern("yyyy-MM-dd HH:mm", Locale.ROOT)
         .withZone(ZoneId.systemDefault());
+    private static final Pattern TARGET_TYPE_PATTERN = Pattern.compile("\"targetType\"\\s*:\\s*\"([^\"]+)\"");
+    private static final Pattern DESCRIPTION_PATTERN = Pattern.compile("\"description\"\\s*:\\s*\"([^\"]+)\"");
 
     private WorkAreaExplorerFragments() {
     }
@@ -238,8 +243,15 @@ final class WorkAreaExplorerFragments {
             iconSvg(panelCollapsed ? "panel-open" : "panel-close"),
             escapeAttribute(entry.path()),
             escape(entry.path()),
-            tags(workAreaId, entry.path(), entry.tags(), true),
-            tagSelector(workAreaId, entry.path(), entry.directory()),
+            tags(null, entry.path(), entry.tags(), true),
+            button(
+                "Tag Editor",
+                "hx-get",
+                "/avatar/_work-areas/" + urlPath(workAreaId) + "/modal/tag-editor?path=" + url(entry.path())
+                    + "&panel=" + url(panelCollapsed ? INSPECTOR_PANEL_STATE_COLLAPSED : INSPECTOR_PANEL_STATE_EXPANDED),
+                "#" + MODAL_ID,
+                "innerHTML"
+            ),
             viewerHint(entry),
             escape(entry.fileType()),
             escape(entry.sizeLabel()),
@@ -535,6 +547,141 @@ final class WorkAreaExplorerFragments {
         return out.toString();
     }
 
+    static String tagEditorModal(
+        String workAreaId,
+        WorkAreaExplorerService.Entry entry,
+        List<WorkspaceFileLabel> allTags,
+        String panelState,
+        String message
+    ) {
+        String selectedType = entry.directory() ? WorkspaceFileLabelTargetType.DIRECTORY.wireName()
+            : WorkspaceFileLabelTargetType.FILE.wireName();
+        String createForm = """
+            <form class="avatar-stack-form" hx-post="/avatar/_work-areas/%s/modal/tag-editor/tags"
+                  hx-target="#%s" hx-swap="innerHTML">
+              <input type="hidden" name="path" value="%s">
+              <input type="hidden" name="panel" value="%s">
+              <label>Tag slug<input type="text" name="label" placeholder="project-alpha" required></label>
+              <label>Display name<input type="text" name="displayName" placeholder="Project Alpha"></label>
+              <label>Target type
+                <select name="targetType">
+                  <option value="directory"%s>Directory</option>
+                  <option value="file"%s>File</option>
+                </select>
+              </label>
+              <label>Description<textarea name="description" rows="3"
+                  placeholder="LLM-friendly context for when this tag should be used."></textarea></label>
+              <button type="submit" class="button">Create Tag</button>
+            </form>
+            """.formatted(
+            urlPath(workAreaId),
+            MODAL_ID,
+            escapeAttribute(entry.path()),
+            escapeAttribute(panelState),
+            WorkspaceFileLabelTargetType.DIRECTORY.wireName().equals(selectedType) ? " selected" : "",
+            WorkspaceFileLabelTargetType.FILE.wireName().equals(selectedType) ? " selected" : ""
+        );
+        String body = """
+            <div class="workspace-tag-editor-modal">
+              <p class="file-entry-path" title="%s">%s</p>
+              <div class="file-entry-tag-editor">
+                <h5>Assigned Tags</h5>
+                <div class="file-entry-tags">%s</div>
+              </div>
+              <div class="file-entry-tag-editor">
+                <h5>Create Tag</h5>
+                %s
+              </div>
+              <div class="file-entry-tag-editor">
+                <h5>Directory Tags</h5>
+                %s
+              </div>
+              <div class="file-entry-tag-editor">
+                <h5>File Tags</h5>
+                %s
+              </div>
+              %s
+            </div>
+            """.formatted(
+            escapeAttribute(entry.path()),
+            escape(entry.path()),
+            tags(null, entry.path(), entry.tags(), true),
+            createForm,
+            tagGroup(
+                "directory",
+                selectedType,
+                entry.path(),
+                workAreaId,
+                allTags,
+                panelState
+            ),
+            tagGroup(
+                "file",
+                selectedType,
+                entry.path(),
+                workAreaId,
+                allTags,
+                panelState
+            ),
+            status(message, false)
+        );
+        return modal("Tag Editor", body, false);
+    }
+
+    private static String tagGroup(
+        String groupType,
+        String selectedType,
+        String selectedPath,
+        String workAreaId,
+        List<WorkspaceFileLabel> allTags,
+        String panelState
+    ) {
+        StringBuilder out = new StringBuilder();
+        for (WorkspaceFileLabel label : allTags) {
+            String targetType = metadataValue(label.metadataJson(), TARGET_TYPE_PATTERN);
+            if (targetType != null
+                && !groupType.equalsIgnoreCase(targetType)
+                && !"any".equalsIgnoreCase(targetType)) {
+                continue;
+            }
+            String description = metadataValue(label.metadataJson(), DESCRIPTION_PATTERN);
+            String typeLabel = targetType == null ? "Any" : capitalize(targetType);
+            boolean compatible = targetType == null || selectedType.equalsIgnoreCase(targetType) || "any".equalsIgnoreCase(targetType);
+            out.append("""
+                <div class="workspace-tag-editor-row">
+                  <div class="workspace-tag-editor-meta">
+                    <strong>%s</strong>
+                    <code>%s</code>
+                    <span class="tag tag-muted">%s</span>
+                    <small>%s</small>
+                  </div>
+                  <form hx-post="/avatar/_work-areas/%s/modal/tag-editor/assign"
+                        hx-target="#%s" hx-swap="innerHTML">
+                    <input type="hidden" name="path" value="%s">
+                    <input type="hidden" name="label" value="%s">
+                    <input type="hidden" name="panel" value="%s">
+                    <button type="submit" class="button button-secondary small"%s>Assign</button>
+                  </form>
+                </div>
+                """.formatted(
+                escape(label.displayName()),
+                escape(label.slug()),
+                escape(typeLabel),
+                escape(description == null || description.isBlank() ? "No description provided." : description),
+                urlPath(workAreaId),
+                MODAL_ID,
+                escapeAttribute(selectedPath),
+                escapeAttribute(label.slug()),
+                escapeAttribute(panelState),
+                compatible ? "" : " disabled aria-disabled=\"true\" title=\"Incompatible with selected item type\""
+            ));
+        }
+        if (out.isEmpty()) {
+            return "<div class=\"entity-selector-empty\">No tags available.</div>";
+        }
+        return out.toString();
+    }
+
     private static String row(
         String workAreaId,
         String currentPath,
@@ -543,23 +690,30 @@ final class WorkAreaExplorerFragments {
         boolean panelCollapsed
     ) {
         String selected = entry.path().equals(selectedPath) ? " selected" : "";
+        String panel = panelCollapsed ? INSPECTOR_PANEL_STATE_COLLAPSED : INSPECTOR_PANEL_STATE_EXPANDED;
+        String rowSelectRoute = "/avatar/_work-areas/" + urlPath(workAreaId) + "/explorer?path=" + url(currentPath)
+            + "&selected=" + url(entry.path())
+            + "&panel=" + panel;
         String nameAction = entry.directory()
-            ? button("Open " + entry.name(), "hx-get", "/avatar/_work-areas/" + urlPath(workAreaId)
+            ? button(entry.name(), "hx-get", "/avatar/_work-areas/" + urlPath(workAreaId)
                 + "/explorer?path=" + url(entry.path()) + "&panel="
-                + (panelCollapsed ? INSPECTOR_PANEL_STATE_COLLAPSED : INSPECTOR_PANEL_STATE_EXPANDED), "#" + SHELL_ID, "outerHTML")
+                + panel, "#" + SHELL_ID, "outerHTML")
             : button(entry.name(), "hx-get", "/avatar/_work-areas/" + urlPath(workAreaId) + "/explorer?path=" + url(currentPath)
                 + "&selected=" + url(entry.path())
-                + "&panel=" + (panelCollapsed ? INSPECTOR_PANEL_STATE_COLLAPSED : INSPECTOR_PANEL_STATE_EXPANDED),
+                + "&panel=" + panel,
                 "#" + SHELL_ID, "outerHTML");
         String open = entry.directory()
             ? button("Open", "hx-get", "/avatar/_work-areas/" + urlPath(workAreaId)
                 + "/explorer?path=" + url(entry.path()) + "&panel="
-                + (panelCollapsed ? INSPECTOR_PANEL_STATE_COLLAPSED : INSPECTOR_PANEL_STATE_EXPANDED), "#" + SHELL_ID, "outerHTML")
+                + panel, "#" + SHELL_ID, "outerHTML")
             : entry.canView()
                 ? button("View", "hx-get", "/avatar/_work-areas/" + urlPath(workAreaId) + "/viewer?path=" + url(entry.path()), "#" + MODAL_ID, "innerHTML")
                 : "";
         return """
-            <tr class="workspace-explorer-row%s" data-workarea-path="%s">
+            <tr class="workspace-explorer-row%s" data-workarea-path="%s"
+                hx-get="%s"
+                hx-trigger="click[!event.target.closest('button,a,input,select,textarea,label,summary')]"
+                hx-target="#%s" hx-swap="outerHTML">
               <td class="workspace-explorer-name" title="%s">%s</td>
               <td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td>
               <td class="avatar-row-actions">%s%s%s%s%s</td>
@@ -567,6 +721,8 @@ final class WorkAreaExplorerFragments {
             """.formatted(
             selected,
             escapeAttribute(entry.path()),
+            rowSelectRoute,
+            SHELL_ID,
             escapeAttribute(entry.name()),
             nameAction,
             escape(entry.fileType()),
@@ -1132,5 +1288,24 @@ final class WorkAreaExplorerFragments {
 
     private static String escapeAttribute(String value) {
         return escape(value);
+    }
+
+    private static String metadataValue(String metadataJson, Pattern pattern) {
+        if (metadataJson == null || metadataJson.isBlank()) {
+            return null;
+        }
+        Matcher matcher = pattern.matcher(metadataJson);
+        if (!matcher.find()) {
+            return null;
+        }
+        return matcher.group(1);
+    }
+
+    private static String capitalize(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String normalized = value.toLowerCase(Locale.ROOT);
+        return normalized.substring(0, 1).toUpperCase(Locale.ROOT) + normalized.substring(1);
     }
 }

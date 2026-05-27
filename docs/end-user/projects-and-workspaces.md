@@ -65,7 +65,7 @@ The explorer supports:
 
 Copy and move use a directory-picker popover and remain under the selected Work Area; users do not type internal destination paths. Unsupported or binary files do not show a row View action. The backend rejects traversal, absolute paths, symlink path components, unsafe text-edit extensions, oversized text saves, protected Home/system Work Areas, active Work Area descendants, and Work Areas referenced by queued or running assignment metadata.
 
-Tag editing follows the shared progressive search selector interaction. Existing tags and create-new flows are both supported, tag options are filtered by selected item type (file or directory), and wrong-type assignments are rejected server-side.
+Tag editing uses the inspector's **Tag Editor** modal. It shows Directory and File tag groups with type/description context, allows creating typed tags, and only allows compatible assignments for the currently selected file or directory.
 
 ## Project Network And Memberships
 

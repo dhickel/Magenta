@@ -29,6 +29,15 @@ public class WorkspaceFileMetadataService {
         return repository.ensureLabel(labelSlug, displayName, false, targetType);
     }
 
+    public WorkspaceFileLabel ensureTag(
+        String labelSlug,
+        String displayName,
+        WorkspaceFileLabelTargetType targetType,
+        String description
+    ) {
+        return repository.ensureLabel(labelSlug, displayName, false, targetType, description);
+    }
+
     public WorkspaceFileLabelAssignment addLabel(WorkArea workArea, String rootRelativePath, String labelSlug) {
         return addLabel(workArea, rootRelativePath, labelSlug, null);
     }
@@ -92,5 +101,9 @@ public class WorkspaceFileMetadataService {
         int limit
     ) {
         return repository.listLabelsForTarget(targetType, query, limit);
+    }
+
+    public List<WorkspaceFileLabel> listLabels(String query, int limit) {
+        return repository.listLabels(query, limit);
     }
 }

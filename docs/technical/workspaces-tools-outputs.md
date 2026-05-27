@@ -122,7 +122,7 @@ Viewer behavior:
 
 Copy and move are driven by an HTMX directory-picker popover/module. The user selects a destination directory inside the current Work Area scope, and the service validates confinement, traversal/symlink safety, destination type, collisions, and descendant rules.
 
-Tag editing uses a progressive-search selector flow in the inspector. Tag options are filtered by selected entry target type (`file` or `directory`) with compatibility inclusion for legacy untyped tags. New typed labels persist target type in `workspace_file_labels.metadata_json.targetType`, and server-side assignment rejects mismatched typed labels.
+Tag editing is modal-driven from the inspector. The Tag Editor modal renders both directory and file groups, each with tag name, target type, and description metadata. Creation and assignment still persist through `workspace_file_labels` and `workspace_file_label_assignments`, with type metadata in `workspace_file_labels.metadata_json.targetType` and optional description text in `workspace_file_labels.metadata_json.description`. Server-side assignment still rejects mismatched typed labels.
 
 ## Workspace Leases
 

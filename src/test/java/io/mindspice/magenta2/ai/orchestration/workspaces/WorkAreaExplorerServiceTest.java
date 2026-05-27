@@ -402,6 +402,25 @@ class WorkAreaExplorerServiceTest {
             .isEmpty();
     }
 
+    @Test
+    void listAllTagsIncludesTypedMetadataDescription() throws Exception {
+        TestContext context = context();
+        context.explorer().ensureTag(
+            "file-review",
+            "File Review",
+            WorkspaceFileLabelTargetType.FILE,
+            "Use for files requiring LLM review."
+        );
+
+        assertThat(context.explorer().listAllTags("review", 20))
+            .singleElement()
+            .satisfies(label -> {
+                assertThat(label.slug()).isEqualTo("file-review");
+                assertThat(label.metadataJson()).contains("\"targetType\":\"file\"");
+                assertThat(label.metadataJson()).contains("\"description\":\"Use for files requiring LLM review.\"");
+            });
+    }
+
     private TestContext context() throws Exception {
         JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
         WorkspaceRepository workspaceRepository = new WorkspaceRepository(jdbc);

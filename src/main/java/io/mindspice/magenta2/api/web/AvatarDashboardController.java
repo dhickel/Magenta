@@ -57,6 +57,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
 import org.springframework.util.StringUtils;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -789,6 +790,9 @@ public class AvatarDashboardController {
     ) {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
+            if ("tag".equals(action)) {
+                return renderTagEditorModal(explorer, workAreaId, path, panelState(panel), null);
+            }
             WorkAreaExplorerService.DeletePreflight preflight = "delete".equals(action)
                 || "delete-recursive".equals(action)
                 ? explorer.deletePreflight(workAreaId, path, WorkAreaExplorerService.DeleteStep.INTENT)
@@ -983,12 +987,18 @@ public class AvatarDashboardController {
         @PathVariable String workAreaId,
         @RequestParam String label,
         @RequestParam(value = "targetType", required = false) String targetType,
-        @RequestParam(value = "displayName", required = false) String displayName
+        @RequestParam(value = "displayName", required = false) String displayName,
+        @RequestParam(value = "description", required = false) String description
     ) {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
             if (StringUtils.hasText(targetType)) {
-                explorer.ensureTag(label, displayName, WorkspaceFileLabelTargetType.fromWireName(targetType));
+                explorer.ensureTag(
+                    label,
+                    displayName,
+                    WorkspaceFileLabelTargetType.fromWireName(targetType),
+                    description
+                );
             } else {
                 explorer.ensureTag(label, displayName);
             }
@@ -998,21 +1008,63 @@ public class AvatarDashboardController {
         }
     }
 
-    @PostMapping("/avatar/_work-areas/{workAreaId}/files/tags")
+    @GetMapping("/avatar/_work-areas/{workAreaId}/modal/tag-editor")
     @ResponseBody
-    public String addWorkAreaTag(
+    public String workAreaTagEditorModal(
         @PathVariable String workAreaId,
         @RequestParam String path,
-        @RequestParam String label,
-        @RequestParam(value = "targetType", required = false) String targetType,
         @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
     ) {
         WorkAreaExplorerService explorer = requireExplorerService();
         try {
-            WorkspaceFileLabelTargetType requestedType = StringUtils.hasText(targetType)
+            return renderTagEditorModal(explorer, workAreaId, path, panelState(panel), null);
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.modalError("Tag editor unavailable", exception.getMessage());
+        }
+    }
+
+    @PostMapping("/avatar/_work-areas/{workAreaId}/modal/tag-editor/tags")
+    @ResponseBody
+    public String createWorkAreaTagFromEditor(
+        @PathVariable String workAreaId,
+        @RequestParam MultiValueMap<String, String> params
+    ) {
+        WorkAreaExplorerService explorer = requireExplorerService();
+        try {
+            String path = requiredSingleValue(params, "path");
+            String panel = optionalSingleValue(params, "panel");
+            String label = requiredSingleValue(params, "label");
+            String displayName = optionalSingleValue(params, "displayName");
+            String description = optionalSingleValue(params, "description");
+            String targetType = optionalSingleValue(params, "targetType");
+            WorkspaceFileLabelTargetType normalizedTargetType = StringUtils.hasText(targetType)
                 ? WorkspaceFileLabelTargetType.fromWireName(targetType)
-                : null;
-            explorer.addLabel(workAreaId, path, label, requestedType);
+                : WorkspaceFileLabelTargetType.fromWireName(inferPathTargetType(explorer, workAreaId, path));
+            explorer.ensureTag(label, displayName, normalizedTargetType, description);
+            return renderTagEditorModal(
+                explorer,
+                workAreaId,
+                path,
+                panelState(panel),
+                "Tag created: " + label
+            );
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.modalError("Tag failed", exception.getMessage());
+        }
+    }
+
+    @PostMapping("/avatar/_work-areas/{workAreaId}/modal/tag-editor/assign")
+    @ResponseBody
+    public String assignWorkAreaTagFromEditor(
+        @PathVariable String workAreaId,
+        @RequestParam MultiValueMap<String, String> params
+    ) {
+        WorkAreaExplorerService explorer = requireExplorerService();
+        try {
+            String path = requiredSingleValue(params, "path");
+            String label = requiredSingleValue(params, "label");
+            String panel = optionalSingleValue(params, "panel");
+            explorer.addLabel(workAreaId, path, label);
             return refreshedExplorerTargets(
                 explorer,
                 workAreaId,
@@ -1026,15 +1078,33 @@ public class AvatarDashboardController {
         }
     }
 
+    @PostMapping("/avatar/_work-areas/{workAreaId}/files/tags")
+    @ResponseBody
+    public String addWorkAreaTag(
+        @PathVariable String workAreaId,
+        @RequestParam MultiValueMap<String, String> params
+    ) {
+        try {
+            String path = requiredSingleValue(params, "path");
+            String label = requiredSingleValue(params, "label");
+            String targetType = optionalSingleValue(params, "targetType");
+            String panel = optionalSingleValue(params, "panel");
+            return addWorkAreaTag(workAreaId, path, label, targetType, panel);
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.inspectorError(exception.getMessage());
+        }
+    }
+
     @GetMapping("/avatar/_work-areas/{workAreaId}/tags/options")
     @ResponseBody
     public String workAreaTagOptions(
         @PathVariable String workAreaId,
-        @RequestParam String path,
-        @RequestParam(value = "label", required = false) String label
+        @RequestParam MultiValueMap<String, String> params
     ) {
-        WorkAreaExplorerService explorer = requireExplorerService();
         try {
+            String path = requiredSingleValue(params, "path");
+            String label = optionalSingleValue(params, "label");
+            WorkAreaExplorerService explorer = requireExplorerService();
             return WorkAreaExplorerFragments.tagOptions(
                 workAreaId,
                 path,
@@ -1050,21 +1120,13 @@ public class AvatarDashboardController {
     @ResponseBody
     public String removeWorkAreaTag(
         @PathVariable String workAreaId,
-        @RequestParam String path,
-        @RequestParam String label,
-        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
+        @RequestParam MultiValueMap<String, String> params
     ) {
-        WorkAreaExplorerService explorer = requireExplorerService();
         try {
-            explorer.removeLabel(workAreaId, path, label);
-            return refreshedExplorerTargets(
-                explorer,
-                workAreaId,
-                parentPath(path),
-                path,
-                panelState(panel),
-                "Tag removed"
-            );
+            String path = requiredSingleValue(params, "path");
+            String label = requiredSingleValue(params, "label");
+            String panel = optionalSingleValue(params, "panel");
+            return removeWorkAreaTag(workAreaId, path, label, panel);
         } catch (IllegalArgumentException exception) {
             return WorkAreaExplorerFragments.inspectorError(exception.getMessage());
         }
@@ -1173,7 +1235,7 @@ public class AvatarDashboardController {
     }
 
     String createWorkAreaTag(String workAreaId, String label, String displayName) {
-        return createWorkAreaTag(workAreaId, label, null, displayName);
+        return createWorkAreaTag(workAreaId, label, null, displayName, null);
     }
 
     String addWorkAreaTag(String workAreaId, String path, String label) {
@@ -1190,6 +1252,26 @@ public class AvatarDashboardController {
         );
     }
 
+    String addWorkAreaTag(String workAreaId, String path, String label, String targetType, String panel) {
+        WorkAreaExplorerService explorer = requireExplorerService();
+        try {
+            WorkspaceFileLabelTargetType requestedType = StringUtils.hasText(targetType)
+                ? WorkspaceFileLabelTargetType.fromWireName(targetType)
+                : null;
+            explorer.addLabel(workAreaId, path, label, requestedType);
+            return refreshedExplorerTargets(
+                explorer,
+                workAreaId,
+                parentPath(path),
+                path,
+                panelState(panel),
+                "Tag added"
+            );
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.inspectorError(exception.getMessage());
+        }
+    }
+
     String removeWorkAreaTag(String workAreaId, String path, String label) {
         return removeWorkAreaTag(
             workAreaId,
@@ -1197,6 +1279,23 @@ public class AvatarDashboardController {
             label,
             WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED
         );
+    }
+
+    String removeWorkAreaTag(String workAreaId, String path, String label, String panel) {
+        WorkAreaExplorerService explorer = requireExplorerService();
+        try {
+            explorer.removeLabel(workAreaId, path, label);
+            return refreshedExplorerTargets(
+                explorer,
+                workAreaId,
+                parentPath(path),
+                path,
+                panelState(panel),
+                "Tag removed"
+            );
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.inspectorError(exception.getMessage());
+        }
     }
 
     @PostMapping("/avatar/_work-areas/{workAreaId}/labels/note")
@@ -1504,6 +1603,64 @@ public class AvatarDashboardController {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Work Area explorer is unavailable");
         }
         return service;
+    }
+
+    private String renderTagEditorModal(
+        WorkAreaExplorerService explorer,
+        String workAreaId,
+        String path,
+        String panelState,
+        String message
+    ) {
+        WorkAreaExplorerService.Entry entry = explorer.inspect(workAreaId, path);
+        return WorkAreaExplorerFragments.tagEditorModal(
+            workAreaId,
+            entry,
+            explorer.listAllTags(null, 200),
+            panelState(panelState),
+            message
+        );
+    }
+
+    private String inferPathTargetType(WorkAreaExplorerService explorer, String workAreaId, String path) {
+        return explorer.inspect(workAreaId, path).directory()
+            ? WorkspaceFileLabelTargetType.DIRECTORY.wireName()
+            : WorkspaceFileLabelTargetType.FILE.wireName();
+    }
+
+    private String requiredSingleValue(MultiValueMap<String, String> params, String field) {
+        List<String> values = params.get(field);
+        if (values == null || values.isEmpty()) {
+            throw new IllegalArgumentException(field + " is required");
+        }
+        List<String> normalized = values.stream()
+            .filter(StringUtils::hasText)
+            .map(String::strip)
+            .distinct()
+            .toList();
+        if (normalized.size() != 1) {
+            throw new IllegalArgumentException(field + " must target exactly one value");
+        }
+        return normalized.getFirst();
+    }
+
+    private String optionalSingleValue(MultiValueMap<String, String> params, String field) {
+        List<String> values = params.get(field);
+        if (values == null || values.isEmpty()) {
+            return null;
+        }
+        List<String> normalized = values.stream()
+            .filter(StringUtils::hasText)
+            .map(String::strip)
+            .distinct()
+            .toList();
+        if (normalized.isEmpty()) {
+            return null;
+        }
+        if (normalized.size() != 1) {
+            throw new IllegalArgumentException(field + " must target exactly one value");
+        }
+        return normalized.getFirst();
     }
 
     private String refreshedExplorer(

@@ -39,6 +39,18 @@ class WorkspaceFileMetadataRepositoryTest {
         assertThat(custom.slug()).isEqualTo("project-alpha");
         assertThat(custom.displayName()).isEqualTo("Project Alpha");
         assertThat(custom.system()).isFalse();
+        WorkspaceFileLabel typed = repository.ensureLabel(
+            "file-review",
+            "File Review",
+            false,
+            WorkspaceFileLabelTargetType.FILE,
+            "Use for files that need LLM review."
+        );
+        assertThat(typed.metadataJson()).contains("\"targetType\":\"file\"");
+        assertThat(typed.metadataJson()).contains("\"description\":\"Use for files that need LLM review.\"");
+        assertThat(repository.listLabels("review", 10))
+            .extracting(WorkspaceFileLabel::slug)
+            .contains("file-review");
 
         repository.addLabel(workArea, "home/notes", "home/notes", "project-alpha");
         assertThat(repository.labelsForPath("workspace-1", "home/notes"))

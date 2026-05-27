@@ -466,6 +466,18 @@ public class WorkAreaExplorerService {
         return metadataService.ensureTag(labelSlug, displayName, targetType);
     }
 
+    public WorkspaceFileLabel ensureTag(
+        String labelSlug,
+        String displayName,
+        WorkspaceFileLabelTargetType targetType,
+        String description
+    ) {
+        if (metadataService == null) {
+            throw new IllegalStateException("workspace file metadata service is not available");
+        }
+        return metadataService.ensureTag(labelSlug, displayName, targetType, description);
+    }
+
     public int removeLabel(String workAreaId, String relativePath, String labelSlug) {
         WorkArea area = workAreaService.get(workAreaId);
         Path root = workAreaService.resolve(area);
@@ -505,6 +517,13 @@ public class WorkAreaExplorerService {
             Files.isDirectory(target, LinkOption.NOFOLLOW_LINKS)
         );
         return metadataService.listLabelsForTarget(targetType, query, limit);
+    }
+
+    public List<WorkspaceFileLabel> listAllTags(String query, int limit) {
+        if (metadataService == null) {
+            throw new IllegalStateException("workspace file metadata service is not available");
+        }
+        return metadataService.listLabels(query, limit);
     }
 
     public Entry inspect(String workAreaId, String relativePath) {

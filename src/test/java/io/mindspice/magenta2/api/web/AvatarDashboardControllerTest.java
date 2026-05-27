@@ -34,6 +34,7 @@ import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceFileActionLogRepository;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceFileMetadataRepository;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceFileMetadataService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceFileLabelTargetType;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceOwnerType;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceRepository;
@@ -50,6 +51,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
+import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.server.ResponseStatusException;
 
 class AvatarDashboardControllerTest {
@@ -317,6 +319,7 @@ class AvatarDashboardControllerTest {
         assertThat(shell).contains("workspace-explorer-table-region");
         assertThat(shell).contains("file-explorer-inspector-pane");
         assertThat(shell).contains("data-workarea-path=\"notes/todo.txt\"");
+        assertThat(shell).contains("hx-trigger=\"click[!event.target.closest('button,a,input,select,textarea,label,summary')]\"");
         assertThat(shell).contains(
             "hx-get=\"/avatar/_work-areas/" + workAreaId + "/explorer?path=notes&selected=notes%2Ftodo.txt&panel=expanded\""
         );
@@ -353,9 +356,9 @@ class AvatarDashboardControllerTest {
         String inspect = controller.workAreaInspector(workAreaId, "notes/todo.txt");
         assertThat(inspect).contains("id=\"avatar-workarea-inspector\"");
         assertThat(inspect).contains("file-explorer-inspector-pane");
-        assertThat(inspect).contains("workspace-tag-selector");
+        assertThat(inspect).contains("Tag Editor");
         assertThat(inspect).contains(
-            "hx-get=\"/avatar/_work-areas/" + workAreaId + "/tags/options?path=notes%2Ftodo.txt\""
+            "hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/tag-editor?path=notes%2Ftodo.txt&panel=expanded\""
         );
         assertThat(inspect).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/viewer?path=notes%2Ftodo.txt\"");
         assertThat(inspect).contains(
@@ -366,7 +369,8 @@ class AvatarDashboardControllerTest {
         );
         assertThat(inspect).contains("/files/action/copy/picker?path=notes%2Ftodo.txt");
         assertThat(inspect).contains("/files/action/move/picker?path=notes%2Ftodo.txt");
-        assertThat(inspect).contains("workspace-tag-remove");
+        assertThat(inspect).doesNotContain("workspace-tag-selector");
+        assertThat(inspect).doesNotContain("workspace-tag-remove");
 
         String rename = controller.workAreaActionModal(workAreaId, "rename", "notes/todo.txt");
         assertThat(rename).contains("hx-post=\"/avatar/_work-areas/" + workAreaId + "/files/rename\"");
@@ -385,7 +389,11 @@ class AvatarDashboardControllerTest {
         assertThat(delete).contains("name=\"step\" value=\"FILE_CONFIRM\"");
 
         String tag = controller.workAreaActionModal(workAreaId, "tag", "notes/todo.txt");
-        assertThat(tag).contains("hx-post=\"/avatar/_work-areas/" + workAreaId + "/files/tags\"");
+        assertThat(tag).contains("Tag Editor");
+        assertThat(tag).contains("Directory Tags");
+        assertThat(tag).contains("File Tags");
+        assertThat(tag).contains("hx-post=\"/avatar/_work-areas/" + workAreaId + "/modal/tag-editor/tags\"");
+        assertThat(tag).contains("hx-post=\"/avatar/_work-areas/" + workAreaId + "/modal/tag-editor/assign\"");
     }
 
     @Test
@@ -511,7 +519,8 @@ class AvatarDashboardControllerTest {
         assertOobRefresh(added);
         assertThat(added).contains("id=\"avatar-workarea-inspector\"");
         assertThat(added).contains("project-alpha");
-        assertThat(added).contains("hx-delete=\"/avatar/_work-areas/" + workAreaId + "/files/tags?path=notes&amp;label=project-alpha\"");
+        assertThat(added).contains("Tag Editor");
+        assertThat(added).doesNotContain("workspace-tag-remove");
 
         String removed = controller.removeWorkAreaTag(workAreaId, "notes", "project-alpha");
         assertOobRefresh(removed);
@@ -547,6 +556,43 @@ class AvatarDashboardControllerTest {
         assertThat(workAreaExplorerService.inspect(workAreaId, "notes").tags())
             .extracting(tag -> tag.slug())
             .doesNotContain("pw-wrongtype-test-dir");
+    }
+
+    @Test
+    void tagEditorModalCreatesTypedTagsWithDescriptionAndAssignsSinglePathTarget() throws Exception {
+        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Home");
+        String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "agent-1", false).getFirst().id();
+        workAreaExplorerService.createDirectory(workAreaId, "notes");
+        workAreaExplorerService.createTextFile(workAreaId, "notes", "todo.txt");
+        workAreaExplorerService.ensureTag("dir-only", "Directory Only", WorkspaceFileLabelTargetType.DIRECTORY);
+
+        LinkedMultiValueMap<String, String> createParams = new LinkedMultiValueMap<>();
+        createParams.add("path", "notes/todo.txt");
+        createParams.add("label", "file-review");
+        createParams.add("displayName", "File Review");
+        createParams.add("targetType", "file");
+        createParams.add("description", "Use for files that should be reviewed by an LLM.");
+        String created = controller.createWorkAreaTagFromEditor(workAreaId, createParams);
+        assertThat(created).contains("Tag created: file-review");
+        assertThat(created).contains("Directory Tags");
+        assertThat(created).contains("File Tags");
+        assertThat(created).contains("Use for files that should be reviewed by an LLM.");
+
+        String modal = controller.workAreaActionModal(workAreaId, "tag", "notes/todo.txt");
+        assertThat(modal).contains("dir-only");
+        assertThat(modal).contains("file-review");
+        assertThat(modal).contains("disabled aria-disabled=\"true\"");
+
+        LinkedMultiValueMap<String, String> assignParams = new LinkedMultiValueMap<>();
+        assignParams.add("path", "notes/todo.txt");
+        assignParams.add("path", "notes/todo.txt");
+        assignParams.add("label", "file-review");
+        String assigned = controller.assignWorkAreaTagFromEditor(workAreaId, assignParams);
+        assertOobRefresh(assigned);
+        assertThat(assigned).contains("Tag added");
+        assertThat(workAreaExplorerService.inspect(workAreaId, "notes/todo.txt").tags())
+            .extracting(tag -> tag.slug())
+            .contains("file-review");
     }
 
     @Test
