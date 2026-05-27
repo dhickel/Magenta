@@ -105,7 +105,22 @@ function bindWorkAreaEditor(editor) {
         updateButtons();
     };
 
+    const flushHistoryCapture = () => {
+        if (state.applyingSnapshot) {
+            return;
+        }
+        if (state.historyTimer !== null) {
+            window.clearTimeout(state.historyTimer);
+            state.historyTimer = null;
+        }
+        pushSnapshot(source.value);
+    };
+
     const applySnapshot = (nextValue, statusMessage) => {
+        if (state.historyTimer !== null) {
+            window.clearTimeout(state.historyTimer);
+            state.historyTimer = null;
+        }
         state.applyingSnapshot = true;
         source.value = nextValue;
         state.applyingSnapshot = false;
@@ -123,8 +138,11 @@ function bindWorkAreaEditor(editor) {
         if (state.applyingSnapshot) {
             return;
         }
-        window.clearTimeout(state.historyTimer);
+        if (state.historyTimer !== null) {
+            window.clearTimeout(state.historyTimer);
+        }
         state.historyTimer = window.setTimeout(() => {
+            state.historyTimer = null;
             pushSnapshot(source.value);
         }, WORKAREA_HISTORY_DEBOUNCE_MS);
     };
@@ -154,6 +172,7 @@ function bindWorkAreaEditor(editor) {
     }
 
     undoButton?.addEventListener("click", () => {
+        flushHistoryCapture();
         if (state.historyIndex <= 0) {
             return;
         }

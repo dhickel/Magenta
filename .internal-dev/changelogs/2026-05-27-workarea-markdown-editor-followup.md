@@ -6,6 +6,7 @@
 - Added markdown `Edit`, `Preview`, and `Split` modes that use current unsaved textarea content for preview rendering.
 - Kept save explicit via existing HTMX `PUT /avatar/_work-areas/{workAreaId}/text`.
 - Added browser-local undo/redo/revert controls and dirty status messaging.
+- Follow-up repair: undo now flushes any pending debounced snapshot before applying history, and programmatic snapshot application clears stale pending history timers so redo reliably restores the undone unsaved edit.
 - Normalized rendered-markdown spacing/layout with a shared scoped `.magenta-rendered-markdown` class and applied it to Work Area rendered markdown containers.
 - Added a non-persistent sanitized preview route for markdown editor sync.
 - Updated tests and docs/specs to replace legacy Rendered/Text-tab wording.
@@ -39,7 +40,9 @@
 
 # Risks
 - Editor local history is client-side snapshot-based, so undo granularity is timer-based rather than per-keystroke native history.
+- No dedicated JavaScript unit-test harness currently exists in this repo for static editor modules; redo behavior remains covered by browser validation rather than JS unit tests.
 - Browser validation is still required to verify split-mode ergonomics and compact control wrapping across desktop/mobile.
 
 # Follow-up Items
 - Dispatch focused Playwright validation (desktop and mobile) for markdown viewer/editor modes, save persistence, local undo/redo/revert affordances, and rendered markdown layout quality.
+- Use stable root fixtures for reruns (`demo-fixtures/briefing.md` plus `demo-fixtures/plain-text-fixture.txt`) and fail validation if `pw-*` files are generated.
