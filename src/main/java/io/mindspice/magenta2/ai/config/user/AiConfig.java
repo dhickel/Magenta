@@ -33,15 +33,6 @@ public record AiConfig(
         return StringUtils.hasText(summaryModel) ? summaryModel : summeryModel;
     }
 
-    /**
-     * @deprecated Use {@link #resolvedSummaryModelKey()}. This remains for older callers while
-     * legacy external configs still accept the misspelled {@code summeryModel} property.
-     */
-    @Deprecated
-    public String resolvedSummeryModelKey() {
-        return resolvedSummaryModelKey();
-    }
-
     public String resolvedPlanningModelKey() {
         return planningModel == null || planningModel.isBlank() ? "local-gemma-26b" : planningModel;
     }
