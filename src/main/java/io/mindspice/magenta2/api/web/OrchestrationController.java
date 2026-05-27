@@ -709,7 +709,7 @@ public class OrchestrationController {
             String editorHtml = planEditorEmptyState().render();
             return listHtml + "<div id=\"plan-editor-container\" hx-swap-oob=\"innerHTML\">" + editorHtml + "</div>";
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return renderError(e);
         }
     }
 
@@ -936,9 +936,9 @@ public class OrchestrationController {
             }
             return planEditorFragment(planService.getTask(planId)).render();
         } catch (IllegalStateException e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return renderError(e);
         } catch (IllegalArgumentException e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return renderError(e);
         }
     }
 
@@ -957,7 +957,7 @@ public class OrchestrationController {
             planService.finalizeTask(planId);
             return planEditorFragment(planService.getTask(planId)).render();
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return renderError(e);
         }
     }
 
@@ -1032,7 +1032,7 @@ public class OrchestrationController {
             return isInput ? planInputsSection(planService.getTask(planId)).render()
                            : planOutputsSection(planService.getTask(planId)).render();
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return renderError(e);
         }
     }
 
@@ -1150,7 +1150,7 @@ public class OrchestrationController {
             return isInput ? planInputsSection(planService.getTask(planId)).render()
                            : planOutputsSection(planService.getTask(planId)).render();
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return renderError(e);
         }
     }
 
@@ -1359,7 +1359,7 @@ public class OrchestrationController {
             savePlanEditorChange(current, updated);
             return listSectionHtml(planService.getTask(planId), section).render();
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return renderError(e);
         }
     }
 
@@ -1429,7 +1429,7 @@ public class OrchestrationController {
             savePlanEditorChange(current, updated);
             return listSectionHtml(planService.getTask(planId), section).render();
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return renderError(e);
         }
     }
 
@@ -1459,7 +1459,7 @@ public class OrchestrationController {
             savePlanEditorChange(current, updated);
             return listSectionHtml(planService.getTask(planId), section).render();
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return renderError(e);
         }
     }
 
@@ -1640,7 +1640,7 @@ public class OrchestrationController {
             savePlanEditorChange(current, updated);
             return planStepsSection(planService.getTask(planId)).render();
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return renderError(e);
         }
     }
 
@@ -1692,7 +1692,7 @@ public class OrchestrationController {
             ));
             return submitResultFragment(assignment, plan).render();
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return renderError(e);
         }
     }
 
@@ -1763,7 +1763,7 @@ public class OrchestrationController {
                     .withAttribute("onclick", "navigator.clipboard.writeText(this.previousElementSibling.textContent);window.open('/chat','_blank')"))
                 .render();
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return renderError(e);
         }
     }
 
@@ -2496,7 +2496,7 @@ public class OrchestrationController {
             workflowService.deleteDefinition(workflowId);
             return workflowEditorEmptyState().render();
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return renderError(e);
         }
     }
 
@@ -2601,7 +2601,7 @@ public class OrchestrationController {
                 .orElseThrow(() -> new IllegalArgumentException("Node not found: " + nodeKey));
             return workflowSelectedNodePanel(wf, node).render();
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return renderError(e);
         }
     }
 
@@ -2759,7 +2759,7 @@ public class OrchestrationController {
             ));
             return workflowSubmitResultFragment(assignment, wf).render();
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return renderError(e);
         }
     }
 
@@ -3571,7 +3571,7 @@ public class OrchestrationController {
             jobService.saveDefinition(updated);
             return jobEditorFragment(jobService.getDefinition(jobId)).render();
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return renderError(e);
         }
     }
 
@@ -3583,7 +3583,7 @@ public class OrchestrationController {
             // Return empty to trigger client-side removal
             return "";
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return renderError(e);
         }
     }
 
@@ -3598,7 +3598,7 @@ public class OrchestrationController {
             JobDefinition job = jobService.getDefinition(jobId);
             return jobEditorFragment(job).render();
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return renderError(e);
         }
     }
 
@@ -3614,7 +3614,7 @@ public class OrchestrationController {
             JobDefinition updated = jobService.getDefinition(jobId);
             return jobEditorFragment(updated).render();
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return renderError(e);
         }
     }
 
@@ -3632,7 +3632,7 @@ public class OrchestrationController {
             JobDefinition updated = jobService.getDefinition(jobId);
             return jobEditorFragment(updated).render();
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return renderError(e);
         }
     }
 
@@ -4433,7 +4433,7 @@ public class OrchestrationController {
             );
             return projectEditorFragment(updated, "Project saved.").render() + projectListOobFragment();
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return renderError(e);
         }
     }
 
@@ -4444,7 +4444,7 @@ public class OrchestrationController {
             projectService.deleteProject(projectId);
             return "";
         } catch (Exception e) {
-            return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
+            return renderError(e);
         }
     }
 
@@ -7662,6 +7662,10 @@ public class OrchestrationController {
         long hours = minutes / 60;
         if (hours < 24) return hours + "h";
         return (hours / 24) + "d";
+    }
+
+    private String renderError(Exception e) {
+        return new Div().withClass("orch-status").withInnerText("Error: " + e.getMessage()).render();
     }
 
     private String firstNonBlank(String... values) {
