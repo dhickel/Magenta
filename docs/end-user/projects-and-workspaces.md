@@ -65,9 +65,9 @@ The explorer supports:
 
 Copy and move use a directory-picker popover and remain under the selected Work Area; users do not type internal destination paths. Unsupported or binary files do not show a row View action. The backend rejects traversal, absolute paths, symlink path components, unsafe text-edit extensions, oversized text saves, protected Home/system Work Areas, active Work Area descendants, and Work Areas referenced by queued or running assignment metadata.
 
-Inspector details are intentionally compact: selected name/path, tags, `Tag Editor`, metadata, and a bounded preview box. Row actions stay as icon controls with labels/tooltips, and the inspector can collapse into a slim rail that preserves selected-path context when expanded again.
+Inspector details are intentionally compact: selected name/path, tags, a **Manage Tags** button, metadata, and a bounded preview box. Row actions stay as icon controls with labels/tooltips, and the inspector can collapse into a slim rail with only an expand affordance while preserving selected-path context in the expand route.
 
-Tag editing uses the inspector's **Tag Editor** modal. It shows Directory and File tag groups with type/description context, allows creating typed tags, and only allows compatible assignments for the currently selected file or directory.
+Tag editing uses the inspector's **Tag Editor** modal. It shows a compact row inventory with Directory/File filters, type/description context, focused row editing, typed tag creation, and compatible assignment for the currently selected file or directory. Tag deletion is not part of the current surface.
 
 ## Project Network And Memberships
 

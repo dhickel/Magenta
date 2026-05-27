@@ -177,11 +177,9 @@ final class WorkAreaExplorerFragments {
         String listPathValue = pathOrRoot(listPath);
         String selectedParam = entry == null ? "" : "&selected=" + url(entry.path());
         if (panelCollapsed) {
-            String collapsedName = entry == null ? "Inspector" : fileName(entry.path());
             return """
                 <aside id="%s" class="file-explorer-inspector-pane file-explorer-inspector-pane-collapsed"%s>
                   <div class="file-explorer-inspector-collapsed-body">
-                    <span class="file-explorer-inspector-collapsed-label" title="%s">%s</span>
                     <button type="button" class="avatar-icon-toolbar-button" title="Expand inspector" aria-label="Expand inspector"
                             hx-get="/avatar/_work-areas/%s/explorer?path=%s%s&panel=%s"
                             hx-target="#%s" hx-swap="outerHTML">%s</button>
@@ -191,8 +189,6 @@ final class WorkAreaExplorerFragments {
                 """.formatted(
                 INSPECTOR_ID,
                 oob ? " hx-swap-oob=\"true\"" : "",
-                escapeAttribute(collapsedName),
-                escape(collapsedName),
                 urlPath(workAreaId),
                 url(listPathValue),
                 selectedParam,
@@ -237,7 +233,9 @@ final class WorkAreaExplorerFragments {
               <div class="file-entry-tag-editor">
                 <h5>Tags</h5>
                 <div class="file-entry-tags">%s</div>
-                %s
+                <button type="button" class="button button-secondary small workspace-manage-tags-button"
+                        hx-get="/avatar/_work-areas/%s/modal/tag-editor?path=%s&panel=%s"
+                        hx-target="#%s" hx-swap="innerHTML">Manage Tags</button>
               </div>
               <dl class="file-entry-details-grid">
                 <dt>Type</dt><dd>%s</dd>
@@ -265,14 +263,10 @@ final class WorkAreaExplorerFragments {
             escapeAttribute(entry.path()),
             escape(entry.path()),
             tags(null, entry.path(), entry.tags(), true),
-            button(
-                "Tag Editor",
-                "hx-get",
-                "/avatar/_work-areas/" + urlPath(workAreaId) + "/modal/tag-editor?path=" + url(entry.path())
-                    + "&panel=" + url(panelCollapsed ? INSPECTOR_PANEL_STATE_COLLAPSED : INSPECTOR_PANEL_STATE_EXPANDED),
-                "#" + MODAL_ID,
-                "innerHTML"
-            ),
+            urlPath(workAreaId),
+            url(entry.path()),
+            url(panelCollapsed ? INSPECTOR_PANEL_STATE_COLLAPSED : INSPECTOR_PANEL_STATE_EXPANDED),
+            MODAL_ID,
             escape(entry.fileType()),
             escape(entry.sizeLabel()),
             time(entry.createdAt()),
@@ -558,7 +552,7 @@ final class WorkAreaExplorerFragments {
         String selectedType = entry.directory() ? WorkspaceFileLabelTargetType.DIRECTORY.wireName()
             : WorkspaceFileLabelTargetType.FILE.wireName();
         String createForm = """
-            <form class="avatar-stack-form" hx-post="/avatar/_work-areas/%s/modal/tag-editor/tags"
+            <form class="avatar-stack-form workspace-tag-editor-create-form" hx-post="/avatar/_work-areas/%s/modal/tag-editor/tags"
                   hx-target="#%s" hx-swap="innerHTML">
               <input type="hidden" name="path" value="%s">
               <input type="hidden" name="panel" value="%s">
@@ -584,40 +578,43 @@ final class WorkAreaExplorerFragments {
         );
         String body = """
             <div class="workspace-tag-editor-modal">
-              <p class="file-entry-path" title="%s">%s</p>
-              <div class="file-entry-tag-editor">
-                <h5>Assigned Tags</h5>
-                <div class="file-entry-tags">%s</div>
+              <div class="workspace-tag-editor-header">
+                <div>
+                  <h3>Manage Tags</h3>
+                  <p class="file-entry-path" title="%s">%s</p>
+                </div>
+                <div class="file-entry-tags workspace-tag-editor-assigned" aria-label="Assigned tags">%s</div>
               </div>
-              <div class="file-entry-tag-editor">
-                <h5>Create Tag</h5>
+              <div class="workspace-tag-editor-filters" role="radiogroup" aria-label="Tag type filter">
+                <input id="workspace-tag-filter-all" type="radio" name="workspace-tag-filter" checked>
+                <label for="workspace-tag-filter-all">All</label>
+                <input id="workspace-tag-filter-directory" type="radio" name="workspace-tag-filter">
+                <label for="workspace-tag-filter-directory">Directory</label>
+                <input id="workspace-tag-filter-file" type="radio" name="workspace-tag-filter">
+                <label for="workspace-tag-filter-file">File</label>
+              </div>
+              <div class="workspace-tag-editor-body">
+                <section class="workspace-tag-editor-create">
+                  <h4>Create Tag</h4>
+                  %s
+                </section>
+                <section class="workspace-tag-editor-inventory">
+                  <div class="workspace-tag-editor-table-header" aria-hidden="true">
+                    <span>Name</span><span>Slug</span><span>Type</span><span>Description</span><span>Action</span>
+                  </div>
+                  %s
+                </section>
+              </div>
+              <div class="workspace-tag-editor-footer">
                 %s
               </div>
-              <div class="file-entry-tag-editor">
-                <h5>Directory Tags</h5>
-                %s
-              </div>
-              <div class="file-entry-tag-editor">
-                <h5>File Tags</h5>
-                %s
-              </div>
-              %s
             </div>
             """.formatted(
             escapeAttribute(entry.path()),
             escape(entry.path()),
             tags(null, entry.path(), entry.tags(), true),
             createForm,
-            tagGroup(
-                "directory",
-                selectedType,
-                entry.path(),
-                workAreaId,
-                allTags,
-                panelState
-            ),
-            tagGroup(
-                "file",
+            tagRows(
                 selectedType,
                 entry.path(),
                 workAreaId,
@@ -629,8 +626,7 @@ final class WorkAreaExplorerFragments {
         return modal("Tag Editor", body, false);
     }
 
-    private static String tagGroup(
-        String groupType,
+    private static String tagRows(
         String selectedType,
         String selectedPath,
         String workAreaId,
@@ -640,35 +636,69 @@ final class WorkAreaExplorerFragments {
         StringBuilder out = new StringBuilder();
         for (WorkspaceFileLabel label : allTags) {
             String targetType = metadataValue(label.metadataJson(), TARGET_TYPE_PATTERN);
-            if (targetType != null
-                && !groupType.equalsIgnoreCase(targetType)
-                && !"any".equalsIgnoreCase(targetType)) {
-                continue;
-            }
+            String normalizedType = targetType == null || targetType.isBlank() || "any".equalsIgnoreCase(targetType)
+                ? selectedType
+                : targetType.toLowerCase(Locale.ROOT);
             String description = metadataValue(label.metadataJson(), DESCRIPTION_PATTERN);
-            String typeLabel = targetType == null ? "Any" : capitalize(targetType);
-            boolean compatible = targetType == null || selectedType.equalsIgnoreCase(targetType) || "any".equalsIgnoreCase(targetType);
+            String descriptionText = description == null || description.isBlank()
+                ? "No description provided."
+                : description;
+            String typeLabel = capitalize(normalizedType);
+            boolean compatible = selectedType.equalsIgnoreCase(normalizedType);
             out.append("""
-                <div class="workspace-tag-editor-row">
-                  <div class="workspace-tag-editor-meta">
-                    <strong>%s</strong>
-                    <code>%s</code>
-                    <span class="tag tag-muted">%s</span>
-                    <small>%s</small>
+                <details class="workspace-tag-editor-row" data-tag-type="%s">
+                  <summary class="workspace-tag-editor-summary">
+                    <span class="workspace-tag-editor-name" title="%s">%s</span>
+                    <code class="workspace-tag-editor-slug" title="%s">%s</code>
+                    <span class="tag tag-muted workspace-tag-editor-type">%s</span>
+                    <span class="workspace-tag-editor-description" title="%s">%s</span>
+                    <span class="button button-secondary small workspace-tag-editor-edit-label" aria-hidden="true">Edit</span>
+                  </summary>
+                  <div class="workspace-tag-editor-detail">
+                    <form class="avatar-stack-form workspace-tag-editor-edit-form"
+                          hx-post="/avatar/_work-areas/%s/modal/tag-editor/tags"
+                          hx-target="#%s" hx-swap="innerHTML">
+                      <input type="hidden" name="path" value="%s">
+                      <input type="hidden" name="panel" value="%s">
+                      <label>Tag slug<input type="text" name="label" value="%s" readonly></label>
+                      <label>Display name<input type="text" name="displayName" value="%s"></label>
+                      <label>Target type
+                        <select name="targetType">
+                          <option value="directory"%s>Directory</option>
+                          <option value="file"%s>File</option>
+                        </select>
+                      </label>
+                      <label>Description<textarea name="description" rows="3">%s</textarea></label>
+                      <button type="submit" class="button button-secondary small">Save Tag</button>
+                    </form>
+                    <form class="workspace-tag-editor-assign-form"
+                          hx-post="/avatar/_work-areas/%s/modal/tag-editor/assign"
+                          hx-target="#%s" hx-swap="innerHTML">
+                      <input type="hidden" name="path" value="%s">
+                      <input type="hidden" name="label" value="%s">
+                      <input type="hidden" name="panel" value="%s">
+                      <button type="submit" class="button small"%s>Assign</button>
+                    </form>
                   </div>
-                  <form hx-post="/avatar/_work-areas/%s/modal/tag-editor/assign"
-                        hx-target="#%s" hx-swap="innerHTML">
-                    <input type="hidden" name="path" value="%s">
-                    <input type="hidden" name="label" value="%s">
-                    <input type="hidden" name="panel" value="%s">
-                    <button type="submit" class="button button-secondary small"%s>Assign</button>
-                  </form>
-                </div>
+                </details>
                 """.formatted(
+                escapeAttribute(normalizedType),
+                escapeAttribute(label.displayName()),
                 escape(label.displayName()),
+                escapeAttribute(label.slug()),
                 escape(label.slug()),
                 escape(typeLabel),
-                escape(description == null || description.isBlank() ? "No description provided." : description),
+                escapeAttribute(descriptionText),
+                escape(descriptionText),
+                urlPath(workAreaId),
+                MODAL_ID,
+                escapeAttribute(selectedPath),
+                escapeAttribute(panelState),
+                escapeAttribute(label.slug()),
+                escapeAttribute(label.displayName()),
+                WorkspaceFileLabelTargetType.DIRECTORY.wireName().equals(normalizedType) ? " selected" : "",
+                WorkspaceFileLabelTargetType.FILE.wireName().equals(normalizedType) ? " selected" : "",
+                escape(description == null ? "" : description),
                 urlPath(workAreaId),
                 MODAL_ID,
                 escapeAttribute(selectedPath),
@@ -678,7 +708,7 @@ final class WorkAreaExplorerFragments {
             ));
         }
         if (out.isEmpty()) {
-            return "<div class=\"entity-selector-empty\">No tags available.</div>";
+            return "<div class=\"entity-selector-empty workspace-tag-editor-empty\">No tags available.</div>";
         }
         return out.toString();
     }
@@ -725,7 +755,7 @@ final class WorkAreaExplorerFragments {
         return """
             <tr class="workspace-explorer-row%s" data-workarea-path="%s"
                 hx-get="%s"
-                hx-trigger="click[!event.target.closest('button,a,input,select,textarea,label,summary')]"
+                hx-trigger="click[!event.target.closest('button,a,input,select,textarea,label,summary,details')]"
                 hx-target="#%s" hx-swap="outerHTML">
               <td class="workspace-explorer-name" title="%s">%s</td>
               <td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td>
@@ -978,7 +1008,11 @@ final class WorkAreaExplorerFragments {
                  data-viewer-kind="%s"
                  data-active-tab="%s"
                  data-editor-preview-url="%s">
-              <div class="avatar-workarea-editor-toolbar">
+              <div class="avatar-workarea-editor-topbar">
+                <div class="avatar-workarea-editor-title-group">
+                  <strong title="%s">%s</strong>
+                  <span title="%s">%s</span>
+                </div>
                 <div class="avatar-workarea-editor-actions">
                   %s
                   %s
@@ -992,8 +1026,10 @@ final class WorkAreaExplorerFragments {
                         hx-swap="outerHTML">%s</button>
               </div>
               %s
-              <div class="avatar-workarea-editor-body">
+              <div class="avatar-workarea-editor-status-row">
                 <p class="avatar-workarea-editor-status" data-editor-status="true">Saved copy loaded.</p>
+              </div>
+              <div class="avatar-workarea-editor-body">
                 <form id="%s"
                       class="avatar-stack-form avatar-workarea-editor-form"
                       data-editor-form="true"
@@ -1019,6 +1055,10 @@ final class WorkAreaExplorerFragments {
             markdown ? "markdown" : "text",
             safeMode,
             escapeAttribute(previewUrl),
+            escapeAttribute(fileName(preview.path())),
+            escape(fileName(preview.path())),
+            escapeAttribute(preview.path()),
+            escape(preview.path()),
             iconActionButton("Save", "save", "submit", "", "", "", " form=\"" + escapeAttribute(formId) + "\""),
             iconActionButton("Undo", "undo", "button", "", "", "", " data-editor-undo=\"true\""),
             iconActionButton("Redo", "redo", "button", "", "", "", " data-editor-redo=\"true\""),
@@ -1061,11 +1101,10 @@ final class WorkAreaExplorerFragments {
         return """
             <div class="avatar-modal avatar-modal-workarea-editor" role="dialog" aria-modal="true">
               <div class="avatar-edit-panel avatar-workarea-panel avatar-workarea-panel-editor">
-                <div class="avatar-workarea-editor-modal-title" title="%s">%s</div>
                 %s
               </div>
             </div>
-            """.formatted(escapeAttribute(title), escape(title), body);
+            """.formatted(body);
     }
 
     private static String iconActionButton(
@@ -1134,7 +1173,7 @@ final class WorkAreaExplorerFragments {
             ? " style=\"left:" + Math.max(8, x) + "px;top:" + Math.max(8, y) + "px;position:fixed;max-width:min(38rem,calc(100vw - 1rem));\""
             : "";
         return """
-            <div class="avatar-modal" role="dialog" aria-modal="true">
+            <div class="avatar-modal avatar-modal-workarea" role="dialog" aria-modal="true">
               <div class="avatar-edit-panel avatar-workarea-panel"%s>
                 <div class="avatar-edit-header"><h2>%s</h2><button type="button" class="button button-secondary small" hx-get="/avatar/_work-areas/modal/clear" hx-target="#%s" hx-swap="outerHTML">Close</button></div>
                 %s

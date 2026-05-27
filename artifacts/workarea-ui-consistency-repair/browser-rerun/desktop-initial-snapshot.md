@@ -1,0 +1,24 @@
+- generic [active] [ref=e1] [box=0,16,1280,895]:
+  - banner [ref=e2] [box=16,16,1248,149]:
+    - generic [ref=e5] [box=55,37,1170,69]:
+      - heading "Avatar" [level=1] [ref=e6] [box=599,37,83,34]
+      - paragraph [ref=e7] [box=543,83,194,24]: Personal assistant dashboard
+    - navigation [ref=e9] [box=66,117,1148,48]:
+      - generic [ref=e10] [box=75,123,1130,36]:
+        - link "Home" [ref=e11] [cursor=pointer] [box=75,123,65,36]:
+          - /url: /
+        - link "Dashboard" [ref=e12] [cursor=pointer] [box=145,123,105,36]:
+          - /url: /dashboard
+        - link "Chat" [ref=e13] [cursor=pointer] [box=255,123,56,36]:
+          - /url: /chat
+  - main [ref=e15] [box=16,181,1248,714]:
+    - generic [ref=e19] [box=63,224,1154,620]:
+      - complementary [ref=e21] [box=63,224,480,620]:
+        - generic [ref=e22] [box=76,237,454,44]
+        - generic [ref=e28] [box=76,292,454,26]
+        - generic [ref=e32] [box=87,340,431,26]: Ask Avatar for a quick update.
+        - generic [ref=e33] [box=76,667,454,164]
+        - button "Resize Avatar chat" [ref=e36] [box=527,828,15,15]
+      - generic [ref=e37] [box=556,224,661,526]:
+        - generic [ref=e38] [box=556,224,661,107]
+        - generic [ref=e52] [box=567,353,638,387]

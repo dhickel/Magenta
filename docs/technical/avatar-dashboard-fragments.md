@@ -77,10 +77,11 @@ Current remediation contract:
 
 - Shell header action reads `Close Workspace`.
 - Row actions are icon buttons for Open/View, Rename, Delete, Copy, and Move. Each icon action carries `aria-label` and `title`.
-- Inspector expanded state contains selected name/path, tags, `Tag Editor`, metadata, and a bounded preview box only.
+- Inspector expanded state contains selected name/path, tags, a visible `Manage Tags` button, metadata, and a bounded preview box only.
 - Inspector no longer renders bottom action buttons or old `Preview & Details`/hint prose.
-- Inspector collapsed state renders a compact rail with explicit expand affordance and preserves selected-path context in the expand route.
-- Editor modal uses a full-window/resizable panel, top-left icon controls (Save/Undo/Redo/Revert), top-right close, and tabs under command controls (`Edit`, `Preview`, `Split` for markdown; `Edit` only for plain text).
+- Inspector collapsed state renders a compact rail with only an explicit expand affordance and preserves selected-path context in the expand route.
+- Tag editor modal renders as a high-overlay bounded Work Area modal with header, Directory/File filters, an internal scroll body, compact row inventory, row-open edit forms, and no tag-definition deletion affordance.
+- Editor modal uses a full-window/resizable panel, title/path line, icon controls (Save/Undo/Redo/Revert), top-right close, status row, and segmented tabs (`Edit`, `Preview`, `Split` for markdown; `Edit` only for plain text).
 
 Viewer modals expose explicit state hooks:
 
@@ -92,6 +93,7 @@ Copy and move forms expose operation-specific hooks such as `form[data-file-acti
 
 ## Client Assets
 
+- `/css/avatar-dashboard.css?v=6` owns Avatar dashboard, Work Area browser, tag modal, and editor modal styling.
 - `/js/avatar-chat.js?v=3` owns the compact Avatar chat surface.
 - `/js/avatar-layout-edit.js?v=1` owns in-place dashboard edit helpers.
 - `/js/avatar-workarea-editor.js?v=1` owns local Work Area editor mode switching, dirty state, undo/redo/revert, and debounced unsaved markdown preview synchronization.

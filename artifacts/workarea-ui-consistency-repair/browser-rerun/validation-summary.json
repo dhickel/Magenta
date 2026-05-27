@@ -1,0 +1,45 @@
+{
+  "task": "workarea-ui-consistency-repair focused rerun",
+  "timestamp": "2026-05-27T20:58:00Z",
+  "tooling_constraint": "Default browser model gpt-5.2 unavailable in visible route; this rerun used repo-required gpt-5.3-codex medium.",
+  "live_app": "http://127.0.0.1:18080",
+  "commands": {
+    "controller_test": "mvn -Dtest=AvatarDashboardControllerTest test",
+    "diff_check": "git diff --check",
+    "startup": "mvn spring-boot:run -Dspring-boot.run.arguments=\"--server.port=18080 --magenta.root.path=$(pwd)/artifacts/workarea-ui-consistency-repair/browser-rerun/data-root --spring.datasource.url=jdbc:sqlite:$(pwd)/artifacts/workarea-ui-consistency-repair/browser-rerun/data-root/magenta.sqlite?foreign_keys=true\""
+  },
+  "results": {
+    "controller_test": "pass: 17 tests, 0 failures, 0 errors",
+    "diff_check": "pass",
+    "editor_modal_desktop": "pass: modal above nav, tab hit-tests not intercepted by topnav, Edit/Preview/Split clicks switch modes, panel stable at 1368x920, no horizontal overflow",
+    "editor_modal_mobile": "pass: modal above nav, tab hit-tests not intercepted by topnav, Edit/Preview/Split clicks switch modes, panel stable at 374x768, panes bounded, no horizontal overflow, close clears modal",
+    "collapsed_inspector": "pass: compact icon-only collapsed rail, no stale label, no horizontal overflow",
+    "tag_modal": "pass: modal above topnav, no horizontal overflow, file/directory radio filters hide and show expected row types"
+  },
+  "screenshots": [
+    "desktop-workarea-open.png",
+    "desktop-editor-preview-1440x1000.png",
+    "desktop-editor-edit-1440x1000.png",
+    "desktop-editor-split-1440x1000.png",
+    "mobile-editor-split-390x844.png",
+    "desktop-inspector-collapsed.png",
+    "desktop-tag-modal.png",
+    "desktop-tag-modal-directory-filter.png",
+    "mobile-tag-modal.png"
+  ],
+  "metrics": [
+    "desktop-editor-preview-metrics.json",
+    "desktop-editor-edit-after-click-metrics.json",
+    "desktop-editor-split-after-click-metrics.json",
+    "mobile-editor-split-metrics.json",
+    "mobile-editor-edit-after-click-metrics.json",
+    "mobile-editor-preview-after-click-metrics.json",
+    "mobile-editor-close-result.json",
+    "desktop-inspector-collapsed-metrics.json",
+    "desktop-tag-modal-metrics.json",
+    "desktop-tag-modal-directory-filter-metrics.json",
+    "desktop-tag-modal-file-filter-metrics.json",
+    "mobile-tag-modal-metrics.json"
+  ],
+  "remediation_required": false
+}

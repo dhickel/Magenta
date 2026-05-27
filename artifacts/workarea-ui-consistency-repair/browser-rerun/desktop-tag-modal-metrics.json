@@ -1,0 +1,53 @@
+{
+  "checked": "workspace-tag-filter-file",
+  "rows": [
+    {
+      "type": "file",
+      "display": "block",
+      "text": "Note\n    note\n    File\n    No description provided.\n    Edit\n  \n  \n    \n      \n "
+    },
+    {
+      "type": "file",
+      "display": "block",
+      "text": "Work Area\n    work-area\n    File\n    No description provided.\n    Edit\n  \n  \n   "
+    },
+    {
+      "type": "file",
+      "display": "block",
+      "text": "Validation Directory Tag\n    validation-directory-tag\n    File\n    No descriptio"
+    },
+    {
+      "type": "file",
+      "display": "block",
+      "text": "Validation File Tag\n    validation-file-tag\n    File\n    No description provided"
+    }
+  ],
+  "modalRect": {
+    "x": 0,
+    "y": 0,
+    "width": 1440,
+    "height": 1000,
+    "top": 0,
+    "left": 0,
+    "right": 1440,
+    "bottom": 1000
+  },
+  "navRect": {
+    "x": 72.3125,
+    "y": 12.140625,
+    "width": 1295.359375,
+    "height": 47.59375,
+    "top": 12.140625,
+    "left": 72.3125,
+    "right": 1367.671875,
+    "bottom": 59.734375
+  },
+  "modalZ": "2147483000",
+  "horizontalOverflow": false,
+  "centerHit": {
+    "tag": "DIV",
+    "cls": "avatar-modal avatar-modal-workarea",
+    "inModal": true,
+    "interceptedByTopnav": false
+  }
+}

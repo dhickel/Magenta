@@ -69,7 +69,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Controller
 public class AvatarDashboardController {
-    private static final String AVATAR_CSS = "/css/avatar-dashboard.css?v=4";
+    private static final String AVATAR_CSS = "/css/avatar-dashboard.css?v=6";
     private static final String AVATAR_AGENT_ID = "avatar";
     private static final String DEFAULT_AVATAR_TAB = "dashboard";
 

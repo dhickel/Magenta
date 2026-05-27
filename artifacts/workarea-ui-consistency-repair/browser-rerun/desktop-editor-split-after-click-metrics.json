@@ -1,0 +1,74 @@
+{
+  "viewport": {
+    "w": 1440,
+    "h": 1000
+  },
+  "activeMode": "split",
+  "documentOverflowX": false,
+  "panelRect": {
+    "x": 36,
+    "y": 40,
+    "width": 1368,
+    "height": 920,
+    "top": 40,
+    "left": 36,
+    "right": 1404,
+    "bottom": 960
+  },
+  "tabs": [
+    {
+      "mode": "edit",
+      "active": false,
+      "hitClass": "button small button-secondary",
+      "interceptedByTopnav": false
+    },
+    {
+      "mode": "preview",
+      "active": false,
+      "hitClass": "button small button-secondary",
+      "interceptedByTopnav": false
+    },
+    {
+      "mode": "split",
+      "active": true,
+      "hitClass": "button small avatar-tab-active",
+      "interceptedByTopnav": false
+    }
+  ],
+  "panes": [
+    {
+      "cls": "avatar-workarea-editor-pane avatar-workarea-editor-pane-source",
+      "display": "block",
+      "rect": {
+        "x": 53,
+        "y": 200.890625,
+        "width": 662.203125,
+        "height": 432.53125,
+        "top": 200.890625,
+        "left": 53,
+        "right": 715.203125,
+        "bottom": 633.421875
+      },
+      "clientWidth": 662,
+      "scrollWidth": 662,
+      "overflowX": "hidden"
+    },
+    {
+      "cls": "avatar-workarea-editor-pane avatar-workarea-editor-pane-preview",
+      "display": "block",
+      "rect": {
+        "x": 724.796875,
+        "y": 200.890625,
+        "width": 662.203125,
+        "height": 432.53125,
+        "top": 200.890625,
+        "left": 724.796875,
+        "right": 1387,
+        "bottom": 633.421875
+      },
+      "clientWidth": 662,
+      "scrollWidth": 662,
+      "overflowX": "hidden"
+    }
+  ]
+}

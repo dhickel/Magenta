@@ -1,0 +1,36 @@
+{
+  "checked": "workspace-tag-filter-file",
+  "rows": [
+    {
+      "type": "file",
+      "display": "block",
+      "name": "Note"
+    },
+    {
+      "type": "file",
+      "display": "block",
+      "name": "Work Area"
+    },
+    {
+      "type": "directory",
+      "display": "none",
+      "name": "Validation Directory Form Tag"
+    },
+    {
+      "type": "file",
+      "display": "block",
+      "name": "Validation Directory Tag"
+    },
+    {
+      "type": "file",
+      "display": "block",
+      "name": "Validation File Form Tag"
+    },
+    {
+      "type": "file",
+      "display": "block",
+      "name": "Validation File Tag"
+    }
+  ],
+  "horizontalOverflow": false
+}

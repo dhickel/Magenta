@@ -121,7 +121,7 @@ class AvatarDashboardControllerTest {
     void avatarShellRendersCompactChatWidgetRootsAndScopedAssets() {
         String html = controller.avatar(false);
 
-        assertThat(html).contains("/css/avatar-dashboard.css?v=4");
+        assertThat(html).contains("/css/avatar-dashboard.css?v=6");
         assertThat(html).contains("/js/avatar-chat.js?v=3");
         assertThat(html).contains("/js/avatar-layout-edit.js?v=1");
         assertThat(html).contains("/js/avatar-workarea-editor.js?v=1");
@@ -303,6 +303,11 @@ class AvatarDashboardControllerTest {
         assertThat(editor).contains("title=\"Redo\"");
         assertThat(editor).contains("title=\"Revert Unsaved\"");
         assertThat(editor).contains("title=\"Close\"");
+        assertThat(editor).contains("avatar-workarea-editor-topbar");
+        assertThat(editor).contains("avatar-workarea-editor-title-group");
+        assertThat(editor).contains("avatar-workarea-editor-status-row");
+        assertThat(editor).contains("role=\"tablist\"");
+        assertThat(editor).contains("role=\"tab\"");
         assertThat(editor).contains("data-editor-undo=\"true\"");
         assertThat(editor).contains("data-editor-redo=\"true\"");
         assertThat(editor).contains("data-editor-revert=\"true\"");
@@ -324,6 +329,18 @@ class AvatarDashboardControllerTest {
         workAreaExplorerService.ensureTag("work-area", "Work Area");
         workAreaExplorerService.ensureTag("project-alpha", "Project Alpha");
         workAreaExplorerService.ensureTag("review", "Review");
+        workAreaExplorerService.ensureTag(
+            "directory-context",
+            "Directory Context",
+            WorkspaceFileLabelTargetType.DIRECTORY,
+            "Directory-only operating context with a deliberately long LLM description for truncation checks."
+        );
+        workAreaExplorerService.ensureTag(
+            "file-context",
+            "File Context",
+            WorkspaceFileLabelTargetType.FILE,
+            "File-only operating context with a deliberately long LLM description for truncation checks."
+        );
         workAreaExplorerService.addLabel(workAreaId, "notes/todo.txt", "note");
         workAreaExplorerService.addLabel(workAreaId, "notes/todo.txt", "work-area");
         workAreaExplorerService.addLabel(workAreaId, "notes/todo.txt", "project-alpha");
@@ -338,7 +355,7 @@ class AvatarDashboardControllerTest {
         assertThat(shell).contains("workspace-explorer-table-region");
         assertThat(shell).contains("file-explorer-inspector-pane");
         assertThat(shell).contains("data-workarea-path=\"notes/todo.txt\"");
-        assertThat(shell).contains("hx-trigger=\"click[!event.target.closest('button,a,input,select,textarea,label,summary')]\"");
+        assertThat(shell).contains("hx-trigger=\"click[!event.target.closest('button,a,input,select,textarea,label,summary,details')]\"");
         assertThat(shell).contains(
             "hx-get=\"/avatar/_work-areas/" + workAreaId + "/explorer?path=notes&selected=notes%2Ftodo.txt&panel=expanded\""
         );
@@ -381,7 +398,8 @@ class AvatarDashboardControllerTest {
         String inspect = controller.workAreaInspector(workAreaId, "notes/todo.txt");
         assertThat(inspect).contains("id=\"avatar-workarea-inspector\"");
         assertThat(inspect).contains("file-explorer-inspector-pane");
-        assertThat(inspect).contains("Tag Editor");
+        assertThat(inspect).contains("Manage Tags");
+        assertThat(inspect).contains("workspace-manage-tags-button");
         assertThat(inspect).contains(
             "hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/tag-editor?path=notes%2Ftodo.txt&panel=expanded\""
         );
@@ -401,6 +419,9 @@ class AvatarDashboardControllerTest {
         );
         assertThat(collapsed).contains("file-explorer-inspector-pane-collapsed");
         assertThat(collapsed).contains("title=\"Expand inspector\"");
+        assertThat(collapsed).doesNotContain("file-explorer-inspector-collapsed-label");
+        assertThat(collapsed).doesNotContain(">todo.txt<");
+        assertThat(collapsed).doesNotContain(">.<");
         assertThat(collapsed).contains(
             "hx-get=\"/avatar/_work-areas/" + workAreaId + "/explorer?path=notes&selected=notes%2Ftodo.txt&panel=expanded\""
         );
@@ -426,10 +447,26 @@ class AvatarDashboardControllerTest {
 
         String tag = controller.workAreaActionModal(workAreaId, "tag", "notes/todo.txt");
         assertThat(tag).contains("Tag Editor");
-        assertThat(tag).contains("Directory Tags");
-        assertThat(tag).contains("File Tags");
+        assertThat(tag).contains("avatar-modal-workarea");
+        assertThat(tag).contains("workspace-tag-editor-header");
+        assertThat(tag).contains("workspace-tag-editor-filters");
+        assertThat(tag).contains("workspace-tag-filter-directory");
+        assertThat(tag).contains("workspace-tag-filter-file");
+        assertThat(tag).contains("workspace-tag-editor-table-header");
+        assertThat(tag).contains("workspace-tag-editor-row");
+        assertThat(tag).contains("workspace-tag-editor-summary");
+        assertThat(tag).contains("workspace-tag-editor-detail");
+        assertThat(tag).contains("data-tag-type=\"directory\"");
+        assertThat(tag).contains("data-tag-type=\"file\"");
+        assertThat(tag).contains("workspace-tag-editor-description");
+        assertThat(tag).contains("workspace-tag-editor-edit-form");
+        assertThat(tag).contains("workspace-tag-editor-assign-form");
+        assertThat(tag).doesNotContain("Delete Tag");
+        assertThat(tag).doesNotContain("hx-delete");
         assertThat(tag).contains("hx-post=\"/avatar/_work-areas/" + workAreaId + "/modal/tag-editor/tags\"");
         assertThat(tag).contains("hx-post=\"/avatar/_work-areas/" + workAreaId + "/modal/tag-editor/assign\"");
+        assertThat(tag).contains("<option value=\"directory\"");
+        assertThat(tag).contains("<option value=\"file\"");
     }
 
     @Test
@@ -481,12 +518,12 @@ class AvatarDashboardControllerTest {
         Files.write(root.resolve("blob.bin"), new byte[] {0, 1, 2, 3});
 
         String unsupported = controller.workAreaViewer(workAreaId, "blob.bin");
-        assertThat(unsupported).contains("class=\"avatar-modal\"");
+        assertThat(unsupported).contains("class=\"avatar-modal");
         assertThat(unsupported).doesNotContain("id=\"avatar-workarea-modal\"");
         assertThat(unsupported).contains("Viewer unavailable for this file type or size.");
 
         String save = controller.saveWorkAreaText(workAreaId, "blob.bin", "oops");
-        assertThat(save).contains("class=\"avatar-modal\"");
+        assertThat(save).contains("class=\"avatar-modal");
         assertThat(save).doesNotContain("id=\"avatar-workarea-modal\"");
         assertThat(save).contains("Save failed");
         assertThat(save).contains("not safe for text editing");
@@ -581,7 +618,7 @@ class AvatarDashboardControllerTest {
         assertOobRefresh(added);
         assertThat(added).contains("id=\"avatar-workarea-inspector\"");
         assertThat(added).contains("project-alpha");
-        assertThat(added).contains("Tag Editor");
+        assertThat(added).contains("Manage Tags");
         assertThat(added).doesNotContain("workspace-tag-remove");
 
         String removed = controller.removeWorkAreaTag(workAreaId, "notes", "project-alpha");
@@ -636,8 +673,9 @@ class AvatarDashboardControllerTest {
         createParams.add("description", "Use for files that should be reviewed by an LLM.");
         String created = controller.createWorkAreaTagFromEditor(workAreaId, createParams);
         assertThat(created).contains("Tag created: file-review");
-        assertThat(created).contains("Directory Tags");
-        assertThat(created).contains("File Tags");
+        assertThat(created).contains("workspace-tag-editor-filters");
+        assertThat(created).contains("workspace-tag-filter-directory");
+        assertThat(created).contains("workspace-tag-filter-file");
         assertThat(created).contains("Use for files that should be reviewed by an LLM.");
 
         String modal = controller.workAreaActionModal(workAreaId, "tag", "notes/todo.txt");
@@ -669,7 +707,7 @@ class AvatarDashboardControllerTest {
             .contains("id=\"avatar-workarea-inspector\"")
             .contains("path escapes Work Area");
         assertThat(controller.workAreaActionModal(workAreaId, "delete", "../escape"))
-            .contains("class=\"avatar-modal\"")
+            .contains("class=\"avatar-modal")
             .doesNotContain("id=\"avatar-workarea-modal\"")
             .contains("Action unavailable");
     }

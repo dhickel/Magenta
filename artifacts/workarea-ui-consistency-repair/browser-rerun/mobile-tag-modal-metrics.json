@@ -1,0 +1,45 @@
+{
+  "viewport": {
+    "w": 390,
+    "h": 844
+  },
+  "modalRect": {
+    "x": 0,
+    "y": 0,
+    "width": 390,
+    "height": 844,
+    "top": 0,
+    "left": 0,
+    "right": 390,
+    "bottom": 844
+  },
+  "panelRect": {
+    "x": 8,
+    "y": 8,
+    "width": 374,
+    "height": 742.71875,
+    "top": 8,
+    "left": 8,
+    "right": 382,
+    "bottom": 750.71875
+  },
+  "navRect": {
+    "x": 8,
+    "y": 0.34375,
+    "width": 374,
+    "height": 57.59375,
+    "top": 0.34375,
+    "left": 8,
+    "right": 382,
+    "bottom": 57.9375
+  },
+  "modalZ": "2147483000",
+  "wrapperZ": "2147483000",
+  "horizontalOverflow": false,
+  "fileFilterHit": {
+    "tag": "LABEL",
+    "cls": "",
+    "text": "File",
+    "interceptedByTopnav": false
+  }
+}

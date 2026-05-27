@@ -1,0 +1,138 @@
+{
+  "viewport": {
+    "w": 1440,
+    "h": 1000
+  },
+  "activeMode": "preview",
+  "documentOverflowX": false,
+  "modalRect": {
+    "x": 0,
+    "y": 0,
+    "width": 1440,
+    "height": 1000,
+    "top": 0,
+    "left": 0,
+    "right": 1440,
+    "bottom": 1000
+  },
+  "panelRect": {
+    "x": 36,
+    "y": 40,
+    "width": 1368,
+    "height": 920,
+    "top": 40,
+    "left": 36,
+    "right": 1404,
+    "bottom": 960
+  },
+  "navRect": {
+    "x": 72.3125,
+    "y": -44.859375,
+    "width": 1295.359375,
+    "height": 47.59375,
+    "top": -44.859375,
+    "left": 72.3125,
+    "right": 1367.671875,
+    "bottom": 2.734375
+  },
+  "modalZ": "2147483000",
+  "wrapperZ": "2147483000",
+  "topAtModalTop": {
+    "tag": "DIV",
+    "cls": "avatar-modal avatar-modal-workarea-editor",
+    "inModal": true
+  },
+  "tabs": [
+    {
+      "mode": "edit",
+      "active": false,
+      "rect": {
+        "x": 55.90625,
+        "y": 120.734375,
+        "width": 25.1875,
+        "height": 29.59375,
+        "top": 120.734375,
+        "left": 55.90625,
+        "right": 81.09375,
+        "bottom": 150.328125
+      },
+      "hitTag": "BUTTON",
+      "hitClass": "button small button-secondary",
+      "hitText": "Edit",
+      "interceptedByTopnav": false
+    },
+    {
+      "mode": "preview",
+      "active": true,
+      "rect": {
+        "x": 83,
+        "y": 120.734375,
+        "width": 50.390625,
+        "height": 29.59375,
+        "top": 120.734375,
+        "left": 83,
+        "right": 133.390625,
+        "bottom": 150.328125
+      },
+      "hitTag": "BUTTON",
+      "hitClass": "button small avatar-tab-active",
+      "hitText": "Preview",
+      "interceptedByTopnav": false
+    },
+    {
+      "mode": "split",
+      "active": false,
+      "rect": {
+        "x": 135.296875,
+        "y": 120.734375,
+        "width": 28.890625,
+        "height": 29.59375,
+        "top": 120.734375,
+        "left": 135.296875,
+        "right": 164.1875,
+        "bottom": 150.328125
+      },
+      "hitTag": "BUTTON",
+      "hitClass": "button small button-secondary",
+      "hitText": "Split",
+      "interceptedByTopnav": false
+    }
+  ],
+  "panes": [
+    {
+      "cls": "avatar-workarea-editor-pane avatar-workarea-editor-pane-source",
+      "displayed": "none",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "top": 0,
+        "left": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "clientWidth": 0,
+      "scrollWidth": 0,
+      "overflowX": "hidden"
+    },
+    {
+      "cls": "avatar-workarea-editor-pane avatar-workarea-editor-pane-preview",
+      "displayed": "block",
+      "rect": {
+        "x": 53,
+        "y": 200.890625,
+        "width": 1334,
+        "height": 241.140625,
+        "top": 200.890625,
+        "left": 53,
+        "right": 1387,
+        "bottom": 442.03125
+      },
+      "clientWidth": 1334,
+      "scrollWidth": 1334,
+      "overflowX": "hidden"
+    }
+  ],
+  "closeClickable": true
+}
