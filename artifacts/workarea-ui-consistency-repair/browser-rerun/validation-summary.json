@@ -1,7 +1,7 @@
 {
   "task": "workarea-ui-consistency-repair focused rerun",
   "timestamp": "2026-05-27T20:58:00Z",
-  "tooling_constraint": "Default browser model gpt-5.2 unavailable in visible route; this rerun used repo-required gpt-5.3-codex medium.",
+  "model_note": "After this rerun, the browser-proof default was corrected from an erroneous lower-version reference to gpt-5.4 medium. This rerun used repo-required gpt-5.3-codex medium.",
   "live_app": "http://127.0.0.1:18080",
   "commands": {
     "controller_test": "mvn -Dtest=AvatarDashboardControllerTest test",

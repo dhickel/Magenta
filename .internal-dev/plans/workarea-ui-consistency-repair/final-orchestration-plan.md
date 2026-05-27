@@ -22,7 +22,7 @@ Main thread remains coordinator-only. Do not implement product code on the main 
 
 - Planning requested: `gpt-5.5-high`.
 - Implementation worker: `gpt-5.4-high`.
-- Browser/validation: use the currently supported validation/browser route. TOOLING_CONSTRAINT: `gpt-5.2` is mentioned by default policy/later wording but is not available through the current visible route. Record the constraint before any fallback and stop for user approval if no supported route is acceptable.
+- Browser/validation: default browser proof should use `gpt-5.4` medium. The earlier lower-version wording was an erroneous local-default reference and should not be reused.
 - Do not instruct hidden model fallback.
 
 ## Validation Gate

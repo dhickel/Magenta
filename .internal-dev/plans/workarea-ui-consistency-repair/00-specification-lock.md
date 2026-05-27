@@ -8,7 +8,7 @@ Work classification: small. This is one coherent Work Area UI repair unit coveri
 
 Implementation model directive: use `gpt-5.4-high` because the current visible subagent route supports `gpt-5.4` and the user explicitly selected it for implementation in this plan request.
 
-TOOLING_CONSTRAINT: repo/skill defaults and later validation wording mention `gpt-5.2` for browser proof, but the current visible route does not expose `gpt-5.2`. The main thread must use a supported validation/browser route only after recording the constraint, or stop for user approval before any fallback. Do not instruct a hidden fallback.
+Model correction: browser proof defaults to `gpt-5.4` medium. Earlier lower-version wording was an erroneous local-default reference and should not be reused.
 
 ## Acceptance Criteria
 

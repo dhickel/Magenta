@@ -34,7 +34,7 @@ Small single-agent implementation plan with one coherent Work Area UI repair uni
 
 - Planning must use `advanced_planning_agent` with model `gpt-5.5`, reasoning `high`.
 - Implementation should use `implementation_worker_agent` with model `gpt-5.4`, reasoning `high`.
-- The user also mentioned `gpt-5.2-high` later in the same request, but the current visible subagent route does not expose `gpt-5.2`. Treat `gpt-5.4-high` as the supported implementation model unless the main thread receives a new user correction.
+- Model correction: the browser validation default should be `gpt-5.4` medium. Earlier lower-version wording was erroneous and should not be reused.
 - Testing/Playwright validation follows repo policy: use a separate validation/browser agent, with user overrides only if explicitly supported by the current route. If a requested model is unavailable, record `TOOLING_CONSTRAINT` and stop before fallback.
 
 ## In Scope
