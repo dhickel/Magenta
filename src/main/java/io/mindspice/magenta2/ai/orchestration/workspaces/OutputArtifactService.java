@@ -146,6 +146,10 @@ public class OutputArtifactService {
         return repository.findArtifactsByRunId(runId);
     }
 
+    public List<RunOutputArtifact> artifactsForRuns(List<String> runIds) {
+        return repository.findArtifactsByRunIds(runIds);
+    }
+
     public List<RunOutputArtifact> artifactsForPlan(String planId) {
         return repository.findArtifactsByPlanId(planId);
     }

@@ -217,11 +217,7 @@ public class JobController {
 
     @GetMapping("/api/jobs/{jobId}/outputs")
     public List<RunOutputArtifact> outputs(@PathVariable String jobId) {
-        List<RunOutputArtifact> artifacts = new ArrayList<>();
-        for (String runId : jobService.outputRunIds(jobId)) {
-            artifacts.addAll(outputArtifactService.artifactsForRun(runId));
-        }
-        return artifacts;
+        return outputArtifactService.artifactsForRuns(jobService.outputRunIds(jobId));
     }
 
     @GetMapping("/api/jobs/{jobId}/events")
