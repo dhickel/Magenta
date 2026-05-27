@@ -352,7 +352,8 @@ public class ChatService {
         String files = "";
         try {
             files = "\n\nPersistent chat file directory: " + planService.chatFileDirectory(conversationId).toRealPath();
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            logger.warn("Failed to resolve chat file directory for conversation: {}", conversationId, e);
         }
         return (cleanContext ? EXECUTE_PLAN_CLEAN_MESSAGE : EXECUTE_PLAN_MESSAGE)
             + "\n\nApproved anonymous plan:\n\n" + markdown + files;
