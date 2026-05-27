@@ -188,6 +188,7 @@ public final class SseStreamLifecycle {
         try {
             emitter.complete();
         } catch (IllegalStateException ignored) {
+            // Ignored: emitter is already completed or response is committed
         }
     }
 
