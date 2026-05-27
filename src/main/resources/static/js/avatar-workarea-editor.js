@@ -61,6 +61,8 @@ function bindWorkAreaEditor(editor) {
             button.classList.toggle("avatar-tab-active", active);
             button.classList.toggle("button-secondary", !active);
             button.setAttribute("aria-pressed", active ? "true" : "false");
+            button.setAttribute("aria-selected", active ? "true" : "false");
+            button.setAttribute("tabindex", active ? "0" : "-1");
         }
 
         if (markdown && normalized !== "edit") {

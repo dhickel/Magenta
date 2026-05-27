@@ -240,6 +240,7 @@ class AvatarDashboardControllerTest {
         assertThat(explorer).contains("id=\"avatar-workarea-inspector\"");
         assertThat(explorer).contains("id=\"avatar-workarea-modal\"");
         assertThat(explorer).contains("workspace-explorer-toolbar");
+        assertThat(explorer).contains("Close Workspace");
         assertThat(explorer).contains("title=\"Back\"");
         assertThat(explorer).contains("title=\"Refresh\"");
         assertThat(explorer).contains("title=\"New Folder\"");
@@ -273,7 +274,7 @@ class AvatarDashboardControllerTest {
         assertThat(savedPreview).contains("id=\"avatar-workarea-list-region\"");
         assertThat(savedPreview).contains("hx-swap-oob=\"true\"");
         assertThat(savedPreview).contains("id=\"avatar-workarea-inspector\"");
-        assertThat(savedPreview).contains("class=\"avatar-modal\"");
+        assertThat(savedPreview).contains("class=\"avatar-modal");
         assertThat(savedPreview).doesNotContain("id=\"avatar-workarea-modal\"><div class=\"avatar-modal\"");
         assertThat(savedPreview).contains("avatar-tab-active");
         assertThat(savedPreview).contains("data-viewer-kind=\"markdown\"");
@@ -285,13 +286,23 @@ class AvatarDashboardControllerTest {
         assertThat(preview).contains("Rendered");
 
         String viewer = controller.workAreaViewer(workAreaId, "notes/todo.md");
-        assertThat(viewer).contains("class=\"avatar-modal\"");
+        assertThat(viewer).contains("class=\"avatar-modal");
         assertThat(viewer).doesNotContain("id=\"avatar-workarea-modal\"");
         assertThat(viewer).doesNotContain("id=\"avatar-workarea-preview\"");
 
         String editor = controller.workAreaTextEditor(workAreaId, "notes/todo.md");
         assertThat(editor).contains("textarea");
+        assertThat(editor).contains("avatar-modal-workarea-editor");
+        assertThat(editor).contains("avatar-markdown-editor-shell");
         assertThat(editor).contains("hx-put=\"/avatar/_work-areas/" + workAreaId + "/text?path=notes%2Ftodo.md\"");
+        assertThat(editor).contains("hx-get=\"/avatar/_work-areas/modal/clear\"");
+        assertThat(editor).contains("hx-target=\"#avatar-workarea-modal\"");
+        assertThat(editor).contains("hx-swap=\"outerHTML\"");
+        assertThat(editor).contains("title=\"Save\"");
+        assertThat(editor).contains("title=\"Undo\"");
+        assertThat(editor).contains("title=\"Redo\"");
+        assertThat(editor).contains("title=\"Revert Unsaved\"");
+        assertThat(editor).contains("title=\"Close\"");
         assertThat(editor).contains("data-editor-undo=\"true\"");
         assertThat(editor).contains("data-editor-redo=\"true\"");
         assertThat(editor).contains("data-editor-revert=\"true\"");
@@ -338,6 +349,12 @@ class AvatarDashboardControllerTest {
         assertThat(shell).contains(
             "hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/delete?path=notes%2Ftodo.txt&panel=expanded\""
         );
+        assertThat(shell).contains("workspace-explorer-action-button");
+        assertThat(shell).contains("aria-label=\"View file\"");
+        assertThat(shell).contains("aria-label=\"Rename\"");
+        assertThat(shell).contains("aria-label=\"Delete\"");
+        assertThat(shell).contains("aria-label=\"Copy\"");
+        assertThat(shell).contains("aria-label=\"Move\"");
         assertThat(shell).contains("+1");
         assertThat(shell).doesNotContain("file-explorer-cards");
         assertThat(shell).doesNotContain("file-explorer-entry");
@@ -368,21 +385,32 @@ class AvatarDashboardControllerTest {
         assertThat(inspect).contains(
             "hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/tag-editor?path=notes%2Ftodo.txt&panel=expanded\""
         );
-        assertThat(inspect).contains("hx-get=\"/avatar/_work-areas/" + workAreaId + "/viewer?path=notes%2Ftodo.txt\"");
-        assertThat(inspect).contains(
-            "hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/rename?path=notes%2Ftodo.txt&panel=expanded\""
-        );
-        assertThat(inspect).contains(
-            "hx-get=\"/avatar/_work-areas/" + workAreaId + "/modal/delete?path=notes%2Ftodo.txt&panel=expanded\""
-        );
-        assertThat(inspect).contains("/files/action/copy/picker?path=notes%2Ftodo.txt");
-        assertThat(inspect).contains("/files/action/move/picker?path=notes%2Ftodo.txt");
+        assertThat(inspect).contains("avatar-workarea-inspector-preview-text");
+        assertThat(inspect).doesNotContain("Preview &amp; Details");
+        assertThat(inspect).doesNotContain("Markdown file. Rendered and raw text views are available.");
+        assertThat(inspect).doesNotContain("hx-get=\"/avatar/_work-areas/" + workAreaId + "/viewer?path=notes%2Ftodo.txt\"");
+        assertThat(inspect).doesNotContain("/files/action/copy/picker?path=notes%2Ftodo.txt");
         assertThat(inspect).doesNotContain("workspace-tag-selector");
         assertThat(inspect).doesNotContain("workspace-tag-remove");
+
+        String collapsed = controller.workAreaInspector(
+            workAreaId,
+            "notes/todo.txt",
+            "notes",
+            WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_COLLAPSED
+        );
+        assertThat(collapsed).contains("file-explorer-inspector-pane-collapsed");
+        assertThat(collapsed).contains("title=\"Expand inspector\"");
+        assertThat(collapsed).contains(
+            "hx-get=\"/avatar/_work-areas/" + workAreaId + "/explorer?path=notes&selected=notes%2Ftodo.txt&panel=expanded\""
+        );
+        assertThat(collapsed).doesNotContain("Preview &amp; Details");
 
         String rename = controller.workAreaActionModal(workAreaId, "rename", "notes/todo.txt");
         assertThat(rename).contains("hx-post=\"/avatar/_work-areas/" + workAreaId + "/files/rename\"");
         assertThat(rename).contains("hx-target=\"#avatar-workarea-modal\"");
+        assertThat(rename).contains("hx-get=\"/avatar/_work-areas/modal/clear\"");
+        assertThat(rename).contains("hx-swap=\"outerHTML\"");
 
         String copy = controller.workAreaActionModal(workAreaId, "copy", "notes/todo.txt");
         assertThat(copy).contains("hx-post=\"/avatar/_work-areas/" + workAreaId + "/files/action/copy\"");
@@ -474,7 +502,7 @@ class AvatarDashboardControllerTest {
         Files.write(root.resolve("pic.png"), new byte[] {1, 2, 3, 4});
 
         String markdown = controller.workAreaViewer(workAreaId, "note.md");
-        assertThat(markdown).contains("class=\"avatar-modal\"");
+        assertThat(markdown).contains("class=\"avatar-modal");
         assertThat(markdown).doesNotContain("id=\"avatar-workarea-modal\"");
         assertThat(markdown).contains("data-viewer-kind=\"markdown\"");
         assertThat(markdown).contains("data-active-tab=\"preview\"");
@@ -496,7 +524,8 @@ class AvatarDashboardControllerTest {
         assertThat(plainText).contains("textarea");
         assertThat(plainText).contains("data-viewer-kind=\"text\"");
         assertThat(plainText).contains("data-active-tab=\"edit\"");
-        assertThat(plainText).contains("avatar-tab-active\">Edit");
+        assertThat(plainText).contains("data-editor-mode=\"edit\"");
+        assertThat(plainText).contains("aria-selected=\"true\"");
         assertThat(plainText).doesNotContain("data-editor-mode=\"preview\"");
 
         String image = controller.workAreaViewer(workAreaId, "pic.png");
@@ -655,6 +684,9 @@ class AvatarDashboardControllerTest {
     void rowLayoutEditorAddsMovesResizesAndRemovesWidgets() {
         String emptyEditor = controller.edit(false);
         assertThat(emptyEditor).isEmpty();
+
+        String emptyWorkAreaModal = controller.clearWorkAreaModal();
+        assertThat(emptyWorkAreaModal).isEqualTo("<div id=\"avatar-workarea-modal\"></div>");
 
         String afterRow = controller.addLayoutRow();
         String rowId = avatarService.dashboardRows().getFirst().id();

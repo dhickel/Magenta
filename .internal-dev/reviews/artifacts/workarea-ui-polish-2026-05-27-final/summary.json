@@ -1,0 +1,119 @@
+{
+  "baseUrl": "http://localhost:18083",
+  "startedAt": "2026-05-27T18:48:05.044Z",
+  "assertions": [
+    {
+      "name": "desktop-no-horizontal-overflow",
+      "pass": true,
+      "details": "scrollWidth<=innerWidth: true"
+    },
+    {
+      "name": "editor-panel-over-global-nav",
+      "pass": true,
+      "details": "topTag:DIV, topClass:avatar-modal avatar-modal-workarea-editor"
+    },
+    {
+      "name": "markdown-editor-shell-exists",
+      "pass": true,
+      "details": ".avatar-markdown-editor-shell count > 0: true"
+    },
+    {
+      "name": "control-present-Save",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "control-present-Undo",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "control-present-Redo",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "control-present-Revert Unsaved",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "control-present-Close",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "markdown-modal-dimensions-stable-across-modes",
+      "pass": true,
+      "details": "{\"splitSize\":{\"x\":0,\"y\":0,\"width\":1440,\"height\":1000},\"previewSize\":{\"x\":0,\"y\":0,\"width\":1440,\"height\":1000},\"editSize\":{\"x\":0,\"y\":0,\"width\":1440,\"height\":1000}}"
+    },
+    {
+      "name": "markdown-unsaved-preview-updates",
+      "pass": true,
+      "details": "count=1"
+    },
+    {
+      "name": "single-modal-host-remains-after-close",
+      "pass": true,
+      "details": "count=1"
+    },
+    {
+      "name": "modal-host-cleared-after-close",
+      "pass": true,
+      "details": ".avatar-modal children=0"
+    },
+    {
+      "name": "no-stale-modal-subtree-intercepts-plain-text-row",
+      "pass": true,
+      "details": "plain row visible after click=true"
+    },
+    {
+      "name": "plain-text-inspector-preview-bounded",
+      "pass": true,
+      "details": "overflowY=auto, h=125/125"
+    },
+    {
+      "name": "plain-text-editor-edit-only",
+      "pass": true,
+      "details": "hasPreviewOrSplit=false"
+    },
+    {
+      "name": "plain-text-close-clears-modal-host",
+      "pass": true,
+      "details": ".avatar-modal children=0"
+    },
+    {
+      "name": "markdown-preview-spacing-acceptable",
+      "pass": true,
+      "details": "p:true, list:true, code:true"
+    },
+    {
+      "name": "mobile-no-horizontal-overflow",
+      "pass": true,
+      "details": "scrollWidth<=innerWidth: true"
+    },
+    {
+      "name": "mobile-markdown-modal-opened",
+      "pass": true,
+      "details": ""
+    }
+  ],
+  "consoleErrors": [],
+  "requestFailures": [],
+  "screenshots": [
+    "01-workareas-desktop-initial.png",
+    "02-markdown-editor-edit-desktop.png",
+    "03-markdown-editor-preview-desktop.png",
+    "04-plaintext-editor-desktop.png",
+    "05-markdown-editor-reopen-desktop.png",
+    "06-workareas-mobile.png",
+    "07-markdown-editor-mobile.png"
+  ],
+  "fixtureLimitations": [
+    "No image fixture row detected in current workarea listing."
+  ],
+  "pass": true,
+  "finishedAt": "2026-05-27T18:48:18.228Z",
+  "consoleErrorCount": 0,
+  "requestFailureCount": 0
+}

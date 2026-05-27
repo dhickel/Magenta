@@ -1,0 +1,91 @@
+{
+  "baseUrl": "http://localhost:18083",
+  "route": "http://localhost:18083/avatar?tab=work-areas",
+  "startedAt": "2026-05-27T18:58:43.162Z",
+  "assertions": [
+    {
+      "name": "demo-fixtures-folder-visible",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "image-row-visible-desktop",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "inspector-image-visible-desktop",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "inspector-image-contained-desktop",
+      "pass": true,
+      "details": "{\"nonZero\":true,\"objectFit\":\"contain\",\"naturalW\":1,\"naturalH\":1,\"renderRatio\":1,\"naturalRatio\":1,\"ratioDelta\":0,\"width\":259.328125,\"height\":259.328125,\"parentW\":275.703125,\"parentH\":208}"
+    },
+    {
+      "name": "long-filename-row-visible-desktop",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "long-filename-row-action-accessible-desktop-dom-only",
+      "pass": true,
+      "details": "[{\"label\":\"this-is-a-very-long-file-name-for-browser-truncation-validation-and-actions.txt\",\"title\":\"\",\"ariaLabel\":\"\",\"visible\":true,\"disabled\":false},{\"label\":\"View file\",\"title\":\"View file\",\"ariaLabel\":\"View file\",\"visible\":true,\"disabled\":false},{\"label\":\"Rename\",\"title\":\"Rename\",\"ariaLabel\":\"Rename\",\"visible\":true,\"disabled\":false},{\"label\":\"Delete\",\"title\":\"Delete\",\"ariaLabel\":\"Delete\",\"visible\":true,\"disabled\":false},{\"label\":\"Copy\",\"title\":\"Copy\",\"ariaLabel\":\"Copy\",\"visible\":true,\"disabled\":false},{\"label\":\"Move\",\"title\":\"Move\",\"ariaLabel\":\"Move\",\"visible\":true,\"disabled\":false}]"
+    },
+    {
+      "name": "long-filename-visual-acceptable-desktop",
+      "pass": true,
+      "details": "{\"ok\":true,\"text\":\"this-is-a-very-long-file-name-for-browser-truncation-validation-and-actions.txt\",\"textLength\":79,\"nameCellClientWidth\":113,\"nameCellScrollWidth\":113,\"textRectWidth\":112.875,\"cellRectWidth\":112.875,\"textOverlapsActions\":false,\"pageOverflowPx\":0}"
+    },
+    {
+      "name": "desktop-no-page-horizontal-overflow",
+      "pass": true,
+      "details": "scrollWidth<=innerWidth:true"
+    },
+    {
+      "name": "demo-fixtures-folder-visible",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "inspector-image-visible-mobile",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "inspector-image-contained-mobile",
+      "pass": true,
+      "details": "{\"objectFit\":\"contain\",\"nonZero\":true,\"width\":259.328125,\"height\":259.328125,\"parentW\":275.703125,\"parentH\":208}"
+    },
+    {
+      "name": "long-filename-row-action-accessible-mobile-dom-only",
+      "pass": true,
+      "details": "[{\"label\":\"this-is-a-very-long-file-name-for-browser-truncation-validation-and-actions.txt\",\"title\":\"\",\"ariaLabel\":\"\",\"visible\":true,\"disabled\":false},{\"label\":\"View file\",\"title\":\"View file\",\"ariaLabel\":\"View file\",\"visible\":true,\"disabled\":false},{\"label\":\"Rename\",\"title\":\"Rename\",\"ariaLabel\":\"Rename\",\"visible\":true,\"disabled\":false},{\"label\":\"Delete\",\"title\":\"Delete\",\"ariaLabel\":\"Delete\",\"visible\":true,\"disabled\":false},{\"label\":\"Copy\",\"title\":\"Copy\",\"ariaLabel\":\"Copy\",\"visible\":true,\"disabled\":false},{\"label\":\"Move\",\"title\":\"Move\",\"ariaLabel\":\"Move\",\"visible\":true,\"disabled\":false}]"
+    },
+    {
+      "name": "long-filename-visual-acceptable-mobile",
+      "pass": true,
+      "details": "{\"ok\":true,\"text\":\"this-is-a-very-long-file-name-for-browser-truncation-validation-and-actions.txt\",\"textLength\":79,\"nameCellClientWidth\":44,\"nameCellScrollWidth\":44,\"textRectWidth\":43.9375,\"cellRectWidth\":43.9375,\"textOverlapsActions\":false,\"pageOverflowPx\":0}"
+    },
+    {
+      "name": "mobile-no-page-horizontal-overflow",
+      "pass": true,
+      "details": "scrollWidth<=innerWidth:true"
+    }
+  ],
+  "consoleErrors": [],
+  "requestFailures": [],
+  "screenshots": [
+    "01-desktop-demo-fixtures-image-longname.png",
+    "02-mobile-demo-fixtures-image-longname.png"
+  ],
+  "pass": true,
+  "finishedAt": "2026-05-27T18:59:20.261Z",
+  "consoleErrorCount": 0,
+  "requestFailureCount": 0,
+  "visualTruncationAssessment": {
+    "desktop": "{\"ok\":true,\"text\":\"this-is-a-very-long-file-name-for-browser-truncation-validation-and-actions.txt\",\"textLength\":79,\"nameCellClientWidth\":113,\"nameCellScrollWidth\":113,\"textRectWidth\":112.875,\"cellRectWidth\":112.875,\"textOverlapsActions\":false,\"pageOverflowPx\":0}",
+    "mobile": "{\"ok\":true,\"text\":\"this-is-a-very-long-file-name-for-browser-truncation-validation-and-actions.txt\",\"textLength\":79,\"nameCellClientWidth\":44,\"nameCellScrollWidth\":44,\"textRectWidth\":43.9375,\"cellRectWidth\":43.9375,\"textOverlapsActions\":false,\"pageOverflowPx\":0}"
+  }
+}

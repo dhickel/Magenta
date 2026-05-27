@@ -35,6 +35,7 @@ final class WorkAreaExplorerFragments {
     static String shell(
         WorkAreaExplorerService.DirectoryListing listing,
         WorkAreaExplorerService.Entry inspected,
+        WorkAreaExplorerService.FilePreview inspectedPreview,
         String selectedPath,
         String panelState
     ) {
@@ -49,7 +50,7 @@ final class WorkAreaExplorerFragments {
                   <h2>%s</h2>
                   <small>%s</small>
                 </div>
-                <button type="button" class="button button-secondary small" hx-get="/avatar/_work-areas/placeholder" hx-target="#avatar-workarea-surface" hx-swap="innerHTML">Close</button>
+                <button type="button" class="button button-secondary small" hx-get="/avatar/_work-areas/placeholder" hx-target="#avatar-workarea-surface" hx-swap="innerHTML">Close Workspace</button>
               </div>
               <div class="workspace-explorer-toolbar">
                 %s
@@ -110,6 +111,7 @@ final class WorkAreaExplorerFragments {
                 listing.workArea().id(),
                 listing.path(),
                 inspected,
+                inspectedPreview,
                 null,
                 panelCollapsed,
                 nextPanel,
@@ -166,17 +168,46 @@ final class WorkAreaExplorerFragments {
         String workAreaId,
         String listPath,
         WorkAreaExplorerService.Entry entry,
+        WorkAreaExplorerService.FilePreview preview,
         String message,
         boolean panelCollapsed,
         String nextPanelState,
         boolean oob
     ) {
+        String listPathValue = pathOrRoot(listPath);
+        String selectedParam = entry == null ? "" : "&selected=" + url(entry.path());
+        if (panelCollapsed) {
+            String collapsedName = entry == null ? "Inspector" : fileName(entry.path());
+            return """
+                <aside id="%s" class="file-explorer-inspector-pane file-explorer-inspector-pane-collapsed"%s>
+                  <div class="file-explorer-inspector-collapsed-body">
+                    <span class="file-explorer-inspector-collapsed-label" title="%s">%s</span>
+                    <button type="button" class="avatar-icon-toolbar-button" title="Expand inspector" aria-label="Expand inspector"
+                            hx-get="/avatar/_work-areas/%s/explorer?path=%s%s&panel=%s"
+                            hx-target="#%s" hx-swap="outerHTML">%s</button>
+                  </div>
+                  %s
+                </aside>
+                """.formatted(
+                INSPECTOR_ID,
+                oob ? " hx-swap-oob=\"true\"" : "",
+                escapeAttribute(collapsedName),
+                escape(collapsedName),
+                urlPath(workAreaId),
+                url(listPathValue),
+                selectedParam,
+                nextPanelState,
+                SHELL_ID,
+                iconSvg("panel-open"),
+                status(message, false)
+            );
+        }
         if (entry == null) {
             return """
                 <aside id="%s" class="file-explorer-inspector-pane"%s>
                   <div class="file-explorer-inspector-header">
                     <h4>Inspect</h4>
-                    <button type="button" class="avatar-icon-toolbar-button" title="Toggle details panel" aria-label="Toggle details panel"
+                    <button type="button" class="avatar-icon-toolbar-button" title="Collapse inspector" aria-label="Collapse inspector"
                             hx-get="/avatar/_work-areas/%s/explorer?path=%s&panel=%s"
                             hx-target="#%s" hx-swap="outerHTML">%s</button>
                   </div>
@@ -187,21 +218,18 @@ final class WorkAreaExplorerFragments {
                 INSPECTOR_ID,
                 oob ? " hx-swap-oob=\"true\"" : "",
                 urlPath(workAreaId),
-                url(pathOrRoot(listPath)),
+                url(listPathValue),
                 nextPanelState,
                 SHELL_ID,
-                iconSvg(panelCollapsed ? "panel-open" : "panel-close"),
+                iconSvg("panel-close"),
                 status(message, false)
             );
         }
-        String viewAction = entry.canView()
-            ? button("View", "hx-get", "/avatar/_work-areas/" + urlPath(workAreaId) + "/viewer?path=" + url(entry.path()), "#" + MODAL_ID, "innerHTML")
-            : "<span class=\"avatar-muted\">Viewer unavailable</span>";
         return """
             <aside id="%s" class="file-explorer-inspector-pane"%s>
               <div class="file-explorer-inspector-header">
                 <h4 title="%s">%s</h4>
-                <button type="button" class="avatar-icon-toolbar-button" title="Toggle details panel" aria-label="Toggle details panel"
+                <button type="button" class="avatar-icon-toolbar-button" title="Collapse inspector" aria-label="Collapse inspector"
                         hx-get="/avatar/_work-areas/%s/explorer?path=%s&selected=%s&panel=%s"
                         hx-target="#%s" hx-swap="outerHTML">%s</button>
               </div>
@@ -211,21 +239,14 @@ final class WorkAreaExplorerFragments {
                 <div class="file-entry-tags">%s</div>
                 %s
               </div>
-              <div class="file-entry-preview-meta">
-                <h5>Preview &amp; Details</h5>
-                %s
-              </div>
               <dl class="file-entry-details-grid">
                 <dt>Type</dt><dd>%s</dd>
                 <dt>Size</dt><dd>%s</dd>
                 <dt>Created</dt><dd>%s</dd>
                 <dt>Last Modified</dt><dd>%s</dd>
               </dl>
-              <div class="avatar-row-actions">
-                %s
-                %s
-                %s
-                %s
+              <div class="file-entry-preview-meta">
+                <h5>Preview</h5>
                 %s
               </div>
               %s
@@ -236,11 +257,11 @@ final class WorkAreaExplorerFragments {
             escapeAttribute(entry.name()),
             escape(entry.name()),
             urlPath(workAreaId),
-            url(pathOrRoot(listPath)),
+            url(listPathValue),
             url(entry.path()),
             nextPanelState,
             SHELL_ID,
-            iconSvg(panelCollapsed ? "panel-open" : "panel-close"),
+            iconSvg("panel-close"),
             escapeAttribute(entry.path()),
             escape(entry.path()),
             tags(null, entry.path(), entry.tags(), true),
@@ -252,28 +273,11 @@ final class WorkAreaExplorerFragments {
                 "#" + MODAL_ID,
                 "innerHTML"
             ),
-            viewerHint(entry),
             escape(entry.fileType()),
             escape(entry.sizeLabel()),
             time(entry.createdAt()),
             time(entry.modifiedAt()),
-            viewAction,
-            modalButton(
-                "Rename",
-                workAreaId,
-                "rename",
-                entry.path(),
-                panelCollapsed ? INSPECTOR_PANEL_STATE_COLLAPSED : INSPECTOR_PANEL_STATE_EXPANDED
-            ),
-            modalButton(
-                "Delete",
-                workAreaId,
-                "delete",
-                entry.path(),
-                panelCollapsed ? INSPECTOR_PANEL_STATE_COLLAPSED : INSPECTOR_PANEL_STATE_EXPANDED
-            ),
-            pickerButton("Copy", workAreaId, "copy", entry.path()),
-            pickerButton("Move", workAreaId, "move", entry.path()),
+            inspectorPreviewPanel(workAreaId, entry, preview),
             status(message, false)
         );
     }
@@ -281,6 +285,7 @@ final class WorkAreaExplorerFragments {
     static String viewer(String workAreaId, WorkAreaExplorerService.FilePreview preview) {
         String title = "View " + fileName(preview.path());
         String body;
+        boolean editorSurface = false;
         if ("image".equals(preview.kind())) {
             body = """
                 <div class="avatar-workarea-image-frame">
@@ -302,12 +307,14 @@ final class WorkAreaExplorerFragments {
             );
         } else if ("markdown".equals(preview.kind()) && preview.text()) {
             body = textEditor(workAreaId, preview, true, "preview");
+            editorSurface = true;
         } else if ("text".equals(preview.kind()) && preview.text()) {
             body = textEditor(workAreaId, preview, false, "edit");
+            editorSurface = true;
         } else {
             body = unsupportedViewerBody(preview);
         }
-        return modal(title, body, false);
+        return editorSurface ? modalEditor(title, body) : modal(title, body, false);
     }
 
     static String textViewer(String workAreaId, WorkAreaExplorerService.FilePreview preview, String tab) {
@@ -316,7 +323,7 @@ final class WorkAreaExplorerFragments {
         }
         boolean markdown = "markdown".equals(preview.kind());
         String body = textEditor(workAreaId, preview, markdown, markdown ? markdownMode(tab) : "edit");
-        return modal("View " + fileName(preview.path()), body, false);
+        return modalEditor("View " + fileName(preview.path()), body);
     }
 
     static String textSaveResponse(
@@ -324,6 +331,7 @@ final class WorkAreaExplorerFragments {
         WorkAreaExplorerService.FilePreview preview,
         WorkAreaExplorerService.DirectoryListing listing,
         WorkAreaExplorerService.Entry inspected,
+        WorkAreaExplorerService.FilePreview inspectedPreview,
         String selectedPath,
         String panelState,
         String message
@@ -334,6 +342,7 @@ final class WorkAreaExplorerFragments {
             listing.workArea().id(),
             listing.path(),
             inspected,
+            inspectedPreview,
             message,
             INSPECTOR_PANEL_STATE_COLLAPSED.equalsIgnoreCase(panelState),
             INSPECTOR_PANEL_STATE_COLLAPSED.equalsIgnoreCase(panelState)
@@ -348,6 +357,7 @@ final class WorkAreaExplorerFragments {
         WorkAreaExplorerService.FilePreview preview,
         WorkAreaExplorerService.DirectoryListing listing,
         WorkAreaExplorerService.Entry inspected,
+        WorkAreaExplorerService.FilePreview inspectedPreview,
         String selectedPath,
         String panelState,
         String message
@@ -358,6 +368,7 @@ final class WorkAreaExplorerFragments {
             listing.workArea().id(),
             listing.path(),
             inspected,
+            inspectedPreview,
             message,
             INSPECTOR_PANEL_STATE_COLLAPSED.equalsIgnoreCase(panelState),
             INSPECTOR_PANEL_STATE_COLLAPSED.equalsIgnoreCase(panelState)
@@ -389,6 +400,7 @@ final class WorkAreaExplorerFragments {
     static String mutationResponse(
         WorkAreaExplorerService.DirectoryListing listing,
         WorkAreaExplorerService.Entry inspected,
+        WorkAreaExplorerService.FilePreview inspectedPreview,
         String selectedPath,
         String panelState,
         String message
@@ -400,6 +412,7 @@ final class WorkAreaExplorerFragments {
             listing.workArea().id(),
             listing.path(),
             inspected,
+            inspectedPreview,
             message,
             panelCollapsed,
             panelCollapsed ? INSPECTOR_PANEL_STATE_EXPANDED : INSPECTOR_PANEL_STATE_COLLAPSED,
@@ -416,7 +429,11 @@ final class WorkAreaExplorerFragments {
     }
 
     static String inspectorError(String message) {
-        return inspector(null, ".", null, message, false, INSPECTOR_PANEL_STATE_COLLAPSED, false);
+        return inspector(null, ".", null, null, message, false, INSPECTOR_PANEL_STATE_COLLAPSED, false);
+    }
+
+    static String emptyModalHost() {
+        return "<div id=\"" + MODAL_ID + "\"></div>";
     }
 
     static String listError(String message) {
@@ -687,11 +704,23 @@ final class WorkAreaExplorerFragments {
                 + "&panel=" + panel,
                 "#" + SHELL_ID, "outerHTML");
         String open = entry.directory()
-            ? button("Open", "hx-get", "/avatar/_work-areas/" + urlPath(workAreaId)
-                + "/explorer?path=" + url(entry.path()) + "&panel="
-                + panel, "#" + SHELL_ID, "outerHTML")
+            ? rowActionButton(
+                "Open folder",
+                "open",
+                "hx-get",
+                "/avatar/_work-areas/" + urlPath(workAreaId) + "/explorer?path=" + url(entry.path()) + "&panel=" + panel,
+                "#" + SHELL_ID,
+                "outerHTML"
+            )
             : entry.canView()
-                ? button("View", "hx-get", "/avatar/_work-areas/" + urlPath(workAreaId) + "/viewer?path=" + url(entry.path()), "#" + MODAL_ID, "innerHTML")
+                ? rowActionButton(
+                    "View file",
+                    "view",
+                    "hx-get",
+                    "/avatar/_work-areas/" + urlPath(workAreaId) + "/viewer?path=" + url(entry.path()),
+                    "#" + MODAL_ID,
+                    "innerHTML"
+                )
                 : "";
         return """
             <tr class="workspace-explorer-row%s" data-workarea-path="%s"
@@ -715,22 +744,24 @@ final class WorkAreaExplorerFragments {
             time(entry.modifiedAt()),
             tags(workAreaId, entry.path(), entry.tags(), false),
             open,
-            modalButton(
+            modalActionButton(
                 "Rename",
+                "rename",
                 workAreaId,
                 "rename",
                 entry.path(),
                 panelCollapsed ? INSPECTOR_PANEL_STATE_COLLAPSED : INSPECTOR_PANEL_STATE_EXPANDED
             ),
-            modalButton(
+            modalActionButton(
                 "Delete",
+                "delete",
                 workAreaId,
                 "delete",
                 entry.path(),
                 panelCollapsed ? INSPECTOR_PANEL_STATE_COLLAPSED : INSPECTOR_PANEL_STATE_EXPANDED
             ),
-            pickerButton("Copy", workAreaId, "copy", entry.path()),
-            pickerButton("Move", workAreaId, "move", entry.path())
+            pickerActionButton("Copy", "copy", workAreaId, "copy", entry.path()),
+            pickerActionButton("Move", "move", workAreaId, "move", entry.path())
         );
     }
 
@@ -915,7 +946,7 @@ final class WorkAreaExplorerFragments {
             + urlPath(preview.path()).replace("%", "_");
         String modeControls = markdown
             ? """
-                <div class="avatar-workarea-mode-controls" role="tablist" aria-label="Editor mode">
+                <div class="avatar-workarea-mode-controls avatar-workarea-editor-tabs" role="tablist" aria-label="Editor mode">
                   %s
                   %s
                   %s
@@ -926,10 +957,10 @@ final class WorkAreaExplorerFragments {
                 modeButton("Split", "split", safeMode)
             )
             : """
-                <div class="avatar-workarea-mode-controls" role="tablist" aria-label="Editor mode">
-                  <span class="avatar-tab-active">Edit</span>
+                <div class="avatar-workarea-mode-controls avatar-workarea-editor-tabs" role="tablist" aria-label="Editor mode">
+                  %s
                 </div>
-                """;
+                """.formatted(modeButton("Edit", "edit", "edit"));
         String previewPane = markdown
             ? """
                 <div class="avatar-workarea-editor-pane avatar-workarea-editor-pane-preview" data-editor-preview-pane="true">
@@ -940,52 +971,61 @@ final class WorkAreaExplorerFragments {
         String previewUrl = markdown
             ? "/avatar/_work-areas/" + urlPath(workAreaId) + "/viewer/markdown-preview?path=" + url(preview.path())
             : "";
+        String shellClass = markdown ? " avatar-markdown-editor-shell" : "";
         return """
-            <div class="avatar-workarea-viewer avatar-workarea-editor mode-%s"
+            <div class="avatar-workarea-viewer avatar-workarea-editor%s mode-%s"
                  data-avatar-workarea-editor="true"
                  data-viewer-kind="%s"
                  data-active-tab="%s"
                  data-editor-preview-url="%s">
               <div class="avatar-workarea-editor-toolbar">
-                %s
                 <div class="avatar-workarea-editor-actions">
-                  <button type="submit" class="button small" form="%s">Save File</button>
-                  <button type="button" class="button button-secondary small" data-editor-undo="true">Undo</button>
-                  <button type="button" class="button button-secondary small" data-editor-redo="true">Redo</button>
-                  <button type="button" class="button button-secondary small" data-editor-revert="true">Revert Unsaved</button>
-                  <button type="button" class="button button-secondary small"
-                          hx-get="/avatar/_edit?close=true"
-                          hx-target="#%s"
-                          hx-swap="innerHTML">Close</button>
-                </div>
-              </div>
-              <p class="avatar-workarea-editor-status" data-editor-status="true">Saved copy loaded.</p>
-              <form id="%s"
-                    class="avatar-stack-form avatar-workarea-editor-form"
-                    data-editor-form="true"
-                    hx-put="/avatar/_work-areas/%s/text?path=%s"
-                    hx-target="#%s"
-                    hx-swap="innerHTML">
-                <div class="avatar-workarea-editor-layout">
-                  <div class="avatar-workarea-editor-pane avatar-workarea-editor-pane-source" data-editor-source-pane="true">
-                    <textarea name="content"
-                              class="%s"
-                              rows="16"
-                              spellcheck="false"
-                              data-editor-source="true"%s>%s</textarea>
-                  </div>
+                  %s
+                  %s
+                  %s
                   %s
                 </div>
-              </form>
+                <button type="button" class="avatar-icon-toolbar-button avatar-workarea-editor-close"
+                        title="Close" aria-label="Close"
+                        hx-get="/avatar/_work-areas/modal/clear"
+                        hx-target="#%s"
+                        hx-swap="outerHTML">%s</button>
+              </div>
+              %s
+              <div class="avatar-workarea-editor-body">
+                <p class="avatar-workarea-editor-status" data-editor-status="true">Saved copy loaded.</p>
+                <form id="%s"
+                      class="avatar-stack-form avatar-workarea-editor-form"
+                      data-editor-form="true"
+                      hx-put="/avatar/_work-areas/%s/text?path=%s"
+                      hx-target="#%s"
+                      hx-swap="innerHTML">
+                  <div class="avatar-workarea-editor-layout">
+                    <div class="avatar-workarea-editor-pane avatar-workarea-editor-pane-source" data-editor-source-pane="true">
+                      <textarea name="content"
+                                class="%s"
+                                rows="16"
+                                spellcheck="false"
+                                data-editor-source="true"%s>%s</textarea>
+                    </div>
+                    %s
+                  </div>
+                </form>
+              </div>
             </div>
             """.formatted(
+            shellClass,
             safeMode,
             markdown ? "markdown" : "text",
             safeMode,
             escapeAttribute(previewUrl),
-            modeControls,
-            escapeAttribute(formId),
+            iconActionButton("Save", "save", "submit", "", "", "", " form=\"" + escapeAttribute(formId) + "\""),
+            iconActionButton("Undo", "undo", "button", "", "", "", " data-editor-undo=\"true\""),
+            iconActionButton("Redo", "redo", "button", "", "", "", " data-editor-redo=\"true\""),
+            iconActionButton("Revert Unsaved", "revert", "button", "", "", "", " data-editor-revert=\"true\""),
             MODAL_ID,
+            iconSvg("close"),
+            modeControls,
             escapeAttribute(formId),
             urlPath(workAreaId),
             url(preview.path()),
@@ -1002,13 +1042,52 @@ final class WorkAreaExplorerFragments {
         return """
             <button type="button"
                     class="%s"
+                    role="tab"
+                    aria-selected="%s"
+                    tabindex="%s"
                     data-editor-mode="%s"
                     aria-pressed="%s">%s</button>
             """.formatted(
             active ? "button small avatar-tab-active" : "button button-secondary small",
+            active ? "true" : "false",
+            active ? "0" : "-1",
             escapeAttribute(mode),
             active ? "true" : "false",
             escape(label)
+        );
+    }
+
+    private static String modalEditor(String title, String body) {
+        return """
+            <div class="avatar-modal avatar-modal-workarea-editor" role="dialog" aria-modal="true">
+              <div class="avatar-edit-panel avatar-workarea-panel avatar-workarea-panel-editor">
+                <div class="avatar-workarea-editor-modal-title" title="%s">%s</div>
+                %s
+              </div>
+            </div>
+            """.formatted(escapeAttribute(title), escape(title), body);
+    }
+
+    private static String iconActionButton(
+        String label,
+        String icon,
+        String type,
+        String hxVerb,
+        String route,
+        String target,
+        String extras
+    ) {
+        String hxAttributes = hxVerb.isBlank() ? "" : " " + hxVerb + "=\"" + route + "\" hx-target=\"" + target + "\" hx-swap=\"innerHTML\"";
+        return """
+            <button type="%s" class="avatar-icon-toolbar-button avatar-workarea-command-icon"
+                    title="%s" aria-label="%s"%s%s>%s</button>
+            """.formatted(
+            escapeAttribute(type),
+            escapeAttribute(label),
+            escapeAttribute(label),
+            hxAttributes,
+            extras == null ? "" : extras,
+            iconSvg(icon)
         );
     }
 
@@ -1057,7 +1136,7 @@ final class WorkAreaExplorerFragments {
         return """
             <div class="avatar-modal" role="dialog" aria-modal="true">
               <div class="avatar-edit-panel avatar-workarea-panel"%s>
-                <div class="avatar-edit-header"><h2>%s</h2><button type="button" class="button button-secondary small" hx-get="/avatar/_edit?close=true" hx-target="#%s" hx-swap="innerHTML">Close</button></div>
+                <div class="avatar-edit-header"><h2>%s</h2><button type="button" class="button button-secondary small" hx-get="/avatar/_work-areas/modal/clear" hx-target="#%s" hx-swap="outerHTML">Close</button></div>
                 %s
               </div>
             </div>
@@ -1124,25 +1203,65 @@ final class WorkAreaExplorerFragments {
             """.formatted(hxVerb, route, target, swap, escape(label));
     }
 
-    private static String modalButton(
+    private static String modalActionButton(
         String label,
+        String icon,
         String workAreaId,
         String action,
         String path,
         String panelState
     ) {
-        return button(label, "hx-get", "/avatar/_work-areas/" + urlPath(workAreaId) + "/modal/" + urlPath(action)
-            + "?path=" + url(path)
-            + "&panel=" + url(panelState), "#" + MODAL_ID, "innerHTML");
+        return rowActionButton(
+            label,
+            icon,
+            "hx-get",
+            "/avatar/_work-areas/" + urlPath(workAreaId) + "/modal/" + urlPath(action)
+                + "?path=" + url(path)
+                + "&panel=" + url(panelState),
+            "#" + MODAL_ID,
+            "innerHTML"
+        );
     }
 
-    private static String pickerButton(String label, String workAreaId, String action, String path) {
+    private static String pickerActionButton(String label, String icon, String workAreaId, String action, String path) {
         return """
-            <button type="button" class="button button-secondary small"
+            <button type="button" class="avatar-icon-toolbar-button workspace-explorer-action-button"
+                    title="%s" aria-label="%s"
                     hx-get="/avatar/_work-areas/%s/files/action/%s/picker?path=%s&browse=.&destination=.&x=48&y=96"
                     hx-vals='js:{x:event.clientX,y:event.clientY}'
                     hx-target="#%s" hx-swap="innerHTML">%s</button>
-            """.formatted(urlPath(workAreaId), urlPath(action), url(path), MODAL_ID, escape(label));
+            """.formatted(
+            escapeAttribute(label),
+            escapeAttribute(label),
+            urlPath(workAreaId),
+            urlPath(action),
+            url(path),
+            MODAL_ID,
+            iconSvg(icon)
+        );
+    }
+
+    private static String rowActionButton(
+        String label,
+        String icon,
+        String hxVerb,
+        String route,
+        String target,
+        String swap
+    ) {
+        return """
+            <button type="button" class="avatar-icon-toolbar-button workspace-explorer-action-button"
+                    title="%s" aria-label="%s"
+                    %s="%s" hx-target="%s" hx-swap="%s">%s</button>
+            """.formatted(
+            escapeAttribute(label),
+            escapeAttribute(label),
+            hxVerb,
+            route,
+            target,
+            swap,
+            iconSvg(icon)
+        );
     }
 
     private static String tags(String workAreaId, String path, List<WorkspaceFileLabel> tags, boolean removable) {
@@ -1207,20 +1326,49 @@ final class WorkAreaExplorerFragments {
         );
     }
 
-    private static String viewerHint(WorkAreaExplorerService.Entry entry) {
-        if (entry.viewerKind() == WorkAreaExplorerService.ViewerKind.MARKDOWN) {
-            return "<p>Markdown file. Rendered and raw text views are available.</p>";
+    private static String inspectorPreviewPanel(
+        String workAreaId,
+        WorkAreaExplorerService.Entry entry,
+        WorkAreaExplorerService.FilePreview preview
+    ) {
+        if (entry == null || entry.directory() || preview == null) {
+            return "<div class=\"avatar-workarea-inspector-preview-empty\">Preview unavailable</div>";
         }
-        if (entry.viewerKind() == WorkAreaExplorerService.ViewerKind.TEXT) {
-            return "<p>Text file. Raw text viewing and editing are available.</p>";
+        if ("image".equals(preview.kind())) {
+            return """
+                <div class="avatar-workarea-inspector-preview-image-frame">
+                  <img class="avatar-workarea-inspector-preview-image"
+                       src="/api/work-areas/%s/files/view?path=%s"
+                       alt="%s">
+                </div>
+                """.formatted(
+                urlPath(workAreaId),
+                url(preview.path()),
+                escapeAttribute(fileName(preview.path()))
+            );
         }
-        if (entry.viewerKind() == WorkAreaExplorerService.ViewerKind.IMAGE) {
-            return "<p>Image file. Inline preview and download are available.</p>";
+        if ("markdown".equals(preview.kind()) && preview.text()) {
+            return """
+                <div class="avatar-workarea-inspector-preview-markdown">%s</div>
+                """.formatted(renderedMarkdownPanel(inspectorTextExcerpt(preview.content(), 1200)));
         }
-        if (entry.directory()) {
-            return "<p>Directory selected. Use Open, Move, Copy, Rename, or tags.</p>";
+        if ("text".equals(preview.kind()) && preview.text()) {
+            return """
+                <pre class="avatar-workarea-inspector-preview-text">%s</pre>
+                """.formatted(escape(inspectorTextExcerpt(preview.content(), 1200)));
         }
-        return "<p>Viewer unavailable for this file type or size.</p>";
+        return "<div class=\"avatar-workarea-inspector-preview-empty\">Preview unavailable</div>";
+    }
+
+    private static String inspectorTextExcerpt(String content, int limit) {
+        if (content == null || content.isBlank()) {
+            return "";
+        }
+        String normalized = content.strip();
+        if (normalized.length() <= limit) {
+            return normalized;
+        }
+        return normalized.substring(0, limit) + "...";
     }
 
     static String renderedMarkdownForTest(String content, Function<String, String> renderer) {
@@ -1299,6 +1447,66 @@ final class WorkAreaExplorerFragments {
                 <svg class="avatar-control-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
                      stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
                   <rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/><path d="M5 12h6"/>
+                </svg>
+                """;
+            case "open", "view" -> """
+                <svg class="avatar-control-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+                     stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="3"/>
+                </svg>
+                """;
+            case "rename" -> """
+                <svg class="avatar-control-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+                     stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>
+                </svg>
+                """;
+            case "delete" -> """
+                <svg class="avatar-control-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+                     stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 10v7"/><path d="M14 10v7"/>
+                </svg>
+                """;
+            case "copy" -> """
+                <svg class="avatar-control-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+                     stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>
+                </svg>
+                """;
+            case "move" -> """
+                <svg class="avatar-control-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+                     stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M5 9h14"/><path d="M15 5l4 4-4 4"/><path d="M19 15H5"/><path d="M9 19l-4-4 4-4"/>
+                </svg>
+                """;
+            case "save" -> """
+                <svg class="avatar-control-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+                     stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4 4h13l3 3v13H4z"/><path d="M8 4v6h8V4"/><path d="M8 20v-6h8v6"/>
+                </svg>
+                """;
+            case "undo" -> """
+                <svg class="avatar-control-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+                     stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M9 7H5v4"/><path d="M5 11a8 8 0 1 1 2 5.3"/>
+                </svg>
+                """;
+            case "redo" -> """
+                <svg class="avatar-control-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+                     stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M15 7h4v4"/><path d="M19 11a8 8 0 1 0-2 5.3"/>
+                </svg>
+                """;
+            case "revert" -> """
+                <svg class="avatar-control-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+                     stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/>
+                </svg>
+                """;
+            case "close" -> """
+                <svg class="avatar-control-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+                     stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 6L6 18"/><path d="M6 6l12 12"/>
                 </svg>
                 """;
             default -> """

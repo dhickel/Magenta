@@ -56,7 +56,7 @@ The old top-level `Organizer` and `Refresh Widgets` shell actions are intentiona
 - Calendar: `POST /avatar/_calendar`, `DELETE /avatar/_calendar/{calendarId}`
 - Outputs: `GET /avatar/_outputs/{artifactId}`
 - Alerts: `POST /avatar/_alerts/{eventId}/dismiss`
-- Work Areas: `GET /avatar/_work-areas/{workAreaId}/explorer`, `GET /avatar/_work-areas/{workAreaId}/explorer/list`, `GET /avatar/_work-areas/{workAreaId}/inspect`, `GET /avatar/_work-areas/{workAreaId}/viewer`, `GET /avatar/_work-areas/{workAreaId}/viewer/text`, `POST /avatar/_work-areas/{workAreaId}/viewer/markdown-preview`, legacy `GET /avatar/_work-areas/{workAreaId}/preview`, `GET /avatar/_work-areas/{workAreaId}/edit`, `GET /avatar/_work-areas/{workAreaId}/modal/{action}`, `GET /avatar/_work-areas/{workAreaId}/modal/tag-editor`, `POST /avatar/_work-areas/{workAreaId}/modal/tag-editor/tags`, `POST /avatar/_work-areas/{workAreaId}/modal/tag-editor/assign`, `PUT /avatar/_work-areas/{workAreaId}/text`, `POST /avatar/_work-areas/{workAreaId}/directories`, `POST /avatar/_work-areas/{workAreaId}/text`, `POST /avatar/_work-areas/{workAreaId}/files/delete`, `POST /avatar/_work-areas/{workAreaId}/files/rename`, `POST /avatar/_work-areas/{workAreaId}/files/action/{copy|move}`, `POST /avatar/_work-areas/{workAreaId}/tags`, `POST|DELETE /avatar/_work-areas/{workAreaId}/files/tags`, `POST|DELETE /avatar/_work-areas/{workAreaId}/labels/note`, `POST /avatar/_work-areas/{workAreaId}/mark`, and compatibility `DELETE /avatar/_work-areas/{workAreaId}/files`.
+- Work Areas: `GET /avatar/_work-areas/{workAreaId}/explorer`, `GET /avatar/_work-areas/{workAreaId}/explorer/list`, `GET /avatar/_work-areas/{workAreaId}/inspect`, `GET /avatar/_work-areas/{workAreaId}/viewer`, `GET /avatar/_work-areas/{workAreaId}/viewer/text`, `POST /avatar/_work-areas/{workAreaId}/viewer/markdown-preview`, legacy `GET /avatar/_work-areas/{workAreaId}/preview`, `GET /avatar/_work-areas/{workAreaId}/edit`, `GET /avatar/_work-areas/{workAreaId}/modal/{action}`, `GET /avatar/_work-areas/modal/clear`, `GET /avatar/_work-areas/{workAreaId}/modal/tag-editor`, `POST /avatar/_work-areas/{workAreaId}/modal/tag-editor/tags`, `POST /avatar/_work-areas/{workAreaId}/modal/tag-editor/assign`, `PUT /avatar/_work-areas/{workAreaId}/text`, `POST /avatar/_work-areas/{workAreaId}/directories`, `POST /avatar/_work-areas/{workAreaId}/text`, `POST /avatar/_work-areas/{workAreaId}/files/delete`, `POST /avatar/_work-areas/{workAreaId}/files/rename`, `POST /avatar/_work-areas/{workAreaId}/files/action/{copy|move}`, `POST /avatar/_work-areas/{workAreaId}/tags`, `POST|DELETE /avatar/_work-areas/{workAreaId}/files/tags`, `POST|DELETE /avatar/_work-areas/{workAreaId}/labels/note`, `POST /avatar/_work-areas/{workAreaId}/mark`, and compatibility `DELETE /avatar/_work-areas/{workAreaId}/files`.
 
 Planner, todo, calendar, and note flows still exist, but they are reached from dashboard widgets and detail surfaces rather than from a standalone shell toolbar action.
 
@@ -69,9 +69,18 @@ The Work Area explorer uses stable HTMX targets:
 - `#avatar-workarea-inspector`: selected file/directory metadata and operations.
 - `#avatar-workarea-modal`: stable empty modal host.
 
-Modal routes target `#avatar-workarea-modal` with `innerHTML` and return modal body content without a duplicate `id="avatar-workarea-modal"` wrapper. Mutation routes that affect current explorer state return out-of-band fragments for the modal host, list region, and inspector so table and metadata stay coherent after save, tag, rename, delete, copy, or move.
+Modal open routes target `#avatar-workarea-modal` with `innerHTML` and return modal body content without a duplicate `id="avatar-workarea-modal"` wrapper. Modal close controls target `#avatar-workarea-modal` with `outerHTML` and return the stable empty host from `GET /avatar/_work-areas/modal/clear`, preventing stale dialog DOM from intercepting later explorer clicks. Mutation routes that affect current explorer state return out-of-band fragments for the modal host, list region, and inspector so table and metadata stay coherent after save, tag, rename, delete, copy, or move.
 
-The visible explorer contract is a details/list layout with `Name`, `File Type`, `Size`, `Created`, `Last Modified`, `Tags`, and `Actions` columns plus a separate right inspector. Rows are selectable by full-row click while preserving button/link action clicks. Row actions stay compact: view when supported, rename, and delete. The inspector mirrors view/rename/delete and owns expanded copy/move controls plus the modal Tag Editor entry point.
+The visible explorer contract is a details/list layout with `Name`, `File Type`, `Size`, `Created`, `Last Modified`, `Tags`, and `Actions` columns plus a separate right inspector. Rows are selectable by full-row click while preserving button/link action clicks.
+
+Current remediation contract:
+
+- Shell header action reads `Close Workspace`.
+- Row actions are icon buttons for Open/View, Rename, Delete, Copy, and Move. Each icon action carries `aria-label` and `title`.
+- Inspector expanded state contains selected name/path, tags, `Tag Editor`, metadata, and a bounded preview box only.
+- Inspector no longer renders bottom action buttons or old `Preview & Details`/hint prose.
+- Inspector collapsed state renders a compact rail with explicit expand affordance and preserves selected-path context in the expand route.
+- Editor modal uses a full-window/resizable panel, top-left icon controls (Save/Undo/Redo/Revert), top-right close, and tabs under command controls (`Edit`, `Preview`, `Split` for markdown; `Edit` only for plain text).
 
 Viewer modals expose explicit state hooks:
 

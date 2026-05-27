@@ -1,0 +1,78 @@
+{
+  "workstream": "workarea-ui-polish",
+  "date": "2026-05-27",
+  "status": "passed",
+  "branch": "workarea-markdown-editor-followup",
+  "summary": "Avatar Work Area browser, inspector, and markdown/text editor polish completed and validated after two targeted browser remediation loops plus an image/long-filename addendum.",
+  "validation": [
+    {
+      "type": "static",
+      "command": "git diff --check",
+      "status": "passed"
+    },
+    {
+      "type": "unit",
+      "command": "mvn -Dtest=AvatarDashboardControllerTest test",
+      "status": "passed",
+      "tests": 17
+    },
+    {
+      "type": "suite",
+      "command": "mvn test",
+      "status": "passed",
+      "tests": 894
+    },
+    {
+      "type": "smoke",
+      "command": "timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0",
+      "status": "passed",
+      "note": "Application startup reached healthy running state before bounded timeout."
+    },
+    {
+      "type": "browser",
+      "artifactDirectory": ".internal-dev/reviews/artifacts/workarea-ui-polish-2026-05-27-final",
+      "status": "passed",
+      "coverage": [
+        "desktop Work Area browser",
+        "mobile Work Area browser",
+        "markdown editor edit/preview/split modes",
+        "plain text editor",
+        "modal close and reopen lifecycle",
+        "overflow and console/network checks"
+      ]
+    },
+    {
+      "type": "browser",
+      "artifactDirectory": ".internal-dev/reviews/artifacts/workarea-ui-polish-2026-05-27-image-longname-rerun",
+      "status": "passed",
+      "coverage": [
+        "image thumbnail inspector preview",
+        "long filename compression/truncation",
+        "desktop and mobile overflow checks",
+        "row action accessibility without destructive clicks"
+      ]
+    }
+  ],
+  "supersededRuns": [
+    {
+      "artifactDirectory": ".internal-dev/reviews/artifacts/workarea-ui-polish-2026-05-27",
+      "status": "failed",
+      "reason": "Initial browser validation found modal layering, label, and close lifecycle issues."
+    },
+    {
+      "artifactDirectory": ".internal-dev/reviews/artifacts/workarea-ui-polish-2026-05-27-rerun",
+      "status": "failed",
+      "reason": "Rerun confirmed labels/layering improved but close lifecycle still left stale modal interception."
+    },
+    {
+      "artifactDirectory": ".internal-dev/reviews/artifacts/workarea-ui-polish-2026-05-27-image-longname",
+      "status": "failed",
+      "reason": "First image/long-name addendum clicked a row action and blocked itself; corrected harness passed."
+    }
+  ],
+  "toolingConstraints": [
+    "Requested gpt-5.2 planning/worker variants were unavailable in this environment.",
+    "The fixed implementation_worker_agent role uses gpt-5.3, which was unsupported in this ChatGPT-backed Codex run; fallback implementation used gpt-5.3-codex high."
+  ],
+  "residualRisk": "No known product-blocking residual risk from the validated scope."
+}

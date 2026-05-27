@@ -40,11 +40,11 @@ The `Work Areas` widget and the top-level `Work Areas` tab use the confined work
 - compact icon toolbar actions for Back (parent directory only), refresh, folder creation, and a new-file menu (`.txt` or `.md`);
 - breadcrumb/path navigation that stays inside the selected Work Area;
 - compact table rows with `Name`, `File Type`, `Size`, `Created`, `Last Modified`, `Tags`, and `Actions`;
-- a separate right-side inspector panel with collapse/expand controls, selected full name/path, tag editor, preview hints, and metadata.
+- a separate right-side inspector panel with collapse/expand controls, selected name/path, tags, `Tag Editor`, metadata, and a bounded preview box.
 
 Supported file actions include directory navigation, text and Markdown preview/edit/save, contained image preview, downloads, directory creation, `.txt`/`.md` creation, rename, copy, move, custom tags, note labels, and delete confirmation with an extra recursive confirmation for directories.
 
-Markdown and text files open in a compact editor modal with explicit **Save File**, local **Undo/Redo**, and **Revert Unsaved** controls. Markdown supports **Edit**, **Preview**, and **Split** modes; Preview and Split render your current unsaved text before you save. Plain text stays in Edit mode without markdown preview controls. Unsupported or binary files do not expose a misleading row View action; stale viewer requests show a safe unsupported message instead. Copy and move open a directory-picker popover/module and stay confined under the selected Work Area without typing internal destination paths.
+Markdown and text files open in a full editor modal with icon controls (Save, Undo, Redo, Revert) on the top-left, a close control on the top-right, and tabs below commands. Markdown supports **Edit**, **Preview**, and **Split** modes; Preview and Split render your current unsaved text before you save. Plain text stays in Edit mode only. Unsupported or binary files do not expose a misleading row View action; stale viewer requests show a safe unsupported message instead. Copy and move open a directory-picker popover/module and stay confined under the selected Work Area without typing internal destination paths.
 
 Rows are selectable by clicking anywhere on the row except explicit controls (buttons/links/forms), so selection does not accidentally trigger row actions.
 

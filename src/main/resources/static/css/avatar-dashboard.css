@@ -759,6 +759,18 @@
     background: rgba(20, 29, 41, 0.38);
 }
 
+.avatar-modal-workarea-editor {
+    z-index: 10000;
+    isolation: isolate;
+    background: rgba(20, 29, 41, 0.48);
+}
+
+.avatar-modal-workarea-editor .avatar-workarea-panel-editor {
+    position: relative;
+    z-index: 1;
+    background: #fff;
+}
+
 .avatar-edit-panel {
     width: min(42rem, 100%);
     max-height: calc(100vh - 2rem);
@@ -931,6 +943,18 @@
     width: min(76rem, 100%);
 }
 
+.avatar-workarea-panel-editor {
+    width: min(95vw, 88rem);
+    height: min(92vh, 62rem);
+    max-height: 92vh;
+    resize: both;
+    overflow: hidden;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-width: min(72rem, 92vw);
+    min-height: min(38rem, 84vh);
+}
+
 .avatar-workarea-explorer-shell,
 .avatar-workarea-explorer-layout,
 .workspace-explorer-table-region,
@@ -993,7 +1017,8 @@
 }
 
 .workspace-explorer-table-region {
-    overflow: auto;
+    overflow-x: auto;
+    overflow-y: hidden;
     max-width: 100%;
 }
 
@@ -1010,6 +1035,10 @@
     padding: 0.36rem 0.45rem;
     text-align: left;
     vertical-align: middle;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .workspace-explorer-table th {
@@ -1033,8 +1062,7 @@
 }
 
 .workspace-explorer-name {
-    min-width: 12rem;
-    max-width: 24rem;
+    min-width: 0;
     width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1050,13 +1078,45 @@
 }
 
 .workspace-name-button {
-    display: inline-block;
+    display: inline-flex;
+    min-width: 0;
+    width: 100%;
 }
 
 .file-explorer-inspector-pane {
     display: grid;
     gap: 0.55rem;
     padding: 0.75rem;
+}
+
+.file-explorer-inspector-pane-collapsed {
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    padding: 0.45rem 0.35rem;
+}
+
+.file-explorer-inspector-collapsed-body {
+    display: grid;
+    justify-items: center;
+    align-content: space-between;
+    width: 100%;
+    min-height: 14rem;
+    gap: 0.35rem;
+}
+
+.file-explorer-inspector-collapsed-label {
+    display: inline-block;
+    max-width: 100%;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+    font-size: 0.73rem;
+    font-weight: 700;
+    color: #42526a;
+    letter-spacing: 0.02em;
 }
 
 .file-explorer-inspector-header {
@@ -1098,6 +1158,53 @@
     margin-top: 0.15rem;
 }
 
+.avatar-workarea-inspector-preview-empty {
+    border: 1px dashed #c7d7ea;
+    border-radius: 6px;
+    background: #f8fbff;
+    color: #58708c;
+    font-size: 0.78rem;
+    padding: 0.55rem;
+}
+
+.avatar-workarea-inspector-preview-image-frame {
+    display: grid;
+    place-items: center;
+    min-height: 9rem;
+    max-height: 13rem;
+    border: 1px solid #dfe7f0;
+    border-radius: 6px;
+    background: #f8fbff;
+    padding: 0.45rem;
+    overflow: hidden;
+}
+
+.avatar-workarea-inspector-preview-image {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.avatar-workarea-inspector-preview-text {
+    margin: 0;
+    max-height: 13rem;
+    overflow: auto;
+    border: 1px solid #dfe7f0;
+    border-radius: 6px;
+    background: #f8fbff;
+    padding: 0.55rem;
+    font-size: 0.77rem;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.avatar-workarea-inspector-preview-markdown .avatar-workarea-rendered {
+    max-height: 13rem;
+    font-size: 0.79rem;
+    padding: 0.55rem;
+}
+
 .file-explorer-inspector-pane h4,
 .file-explorer-inspector-pane p {
     margin: 0;
@@ -1126,7 +1233,7 @@
 .file-entry-tags,
 .avatar-workarea-tabs {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 0.35rem;
     align-items: center;
     justify-content: flex-start;
@@ -1134,7 +1241,8 @@
 
 .avatar-workarea-editor {
     display: grid;
-    gap: 0.55rem;
+    gap: 0.5rem;
+    min-height: 0;
 }
 
 .avatar-workarea-editor-toolbar {
@@ -1155,7 +1263,48 @@
 }
 
 .avatar-workarea-editor-actions button {
-    min-height: 1.95rem;
+    min-height: 2rem;
+}
+
+.avatar-workarea-editor-actions {
+    flex-wrap: nowrap;
+}
+
+.avatar-workarea-command-icon {
+    width: 2rem;
+    min-width: 2rem;
+    height: 2rem;
+    min-height: 2rem;
+}
+
+.avatar-workarea-editor-close {
+    margin-left: auto;
+}
+
+.avatar-workarea-editor-tabs {
+    border-top: 1px solid #d8e2ee;
+    padding-top: 0.5rem;
+}
+
+.avatar-workarea-editor-modal-title {
+    display: block;
+    margin: 0;
+    padding: 0 0 0.35rem;
+    border-bottom: 1px solid #d8e2ee;
+    color: var(--mg-muted);
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.avatar-workarea-editor-body {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 0.45rem;
+    min-height: 0;
 }
 
 .avatar-workarea-editor-status {
@@ -1166,6 +1315,7 @@
 
 .avatar-workarea-editor-form {
     margin: 0;
+    min-height: 0;
 }
 
 .avatar-workarea-editor-layout {
@@ -1173,6 +1323,8 @@
     grid-template-columns: minmax(0, 1fr);
     gap: 0.6rem;
     min-width: 0;
+    min-height: 29rem;
+    height: 100%;
 }
 
 .avatar-workarea-editor.mode-split .avatar-workarea-editor-layout {
@@ -1186,12 +1338,14 @@
 
 .avatar-workarea-editor-pane {
     min-width: 0;
+    min-height: 0;
 }
 
 .avatar-workarea-source {
     width: 100%;
-    min-height: 24rem;
-    resize: vertical;
+    min-height: 29rem;
+    height: 100%;
+    resize: none;
     border: 1px solid #d8e2ee;
     border-radius: 7px;
     background: #fbfdff;
@@ -1372,21 +1526,50 @@
 }
 
 .avatar-workarea-explorer-layout.panel-collapsed {
-    grid-template-columns: minmax(0, 1fr) minmax(3rem, 3rem);
-}
-
-.avatar-workarea-explorer-layout.panel-collapsed .file-explorer-inspector-pane > :not(.file-explorer-inspector-header) {
-    display: none;
+    grid-template-columns: minmax(0, 1fr) minmax(3.1rem, 3.1rem);
 }
 
 .workspace-explorer-table .avatar-row-actions {
-    min-width: 10rem;
+    min-width: 9.25rem;
     flex-wrap: nowrap;
+    justify-content: flex-end;
 }
 
 .workspace-explorer-table .avatar-row-actions button {
-    flex: 0 1 auto;
-    max-width: 100%;
+    flex: 0 0 auto;
+}
+
+.workspace-explorer-action-button {
+    width: 1.9rem;
+    min-width: 1.9rem;
+    height: 1.9rem;
+    min-height: 1.9rem;
+    padding: 0;
+}
+
+.workspace-explorer-table th:nth-child(1) {
+    width: 32%;
+}
+
+.workspace-explorer-table th:nth-child(2) {
+    width: 11%;
+}
+
+.workspace-explorer-table th:nth-child(3) {
+    width: 8%;
+}
+
+.workspace-explorer-table th:nth-child(4),
+.workspace-explorer-table th:nth-child(5) {
+    width: 13%;
+}
+
+.workspace-explorer-table th:nth-child(6) {
+    width: 11%;
+}
+
+.workspace-explorer-table th:nth-child(7) {
+    width: 12rem;
 }
 
 .avatar-workarea-image {
@@ -1664,6 +1847,21 @@
         min-height: 18rem;
         max-height: 46vh;
     }
+
+    .workspace-explorer-table th:nth-child(4),
+    .workspace-explorer-table td:nth-child(4),
+    .workspace-explorer-table th:nth-child(5),
+    .workspace-explorer-table td:nth-child(5) {
+        display: none;
+    }
+
+    .workspace-explorer-table th:nth-child(1) {
+        width: 40%;
+    }
+
+    .workspace-explorer-table th:nth-child(7) {
+        width: 10.5rem;
+    }
 }
 
 @media (max-width: 760px) {
@@ -1731,6 +1929,13 @@
         max-width: 100%;
     }
 
+    .avatar-workarea-panel-editor {
+        min-width: 0;
+        min-height: 0;
+        height: min(92vh, 48rem);
+        resize: none;
+    }
+
     .avatar-workarea-browser-grid {
         grid-template-columns: 1fr;
     }
@@ -1740,26 +1945,41 @@
     }
 
     .avatar-workarea-editor-toolbar {
-        align-items: flex-start;
-        flex-direction: column;
+        align-items: center;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        gap: 0.45rem;
     }
 
-    .avatar-workarea-mode-controls,
-    .avatar-workarea-editor-actions {
+    .avatar-workarea-mode-controls {
         width: 100%;
+        flex-wrap: wrap;
+    }
+
+    .avatar-workarea-editor-actions {
+        width: auto;
+        flex-wrap: nowrap;
     }
 
     .avatar-workarea-editor.mode-split .avatar-workarea-editor-layout {
         grid-template-columns: 1fr;
     }
 
+    .avatar-workarea-editor-layout,
     .avatar-workarea-source {
-        min-height: 16rem;
+        min-height: 18rem;
     }
 
     .workspace-explorer-table {
         min-width: 0;
         table-layout: fixed;
+    }
+
+    .workspace-explorer-table th:nth-child(4),
+    .workspace-explorer-table td:nth-child(4),
+    .workspace-explorer-table th:nth-child(5),
+    .workspace-explorer-table td:nth-child(5) {
+        display: none;
     }
 
     .workspace-explorer-table th:nth-child(2),
@@ -1781,13 +2001,14 @@
 
     .workspace-explorer-table .avatar-row-actions {
         min-width: 0;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
     }
 
-    .workspace-explorer-toolbar button,
-    .workspace-explorer-table .avatar-row-actions button {
-        min-width: 4.25rem;
-        padding-inline: 0.45rem;
+    .workspace-explorer-table .avatar-row-actions .workspace-explorer-action-button {
+        width: 1.8rem;
+        min-width: 1.8rem;
+        height: 1.8rem;
+        min-height: 1.8rem;
     }
 
     .avatar-list-row {

@@ -1,0 +1,43 @@
+{
+  "viewport": "desktop",
+  "checks": {
+    "selectedPathPreserved": false,
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "hasPageOverflow": false
+    },
+    "rowActions": {
+      "open": {
+        "found": false
+      },
+      "rename": {
+        "found": false
+      },
+      "delete": {
+        "found": false
+      },
+      "copy": {
+        "found": false
+      },
+      "move": {
+        "found": false
+      }
+    },
+    "previewStates": {
+      "unavailableVisible": false,
+      "imagePreviewFound": false,
+      "textPreviewFound": false,
+      "markdownRendered": false
+    }
+  },
+  "errors": [],
+  "screenshots": [
+    "desktop-01-browser-inspector-expanded.png",
+    "desktop-02-inspector-collapsed.png",
+    "desktop-03-inspector-reexpanded.png"
+  ],
+  "consoleMsgs": [],
+  "networkFails": [],
+  "badResponses": []
+}

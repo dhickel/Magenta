@@ -1,0 +1,77 @@
+{
+  "baseUrl": "http://localhost:18083",
+  "route": "http://localhost:18083/avatar?tab=work-areas",
+  "startedAt": "2026-05-27T18:52:49.028Z",
+  "assertions": [
+    {
+      "name": "demo-fixtures-folder-visible",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "image-row-visible-desktop",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "inspector-image-visible-desktop",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "inspector-image-contained-desktop",
+      "pass": true,
+      "details": "{\"nonZero\":true,\"objectFit\":\"contain\",\"naturalW\":1,\"naturalH\":1,\"renderRatio\":1,\"naturalRatio\":1,\"ratioDelta\":0,\"width\":259.328125,\"height\":259.328125}"
+    },
+    {
+      "name": "long-filename-row-visible-desktop",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "long-filename-row-action-accessible-desktop",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "long-filename-truncates-or-compresses-desktop",
+      "pass": false,
+      "details": "{\"truncated\":false,\"text\":\"this-is-a-very-long-file-name-for-browser-truncation-validation-and-actions.txt\"}"
+    },
+    {
+      "name": "desktop-no-page-horizontal-overflow",
+      "pass": true,
+      "details": "scrollWidth<=innerWidth:true"
+    },
+    {
+      "name": "demo-fixtures-folder-visible",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "inspector-image-visible-mobile",
+      "pass": false,
+      "details": ""
+    },
+    {
+      "name": "long-filename-row-action-accessible-mobile",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "mobile-no-page-horizontal-overflow",
+      "pass": true,
+      "details": "scrollWidth<=innerWidth:true"
+    }
+  ],
+  "consoleErrors": [],
+  "requestFailures": [],
+  "screenshots": [
+    "01-desktop-demo-fixtures-image-longname.png",
+    "02-mobile-demo-fixtures-image-longname.png"
+  ],
+  "pass": false,
+  "finishedAt": "2026-05-27T18:53:55.901Z",
+  "consoleErrorCount": 0,
+  "requestFailureCount": 0
+}

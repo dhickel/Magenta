@@ -1,0 +1,94 @@
+{
+  "desktop": {
+    "modalControlProbe": {
+      "Save": {
+        "found": true,
+        "ariaLabel": "Save",
+        "title": "Save",
+        "text": ""
+      },
+      "Undo": {
+        "found": true,
+        "ariaLabel": "Undo",
+        "title": "Undo",
+        "text": ""
+      },
+      "Redo": {
+        "found": true,
+        "ariaLabel": "Redo",
+        "title": "Redo",
+        "text": ""
+      },
+      "Revert Unsaved": {
+        "found": true,
+        "ariaLabel": "Revert Unsaved",
+        "title": "Revert Unsaved",
+        "text": ""
+      },
+      "Close": {
+        "found": true,
+        "ariaLabel": "Close",
+        "title": "Close",
+        "text": ""
+      }
+    },
+    "modalStacking": {
+      "modalZ": "1100",
+      "navZ": "auto",
+      "hasModal": true,
+      "hasNav": true
+    },
+    "modalNavOverlapProbe": {
+      "ok": true,
+      "coveredByNav": false,
+      "topTag": "DIV",
+      "topClass": "avatar-modal avatar-modal-workarea-editor"
+    }
+  },
+  "mobile": {
+    "modalControlProbe": {
+      "Save": {
+        "found": true,
+        "ariaLabel": "Save",
+        "title": "Save",
+        "text": ""
+      },
+      "Undo": {
+        "found": true,
+        "ariaLabel": "Undo",
+        "title": "Undo",
+        "text": ""
+      },
+      "Redo": {
+        "found": true,
+        "ariaLabel": "Redo",
+        "title": "Redo",
+        "text": ""
+      },
+      "Revert Unsaved": {
+        "found": true,
+        "ariaLabel": "Revert Unsaved",
+        "title": "Revert Unsaved",
+        "text": ""
+      },
+      "Close": {
+        "found": true,
+        "ariaLabel": "Close",
+        "title": "Close",
+        "text": ""
+      }
+    },
+    "modalStacking": {
+      "modalZ": "1100",
+      "navZ": "auto",
+      "hasModal": true,
+      "hasNav": true
+    },
+    "modalNavOverlapProbe": {
+      "ok": true,
+      "coveredByNav": false,
+      "topTag": "DIV",
+      "topClass": "avatar-edit-panel avatar-workarea-panel avatar-workarea-panel-editor"
+    }
+  }
+}

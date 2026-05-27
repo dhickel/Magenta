@@ -192,6 +192,12 @@ public class AvatarDashboardController {
         return "";
     }
 
+    @GetMapping("/avatar/_work-areas/modal/clear")
+    @ResponseBody
+    public String clearWorkAreaModal() {
+        return WorkAreaExplorerFragments.emptyModalHost();
+    }
+
     @PostMapping("/avatar/_layout/rows")
     @ResponseBody
     public String addLayoutRow() {
@@ -540,7 +546,13 @@ public class AvatarDashboardController {
             WorkAreaExplorerService.DirectoryListing listing = explorer.list(workAreaId, path);
             String inspectPath = StringUtils.hasText(selected) ? selected : path;
             WorkAreaExplorerService.Entry inspected = explorer.inspect(workAreaId, inspectPath);
-            return WorkAreaExplorerFragments.shell(listing, inspected, selected, panelState(panel));
+            return WorkAreaExplorerFragments.shell(
+                listing,
+                inspected,
+                previewForInspector(explorer, workAreaId, inspected),
+                selected,
+                panelState(panel)
+            );
         } catch (IllegalArgumentException exception) {
             return WorkAreaExplorerFragments.modalError("Work Area unavailable", exception.getMessage());
         }
@@ -589,6 +601,7 @@ public class AvatarDashboardController {
                 workAreaId,
                 listPath,
                 explorer.inspect(workAreaId, path),
+                previewForInspector(explorer, workAreaId, path),
                 null,
                 collapsed,
                 collapsed
@@ -691,6 +704,7 @@ public class AvatarDashboardController {
                 preview,
                 listing,
                 inspected,
+                previewForInspector(explorer, workAreaId, inspected),
                 path,
                 panelState(panel),
                 "Saved " + path
@@ -746,6 +760,7 @@ public class AvatarDashboardController {
                 explorer.preview(workAreaId, entry.path()),
                 listing,
                 inspected,
+                previewForInspector(explorer, workAreaId, inspected),
                 entry.path(),
                 panelState(panel),
                 "Created " + entry.name()
@@ -1693,6 +1708,7 @@ public class AvatarDashboardController {
         return WorkAreaExplorerFragments.shell(
             listing,
             inspected,
+            previewForInspector(explorer, workAreaId, inspected),
             inspected == null ? null : inspected.path(),
             panelState(panelState)
         );
@@ -1711,10 +1727,39 @@ public class AvatarDashboardController {
         return WorkAreaExplorerFragments.mutationResponse(
             listing,
             inspected,
+            previewForInspector(explorer, workAreaId, inspected),
             selectedPath,
             panelState(panelState),
             message
         );
+    }
+
+    private WorkAreaExplorerService.FilePreview previewForInspector(
+        WorkAreaExplorerService explorer,
+        String workAreaId,
+        String path
+    ) {
+        try {
+            WorkAreaExplorerService.Entry entry = explorer.inspect(workAreaId, path);
+            return previewForInspector(explorer, workAreaId, entry);
+        } catch (RuntimeException exception) {
+            return null;
+        }
+    }
+
+    private WorkAreaExplorerService.FilePreview previewForInspector(
+        WorkAreaExplorerService explorer,
+        String workAreaId,
+        WorkAreaExplorerService.Entry entry
+    ) {
+        if (entry == null || entry.directory() || !entry.canView()) {
+            return null;
+        }
+        try {
+            return explorer.preview(workAreaId, entry.path());
+        } catch (RuntimeException exception) {
+            return null;
+        }
     }
 
     private WorkAreaExplorerService.Entry selectedOrCurrentEntry(
