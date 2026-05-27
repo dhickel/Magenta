@@ -1,3 +1,0 @@
-Console messages: 0
-
-Network issues (>=400/failed): 0
