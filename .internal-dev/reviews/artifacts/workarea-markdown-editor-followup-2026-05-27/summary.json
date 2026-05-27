@@ -1,0 +1,106 @@
+{
+  "createdAt": "2026-05-27T11:51:33.854Z",
+  "baseUrl": "http://localhost:18082",
+  "desktop": {
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "prefix": "desktop",
+    "markdownPath": "demo-fixtures/briefing.md",
+    "textPath": null,
+    "selectedWorkArea": "67524694-8572-4b7a-8c99-f401ee1cf06f",
+    "checks": {
+      "viewerState": {
+        "hasHeading": true,
+        "hasParagraph": true,
+        "hasList": true,
+        "hasNestedList": false,
+        "hasBlockquote": false,
+        "hasInlineCode": false,
+        "hasFence": false,
+        "hasTable": true,
+        "horizOverflow": false
+      },
+      "previewShowsUnsaved": true,
+      "splitVisible": true,
+      "afterSaveState": {
+        "hasUnsavedProbe": true,
+        "dirtyLabelPresent": true
+      },
+      "savedRenderVisible": true,
+      "undoRedoRevert": {
+        "undoEnabled": true,
+        "undoWorked": true,
+        "redoWorked": false,
+        "revertMatchesSaved": true
+      },
+      "textFileNoMarkdownModes": "SKIPPED_NO_TEXT_FILE_IN_DEMO_FIXTURES",
+      "textFileSavePersisted": "SKIPPED_NO_TEXT_FILE_IN_DEMO_FIXTURES"
+    },
+    "screenshots": [
+      "/home/hickelpickle/Code/Java/magenta2/.internal-dev/reviews/artifacts/workarea-markdown-editor-followup-2026-05-27/desktop-01-avatar-workareas.png",
+      "/home/hickelpickle/Code/Java/magenta2/.internal-dev/reviews/artifacts/workarea-markdown-editor-followup-2026-05-27/desktop-02-explorer-root.png",
+      "/home/hickelpickle/Code/Java/magenta2/.internal-dev/reviews/artifacts/workarea-markdown-editor-followup-2026-05-27/desktop-03-demo-fixtures-open.png",
+      "/home/hickelpickle/Code/Java/magenta2/.internal-dev/reviews/artifacts/workarea-markdown-editor-followup-2026-05-27/desktop-04-markdown-viewer.png",
+      "/home/hickelpickle/Code/Java/magenta2/.internal-dev/reviews/artifacts/workarea-markdown-editor-followup-2026-05-27/desktop-05-editor-edit-mode.png",
+      "/home/hickelpickle/Code/Java/magenta2/.internal-dev/reviews/artifacts/workarea-markdown-editor-followup-2026-05-27/desktop-06-editor-preview-mode-unsaved.png",
+      "/home/hickelpickle/Code/Java/magenta2/.internal-dev/reviews/artifacts/workarea-markdown-editor-followup-2026-05-27/desktop-07-editor-split-mode-unsaved.png",
+      "/home/hickelpickle/Code/Java/magenta2/.internal-dev/reviews/artifacts/workarea-markdown-editor-followup-2026-05-27/desktop-08-markdown-reopen-after-save.png",
+      "/home/hickelpickle/Code/Java/magenta2/.internal-dev/reviews/artifacts/workarea-markdown-editor-followup-2026-05-27/desktop-10-final-state.png"
+    ],
+    "consoleErrors": [],
+    "networkErrors": []
+  },
+  "mobile": {
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "prefix": "mobile",
+    "markdownPath": "demo-fixtures/briefing.md",
+    "textPath": null,
+    "selectedWorkArea": "67524694-8572-4b7a-8c99-f401ee1cf06f",
+    "checks": {
+      "viewerState": {
+        "hasHeading": true,
+        "hasParagraph": true,
+        "hasList": true,
+        "hasNestedList": false,
+        "hasBlockquote": false,
+        "hasInlineCode": false,
+        "hasFence": false,
+        "hasTable": true,
+        "horizOverflow": false
+      },
+      "previewShowsUnsaved": true,
+      "splitVisible": true,
+      "afterSaveState": {
+        "hasUnsavedProbe": true,
+        "dirtyLabelPresent": true
+      },
+      "savedRenderVisible": true,
+      "undoRedoRevert": {
+        "undoEnabled": true,
+        "undoWorked": true,
+        "redoWorked": false,
+        "revertMatchesSaved": true
+      },
+      "textFileNoMarkdownModes": "SKIPPED_NO_TEXT_FILE_IN_DEMO_FIXTURES",
+      "textFileSavePersisted": "SKIPPED_NO_TEXT_FILE_IN_DEMO_FIXTURES"
+    },
+    "screenshots": [
+      "/home/hickelpickle/Code/Java/magenta2/.internal-dev/reviews/artifacts/workarea-markdown-editor-followup-2026-05-27/mobile-01-avatar-workareas.png",
+      "/home/hickelpickle/Code/Java/magenta2/.internal-dev/reviews/artifacts/workarea-markdown-editor-followup-2026-05-27/mobile-02-explorer-root.png",
+      "/home/hickelpickle/Code/Java/magenta2/.internal-dev/reviews/artifacts/workarea-markdown-editor-followup-2026-05-27/mobile-03-demo-fixtures-open.png",
+      "/home/hickelpickle/Code/Java/magenta2/.internal-dev/reviews/artifacts/workarea-markdown-editor-followup-2026-05-27/mobile-04-markdown-viewer.png",
+      "/home/hickelpickle/Code/Java/magenta2/.internal-dev/reviews/artifacts/workarea-markdown-editor-followup-2026-05-27/mobile-05-editor-edit-mode.png",
+      "/home/hickelpickle/Code/Java/magenta2/.internal-dev/reviews/artifacts/workarea-markdown-editor-followup-2026-05-27/mobile-06-editor-preview-mode-unsaved.png",
+      "/home/hickelpickle/Code/Java/magenta2/.internal-dev/reviews/artifacts/workarea-markdown-editor-followup-2026-05-27/mobile-07-editor-split-mode-unsaved.png",
+      "/home/hickelpickle/Code/Java/magenta2/.internal-dev/reviews/artifacts/workarea-markdown-editor-followup-2026-05-27/mobile-08-markdown-reopen-after-save.png",
+      "/home/hickelpickle/Code/Java/magenta2/.internal-dev/reviews/artifacts/workarea-markdown-editor-followup-2026-05-27/mobile-10-final-state.png"
+    ],
+    "consoleErrors": [],
+    "networkErrors": []
+  }
+}

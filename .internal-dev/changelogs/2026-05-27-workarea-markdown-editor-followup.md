@@ -34,6 +34,7 @@
 - Markdown preview/split no longer requires save-to-switch behavior.
 - Rendered markdown lists/quotes/code/tables are container-normalized via a shared scoped class.
 - Save persistence behavior is unchanged and still service-owned through Work Area explorer service policies.
+- Browser rerun validation passed on desktop and mobile for stable `demo-fixtures/briefing.md` and `demo-fixtures/plain-text-fixture.txt`, including nested lists, blockquotes, inline/fenced code, tables, unsaved preview, save persistence, undo/redo/revert, and text-only edit/save behavior.
 
 # Specification Impact
 - Updated `.internal-dev/specifications/web.md`, `.internal-dev/specifications/simplypages.md`, and `.internal-dev/specifications/api.md` to reflect editor mode behavior, HTMX save boundary, narrow JS responsibilities, and the new non-persistent preview route.
@@ -44,5 +45,5 @@
 - Browser validation is still required to verify split-mode ergonomics and compact control wrapping across desktop/mobile.
 
 # Follow-up Items
-- Dispatch focused Playwright validation (desktop and mobile) for markdown viewer/editor modes, save persistence, local undo/redo/revert affordances, and rendered markdown layout quality.
-- Use stable root fixtures for reruns (`demo-fixtures/briefing.md` plus `demo-fixtures/plain-text-fixture.txt`) and fail validation if `pw-*` files are generated.
+- Preserve stable root fixtures for future reruns (`demo-fixtures/briefing.md` plus `demo-fixtures/plain-text-fixture.txt`) and fail validation if `pw-*` files are generated.
+- Future richer editor integration, such as CodeMirror-level syntax highlighting, remains separate scope.
