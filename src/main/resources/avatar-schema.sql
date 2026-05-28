@@ -51,6 +51,52 @@ create table if not exists avatar_dashboard_widgets (
 create index if not exists idx_avatar_dashboard_widgets_row
     on avatar_dashboard_widgets(row_id, column_position);
 
+create table if not exists user_dashboards (
+    id text primary key,
+    dashboard_name text not null,
+    dashboard_position integer not null,
+    default_dashboard integer not null default 0,
+    settings_json text not null default '{}',
+    created_at text not null,
+    updated_at text not null,
+    unique(dashboard_name)
+);
+
+create index if not exists idx_user_dashboards_position
+    on user_dashboards(dashboard_position, id);
+
+create table if not exists user_dashboard_rows (
+    id text primary key,
+    dashboard_id text not null,
+    row_position integer not null,
+    collapsed integer not null default 0,
+    settings_json text not null default '{}',
+    updated_at text not null,
+    foreign key(dashboard_id) references user_dashboards(id) on delete cascade
+);
+
+create index if not exists idx_user_dashboard_rows_dashboard
+    on user_dashboard_rows(dashboard_id, row_position, id);
+
+create table if not exists user_dashboard_widgets (
+    id text primary key,
+    dashboard_id text not null,
+    row_id text not null,
+    widget_key text not null,
+    column_position integer not null,
+    column_width integer not null,
+    enabled integer not null default 1,
+    collapsed integer not null default 0,
+    settings_json text not null default '{}',
+    updated_at text not null,
+    unique(dashboard_id, widget_key),
+    foreign key(dashboard_id) references user_dashboards(id) on delete cascade,
+    foreign key(row_id) references user_dashboard_rows(id) on delete cascade
+);
+
+create index if not exists idx_user_dashboard_widgets_row
+    on user_dashboard_widgets(row_id, column_position);
+
 create table if not exists avatar_todos (
     id text primary key,
     title text not null,

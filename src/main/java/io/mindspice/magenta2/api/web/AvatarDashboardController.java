@@ -69,7 +69,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Controller
 public class AvatarDashboardController {
-    private static final String AVATAR_CSS = "/css/avatar-dashboard.css?v=6";
+    private static final String AVATAR_CSS = "/css/avatar-dashboard.css?v=7";
     private static final String AVATAR_AGENT_ID = "avatar";
     private static final String DEFAULT_AVATAR_TAB = "dashboard";
 
@@ -103,41 +103,47 @@ public class AvatarDashboardController {
         this.workAreaExplorerService = workAreaExplorerService;
         this.inboxService = inboxService;
         this.shell = ShellBuilder.create()
-            .withPageTitle("Avatar Dashboard")
+            .withPageTitle("Assistant Dashboard")
             .withCustomCss("/css/magenta.css?v=5")
             .addCustomCss(AVATAR_CSS)
             .withContentTargetClass("avatar-content-area")
             .withTopBanner(BannerBuilder.create()
                 .withLayout(BannerBuilder.BannerLayout.CENTERED)
-                .withTitle("Avatar")
-                .withSubtitle("Personal assistant dashboard")
+                .withTitle("Assistant")
+                .withSubtitle("User dashboards, chat, and operational widgets")
                 .build())
             .withTopNav(AppNavigation.primaryTopNav())
             .buildTemplate();
     }
 
-    @GetMapping("/avatar")
+    @GetMapping("/")
     @ResponseBody
+    public String home(@RequestParam(value = "edit", required = false) boolean edit) {
+        return dashboard(avatarService.assistantDashboard().id(), edit);
+    }
+
+    @GetMapping("/dashboards/{dashboardId}")
+    @ResponseBody
+    public String dashboard(@PathVariable String dashboardId,
+                            @RequestParam(value = "edit", required = false) boolean edit) {
+        return shell.renderWithContent(AvatarDashboardComponents.page(data(dashboardId), "dashboard", edit));
+    }
+
     public String avatar(@RequestParam(value = "tab", required = false) String tab,
                          @RequestParam(value = "edit", required = false) boolean edit) {
-        AvatarTabState state = normalizeTabState(tab, edit);
-        return shell.renderWithContent(AvatarDashboardComponents.page(data(), state.activeTab(), state.editMode()));
+        return home(edit);
     }
 
     public String avatar(boolean edit) {
-        return avatar(DEFAULT_AVATAR_TAB, edit);
+        return home(edit);
     }
 
-    @GetMapping("/avatar/_tab-panel")
-    @ResponseBody
     public String avatarTabPanel(@RequestParam(value = "tab", required = false) String tab,
                                  @RequestParam(value = "edit", required = false) boolean edit,
                                  HttpServletResponse response) {
         return avatarTabPanelResponse(tab, edit, response);
     }
 
-    @GetMapping("/avatar/_tab-panel/{tab}")
-    @ResponseBody
     public String avatarTabPanelPath(@PathVariable String tab,
                                      @RequestParam(value = "edit", required = false) boolean edit,
                                      HttpServletResponse response) {
@@ -149,18 +155,18 @@ public class AvatarDashboardController {
     }
 
     private String avatarTabPanelResponse(String tab, boolean edit, HttpServletResponse response) {
-        AvatarTabState state = normalizeTabState(tab, edit);
+        AssistantTabState state = normalizeTabState(tab, edit);
         response.setHeader("HX-Push-Url", avatarUrl(state));
         return renderTabPanel(state);
     }
 
-    @GetMapping("/avatar/_widgets")
+    @GetMapping("/_dashboards/_widgets")
     @ResponseBody
     public String widgets(@RequestParam(value = "edit", required = false) boolean edit) {
         return AvatarDashboardComponents.widgetGrid(data(), edit).render();
     }
 
-    @GetMapping("/avatar/_widgets/{widgetKey}")
+    @GetMapping("/_dashboards/_widgets/{widgetKey}")
     @ResponseBody
     public String widget(@PathVariable String widgetKey) {
         requireWidget(widgetKey);
@@ -179,14 +185,14 @@ public class AvatarDashboardController {
         return AvatarDashboardComponents.widget(data, widget).render();
     }
 
-    @GetMapping("/avatar/_widgets/{widgetKey}/detail")
+    @GetMapping("/_dashboards/_widgets/{widgetKey}/detail")
     @ResponseBody
     public String widgetDetail(@PathVariable String widgetKey) {
         requireWidget(widgetKey);
         return AvatarDashboardComponents.widgetDetailModal(data(), widgetKey).render();
     }
 
-    @GetMapping("/avatar/_edit")
+    @GetMapping("/_dashboards/_edit")
     @ResponseBody
     public String edit(@RequestParam(value = "close", required = false) boolean close) {
         return "";
@@ -198,14 +204,46 @@ public class AvatarDashboardController {
         return WorkAreaExplorerFragments.emptyModalHost();
     }
 
-    @PostMapping("/avatar/_layout/rows")
+    @GetMapping("/dashboards/_create")
+    @ResponseBody
+    public String createDashboardModal() {
+        return AvatarDashboardComponents.createDashboardModal(null, null).render();
+    }
+
+    @GetMapping("/dashboards/_modal/clear")
+    @ResponseBody
+    public String clearDashboardModal() {
+        return new Div().withId("avatar-edit-container").render();
+    }
+
+    @PostMapping("/dashboards")
+    @ResponseBody
+    public String createDashboard(@RequestParam String name, HttpServletResponse response) {
+        try {
+            var dashboard = avatarService.createDashboard(name);
+            response.setHeader("HX-Push-Url", "/dashboards/" + dashboard.id());
+            return shell.renderWithContent(AvatarDashboardComponents.page(data(dashboard.id()), "dashboard", false));
+        } catch (IllegalArgumentException exception) {
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            return AvatarDashboardComponents.createDashboardModal(name, exception.getMessage()).render();
+        }
+    }
+
+    @PostMapping("/_dashboards/_layout/rows")
     @ResponseBody
     public String addLayoutRow() {
         avatarService.addDashboardRow();
         return AvatarDashboardComponents.layoutEditResponse(data(), true).render();
     }
 
-    @PostMapping("/avatar/_layout/rows/{rowId}/insert-after")
+    @PostMapping("/dashboards/{dashboardId}/_layout/rows")
+    @ResponseBody
+    public String addLayoutRow(@PathVariable String dashboardId) {
+        avatarService.addDashboardRow(dashboardId);
+        return AvatarDashboardComponents.layoutEditResponse(data(dashboardId), true).render();
+    }
+
+    @PostMapping("/_dashboards/_layout/rows/{rowId}/insert-after")
     @ResponseBody
     public String insertLayoutRowAfter(@PathVariable String rowId) {
         String insertedId;
@@ -214,10 +252,10 @@ public class AvatarDashboardController {
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
-        return AvatarDashboardComponents.layoutEditResponseWithCatalog(data(), insertedId).render();
+        return AvatarDashboardComponents.layoutEditResponseWithCatalog(data(avatarService.dashboardIdForRow(insertedId)), insertedId).render();
     }
 
-    @PostMapping("/avatar/_layout/rows/{rowId}/move")
+    @PostMapping("/_dashboards/_layout/rows/{rowId}/move")
     @ResponseBody
     public String moveLayoutRow(@PathVariable String rowId, @RequestParam String direction) {
         try {
@@ -225,27 +263,31 @@ public class AvatarDashboardController {
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
-        return AvatarDashboardComponents.layoutEditResponse(data(), true).render();
+        return AvatarDashboardComponents.layoutEditResponse(data(avatarService.dashboardIdForRow(rowId)), true).render();
     }
 
-    @GetMapping("/avatar/_layout/rows/{rowId}/catalog")
+    @GetMapping("/_dashboards/_layout/rows/{rowId}/catalog")
     @ResponseBody
     public String widgetCatalog(@PathVariable String rowId) {
-        return AvatarDashboardComponents.widgetCatalogModal(avatarService.dashboardRows(), rowId).render();
+        return AvatarDashboardComponents.widgetCatalogModal(
+            avatarService.dashboardRows(avatarService.dashboardIdForRow(rowId)),
+            rowId
+        ).render();
     }
 
-    @DeleteMapping("/avatar/_layout/rows/{rowId}")
+    @DeleteMapping("/_dashboards/_layout/rows/{rowId}")
     @ResponseBody
     public String removeLayoutRow(@PathVariable String rowId) {
+        String dashboardId = avatarService.dashboardIdForRow(rowId);
         try {
             avatarService.removeDashboardRow(rowId);
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
-        return AvatarDashboardComponents.layoutEditResponse(data(), true).render();
+        return AvatarDashboardComponents.layoutEditResponse(data(dashboardId), true).render();
     }
 
-    @PostMapping("/avatar/_layout/rows/{rowId}/widgets")
+    @PostMapping("/_dashboards/_layout/rows/{rowId}/widgets")
     @ResponseBody
     public String addLayoutWidget(
         @PathVariable String rowId,
@@ -258,10 +300,10 @@ public class AvatarDashboardController {
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
-        return AvatarDashboardComponents.layoutEditResponse(data(), true).render();
+        return AvatarDashboardComponents.layoutEditResponse(data(avatarService.dashboardIdForRow(rowId)), true).render();
     }
 
-    @PostMapping("/avatar/_layout/widgets/{widgetId}/move")
+    @PostMapping("/_dashboards/_layout/widgets/{widgetId}/move")
     @ResponseBody
     public String moveLayoutWidget(@PathVariable String widgetId, @RequestParam String direction) {
         try {
@@ -269,10 +311,10 @@ public class AvatarDashboardController {
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
-        return AvatarDashboardComponents.layoutEditResponse(data(), true).render();
+        return AvatarDashboardComponents.layoutEditResponse(data(avatarService.dashboardIdForWidget(widgetId)), true).render();
     }
 
-    @PutMapping("/avatar/_layout/widgets/{widgetId}/width")
+    @PutMapping("/_dashboards/_layout/widgets/{widgetId}/width")
     @ResponseBody
     public String resizeLayoutWidget(@PathVariable String widgetId, @RequestParam int columnWidth) {
         try {
@@ -280,13 +322,14 @@ public class AvatarDashboardController {
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
-        return AvatarDashboardComponents.layoutEditResponse(data(), true).render();
+        return AvatarDashboardComponents.layoutEditResponse(data(avatarService.dashboardIdForWidget(widgetId)), true).render();
     }
 
-    @GetMapping("/avatar/_layout/widgets/{widgetId}/width-picker")
+    @GetMapping("/_dashboards/_layout/widgets/{widgetId}/width-picker")
     @ResponseBody
     public String widgetWidthPicker(@PathVariable String widgetId) {
-        AvatarDashboardRowWidget widget = avatarService.dashboardRows().stream()
+        String dashboardId = avatarService.dashboardIdForWidget(widgetId);
+        AvatarDashboardRowWidget widget = avatarService.dashboardRows(dashboardId).stream()
             .flatMap(row -> row.widgets().stream())
             .filter(item -> item.id().equals(widgetId))
             .findFirst()
@@ -294,10 +337,10 @@ public class AvatarDashboardController {
                 HttpStatus.BAD_REQUEST,
                 "dashboard widget not found: " + widgetId
             ));
-        return AvatarDashboardComponents.widgetWidthPicker(avatarService.dashboardRows(), widget).render();
+        return AvatarDashboardComponents.widgetWidthPicker(avatarService.dashboardRows(dashboardId), widget).render();
     }
 
-    @PostMapping("/avatar/_layout/widgets/{widgetId}/width-cycle")
+    @PostMapping("/_dashboards/_layout/widgets/{widgetId}/width-cycle")
     @ResponseBody
     public String cycleLayoutWidgetWidth(@PathVariable String widgetId) {
         try {
@@ -305,28 +348,29 @@ public class AvatarDashboardController {
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
-        return AvatarDashboardComponents.layoutEditResponse(data(), true).render();
+        return AvatarDashboardComponents.layoutEditResponse(data(avatarService.dashboardIdForWidget(widgetId)), true).render();
     }
 
-    @DeleteMapping("/avatar/_layout/widgets/{widgetId}")
+    @DeleteMapping("/_dashboards/_layout/widgets/{widgetId}")
     @ResponseBody
     public String removeLayoutWidget(@PathVariable String widgetId) {
+        String dashboardId = avatarService.dashboardIdForWidget(widgetId);
         try {
             avatarService.removeDashboardWidget(widgetId);
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
-        return AvatarDashboardComponents.layoutEditResponse(data(), true).render();
+        return AvatarDashboardComponents.layoutEditResponse(data(dashboardId), true).render();
     }
 
     @Deprecated
-    @PutMapping("/avatar/_layout")
+    @PutMapping("/_dashboards/_layout")
     @ResponseBody
     public String saveLayout() {
         return AvatarDashboardComponents.layoutEditResponse(data(), true).render();
     }
 
-    @PostMapping("/avatar/_todos")
+    @PostMapping("/_dashboards/_todos")
     @ResponseBody
     public String createTodo(@RequestParam String title,
                              @RequestParam(value = "notes", required = false) String notes,
@@ -349,21 +393,21 @@ public class AvatarDashboardController {
         return widget("todos");
     }
 
-    @PostMapping("/avatar/_todos/{todoId}/complete")
+    @PostMapping("/_dashboards/_todos/{todoId}/complete")
     @ResponseBody
     public String completeTodo(@PathVariable String todoId) {
         avatarService.completeTodo(todoId);
         return widget("todos");
     }
 
-    @DeleteMapping("/avatar/_todos/{todoId}")
+    @DeleteMapping("/_dashboards/_todos/{todoId}")
     @ResponseBody
     public String deleteTodo(@PathVariable String todoId) {
         avatarService.deleteTodo(todoId);
         return widget("todos");
     }
 
-    @PostMapping("/avatar/_daily-tasks")
+    @PostMapping("/_dashboards/_daily-tasks")
     @ResponseBody
     public String createDailyTask(@RequestParam String title,
                                   @RequestParam(value = "notes", required = false) String notes) {
@@ -381,14 +425,14 @@ public class AvatarDashboardController {
         return widget("daily-tasks");
     }
 
-    @PostMapping("/avatar/_daily-tasks/{taskId}/complete")
+    @PostMapping("/_dashboards/_daily-tasks/{taskId}/complete")
     @ResponseBody
     public String completeDailyTask(@PathVariable String taskId) {
         avatarService.completeDailyTask(taskId);
         return widget("daily-tasks");
     }
 
-    @PostMapping("/avatar/_notes")
+    @PostMapping("/_dashboards/_notes")
     @ResponseBody
     public String createNote(@RequestParam(value = "title", required = false) String title,
                              @RequestParam String body) {
@@ -397,7 +441,7 @@ public class AvatarDashboardController {
         return widget("notes");
     }
 
-    @PostMapping("/avatar/_calendar")
+    @PostMapping("/_dashboards/_calendar")
     @ResponseBody
     public String createCalendarItem(@RequestParam String title,
                                      @RequestParam(value = "startsAt", required = false) String startsAt,
@@ -418,14 +462,14 @@ public class AvatarDashboardController {
         return widget("calendar");
     }
 
-    @DeleteMapping("/avatar/_calendar/{calendarId}")
+    @DeleteMapping("/_dashboards/_calendar/{calendarId}")
     @ResponseBody
     public String deleteCalendarItem(@PathVariable String calendarId) {
         avatarService.deleteCalendarItem(calendarId);
         return widget("calendar");
     }
 
-    @GetMapping("/avatar/_organizer")
+    @GetMapping("/_dashboards/_organizer")
     @ResponseBody
     public String organizer(@RequestParam(value = "tab", defaultValue = "planner") String tab) {
         return AvatarDashboardComponents.organizerModal(
@@ -439,7 +483,7 @@ public class AvatarDashboardController {
         ).render();
     }
 
-    @PostMapping("/avatar/_planner-tasks")
+    @PostMapping("/_dashboards/_planner-tasks")
     @ResponseBody
     public String createPlannerTask(
         @RequestParam String title,
@@ -489,7 +533,7 @@ public class AvatarDashboardController {
         return organizer("planner");
     }
 
-    @PostMapping("/avatar/_planner-tasks/{taskId}/subtodos")
+    @PostMapping("/_dashboards/_planner-tasks/{taskId}/subtodos")
     @ResponseBody
     public String createPlannerSubtodo(@PathVariable String taskId, @RequestParam String title) {
         requireText(title, "planner subtodo title");
@@ -505,7 +549,7 @@ public class AvatarDashboardController {
         return organizer("planner");
     }
 
-    @GetMapping("/avatar/_outputs/{artifactId}")
+    @GetMapping("/_dashboards/_outputs/{artifactId}")
     @ResponseBody
     public String outputPreview(@PathVariable String artifactId) {
         try {
@@ -520,7 +564,7 @@ public class AvatarDashboardController {
         }
     }
 
-    @PostMapping("/avatar/_alerts/{eventId}/dismiss")
+    @PostMapping("/_dashboards/_alerts/{eventId}/dismiss")
     @ResponseBody
     public String dismissAlert(@PathVariable String eventId) {
         requireText(eventId, "event id");
@@ -541,7 +585,7 @@ public class AvatarDashboardController {
         @RequestParam(value = "selected", required = false) String selected,
         @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
     ) {
-        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
         try {
             WorkAreaExplorerService.DirectoryListing listing = explorer.list(workAreaId, path);
             String inspectPath = StringUtils.hasText(selected) ? selected : path;
@@ -572,7 +616,7 @@ public class AvatarDashboardController {
         @RequestParam(value = "selected", required = false) String selected,
         @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
     ) {
-        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
         try {
             WorkAreaExplorerService.DirectoryListing listing = explorer.list(workAreaId, path);
             return WorkAreaExplorerFragments.list(
@@ -594,7 +638,7 @@ public class AvatarDashboardController {
         @RequestParam(value = "listPath", defaultValue = ".") String listPath,
         @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
     ) {
-        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
         try {
             boolean collapsed = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_COLLAPSED.equalsIgnoreCase(panelState(panel));
             return WorkAreaExplorerFragments.inspector(
@@ -617,7 +661,7 @@ public class AvatarDashboardController {
     @GetMapping("/avatar/_work-areas/{workAreaId}/viewer")
     @ResponseBody
     public String workAreaViewer(@PathVariable String workAreaId, @RequestParam String path) {
-        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
         try {
             return WorkAreaExplorerFragments.viewer(workAreaId, explorer.preview(workAreaId, path));
         } catch (IllegalArgumentException exception) {
@@ -632,7 +676,7 @@ public class AvatarDashboardController {
         @RequestParam String path,
         @RequestParam(value = "tab", defaultValue = "rendered") String tab
     ) {
-        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
         try {
             return WorkAreaExplorerFragments.textViewer(workAreaId, explorer.preview(workAreaId, path), tab);
         } catch (IllegalArgumentException exception) {
@@ -647,7 +691,7 @@ public class AvatarDashboardController {
         @RequestParam String path,
         @RequestParam(required = false) String content
     ) {
-        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
         try {
             WorkAreaExplorerService.FilePreview preview = explorer.preview(workAreaId, path);
             if (!preview.text() || !"markdown".equals(preview.kind())) {
@@ -662,7 +706,7 @@ public class AvatarDashboardController {
     @GetMapping("/avatar/_work-areas/{workAreaId}/preview")
     @ResponseBody
     public String workAreaPreview(@PathVariable String workAreaId, @RequestParam String path) {
-        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
         try {
             return AvatarDashboardComponents.workAreaPreview(workAreaId, explorer.preview(workAreaId, path)).render();
         } catch (IllegalArgumentException exception) {
@@ -676,7 +720,7 @@ public class AvatarDashboardController {
     @GetMapping("/avatar/_work-areas/{workAreaId}/edit")
     @ResponseBody
     public String workAreaTextEditor(@PathVariable String workAreaId, @RequestParam String path) {
-        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
         try {
             return WorkAreaExplorerFragments.textViewer(workAreaId, explorer.preview(workAreaId, path), "text");
         } catch (IllegalArgumentException exception) {
@@ -692,7 +736,7 @@ public class AvatarDashboardController {
         @RequestParam String content,
         @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
     ) {
-        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
         try {
             explorer.saveText(workAreaId, path, content);
             String listPath = parentPath(path);
@@ -722,7 +766,7 @@ public class AvatarDashboardController {
         @RequestParam String name,
         @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
     ) {
-        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
         String childPath = joinPath(path, name);
         try {
             WorkAreaExplorerService.Entry entry = explorer.createDirectory(workAreaId, childPath);
@@ -748,7 +792,7 @@ public class AvatarDashboardController {
         @RequestParam(value = "kind", defaultValue = "text") String kind,
         @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
     ) {
-        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
         try {
             WorkAreaExplorerService.Entry entry = "markdown".equalsIgnoreCase(kind)
                 ? explorer.createMarkdownFile(workAreaId, path, name)
@@ -788,7 +832,7 @@ public class AvatarDashboardController {
         @RequestParam(value = "displayName", required = false) String displayName,
         @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
     ) {
-        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
         try {
             explorer.mark(workAreaId, path, displayName);
             return refreshedExplorer(explorer, workAreaId, parentPath(path), panelState(panel));
@@ -805,7 +849,7 @@ public class AvatarDashboardController {
         @RequestParam String confirm,
         @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
     ) {
-        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
         try {
             explorer.deleteRecursive(workAreaId, path, confirm);
             return refreshedExplorer(explorer, workAreaId, parentPath(path), panelState(panel));
@@ -822,7 +866,7 @@ public class AvatarDashboardController {
         @RequestParam String path,
         @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
     ) {
-        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
         try {
             if ("tag".equals(action)) {
                 return renderTagEditorModal(explorer, workAreaId, path, panelState(panel), null);
@@ -852,7 +896,7 @@ public class AvatarDashboardController {
         if (!"copy".equals(action) && !"move".equals(action)) {
             return WorkAreaExplorerFragments.modalError("File action failed", "Unknown file action: " + action);
         }
-        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
         try {
             explorer.inspect(workAreaId, path);
             WorkAreaExplorerService.DirectoryListing listing = explorer.list(workAreaId, browse);
@@ -884,7 +928,7 @@ public class AvatarDashboardController {
         @RequestParam(value = "x", defaultValue = "48") int x,
         @RequestParam(value = "y", defaultValue = "96") int y
     ) {
-        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
         try {
             WorkAreaExplorerService.DirectoryListing listing = explorer.list(workAreaId, browse);
             return WorkAreaExplorerFragments.directoryPickerOptions(
@@ -911,7 +955,7 @@ public class AvatarDashboardController {
         @RequestParam String step,
         @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
     ) {
-        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
         try {
             explorer.delete(workAreaId, path, WorkAreaExplorerService.DeleteStep.valueOf(step));
             return refreshedExplorerTargets(
@@ -935,7 +979,7 @@ public class AvatarDashboardController {
         @RequestParam String name,
         @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
     ) {
-        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
         try {
             WorkAreaExplorerService.Entry renamed = explorer.rename(workAreaId, path, name);
             return refreshedExplorerTargets(
@@ -961,7 +1005,7 @@ public class AvatarDashboardController {
         @RequestParam(value = "name", required = false) String name,
         @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
     ) {
-        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
         try {
             String effectiveDestination = effectiveOperationDestination(explorer, workAreaId, path, destination);
             WorkAreaExplorerService.Entry result;
@@ -1024,7 +1068,7 @@ public class AvatarDashboardController {
         @RequestParam(value = "displayName", required = false) String displayName,
         @RequestParam(value = "description", required = false) String description
     ) {
-        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
         try {
             if (StringUtils.hasText(targetType)) {
                 explorer.ensureTag(
@@ -1049,7 +1093,7 @@ public class AvatarDashboardController {
         @RequestParam String path,
         @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
     ) {
-        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
         try {
             return renderTagEditorModal(explorer, workAreaId, path, panelState(panel), null);
         } catch (IllegalArgumentException exception) {
@@ -1063,7 +1107,7 @@ public class AvatarDashboardController {
         @PathVariable String workAreaId,
         @RequestParam MultiValueMap<String, String> params
     ) {
-        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
         try {
             String path = requiredSingleValue(params, "path");
             String panel = optionalSingleValue(params, "panel");
@@ -1093,7 +1137,7 @@ public class AvatarDashboardController {
         @PathVariable String workAreaId,
         @RequestParam MultiValueMap<String, String> params
     ) {
-        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
         try {
             String path = requiredSingleValue(params, "path");
             String label = requiredSingleValue(params, "label");
@@ -1138,7 +1182,7 @@ public class AvatarDashboardController {
         try {
             String path = requiredSingleValue(params, "path");
             String label = optionalSingleValue(params, "label");
-            WorkAreaExplorerService explorer = requireExplorerService();
+            WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
             return WorkAreaExplorerFragments.tagOptions(
                 workAreaId,
                 path,
@@ -1287,7 +1331,7 @@ public class AvatarDashboardController {
     }
 
     String addWorkAreaTag(String workAreaId, String path, String label, String targetType, String panel) {
-        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
         try {
             WorkspaceFileLabelTargetType requestedType = StringUtils.hasText(targetType)
                 ? WorkspaceFileLabelTargetType.fromWireName(targetType)
@@ -1316,7 +1360,7 @@ public class AvatarDashboardController {
     }
 
     String removeWorkAreaTag(String workAreaId, String path, String label, String panel) {
-        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
         try {
             explorer.removeLabel(workAreaId, path, label);
             return refreshedExplorerTargets(
@@ -1335,7 +1379,7 @@ public class AvatarDashboardController {
     @PostMapping("/avatar/_work-areas/{workAreaId}/labels/note")
     @ResponseBody
     public String addWorkAreaNoteLabel(@PathVariable String workAreaId, @RequestParam String path) {
-        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
         try {
             explorer.addLabel(workAreaId, path, "note");
             return refreshedExplorerTargets(
@@ -1354,7 +1398,7 @@ public class AvatarDashboardController {
     @DeleteMapping("/avatar/_work-areas/{workAreaId}/labels/note")
     @ResponseBody
     public String removeWorkAreaNoteLabel(@PathVariable String workAreaId, @RequestParam String path) {
-        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaExplorerService explorer = requireAssistantExplorerService(workAreaId);
         try {
             explorer.removeLabel(workAreaId, path, "note");
             return refreshedExplorerTargets(
@@ -1371,11 +1415,17 @@ public class AvatarDashboardController {
     }
 
     private AvatarDashboardComponents.AvatarDashboardData data() {
+        return data(avatarService.assistantDashboard().id());
+    }
+
+    private AvatarDashboardComponents.AvatarDashboardData data(String dashboardId) {
         List<AgentProfile> agents = safeList(agentProfileService::list);
         return new AvatarDashboardComponents.AvatarDashboardData(
+            avatarService.dashboard(dashboardId),
+            avatarService.dashboards(),
             avatarService.profile(),
             avatarService.dashboardLayout(),
-            avatarService.dashboardRows(),
+            avatarService.dashboardRows(dashboardId),
             avatarService.dailyTasks(LocalDate.now()),
             avatarService.todos(),
             avatarService.calendarItems(),
@@ -1383,7 +1433,7 @@ public class AvatarDashboardController {
             avatarService.events(),
             safeList(() -> outputArtifactService.query(null, null, null, 20)),
             agents,
-            workAreas(agents),
+            avatarWorkAreas(),
             safeList(jobService::listDefinitions),
             assignments(agents),
             safeList(inboxService::userInbox),
@@ -1391,11 +1441,11 @@ public class AvatarDashboardController {
         );
     }
 
-    private String renderTabPanel(AvatarTabState state) {
+    private String renderTabPanel(AssistantTabState state) {
         return AvatarDashboardComponents.tabPanelResponse(data(), state.activeTab(), state.editMode()).render();
     }
 
-    private Component wrapTabPanel(AvatarTabState state, Component content) {
+    private Component wrapTabPanel(AssistantTabState state, Component content) {
         return new Div()
             .withId("avatar-tab-panel")
             .withClass("avatar-tab-panel avatar-tab-panel-" + state.activeTab())
@@ -1435,7 +1485,7 @@ public class AvatarDashboardController {
             base.workAreas(),
             historyAssignments
         );
-        // TODO(avatar-shell-baseline): Replace this fallback summary with a dedicated Avatar history component once
+        // TODO(avatar-shell-baseline): Replace this fallback summary with a dedicated Assistant history component once
         // the user-surface transcript read path is available without widening scope beyond this controller.
         return new Div()
             .withClass("avatar-tab-panel-content avatar-tab-panel-history")
@@ -1454,10 +1504,10 @@ public class AvatarDashboardController {
     private Component profileTab() {
         AgentProfile avatarAgent = avatarAgentProfile();
         String displayName = avatarService.profile() == null || !StringUtils.hasText(avatarService.profile().displayName())
-            ? "Avatar"
+            ? "Assistant"
             : avatarService.profile().displayName().strip();
         String agentSummary = avatarAgent == null
-            ? "Reserved Avatar agent profile is not currently available."
+            ? "Reserved Assistant agent profile is not currently available."
             : "Reserved agent status: " + avatarAgent.status()
                 + (StringUtils.hasText(avatarAgent.defaultModel())
                     ? "; model " + avatarAgent.defaultModel()
@@ -1486,7 +1536,7 @@ public class AvatarDashboardController {
         AvatarDashboardComponents.AvatarDashboardData workAreasData = copyData(
             base,
             base.outputs(),
-            avatarWorkAreas(base.agents()),
+            base.workAreas(),
             base.assignments()
         );
         return AvatarDashboardComponents.widget(
@@ -1502,6 +1552,8 @@ public class AvatarDashboardController {
         List<WorkAssignment> assignments
     ) {
         return new AvatarDashboardComponents.AvatarDashboardData(
+            base.dashboard(),
+            base.dashboards(),
             base.profile(),
             base.layout(),
             base.rows(),
@@ -1527,16 +1579,6 @@ public class AvatarDashboardController {
         }
         return agents.stream()
             .flatMap(agent -> safeList(() -> service.queueAssignments(agent.id())).stream())
-            .toList();
-    }
-
-    private List<WorkArea> workAreas(List<AgentProfile> agents) {
-        WorkAreaService service = workAreaService.getIfAvailable();
-        if (service == null || agents == null || agents.isEmpty()) {
-            return List.of();
-        }
-        return agents.stream()
-            .flatMap(agent -> safeList(() -> service.list(WorkspaceOwnerType.AGENT, agent.id(), false)).stream())
             .toList();
     }
 
@@ -1588,7 +1630,7 @@ public class AvatarDashboardController {
         return safeList(() -> outputArtifactService.query(null, null, null, 20));
     }
 
-    private List<WorkArea> avatarWorkAreas(List<AgentProfile> agents) {
+    private List<WorkArea> avatarWorkAreas() {
         WorkAreaService service = workAreaService.getIfAvailable();
         if (service == null) {
             return List.of();
@@ -1596,7 +1638,6 @@ public class AvatarDashboardController {
         Map<String, WorkArea> byId = new LinkedHashMap<>();
         safeList(() -> service.list(WorkspaceOwnerType.AGENT, AVATAR_AGENT_ID, false))
             .forEach(workArea -> byId.put(workArea.id(), workArea));
-        workAreas(agents).forEach(workArea -> byId.putIfAbsent(workArea.id(), workArea));
         return List.copyOf(byId.values());
     }
 
@@ -1637,6 +1678,24 @@ public class AvatarDashboardController {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Work Area explorer is unavailable");
         }
         return service;
+    }
+
+    private WorkAreaExplorerService requireAssistantExplorerService(String workAreaId) {
+        WorkAreaExplorerService explorer = requireExplorerService();
+        WorkAreaService service = workAreaService.getIfAvailable();
+        if (service == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Work Area service is unavailable");
+        }
+        WorkArea workArea;
+        try {
+            workArea = service.get(workAreaId);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Work Area unavailable");
+        }
+        if (workArea.ownerType() != WorkspaceOwnerType.AGENT || !AVATAR_AGENT_ID.equals(workArea.ownerId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Work Area unavailable");
+        }
+        return explorer;
     }
 
     private String renderTagEditorModal(
@@ -1820,23 +1879,18 @@ public class AvatarDashboardController {
         }
     }
 
-    private AvatarTabState normalizeTabState(String tab, boolean edit) {
-        String normalizedTab = normalizeTab(tab);
-        return new AvatarTabState(normalizedTab, "dashboard".equals(normalizedTab) && edit);
+    private AssistantTabState normalizeTabState(String tab, boolean edit) {
+        return new AssistantTabState(DEFAULT_AVATAR_TAB, edit);
     }
 
     private String normalizeTab(String value) {
-        String normalized = StringUtils.hasText(value) ? value.strip().toLowerCase(Locale.ROOT) : DEFAULT_AVATAR_TAB;
-        return switch (normalized) {
-            case "dashboard", "queue", "history", "profile", "outputs", "work-areas" -> normalized;
-            default -> DEFAULT_AVATAR_TAB;
-        };
+        return DEFAULT_AVATAR_TAB;
     }
 
-    private String avatarUrl(AvatarTabState state) {
-        StringBuilder url = new StringBuilder("/avatar?tab=").append(state.activeTab());
+    private String avatarUrl(AssistantTabState state) {
+        StringBuilder url = new StringBuilder("/dashboards/assistant");
         if (state.editMode()) {
-            url.append("&edit=true");
+            url.append("?edit=true");
         }
         return url.toString();
     }
@@ -1920,6 +1974,6 @@ public class AvatarDashboardController {
         List<T> get();
     }
 
-    private record AvatarTabState(String activeTab, boolean editMode) {
+    private record AssistantTabState(String activeTab, boolean editMode) {
     }
 }

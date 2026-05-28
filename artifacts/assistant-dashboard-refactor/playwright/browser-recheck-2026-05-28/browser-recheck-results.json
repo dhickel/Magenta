@@ -1,0 +1,1429 @@
+{
+  "baseUrl": "http://127.0.0.1:18081",
+  "screenshots": [
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2026-05-28/root-desktop.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2026-05-28/root-mobile.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2026-05-28/create-modal-desktop-open.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2026-05-28/create-modal-desktop-blank-submit.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2026-05-28/created-dashboard-desktop.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2026-05-28/create-modal-mobile-open.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2026-05-28/assistant-edit-desktop.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2026-05-28/manage-desktop.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2026-05-28/agents-desktop.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2026-05-28/agent-avatar-detail-desktop.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2026-05-28/agent-avatar-detail-mobile.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2026-05-28/agent-workareas-tab-desktop.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2026-05-28/agent-workarea-explorer-desktop.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2026-05-28/agent-workarea-file-selected-desktop.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2026-05-28/agent-workarea-modal-desktop.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2026-05-28/agent-workarea-explorer-mobile.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2026-05-28/agent-detail-non-avatar-desktop.png"
+  ],
+  "checks": {
+    "rootDesktop": {
+      "url": "http://127.0.0.1:18081/",
+      "title": "Assistant Dashboard",
+      "innerWidth": 1440,
+      "scrollWidth": 1440,
+      "bodyText": "Assistant\n\nUser dashboards, chat, and operational widgets\n\nHome\nChat\nAgents\nManage\nAssistant\nPW Browser Proof 1779956580533\n+\nAssistant Chat\nDashboard assistant channel\nsurface home\nnew chat\nReady\nmodel local-qwen\nAsk the assistant for a quick update.\nSend\nDashboard\nDaily Tasks\nAdd Daily\nNo daily tasks for today.\nTodos\nNormal\nHigh\nUrgent\nLow\nAdd Todo\nPW Rerun3 mobile 1779492048985\nnormal\nPW Rerun3 desktop 1779492033471\nnormal\npw rerun2 todo 1779491724852\nnormal\npw rerun2 todo 1779491711125\nnormal\npw rerun todo 1779491635959\nnormal\npw rerun todo 1779491601967\nnormal\nCalendar\nAdd Event\nNo calendar items.\nNotes\nSave Note\nNo notes yet.\nOutputs\nNo recent outputs.\nSystem\n2\nActive agents\n0\nOpen jobs\n0\nQueued work\nAlerts\nNo alerts.\nRecent Work\nNo recent work.",
+      "visibleAvatarTextCount": 0,
+      "visibleAssistantTextCount": 3,
+      "htmxUrls": [
+        {
+          "tag": "a",
+          "text": "Agents",
+          "href": "/agents",
+          "action": null,
+          "hxGet": null,
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "a",
+          "text": "Assistant",
+          "href": "/dashboards/assistant",
+          "action": null,
+          "hxGet": null,
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "a",
+          "text": "PW Browser Proof 1779956580533",
+          "href": "/dashboards/dashboard-259e6c84-a645-47d8-877c-27fd077bb86e",
+          "action": null,
+          "hxGet": null,
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "+",
+          "href": null,
+          "action": null,
+          "hxGet": "/dashboards/_create",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "a",
+          "text": "Edit dashboard layout",
+          "href": "/dashboards/assistant?edit=true",
+          "action": null,
+          "hxGet": null,
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        }
+      ],
+      "hasDashboardSelector": 1,
+      "assistantSelected": 1,
+      "hasChatRail": 2,
+      "hasWorkAreasText": false,
+      "noHorizontalOverflow": true
+    },
+    "rootMobile": {
+      "url": "http://127.0.0.1:18081/",
+      "title": "Assistant Dashboard",
+      "innerWidth": 390,
+      "scrollWidth": 390,
+      "bodyText": "Assistant\n\nUser dashboards, chat, and operational widgets\n\nHome\nChat\nAgents\nManage\nAssistant\nPW Browser Proof 1779956580533\n+\nAssistant Chat\nDashboard assistant channel\nsurface home\nnew chat\nReady\nmodel local-qwen\nAsk the assistant for a quick update.\nSend\nDashboard\nDaily Tasks\nAdd Daily\nNo daily tasks for today.\nTodos\nNormal\nHigh\nUrgent\nLow\nAdd Todo\nPW Rerun3 mobile 1779492048985\nnormal\nPW Rerun3 desktop 1779492033471\nnormal\npw rerun2 todo 1779491724852\nnormal\npw rerun2 todo 1779491711125\nnormal\npw rerun todo 1779491635959\nnormal\npw rerun todo 1779491601967\nnormal\nCalendar\nAdd Event\nNo calendar items.\nNotes\nSave Note\nNo notes yet.\nOutputs\nNo recent outputs.\nSystem\n2\nActive agents\n0\nOpen jobs\n0\nQueued work\nAlerts\nNo alerts.\nRecent Work\nNo recent work.",
+      "visibleAvatarTextCount": 0,
+      "visibleAssistantTextCount": 3,
+      "htmxUrls": [
+        {
+          "tag": "a",
+          "text": "Agents",
+          "href": "/agents",
+          "action": null,
+          "hxGet": null,
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "a",
+          "text": "Assistant",
+          "href": "/dashboards/assistant",
+          "action": null,
+          "hxGet": null,
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "a",
+          "text": "PW Browser Proof 1779956580533",
+          "href": "/dashboards/dashboard-259e6c84-a645-47d8-877c-27fd077bb86e",
+          "action": null,
+          "hxGet": null,
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "+",
+          "href": null,
+          "action": null,
+          "hxGet": "/dashboards/_create",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "a",
+          "text": "Edit dashboard layout",
+          "href": "/dashboards/assistant?edit=true",
+          "action": null,
+          "hxGet": null,
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        }
+      ],
+      "noHorizontalOverflow": true
+    },
+    "createDesktop": {
+      "inputExists": true,
+      "required": true,
+      "requiredAttribute": true,
+      "blankCheckValidityBeforeSubmit": false,
+      "formAction": null,
+      "hxPost": "/dashboards",
+      "submitText": "Create Dashboard",
+      "afterBlankSubmit": {
+        "url": "http://127.0.0.1:18081/",
+        "inputInvalid": true,
+        "validationMessage": "Please fill out this field.",
+        "ariaInvalid": "false",
+        "visibleError": null
+      },
+      "createdDashboardName": "PW Recheck 1779957482299",
+      "createdDashboardVisible": true,
+      "createdDashboardSelected": 1
+    },
+    "createMobile": {
+      "required": true,
+      "inputInvalidBlank": true,
+      "modalRect": {
+        "x": 57.59375,
+        "y": 3040.703125,
+        "width": 274.8125,
+        "height": 0,
+        "bottom": 3040.703125
+      },
+      "noHorizontalOverflow": true
+    },
+    "assistantEdit": {
+      "text": "Assistant\n\nUser dashboards, chat, and operational widgets\n\nHome\nChat\nAgents\nManage\nAssistant\nPW Browser Proof 1779956580533\nPW Recheck 1779957482299\n+\nAssistant Chat\nDashboard assistant channel\nsurface home\nnew chat\nReady\nmodel local-qwen\nAsk the assistant for a quick update.\nSend\nDashboard edit mode\nRow 1 · 12/12\nDaily Tasks\nAdd Daily\nNo daily tasks for today.\nTodos\nNormal\nHigh\nUrgent\nLow\nAdd Todo\nPW Rerun3 mobile 1779492048985\nnormal\nPW Rerun3 desktop 1779492033471\nnormal\npw rerun2 todo 1779491724852\nnormal\npw rerun2 todo 1779491711125\nnormal\npw rerun todo 1779491635959\nnormal\npw rerun todo 1779491601967\nnormal\nCalendar\nAdd Event\nNo calendar items.\n+ Add Widget\n+ Insert Row Below\nRow 2 · 12/12\nNotes\nSave Note\nNo notes yet.\nOutputs\nNo recent outputs.\n+ Add Widget\n+ Insert Row Below\nRow 3 · 12/12\nSystem\n2\nActive agents\n0\nOpen jobs\n0\nQueued work\nAlerts\nNo alerts.\nRecent Work\nNo recent work.\n+ Add Widget\n+ Insert Row Below",
+      "rowControls": 87,
+      "widgetControls": 72,
+      "noHorizontalOverflow": true
+    },
+    "manage": {
+      "url": "http://127.0.0.1:18081/manage",
+      "title": "Magenta Manage",
+      "innerWidth": 1440,
+      "scrollWidth": 1440,
+      "bodyText": "Magenta Operations\n\nOperational management\n\nHome\nChat\nAgents\nManage\n☰\nSYSTEM\nSystem\nSettings\nORCHESTRATION\nPlans\nWorkflows\nJobs\nProjects\nInbox\nTOOLS\nSkills\nOutputs\nSystem Chat\n0\nRUNNING\n0\nPENDING\n0\nMESSAGES\n0\nFAILED\n2\nACTIVE AGENTS\nActive Work\nNo active work\nOpen Projects\nNo open projects\nAgents\nNAME\tSTATUS\tMODEL\tQUEUE\tINBOX\nAvatar\tACTIVE\tunset\t—\t—\nmagenta\tACTIVE\tdeepseek-flash-v4-max\t—\t—\nInbox\nView all\n0\nmessages\nRecent Outputs\nView all\nNo recent outputs\nRecent Events\nView all\nAgent ACTIVE\nAssistant · 4d ago\nAgent ACTIVE\nmagenta · 5d ago",
+      "visibleAvatarTextCount": 1,
+      "visibleAssistantTextCount": 1,
+      "htmxUrls": [
+        {
+          "tag": "a",
+          "text": "Agents",
+          "href": "/agents",
+          "action": null,
+          "hxGet": null,
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "a",
+          "text": "Avatar",
+          "href": "/agents/avatar",
+          "action": null,
+          "hxGet": null,
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "a",
+          "text": "magenta",
+          "href": "/agents/2e7abe09-6bf4-4180-b3bd-ed855ce78745",
+          "action": null,
+          "hxGet": null,
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "a",
+          "text": "View all",
+          "href": "/agents",
+          "action": null,
+          "hxGet": null,
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        }
+      ],
+      "topNavOrder": [
+        "Home",
+        "Chat",
+        "Agents",
+        "Manage"
+      ],
+      "systemBeforeOrchestration": false
+    },
+    "agents": {
+      "url": "http://127.0.0.1:18081/agents",
+      "title": "Magenta Manage",
+      "innerWidth": 1440,
+      "scrollWidth": 1440,
+      "bodyText": "Magenta Operations\n\nOperational management\n\nHome\nChat\nAgents\nManage\n☰\nSYSTEM\nSystem\nSettings\nORCHESTRATION\nPlans\nWorkflows\nJobs\nProjects\nInbox\nTOOLS\nSkills\nOutputs\nAgents\n\nManage agent profiles, queues, inboxes, assignments, and workspace.\n\nCreate Agent\nReload\nAssistant\nACTIVE\nREADY\nQ 0\nInbox 0\nunset\nRefresh\nDisable\nDelete\nmagenta\nACTIVE\nREADY\nQ 0\nInbox 0\ndeepseek-flash-v4-max\nRefresh\nDisable\nDelete\nSelect an agent from the list or create a new one.",
+      "visibleAvatarTextCount": 0,
+      "visibleAssistantTextCount": 1,
+      "htmxUrls": [
+        {
+          "tag": "a",
+          "text": "Agents",
+          "href": "/agents",
+          "action": null,
+          "hxGet": null,
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Create Agent",
+          "href": null,
+          "action": null,
+          "hxGet": null,
+          "hxPost": "/agents/_create",
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Reload",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_list",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "input",
+          "text": "",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_list",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "div",
+          "text": "Assistant\nACTIVE\nREADY\nQ 0\nInbox 0\nunset\nRefresh\nDisable\nDelete\nmagenta\nACTIVE\nREADY\nQ 0\nInbox 0\ndeepseek-flash-v4-max\nR",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_list",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "a",
+          "text": "Assistant",
+          "href": "/agents/avatar",
+          "action": null,
+          "hxGet": "/agents/_detail/avatar",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Refresh",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_list",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Disable",
+          "href": null,
+          "action": null,
+          "hxGet": null,
+          "hxPost": "/agents/_lifecycle/avatar/disable?view=list",
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Delete",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_lifecycle/avatar/delete-confirm",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "a",
+          "text": "magenta",
+          "href": "/agents/2e7abe09-6bf4-4180-b3bd-ed855ce78745",
+          "action": null,
+          "hxGet": "/agents/_detail/2e7abe09-6bf4-4180-b3bd-ed855ce78745",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Refresh",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_list",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Disable",
+          "href": null,
+          "action": null,
+          "hxGet": null,
+          "hxPost": "/agents/_lifecycle/2e7abe09-6bf4-4180-b3bd-ed855ce78745/disable?view=list",
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Delete",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_lifecycle/2e7abe09-6bf4-4180-b3bd-ed855ce78745/delete-confirm",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        }
+      ],
+      "avatarRouteLinks": 1,
+      "assistantVisible": true
+    },
+    "agentAvatarDesktop": {
+      "url": "http://127.0.0.1:18081/agents/avatar",
+      "title": "Magenta Manage",
+      "innerWidth": 1440,
+      "scrollWidth": 1440,
+      "bodyText": "Magenta Operations\n\nOperational management\n\nHome\nChat\nAgents\nManage\n☰\nSYSTEM\nSystem\nSettings\nORCHESTRATION\nPlans\nWorkflows\nJobs\nProjects\nInbox\nTOOLS\nSkills\nOutputs\nAgent: Assistant\n\nProfile, queue, inbox, workspace, and history.\n\nChat with Agent\nManage\nProfile\nQueue\nInbox\nJobs\nSchedules\nReactions\nWorkspace\nWork-areas\nOutputs\nExec\nHistory\nSubmit\nDashboard\nNAME\nAvatar\nSTATUS\nACTIVE\nMODEL\nunset\nID\navatar\nDIRECT LINE\nDisabled\nCREATED\n5d ago\n0\nQUEUE\n0\nINBOX\n0\nJOBS\nWorkspace Health\nHEALTH\nREADY\nPATH\nagents/avatar/workspace\nWRITABLE\nYes\nACTIVE RUNS\n0\nACTIVE LEASES\n0\nLINKED PROJECTS\n—\nOUTPUT ARTIFACTS\n0\nOUTPUT BYTES\n0\nLAST ACTIVITY\n—\nWorkspace ready\nLifecycle controls update here.\nRefresh\nDisable Agent\nDelete / Archive",
+      "visibleAvatarTextCount": 1,
+      "visibleAssistantTextCount": 1,
+      "htmxUrls": [
+        {
+          "tag": "a",
+          "text": "Agents",
+          "href": "/agents",
+          "action": null,
+          "hxGet": null,
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Manage",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/manage",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Profile",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/profile",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Queue",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/queue",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Inbox",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/inbox",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Jobs",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/jobs",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Schedules",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/schedules",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Reactions",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/reactions",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Workspace",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/workspace",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Work-areas",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/work-areas",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Outputs",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/outputs",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Exec",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/exec",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "History",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/history",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Submit",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/submit",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "div",
+          "text": "",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_editor/avatar",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "div",
+          "text": "",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_submit-form/avatar",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "div",
+          "text": "Dashboard\nNAME\nAvatar\nSTATUS\nACTIVE\nMODEL\nunset\nID\navatar\nDIRECT LINE\nDisabled\nCREATED\n5d ago\n0\nQUEUE\n0\nINBOX\n0\nJOBS\nWor",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/manage",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "div",
+          "text": "0\nQUEUE",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/queue",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "div",
+          "text": "0\nINBOX",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/inbox",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "div",
+          "text": "0\nJOBS",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/jobs",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Refresh",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/manage",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Disable Agent",
+          "href": null,
+          "action": null,
+          "hxGet": null,
+          "hxPost": "/agents/_lifecycle/avatar/disable?view=lifecycle",
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Delete / Archive",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_lifecycle/avatar/delete-confirm",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        }
+      ],
+      "headingText": [
+        "Magenta Operations",
+        "Agent: Assistant",
+        "Dashboard",
+        "Workspace Health"
+      ]
+    },
+    "agentAvatarMobile": {
+      "url": "http://127.0.0.1:18081/agents/avatar",
+      "title": "Magenta Manage",
+      "innerWidth": 390,
+      "scrollWidth": 390,
+      "bodyText": "Magenta Operations\n\nOperational management\n\nHome\nChat\nAgents\nManage\n☰\nSYSTEM\nSystem\nSettings\nORCHESTRATION\nPlans\nWorkflows\nJobs\nProjects\nInbox\nTOOLS\nSkills\nOutputs\nAgent: Assistant\n\nProfile, queue, inbox, workspace, and history.\n\nChat with Agent\nManage\nProfile\nQueue\nInbox\nJobs\nSchedules\nReactions\nWorkspace\nWork-areas\nOutputs\nExec\nHistory\nSubmit\nDashboard\nNAME\nAvatar\nSTATUS\nACTIVE\nMODEL\nunset\nID\navatar\nDIRECT LINE\nDisabled\nCREATED\n5d ago\n0\nQUEUE\n0\nINBOX\n0\nJOBS\nWorkspace Health\nHEALTH\nREADY\nPATH\nagents/avatar/workspace\nWRITABLE\nYes\nACTIVE RUNS\n0\nACTIVE LEASES\n0\nLINKED PROJECTS\n—\nOUTPUT ARTIFACTS\n0\nOUTPUT BYTES\n0\nLAST ACTIVITY\n—\nWorkspace ready\nLifecycle controls update here.\nRefresh\nDisable Agent\nDelete / Archive",
+      "visibleAvatarTextCount": 1,
+      "visibleAssistantTextCount": 1,
+      "htmxUrls": [
+        {
+          "tag": "a",
+          "text": "Agents",
+          "href": "/agents",
+          "action": null,
+          "hxGet": null,
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Manage",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/manage",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Profile",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/profile",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Queue",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/queue",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Inbox",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/inbox",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Jobs",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/jobs",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Schedules",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/schedules",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Reactions",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/reactions",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Workspace",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/workspace",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Work-areas",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/work-areas",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Outputs",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/outputs",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Exec",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/exec",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "History",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/history",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Submit",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/submit",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "div",
+          "text": "",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_editor/avatar",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "div",
+          "text": "",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_submit-form/avatar",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "div",
+          "text": "Dashboard\nNAME\nAvatar\nSTATUS\nACTIVE\nMODEL\nunset\nID\navatar\nDIRECT LINE\nDisabled\nCREATED\n5d ago\n0\nQUEUE\n0\nINBOX\n0\nJOBS\nWor",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/manage",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "div",
+          "text": "0\nQUEUE",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/queue",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "div",
+          "text": "0\nINBOX",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/inbox",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "div",
+          "text": "0\nJOBS",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/jobs",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Refresh",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/manage",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Disable Agent",
+          "href": null,
+          "action": null,
+          "hxGet": null,
+          "hxPost": "/agents/_lifecycle/avatar/disable?view=lifecycle",
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Delete / Archive",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_lifecycle/avatar/delete-confirm",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        }
+      ],
+      "noHorizontalOverflow": true
+    },
+    "workAreasTab": {
+      "url": "http://127.0.0.1:18081/agents/avatar",
+      "title": "Magenta Manage",
+      "innerWidth": 1440,
+      "scrollWidth": 1440,
+      "bodyText": "Magenta Operations\n\nOperational management\n\nHome\nChat\nAgents\nManage\n☰\nSYSTEM\nSystem\nSettings\nORCHESTRATION\nPlans\nWorkflows\nJobs\nProjects\nInbox\nTOOLS\nSkills\nOutputs\nAgent: Assistant\n\nProfile, queue, inbox, workspace, and history.\n\nChat with Agent\nManage\nProfile\nQueue\nInbox\nJobs\nSchedules\nReactions\nWorkspace\nWork-areas\nOutputs\nExec\nHistory\nSubmit\nDashboard\nNAME\nAvatar\nSTATUS\nACTIVE\nMODEL\nunset\nID\navatar\nDIRECT LINE\nDisabled\nCREATED\n5d ago\n0\nQUEUE\n0\nINBOX\n0\nJOBS\nWorkspace Health\nHEALTH\nREADY\nPATH\nagents/avatar/workspace\nWRITABLE\nYes\nACTIVE RUNS\n0\nACTIVE LEASES\n0\nLINKED PROJECTS\n—\nOUTPUT ARTIFACTS\n0\nOUTPUT BYTES\n0\nLAST ACTIVITY\n—\nWorkspace ready\nLifecycle controls update here.\nRefresh\nDisable Agent\nDelete / Archive",
+      "visibleAvatarTextCount": 1,
+      "visibleAssistantTextCount": 1,
+      "htmxUrls": [
+        {
+          "tag": "a",
+          "text": "Agents",
+          "href": "/agents",
+          "action": null,
+          "hxGet": null,
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Manage",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/manage",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Profile",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/profile",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Queue",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/queue",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Inbox",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/inbox",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Jobs",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/jobs",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Schedules",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/schedules",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Reactions",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/reactions",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Workspace",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/workspace",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Work-areas",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/work-areas",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Outputs",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/outputs",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Exec",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/exec",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "History",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/history",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Submit",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/submit",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "div",
+          "text": "",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_editor/avatar",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "div",
+          "text": "",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_submit-form/avatar",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "div",
+          "text": "Dashboard\nNAME\nAvatar\nSTATUS\nACTIVE\nMODEL\nunset\nID\navatar\nDIRECT LINE\nDisabled\nCREATED\n5d ago\n0\nQUEUE\n0\nINBOX\n0\nJOBS\nWor",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/manage",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "div",
+          "text": "0\nQUEUE",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/queue",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "div",
+          "text": "0\nINBOX",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/inbox",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "div",
+          "text": "0\nJOBS",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/jobs",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Refresh",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/manage",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Disable Agent",
+          "href": null,
+          "action": null,
+          "hxGet": null,
+          "hxPost": "/agents/_lifecycle/avatar/disable?view=lifecycle",
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Delete / Archive",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_lifecycle/avatar/delete-confirm",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        }
+      ],
+      "legacyAvatarWorkAreaNameVisible": true,
+      "agentWorkAreaRoutes": [
+        {
+          "tag": "button",
+          "text": "Work-areas",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/work-areas",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        }
+      ],
+      "oldAvatarRoutes": []
+    },
+    "workAreaExplorerDesktop": {
+      "url": "http://127.0.0.1:18081/agents/avatar",
+      "text": "Magenta Operations\n\nOperational management\n\nHome\nChat\nAgents\nManage\n☰\nSYSTEM\nSystem\nSettings\nORCHESTRATION\nPlans\nWorkflows\nJobs\nProjects\nInbox\nTOOLS\nSkills\nOutputs\nAgent: Assistant\n\nProfile, queue, inbox, workspace, and history.\n\nChat with Agent\nManage\nProfile\nQueue\nInbox\nJobs\nSchedules\nReactions\nWorkspace\nWork-areas\nOutputs\nExec\nHistory\nSubmit\nDashboard\nNAME\nAvatar\nSTATUS\nACTIVE\nMODEL\nunset\nID\navatar\nDIRECT LINE\nDisabled\nCREATED\n5d ago\n0\nQUEUE\n0\nINBOX\n0\nJOBS\nWorkspace Health\nHEALTH\nREADY\nPATH\nagents/avatar/workspace\nWRITABLE\nYes\nACTIVE RUNS\n0\nACTIVE LEASES\n0\nLINKED PROJECTS\n—\nOUTPUT ARTIFACTS\n0\nOUTPUT BYTES\n0\nLAST ACTIVITY\n—\nWorkspace ready\nLifecycle controls update here.\nRefresh\nDisable Agent\nDelete / Archive",
+      "rowCount": 0,
+      "buttonCount": 32,
+      "tinyControls": [],
+      "longTextEls": [],
+      "inspectorPresent": false,
+      "inspectorText": "",
+      "editorPresent": false,
+      "noHorizontalOverflow": true,
+      "htmxUrls": [
+        {
+          "text": "Work-areas",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/work-areas",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        }
+      ]
+    },
+    "workAreaExplorerSelected": {
+      "selectedRows": 0,
+      "inspectorText": "",
+      "editorTabs": []
+    },
+    "workAreaModalDesktop": {
+      "present": false
+    },
+    "workAreaExplorerMobile": {
+      "url": "http://127.0.0.1:18081/agents/avatar",
+      "text": "Magenta Operations\n\nOperational management\n\nHome\nChat\nAgents\nManage\n☰\nSYSTEM\nSystem\nSettings\nORCHESTRATION\nPlans\nWorkflows\nJobs\nProjects\nInbox\nTOOLS\nSkills\nOutputs\nAgent: Assistant\n\nProfile, queue, inbox, workspace, and history.\n\nChat with Agent\nManage\nProfile\nQueue\nInbox\nJobs\nSchedules\nReactions\nWorkspace\nWork-areas\nOutputs\nExec\nHistory\nSubmit\nDashboard\nNAME\nAvatar\nSTATUS\nACTIVE\nMODEL\nunset\nID\navatar\nDIRECT LINE\nDisabled\nCREATED\n5d ago\n0\nQUEUE\n0\nINBOX\n0\nJOBS\nWorkspace Health\nHEALTH\nREADY\nPATH\nagents/avatar/workspace\nWRITABLE\nYes\nACTIVE RUNS\n0\nACTIVE LEASES\n0\nLINKED PROJECTS\n—\nOUTPUT ARTIFACTS\n0\nOUTPUT BYTES\n0\nLAST ACTIVITY\n—\nWorkspace ready\nLifecycle controls update here.\nRefresh\nDisable Agent\nDelete / Archive",
+      "noHorizontalOverflow": true,
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "rowCount": 0,
+      "buttonCount": 32,
+      "htmxWorkAreaUrls": [
+        {
+          "text": "Work-areas",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/avatar/work-areas",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        }
+      ]
+    },
+    "nonAvatarAgentHref": "/agents/2e7abe09-6bf4-4180-b3bd-ed855ce78745",
+    "nonAvatarAgentDetail": {
+      "url": "http://127.0.0.1:18081/agents/2e7abe09-6bf4-4180-b3bd-ed855ce78745",
+      "title": "Magenta Manage",
+      "innerWidth": 390,
+      "scrollWidth": 390,
+      "bodyText": "Magenta Operations\n\nOperational management\n\nHome\nChat\nAgents\nManage\n☰\nSYSTEM\nSystem\nSettings\nORCHESTRATION\nPlans\nWorkflows\nJobs\nProjects\nInbox\nTOOLS\nSkills\nOutputs\nAgent: magenta\n\nProfile, queue, inbox, workspace, and history.\n\nChat with Agent\nManage\nProfile\nQueue\nInbox\nJobs\nSchedules\nReactions\nWorkspace\nWork-areas\nOutputs\nExec\nHistory\nSubmit\nDashboard\nNAME\nmagenta\nSTATUS\nACTIVE\nMODEL\ndeepseek-flash-v4-max\nID\n2e7abe09-6bf4-4180-b3bd-ed855ce78745\nDIRECT LINE\nEnabled\nCREATED\n6d ago\n0\nQUEUE\n0\nINBOX\n0\nJOBS\nWorkspace Health\nHEALTH\nREADY\nPATH\nagents/2e7abe09-6bf4-4180-b3bd-ed855ce78745/workspace\nWRITABLE\nYes\nACTIVE RUNS\n0\nACTIVE LEASES\n0\nLINKED PROJECTS\n—\nOUTPUT ARTIFACTS\n0\nOUTPUT BYTES\n0\nLAST ACTIVITY\n—\nWorkspace ready\nLifecycle controls update here.\nRefresh\nDisable Agent\nDelete / Archive",
+      "visibleAvatarTextCount": 0,
+      "visibleAssistantTextCount": 0,
+      "htmxUrls": [
+        {
+          "tag": "a",
+          "text": "Agents",
+          "href": "/agents",
+          "action": null,
+          "hxGet": null,
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Manage",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/2e7abe09-6bf4-4180-b3bd-ed855ce78745/manage",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Profile",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/2e7abe09-6bf4-4180-b3bd-ed855ce78745/profile",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Queue",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/2e7abe09-6bf4-4180-b3bd-ed855ce78745/queue",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Inbox",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/2e7abe09-6bf4-4180-b3bd-ed855ce78745/inbox",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Jobs",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/2e7abe09-6bf4-4180-b3bd-ed855ce78745/jobs",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Schedules",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/2e7abe09-6bf4-4180-b3bd-ed855ce78745/schedules",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Reactions",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/2e7abe09-6bf4-4180-b3bd-ed855ce78745/reactions",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Workspace",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/2e7abe09-6bf4-4180-b3bd-ed855ce78745/workspace",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Work-areas",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/2e7abe09-6bf4-4180-b3bd-ed855ce78745/work-areas",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Outputs",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/2e7abe09-6bf4-4180-b3bd-ed855ce78745/outputs",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Exec",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/2e7abe09-6bf4-4180-b3bd-ed855ce78745/exec",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "History",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/2e7abe09-6bf4-4180-b3bd-ed855ce78745/history",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Submit",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/2e7abe09-6bf4-4180-b3bd-ed855ce78745/submit",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "div",
+          "text": "",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_editor/2e7abe09-6bf4-4180-b3bd-ed855ce78745",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "div",
+          "text": "",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_submit-form/2e7abe09-6bf4-4180-b3bd-ed855ce78745",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "div",
+          "text": "Dashboard\nNAME\nmagenta\nSTATUS\nACTIVE\nMODEL\ndeepseek-flash-v4-max\nID\n2e7abe09-6bf4-4180-b3bd-ed855ce78745\nDIRECT LINE\nEna",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/2e7abe09-6bf4-4180-b3bd-ed855ce78745/manage",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "div",
+          "text": "0\nQUEUE",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/2e7abe09-6bf4-4180-b3bd-ed855ce78745/queue",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "div",
+          "text": "0\nINBOX",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/2e7abe09-6bf4-4180-b3bd-ed855ce78745/inbox",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "div",
+          "text": "0\nJOBS",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/2e7abe09-6bf4-4180-b3bd-ed855ce78745/jobs",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Refresh",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_detail/2e7abe09-6bf4-4180-b3bd-ed855ce78745/manage",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Disable Agent",
+          "href": null,
+          "action": null,
+          "hxGet": null,
+          "hxPost": "/agents/_lifecycle/2e7abe09-6bf4-4180-b3bd-ed855ce78745/disable?view=lifecycle",
+          "hxPut": null,
+          "hxDelete": null
+        },
+        {
+          "tag": "button",
+          "text": "Delete / Archive",
+          "href": null,
+          "action": null,
+          "hxGet": "/agents/_lifecycle/2e7abe09-6bf4-4180-b3bd-ed855ce78745/delete-confirm",
+          "hxPost": null,
+          "hxPut": null,
+          "hxDelete": null
+        }
+      ]
+    }
+  },
+  "consoleMessages": [],
+  "networkIssues": []
+}

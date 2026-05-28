@@ -14,26 +14,26 @@ final class AppNavigation {
         return TopNavBuilder.create()
             .withHtmxNavigation(false)
             .addPrimaryLink("Home", "/")
-            .addPrimaryLink("Dashboard", "/dashboard")
             .addPrimaryLink("Chat", "/chat")
+            .addPrimaryLink("Agents", "/agents")
+            .addPrimaryLink("Manage", "/manage")
             .build();
     }
 
     static SideNav operationalSideNav(String activePath) {
         SideNav nav = SideNav.create();
+        nav.addSection("System");
+        nav.addItem("System", "/manage", isActivePath(activePath, "/manage"));
+        nav.addItem("Settings", "/settings", isActivePath(activePath, "/settings"));
         nav.addSection("Orchestration");
-        nav.addItem("Dashboard", "/dashboard", isActivePath(activePath, "/dashboard"));
         nav.addItem("Plans", "/plans", isActivePath(activePath, "/plans"));
         nav.addItem("Workflows", "/workflows", isActivePath(activePath, "/workflows"));
         nav.addItem("Jobs", "/jobs", isActivePath(activePath, "/jobs"));
         nav.addItem("Projects", "/projects", isActivePath(activePath, "/projects"));
-        nav.addSection("Communication");
         nav.addItem("Inbox", "/inbox", isActivePath(activePath, "/inbox"));
-        nav.addItem("Agents", "/agents", isActivePath(activePath, "/agents"));
         nav.addSection("Tools");
         nav.addItem("Skills", "/skills", isActivePath(activePath, "/skills"));
         nav.addItem("Outputs", "/outputs", isActivePath(activePath, "/outputs"));
-        nav.addItem("Settings", "/settings", isActivePath(activePath, "/settings"));
         return nav;
     }
 

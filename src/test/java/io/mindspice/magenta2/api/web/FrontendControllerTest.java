@@ -18,13 +18,16 @@ class FrontendControllerTest {
 
     private static void assertPrimaryTopNav(String html) {
         int home = html.indexOf("<a href=\"/\" class=\"navbar-item\">Home</a>");
-        int dashboard = html.indexOf("<a href=\"/dashboard\" class=\"navbar-item\">Dashboard</a>");
         int chat = html.indexOf("<a href=\"/chat\" class=\"navbar-item\">Chat</a>");
+        int agents = html.indexOf("<a href=\"/agents\" class=\"navbar-item\">Agents</a>");
+        int manage = html.indexOf("<a href=\"/manage\" class=\"navbar-item\">Manage</a>");
 
         assertThat(home).isGreaterThanOrEqualTo(0);
-        assertThat(dashboard).isGreaterThan(home);
-        assertThat(chat).isGreaterThan(dashboard);
+        assertThat(chat).isGreaterThan(home);
+        assertThat(agents).isGreaterThan(chat);
+        assertThat(manage).isGreaterThan(agents);
         assertThat(html).doesNotContain("<a href=\"/avatar\" class=\"navbar-item\">Avatar</a>");
+        assertThat(html).doesNotContain("<a href=\"/dashboard\" class=\"navbar-item\">Dashboard</a>");
     }
 
     @Test
@@ -36,8 +39,9 @@ class FrontendControllerTest {
         assertThat(html).doesNotContain("/js/alpha-security.js?v=1");
         assertThat(html).contains("Magenta Portal");
         assertThat(html).contains("/chat");
-        assertThat(html).contains("/avatar");
-        assertThat(html).contains("/dashboard");
+        assertThat(html).contains("/manage");
+        assertThat(html).doesNotContain("/avatar");
+        assertThat(html).doesNotContain("/dashboard");
         assertPrimaryTopNav(html);
         assertThat(html).contains("/webjars/htmx.org/dist/htmx.min.js");
         assertThat(html).doesNotContain("hx-get=\"/chat\"");

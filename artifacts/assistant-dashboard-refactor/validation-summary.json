@@ -1,0 +1,179 @@
+{
+  "status": "fully_validated",
+  "commandResults": [
+    {
+      "command": "mvn -DskipTests compile",
+      "result": "passed"
+    },
+    {
+      "command": "node --check src/main/resources/static/js/avatar-chat.js && node --check src/main/resources/static/js/avatar-layout-edit.js && node --check src/main/resources/static/js/avatar-workarea-editor.js && node --check src/main/resources/static/js/avatar-shell.js",
+      "result": "passed"
+    },
+    {
+      "command": "mvn test -Dtest=AvatarDashboardControllerTest,OrchestrationControllerTest",
+      "result": "passed: 115 tests, 0 failures, 0 errors"
+    },
+    {
+      "command": "mvn test -Dtest=FrontendControllerTest,AvatarRepositoryTest,AvatarServiceTest",
+      "result": "passed: 19 tests, 0 failures, 0 errors"
+    },
+    {
+      "command": "mvn test",
+      "result": "passed: 897 tests, 0 failures, 0 errors"
+    },
+    {
+      "command": "timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0",
+      "result": "started successfully on random port, then exited with timeout code 124 after graceful shutdown"
+    },
+    {
+      "command": "mvn test -Dtest=AvatarDashboardControllerTest,OrchestrationControllerTest,FrontendControllerTest,AvatarRepositoryTest,AvatarServiceTest",
+      "result": "repair pass passed: 135 tests, 0 failures, 0 errors"
+    },
+    {
+      "command": "node --check src/main/resources/static/js/avatar-chat.js",
+      "result": "repair pass passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "repair pass passed"
+    },
+    {
+      "command": "mvn test -Dtest=AvatarDashboardControllerTest,OrchestrationControllerTest,FrontendControllerTest",
+      "result": "browser-finding repair passed: 123 tests, 0 failures, 0 errors"
+    },
+    {
+      "command": "git diff --check",
+      "result": "browser-finding repair passed"
+    },
+    {
+      "command": "mvn test -Dtest=OrchestrationControllerTest",
+      "result": "second targeted repair passed: 100 tests, 0 failures, 0 errors"
+    },
+    {
+      "command": "mvn test -Dtest=OrchestrationControllerTest,AvatarDashboardControllerTest,FrontendControllerTest",
+      "result": "second targeted repair passed: 123 tests, 0 failures, 0 errors"
+    },
+    {
+      "command": "jq -e '.status == \"playwright_passed_pending_reconciliation\" and .browserValidation.status == \"playwright_passed_pending_reconciliation\" and .browserValidation.failed == [] and .browserArtifactDirectory == \"artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2-2026-05-28\"' artifacts/assistant-dashboard-refactor/validation-summary.json && jq -e '.status == \"passed\" and (.checks | all(.passed == true)) and (.consoleMessages|length == 0) and (.failedRequests|length == 0) and (.httpErrors|length == 0)' artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2-2026-05-28/results.json",
+      "result": "final reconciliation passed before status update"
+    },
+    {
+      "command": "jq -r '.screenshotsCaptured[]' artifacts/assistant-dashboard-refactor/validation-summary.json | while IFS= read -r f; do test -f \"$f\" || echo \"MISSING $f\"; done",
+      "result": "final reconciliation passed: all indexed screenshots exist"
+    },
+    {
+      "command": "git diff --check",
+      "result": "final reconciliation passed"
+    }
+  ],
+  "browserArtifactDirectory": "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2-2026-05-28",
+  "screenshotsCaptured": [
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2-2026-05-28/manage-desktop.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2-2026-05-28/agent-avatar-detail-desktop.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2-2026-05-28/agent-avatar-detail-mobile.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2-2026-05-28/agent-workareas-tab-explorer-desktop.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2-2026-05-28/agent-workareas-tab-explorer-mobile.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2-2026-05-28/root-desktop.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2-2026-05-28/create-dashboard-modal-open.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2-2026-05-28/create-dashboard-modal-blank-invalid.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2-2026-05-28/assistant-edit-mode-desktop.png"
+  ],
+  "supersededArtifacts": [
+    "artifacts/assistant-dashboard-refactor/playwright/browser-proof-2026-05-28/root-desktop.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-proof-2026-05-28/root-desktop-2.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-proof-2026-05-28",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2026-05-28/browser-recheck-results.json",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2026-05-28"
+  ],
+  "modelToolingConstraints": [],
+  "browserValidation": {
+    "status": "passed",
+    "liveAppUrl": "http://127.0.0.1:18082",
+    "runner": "local Playwright via node against live app URL supplied by user",
+    "resultsJson": "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2-2026-05-28/results.json",
+    "consoleWarningsErrors": "0 warnings/errors",
+    "networkSummary": "No failed requests and no HTTP >=400 responses observed during the recheck.",
+    "passed": [
+      "/manage desktop Agents table shows Assistant",
+      "/manage desktop has no user-facing uppercase Avatar",
+      "/manage top nav order smoke",
+      "/manage side nav smoke",
+      "/manage recent events render",
+      "/agents/avatar desktop primary labels show Assistant",
+      "/agents/avatar desktop diagnostic ID remains avatar",
+      "/agents/avatar desktop loads avatar-dashboard.css?v=7",
+      "/agents/avatar desktop tab routes use agent detail path",
+      "/agents/avatar mobile primary labels show Assistant",
+      "/agents/avatar mobile no document horizontal overflow",
+      "/agents/avatar Work Areas tab opens selected explorer desktop",
+      "/agents/avatar Work Area explorer desktop: no document horizontal overflow",
+      "/agents/avatar Work Area explorer desktop: Work Area action buttons visible/stable",
+      "/agents/avatar Work Area explorer desktop: toolbar buttons visible/stable",
+      "/agents/avatar Work Area explorer desktop: icons/placeholders modest",
+      "/agents/avatar Work Area explorer desktop: long names do not crush controls",
+      "/agents/avatar Work Area explorer desktop: Work Area routes stay under agent detail",
+      "/agents/avatar Work Area explorer mobile: no document horizontal overflow",
+      "/agents/avatar Work Area explorer mobile: Work Area action buttons visible/stable",
+      "/agents/avatar Work Area explorer mobile: toolbar buttons visible/stable",
+      "/agents/avatar Work Area explorer mobile: icons/placeholders modest",
+      "/agents/avatar Work Area explorer mobile: long names do not crush controls",
+      "/agents/avatar Work Area explorer mobile: Work Area routes stay under agent detail",
+      "/ root loads",
+      "create-dashboard modal has required name input",
+      "create-dashboard blank submit stays invalid",
+      "Assistant edit mode loads",
+      "Assistant edit mode no document horizontal overflow"
+    ],
+    "failed": [],
+    "visualNotes": [
+      {
+        "label": "/agents/avatar Work Area explorer desktop",
+        "note": "Explorer uses compact details table with bounded inspector. Action buttons measured min 28px, toolbar min 32px, max SVG 16px. Document overflow absent."
+      },
+      {
+        "label": "/agents/avatar Work Area explorer mobile",
+        "note": "Explorer uses compact details table with bounded inspector. Action buttons measured min 28.796875px, toolbar min 32px, max SVG 16px. Document overflow absent."
+      }
+    ],
+    "routeEvidence": [
+      {
+        "label": "/agents/avatar Work Area explorer desktop",
+        "routeCount": 28,
+        "sampleRoutes": [
+          "/agents/_detail/avatar/work-areas",
+          "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer",
+          "/agents/_detail/avatar/work-areas/placeholder",
+          "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=.&selected=.&panel=expanded",
+          "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/create-folder?path=.&panel=expanded",
+          "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/create-text?path=.&panel=expanded",
+          "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/create-markdown?path=.&panel=expanded",
+          "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=."
+        ]
+      },
+      {
+        "label": "/agents/avatar Work Area explorer mobile",
+        "routeCount": 28,
+        "sampleRoutes": [
+          "/agents/_detail/avatar/work-areas",
+          "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer",
+          "/agents/_detail/avatar/work-areas/placeholder",
+          "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=.&selected=.&panel=expanded",
+          "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/create-folder?path=.&panel=expanded",
+          "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/create-text?path=.&panel=expanded",
+          "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/create-markdown?path=.&panel=expanded",
+          "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=."
+        ]
+      }
+    ],
+    "blockedOrResidual": [
+      "Browser validation was limited to the requested smoke/recheck scope; no file mutations were performed inside the Work Area explorer."
+    ]
+  },
+  "validator": {
+    "status": "fully_validated",
+    "notes": "Final reconciliation passed. The canonical browser evidence is browser-recheck-2-2026-05-28/results.json, all nested browser checks passed, indexed screenshots exist, code/doc validation is recorded as passed, stale failed browser artifacts are marked superseded, and the non-mutating Work Area recheck is acceptable for this refactor scope."
+  },
+  "residualRisks": [
+    "Work Area browser proof was non-mutating and did not exercise save/edit/delete operations in this recheck scope. This is acceptable for the Assistant Dashboard Refactor because the plan required relocation/accessibility and visual quality proof, while Work Area mutation behavior is covered by existing focused service/controller tests and was not changed as product scope."
+  ]
+}

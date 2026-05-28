@@ -45,20 +45,66 @@ public class AvatarService {
         return repository.findDashboardLayout();
     }
 
+    public List<UserDashboard> dashboards() {
+        return repository.findDashboards();
+    }
+
+    public UserDashboard assistantDashboard() {
+        return repository.assistantDashboard();
+    }
+
+    public UserDashboard dashboard(String dashboardId) {
+        requireText(dashboardId, "dashboard id");
+        return repository.findDashboard(dashboardId)
+            .orElseThrow(() -> new IllegalArgumentException("dashboard not found: " + dashboardId));
+    }
+
+    public UserDashboard createDashboard(String name) {
+        return repository.createDashboard(name);
+    }
+
+    public String dashboardIdForRow(String rowId) {
+        return repository.dashboardIdForDashboardRow(rowId);
+    }
+
+    public String dashboardIdForWidget(String widgetId) {
+        String dashboardId = repository.dashboardIdForDashboardWidget(widgetId);
+        if (!StringUtils.hasText(dashboardId)) {
+            throw new IllegalArgumentException("dashboard widget not found: " + widgetId);
+        }
+        return dashboardId;
+    }
+
     public List<AvatarDashboardRow> dashboardRows() {
         return repository.findDashboardRows();
+    }
+
+    public List<AvatarDashboardRow> dashboardRows(String dashboardId) {
+        return repository.findDashboardRows(dashboardId);
     }
 
     public AvatarDashboardRow addDashboardRow() {
         return repository.addDashboardRow();
     }
 
+    public AvatarDashboardRow addDashboardRow(String dashboardId) {
+        return repository.addDashboardRow(dashboardId);
+    }
+
     public AvatarDashboardRow insertDashboardRowAfter(String rowId) {
         return repository.insertDashboardRowAfter(rowId);
     }
 
+    public AvatarDashboardRow insertDashboardRowAfter(String dashboardId, String rowId) {
+        return repository.insertDashboardRowAfter(dashboardId, rowId);
+    }
+
     public AvatarDashboardRow moveDashboardRow(String rowId, int direction) {
         return repository.moveDashboardRow(rowId, direction);
+    }
+
+    public AvatarDashboardRow moveDashboardRow(String dashboardId, String rowId, int direction) {
+        return repository.moveDashboardRow(dashboardId, rowId, direction);
     }
 
     public void removeDashboardRow(String rowId) {
@@ -67,6 +113,10 @@ public class AvatarService {
 
     public AvatarDashboardRowWidget addDashboardWidget(String rowId, String widgetKey, int columnWidth) {
         return repository.addDashboardWidget(rowId, widgetKey, columnWidth);
+    }
+
+    public AvatarDashboardRowWidget addDashboardWidget(String dashboardId, String rowId, String widgetKey, int columnWidth) {
+        return repository.addDashboardWidget(dashboardId, rowId, widgetKey, columnWidth);
     }
 
     public AvatarDashboardRowWidget resizeDashboardWidget(String widgetId, int columnWidth) {

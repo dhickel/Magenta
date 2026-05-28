@@ -148,21 +148,22 @@ class AvatarServiceTest {
 
     @Test
     void dashboardRowHelpersExposeLayoutOperations() {
-        AvatarDashboardRow row = service.addDashboardRow();
-        AvatarDashboardRowWidget todos = service.addDashboardWidget(row.id(), "todos", 4);
-        AvatarDashboardRowWidget notes = service.addDashboardWidget(row.id(), "notes", 4);
+        UserDashboard dashboard = service.createDashboard("Layout");
+        AvatarDashboardRow row = service.addDashboardRow(dashboard.id());
+        AvatarDashboardRowWidget todos = service.addDashboardWidget(dashboard.id(), row.id(), "todos", 4);
+        AvatarDashboardRowWidget notes = service.addDashboardWidget(dashboard.id(), row.id(), "notes", 4);
 
         service.moveDashboardWidget(notes.id(), "left");
         service.resizeDashboardWidget(todos.id(), 5);
 
-        assertThat(service.dashboardRows()).singleElement()
+        assertThat(service.dashboardRows(dashboard.id())).singleElement()
             .satisfies(saved -> {
                 assertThat(saved.widgets()).extracting(AvatarDashboardRowWidget::widgetKey)
                     .containsExactly("notes", "todos");
                 assertThat(saved.widgets()).extracting(AvatarDashboardRowWidget::columnWidth)
                     .containsExactly(4, 5);
             });
-        assertThatThrownBy(() -> service.addDashboardWidget(row.id(), "todos", 4))
+        assertThatThrownBy(() -> service.addDashboardWidget(dashboard.id(), row.id(), "todos", 4))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("already exists");
 
@@ -173,6 +174,6 @@ class AvatarServiceTest {
         service.removeDashboardWidget(notes.id());
         service.removeDashboardWidget(todos.id());
         service.removeDashboardRow(row.id());
-        assertThat(service.dashboardRows()).isEmpty();
+        assertThat(service.dashboardRows(dashboard.id())).isEmpty();
     }
 }

@@ -7,7 +7,7 @@ Use `/agents` to manage execution agents, inspect queues and histories, operate 
 The agents page has:
 
 - A sidebar with **Create Agent**, **Reload**, filter, and agent cards.
-- Agent detail tabs: dashboard, profile, queue, inbox, jobs, schedules, reactions, workspace, outputs, exec, history, and submit.
+- Agent detail tabs: manage, profile, queue, inbox, jobs, schedules, reactions, workspace, Work Areas, outputs, exec, history, and submit.
 - A collapsible **Chat with Agent** panel.
 
 ## Create And Select An Agent
@@ -16,9 +16,9 @@ Select **Create Agent** to create an active agent profile with a generated name.
 
 Use **Reload** or refresh the page if another operator creates or deletes agents while you are viewing the list.
 
-## Dashboard Tab
+## Manage Tab
 
-The dashboard tab summarizes:
+The manage tab summarizes:
 
 - Name, status, model, ID, direct-line state, and creation time.
 - Queue, inbox, and job counts.
@@ -73,9 +73,9 @@ Event reactions can enqueue assignments when matching runtime events occur, when
 
 If schedules or reactions are disabled, the tab shows the required feature flag.
 
-## Avatar Assistant Organizer Tools
+## Assistant Organizer Tools
 
-The reserved `Avatar` agent profile can be configured as the personal assistant surface for local organizer state. When the Avatar profile is active and explicitly approves the tool names, Avatar chat can manage:
+The reserved assistant agent profile can be configured for local organizer state. When that profile is active and explicitly approves the tool names, dashboard chat can manage:
 
 - Todos: `avatar_todo_list`, `avatar_todo_upsert`, `avatar_todo_complete`.
 - Daily tasks: `avatar_daily_task_list`, `avatar_daily_task_upsert`, `avatar_daily_task_complete`.
@@ -84,9 +84,9 @@ The reserved `Avatar` agent profile can be configured as the personal assistant 
 - Task assignment: `avatar_submit_task`, `avatar_submit_research_assignment`.
 - Output inspection: `avatar_list_outputs`, `avatar_read_output`.
 
-These tools return compact JSON records and store organizer data in Avatar persistence. They do not grant shell access, poll email, expose a public email-ingress endpoint, connect to external calendars, or create plugin-runtime behavior.
+These tools return compact JSON records and store organizer data in assistant dashboard persistence. They do not grant shell access, poll email, expose a public email-ingress endpoint, connect to external calendars, or create plugin-runtime behavior.
 
-Email processing is intentionally deferred. Future mail handling should enter through the scripting API, internal messaging, or agents using approved tools to add messages; it should not use an open external Avatar endpoint.
+Email processing is intentionally deferred. Future mail handling should enter through the scripting API, internal messaging, or agents using approved tools to add messages; it should not use an open external assistant endpoint.
 
 ## Workspace Tab
 

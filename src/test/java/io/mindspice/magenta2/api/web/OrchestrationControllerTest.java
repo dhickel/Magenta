@@ -77,6 +77,7 @@ import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class OrchestrationControllerTest {
 
@@ -366,8 +367,8 @@ class OrchestrationControllerTest {
         assertThat(html).contains(AppNavigation.OPERATIONAL_CSS);
         assertThat(html).doesNotContain("/js/alpha-security.js?v=1");
         assertThat(html).contains("Magenta Operations");
-        assertThat(html).contains("Dashboard");
-        assertThat(html).contains("/dashboard");
+        assertThat(html).contains("Manage");
+        assertThat(html).contains("/manage");
         assertThat(html).contains("main-sidebar");
         assertThat(html).contains("sidenav");
         assertThat(html).contains("collapsible");
@@ -1119,7 +1120,7 @@ class OrchestrationControllerTest {
         assertThat(html).contains("/js/orchestration/agents.js?v=1");
 
         // Tab buttons
-        assertThat(html).contains("dashboard");
+        assertThat(html).contains("manage");
         assertThat(html).contains("queue");
         assertThat(html).contains("inbox");
         assertThat(html).contains("jobs");
@@ -1131,7 +1132,8 @@ class OrchestrationControllerTest {
         assertThat(html).contains("chat");
 
         // HTMX lazy-load containers for tabs, editor, and submit
-        assertThat(html).contains("hx-get=\"/agents/_detail/agent-1/dashboard\"");
+        assertThat(html).contains("hx-get=\"/agents/_detail/agent-1/manage\"");
+        assertThat(html).doesNotContain("hx-get=\"/agents/_detail/agent-1/dashboard\"");
         assertThat(html).contains("hx-get=\"/agents/_editor/agent-1\"");
         assertThat(html).contains("hx-get=\"/agents/_submit-form/agent-1\"");
 
@@ -1186,6 +1188,103 @@ class OrchestrationControllerTest {
         assertThat(html).contains("hx-target=\"#agent-lifecycle-panel-agent-1\"");
         assertThat(html).contains("hx-swap=\"outerHTML\"");
         assertThat(html).doesNotContain("Open Agent Chat");
+    }
+
+    @Test
+    void agentDetailWorkAreasUseAgentDetailRoutesAndGuardOwners() throws Exception {
+        Path dataRoot = Files.createTempDirectory("agent-workarea-browser");
+        JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
+        AiConfig config = new AiConfig(null, null, 10, dataRoot, Map.of(), Map.of());
+        WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(config);
+        WorkspaceService workspaceService = new WorkspaceService(
+            new WorkspaceRepository(jdbc),
+            config,
+            new RootRelativePathService(directoryService)
+        );
+        WorkAreaService workAreaService = new WorkAreaService(
+            new WorkAreaRepository(jdbc),
+            workspaceService,
+            directoryService
+        );
+        WorkAreaExplorerService explorerService = new WorkAreaExplorerService(workAreaService);
+        var agentWorkArea = workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Agent One Home");
+        Files.writeString(workAreaService.resolve(agentWorkArea).resolve("note.md"), "# Note", StandardCharsets.UTF_8);
+        var otherAgentWorkArea = workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-2", "Agent Two Home");
+
+        OrchestrationController ctrl = controllerWithProjectFiles(
+            new StubProjectService(),
+            workAreaService,
+            explorerService
+        );
+
+        String tab = ctrl.agentWorkAreasTab("agent-1");
+        assertThat(tab).contains("/agents/_detail/agent-1/work-areas/" + agentWorkArea.id() + "/explorer");
+        assertThat(tab).doesNotContain("/avatar/_work-areas");
+
+        String explorer = ctrl.agentWorkAreaExplorer("agent-1", agentWorkArea.id(), ".", "note.md", "expanded");
+        assertThat(explorer).contains("/agents/_detail/agent-1/work-areas/" + agentWorkArea.id() + "/viewer?path=note.md");
+        assertThat(explorer).contains("/agents/_detail/agent-1/work-areas/" + agentWorkArea.id() + "/modal/rename?path=note.md");
+        assertThat(explorer).contains("/agents/_detail/agent-1/work-areas/" + agentWorkArea.id() + "/files/action/copy/picker?path=note.md");
+        assertThat(explorer).doesNotContain("/avatar/_work-areas");
+
+        String rename = ctrl.agentWorkAreaActionModal("agent-1", agentWorkArea.id(), "rename", "note.md", "expanded");
+        assertThat(rename).contains("hx-post=\"/agents/_detail/agent-1/work-areas/" + agentWorkArea.id() + "/files/rename\"");
+        assertThat(rename).doesNotContain("/avatar/_work-areas");
+
+        assertThatThrownBy(() -> ctrl.agentWorkAreaExplorer("agent-1", otherAgentWorkArea.id(), ".", null, "expanded"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("does not belong");
+    }
+
+    @Test
+    void reservedAvatarAgentRendersAsAssistantLabel() {
+        AgentProfile avatar = new AgentProfile(
+            "avatar",
+            "Avatar",
+            AgentProfileStatus.DISABLED,
+            null,
+            "Reserved internal assistant profile",
+            List.of(),
+            List.of(),
+            false,
+            Instant.now(),
+            Instant.now()
+        );
+        OrchestrationController ctrl = controllerWithAgentProfileService(new StubAgentProfileService() {
+            @Override public List<AgentProfile> list() {
+                return List.of(avatar);
+            }
+
+            @Override public AgentProfile get(String id) {
+                if ("avatar".equals(id)) {
+                    return avatar;
+                }
+                return super.get(id);
+            }
+        });
+
+        String list = ctrl.agentList(null);
+        assertThat(list).contains("Assistant");
+        assertThat(list).doesNotContain(">Avatar<");
+
+        String detail = ctrl.agentDetail("avatar");
+        assertThat(detail).contains("Agent: Assistant");
+        assertThat(detail).doesNotContain("Agent: Avatar");
+        assertThat(detail).contains("/css/avatar-dashboard.css?v=7");
+
+        String events = ctrl.dashboardSideEvents();
+        assertThat(events).contains("Assistant");
+        assertThat(events).doesNotContain("Avatar");
+
+        String manageAgents = ctrl.dashboardAgents();
+        assertThat(manageAgents).contains("href=\"/agents/avatar\"");
+        assertThat(manageAgents).contains(">Assistant</a>");
+        assertThat(manageAgents).doesNotContain(">Avatar</a>");
+
+        String dashboardTab = ctrl.agentDashboardTab("avatar");
+        assertThat(dashboardTab).contains("<span class=\"agent-meta-label\">Name</span>");
+        assertThat(dashboardTab).contains("<span class=\"agent-meta-value\">Assistant</span>");
+        assertThat(dashboardTab).doesNotContain("<span class=\"agent-meta-value\">Avatar</span>");
     }
 
     @Test
@@ -1752,7 +1851,7 @@ class OrchestrationControllerTest {
     void sidebarContainsAllRequiredNavigationLinks() {
         String html = controller().dashboard(null, null);
 
-        assertThat(html).contains("/dashboard");
+        assertThat(html).contains("/manage");
         assertThat(html).contains("/plans");
         assertThat(html).contains("/workflows");
         assertThat(html).contains("/jobs");
@@ -1766,12 +1865,14 @@ class OrchestrationControllerTest {
 
     private static void assertPrimaryTopNav(String html) {
         int home = html.indexOf("<a href=\"/\" class=\"navbar-item\">Home</a>");
-        int dashboard = html.indexOf("<a href=\"/dashboard\" class=\"navbar-item\">Dashboard</a>");
         int chat = html.indexOf("<a href=\"/chat\" class=\"navbar-item\">Chat</a>");
+        int agents = html.indexOf("<a href=\"/agents\" class=\"navbar-item\">Agents</a>");
+        int manage = html.indexOf("<a href=\"/manage\" class=\"navbar-item\">Manage</a>");
 
         assertThat(home).isGreaterThanOrEqualTo(0);
-        assertThat(dashboard).isGreaterThan(home);
-        assertThat(chat).isGreaterThan(dashboard);
+        assertThat(chat).isGreaterThan(home);
+        assertThat(agents).isGreaterThan(chat);
+        assertThat(manage).isGreaterThan(agents);
         assertThat(html).doesNotContain("<a href=\"/avatar\" class=\"navbar-item\">Avatar</a>");
     }
 
@@ -1795,13 +1896,12 @@ class OrchestrationControllerTest {
     void dashboardRendersHxContainersForPartialLoading() {
         String html = controller().dashboard(null, null);
 
-        // Dashboard should have HTMX containers for lazy-loaded sections
-        assertThat(html).contains("hx-get=\"/dashboard/_stats\"");
-        assertThat(html).contains("hx-get=\"/dashboard/_active-work\"");
-        assertThat(html).contains("hx-get=\"/dashboard/_open-projects\"");
-        assertThat(html).contains("hx-get=\"/dashboard/_agents\"");
-        assertThat(html).contains("hx-get=\"/dashboard/_side-inbox\"");
-        assertThat(html).contains("hx-get=\"/dashboard/_side-outputs\"");
+        assertThat(html).contains("hx-get=\"/manage/_stats\"");
+        assertThat(html).contains("hx-get=\"/manage/_active-work\"");
+        assertThat(html).contains("hx-get=\"/manage/_open-projects\"");
+        assertThat(html).contains("hx-get=\"/manage/_agents\"");
+        assertThat(html).contains("hx-get=\"/manage/_side-inbox\"");
+        assertThat(html).contains("hx-get=\"/manage/_side-outputs\"");
         // Should trigger on load and refresh
         assertThat(html).contains("hx-trigger=\"load, every 30s\"");
         assertThat(html).contains("hx-swap=\"innerHTML\"");

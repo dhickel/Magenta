@@ -1,0 +1,861 @@
+{
+  "status": "passed",
+  "liveAppUrl": "http://127.0.0.1:18082",
+  "startedAt": "2026-05-28T08:50:50.479Z",
+  "screenshots": [
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2-2026-05-28/manage-desktop.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2-2026-05-28/agent-avatar-detail-desktop.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2-2026-05-28/agent-avatar-detail-mobile.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2-2026-05-28/agent-workareas-tab-explorer-desktop.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2-2026-05-28/agent-workareas-tab-explorer-mobile.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2-2026-05-28/root-desktop.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2-2026-05-28/create-dashboard-modal-open.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2-2026-05-28/create-dashboard-modal-blank-invalid.png",
+    "artifacts/assistant-dashboard-refactor/playwright/browser-recheck-2-2026-05-28/assistant-edit-mode-desktop.png"
+  ],
+  "checks": [
+    {
+      "name": "/manage desktop Agents table shows Assistant",
+      "passed": true,
+      "bodyExcerpt": "Magenta Operations\n\nOperational management\n\nHome\nChat\nAgents\nManage\n☰\nSYSTEM\nSystem\nSettings\nORCHESTRATION\nPlans\nWorkflows\nJobs\nProjects\nInbox\nTOOLS\nSkills\nOutputs\nSystem Chat\n0\nRUNNING\n0\nPENDING\n0\nMESSAGES\n0\nFAILED\n2\nACTIVE AGENTS\nActive Work\nNo active work\nOpen Projects\nNo open projects\nAgents\nNAME\tSTATUS\tMODEL\tQUEUE\tINBOX\nAssistant\tACTIVE\tunset\t—\t—\nmagenta\tACTIVE\tdeepseek-flash-v4-max\t—\t—\nInbox\nView all\n0\nmessages\nRecent Outputs\nView all\nNo recent outputs\nRecent Events\nView all\nAgent ACTIVE\nAssistant · 4d ago\nAgent ACTIVE\nmagenta · 5d ago"
+    },
+    {
+      "name": "/manage desktop has no user-facing uppercase Avatar",
+      "passed": true,
+      "avatarOccurrences": 0
+    },
+    {
+      "name": "/manage top nav order smoke",
+      "passed": true,
+      "expected": "Home > Chat > Agents > Manage"
+    },
+    {
+      "name": "/manage side nav smoke",
+      "passed": true,
+      "sections": [
+        "SYSTEM",
+        "ORCHESTRATION",
+        "TOOLS"
+      ]
+    },
+    {
+      "name": "/manage recent events render",
+      "passed": true,
+      "excerpt": "Recent Events\nView all\nAgent ACTIVE\nAssistant · 4d ago\nAgent ACTIVE\nmagenta · 5d ago"
+    },
+    {
+      "name": "/agents/avatar desktop primary labels show Assistant",
+      "passed": true,
+      "bodyExcerpt": "Magenta Operations\n\nOperational management\n\nHome\nChat\nAgents\nManage\n☰\nSYSTEM\nSystem\nSettings\nORCHESTRATION\nPlans\nWorkflows\nJobs\nProjects\nInbox\nTOOLS\nSkills\nOutputs\nAgent: Assistant\n\nProfile, queue, inbox, workspace, and history.\n\nChat with Agent\nManage\nProfile\nQueue\nInbox\nJobs\nSchedules\nReactions\nWorkspace\nWork-areas\nOutputs\nExec\nHistory\nSubmit\nDashboard\nNAME\nAssistant\nSTATUS\nACTIVE\nMODEL\nunset\nID\navatar\nDIRECT LINE\nDisabled\nCREATED\n5d ago\n0\nQUEUE\n0\nINBOX\n0\nJOBS\nWorkspace Health\nHEALTH\nREADY\nPATH\nagents/avatar/workspace\nWRITABLE\nYes\nACTIVE RUNS\n0\nACTIVE LEASES\n0\nLINKED PROJECTS\n—\nOUTPUT ARTIFACTS\n0\nOUTPUT BYTES\n0\nLAST ACTIVITY\n—\nWorkspace ready\nLifecycle controls update here.\nRefresh\nDisable Agent\nDelete / Archive"
+    },
+    {
+      "name": "/agents/avatar desktop diagnostic ID remains avatar",
+      "passed": true,
+      "idLineFound": true
+    },
+    {
+      "name": "/agents/avatar desktop loads avatar-dashboard.css?v=7",
+      "passed": true,
+      "cssLinks": [
+        "/css/avatar-dashboard.css?v=7"
+      ]
+    },
+    {
+      "name": "/agents/avatar desktop tab routes use agent detail path",
+      "passed": true,
+      "links": [
+        {
+          "tag": "BUTTON",
+          "text": "Work-areas",
+          "href": null,
+          "hxGet": "/agents/_detail/avatar/work-areas",
+          "hxPost": null,
+          "action": null,
+          "dataWorkareaOpenUrl": null
+        }
+      ]
+    },
+    {
+      "name": "/agents/avatar mobile primary labels show Assistant",
+      "passed": true,
+      "bodyExcerpt": "Magenta Operations\n\nOperational management\n\nHome\nChat\nAgents\nManage\n☰\nSYSTEM\nSystem\nSettings\nORCHESTRATION\nPlans\nWorkflows\nJobs\nProjects\nInbox\nTOOLS\nSkills\nOutputs\nAgent: Assistant\n\nProfile, queue, inbox, workspace, and history.\n\nChat with Agent\nManage\nProfile\nQueue\nInbox\nJobs\nSchedules\nReactions\nWorkspace\nWork-areas\nOutputs\nExec\nHistory\nSubmit\nDashboard\nNAME\nAssistant\nSTATUS\nACTIVE\nMODEL\nunset\nID\navatar\nDIRECT LINE\nDisabled\nCREATED\n5d ago\n0\nQUEUE\n0\nINBOX\n0\nJOBS\nWorkspace Health\nHEALTH\nREADY\nPATH\nagents/avatar/workspace\nWRITABLE\nYes\nACTIVE RUNS\n0\nACTIVE LEASES\n0\nLINKED PROJECTS\n—\nOUTPUT ARTIFACTS\n0\nOUTPUT BYTES\n0\nLAST ACTIVITY\n—\nWorkspace ready\nLifecycle controls update here.\nRefresh\nDisable Agent\nDelete / Archive"
+    },
+    {
+      "name": "/agents/avatar mobile no document horizontal overflow",
+      "passed": true,
+      "metrics": {
+        "scrollWidth": 390,
+        "clientWidth": 390,
+        "bodyScrollWidth": 390,
+        "bodyClientWidth": 390,
+        "viewport": {
+          "width": 390,
+          "height": 844
+        }
+      }
+    },
+    {
+      "name": "/agents/avatar Work Areas tab opens selected explorer desktop",
+      "passed": true,
+      "bodyExcerpt": "Magenta Operations\n\nOperational management\n\nHome\nChat\nAgents\nManage\n☰\nSYSTEM\nSystem\nSettings\nORCHESTRATION\nPlans\nWorkflows\nJobs\nProjects\nInbox\nTOOLS\nSkills\nOutputs\nAgent: Assistant\n\nProfile, queue, inbox, workspace, and history.\n\nChat with Agent\nManage\nProfile\nQueue\nInbox\nJobs\nSchedules\nReactions\nWorkspace\nWork-areas\nOutputs\nExec\nHistory\nSubmit\nWork Areas\nHome\n67524694-8572-4b7a-8c99-f401ee1cf06f\nHome\nRoot\nClose Workspace\nRoot\nNAME\tFILE TYPE\tSIZE\tCREATED\tLAST MODIFIED\tTAGS\tACTIONS\ndemo-fixtures\tFolder\t-\t2026-05-27 07:05\t2026-05-27 14:49\tNo tags\t\n\ndirectory-with-an-extremely-long-name-for-overflow-validation-and-tag-filtering\tFolder\t-\t2026-05-27 16:38\t2026-05-27 16:38\tNo tags\t\n\nsafe-recheck-1779524662778.txt\tText\t0 B\t2026-05-23 04:24\t2026-05-23 04:24\tNo tags\t\nhome\n\nTAGS\nNo tags\nManage Tags\nType\nFolder\nSize\n-\nCreated\n2026-05-23 02:58\nLast Modified\n2026-05-27 16:38\nPREVIEW\nPreview unavailable"
+    },
+    {
+      "name": "/agents/avatar Work Area explorer desktop: no document horizontal overflow",
+      "passed": true,
+      "metrics": {
+        "scrollWidth": 1440,
+        "clientWidth": 1440,
+        "bodyScrollWidth": 1440,
+        "bodyClientWidth": 1440,
+        "viewport": {
+          "width": 1440,
+          "height": 1000
+        }
+      }
+    },
+    {
+      "name": "/agents/avatar Work Area explorer desktop: Work Area action buttons visible/stable",
+      "passed": true,
+      "minActionButtonPx": 28,
+      "actionButtons": [
+        {
+          "title": "Open folder",
+          "rect": {
+            "x": 1087.828125,
+            "y": 842.15625,
+            "width": 28,
+            "height": 34.390625,
+            "right": 1115.828125,
+            "bottom": 876.546875
+          },
+          "visible": true
+        },
+        {
+          "title": "Rename",
+          "rect": {
+            "x": 1121.421875,
+            "y": 842.15625,
+            "width": 28,
+            "height": 34.390625,
+            "right": 1149.421875,
+            "bottom": 876.546875
+          },
+          "visible": true
+        },
+        {
+          "title": "Delete",
+          "rect": {
+            "x": 1155.015625,
+            "y": 842.15625,
+            "width": 28,
+            "height": 34.390625,
+            "right": 1183.015625,
+            "bottom": 876.546875
+          },
+          "visible": true
+        },
+        {
+          "title": "Copy",
+          "rect": {
+            "x": 1188.609375,
+            "y": 842.15625,
+            "width": 28,
+            "height": 34.390625,
+            "right": 1216.609375,
+            "bottom": 876.546875
+          },
+          "visible": true
+        },
+        {
+          "title": "Move",
+          "rect": {
+            "x": 1222.203125,
+            "y": 842.15625,
+            "width": 28,
+            "height": 34.390625,
+            "right": 1250.203125,
+            "bottom": 876.546875
+          },
+          "visible": true
+        },
+        {
+          "title": "Open folder",
+          "rect": {
+            "x": 1087.828125,
+            "y": 889.046875,
+            "width": 28,
+            "height": 34.390625,
+            "right": 1115.828125,
+            "bottom": 923.4375
+          },
+          "visible": true
+        },
+        {
+          "title": "Rename",
+          "rect": {
+            "x": 1121.421875,
+            "y": 889.046875,
+            "width": 28,
+            "height": 34.390625,
+            "right": 1149.421875,
+            "bottom": 923.4375
+          },
+          "visible": true
+        },
+        {
+          "title": "Delete",
+          "rect": {
+            "x": 1155.015625,
+            "y": 889.046875,
+            "width": 28,
+            "height": 34.390625,
+            "right": 1183.015625,
+            "bottom": 923.4375
+          },
+          "visible": true
+        },
+        {
+          "title": "Copy",
+          "rect": {
+            "x": 1188.609375,
+            "y": 889.046875,
+            "width": 28,
+            "height": 34.390625,
+            "right": 1216.609375,
+            "bottom": 923.4375
+          },
+          "visible": true
+        },
+        {
+          "title": "Move",
+          "rect": {
+            "x": 1222.203125,
+            "y": 889.046875,
+            "width": 28,
+            "height": 34.390625,
+            "right": 1250.203125,
+            "bottom": 923.4375
+          },
+          "visible": true
+        },
+        {
+          "title": "View file",
+          "rect": {
+            "x": 1087.828125,
+            "y": 935.9375,
+            "width": 28,
+            "height": 34.390625,
+            "right": 1115.828125,
+            "bottom": 970.328125
+          },
+          "visible": true
+        },
+        {
+          "title": "Rename",
+          "rect": {
+            "x": 1121.421875,
+            "y": 935.9375,
+            "width": 28,
+            "height": 34.390625,
+            "right": 1149.421875,
+            "bottom": 970.328125
+          },
+          "visible": true
+        }
+      ]
+    },
+    {
+      "name": "/agents/avatar Work Area explorer desktop: toolbar buttons visible/stable",
+      "passed": true,
+      "minToolbarButtonPx": 32,
+      "toolbarButtons": [
+        {
+          "title": "Back",
+          "rect": {
+            "x": 336.578125,
+            "y": 703.53125,
+            "width": 32,
+            "height": 34.390625,
+            "right": 368.578125,
+            "bottom": 737.921875
+          },
+          "visible": true
+        },
+        {
+          "title": "Refresh",
+          "rect": {
+            "x": 374.171875,
+            "y": 703.53125,
+            "width": 32,
+            "height": 34.390625,
+            "right": 406.171875,
+            "bottom": 737.921875
+          },
+          "visible": true
+        },
+        {
+          "title": "New Folder",
+          "rect": {
+            "x": 411.765625,
+            "y": 703.53125,
+            "width": 32,
+            "height": 34.390625,
+            "right": 443.765625,
+            "bottom": 737.921875
+          },
+          "visible": true
+        },
+        {
+          "title": "New File",
+          "rect": {
+            "x": 449.359375,
+            "y": 704.71875,
+            "width": 32,
+            "height": 32,
+            "right": 481.359375,
+            "bottom": 736.71875
+          },
+          "visible": true
+        }
+      ]
+    },
+    {
+      "name": "/agents/avatar Work Area explorer desktop: icons/placeholders modest",
+      "passed": true,
+      "maxIconPx": 16,
+      "previewRect": {
+        "x": 1096.828125,
+        "y": 1070.5625,
+        "width": 267.78125,
+        "height": 60.125,
+        "right": 1364.609375,
+        "bottom": 1130.6875
+      }
+    },
+    {
+      "name": "/agents/avatar Work Area explorer desktop: long names do not crush controls",
+      "passed": true,
+      "longNameButton": {
+        "x": 336.578125,
+        "y": 897.234375,
+        "width": 286.078125,
+        "height": 19,
+        "right": 622.65625,
+        "bottom": 916.234375
+      },
+      "rowActions": [
+        {
+          "x": 1089.390625,
+          "y": 836.40625,
+          "width": 168,
+          "height": 46.890625,
+          "right": 1257.390625,
+          "bottom": 883.296875
+        },
+        {
+          "x": 1089.390625,
+          "y": 883.296875,
+          "width": 168,
+          "height": 46.890625,
+          "right": 1257.390625,
+          "bottom": 930.1875
+        },
+        {
+          "x": 1089.390625,
+          "y": 930.1875,
+          "width": 168,
+          "height": 46.890625,
+          "right": 1257.390625,
+          "bottom": 977.078125
+        }
+      ],
+      "tableRegion": {
+        "x": 328.390625,
+        "y": 804.484375,
+        "width": 743.4375,
+        "height": 174.09375,
+        "right": 1071.828125,
+        "bottom": 978.578125,
+        "scrollWidth": 928,
+        "clientWidth": 741
+      },
+      "tableScrollAcceptable": false
+    },
+    {
+      "name": "/agents/avatar Work Area explorer desktop: Work Area routes stay under agent detail",
+      "passed": true,
+      "routes": [
+        "/agents/_detail/avatar/work-areas",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer",
+        "/agents/_detail/avatar/work-areas/placeholder",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=.&selected=.&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/create-folder?path=.&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/create-text?path=.&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/create-markdown?path=.&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=.",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=.&selected=demo-fixtures&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=demo-fixtures&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/rename?path=demo-fixtures&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/delete?path=demo-fixtures&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/files/action/copy/picker?path=demo-fixtures&browse=.&destination=.&x=48&y=96",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/files/action/move/picker?path=demo-fixtures&browse=.&destination=.&x=48&y=96",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=.&selected=directory-with-an-extremely-long-name-for-overflow-validation-and-tag-filtering&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=directory-with-an-extremely-long-name-for-overflow-validation-and-tag-filtering&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/rename?path=directory-with-an-extremely-long-name-for-overflow-validation-and-tag-filtering&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/delete?path=directory-with-an-extremely-long-name-for-overflow-validation-and-tag-filtering&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/files/action/copy/picker?path=directory-with-an-extremely-long-name-for-overflow-validation-and-tag-filtering&browse=.&destination=.&x=48&y=96",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/files/action/move/picker?path=directory-with-an-extremely-long-name-for-overflow-validation-and-tag-filtering&browse=.&destination=.&x=48&y=96",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=.&selected=safe-recheck-1779524662778.txt&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/viewer?path=safe-recheck-1779524662778.txt",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/rename?path=safe-recheck-1779524662778.txt&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/delete?path=safe-recheck-1779524662778.txt&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/files/action/copy/picker?path=safe-recheck-1779524662778.txt&browse=.&destination=.&x=48&y=96",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/files/action/move/picker?path=safe-recheck-1779524662778.txt&browse=.&destination=.&x=48&y=96",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=.&selected=.&panel=collapsed",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/tag-editor?path=.&panel=expanded"
+      ]
+    },
+    {
+      "name": "/agents/avatar Work Area explorer mobile: no document horizontal overflow",
+      "passed": true,
+      "metrics": {
+        "scrollWidth": 390,
+        "clientWidth": 390,
+        "bodyScrollWidth": 390,
+        "bodyClientWidth": 390,
+        "viewport": {
+          "width": 390,
+          "height": 844
+        }
+      }
+    },
+    {
+      "name": "/agents/avatar Work Area explorer mobile: Work Area action buttons visible/stable",
+      "passed": true,
+      "minActionButtonPx": 28.796875,
+      "actionButtons": [
+        {
+          "title": "Open folder",
+          "rect": {
+            "x": 804.640625,
+            "y": 962.84375,
+            "width": 28.796875,
+            "height": 28.796875,
+            "right": 833.4375,
+            "bottom": 991.640625
+          },
+          "visible": true
+        },
+        {
+          "title": "Rename",
+          "rect": {
+            "x": 839.03125,
+            "y": 962.84375,
+            "width": 28.796875,
+            "height": 28.796875,
+            "right": 867.828125,
+            "bottom": 991.640625
+          },
+          "visible": true
+        },
+        {
+          "title": "Delete",
+          "rect": {
+            "x": 873.421875,
+            "y": 962.84375,
+            "width": 28.796875,
+            "height": 28.796875,
+            "right": 902.21875,
+            "bottom": 991.640625
+          },
+          "visible": true
+        },
+        {
+          "title": "Copy",
+          "rect": {
+            "x": 907.8125,
+            "y": 962.84375,
+            "width": 28.796875,
+            "height": 28.796875,
+            "right": 936.609375,
+            "bottom": 991.640625
+          },
+          "visible": true
+        },
+        {
+          "title": "Move",
+          "rect": {
+            "x": 942.203125,
+            "y": 962.84375,
+            "width": 28.796875,
+            "height": 28.796875,
+            "right": 971,
+            "bottom": 991.640625
+          },
+          "visible": true
+        },
+        {
+          "title": "Open folder",
+          "rect": {
+            "x": 804.640625,
+            "y": 1006.125,
+            "width": 28.796875,
+            "height": 28.796875,
+            "right": 833.4375,
+            "bottom": 1034.921875
+          },
+          "visible": true
+        },
+        {
+          "title": "Rename",
+          "rect": {
+            "x": 839.03125,
+            "y": 1006.125,
+            "width": 28.796875,
+            "height": 28.796875,
+            "right": 867.828125,
+            "bottom": 1034.921875
+          },
+          "visible": true
+        },
+        {
+          "title": "Delete",
+          "rect": {
+            "x": 873.421875,
+            "y": 1006.125,
+            "width": 28.796875,
+            "height": 28.796875,
+            "right": 902.21875,
+            "bottom": 1034.921875
+          },
+          "visible": true
+        },
+        {
+          "title": "Copy",
+          "rect": {
+            "x": 907.8125,
+            "y": 1006.125,
+            "width": 28.796875,
+            "height": 28.796875,
+            "right": 936.609375,
+            "bottom": 1034.921875
+          },
+          "visible": true
+        },
+        {
+          "title": "Move",
+          "rect": {
+            "x": 942.203125,
+            "y": 1006.125,
+            "width": 28.796875,
+            "height": 28.796875,
+            "right": 971,
+            "bottom": 1034.921875
+          },
+          "visible": true
+        },
+        {
+          "title": "View file",
+          "rect": {
+            "x": 804.640625,
+            "y": 1049.90625,
+            "width": 28.796875,
+            "height": 28.796875,
+            "right": 833.4375,
+            "bottom": 1078.703125
+          },
+          "visible": true
+        },
+        {
+          "title": "Rename",
+          "rect": {
+            "x": 839.03125,
+            "y": 1049.90625,
+            "width": 28.796875,
+            "height": 28.796875,
+            "right": 867.828125,
+            "bottom": 1078.703125
+          },
+          "visible": true
+        }
+      ]
+    },
+    {
+      "name": "/agents/avatar Work Area explorer mobile: toolbar buttons visible/stable",
+      "passed": true,
+      "minToolbarButtonPx": 32,
+      "toolbarButtons": [
+        {
+          "title": "Back",
+          "rect": {
+            "x": 56.578125,
+            "y": 821.3125,
+            "width": 32,
+            "height": 34.390625,
+            "right": 88.578125,
+            "bottom": 855.703125
+          },
+          "visible": true
+        },
+        {
+          "title": "Refresh",
+          "rect": {
+            "x": 94.171875,
+            "y": 821.3125,
+            "width": 32,
+            "height": 34.390625,
+            "right": 126.171875,
+            "bottom": 855.703125
+          },
+          "visible": true
+        },
+        {
+          "title": "New Folder",
+          "rect": {
+            "x": 131.765625,
+            "y": 821.3125,
+            "width": 32,
+            "height": 34.390625,
+            "right": 163.765625,
+            "bottom": 855.703125
+          },
+          "visible": true
+        },
+        {
+          "title": "New File",
+          "rect": {
+            "x": 169.359375,
+            "y": 822.5,
+            "width": 32,
+            "height": 32,
+            "right": 201.359375,
+            "bottom": 854.5
+          },
+          "visible": true
+        }
+      ]
+    },
+    {
+      "name": "/agents/avatar Work Area explorer mobile: icons/placeholders modest",
+      "passed": true,
+      "maxIconPx": 16,
+      "previewRect": {
+        "x": 61.390625,
+        "y": 1366.546875,
+        "width": 267.21875,
+        "height": 60.125,
+        "right": 328.609375,
+        "bottom": 1426.671875
+      }
+    },
+    {
+      "name": "/agents/avatar Work Area explorer mobile: long names do not crush controls",
+      "passed": true,
+      "longNameButton": {
+        "x": 55.78125,
+        "y": 1011.796875,
+        "width": 358.40625,
+        "height": 19,
+        "right": 414.1875,
+        "bottom": 1030.796875
+      },
+      "rowActions": [
+        {
+          "x": 513.375,
+          "y": 956.125,
+          "width": 464.015625,
+          "height": 43.234375,
+          "right": 977.390625,
+          "bottom": 999.359375
+        },
+        {
+          "x": 513.375,
+          "y": 999.40625,
+          "width": 464.015625,
+          "height": 43.234375,
+          "right": 977.390625,
+          "bottom": 1042.640625
+        },
+        {
+          "x": 513.375,
+          "y": 1043.1875,
+          "width": 464.015625,
+          "height": 43.234375,
+          "right": 977.390625,
+          "bottom": 1086.421875
+        }
+      ],
+      "tableRegion": {
+        "x": 48.390625,
+        "y": 922.265625,
+        "width": 293.21875,
+        "height": 166.203125,
+        "right": 341.609375,
+        "bottom": 1088.46875,
+        "scrollWidth": 928,
+        "clientWidth": 291
+      },
+      "tableScrollAcceptable": false
+    },
+    {
+      "name": "/agents/avatar Work Area explorer mobile: Work Area routes stay under agent detail",
+      "passed": true,
+      "routes": [
+        "/agents/_detail/avatar/work-areas",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer",
+        "/agents/_detail/avatar/work-areas/placeholder",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=.&selected=.&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/create-folder?path=.&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/create-text?path=.&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/create-markdown?path=.&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=.",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=.&selected=demo-fixtures&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=demo-fixtures&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/rename?path=demo-fixtures&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/delete?path=demo-fixtures&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/files/action/copy/picker?path=demo-fixtures&browse=.&destination=.&x=48&y=96",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/files/action/move/picker?path=demo-fixtures&browse=.&destination=.&x=48&y=96",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=.&selected=directory-with-an-extremely-long-name-for-overflow-validation-and-tag-filtering&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=directory-with-an-extremely-long-name-for-overflow-validation-and-tag-filtering&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/rename?path=directory-with-an-extremely-long-name-for-overflow-validation-and-tag-filtering&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/delete?path=directory-with-an-extremely-long-name-for-overflow-validation-and-tag-filtering&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/files/action/copy/picker?path=directory-with-an-extremely-long-name-for-overflow-validation-and-tag-filtering&browse=.&destination=.&x=48&y=96",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/files/action/move/picker?path=directory-with-an-extremely-long-name-for-overflow-validation-and-tag-filtering&browse=.&destination=.&x=48&y=96",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=.&selected=safe-recheck-1779524662778.txt&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/viewer?path=safe-recheck-1779524662778.txt",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/rename?path=safe-recheck-1779524662778.txt&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/delete?path=safe-recheck-1779524662778.txt&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/files/action/copy/picker?path=safe-recheck-1779524662778.txt&browse=.&destination=.&x=48&y=96",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/files/action/move/picker?path=safe-recheck-1779524662778.txt&browse=.&destination=.&x=48&y=96",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=.&selected=.&panel=collapsed",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/tag-editor?path=.&panel=expanded"
+      ]
+    },
+    {
+      "name": "/ root loads",
+      "passed": true,
+      "bodyExcerpt": "Assistant\n\nUser dashboards, chat, and operational widgets\n\nHome\nChat\nAgents\nManage\nAssistant\nPW Browser Proof 1779956580533\nPW Recheck 1779957482299\n+\nAssistant Chat\nDashboard assistant channel\nsurface home\nnew chat\nReady\nmodel local-qwen\nAsk the assistant for a quick update.\nSend\nDashboard\nDaily Tasks\nAdd Daily\nNo daily tasks for today.\nTodos\nNormal\nHigh\nUrgent\nLow\nAdd Todo\nPW Rerun3 mobile 1779492048985\nnormal\nPW Rerun3 desktop 1779492033471\nnormal\npw rerun2 todo 1779491724852\nnormal\npw rerun2 todo 1779491711125\nnormal\npw rerun todo 1779491635959\nnormal\npw rerun todo 1779491601967\nnormal\nCalendar\nAdd Event\nNo calendar items.\nNotes\nSave Note\nNo notes yet.\nOutputs\nNo recent outputs.\nSystem\n2\nActive agents\n0\nOpen jobs\n0\nQueued work\nAlerts\nNo alerts.\nRecent Work\nNo recent work."
+    },
+    {
+      "name": "create-dashboard modal has required name input",
+      "passed": true,
+      "required": true
+    },
+    {
+      "name": "create-dashboard blank submit stays invalid",
+      "passed": true,
+      "invalid": true
+    },
+    {
+      "name": "Assistant edit mode loads",
+      "passed": true,
+      "bodyExcerpt": "Assistant\n\nUser dashboards, chat, and operational widgets\n\nHome\nChat\nAgents\nManage\nAssistant\nPW Browser Proof 1779956580533\nPW Recheck 1779957482299\n+\nAssistant Chat\nDashboard assistant channel\nsurface home\nnew chat\nReady\nmodel local-qwen\nAsk the assistant for a quick update.\nSend\nDashboard edit mode\nRow 1 · 12/12\nDaily Tasks\nAdd Daily\nNo daily tasks for today.\nTodos\nNormal\nHigh\nUrgent\nLow\nAdd Todo\nPW Rerun3 mobile 1779492048985\nnormal\nPW Rerun3 desktop 1779492033471\nnormal\npw rerun2 todo 1779491724852\nnormal\npw rerun2 todo 1779491711125\nnormal\npw rerun todo 1779491635959\nnormal\npw rerun todo 1779491601967\nnormal\nCalendar\nAdd Event\nNo calendar items.\n+ Add Widget\n+ Insert Row Below\nRow 2 · 12/12\nNotes\nSave Note\nNo notes yet.\nOutputs\nNo recent outputs.\n+ Add Widget\n+ Insert Row Below\nRow 3 · 12/12\nSystem\n2\nActive agents\n0\nOpen jobs\n0\nQueued work\nAlerts\nNo alerts.\nRecent Work\nNo recent work.\n+ Add Widget\n+ Insert Row Below",
+      "metrics": {
+        "scrollWidth": 1440,
+        "clientWidth": 1440,
+        "bodyScrollWidth": 1440,
+        "bodyClientWidth": 1440,
+        "viewport": {
+          "width": 1440,
+          "height": 1000
+        }
+      }
+    },
+    {
+      "name": "Assistant edit mode no document horizontal overflow",
+      "passed": true,
+      "metrics": {
+        "scrollWidth": 1440,
+        "clientWidth": 1440,
+        "bodyScrollWidth": 1440,
+        "bodyClientWidth": 1440,
+        "viewport": {
+          "width": 1440,
+          "height": 1000
+        }
+      }
+    }
+  ],
+  "consoleMessages": [],
+  "failedRequests": [],
+  "httpErrors": [],
+  "visualNotes": [
+    {
+      "label": "/agents/avatar Work Area explorer desktop",
+      "note": "Explorer uses compact details table with bounded inspector. Action buttons measured min 28px, toolbar min 32px, max SVG 16px. Document overflow absent."
+    },
+    {
+      "label": "/agents/avatar Work Area explorer mobile",
+      "note": "Explorer uses compact details table with bounded inspector. Action buttons measured min 28.796875px, toolbar min 32px, max SVG 16px. Document overflow absent."
+    }
+  ],
+  "routeUrls": [
+    {
+      "label": "/agents/avatar Work Area explorer desktop",
+      "routes": [
+        "/agents/_detail/avatar/work-areas",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer",
+        "/agents/_detail/avatar/work-areas/placeholder",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=.&selected=.&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/create-folder?path=.&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/create-text?path=.&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/create-markdown?path=.&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=.",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=.&selected=demo-fixtures&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=demo-fixtures&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/rename?path=demo-fixtures&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/delete?path=demo-fixtures&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/files/action/copy/picker?path=demo-fixtures&browse=.&destination=.&x=48&y=96",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/files/action/move/picker?path=demo-fixtures&browse=.&destination=.&x=48&y=96",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=.&selected=directory-with-an-extremely-long-name-for-overflow-validation-and-tag-filtering&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=directory-with-an-extremely-long-name-for-overflow-validation-and-tag-filtering&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/rename?path=directory-with-an-extremely-long-name-for-overflow-validation-and-tag-filtering&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/delete?path=directory-with-an-extremely-long-name-for-overflow-validation-and-tag-filtering&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/files/action/copy/picker?path=directory-with-an-extremely-long-name-for-overflow-validation-and-tag-filtering&browse=.&destination=.&x=48&y=96",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/files/action/move/picker?path=directory-with-an-extremely-long-name-for-overflow-validation-and-tag-filtering&browse=.&destination=.&x=48&y=96",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=.&selected=safe-recheck-1779524662778.txt&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/viewer?path=safe-recheck-1779524662778.txt",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/rename?path=safe-recheck-1779524662778.txt&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/delete?path=safe-recheck-1779524662778.txt&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/files/action/copy/picker?path=safe-recheck-1779524662778.txt&browse=.&destination=.&x=48&y=96",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/files/action/move/picker?path=safe-recheck-1779524662778.txt&browse=.&destination=.&x=48&y=96",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=.&selected=.&panel=collapsed",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/tag-editor?path=.&panel=expanded"
+      ]
+    },
+    {
+      "label": "/agents/avatar Work Area explorer mobile",
+      "routes": [
+        "/agents/_detail/avatar/work-areas",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer",
+        "/agents/_detail/avatar/work-areas/placeholder",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=.&selected=.&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/create-folder?path=.&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/create-text?path=.&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/create-markdown?path=.&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=.",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=.&selected=demo-fixtures&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=demo-fixtures&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/rename?path=demo-fixtures&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/delete?path=demo-fixtures&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/files/action/copy/picker?path=demo-fixtures&browse=.&destination=.&x=48&y=96",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/files/action/move/picker?path=demo-fixtures&browse=.&destination=.&x=48&y=96",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=.&selected=directory-with-an-extremely-long-name-for-overflow-validation-and-tag-filtering&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=directory-with-an-extremely-long-name-for-overflow-validation-and-tag-filtering&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/rename?path=directory-with-an-extremely-long-name-for-overflow-validation-and-tag-filtering&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/delete?path=directory-with-an-extremely-long-name-for-overflow-validation-and-tag-filtering&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/files/action/copy/picker?path=directory-with-an-extremely-long-name-for-overflow-validation-and-tag-filtering&browse=.&destination=.&x=48&y=96",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/files/action/move/picker?path=directory-with-an-extremely-long-name-for-overflow-validation-and-tag-filtering&browse=.&destination=.&x=48&y=96",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=.&selected=safe-recheck-1779524662778.txt&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/viewer?path=safe-recheck-1779524662778.txt",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/rename?path=safe-recheck-1779524662778.txt&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/delete?path=safe-recheck-1779524662778.txt&panel=expanded",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/files/action/copy/picker?path=safe-recheck-1779524662778.txt&browse=.&destination=.&x=48&y=96",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/files/action/move/picker?path=safe-recheck-1779524662778.txt&browse=.&destination=.&x=48&y=96",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/explorer?path=.&selected=.&panel=collapsed",
+        "/agents/_detail/avatar/work-areas/67524694-8572-4b7a-8c99-f401ee1cf06f/modal/tag-editor?path=.&panel=expanded"
+      ]
+    }
+  ],
+  "endedAt": "2026-05-28T08:50:57.167Z"
+}

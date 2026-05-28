@@ -84,7 +84,7 @@ Service behavior:
 - Unmarking refuses Work Areas referenced by queued/running assignments or output targets when those assignment metadata columns exist.
 - Path checks normalize traversal and use real paths so symlink escapes outside the workspace root are rejected.
 
-Current Work Area persistence is used by assignment runtime routing and the Avatar Work Areas/file explorer surface.
+Current Work Area persistence is used by assignment runtime routing and the agent detail Work Areas/file explorer surface.
 
 Assignment records now carry first-class Work Area/output routing metadata:
 
@@ -106,18 +106,19 @@ Runtime alias and output directory resolution consume these columns during task,
 - `WORK_AREA` promotes completed outputs to the selected output Work Area.
 - `DIRECT_DIRECTORY` promotes completed outputs to the existing owner-root-relative directory.
 
-`WorkAreaExplorerService` provides the backend contract for the Avatar Work Areas/file explorer surface. It supports confined directory listings, rich row/inspect metadata, safe text/Markdown preview and save, image preview/download routing, bounded downloads, directory creation, `.txt` and `.md` creation, sibling rename, copy, move, custom file/directory tags, note labels, recursive delete with typed confirmation, and marking nested directories as Work Areas.
+`WorkAreaExplorerService` provides the backend contract for the Work Areas/file explorer surface. It supports confined directory listings, rich row/inspect metadata, safe text/Markdown preview and save, image preview/download routing, bounded downloads, directory creation, `.txt` and `.md` creation, sibling rename, copy, move, custom file/directory tags, note labels, recursive delete with typed confirmation, and marking nested directories as Work Areas.
 
-The Avatar UI renders these operations as a Magenta-local HTMX details/list explorer with a separate inspector panel, not as a file card grid. Work Area cards are direct click targets, the toolbar uses icon controls, row actions are icon buttons with labels/tooltips, and the inspector supports collapsed/expanded modes while preserving selected entry context. Expanded inspector state is intentionally compact: selected name/path, tags plus a visible Manage Tags action, metadata, and bounded preview only; collapsed inspector state shows only an expand affordance. Filesystem access, path validation, persistence, tags, and audit logging stay in workspace services. Explorer path resolution rejects absolute paths, traversal, symlink path components, unsafe text-edit extensions, oversized text saves, Home/system roots, marked Work Area descendants, and Work Areas referenced by queued/running assignment or output routing metadata.
+The agent detail UI renders these operations as a Magenta-local HTMX details/list explorer with a separate inspector panel, not as a file card grid. It lists and accepts only Work Areas owned by the selected agent. Work Area rows are direct click targets, the toolbar uses icon controls, row actions are icon buttons with labels/tooltips, and the inspector supports collapsed/expanded modes while preserving selected entry context. Expanded inspector state is intentionally compact: selected name/path, tags plus a visible Manage Tags action, metadata, and bounded preview only; collapsed inspector state shows only an expand affordance. Filesystem access, path validation, persistence, tags, and audit logging stay in workspace services. Explorer path resolution rejects absolute paths, traversal, symlink path components, unsafe text-edit extensions, oversized text saves, Home/system roots, marked Work Area descendants, and Work Areas referenced by queued/running assignment or output routing metadata.
 
 Row metadata is intentionally lighter than preview: list/inspect classification uses extension, size, and a bounded UTF-8 probe, while preview/save routes perform full text validation. Directory creation validates symlink ancestors before any filesystem write so a rejected path cannot create directories outside the Work Area.
 
 Viewer behavior:
 
-- Markdown opens in an Avatar-style editor shell with `Edit`, `Preview`, and `Split` modes.
+- Markdown opens in a compact operational editor shell with `Preview`, `Edit`, and `Split` modes.
+- Plain text opens in Preview mode and can switch to Edit mode.
 - Markdown preview mode uses the current unsaved textarea content through a non-persistent, sanitized preview fragment route.
-- Save remains explicit via `PUT /avatar/_work-areas/{workAreaId}/text` and persists raw source content.
-- Local Undo/Redo/Revert controls are browser-local session behavior; they do not persist until Save.
+- Save remains explicit through the Work Area text save route and persists raw source content.
+- Local Undo/Redo/Revert controls are browser-local session behavior. Save updates the saved baseline while preserving the open editor undo history.
 - Editor modal chrome is full-window/resizable with top-left Save/Undo/Redo/Revert icon controls, a top-right close control, and tabs beneath the command row.
 - Markdown render failure is non-fatal and leaves raw text accessible.
 - Plain text opens in Edit mode without markdown preview controls.

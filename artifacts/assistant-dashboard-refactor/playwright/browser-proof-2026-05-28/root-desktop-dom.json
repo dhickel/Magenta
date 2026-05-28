@@ -1,0 +1,661 @@
+{
+  "title": "Assistant Dashboard",
+  "url": "http://127.0.0.1:18080/",
+  "bodyText": "Assistant\n\nUser dashboards, chat, and operational widgets\n\nHome\nChat\nAgents\nManage\nAssistant\n+\nAssistant Chat\nDashboard assistant channel\nsurface home\nnew chat\nReady\nmodel local-qwen\nAsk the assistant for a quick update.\nSend\nDashboard\nDaily Tasks\nAdd Daily\nNo daily tasks for today.\nTodos\nNormal\nHigh\nUrgent\nLow\nAdd Todo\nPW Rerun3 mobile 1779492048985\nnormal\nPW Rerun3 desktop 1779492033471\nnormal\npw rerun2 todo 1779491724852\nnormal\npw rerun2 todo 1779491711125\nnormal\npw rerun todo 1779491635959\nnormal\npw rerun todo 1779491601967\nnormal\nCalendar\nAdd Event\nNo calendar items.\nNotes\nSave Note\nNo notes yet.\nOutputs\nNo recent outputs.\nSystem\n2\nActive agents\n0\nOpen jobs\n0\nQueued work\nAlerts\nNo alerts.\nRecent Work\nNo recent work.",
+  "viewport": {
+    "w": 1366,
+    "h": 900
+  },
+  "doc": {
+    "sw": 1366,
+    "cw": 1366
+  },
+  "links": [
+    {
+      "tag": "A",
+      "text": "Home",
+      "href": "http://127.0.0.1:18080/",
+      "hxGet": null,
+      "hxPost": null,
+      "action": null,
+      "cls": "navbar-item",
+      "id": ""
+    },
+    {
+      "tag": "A",
+      "text": "Chat",
+      "href": "http://127.0.0.1:18080/chat",
+      "hxGet": null,
+      "hxPost": null,
+      "action": null,
+      "cls": "navbar-item",
+      "id": ""
+    },
+    {
+      "tag": "A",
+      "text": "Agents",
+      "href": "http://127.0.0.1:18080/agents",
+      "hxGet": null,
+      "hxPost": null,
+      "action": null,
+      "cls": "navbar-item",
+      "id": ""
+    },
+    {
+      "tag": "A",
+      "text": "Manage",
+      "href": "http://127.0.0.1:18080/manage",
+      "hxGet": null,
+      "hxPost": null,
+      "action": null,
+      "cls": "navbar-item",
+      "id": ""
+    },
+    {
+      "tag": "A",
+      "text": "Assistant",
+      "href": "http://127.0.0.1:18080/dashboards/assistant",
+      "hxGet": null,
+      "hxPost": null,
+      "action": null,
+      "cls": "dashboard-selector-item active",
+      "id": ""
+    },
+    {
+      "tag": "BUTTON",
+      "text": "+",
+      "hxGet": "/dashboards/_create",
+      "hxPost": null,
+      "action": null,
+      "cls": "btn btn-primary dashboard-create-button",
+      "id": ""
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Send",
+      "hxGet": null,
+      "hxPost": null,
+      "action": null,
+      "cls": "btn btn-primary",
+      "id": ""
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Resize assistant chat",
+      "hxGet": null,
+      "hxPost": null,
+      "action": null,
+      "cls": "avatar-chat-corner-resizer",
+      "id": ""
+    },
+    {
+      "tag": "A",
+      "text": "Edit dashboard layout",
+      "href": "http://127.0.0.1:18080/dashboards/assistant?edit=true",
+      "hxGet": null,
+      "hxPost": null,
+      "action": null,
+      "cls": "avatar-icon-link avatar-control-button",
+      "id": ""
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Open Daily Tasks settings",
+      "hxGet": "/_dashboards/_widgets/daily-tasks/detail",
+      "hxPost": null,
+      "action": null,
+      "cls": "avatar-icon-button avatar-control-button",
+      "id": ""
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Add Daily",
+      "hxGet": null,
+      "hxPost": null,
+      "action": null,
+      "cls": "btn btn-primary",
+      "id": ""
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Open Todos settings",
+      "hxGet": "/_dashboards/_widgets/todos/detail",
+      "hxPost": null,
+      "action": null,
+      "cls": "avatar-icon-button avatar-control-button",
+      "id": ""
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Add Todo",
+      "hxGet": null,
+      "hxPost": null,
+      "action": null,
+      "cls": "btn btn-primary",
+      "id": ""
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Mark todo PW Rerun3 mobile 1779492048985 done",
+      "hxGet": null,
+      "hxPost": "/_dashboards/_todos/6b94e1d0-faec-4d1d-aeed-29d195134cc7/complete",
+      "action": null,
+      "cls": "avatar-icon-button avatar-control-button",
+      "id": ""
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Delete todo PW Rerun3 mobile 1779492048985",
+      "hxGet": null,
+      "hxPost": null,
+      "action": null,
+      "cls": "avatar-icon-button avatar-control-button",
+      "id": ""
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Mark todo PW Rerun3 desktop 1779492033471 done",
+      "hxGet": null,
+      "hxPost": "/_dashboards/_todos/57a521db-75f0-42da-8f39-b5d2f0ee860f/complete",
+      "action": null,
+      "cls": "avatar-icon-button avatar-control-button",
+      "id": ""
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Delete todo PW Rerun3 desktop 1779492033471",
+      "hxGet": null,
+      "hxPost": null,
+      "action": null,
+      "cls": "avatar-icon-button avatar-control-button",
+      "id": ""
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Mark todo pw rerun2 todo 1779491724852 done",
+      "hxGet": null,
+      "hxPost": "/_dashboards/_todos/3ad47ba1-24ed-4630-9f3c-32d8f045e32c/complete",
+      "action": null,
+      "cls": "avatar-icon-button avatar-control-button",
+      "id": ""
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Delete todo pw rerun2 todo 1779491724852",
+      "hxGet": null,
+      "hxPost": null,
+      "action": null,
+      "cls": "avatar-icon-button avatar-control-button",
+      "id": ""
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Mark todo pw rerun2 todo 1779491711125 done",
+      "hxGet": null,
+      "hxPost": "/_dashboards/_todos/dc6f4369-d7e5-47ff-97e0-0504c63012d0/complete",
+      "action": null,
+      "cls": "avatar-icon-button avatar-control-button",
+      "id": ""
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Delete todo pw rerun2 todo 1779491711125",
+      "hxGet": null,
+      "hxPost": null,
+      "action": null,
+      "cls": "avatar-icon-button avatar-control-button",
+      "id": ""
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Mark todo pw rerun todo 1779491635959 done",
+      "hxGet": null,
+      "hxPost": "/_dashboards/_todos/97d1a798-47d0-485e-92b6-f666ac9fd370/complete",
+      "action": null,
+      "cls": "avatar-icon-button avatar-control-button",
+      "id": ""
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Delete todo pw rerun todo 1779491635959",
+      "hxGet": null,
+      "hxPost": null,
+      "action": null,
+      "cls": "avatar-icon-button avatar-control-button",
+      "id": ""
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Mark todo pw rerun todo 1779491601967 done",
+      "hxGet": null,
+      "hxPost": "/_dashboards/_todos/a0653641-a131-4acd-9881-34ac9514c7cb/complete",
+      "action": null,
+      "cls": "avatar-icon-button avatar-control-button",
+      "id": ""
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Delete todo pw rerun todo 1779491601967",
+      "hxGet": null,
+      "hxPost": null,
+      "action": null,
+      "cls": "avatar-icon-button avatar-control-button",
+      "id": ""
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Open Calendar settings",
+      "hxGet": "/_dashboards/_widgets/calendar/detail",
+      "hxPost": null,
+      "action": null,
+      "cls": "avatar-icon-button avatar-control-button",
+      "id": ""
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Add Event",
+      "hxGet": null,
+      "hxPost": null,
+      "action": null,
+      "cls": "btn btn-primary",
+      "id": ""
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Open Notes settings",
+      "hxGet": "/_dashboards/_widgets/notes/detail",
+      "hxPost": null,
+      "action": null,
+      "cls": "avatar-icon-button avatar-control-button",
+      "id": ""
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Save Note",
+      "hxGet": null,
+      "hxPost": null,
+      "action": null,
+      "cls": "btn btn-primary",
+      "id": ""
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Open Outputs settings",
+      "hxGet": "/_dashboards/_widgets/outputs/detail",
+      "hxPost": null,
+      "action": null,
+      "cls": "avatar-icon-button avatar-control-button",
+      "id": ""
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Open System settings",
+      "hxGet": "/_dashboards/_widgets/system/detail",
+      "hxPost": null,
+      "action": null,
+      "cls": "avatar-icon-button avatar-control-button",
+      "id": ""
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Open Alerts settings",
+      "hxGet": "/_dashboards/_widgets/alerts/detail",
+      "hxPost": null,
+      "action": null,
+      "cls": "avatar-icon-button avatar-control-button",
+      "id": ""
+    },
+    {
+      "tag": "BUTTON",
+      "text": "Open Recent Work settings",
+      "hxGet": "/_dashboards/_widgets/recent-work/detail",
+      "hxPost": null,
+      "action": null,
+      "cls": "avatar-icon-button avatar-control-button",
+      "id": ""
+    }
+  ],
+  "routeAttrs": [
+    {
+      "tag": "A",
+      "text": "Home",
+      "href": "/",
+      "hxGet": null,
+      "hxPost": null,
+      "hxPut": null,
+      "hxDelete": null,
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "A",
+      "text": "Chat",
+      "href": "/chat",
+      "hxGet": null,
+      "hxPost": null,
+      "hxPut": null,
+      "hxDelete": null,
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "A",
+      "text": "Agents",
+      "href": "/agents",
+      "hxGet": null,
+      "hxPost": null,
+      "hxPut": null,
+      "hxDelete": null,
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "A",
+      "text": "Manage",
+      "href": "/manage",
+      "hxGet": null,
+      "hxPost": null,
+      "hxPut": null,
+      "hxDelete": null,
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "A",
+      "text": "Assistant",
+      "href": "/dashboards/assistant",
+      "hxGet": null,
+      "hxPost": null,
+      "hxPut": null,
+      "hxDelete": null,
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "BUTTON",
+      "text": "+",
+      "href": null,
+      "hxGet": "/dashboards/_create",
+      "hxPost": null,
+      "hxPut": null,
+      "hxDelete": null,
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "A",
+      "text": "",
+      "href": "/dashboards/assistant?edit=true",
+      "hxGet": null,
+      "hxPost": null,
+      "hxPut": null,
+      "hxDelete": null,
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "BUTTON",
+      "text": "",
+      "href": null,
+      "hxGet": "/_dashboards/_widgets/daily-tasks/detail",
+      "hxPost": null,
+      "hxPut": null,
+      "hxDelete": null,
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "FORM",
+      "text": "Add Daily",
+      "href": null,
+      "hxGet": null,
+      "hxPost": "/_dashboards/_daily-tasks",
+      "hxPut": null,
+      "hxDelete": null,
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "BUTTON",
+      "text": "",
+      "href": null,
+      "hxGet": "/_dashboards/_widgets/todos/detail",
+      "hxPost": null,
+      "hxPut": null,
+      "hxDelete": null,
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "FORM",
+      "text": "Normal\nHigh\nUrgent\nLow\nAdd Todo",
+      "href": null,
+      "hxGet": null,
+      "hxPost": "/_dashboards/_todos",
+      "hxPut": null,
+      "hxDelete": null,
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "BUTTON",
+      "text": "",
+      "href": null,
+      "hxGet": null,
+      "hxPost": "/_dashboards/_todos/6b94e1d0-faec-4d1d-aeed-29d195134cc7/complete",
+      "hxPut": null,
+      "hxDelete": null,
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "BUTTON",
+      "text": "",
+      "href": null,
+      "hxGet": null,
+      "hxPost": null,
+      "hxPut": null,
+      "hxDelete": "/_dashboards/_todos/6b94e1d0-faec-4d1d-aeed-29d195134cc7",
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "BUTTON",
+      "text": "",
+      "href": null,
+      "hxGet": null,
+      "hxPost": "/_dashboards/_todos/57a521db-75f0-42da-8f39-b5d2f0ee860f/complete",
+      "hxPut": null,
+      "hxDelete": null,
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "BUTTON",
+      "text": "",
+      "href": null,
+      "hxGet": null,
+      "hxPost": null,
+      "hxPut": null,
+      "hxDelete": "/_dashboards/_todos/57a521db-75f0-42da-8f39-b5d2f0ee860f",
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "BUTTON",
+      "text": "",
+      "href": null,
+      "hxGet": null,
+      "hxPost": "/_dashboards/_todos/3ad47ba1-24ed-4630-9f3c-32d8f045e32c/complete",
+      "hxPut": null,
+      "hxDelete": null,
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "BUTTON",
+      "text": "",
+      "href": null,
+      "hxGet": null,
+      "hxPost": null,
+      "hxPut": null,
+      "hxDelete": "/_dashboards/_todos/3ad47ba1-24ed-4630-9f3c-32d8f045e32c",
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "BUTTON",
+      "text": "",
+      "href": null,
+      "hxGet": null,
+      "hxPost": "/_dashboards/_todos/dc6f4369-d7e5-47ff-97e0-0504c63012d0/complete",
+      "hxPut": null,
+      "hxDelete": null,
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "BUTTON",
+      "text": "",
+      "href": null,
+      "hxGet": null,
+      "hxPost": null,
+      "hxPut": null,
+      "hxDelete": "/_dashboards/_todos/dc6f4369-d7e5-47ff-97e0-0504c63012d0",
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "BUTTON",
+      "text": "",
+      "href": null,
+      "hxGet": null,
+      "hxPost": "/_dashboards/_todos/97d1a798-47d0-485e-92b6-f666ac9fd370/complete",
+      "hxPut": null,
+      "hxDelete": null,
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "BUTTON",
+      "text": "",
+      "href": null,
+      "hxGet": null,
+      "hxPost": null,
+      "hxPut": null,
+      "hxDelete": "/_dashboards/_todos/97d1a798-47d0-485e-92b6-f666ac9fd370",
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "BUTTON",
+      "text": "",
+      "href": null,
+      "hxGet": null,
+      "hxPost": "/_dashboards/_todos/a0653641-a131-4acd-9881-34ac9514c7cb/complete",
+      "hxPut": null,
+      "hxDelete": null,
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "BUTTON",
+      "text": "",
+      "href": null,
+      "hxGet": null,
+      "hxPost": null,
+      "hxPut": null,
+      "hxDelete": "/_dashboards/_todos/a0653641-a131-4acd-9881-34ac9514c7cb",
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "BUTTON",
+      "text": "",
+      "href": null,
+      "hxGet": "/_dashboards/_widgets/calendar/detail",
+      "hxPost": null,
+      "hxPut": null,
+      "hxDelete": null,
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "FORM",
+      "text": "Add Event",
+      "href": null,
+      "hxGet": null,
+      "hxPost": "/_dashboards/_calendar",
+      "hxPut": null,
+      "hxDelete": null,
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "BUTTON",
+      "text": "",
+      "href": null,
+      "hxGet": "/_dashboards/_widgets/notes/detail",
+      "hxPost": null,
+      "hxPut": null,
+      "hxDelete": null,
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "FORM",
+      "text": "Save Note",
+      "href": null,
+      "hxGet": null,
+      "hxPost": "/_dashboards/_notes",
+      "hxPut": null,
+      "hxDelete": null,
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "BUTTON",
+      "text": "",
+      "href": null,
+      "hxGet": "/_dashboards/_widgets/outputs/detail",
+      "hxPost": null,
+      "hxPut": null,
+      "hxDelete": null,
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "BUTTON",
+      "text": "",
+      "href": null,
+      "hxGet": "/_dashboards/_widgets/system/detail",
+      "hxPost": null,
+      "hxPut": null,
+      "hxDelete": null,
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "BUTTON",
+      "text": "",
+      "href": null,
+      "hxGet": "/_dashboards/_widgets/alerts/detail",
+      "hxPost": null,
+      "hxPut": null,
+      "hxDelete": null,
+      "action": null,
+      "dataUrl": null
+    },
+    {
+      "tag": "BUTTON",
+      "text": "",
+      "href": null,
+      "hxGet": "/_dashboards/_widgets/recent-work/detail",
+      "hxPost": null,
+      "hxPut": null,
+      "hxDelete": null,
+      "action": null,
+      "dataUrl": null
+    }
+  ]
+}

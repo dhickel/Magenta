@@ -44,7 +44,7 @@ final class WorkAreaExplorerFragments {
         boolean panelCollapsed = INSPECTOR_PANEL_STATE_COLLAPSED.equalsIgnoreCase(panelState);
         String nextPanel = panelCollapsed ? INSPECTOR_PANEL_STATE_EXPANDED : INSPECTOR_PANEL_STATE_COLLAPSED;
         return """
-            <div id="%s" class="avatar-workarea-explorer-shell">
+            <div id="%s" class="avatar-workarea-explorer-shell" data-workarea-id="%s">
               <div class="avatar-edit-header">
                 <div>
                   <h2>%s</h2>
@@ -81,8 +81,9 @@ final class WorkAreaExplorerFragments {
             </div>
             """.formatted(
             SHELL_ID,
+            escapeAttribute(listing.workArea().id()),
             escape(listing.workArea().displayName()),
-            escape(currentPath),
+            escape(displayPath(currentPath)),
             upButton(listing),
             urlPath(listing.workArea().id()),
             url(currentPath),
@@ -180,9 +181,13 @@ final class WorkAreaExplorerFragments {
             return """
                 <aside id="%s" class="file-explorer-inspector-pane file-explorer-inspector-pane-collapsed"%s>
                   <div class="file-explorer-inspector-collapsed-body">
-                    <button type="button" class="avatar-icon-toolbar-button" title="Expand inspector" aria-label="Expand inspector"
+                    <button type="button" class="avatar-icon-toolbar-button workspace-inspector-rail-toggle"
+                            title="Open details panel" aria-label="Open details panel"
                             hx-get="/avatar/_work-areas/%s/explorer?path=%s%s&panel=%s"
-                            hx-target="#%s" hx-swap="outerHTML">%s</button>
+                            hx-target="#%s" hx-swap="outerHTML">
+                      %s
+                      <span class="workspace-inspector-rail-toggle-label">Details</span>
+                    </button>
                   </div>
                   %s
                 </aside>
@@ -303,7 +308,7 @@ final class WorkAreaExplorerFragments {
             body = textEditor(workAreaId, preview, true, "preview");
             editorSurface = true;
         } else if ("text".equals(preview.kind()) && preview.text()) {
-            body = textEditor(workAreaId, preview, false, "edit");
+            body = textEditor(workAreaId, preview, false, "preview");
             editorSurface = true;
         } else {
             body = unsupportedViewerBody(preview);
@@ -316,7 +321,7 @@ final class WorkAreaExplorerFragments {
             return modal("Viewer unavailable", "<p>This file cannot be opened as editable text.</p>", false);
         }
         boolean markdown = "markdown".equals(preview.kind());
-        String body = textEditor(workAreaId, preview, markdown, markdown ? markdownMode(tab) : "edit");
+        String body = textEditor(workAreaId, preview, markdown, markdown ? markdownMode(tab) : normalizeTextMode(tab));
         return modalEditor("View " + fileName(preview.path()), body);
     }
 
@@ -752,8 +757,16 @@ final class WorkAreaExplorerFragments {
                     "innerHTML"
                 )
                 : "";
+        String openUrl = entry.directory()
+            ? "/avatar/_work-areas/" + urlPath(workAreaId) + "/explorer?path=" + url(entry.path()) + "&panel=" + panel
+            : entry.canView()
+                ? "/avatar/_work-areas/" + urlPath(workAreaId) + "/viewer?path=" + url(entry.path())
+                : "";
+        String openTarget = entry.directory() ? "#" + SHELL_ID : "#" + MODAL_ID;
+        String openSwap = entry.directory() ? "outerHTML" : "innerHTML";
         return """
             <tr class="workspace-explorer-row%s" data-workarea-path="%s"
+                data-workarea-open-url="%s" data-workarea-open-target="%s" data-workarea-open-swap="%s"
                 hx-get="%s"
                 hx-trigger="click[!event.target.closest('button,a,input,select,textarea,label,summary,details')]"
                 hx-target="#%s" hx-swap="outerHTML">
@@ -764,6 +777,9 @@ final class WorkAreaExplorerFragments {
             """.formatted(
             selected,
             escapeAttribute(entry.path()),
+            escapeAttribute(openUrl),
+            escapeAttribute(openTarget),
+            escapeAttribute(openSwap),
             rowSelectRoute,
             SHELL_ID,
             escapeAttribute(entry.name()),
@@ -971,9 +987,10 @@ final class WorkAreaExplorerFragments {
         boolean markdown,
         String initialMode
     ) {
-        String safeMode = markdown ? normalizeMarkdownMode(initialMode) : "edit";
+        String safeMode = markdown ? normalizeMarkdownMode(initialMode) : normalizeTextMode(initialMode);
         String formId = "avatar-workarea-editor-form-" + urlPath(workAreaId) + "-"
             + urlPath(preview.path()).replace("%", "_");
+        String editorKey = urlPath(workAreaId) + "::" + urlPath(preview.path());
         String modeControls = markdown
             ? """
                 <div class="avatar-workarea-mode-controls avatar-workarea-editor-tabs" role="tablist" aria-label="Editor mode">
@@ -982,22 +999,30 @@ final class WorkAreaExplorerFragments {
                   %s
                 </div>
                 """.formatted(
-                modeButton("Edit", "edit", safeMode),
                 modeButton("Preview", "preview", safeMode),
+                modeButton("Edit", "edit", safeMode),
                 modeButton("Split", "split", safeMode)
             )
             : """
                 <div class="avatar-workarea-mode-controls avatar-workarea-editor-tabs" role="tablist" aria-label="Editor mode">
                   %s
+                  %s
                 </div>
-                """.formatted(modeButton("Edit", "edit", "edit"));
+                """.formatted(
+                modeButton("Preview", "preview", safeMode),
+                modeButton("Edit", "edit", safeMode)
+            );
         String previewPane = markdown
             ? """
                 <div class="avatar-workarea-editor-pane avatar-workarea-editor-pane-preview" data-editor-preview-pane="true">
                   %s
                 </div>
                 """.formatted(renderedMarkdownPanel(preview.content()))
-            : "";
+            : """
+                <div class="avatar-workarea-editor-pane avatar-workarea-editor-pane-preview" data-editor-preview-pane="true">
+                  <pre class="avatar-workarea-text-preview" data-editor-plain-preview="true">%s</pre>
+                </div>
+                """.formatted(escape(preview.content() == null ? "" : preview.content()));
         String previewUrl = markdown
             ? "/avatar/_work-areas/" + urlPath(workAreaId) + "/viewer/markdown-preview?path=" + url(preview.path())
             : "";
@@ -1006,6 +1031,7 @@ final class WorkAreaExplorerFragments {
             <div class="avatar-workarea-viewer avatar-workarea-editor%s mode-%s"
                  data-avatar-workarea-editor="true"
                  data-viewer-kind="%s"
+                 data-editor-key="%s"
                  data-active-tab="%s"
                  data-editor-preview-url="%s">
               <div class="avatar-workarea-editor-topbar">
@@ -1013,19 +1039,22 @@ final class WorkAreaExplorerFragments {
                   <strong title="%s">%s</strong>
                   <span title="%s">%s</span>
                 </div>
+                <button type="button" class="avatar-icon-toolbar-button avatar-workarea-editor-close"
+                        title="Close" aria-label="Close"
+                        hx-get="/avatar/_work-areas/modal/clear"
+                        hx-target="#%s"
+                        data-editor-close="true"
+                        hx-swap="outerHTML">%s</button>
+              </div>
+              <div class="avatar-workarea-editor-toolbar-row">
                 <div class="avatar-workarea-editor-actions">
                   %s
                   %s
                   %s
                   %s
                 </div>
-                <button type="button" class="avatar-icon-toolbar-button avatar-workarea-editor-close"
-                        title="Close" aria-label="Close"
-                        hx-get="/avatar/_work-areas/modal/clear"
-                        hx-target="#%s"
-                        hx-swap="outerHTML">%s</button>
+                %s
               </div>
-              %s
               <div class="avatar-workarea-editor-status-row">
                 <p class="avatar-workarea-editor-status" data-editor-status="true">Saved copy loaded.</p>
               </div>
@@ -1053,18 +1082,19 @@ final class WorkAreaExplorerFragments {
             shellClass,
             safeMode,
             markdown ? "markdown" : "text",
+            escapeAttribute(editorKey),
             safeMode,
             escapeAttribute(previewUrl),
             escapeAttribute(fileName(preview.path())),
             escape(fileName(preview.path())),
             escapeAttribute(preview.path()),
             escape(preview.path()),
+            MODAL_ID,
+            iconSvg("close"),
             iconActionButton("Save", "save", "submit", "", "", "", " form=\"" + escapeAttribute(formId) + "\""),
             iconActionButton("Undo", "undo", "button", "", "", "", " data-editor-undo=\"true\""),
             iconActionButton("Redo", "redo", "button", "", "", "", " data-editor-redo=\"true\""),
             iconActionButton("Revert Unsaved", "revert", "button", "", "", "", " data-editor-revert=\"true\""),
-            MODAL_ID,
-            iconSvg("close"),
             modeControls,
             escapeAttribute(formId),
             urlPath(workAreaId),
@@ -1146,6 +1176,15 @@ final class WorkAreaExplorerFragments {
         return "edit".equals(normalized) || "split".equals(normalized) ? normalized : "preview";
     }
 
+    private static String normalizeTextMode(String mode) {
+        return "edit".equals(mode) ? "edit" : "preview";
+    }
+
+    private static String displayPath(String path) {
+        String normalized = pathOrRoot(path);
+        return ".".equals(normalized) ? "Root" : normalized;
+    }
+
     private static String unsupportedViewerBody(WorkAreaExplorerService.FilePreview preview) {
         return """
             <div class="avatar-status">Viewer unavailable for this file type or size.</div>
@@ -1210,7 +1249,7 @@ final class WorkAreaExplorerFragments {
             .append(urlPath(listing.workArea().id()))
             .append("/explorer?path=.\" hx-target=\"#")
             .append(SHELL_ID)
-            .append("\" hx-swap=\"outerHTML\">.</button>");
+            .append("\" hx-swap=\"outerHTML\">Root</button>");
         if (".".equals(path)) {
             return out.toString();
         }

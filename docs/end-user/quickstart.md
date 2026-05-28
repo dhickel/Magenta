@@ -20,11 +20,12 @@ When carrying an older local install forward to this layout, stop Magenta, back 
 
 Start at `/`.
 
-The home page links to:
+The primary browser surfaces are:
 
+- `/`: Assistant dashboard home with the dashboard selector, compact chat rail, and widgets.
 - `/chat`: conversation and anonymous ad hoc planning surface.
-- `/avatar`: personal assistant shell with chat, dashboard widgets, Work Areas, outputs, queue, history, and profile tabs.
-- `/dashboard`: operational overview for jobs, agents, inbox messages, outputs, and recent events.
+- `/agents`: agent management, agent detail tabs, and agent-owned Work Areas.
+- `/manage`: operational overview for jobs, agents, inbox messages, outputs, and recent events.
 - `/plans`: saved plan and task definitions.
 - `/workflows`: graph-based workflow definitions.
 - `/jobs`: ordered plan/workflow job definitions and run history.

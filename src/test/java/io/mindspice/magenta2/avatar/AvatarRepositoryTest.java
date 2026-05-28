@@ -82,13 +82,8 @@ class AvatarRepositoryTest {
             .satisfies(preference -> assertThat(preference.value()).containsEntry("mode", "compact"));
         assertThat(repository.findDashboardLayout()).singleElement()
             .satisfies(widget -> assertThat(widget.settings()).containsEntry("accent", "green"));
-        assertThat(repository.findDashboardRows()).singleElement()
-            .satisfies(row -> assertThat(row.widgets()).singleElement()
-                .satisfies(widget -> {
-                    assertThat(widget.widgetKey()).isEqualTo("today");
-                    assertThat(widget.columnWidth()).isEqualTo(6);
-                    assertThat(widget.settings()).containsEntry("accent", "green");
-                }));
+        assertThat(repository.assistantDashboard().name()).isEqualTo("Assistant");
+        assertThat(repository.findDashboardRows()).hasSize(3);
         assertThat(repository.findFacts()).singleElement()
             .satisfies(fact -> {
                 assertThat(fact.value()).containsEntry("value", "UTC");
@@ -240,13 +235,20 @@ class AvatarRepositoryTest {
     }
 
     @Test
-    void migratesLegacyLayoutIntoRowsWithTwelveColumnWrapping() {
-        repository.saveDashboardWidget(widget("one", 0, "wide"));
-        repository.saveDashboardWidget(widget("two", 1, "wide"));
-        repository.saveDashboardWidget(widget("three", 2, "standard"));
+    void createsEmptyCustomDashboardsForRowLayoutEditing() {
+        UserDashboard dashboard = repository.createDashboard("Layout");
 
-        List<AvatarDashboardRow> rows = repository.findDashboardRows();
+        assertThat(repository.findDashboards()).extracting(UserDashboard::name)
+            .containsExactly("Assistant", "Layout");
+        assertThat(repository.findDashboardRows(dashboard.id())).isEmpty();
 
+        AvatarDashboardRow rowOne = repository.addDashboardRow(dashboard.id());
+        AvatarDashboardRow rowTwo = repository.addDashboardRow(dashboard.id());
+        repository.addDashboardWidget(dashboard.id(), rowOne.id(), "one", 6);
+        repository.addDashboardWidget(dashboard.id(), rowOne.id(), "two", 6);
+        repository.addDashboardWidget(dashboard.id(), rowTwo.id(), "three", 4);
+
+        List<AvatarDashboardRow> rows = repository.findDashboardRows(dashboard.id());
         assertThat(rows).hasSize(2);
         assertThat(rows.get(0).position()).isZero();
         assertThat(rows.get(0).widgets()).extracting(AvatarDashboardRowWidget::widgetKey)
@@ -260,28 +262,29 @@ class AvatarRepositoryTest {
 
     @Test
     void addsWidgetsWithSingleInstanceAndRowWidthBounds() {
-        AvatarDashboardRow row = repository.addDashboardRow();
-        AvatarDashboardRowWidget first = repository.addDashboardWidget(row.id(), "todos", 8);
-        AvatarDashboardRowWidget second = repository.addDashboardWidget(row.id(), "notes", 4);
+        UserDashboard dashboard = repository.createDashboard("Organizer");
+        AvatarDashboardRow row = repository.addDashboardRow(dashboard.id());
+        AvatarDashboardRowWidget first = repository.addDashboardWidget(dashboard.id(), row.id(), "todos", 8);
+        AvatarDashboardRowWidget second = repository.addDashboardWidget(dashboard.id(), row.id(), "notes", 4);
 
-        assertThat(repository.findDashboardRows()).singleElement()
+        assertThat(repository.findDashboardRows(dashboard.id())).singleElement()
             .satisfies(saved -> assertThat(saved.widgets()).extracting(AvatarDashboardRowWidget::widgetKey)
                 .containsExactly("todos", "notes"));
         repository.resizeDashboardWidget(first.id(), 5);
-        assertThat(repository.findDashboardRows()).singleElement()
+        assertThat(repository.findDashboardRows(dashboard.id())).singleElement()
             .satisfies(saved -> assertThat(saved.widgets().getFirst().columnWidth()).isEqualTo(5));
-        assertThatThrownBy(() -> repository.addDashboardWidget(row.id(), "todos", 3))
+        assertThatThrownBy(() -> repository.addDashboardWidget(dashboard.id(), row.id(), "todos", 3))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("already exists");
         assertThatThrownBy(() -> repository.resizeDashboardWidget(first.id(), 12))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("cannot exceed 12");
-        assertThatThrownBy(() -> repository.addDashboardWidget(row.id(), "calendar", 4))
+        assertThatThrownBy(() -> repository.addDashboardWidget(dashboard.id(), row.id(), "calendar", 4))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("cannot exceed 12");
 
         repository.removeDashboardWidget(second.id());
-        assertThat(repository.findDashboardRows()).singleElement()
+        assertThat(repository.findDashboardRows(dashboard.id())).singleElement()
             .satisfies(saved -> assertThat(saved.widgets()).extracting(AvatarDashboardRowWidget::widgetKey)
                 .containsExactly("todos"));
 
@@ -291,27 +294,28 @@ class AvatarRepositoryTest {
 
         repository.removeDashboardWidget(first.id());
         repository.removeDashboardRow(row.id());
-        assertThat(repository.findDashboardRows()).isEmpty();
+        assertThat(repository.findDashboardRows(dashboard.id())).isEmpty();
     }
 
     @Test
     void movesRowsAndWidgetsWithinBounds() {
-        AvatarDashboardRow rowOne = repository.addDashboardRow();
-        AvatarDashboardRow rowTwo = repository.addDashboardRow();
-        AvatarDashboardRowWidget todos = repository.addDashboardWidget(rowOne.id(), "todos", 4);
-        AvatarDashboardRowWidget notes = repository.addDashboardWidget(rowOne.id(), "notes", 4);
-        repository.addDashboardWidget(rowTwo.id(), "calendar", 4);
+        UserDashboard dashboard = repository.createDashboard("Movement");
+        AvatarDashboardRow rowOne = repository.addDashboardRow(dashboard.id());
+        AvatarDashboardRow rowTwo = repository.addDashboardRow(dashboard.id());
+        AvatarDashboardRowWidget todos = repository.addDashboardWidget(dashboard.id(), rowOne.id(), "todos", 4);
+        AvatarDashboardRowWidget notes = repository.addDashboardWidget(dashboard.id(), rowOne.id(), "notes", 4);
+        repository.addDashboardWidget(dashboard.id(), rowTwo.id(), "calendar", 4);
 
         assertThatThrownBy(() -> repository.moveDashboardRow(rowOne.id(), -1))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("outside layout bounds");
 
         repository.moveDashboardRow(rowTwo.id(), -1);
-        assertThat(repository.findDashboardRows()).extracting(AvatarDashboardRow::id)
+        assertThat(repository.findDashboardRows(dashboard.id())).extracting(AvatarDashboardRow::id)
             .containsExactly(rowTwo.id(), rowOne.id());
 
         repository.moveDashboardWidget(notes.id(), "left");
-        AvatarDashboardRow savedRowOne = repository.findDashboardRows().stream()
+        AvatarDashboardRow savedRowOne = repository.findDashboardRows(dashboard.id()).stream()
             .filter(row -> row.id().equals(rowOne.id()))
             .findFirst()
             .orElseThrow();
@@ -319,7 +323,7 @@ class AvatarRepositoryTest {
             .containsExactly("notes", "todos");
 
         repository.moveDashboardWidget(todos.id(), "up");
-        AvatarDashboardRow savedRowTwo = repository.findDashboardRows().stream()
+        AvatarDashboardRow savedRowTwo = repository.findDashboardRows(dashboard.id()).stream()
             .filter(row -> row.id().equals(rowTwo.id()))
             .findFirst()
             .orElseThrow();

@@ -1,10 +1,10 @@
-# Dashboard
+# Manage
 
-The `/dashboard` page is the operator overview for Magenta's orchestration state.
+The `/manage` page is the operator overview for Magenta's orchestration state.
 
 ## What It Shows
 
-The dashboard includes:
+The Manage page includes:
 
 - **System Chat** link to `/chat`.
 - A status strip with running jobs, pending jobs, message count, failed jobs, and active agents.
@@ -13,7 +13,7 @@ The dashboard includes:
 - **Agents** with status and model rows.
 - Side panels for inbox messages, recent outputs, and recent events.
 
-Most dashboard sections refresh through HTMX on load and periodically afterward.
+Most Manage sections refresh through HTMX on load and periodically afterward.
 
 ## Status Counts
 
@@ -43,9 +43,9 @@ The agents table shows agent name, status, default model, and placeholder queue/
 - **Recent Outputs** links to `/outputs` and shows recent output names and run or plan context.
 - **Recent Events** links to `/agents` and summarizes recent job, agent, and inbox events.
 
-## When To Use Dashboard Vs Detail Pages
+## When To Use Manage Vs Detail Pages
 
-Use the dashboard for triage:
+Use Manage for triage:
 
 - Is anything running?
 - Are messages waiting?
@@ -65,7 +65,7 @@ Use detail pages for action:
 - **Loading... never changes**: refresh the page. If it persists, the backing fragment request may have failed.
 - **No active work**: no jobs are currently draft, queued, running, or failed.
 - **No recent outputs**: no artifacts match the dashboard's recent output query.
-- **Counts disagree with a detail page**: detail pages are more authoritative; the dashboard is a periodic summary.
+- **Counts disagree with a detail page**: detail pages are more authoritative; Manage is a periodic summary.
 
 ## Alpha Limits
 

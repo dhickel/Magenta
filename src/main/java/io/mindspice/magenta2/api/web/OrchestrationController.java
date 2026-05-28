@@ -77,6 +77,7 @@ import io.mindspice.magenta2.ai.orchestration.workspaces.AgentWorkspaceStatusSer
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkArea;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaExplorerService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceFileLabelTargetType;
 import io.mindspice.magenta2.ai.orchestration.workspaces.Workspace;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLease;
 import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceLink;
@@ -110,6 +111,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.util.StringUtils;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -125,6 +127,7 @@ import jakarta.servlet.http.HttpServletResponse;
 public class OrchestrationController {
     private static final Logger log = LoggerFactory.getLogger(OrchestrationController.class);
     private static final String DASHBOARD_CSS = AppNavigation.OPERATIONAL_CSS;
+    private static final String AVATAR_WORKAREA_CSS = "/css/avatar-dashboard.css?v=7";
     private static final String DASHBOARD_JS = "/js/orchestration/dashboard.js?v=5";
     private static final String AGENTS_JS = "/js/orchestration/agents.js?v=1";
     private static final String AGENT_CHAT_JS = "/js/orchestration/agent-chat.js?v=2";
@@ -274,17 +277,20 @@ public class OrchestrationController {
     private ShellTemplate createDashboardShell(String activePath) {
         SideNav sideNav = AppNavigation.operationalSideNav(activePath);
 
-        return ShellBuilder.create()
-            .withPageTitle("Magenta Dashboard")
+        ShellBuilder builder = ShellBuilder.create()
+            .withPageTitle("Magenta Manage")
             .withCustomCss(DASHBOARD_CSS)
             .withTopBanner(BannerBuilder.create()
                 .withLayout(BannerBuilder.BannerLayout.CENTERED)
                 .withTitle("Magenta Operations")
-                .withSubtitle("Orchestration dashboard")
+                .withSubtitle("Operational management")
                 .build())
             .withTopNav(AppNavigation.primaryTopNav())
-            .withSideNav(sideNav, true)
-            .buildTemplate();
+            .withSideNav(sideNav, true);
+        if (activePath != null && activePath.startsWith("/agents")) {
+            builder.addCustomCss(AVATAR_WORKAREA_CSS);
+        }
+        return builder.buildTemplate();
     }
 
     private String renderPage(Component content) {
@@ -299,7 +305,7 @@ public class OrchestrationController {
     //  Dashboard landing
     // ════════════════════════════════════════════════════════════════
 
-    @GetMapping("/dashboard")
+    @GetMapping("/manage")
     @ResponseBody
     public String dashboard(
         @RequestHeader(value = "HX-Request", required = false) String hxRequest,
@@ -312,7 +318,7 @@ public class OrchestrationController {
             .withChild(dashboardStatusStrip())
             .withChild(dashboardMainLayout())
             .withChild(moduleScript(DASHBOARD_JS));
-        return renderPage(body, "/dashboard");
+        return renderPage(body, "/manage");
     }
 
     private Component dashboardChatBand() {
@@ -334,7 +340,7 @@ public class OrchestrationController {
 
         // Stats loaded via HTMX
         container.withChild(new Div().withId("dashboard-stats-container")
-            .hxGet("/dashboard/_stats")
+            .hxGet("/manage/_stats")
             .hxTrigger("load, every 30s")
             .hxSwap("innerHTML")
             .withChild(statsStripPlaceholder()));
@@ -363,18 +369,18 @@ public class OrchestrationController {
         return new Div().withClass("dashboard-main-layout")
             .withChild(new Div().withClass("dashboard-primary")
                 .withChild(dashboardHxSection("Active Work", "active-work-section",
-                    "/dashboard/_active-work"))
+                    "/manage/_active-work"))
                 .withChild(dashboardHxSection("Open Projects", "open-projects-section",
-                    "/dashboard/_open-projects"))
+                    "/manage/_open-projects"))
                 .withChild(dashboardHxSection("Agents", "agents-section",
-                    "/dashboard/_agents")))
+                    "/manage/_agents")))
             .withChild(new Div().withClass("dashboard-side")
                 .withChild(dashboardHxSideSection("Inbox", "side-inbox",
-                    "/inbox", "/dashboard/_side-inbox"))
+                    "/inbox", "/manage/_side-inbox"))
                 .withChild(dashboardHxSideSection("Recent Outputs", "side-outputs",
-                    "/outputs", "/dashboard/_side-outputs"))
+                    "/outputs", "/manage/_side-outputs"))
                 .withChild(dashboardHxSideSection("Recent Events", "side-events",
-                    "/agents", "/dashboard/_side-events")));
+                    "/agents", "/manage/_side-events")));
     }
 
     private Component dashboardHxSection(String title, String sectionId, String hxEndpoint) {
@@ -417,7 +423,7 @@ public class OrchestrationController {
     //  Dashboard HTMX partial endpoints
     // ════════════════════════════════════════════════════════════════
 
-    @GetMapping("/dashboard/_stats")
+    @GetMapping("/manage/_stats")
     @ResponseBody
     public String dashboardStats() {
         List<JobDefinition> jobs = jobService.listDefinitions();
@@ -445,7 +451,7 @@ public class OrchestrationController {
             .render();
     }
 
-    @GetMapping("/dashboard/_active-work")
+    @GetMapping("/manage/_active-work")
     @ResponseBody
     public String dashboardActiveWork() {
         List<JobDefinition> jobs = jobService.listDefinitions();
@@ -499,7 +505,7 @@ public class OrchestrationController {
         return table.render();
     }
 
-    @GetMapping("/dashboard/_open-projects")
+    @GetMapping("/manage/_open-projects")
     @ResponseBody
     public String dashboardOpenProjects() {
         List<Project> projects = projectService.listProjects();
@@ -527,7 +533,7 @@ public class OrchestrationController {
         return grid.render();
     }
 
-    @GetMapping("/dashboard/_agents")
+    @GetMapping("/manage/_agents")
     @ResponseBody
     public String dashboardAgents() {
         List<AgentProfile> agents = agentProfileService.list();
@@ -545,7 +551,7 @@ public class OrchestrationController {
         for (var a : agents) {
             table.addRow(
                 new HtmlTag("a").withAttribute("href", "/agents/" + escapeAttr(a.id()))
-                    .withInnerText(a.name() != null ? a.name() : a.id()),
+                    .withInnerText(displayAgentName(a)),
                 statusBadgeHtml(a.status() != null ? a.status().name() : "UNKNOWN"),
                 new HtmlTag("span").withInnerText(
                     a.defaultModel() != null ? a.defaultModel() : "unset"),
@@ -556,7 +562,7 @@ public class OrchestrationController {
         return table.render();
     }
 
-    @GetMapping("/dashboard/_side-inbox")
+    @GetMapping("/manage/_side-inbox")
     @ResponseBody
     public String dashboardSideInbox() {
         long messages = inboxService.userInbox().size();
@@ -569,7 +575,7 @@ public class OrchestrationController {
             .render();
     }
 
-    @GetMapping("/dashboard/_side-outputs")
+    @GetMapping("/manage/_side-outputs")
     @ResponseBody
     public String dashboardSideOutputs() {
         List<RunOutputArtifact> outputs = outputArtifactService.query(null, null, null, 5);
@@ -590,7 +596,7 @@ public class OrchestrationController {
         return list.render();
     }
 
-    @GetMapping("/dashboard/_side-events")
+    @GetMapping("/manage/_side-events")
     @ResponseBody
     public String dashboardSideEvents() {
         record EventRow(Instant at, String label, String meta) {}
@@ -602,7 +608,7 @@ public class OrchestrationController {
         }
         for (AgentProfile agent : agentProfileService.list()) {
             rows.add(new EventRow(agent.updatedAt(), "Agent " + nn(agent.status() != null ? agent.status().name() : ""),
-                agent.name() != null ? agent.name() : agent.id()));
+                displayAgentName(agent)));
         }
         for (InboxMessage message : inboxService.userInbox()) {
             String state = message.respondedAt() != null ? "responded" : "pending";
@@ -5602,7 +5608,7 @@ public class OrchestrationController {
                     .withAttribute("hx-target", "#agent-detail-container")
                     .withAttribute("hx-swap", "innerHTML")
                     .withClass("agent-card-name")
-                    .withInnerText(a.name() != null ? a.name() : a.id()))
+                    .withInnerText(displayAgentName(a)))
                 .withChild(new Div().withClass("agent-card-meta")
                     .withChild(statusBadgeHtml(a.status() != null ? a.status().name() : "UNKNOWN"))
                     .withChild(statusBadgeHtml(workspaceHealth))
@@ -5716,7 +5722,7 @@ public class OrchestrationController {
             .withId("agents-page")
             .withAttribute("data-orchestration-page", "agents")
             .withAttribute("data-agent-id", agent.id())
-            .withChild(Header.H1("Agent: " + (agent.name() != null ? agent.name() : agent.id())))
+            .withChild(Header.H1("Agent: " + displayAgentName(agent)))
             .withChild(new Paragraph("Profile, queue, inbox, workspace, and history."))
             .withChild(agentDetailLayout(agent))
             .withChild(moduleScript(AGENTS_JS))
@@ -5746,7 +5752,7 @@ public class OrchestrationController {
                 .withChild(agentChatPanel(agent.id())))
             .withChild(new Div().withClass("entity-detail-layout entity-detail-layout-full")
                 .withChild(new Div().withClass("entity-detail-main")
-                    .withChild(tabNav(agent.id(), "dashboard", "profile", "queue", "inbox", "jobs", "schedules", "reactions", "workspace", "outputs", "exec", "history", "submit"))
+                    .withChild(tabNav(agent.id(), "manage", "profile", "queue", "inbox", "jobs", "schedules", "reactions", "workspace", "work-areas", "outputs", "exec", "history", "submit"))
                     .withChild(new Div().withClass("agent-profile-loader-marker")
                         .withAttribute("hidden", "hidden")
                         .withAttribute("hx-get", "/agents/_editor/" + escapeAttr(agent.id())))
@@ -5754,7 +5760,7 @@ public class OrchestrationController {
                         .withAttribute("hidden", "hidden")
                         .withAttribute("hx-get", "/agents/_submit-form/" + escapeAttr(agent.id())))
                     .withChild(new Div().withId("agent-tab-panel").withClass("orch-panel")
-                        .withAttribute("hx-get", "/agents/_detail/" + escapeAttr(agent.id()) + "/dashboard")
+                        .withAttribute("hx-get", "/agents/_detail/" + escapeAttr(agent.id()) + "/manage")
                         .withAttribute("hx-trigger", "load")
                         .withAttribute("hx-swap", "innerHTML")
                         .withChild(loadingPlaceholder()))));
@@ -5774,7 +5780,7 @@ public class OrchestrationController {
 
     // ── Agent detail tab partials ──
 
-    @GetMapping("/agents/_detail/{agentId}/dashboard")
+    @GetMapping("/agents/_detail/{agentId}/manage")
     @ResponseBody
     public String agentDashboardTab(@PathVariable String agentId) {
         AgentProfile agent = agentProfileService.get(agentId);
@@ -5790,7 +5796,7 @@ public class OrchestrationController {
 
         // Identity row
         Div identityGrid = new Div().withClass("orch-form-grid");
-        identityGrid.withChild(agentMetaItem("Name", agent.name() != null ? agent.name() : agent.id()));
+        identityGrid.withChild(agentMetaItem("Name", displayAgentName(agent)));
         identityGrid.withChild(agentMetaItem("Status", agent.status() != null ? agent.status().name() : "UNKNOWN"));
         identityGrid.withChild(agentMetaItem("Model", agent.defaultModel() != null ? agent.defaultModel() : "unset"));
         identityGrid.withChild(agentMetaItem("ID", agent.id()));
@@ -5825,7 +5831,7 @@ public class OrchestrationController {
 
         panel.withChild(new Div().withClass("orch-actions")
             .withChild(Button.create("Refresh")
-                .withAttribute("hx-get", "/agents/_detail/" + escapeAttr(agentId) + "/dashboard")
+                .withAttribute("hx-get", "/agents/_detail/" + escapeAttr(agentId) + "/manage")
                 .withAttribute("hx-target", "#agent-tab-panel")
                 .withAttribute("hx-swap", "innerHTML"))
             .withChild(Button.create(agent.status() == AgentProfileStatus.ACTIVE ? "Disable Agent" : "Enable Agent")
@@ -6674,13 +6680,11 @@ public class OrchestrationController {
         String outputHint = workspaceOutputHint(workspace);
 
         panel.withChild(new Div().withClass("orch-meta")
-            .withChild(new HtmlTag("span").withInnerText("Agent: " + (agent.name() != null ? agent.name() : agentId)))
+            .withChild(new HtmlTag("span").withInnerText("Agent: " + displayAgentName(agent)))
             .withChild(new HtmlTag("span").withInnerText("Agent ID: " + agent.id()))
             .withChild(new HtmlTag("span").withInnerText("Workspace ID: " + workspace.id()))
-            .withChild(new HtmlTag("span").withInnerText("Owner: "
-                + (workspace.ownerType() != null ? workspace.ownerType().name() : "—")
-                + ":" + nn(workspace.ownerId())))
-            .withChild(new HtmlTag("span").withInnerText("Display Name: " + nn(workspace.displayName())))
+            .withChild(new HtmlTag("span").withInnerText("Owner: " + displayWorkspaceOwner(workspace.ownerType(), workspace.ownerId())))
+            .withChild(new HtmlTag("span").withInnerText("Display Name: " + displayAssistantScopedValue(agent.id(), workspace.displayName())))
             .withChild(new HtmlTag("span").withInnerText("Diagnostic Path: " + nn(workspace.rootRelativePath())))
             .withChild(new HtmlTag("span").withInnerText("Final Output Target: " + outputHint))
             .withChild(new HtmlTag("span").withInnerText("Metadata: " + nn(workspace.metadataJson())))
@@ -6727,6 +6731,841 @@ public class OrchestrationController {
         }
         panel.withChild(table);
         return panel.render();
+    }
+
+    @GetMapping("/agents/_detail/{agentId}/work-areas")
+    @ResponseBody
+    public String agentWorkAreasTab(@PathVariable String agentId) {
+        AgentProfile agent = agentProfileService.get(agentId);
+        Div panel = new Div().withClass("agent-workarea-browser");
+        panel.withChild(Header.H2("Work Areas"));
+        WorkAreaService workAreaService = requireWorkAreaService();
+        List<WorkArea> workAreas = workAreaService.list(WorkspaceOwnerType.AGENT, agent.id(), false);
+        if (workAreas.isEmpty()) {
+            panel.withChild(new Div().withClass("dashboard-empty")
+                .withInnerText("No Work Areas for this agent."));
+            return panel.render();
+        }
+        Div list = new Div().withClass("avatar-list");
+        for (WorkArea workArea : workAreas) {
+            list.withChild(new Div().withClass("avatar-list-row avatar-workarea-entry")
+                .withAttribute("hx-get", "/agents/_detail/" + escapeAttr(agent.id()) + "/work-areas/"
+                    + escapeAttr(workArea.id()) + "/explorer")
+                .withAttribute("hx-target", "#avatar-workarea-surface")
+                .withAttribute("hx-swap", "innerHTML")
+                .withChild(new Div()
+                    .withChild(new HtmlTag("strong").withInnerText(displayAssistantScopedValue(agent.id(), workArea.displayName())))
+                    .withChild(new HtmlTag("small").withInnerText(workArea.id()))));
+        }
+        panel.withChild(new Div().withClass("avatar-workarea-browser-grid")
+            .withChild(list)
+            .withChild(new Div().withId("avatar-workarea-surface")
+                .withClass("avatar-workarea-surface")
+                .withChild(new Div().withClass("avatar-workarea-surface-empty")
+                    .withChild(Header.H3("Select a Work Area"))
+                    .withChild(new HtmlTag("small").withInnerText("Open this agent's confined file browser.")))));
+        return panel.render();
+    }
+
+    @GetMapping("/agents/_detail/{agentId}/work-areas/{workAreaId}/explorer")
+    @ResponseBody
+    public String agentWorkAreaExplorer(
+        @PathVariable String agentId,
+        @PathVariable String workAreaId,
+        @RequestParam(value = "path", defaultValue = ".") String path,
+        @RequestParam(value = "selected", required = false) String selected,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
+    ) {
+        requireAgentWorkArea(agentId, workAreaId);
+        WorkAreaExplorerService explorer = requireWorkAreaExplorerService();
+        WorkAreaExplorerService.DirectoryListing listing = displayListingForAgent(agentId, explorer.list(workAreaId, path));
+        String inspectPath = StringUtils.hasText(selected) ? selected : path;
+        WorkAreaExplorerService.Entry inspected = explorer.inspect(workAreaId, inspectPath);
+        return agentWorkAreaRoutes(agentId, WorkAreaExplorerFragments.shell(
+            listing,
+            inspected,
+            previewForAgentWorkArea(explorer, workAreaId, inspected),
+            selected,
+            panel
+        ));
+    }
+
+    @GetMapping("/agents/_detail/{agentId}/work-areas/placeholder")
+    @ResponseBody
+    public String agentWorkAreaPlaceholder(@PathVariable String agentId) {
+        agentProfileService.get(agentId);
+        return new Div().withClass("avatar-workarea-surface-empty")
+            .withChild(Header.H3("Select a Work Area"))
+            .withChild(new HtmlTag("small").withInnerText("Open this agent's confined file browser."))
+            .render();
+    }
+
+    @GetMapping("/agents/_detail/{agentId}/work-areas/modal/clear")
+    @ResponseBody
+    public String clearAgentWorkAreaModal(@PathVariable String agentId) {
+        agentProfileService.get(agentId);
+        return WorkAreaExplorerFragments.emptyModalHost();
+    }
+
+    @GetMapping("/agents/_detail/{agentId}/work-areas/{workAreaId}/explorer/list")
+    @ResponseBody
+    public String agentWorkAreaExplorerList(
+        @PathVariable String agentId,
+        @PathVariable String workAreaId,
+        @RequestParam(value = "path", defaultValue = ".") String path,
+        @RequestParam(value = "selected", required = false) String selected,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
+    ) {
+        requireAgentWorkArea(agentId, workAreaId);
+        WorkAreaExplorerService explorer = requireWorkAreaExplorerService();
+        try {
+            return agentWorkAreaRoutes(agentId, WorkAreaExplorerFragments.list(
+                explorer.list(workAreaId, path),
+                selected,
+                WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_COLLAPSED.equalsIgnoreCase(panelState(panel)),
+                false
+            ));
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.listError(exception.getMessage());
+        }
+    }
+
+    @GetMapping("/agents/_detail/{agentId}/work-areas/{workAreaId}/inspect")
+    @ResponseBody
+    public String agentWorkAreaInspector(
+        @PathVariable String agentId,
+        @PathVariable String workAreaId,
+        @RequestParam String path,
+        @RequestParam(value = "listPath", defaultValue = ".") String listPath,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
+    ) {
+        requireAgentWorkArea(agentId, workAreaId);
+        WorkAreaExplorerService explorer = requireWorkAreaExplorerService();
+        try {
+            boolean collapsed = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_COLLAPSED.equalsIgnoreCase(panelState(panel));
+            WorkAreaExplorerService.Entry inspected = explorer.inspect(workAreaId, path);
+            return agentWorkAreaRoutes(agentId, WorkAreaExplorerFragments.inspector(
+                workAreaId,
+                listPath,
+                inspected,
+                previewForAgentWorkArea(explorer, workAreaId, inspected),
+                null,
+                collapsed,
+                collapsed
+                    ? WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED
+                    : WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_COLLAPSED,
+                false
+            ));
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.inspectorError(exception.getMessage());
+        }
+    }
+
+    @GetMapping("/agents/_detail/{agentId}/work-areas/{workAreaId}/viewer")
+    @ResponseBody
+    public String agentWorkAreaViewer(
+        @PathVariable String agentId,
+        @PathVariable String workAreaId,
+        @RequestParam String path
+    ) {
+        requireAgentWorkArea(agentId, workAreaId);
+        try {
+            return agentWorkAreaRoutes(agentId, WorkAreaExplorerFragments.viewer(
+                workAreaId,
+                requireWorkAreaExplorerService().preview(workAreaId, path)
+            ));
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.modalError("Viewer unavailable", exception.getMessage());
+        }
+    }
+
+    @GetMapping("/agents/_detail/{agentId}/work-areas/{workAreaId}/viewer/text")
+    @ResponseBody
+    public String agentWorkAreaTextViewer(
+        @PathVariable String agentId,
+        @PathVariable String workAreaId,
+        @RequestParam String path,
+        @RequestParam(value = "tab", defaultValue = "rendered") String tab
+    ) {
+        requireAgentWorkArea(agentId, workAreaId);
+        try {
+            return agentWorkAreaRoutes(agentId, WorkAreaExplorerFragments.textViewer(
+                workAreaId,
+                requireWorkAreaExplorerService().preview(workAreaId, path),
+                tab
+            ));
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.modalError("Viewer unavailable", exception.getMessage());
+        }
+    }
+
+    @PostMapping("/agents/_detail/{agentId}/work-areas/{workAreaId}/viewer/markdown-preview")
+    @ResponseBody
+    public String agentWorkAreaMarkdownPreview(
+        @PathVariable String agentId,
+        @PathVariable String workAreaId,
+        @RequestParam String path,
+        @RequestParam(required = false) String content
+    ) {
+        requireAgentWorkArea(agentId, workAreaId);
+        try {
+            WorkAreaExplorerService.FilePreview preview = requireWorkAreaExplorerService().preview(workAreaId, path);
+            if (!preview.text() || !"markdown".equals(preview.kind())) {
+                return "<div class=\"avatar-status-error\">Preview unavailable for this file.</div>";
+            }
+            return WorkAreaExplorerFragments.markdownPreview(content);
+        } catch (IllegalArgumentException exception) {
+            return "<div class=\"avatar-status-error\">Preview unavailable for this file.</div>";
+        }
+    }
+
+    @PutMapping("/agents/_detail/{agentId}/work-areas/{workAreaId}/text")
+    @ResponseBody
+    public String saveAgentWorkAreaText(
+        @PathVariable String agentId,
+        @PathVariable String workAreaId,
+        @RequestParam String path,
+        @RequestParam String content,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
+    ) {
+        requireAgentWorkArea(agentId, workAreaId);
+        WorkAreaExplorerService explorer = requireWorkAreaExplorerService();
+        try {
+            explorer.saveText(workAreaId, path, content);
+            String listPath = parentPath(path);
+            WorkAreaExplorerService.Entry inspected = explorer.inspect(workAreaId, path);
+            return agentWorkAreaRoutes(agentId, WorkAreaExplorerFragments.textSaveResponse(
+                workAreaId,
+                explorer.preview(workAreaId, path),
+                explorer.list(workAreaId, listPath),
+                inspected,
+                previewForAgentWorkArea(explorer, workAreaId, inspected),
+                path,
+                panelState(panel),
+                "Saved " + path
+            ));
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.modalError("Save failed", exception.getMessage());
+        }
+    }
+
+    @PostMapping("/agents/_detail/{agentId}/work-areas/{workAreaId}/directories")
+    @ResponseBody
+    public String createAgentWorkAreaDirectory(
+        @PathVariable String agentId,
+        @PathVariable String workAreaId,
+        @RequestParam String path,
+        @RequestParam String name,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
+    ) {
+        requireAgentWorkArea(agentId, workAreaId);
+        WorkAreaExplorerService explorer = requireWorkAreaExplorerService();
+        try {
+            WorkAreaExplorerService.Entry entry = explorer.createDirectory(workAreaId, joinPath(path, name));
+            return agentWorkAreaRoutes(agentId, refreshedAgentExplorerTargets(
+                explorer,
+                workAreaId,
+                path,
+                entry.path(),
+                panelState(panel),
+                "Created " + entry.name()
+            ));
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.modalError("Create folder failed", exception.getMessage());
+        }
+    }
+
+    @PostMapping("/agents/_detail/{agentId}/work-areas/{workAreaId}/text")
+    @ResponseBody
+    public String createAgentWorkAreaTextFile(
+        @PathVariable String agentId,
+        @PathVariable String workAreaId,
+        @RequestParam String path,
+        @RequestParam String name,
+        @RequestParam(value = "kind", defaultValue = "text") String kind,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
+    ) {
+        requireAgentWorkArea(agentId, workAreaId);
+        WorkAreaExplorerService explorer = requireWorkAreaExplorerService();
+        try {
+            WorkAreaExplorerService.Entry entry = "markdown".equalsIgnoreCase(kind)
+                ? explorer.createMarkdownFile(workAreaId, path, name)
+                : explorer.createTextFile(workAreaId, path, name);
+            WorkAreaExplorerService.Entry inspected = explorer.inspect(workAreaId, entry.path());
+            return agentWorkAreaRoutes(agentId, WorkAreaExplorerFragments.textCreateResponse(
+                workAreaId,
+                explorer.preview(workAreaId, entry.path()),
+                explorer.list(workAreaId, path),
+                inspected,
+                previewForAgentWorkArea(explorer, workAreaId, inspected),
+                entry.path(),
+                panelState(panel),
+                "Created " + entry.name()
+            ));
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.modalError("Create file failed", exception.getMessage());
+        }
+    }
+
+    @GetMapping("/agents/_detail/{agentId}/work-areas/{workAreaId}/modal/{action}")
+    @ResponseBody
+    public String agentWorkAreaActionModal(
+        @PathVariable String agentId,
+        @PathVariable String workAreaId,
+        @PathVariable String action,
+        @RequestParam String path,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
+    ) {
+        requireAgentWorkArea(agentId, workAreaId);
+        WorkAreaExplorerService explorer = requireWorkAreaExplorerService();
+        try {
+            if ("tag-editor".equals(action) || "tag".equals(action)) {
+                return agentWorkAreaRoutes(agentId, renderAgentTagEditorModal(explorer, workAreaId, path, panelState(panel), null));
+            }
+            WorkAreaExplorerService.DeletePreflight preflight = "delete".equals(action) || "delete-recursive".equals(action)
+                ? explorer.deletePreflight(workAreaId, path, WorkAreaExplorerService.DeleteStep.INTENT)
+                : null;
+            return agentWorkAreaRoutes(agentId, WorkAreaExplorerFragments.actionModal(
+                workAreaId,
+                action,
+                path,
+                panelState(panel),
+                preflight
+            ));
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.modalError("Action unavailable", exception.getMessage());
+        }
+    }
+
+    @GetMapping("/agents/_detail/{agentId}/work-areas/{workAreaId}/files/action/{action}/picker")
+    @ResponseBody
+    public String agentCopyMovePicker(
+        @PathVariable String agentId,
+        @PathVariable String workAreaId,
+        @PathVariable String action,
+        @RequestParam String path,
+        @RequestParam(value = "browse", defaultValue = ".") String browse,
+        @RequestParam(value = "destination", defaultValue = ".") String destination,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel,
+        @RequestParam(value = "x", defaultValue = "48") int x,
+        @RequestParam(value = "y", defaultValue = "96") int y
+    ) {
+        requireAgentWorkArea(agentId, workAreaId);
+        if (!"copy".equals(action) && !"move".equals(action)) {
+            return WorkAreaExplorerFragments.modalError("File action failed", "Unknown file action: " + action);
+        }
+        WorkAreaExplorerService explorer = requireWorkAreaExplorerService();
+        try {
+            explorer.inspect(workAreaId, path);
+            WorkAreaExplorerService.DirectoryListing listing = explorer.list(workAreaId, browse);
+            explorer.inspect(workAreaId, destination);
+            return agentWorkAreaRoutes(agentId, WorkAreaExplorerFragments.copyMovePicker(
+                workAreaId,
+                action,
+                path,
+                listing.path(),
+                destination,
+                panelState(panel),
+                x,
+                y
+            ));
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.modalError("File action failed", exception.getMessage());
+        }
+    }
+
+    @GetMapping("/agents/_detail/{agentId}/work-areas/{workAreaId}/files/directories")
+    @ResponseBody
+    public String agentDirectoryPickerOptions(
+        @PathVariable String agentId,
+        @PathVariable String workAreaId,
+        @RequestParam(value = "path", defaultValue = ".") String browse,
+        @RequestParam String source,
+        @RequestParam String action,
+        @RequestParam(value = "destination", defaultValue = ".") String destination,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel,
+        @RequestParam(value = "x", defaultValue = "48") int x,
+        @RequestParam(value = "y", defaultValue = "96") int y
+    ) {
+        requireAgentWorkArea(agentId, workAreaId);
+        try {
+            return agentWorkAreaRoutes(agentId, WorkAreaExplorerFragments.directoryPickerOptions(
+                requireWorkAreaExplorerService().list(workAreaId, browse),
+                action,
+                source,
+                destination,
+                panelState(panel),
+                x,
+                y
+            ));
+        } catch (IllegalArgumentException exception) {
+            return "<div class=\"avatar-status-error\">" + escapeAttr(exception.getMessage()) + "</div>";
+        }
+    }
+
+    @PostMapping("/agents/_detail/{agentId}/work-areas/{workAreaId}/files/delete")
+    @ResponseBody
+    public String deleteAgentWorkAreaPath(
+        @PathVariable String agentId,
+        @PathVariable String workAreaId,
+        @RequestParam String path,
+        @RequestParam String step,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
+    ) {
+        requireAgentWorkArea(agentId, workAreaId);
+        WorkAreaExplorerService explorer = requireWorkAreaExplorerService();
+        try {
+            explorer.delete(workAreaId, path, WorkAreaExplorerService.DeleteStep.valueOf(step));
+            return agentWorkAreaRoutes(agentId, refreshedAgentExplorerTargets(
+                explorer,
+                workAreaId,
+                parentPath(path),
+                parentPath(path),
+                panelState(panel),
+                "Deleted " + path
+            ));
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.modalError("Delete failed", exception.getMessage());
+        }
+    }
+
+    @PostMapping("/agents/_detail/{agentId}/work-areas/{workAreaId}/files/rename")
+    @ResponseBody
+    public String renameAgentWorkAreaPath(
+        @PathVariable String agentId,
+        @PathVariable String workAreaId,
+        @RequestParam String path,
+        @RequestParam String name,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
+    ) {
+        requireAgentWorkArea(agentId, workAreaId);
+        WorkAreaExplorerService explorer = requireWorkAreaExplorerService();
+        try {
+            WorkAreaExplorerService.Entry renamed = explorer.rename(workAreaId, path, name);
+            return agentWorkAreaRoutes(agentId, refreshedAgentExplorerTargets(
+                explorer,
+                workAreaId,
+                parentPath(renamed.path()),
+                renamed.path(),
+                panelState(panel),
+                "Renamed to " + renamed.name()
+            ));
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.modalError("Rename failed", exception.getMessage());
+        }
+    }
+
+    @PostMapping("/agents/_detail/{agentId}/work-areas/{workAreaId}/files/action/{action}")
+    @ResponseBody
+    public String copyMoveAgentWorkAreaPath(
+        @PathVariable String agentId,
+        @PathVariable String workAreaId,
+        @PathVariable String action,
+        @RequestParam String path,
+        @RequestParam String destination,
+        @RequestParam(value = "name", required = false) String name,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
+    ) {
+        requireAgentWorkArea(agentId, workAreaId);
+        WorkAreaExplorerService explorer = requireWorkAreaExplorerService();
+        try {
+            String effectiveDestination = effectiveWorkAreaOperationDestination(explorer, workAreaId, path, destination);
+            WorkAreaExplorerService.Entry result;
+            if ("copy".equals(action)) {
+                result = explorer.copy(workAreaId, path, effectiveDestination, name);
+            } else if ("move".equals(action)) {
+                result = explorer.move(workAreaId, path, effectiveDestination, name);
+            } else {
+                return WorkAreaExplorerFragments.modalError("File action failed", "Unknown file action: " + action);
+            }
+            return agentWorkAreaRoutes(agentId, refreshedAgentExplorerTargets(
+                explorer,
+                workAreaId,
+                parentPath(result.path()),
+                result.path(),
+                panelState(panel),
+                action + " completed"
+            ));
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.modalError("File action failed", exception.getMessage());
+        }
+    }
+
+    @GetMapping("/agents/_detail/{agentId}/work-areas/{workAreaId}/modal/tag-editor")
+    @ResponseBody
+    public String agentWorkAreaTagEditorModal(
+        @PathVariable String agentId,
+        @PathVariable String workAreaId,
+        @RequestParam String path,
+        @RequestParam(value = "panel", defaultValue = WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED) String panel
+    ) {
+        requireAgentWorkArea(agentId, workAreaId);
+        try {
+            return agentWorkAreaRoutes(agentId, renderAgentTagEditorModal(
+                requireWorkAreaExplorerService(),
+                workAreaId,
+                path,
+                panelState(panel),
+                null
+            ));
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.modalError("Tag editor unavailable", exception.getMessage());
+        }
+    }
+
+    @PostMapping("/agents/_detail/{agentId}/work-areas/{workAreaId}/modal/tag-editor/tags")
+    @ResponseBody
+    public String createAgentWorkAreaTagFromEditor(
+        @PathVariable String agentId,
+        @PathVariable String workAreaId,
+        @RequestParam MultiValueMap<String, String> params
+    ) {
+        requireAgentWorkArea(agentId, workAreaId);
+        WorkAreaExplorerService explorer = requireWorkAreaExplorerService();
+        try {
+            String path = requiredSingleValue(params, "path");
+            String panel = optionalSingleValue(params, "panel");
+            String label = requiredSingleValue(params, "label");
+            String displayName = optionalSingleValue(params, "displayName");
+            String description = optionalSingleValue(params, "description");
+            String targetType = optionalSingleValue(params, "targetType");
+            WorkspaceFileLabelTargetType normalizedTargetType = StringUtils.hasText(targetType)
+                ? WorkspaceFileLabelTargetType.fromWireName(targetType)
+                : WorkspaceFileLabelTargetType.fromWireName(inferAgentWorkAreaTargetType(explorer, workAreaId, path));
+            explorer.ensureTag(label, displayName, normalizedTargetType, description);
+            return agentWorkAreaRoutes(agentId, renderAgentTagEditorModal(
+                explorer,
+                workAreaId,
+                path,
+                panelState(panel),
+                "Tag created: " + label
+            ));
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.modalError("Tag failed", exception.getMessage());
+        }
+    }
+
+    @PostMapping("/agents/_detail/{agentId}/work-areas/{workAreaId}/modal/tag-editor/assign")
+    @ResponseBody
+    public String assignAgentWorkAreaTagFromEditor(
+        @PathVariable String agentId,
+        @PathVariable String workAreaId,
+        @RequestParam MultiValueMap<String, String> params
+    ) {
+        requireAgentWorkArea(agentId, workAreaId);
+        WorkAreaExplorerService explorer = requireWorkAreaExplorerService();
+        try {
+            String path = requiredSingleValue(params, "path");
+            String label = requiredSingleValue(params, "label");
+            String panel = optionalSingleValue(params, "panel");
+            explorer.addLabel(workAreaId, path, label);
+            return agentWorkAreaRoutes(agentId, refreshedAgentExplorerTargets(
+                explorer,
+                workAreaId,
+                parentPath(path),
+                path,
+                panelState(panel),
+                "Tag added"
+            ));
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.inspectorError(exception.getMessage());
+        }
+    }
+
+    @PostMapping("/agents/_detail/{agentId}/work-areas/{workAreaId}/files/tags")
+    @ResponseBody
+    public String addAgentWorkAreaTag(
+        @PathVariable String agentId,
+        @PathVariable String workAreaId,
+        @RequestParam MultiValueMap<String, String> params
+    ) {
+        requireAgentWorkArea(agentId, workAreaId);
+        WorkAreaExplorerService explorer = requireWorkAreaExplorerService();
+        try {
+            String path = requiredSingleValue(params, "path");
+            String label = requiredSingleValue(params, "label");
+            String targetType = optionalSingleValue(params, "targetType");
+            String panel = optionalSingleValue(params, "panel");
+            WorkspaceFileLabelTargetType requestedType = StringUtils.hasText(targetType)
+                ? WorkspaceFileLabelTargetType.fromWireName(targetType)
+                : null;
+            explorer.addLabel(workAreaId, path, label, requestedType);
+            return agentWorkAreaRoutes(agentId, refreshedAgentExplorerTargets(
+                explorer,
+                workAreaId,
+                parentPath(path),
+                path,
+                panelState(panel),
+                "Tag added"
+            ));
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.inspectorError(exception.getMessage());
+        }
+    }
+
+    @DeleteMapping("/agents/_detail/{agentId}/work-areas/{workAreaId}/files/tags")
+    @ResponseBody
+    public String removeAgentWorkAreaTag(
+        @PathVariable String agentId,
+        @PathVariable String workAreaId,
+        @RequestParam MultiValueMap<String, String> params
+    ) {
+        requireAgentWorkArea(agentId, workAreaId);
+        WorkAreaExplorerService explorer = requireWorkAreaExplorerService();
+        try {
+            String path = requiredSingleValue(params, "path");
+            String label = requiredSingleValue(params, "label");
+            String panel = optionalSingleValue(params, "panel");
+            explorer.removeLabel(workAreaId, path, label);
+            return agentWorkAreaRoutes(agentId, refreshedAgentExplorerTargets(
+                explorer,
+                workAreaId,
+                parentPath(path),
+                path,
+                panelState(panel),
+                "Tag removed"
+            ));
+        } catch (IllegalArgumentException exception) {
+            return WorkAreaExplorerFragments.inspectorError(exception.getMessage());
+        }
+    }
+
+    @GetMapping("/agents/_detail/{agentId}/work-areas/{workAreaId}/tags/options")
+    @ResponseBody
+    public String agentWorkAreaTagOptions(
+        @PathVariable String agentId,
+        @PathVariable String workAreaId,
+        @RequestParam MultiValueMap<String, String> params
+    ) {
+        requireAgentWorkArea(agentId, workAreaId);
+        try {
+            String path = requiredSingleValue(params, "path");
+            String label = optionalSingleValue(params, "label");
+            return agentWorkAreaRoutes(agentId, WorkAreaExplorerFragments.tagOptions(
+                workAreaId,
+                path,
+                label,
+                requireWorkAreaExplorerService().availableTags(workAreaId, path, label, 12)
+            ));
+        } catch (IllegalArgumentException exception) {
+            return "<div class=\"entity-selector-empty\">Unable to load tags: " + escapeAttr(exception.getMessage()) + "</div>";
+        }
+    }
+
+    private String agentWorkAreaRoutes(String agentId, String html) {
+        return html.replace("/avatar/_work-areas", "/agents/_detail/" + escapeAttr(agentId) + "/work-areas");
+    }
+
+    private static final String AVATAR_AGENT_ID = "avatar";
+
+    private String displayAgentName(AgentProfile agent) {
+        if (agent == null) {
+            return "—";
+        }
+        return displayAgentName(agent.id(), agent.name());
+    }
+
+    private String displayAgentName(String agentId, String agentName) {
+        if (AVATAR_AGENT_ID.equals(agentId)) {
+            return "Assistant";
+        }
+        return StringUtils.hasText(agentName) ? agentName : nn(agentId);
+    }
+
+    private String displayWorkspaceOwner(WorkspaceOwnerType ownerType, String ownerId) {
+        if (ownerType == WorkspaceOwnerType.AGENT && AVATAR_AGENT_ID.equals(ownerId)) {
+            return "Assistant";
+        }
+        return (ownerType != null ? ownerType.name() : "—") + ":" + nn(ownerId);
+    }
+
+    private String displayAssistantScopedValue(String agentId, String value) {
+        if (AVATAR_AGENT_ID.equals(agentId) && value != null) {
+            return value.replace("Avatar", "Assistant");
+        }
+        return nn(value);
+    }
+
+    private WorkAreaExplorerService.DirectoryListing displayListingForAgent(
+        String agentId,
+        WorkAreaExplorerService.DirectoryListing listing
+    ) {
+        if (!AVATAR_AGENT_ID.equals(agentId) || listing == null || listing.workArea() == null) {
+            return listing;
+        }
+        WorkArea workArea = listing.workArea();
+        return new WorkAreaExplorerService.DirectoryListing(
+            new WorkArea(
+                workArea.id(),
+                workArea.ownerType(),
+                workArea.ownerId(),
+                workArea.workspaceId(),
+                workArea.rootRelativePath(),
+                workArea.areaRelativePath(),
+                displayAssistantScopedValue(agentId, workArea.displayName()),
+                workArea.system(),
+                workArea.home(),
+                workArea.active(),
+                workArea.metadataJson(),
+                workArea.createdAt(),
+                workArea.updatedAt()
+            ),
+            listing.path(),
+            listing.entries()
+        );
+    }
+
+    private WorkAreaExplorerService.FilePreview previewForAgentWorkArea(
+        WorkAreaExplorerService explorer,
+        String workAreaId,
+        WorkAreaExplorerService.Entry entry
+    ) {
+        if (entry == null || !entry.regularFile()) {
+            return null;
+        }
+        try {
+            return explorer.preview(workAreaId, entry.path());
+        } catch (RuntimeException exception) {
+            return null;
+        }
+    }
+
+    private String renderAgentTagEditorModal(
+        WorkAreaExplorerService explorer,
+        String workAreaId,
+        String path,
+        String panelState,
+        String message
+    ) {
+        WorkAreaExplorerService.Entry entry = explorer.inspect(workAreaId, path);
+        return WorkAreaExplorerFragments.tagEditorModal(
+            workAreaId,
+            entry,
+            explorer.listAllTags(null, 200),
+            panelState(panelState),
+            message
+        );
+    }
+
+    private String refreshedAgentExplorerTargets(
+        WorkAreaExplorerService explorer,
+        String workAreaId,
+        String listPath,
+        String selectedPath,
+        String panelState,
+        String message
+    ) {
+        WorkAreaExplorerService.DirectoryListing listing = explorer.list(workAreaId, listPath);
+        WorkAreaExplorerService.Entry inspected = explorer.inspect(workAreaId, selectedPath);
+        return WorkAreaExplorerFragments.mutationResponse(
+            listing,
+            inspected,
+            previewForAgentWorkArea(explorer, workAreaId, inspected),
+            selectedPath,
+            panelState(panelState),
+            message
+        );
+    }
+
+    private String effectiveWorkAreaOperationDestination(
+        WorkAreaExplorerService explorer,
+        String workAreaId,
+        String sourcePath,
+        String destination
+    ) {
+        if (!StringUtils.hasText(destination)) {
+            throw new IllegalArgumentException("destination directory is required");
+        }
+        String cleaned = destination.strip().replace('\\', '/');
+        if (destinationDirectoryExists(explorer, workAreaId, cleaned)) {
+            return cleaned;
+        }
+        if (!cleaned.contains("/") && !".".equals(cleaned)) {
+            String siblingDestination = joinPath(parentPath(sourcePath), cleaned);
+            if (destinationDirectoryExists(explorer, workAreaId, siblingDestination)) {
+                return siblingDestination;
+            }
+        }
+        return cleaned;
+    }
+
+    private boolean destinationDirectoryExists(WorkAreaExplorerService explorer, String workAreaId, String destination) {
+        try {
+            return explorer.inspect(workAreaId, destination).directory();
+        } catch (RuntimeException exception) {
+            return false;
+        }
+    }
+
+    private String inferAgentWorkAreaTargetType(WorkAreaExplorerService explorer, String workAreaId, String path) {
+        return explorer.inspect(workAreaId, path).directory()
+            ? WorkspaceFileLabelTargetType.DIRECTORY.wireName()
+            : WorkspaceFileLabelTargetType.FILE.wireName();
+    }
+
+    private String requiredSingleValue(MultiValueMap<String, String> params, String field) {
+        List<String> values = params.get(field);
+        if (values == null || values.isEmpty()) {
+            throw new IllegalArgumentException(field + " is required");
+        }
+        List<String> normalized = values.stream()
+            .filter(StringUtils::hasText)
+            .map(String::strip)
+            .distinct()
+            .toList();
+        if (normalized.size() != 1) {
+            throw new IllegalArgumentException(field + " must target exactly one value");
+        }
+        return normalized.getFirst();
+    }
+
+    private String optionalSingleValue(MultiValueMap<String, String> params, String field) {
+        List<String> values = params.get(field);
+        if (values == null || values.isEmpty()) {
+            return null;
+        }
+        List<String> normalized = values.stream()
+            .filter(StringUtils::hasText)
+            .map(String::strip)
+            .distinct()
+            .toList();
+        if (normalized.isEmpty()) {
+            return null;
+        }
+        if (normalized.size() != 1) {
+            throw new IllegalArgumentException(field + " must target exactly one value");
+        }
+        return normalized.getFirst();
+    }
+
+    private String joinPath(String base, String name) {
+        if (!StringUtils.hasText(name)) {
+            throw new IllegalArgumentException("directory name is required");
+        }
+        String child = name.strip().replace('\\', '/');
+        String prefix = StringUtils.hasText(base) && !".".equals(base.strip()) ? base.strip().replace('\\', '/') + "/" : "";
+        return prefix + child;
+    }
+
+    private String panelState(String panel) {
+        return WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_COLLAPSED.equalsIgnoreCase(panel)
+            ? WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_COLLAPSED
+            : WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_EXPANDED;
+    }
+
+    private void requireAgentWorkArea(String agentId, String workAreaId) {
+        WorkArea workArea = requireWorkAreaService().get(workAreaId);
+        if (workArea.ownerType() != WorkspaceOwnerType.AGENT || !agentId.equals(workArea.ownerId())) {
+            throw new IllegalArgumentException("Work Area does not belong to agent " + agentId);
+        }
+    }
+
+    private WorkAreaService requireWorkAreaService() {
+        WorkAreaService service = workAreaServiceRef.getIfAvailable();
+        if (service == null) {
+            throw new IllegalStateException("Work Area service is unavailable");
+        }
+        return service;
     }
 
     private String workspaceOutputHint(Workspace workspace) {
@@ -7972,7 +8811,7 @@ public class OrchestrationController {
         HtmlTag nav = new HtmlTag("nav").withClass("orch-tabs").withAttribute("aria-label", "Detail views");
         for (String name : names) {
             Button button = Button.create(capitalize(name));
-            if ("dashboard".equals(name)) {
+            if ("manage".equals(name)) {
                 button.withClass("active");
             }
             button.withAttribute("data-tab", name)

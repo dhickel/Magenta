@@ -118,35 +118,37 @@ class AvatarDashboardControllerTest {
     }
 
     @Test
-    void avatarShellRendersCompactChatWidgetRootsAndScopedAssets() {
+    void homeRendersAssistantDashboardSelectorChatAndScopedAssets() {
         String html = controller.avatar(false);
 
-        assertThat(html).contains("/css/avatar-dashboard.css?v=6");
-        assertThat(html).contains("/js/avatar-chat.js?v=3");
+        assertThat(html).contains("/css/avatar-dashboard.css?v=7");
+        assertThat(html).contains("/js/avatar-chat.js?v=4");
         assertThat(html).contains("/js/avatar-layout-edit.js?v=1");
-        assertThat(html).contains("/js/avatar-workarea-editor.js?v=1");
+        assertThat(html).contains("/js/avatar-workarea-editor.js?v=2");
         assertThat(html).contains("/js/avatar-shell.js?v=6");
         assertThat(html).doesNotContain("/js/chat-client.js");
         assertThat(html).contains("id=\"content-area\" class=\"avatar-content-area\"");
+        assertThat(html).contains("id=\"dashboard-selector\"");
+        assertThat(html).contains(">Assistant</a>");
+        assertThat(html).contains("aria-label=\"Create dashboard\"");
         assertThat(html).contains("id=\"avatar-chat\"");
         assertThat(html).contains("data-avatar-chat=\"true\"");
         assertThat(html).contains("data-avatar-chat-corner-resizer=\"true\"");
         assertThat(html).doesNotContain("data-avatar-chat-resizer=\"true\"");
-        assertThat(html).contains("data-avatar-shell=\"true\"");
+        assertThat(html).contains("data-dashboard-home=\"true\"");
         int railIndex = html.indexOf("class=\"avatar-shell-rail\"");
         int mainIndex = html.indexOf("class=\"avatar-shell-main\"");
         assertThat(railIndex).isGreaterThan(-1);
         assertThat(mainIndex).isGreaterThan(railIndex);
-        assertThat(html).contains("id=\"avatar-tab-panel\"");
-        assertThat(html).contains("data-avatar-tab=\"dashboard\"");
-        assertThat(html).contains("data-avatar-tab=\"queue\"");
-        assertThat(html).contains("data-avatar-tab=\"history\"");
-        assertThat(html).contains("data-avatar-tab=\"profile\"");
-        assertThat(html).contains("data-avatar-tab=\"outputs\"");
-        assertThat(html).contains("data-avatar-tab=\"work-areas\"");
+        assertThat(html).contains("id=\"dashboard-panel\"");
+        assertThat(html).doesNotContain("data-avatar-tab=\"queue\"");
+        assertThat(html).doesNotContain("data-avatar-tab=\"work-areas\"");
+        assertThat(html).doesNotContain("/_dashboards/_tab-panel");
+        assertThat(html).doesNotContain("Work Areas");
         assertPrimaryTopNav(html);
         assertThat(html).doesNotContain("Organizer");
         assertThat(html).doesNotContain("Refresh Widgets");
+        assertThat(html).doesNotContain(">Avatar<");
         for (AvatarDashboardComponents.WidgetDefinition widget : AvatarDashboardComponents.WIDGETS) {
             assertThat(html).contains("id=\"avatar-widget-" + widget.key() + "\"");
         }
@@ -156,8 +158,6 @@ class AvatarDashboardControllerTest {
         assertThat(editHtml).contains("Dashboard edit mode");
         assertThat(editHtml).contains("avatar-icon-link");
 
-        controller.addLayoutRow();
-        controller.addLayoutWidget(avatarService.dashboardRows().getFirst().id(), "todos", 4);
         String editRowsHtml = controller.avatar(true);
         assertThat(editRowsHtml).contains("editable-row-wrapper");
         assertThat(editRowsHtml).contains("add-module-section");
@@ -166,18 +166,21 @@ class AvatarDashboardControllerTest {
         assertThat(editRowsHtml).contains("avatar-widget-corner-controls");
         assertThat(editRowsHtml).contains("avatar-chat-status");
         assertThat(editRowsHtml).contains("/width-picker");
+        assertThat(editRowsHtml).doesNotContain("/avatar/_layout");
         assertThat(editRowsHtml).doesNotContain("Refresh Widgets");
         assertThat(editRowsHtml).doesNotContain("avatar-widget-decoration");
     }
 
     private static void assertPrimaryTopNav(String html) {
         int home = html.indexOf("<a href=\"/\" class=\"navbar-item\">Home</a>");
-        int dashboard = html.indexOf("<a href=\"/dashboard\" class=\"navbar-item\">Dashboard</a>");
         int chat = html.indexOf("<a href=\"/chat\" class=\"navbar-item\">Chat</a>");
+        int agents = html.indexOf("<a href=\"/agents\" class=\"navbar-item\">Agents</a>");
+        int manage = html.indexOf("<a href=\"/manage\" class=\"navbar-item\">Manage</a>");
 
         assertThat(home).isGreaterThanOrEqualTo(0);
-        assertThat(dashboard).isGreaterThan(home);
-        assertThat(chat).isGreaterThan(dashboard);
+        assertThat(chat).isGreaterThan(home);
+        assertThat(agents).isGreaterThan(chat);
+        assertThat(manage).isGreaterThan(agents);
         assertThat(html).doesNotContain("<a href=\"/avatar\" class=\"navbar-item\">Avatar</a>");
     }
 
@@ -190,7 +193,7 @@ class AvatarDashboardControllerTest {
         assertThat(grid).contains("id=\"avatar-widget-grid\"");
         assertThat(editGrid).contains("avatar-widget-grid-editing");
         assertThat(todos).contains("id=\"avatar-widget-todos\"");
-        assertThat(todos).contains("hx-post=\"/avatar/_todos\"");
+        assertThat(todos).contains("hx-post=\"/_dashboards/_todos\"");
         assertThat(controller.widgetDetail("todos")).contains("avatar-widget-detail-modal");
         assertThatThrownBy(() -> controller.widget("unknown"))
             .isInstanceOf(ResponseStatusException.class)
@@ -199,129 +202,51 @@ class AvatarDashboardControllerTest {
     }
 
     @Test
-    void avatarTabRoutesNormalizeEditModeOutsideDashboard() {
-        String queuePage = controller.avatar("queue", true);
-        assertThat(queuePage).contains("data-avatar-active-tab=\"queue\"");
-        assertThat(queuePage).contains("data-avatar-tab-panel=\"queue\"");
-        assertThat(queuePage).doesNotContain("avatar-widget-grid-editing");
-        assertThat(queuePage).doesNotContain("Dashboard edit mode");
+    void dashboardCreationCreatesEmptySelectedDashboard() {
+        String modal = controller.createDashboardModal();
+        assertThat(modal).contains("Create Dashboard");
+        assertThat(modal).contains("hx-post=\"/dashboards\"");
+        assertThat(modal).contains("name=\"name\"");
+        assertThat(modal).contains("required=\"required\"");
 
-        String queueFragment = controller.avatarTabPanel("queue", true);
-        assertThat(queueFragment).contains("id=\"avatar-tab-panel\"");
-        assertThat(queueFragment).contains("avatar-tab-panel-queue");
-        assertThat(queueFragment).contains("id=\"avatar-shell-tabs-wrap\"");
-        assertThat(queueFragment).contains("hx-swap-oob=\"true\"");
-        assertThat(queueFragment).contains("data-avatar-tab=\"queue\"");
-        assertThat(queueFragment).doesNotContain("avatar-widget-grid-editing");
+        var response = new org.springframework.mock.web.MockHttpServletResponse();
+        String created = controller.createDashboard("Research", response);
+        assertThat(response.getHeader("HX-Push-Url")).contains("/dashboards/dashboard-");
+        assertThat(created).contains("Research");
+        assertThat(created).contains("Research is empty");
+        assertThat(created).contains("hx-post=\"/dashboards/");
+        assertThat(avatarService.dashboards()).extracting("name").contains("Assistant", "Research");
 
-        String dashboardFragment = controller.avatarTabPanel("dashboard", true);
-        assertThat(dashboardFragment).contains("avatar-widget-grid-editing");
-        assertThat(dashboardFragment).contains("id=\"avatar-tab-panel\"");
+        var duplicateResponse = new org.springframework.mock.web.MockHttpServletResponse();
+        String duplicate = controller.createDashboard("research", duplicateResponse);
+        assertThat(duplicateResponse.getStatus()).isEqualTo(400);
+        assertThat(duplicate).contains("dashboard already exists");
+
+        var blankResponse = new org.springframework.mock.web.MockHttpServletResponse();
+        String blank = controller.createDashboard(" ", blankResponse);
+        assertThat(blankResponse.getStatus()).isEqualTo(400);
+        assertThat(blank).contains("dashboard name is required");
+        assertThat(blank).contains("aria-invalid=\"true\"");
     }
 
     @Test
-    void workAreaWidgetAndExplorerFragmentsBrowseAndEditFiles() {
-        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Home");
+    void assistantDoesNotExposeWorkAreasAsDashboardWidget() {
+        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "avatar", "Home");
+        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Other Agent Home");
 
-        String files = controller.widget("files");
-        assertThat(files).contains("Work Areas");
-        assertThat(files).contains("/avatar/_work-areas/");
-        assertThat(files).contains("id=\"avatar-workarea-surface\"");
-        assertThat(files).contains("hx-target=\"#avatar-workarea-surface\"");
-        assertThat(files).doesNotContain("/explorer\" hx-target=\"#avatar-edit-container\"");
-        assertThat(controller.workAreaPlaceholder()).contains("Select a Work Area");
-
-        String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "agent-1", false).getFirst().id();
-        String explorer = controller.workAreaExplorer(workAreaId, ".", null);
-        assertThat(explorer).contains("id=\"avatar-workarea-explorer-shell\"");
-        assertThat(explorer).contains("hx-get=\"/avatar/_work-areas/placeholder\"");
-        assertThat(explorer).contains("hx-target=\"#avatar-workarea-surface\"");
-        assertThat(explorer).contains("id=\"avatar-workarea-list-region\"");
-        assertThat(explorer).contains("id=\"avatar-workarea-inspector\"");
-        assertThat(explorer).contains("id=\"avatar-workarea-modal\"");
-        assertThat(explorer).contains("workspace-explorer-toolbar");
-        assertThat(explorer).contains("Close Workspace");
-        assertThat(explorer).contains("title=\"Back\"");
-        assertThat(explorer).contains("title=\"Refresh\"");
-        assertThat(explorer).contains("title=\"New Folder\"");
-        assertThat(explorer).contains("title=\"New File\"");
-        assertThat(explorer).contains("Text (.txt)");
-        assertThat(explorer).contains("Markdown (.md)");
-        assertThat(explorer).contains("workspace-explorer-pathbar");
-        assertThat(explorer).contains("<th>Name</th>");
-        assertThat(explorer).contains("<th>File Type</th>");
-        assertThat(explorer).contains("<th>Size</th>");
-        assertThat(explorer).contains("<th>Created</th>");
-        assertThat(explorer).contains("<th>Last Modified</th>");
-        assertThat(explorer).contains("<th>Tags</th>");
-        assertThat(explorer).contains("<th>Actions</th>");
-        assertThat(explorer).doesNotContain("file-explorer-cards");
-        assertThat(explorer).doesNotContain("file-explorer-entry");
-
-        String created = controller.createWorkAreaDirectory(workAreaId, ".", "notes");
-        assertThat(created).contains("notes");
-
-        String newFileEditor = controller.createWorkAreaTextFile(workAreaId, "notes", "todo.md", "markdown");
-        assertThat(newFileEditor).contains("textarea");
-        assertThat(newFileEditor).contains("data-avatar-workarea-editor=\"true\"");
-        assertThat(newFileEditor).contains("data-editor-mode=\"edit\"");
-        assertThat(newFileEditor).contains("data-editor-mode=\"preview\"");
-        assertThat(newFileEditor).contains("data-editor-mode=\"split\"");
-        assertThat(newFileEditor).contains("id=\"avatar-workarea-list-region\"");
-        assertThat(newFileEditor).contains("hx-swap-oob=\"true\"");
-
-        String savedPreview = controller.saveWorkAreaText(workAreaId, "notes/todo.md", "**hello**\n");
-        assertThat(savedPreview).contains("id=\"avatar-workarea-list-region\"");
-        assertThat(savedPreview).contains("hx-swap-oob=\"true\"");
-        assertThat(savedPreview).contains("id=\"avatar-workarea-inspector\"");
-        assertThat(savedPreview).contains("class=\"avatar-modal");
-        assertThat(savedPreview).doesNotContain("id=\"avatar-workarea-modal\"><div class=\"avatar-modal\"");
-        assertThat(savedPreview).contains("avatar-tab-active");
-        assertThat(savedPreview).contains("data-viewer-kind=\"markdown\"");
-        assertThat(savedPreview).contains("data-active-tab=\"preview\"");
-        assertThat(savedPreview).contains("<strong>hello</strong>");
-
-        String preview = controller.workAreaPreview(workAreaId, "notes/todo.md");
-        assertThat(preview).contains("id=\"avatar-workarea-preview\"");
-        assertThat(preview).contains("Rendered");
-
-        String viewer = controller.workAreaViewer(workAreaId, "notes/todo.md");
-        assertThat(viewer).contains("class=\"avatar-modal");
-        assertThat(viewer).doesNotContain("id=\"avatar-workarea-modal\"");
-        assertThat(viewer).doesNotContain("id=\"avatar-workarea-preview\"");
-
-        String editor = controller.workAreaTextEditor(workAreaId, "notes/todo.md");
-        assertThat(editor).contains("textarea");
-        assertThat(editor).contains("avatar-modal-workarea-editor");
-        assertThat(editor).contains("avatar-markdown-editor-shell");
-        assertThat(editor).contains("hx-put=\"/avatar/_work-areas/" + workAreaId + "/text?path=notes%2Ftodo.md\"");
-        assertThat(editor).contains("hx-get=\"/avatar/_work-areas/modal/clear\"");
-        assertThat(editor).contains("hx-target=\"#avatar-workarea-modal\"");
-        assertThat(editor).contains("hx-swap=\"outerHTML\"");
-        assertThat(editor).contains("title=\"Save\"");
-        assertThat(editor).contains("title=\"Undo\"");
-        assertThat(editor).contains("title=\"Redo\"");
-        assertThat(editor).contains("title=\"Revert Unsaved\"");
-        assertThat(editor).contains("title=\"Close\"");
-        assertThat(editor).contains("avatar-workarea-editor-topbar");
-        assertThat(editor).contains("avatar-workarea-editor-title-group");
-        assertThat(editor).contains("avatar-workarea-editor-status-row");
-        assertThat(editor).contains("role=\"tablist\"");
-        assertThat(editor).contains("role=\"tab\"");
-        assertThat(editor).contains("data-editor-undo=\"true\"");
-        assertThat(editor).contains("data-editor-redo=\"true\"");
-        assertThat(editor).contains("data-editor-revert=\"true\"");
-
-        String marked = controller.markNestedWorkArea(workAreaId, "notes", "Notes");
-        assertThat(marked).contains("notes");
-        assertThat(workAreaService.list(WorkspaceOwnerType.AGENT, "agent-1", false))
-            .anySatisfy(workArea -> assertThat(workArea.displayName()).isEqualTo("Notes"));
+        String html = controller.avatar(false);
+        assertThat(html).doesNotContain("Work Areas");
+        assertThat(html).doesNotContain("/avatar/_work-areas/");
+        assertThatThrownBy(() -> controller.widget("files"))
+            .isInstanceOf(ResponseStatusException.class)
+            .extracting(error -> ((ResponseStatusException) error).getStatusCode())
+            .isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
     @Test
     void workAreaExplorerFragmentsExposeStableRoutesTargetsAndOperationForms() throws Exception {
-        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Home");
-        String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "agent-1", false).getFirst().id();
+        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "avatar", "Home");
+        String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "avatar", false).getFirst().id();
         workAreaExplorerService.createDirectory(workAreaId, "notes");
         workAreaExplorerService.createTextFile(workAreaId, "notes", "todo.txt");
         workAreaExplorerService.saveText(workAreaId, "notes/todo.txt", "hello");
@@ -355,6 +280,9 @@ class AvatarDashboardControllerTest {
         assertThat(shell).contains("workspace-explorer-table-region");
         assertThat(shell).contains("file-explorer-inspector-pane");
         assertThat(shell).contains("data-workarea-path=\"notes/todo.txt\"");
+        assertThat(shell).contains("data-workarea-open-url=\"/avatar/_work-areas/" + workAreaId + "/viewer?path=notes%2Ftodo.txt\"");
+        assertThat(shell).contains("data-workarea-open-target=\"#avatar-workarea-modal\"");
+        assertThat(shell).contains("data-workarea-open-swap=\"innerHTML\"");
         assertThat(shell).contains("hx-trigger=\"click[!event.target.closest('button,a,input,select,textarea,label,summary,details')]\"");
         assertThat(shell).contains(
             "hx-get=\"/avatar/_work-areas/" + workAreaId + "/explorer?path=notes&selected=notes%2Ftodo.txt&panel=expanded\""
@@ -418,7 +346,9 @@ class AvatarDashboardControllerTest {
             WorkAreaExplorerFragments.INSPECTOR_PANEL_STATE_COLLAPSED
         );
         assertThat(collapsed).contains("file-explorer-inspector-pane-collapsed");
-        assertThat(collapsed).contains("title=\"Expand inspector\"");
+        assertThat(collapsed).contains("title=\"Open details panel\"");
+        assertThat(collapsed).contains("workspace-inspector-rail-toggle-label");
+        assertThat(collapsed).contains(">Details<");
         assertThat(collapsed).doesNotContain("file-explorer-inspector-collapsed-label");
         assertThat(collapsed).doesNotContain(">todo.txt<");
         assertThat(collapsed).doesNotContain(">.<");
@@ -471,8 +401,8 @@ class AvatarDashboardControllerTest {
 
     @Test
     void workAreaMutationsReturnOobRefreshesForListInspectorAndModal() throws Exception {
-        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Home");
-        String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "agent-1", false).getFirst().id();
+        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "avatar", "Home");
+        String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "avatar", false).getFirst().id();
         workAreaExplorerService.createDirectory(workAreaId, "notes");
         workAreaExplorerService.createDirectory(workAreaId, "archive");
         workAreaExplorerService.createDirectory(workAreaId, "notes/dest");
@@ -512,7 +442,7 @@ class AvatarDashboardControllerTest {
 
     @Test
     void workAreaViewerRejectsUnsupportedFilesAndTextSaveErrorsAreVisible() throws Exception {
-        var home = workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Home");
+        var home = workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "avatar", "Home");
         String workAreaId = home.id();
         Path root = workAreaService.resolve(home);
         Files.write(root.resolve("blob.bin"), new byte[] {0, 1, 2, 3});
@@ -531,7 +461,7 @@ class AvatarDashboardControllerTest {
 
     @Test
     void workAreaViewerSupportsMarkdownTextImageAndFriendlyMarkdownFailure() throws Exception {
-        var home = workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Home");
+        var home = workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "avatar", "Home");
         String workAreaId = home.id();
         Path root = workAreaService.resolve(home);
         Files.writeString(root.resolve("note.md"), "# Heading\n\nbody");
@@ -543,6 +473,8 @@ class AvatarDashboardControllerTest {
         assertThat(markdown).doesNotContain("id=\"avatar-workarea-modal\"");
         assertThat(markdown).contains("data-viewer-kind=\"markdown\"");
         assertThat(markdown).contains("data-active-tab=\"preview\"");
+        assertThat(markdown.indexOf("data-editor-mode=\"preview\""))
+            .isLessThan(markdown.indexOf("data-editor-mode=\"edit\""));
         assertThat(markdown).contains("data-editor-mode=\"edit\"");
         assertThat(markdown).contains("data-editor-mode=\"preview\"");
         assertThat(markdown).contains("data-editor-mode=\"split\"");
@@ -560,10 +492,12 @@ class AvatarDashboardControllerTest {
         String plainText = controller.workAreaViewer(workAreaId, "plain.txt");
         assertThat(plainText).contains("textarea");
         assertThat(plainText).contains("data-viewer-kind=\"text\"");
-        assertThat(plainText).contains("data-active-tab=\"edit\"");
+        assertThat(plainText).contains("data-active-tab=\"preview\"");
+        assertThat(plainText).contains("data-editor-mode=\"preview\"");
         assertThat(plainText).contains("data-editor-mode=\"edit\"");
+        assertThat(plainText).contains("data-editor-plain-preview=\"true\"");
         assertThat(plainText).contains("aria-selected=\"true\"");
-        assertThat(plainText).doesNotContain("data-editor-mode=\"preview\"");
+        assertThat(plainText).doesNotContain("data-editor-mode=\"split\"");
 
         String image = controller.workAreaViewer(workAreaId, "pic.png");
         assertThat(image).contains("avatar-workarea-image-frame");
@@ -585,7 +519,7 @@ class AvatarDashboardControllerTest {
 
     @Test
     void markdownPreviewRouteRendersUnsavedContentWithoutPersistingAndSanitizesHtml() throws Exception {
-        var home = workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Home");
+        var home = workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "avatar", "Home");
         String workAreaId = home.id();
         Path root = workAreaService.resolve(home);
         Files.writeString(root.resolve("note.md"), "# Stored\n\nsafe");
@@ -607,8 +541,8 @@ class AvatarDashboardControllerTest {
 
     @Test
     void workAreaTagRoutesCreateAssignAndRemoveCustomTags() throws Exception {
-        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Home");
-        String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "agent-1", false).getFirst().id();
+        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "avatar", "Home");
+        String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "avatar", false).getFirst().id();
         workAreaExplorerService.createDirectory(workAreaId, "notes");
 
         String created = controller.createWorkAreaTag(workAreaId, "project-alpha", "Project Alpha");
@@ -629,8 +563,8 @@ class AvatarDashboardControllerTest {
 
     @Test
     void workAreaTagAssignmentRejectsForgedTargetTypeAndDoesNotAssign() throws Exception {
-        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Home");
-        String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "agent-1", false).getFirst().id();
+        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "avatar", "Home");
+        String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "avatar", false).getFirst().id();
         workAreaExplorerService.createDirectory(workAreaId, "notes");
         workAreaExplorerService.createTextFile(workAreaId, "notes", "todo.txt");
 
@@ -659,8 +593,8 @@ class AvatarDashboardControllerTest {
 
     @Test
     void tagEditorModalCreatesTypedTagsWithDescriptionAndAssignsSinglePathTarget() throws Exception {
-        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Home");
-        String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "agent-1", false).getFirst().id();
+        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "avatar", "Home");
+        String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "avatar", false).getFirst().id();
         workAreaExplorerService.createDirectory(workAreaId, "notes");
         workAreaExplorerService.createTextFile(workAreaId, "notes", "todo.txt");
         workAreaExplorerService.ensureTag("dir-only", "Directory Only", WorkspaceFileLabelTargetType.DIRECTORY);
@@ -697,8 +631,8 @@ class AvatarDashboardControllerTest {
 
     @Test
     void workAreaFragmentValidationErrorsReturnVisibleFragments() {
-        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Home");
-        String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "agent-1", false).getFirst().id();
+        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "avatar", "Home");
+        String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "avatar", false).getFirst().id();
 
         assertThat(controller.workAreaExplorerList(workAreaId, "../escape", null))
             .contains("id=\"avatar-workarea-list-region\"")
@@ -726,12 +660,13 @@ class AvatarDashboardControllerTest {
         String emptyWorkAreaModal = controller.clearWorkAreaModal();
         assertThat(emptyWorkAreaModal).isEqualTo("<div id=\"avatar-workarea-modal\"></div>");
 
-        String afterRow = controller.addLayoutRow();
-        String rowId = avatarService.dashboardRows().getFirst().id();
+        String dashboardId = avatarService.createDashboard("Layout Test").id();
+        String afterRow = controller.addLayoutRow(dashboardId);
+        String rowId = avatarService.dashboardRows(dashboardId).getFirst().id();
         assertThat(afterRow).contains("hx-swap-oob=\"true\"");
-        assertThat(afterRow).contains("/avatar/_layout/rows/" + rowId + "/catalog");
+        assertThat(afterRow).contains("/_dashboards/_layout/rows/" + rowId + "/catalog");
         assertThat(afterRow).contains("avatar-empty-row-insert");
-        assertThat(afterRow).doesNotContain("/avatar/_layout/rows/" + rowId + "/insert-after");
+        assertThat(afterRow).doesNotContain("/_dashboards/_layout/rows/" + rowId + "/insert-after");
 
         String catalog = controller.widgetCatalog(rowId);
         assertThat(catalog).contains("Add Widget");
@@ -743,7 +678,7 @@ class AvatarDashboardControllerTest {
         assertThat(inserted).contains("hx-swap-oob=\"true\"");
         assertThat(inserted).contains("avatar-widget-catalog");
         assertThat(inserted).contains("avatar-empty-row-insert");
-        assertThat(avatarService.dashboardRows()).hasSize(2);
+        assertThat(avatarService.dashboardRows(dashboardId)).hasSize(2);
 
         assertThatThrownBy(() -> controller.addLayoutWidget(rowId, "unknown", 4))
             .isInstanceOf(ResponseStatusException.class)
@@ -752,12 +687,12 @@ class AvatarDashboardControllerTest {
 
         controller.addLayoutWidget(rowId, "todos", 4);
         controller.addLayoutWidget(rowId, "notes", 4);
-        String todosId = avatarService.dashboardRows().getFirst().widgets().stream()
+        String todosId = avatarService.dashboardRows(dashboardId).getFirst().widgets().stream()
             .filter(widget -> widget.widgetKey().equals("todos"))
             .findFirst()
             .orElseThrow()
             .id();
-        String notesId = avatarService.dashboardRows().getFirst().widgets().stream()
+        String notesId = avatarService.dashboardRows(dashboardId).getFirst().widgets().stream()
             .filter(widget -> widget.widgetKey().equals("notes"))
             .findFirst()
             .orElseThrow()
@@ -771,24 +706,24 @@ class AvatarDashboardControllerTest {
 
         String resized = controller.resizeLayoutWidget(todosId, 5);
         assertThat(resized).contains("id=\"avatar-widget-todos\"");
-        assertThat(avatarService.dashboardRows().getFirst().widgets()).anySatisfy(widget -> {
+        assertThat(avatarService.dashboardRows(dashboardId).getFirst().widgets()).anySatisfy(widget -> {
             assertThat(widget.widgetKey()).isEqualTo("todos");
             assertThat(widget.columnWidth()).isEqualTo(5);
         });
 
         controller.cycleLayoutWidgetWidth(todosId);
-        assertThat(avatarService.dashboardRows().getFirst().widgets()).anySatisfy(widget -> {
+        assertThat(avatarService.dashboardRows(dashboardId).getFirst().widgets()).anySatisfy(widget -> {
             assertThat(widget.widgetKey()).isEqualTo("todos");
             assertThat(widget.columnWidth()).isEqualTo(3);
         });
 
         controller.moveLayoutWidget(notesId, "left");
-        assertThat(avatarService.dashboardRows().getFirst().widgets())
+        assertThat(avatarService.dashboardRows(dashboardId).getFirst().widgets())
             .extracting(widget -> widget.widgetKey())
             .containsExactly("notes", "todos");
 
         controller.removeLayoutWidget(notesId);
-        assertThat(avatarService.dashboardRows().getFirst().widgets())
+        assertThat(avatarService.dashboardRows(dashboardId).getFirst().widgets())
             .extracting(widget -> widget.widgetKey())
             .containsExactly("todos");
 
@@ -800,11 +735,11 @@ class AvatarDashboardControllerTest {
         controller.removeLayoutWidget(todosId);
         assertThat(controller.removeLayoutRow(rowId)).contains("avatar-widget-grid-editing");
 
-        controller.addLayoutRow();
-        controller.addLayoutRow();
-        String secondRowId = avatarService.dashboardRows().get(1).id();
+        controller.addLayoutRow(dashboardId);
+        controller.addLayoutRow(dashboardId);
+        String secondRowId = avatarService.dashboardRows(dashboardId).get(1).id();
         controller.moveLayoutRow(secondRowId, "up");
-        assertThat(avatarService.dashboardRows().getFirst().id()).isEqualTo(secondRowId);
+        assertThat(avatarService.dashboardRows(dashboardId).getFirst().id()).isEqualTo(secondRowId);
     }
 
     @Test
@@ -826,7 +761,7 @@ class AvatarDashboardControllerTest {
 
         String organizer = controller.organizer("planner");
         assertThat(organizer).contains("Planner");
-        assertThat(organizer).contains("/avatar/_planner-tasks");
+        assertThat(organizer).contains("/_dashboards/_planner-tasks");
 
         String plannerHtml = controller.createPlannerTask(
             "Review projects",

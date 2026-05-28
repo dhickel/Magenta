@@ -2,18 +2,19 @@
 
 These guides explain how to operate Magenta through the current alpha browser UI.
 
-Magenta has three main browser surfaces:
+Magenta has four main browser surfaces:
 
+- `/` for the Assistant dashboard home, dashboard selector, compact chat rail, and dashboard widgets.
 - `/chat` for conversations and anonymous ad hoc planning.
-- `/avatar` for the personal assistant shell, Work Areas, outputs, and dashboard widgets.
-- `/dashboard` and the operational pages for agents, plans, workflows, jobs, projects, inboxes, outputs, and runtime settings.
+- `/agents` for agent detail, queues, Work Areas, outputs, execution tools, history, and submit forms.
+- `/manage` and the operational pages for plans, workflows, jobs, projects, inboxes, outputs, runtime settings, and system management.
 
 ## Start Here
 
 - New user setup: [Quickstart](quickstart.md)
 - Conversational work and planning: [Chat](chat.md)
-- Personal assistant shell: [Avatar Dashboard](avatar-dashboard.md)
-- Operator overview: [Dashboard](dashboard.md)
+- Assistant dashboards: [Home Dashboards](avatar-dashboard.md)
+- Operator overview: [Manage](dashboard.md)
 - Build executable work: [Plans and Tasks](plans-and-tasks.md)
 - Chain work together: [Workflows](workflows.md)
 - Coordinate repeated or ordered work: [Jobs](jobs.md)
@@ -46,7 +47,7 @@ Operate a running agent:
 
 1. Open `/agents`.
 2. Select an agent.
-3. Use the dashboard, queue, inbox, workspace, outputs, exec, history, and submit tabs.
+3. Use the manage, queue, inbox, workspace, Work Areas, outputs, exec, history, and submit tabs.
 4. Pause, resume, cancel, force-interrupt, or inspect diagnostics from the queue and history tabs.
 
 ## Selector Behavior

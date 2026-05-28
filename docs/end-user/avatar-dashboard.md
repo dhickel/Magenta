@@ -1,53 +1,25 @@
-# Avatar Dashboard
+# Assistant Dashboards
 
-The Avatar dashboard lives at `/avatar`. It is the personal command surface for quick assistant chat, dashboard customization, queue visibility, recent work history, outputs, and Work Area access. It stays separate from `/dashboard`, which remains the broader operational console.
+The home route `/` is the user dashboard surface. It opens with the `Assistant` dashboard selected, a compact dashboard selector row, and a trailing `+` control for creating another dashboard.
 
-## Shell And Tabs
+Dashboards are configurable widget containers. They are not agents, Work Areas, or execution contexts.
 
-`/avatar` now uses a compact tabbed shell:
+## Editing
 
-- `Dashboard` is the only layout-editable page.
-- `Queue` shows live assignment queue state available to Avatar.
-- `History` shows the current baseline recent-work view.
-- `Profile` shows Avatar identity and default assistant settings.
-- `Outputs` shows recent generated artifacts and previews.
-- `Work Areas` exposes the confined workspace browser.
+Use the compact edit control on a dashboard to enter layout edit mode. Rows use the existing 12-column layout controls:
 
-The chat rail stays visible on every tab. On desktop, it sits on the left with a bottom-right resize corner inside the chat panel; drag that corner right or left to change chat width while the dashboard fills the remaining right-side space, or drag it down or up to adjust chat height. On mobile, the shell stacks and the resize corner is hidden.
+- Add rows from the empty-dashboard state or row insert affordances.
+- Add widgets from the row widget picker.
+- Move rows and widgets in place.
+- Resize widgets with the width picker.
+- Remove widgets and empty rows.
 
-## Editing The Dashboard
+New dashboards are created empty. The default `Assistant` dashboard starts with chat plus daily tasks, todos, calendar, notes, outputs, system, alerts, and recent work.
 
-Use the compact edit icon on the `Dashboard` tab to enter layout edit mode. The layout uses 12-column rows. Edit controls render on the live dashboard:
+## Work Areas
 
-- widget controls sit in the top corner of each widget;
-- row controls render as a thin decorator above the row;
-- add-widget controls appear between row content;
-- insert-row controls appear as compact separators.
+Work Areas are no longer dashboard widgets. Open an agent detail page from `Agents`, then use that agent's `Work Areas` tab to browse and edit the Work Areas owned by that agent.
 
-Placement, movement, and sizing happen where the widget is actually shown. Empty rows collapse into a compact add-widget affordance instead of a large blank band.
+## Manage
 
-## Widgets And Organizer Features
-
-Dashboard widgets still cover daily tasks, todos, calendar items, notes, Work Areas, outputs, system state, alerts, and recent work. The old top-level `Organizer` button is gone. Planner, todo, calendar, and note workflows now stay inside the dashboard widgets and their detail flows instead of using a separate toolbar entry.
-
-Routine widget actions such as adding todos, completing daily tasks, saving notes, previewing outputs, and dismissing alerts still run through HTMX. Manual `Refresh Widgets` is removed from the shell; refresh automation is deferred to a later pass.
-
-## Work Areas And Files
-
-The `Work Areas` widget and the top-level `Work Areas` tab use the confined workspace file explorer. The browser uses a familiar details/list file-manager layout:
-
-- clickable Work Area cards that open the explorer directly;
-- compact icon toolbar actions for Back (parent directory only), refresh, folder creation, and a new-file menu (`.txt` or `.md`);
-- breadcrumb/path navigation that stays inside the selected Work Area;
-- compact table rows with `Name`, `File Type`, `Size`, `Created`, `Last Modified`, `Tags`, and `Actions`;
-- a separate right-side inspector panel with collapse/expand controls, selected name/path, tags, a **Manage Tags** button, metadata, and a bounded preview box.
-
-Supported file actions include directory navigation, text and Markdown preview/edit/save, contained image preview, downloads, directory creation, `.txt`/`.md` creation, rename, copy, move, custom tags, note labels, and delete confirmation with an extra recursive confirmation for directories.
-
-Markdown and text files open in a full editor modal with icon controls (Save, Undo, Redo, Revert) near the title, a close control on the top-right, and segmented mode tabs. Markdown supports **Edit**, **Preview**, and **Split** modes; Preview and Split render your current unsaved text before you save. Plain text stays in Edit mode only. Unsupported or binary files do not expose a misleading row View action; stale viewer requests show a safe unsupported message instead. Copy and move open a directory-picker popover/module and stay confined under the selected Work Area without typing internal destination paths.
-
-Rows are selectable by clicking anywhere on the row except explicit controls (buttons/links/forms), so selection does not accidentally trigger row actions.
-
-Tag editing uses a dedicated **Tag Editor** modal from the inspector. The modal has Directory/File filters, compact tag rows with name, slug, type, and LLM-friendly description, and a focused row edit area for updating typed tags or assigning compatible tags to the selected item. Tag deletion is not exposed. File-only and directory-only assignment mismatches are still rejected server-side.
-
-New assignment work defaults to the selected Home Work Area. During execution, `workspace/` points at the selected Work Area and `root/` points at the broader owned root. Agent-facing `outputs/` is run-local staging at `runs/<runId>/outputs/`; after the run completes, Magenta promotes declared final outputs from that staging area to the selected Work Area, project, or other effective destination chosen by the submit form.
+The old operational dashboard is now `Manage` at `/manage`. The top navigation order is `Home`, `Chat`, `Agents`, `Manage`.

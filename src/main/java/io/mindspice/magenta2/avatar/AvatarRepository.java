@@ -24,6 +24,7 @@ import org.springframework.util.StringUtils;
 @Repository
 public class AvatarRepository {
     public static final String PROFILE_ID = "default";
+    public static final String ASSISTANT_DASHBOARD_ID = "assistant";
 
     private static final TypeReference<Map<String, Object>> MAP = new TypeReference<>() { };
     private static final TypeReference<List<String>> STRING_LIST = new TypeReference<>() { };
@@ -154,11 +155,85 @@ public class AvatarRepository {
         );
     }
 
+    public List<UserDashboard> findDashboards() {
+        ensureAssistantDashboard();
+        return jdbcTemplate.query(
+            "select * from user_dashboards order by dashboard_position, dashboard_name",
+            (rs, rowNum) -> toUserDashboard(rs)
+        );
+    }
+
+    public Optional<UserDashboard> findDashboard(String dashboardId) {
+        ensureAssistantDashboard();
+        return jdbcTemplate.query(
+            "select * from user_dashboards where id = ?",
+            rs -> rs.next() ? Optional.of(toUserDashboard(rs)) : Optional.empty(),
+            requireText(dashboardId, "dashboard id")
+        );
+    }
+
+    public UserDashboard assistantDashboard() {
+        return findDashboard(ASSISTANT_DASHBOARD_ID).orElseThrow();
+    }
+
+    public UserDashboard createDashboard(String name) {
+        String normalized = requireText(name, "dashboard name").strip();
+        if (normalized.length() > 80) {
+            throw new IllegalArgumentException("dashboard name must be 80 characters or less");
+        }
+        ensureAssistantDashboard();
+        Integer duplicate = jdbcTemplate.queryForObject(
+            "select count(*) from user_dashboards where lower(dashboard_name) = lower(?)",
+            Integer.class,
+            normalized
+        );
+        if (duplicate != null && duplicate > 0) {
+            throw new IllegalArgumentException("dashboard already exists: " + normalized);
+        }
+        Instant now = Instant.now();
+        String id = "dashboard-" + UUID.randomUUID();
+        jdbcTemplate.update(
+            """
+                insert into user_dashboards (
+                    id, dashboard_name, dashboard_position, default_dashboard, settings_json, created_at, updated_at
+                )
+                values (?, ?, ?, 0, '{}', ?, ?)
+                """,
+            id,
+            normalized,
+            nextUserDashboardPosition(),
+            now.toString(),
+            now.toString()
+        );
+        return findDashboard(id).orElseThrow();
+    }
+
+    public String dashboardIdForDashboardRow(String rowId) {
+        String dashboardId = dashboardIdForRow(rowId);
+        if (!StringUtils.hasText(dashboardId)) {
+            throw new IllegalArgumentException("dashboard row not found: " + rowId);
+        }
+        return dashboardId;
+    }
+
+    public String dashboardIdForDashboardWidget(String widgetId) {
+        return jdbcTemplate.query(
+            "select dashboard_id from user_dashboard_widgets where id = ?",
+            rs -> rs.next() ? rs.getString("dashboard_id") : null,
+            requireText(widgetId, "widget id")
+        );
+    }
+
     public List<AvatarDashboardRow> findDashboardRows() {
-        seedDashboardRowsFromLegacyLayoutIfNeeded();
+        return findDashboardRows(ASSISTANT_DASHBOARD_ID);
+    }
+
+    public List<AvatarDashboardRow> findDashboardRows(String dashboardId) {
+        requireDashboard(dashboardId);
         List<DashboardRowRecord> rows = jdbcTemplate.query(
-            "select * from avatar_dashboard_rows order by row_position, id",
-            (rs, rowNum) -> toDashboardRowRecord(rs)
+            "select * from user_dashboard_rows where dashboard_id = ? order by row_position, id",
+            (rs, rowNum) -> toDashboardRowRecord(rs),
+            dashboardId
         );
         return rows.stream()
             .map(row -> new AvatarDashboardRow(
@@ -173,15 +248,21 @@ public class AvatarRepository {
     }
 
     public AvatarDashboardRow addDashboardRow() {
-        int nextPosition = nextDashboardRowPosition();
+        return addDashboardRow(ASSISTANT_DASHBOARD_ID);
+    }
+
+    public AvatarDashboardRow addDashboardRow(String dashboardId) {
+        requireDashboard(dashboardId);
+        int nextPosition = nextDashboardRowPosition(dashboardId);
         String id = "row-" + UUID.randomUUID();
         Instant now = Instant.now();
         jdbcTemplate.update(
             """
-                insert into avatar_dashboard_rows (id, row_position, collapsed, settings_json, updated_at)
-                values (?, ?, 0, '{}', ?)
+                insert into user_dashboard_rows (id, dashboard_id, row_position, collapsed, settings_json, updated_at)
+                values (?, ?, ?, 0, '{}', ?)
                 """,
             id,
+            dashboardId,
             nextPosition,
             now.toString()
         );
@@ -189,8 +270,13 @@ public class AvatarRepository {
     }
 
     public AvatarDashboardRow insertDashboardRowAfter(String rowId) {
+        return insertDashboardRowAfter(dashboardIdForRow(rowId), rowId);
+    }
+
+    public AvatarDashboardRow insertDashboardRowAfter(String dashboardId, String rowId) {
         requireText(rowId, "row id");
-        List<DashboardRowRecord> rows = dashboardRowRecords();
+        requireDashboard(dashboardId);
+        List<DashboardRowRecord> rows = dashboardRowRecords(dashboardId);
         int index = indexOfRow(rows, rowId);
         if (index < 0) {
             throw new IllegalArgumentException("dashboard row not found: " + rowId);
@@ -198,30 +284,40 @@ public class AvatarRepository {
         int position = rows.get(index).position() + 1;
         Instant now = Instant.now();
         jdbcTemplate.update(
-            "update avatar_dashboard_rows set row_position = row_position + 1, updated_at = ? where row_position >= ?",
+            """
+                update user_dashboard_rows set row_position = row_position + 1, updated_at = ?
+                where dashboard_id = ? and row_position >= ?
+                """,
             now.toString(),
+            dashboardId,
             position
         );
         String id = "row-" + UUID.randomUUID();
         jdbcTemplate.update(
             """
-                insert into avatar_dashboard_rows (id, row_position, collapsed, settings_json, updated_at)
-                values (?, ?, 0, '{}', ?)
+                insert into user_dashboard_rows (id, dashboard_id, row_position, collapsed, settings_json, updated_at)
+                values (?, ?, ?, 0, '{}', ?)
                 """,
             id,
+            dashboardId,
             position,
             now.toString()
         );
-        normalizeDashboardRows();
+        normalizeDashboardRows(dashboardId);
         return findDashboardRow(id).orElseThrow();
     }
 
     public AvatarDashboardRow moveDashboardRow(String rowId, int direction) {
+        return moveDashboardRow(dashboardIdForRow(rowId), rowId, direction);
+    }
+
+    public AvatarDashboardRow moveDashboardRow(String dashboardId, String rowId, int direction) {
         requireText(rowId, "row id");
+        requireDashboard(dashboardId);
         if (direction != -1 && direction != 1) {
             throw new IllegalArgumentException("row direction must be -1 or 1");
         }
-        List<DashboardRowRecord> rows = dashboardRowRecords();
+        List<DashboardRowRecord> rows = dashboardRowRecords(dashboardId);
         int index = indexOfRow(rows, rowId);
         int target = index + direction;
         if (target < 0 || target >= rows.size()) {
@@ -230,19 +326,24 @@ public class AvatarRepository {
         DashboardRowRecord current = rows.get(index);
         DashboardRowRecord swap = rows.get(target);
         Instant now = Instant.now();
-        jdbcTemplate.update("update avatar_dashboard_rows set row_position = ?, updated_at = ? where id = ?",
+        jdbcTemplate.update("update user_dashboard_rows set row_position = ?, updated_at = ? where id = ?",
             swap.position(), now.toString(), current.id());
-        jdbcTemplate.update("update avatar_dashboard_rows set row_position = ?, updated_at = ? where id = ?",
+        jdbcTemplate.update("update user_dashboard_rows set row_position = ?, updated_at = ? where id = ?",
             current.position(), now.toString(), swap.id());
-        normalizeDashboardRows();
+        normalizeDashboardRows(dashboardId);
         return findDashboardRow(rowId).orElseThrow();
     }
 
     public AvatarDashboardRowWidget addDashboardWidget(String rowId, String widgetKey, int columnWidth) {
+        return addDashboardWidget(dashboardIdForRow(rowId), rowId, widgetKey, columnWidth);
+    }
+
+    public AvatarDashboardRowWidget addDashboardWidget(String dashboardId, String rowId, String widgetKey, int columnWidth) {
         requireText(rowId, "row id");
+        requireDashboard(dashboardId);
         requireText(widgetKey, "widget key");
         int width = requireColumnWidth(columnWidth);
-        if (findDashboardWidgetByKey(widgetKey).isPresent()) {
+        if (findDashboardWidgetByKey(dashboardId, widgetKey).isPresent()) {
             throw new IllegalArgumentException("dashboard widget already exists: " + widgetKey);
         }
         findDashboardRow(rowId).orElseThrow(() -> new IllegalArgumentException("dashboard row not found: " + rowId));
@@ -254,12 +355,13 @@ public class AvatarRepository {
         Instant now = Instant.now();
         jdbcTemplate.update(
             """
-                insert into avatar_dashboard_widgets (
-                    id, row_id, widget_key, column_position, column_width, enabled, collapsed, settings_json, updated_at
+                insert into user_dashboard_widgets (
+                    id, dashboard_id, row_id, widget_key, column_position, column_width, enabled, collapsed, settings_json, updated_at
                 )
-                values (?, ?, ?, ?, ?, 1, 0, '{}', ?)
+                values (?, ?, ?, ?, ?, ?, 1, 0, '{}', ?)
                 """,
             id,
+            dashboardId,
             rowId,
             widgetKey,
             nextDashboardWidgetPosition(rowId),
@@ -278,7 +380,7 @@ public class AvatarRepository {
             throw new IllegalArgumentException("dashboard row width cannot exceed 12 columns");
         }
         jdbcTemplate.update(
-            "update avatar_dashboard_widgets set column_width = ?, updated_at = ? where id = ?",
+            "update user_dashboard_widgets set column_width = ?, updated_at = ? where id = ?",
             width,
             Instant.now().toString(),
             widgetId
@@ -319,21 +421,25 @@ public class AvatarRepository {
         if (dashboardRowWidth(rowId) > 0) {
             throw new IllegalArgumentException("dashboard row must be empty before it can be removed");
         }
-        jdbcTemplate.update("delete from avatar_dashboard_rows where id = ?", rowId);
-        normalizeDashboardRows();
+        String dashboardId = dashboardIdForRow(rowId);
+        jdbcTemplate.update("delete from user_dashboard_rows where id = ?", rowId);
+        normalizeDashboardRows(dashboardId);
     }
 
     public void removeDashboardWidget(String widgetId) {
         requireText(widgetId, "widget id");
-        if (jdbcTemplate.update("delete from avatar_dashboard_widgets where id = ?", widgetId) == 0) {
+        String rowId = findDashboardWidget(widgetId)
+            .map(AvatarDashboardRowWidget::rowId)
+            .orElseThrow(() -> new IllegalArgumentException("dashboard widget not found: " + widgetId));
+        if (jdbcTemplate.update("delete from user_dashboard_widgets where id = ?", widgetId) == 0) {
             throw new IllegalArgumentException("dashboard widget not found: " + widgetId);
         }
-        normalizeDashboardWidgets();
+        normalizeDashboardWidgets(rowId);
     }
 
     private Optional<AvatarDashboardRow> findDashboardRow(String rowId) {
         return jdbcTemplate.query(
-            "select * from avatar_dashboard_rows where id = ?",
+            "select * from user_dashboard_rows where id = ?",
             rs -> rs.next()
                 ? Optional.of(toDashboardRowRecord(rs))
                 : Optional.<DashboardRowRecord>empty(),
@@ -350,16 +456,17 @@ public class AvatarRepository {
 
     private Optional<AvatarDashboardRowWidget> findDashboardWidget(String widgetId) {
         return jdbcTemplate.query(
-            "select * from avatar_dashboard_widgets where id = ?",
+            "select * from user_dashboard_widgets where id = ?",
             rs -> rs.next() ? Optional.of(toDashboardRowWidget(rs)) : Optional.empty(),
             widgetId
         );
     }
 
-    private Optional<AvatarDashboardRowWidget> findDashboardWidgetByKey(String widgetKey) {
+    private Optional<AvatarDashboardRowWidget> findDashboardWidgetByKey(String dashboardId, String widgetKey) {
         return jdbcTemplate.query(
-            "select * from avatar_dashboard_widgets where widget_key = ?",
+            "select * from user_dashboard_widgets where dashboard_id = ? and widget_key = ?",
             rs -> rs.next() ? Optional.of(toDashboardRowWidget(rs)) : Optional.empty(),
+            dashboardId,
             widgetKey
         );
     }
@@ -367,7 +474,7 @@ public class AvatarRepository {
     private List<AvatarDashboardRowWidget> findDashboardRowWidgets(String rowId) {
         return jdbcTemplate.query(
             """
-                select * from avatar_dashboard_widgets
+                select * from user_dashboard_widgets
                 where row_id = ?
                 order by column_position, widget_key
                 """,
@@ -376,25 +483,27 @@ public class AvatarRepository {
         );
     }
 
-    private List<DashboardRowRecord> dashboardRowRecords() {
-        seedDashboardRowsFromLegacyLayoutIfNeeded();
+    private List<DashboardRowRecord> dashboardRowRecords(String dashboardId) {
+        requireDashboard(dashboardId);
         return jdbcTemplate.query(
-            "select * from avatar_dashboard_rows order by row_position, id",
-            (rs, rowNum) -> toDashboardRowRecord(rs)
+            "select * from user_dashboard_rows where dashboard_id = ? order by row_position, id",
+            (rs, rowNum) -> toDashboardRowRecord(rs),
+            dashboardId
         );
     }
 
-    private int nextDashboardRowPosition() {
+    private int nextDashboardRowPosition(String dashboardId) {
         Integer position = jdbcTemplate.queryForObject(
-            "select coalesce(max(row_position), -1) + 1 from avatar_dashboard_rows",
-            Integer.class
+            "select coalesce(max(row_position), -1) + 1 from user_dashboard_rows where dashboard_id = ?",
+            Integer.class,
+            dashboardId
         );
         return position == null ? 0 : position;
     }
 
     private int nextDashboardWidgetPosition(String rowId) {
         Integer position = jdbcTemplate.queryForObject(
-            "select coalesce(max(column_position), -1) + 1 from avatar_dashboard_widgets where row_id = ?",
+            "select coalesce(max(column_position), -1) + 1 from user_dashboard_widgets where row_id = ?",
             Integer.class,
             rowId
         );
@@ -403,7 +512,7 @@ public class AvatarRepository {
 
     private int dashboardRowWidth(String rowId) {
         Integer width = jdbcTemplate.queryForObject(
-            "select coalesce(sum(column_width), 0) from avatar_dashboard_widgets where row_id = ?",
+            "select coalesce(sum(column_width), 0) from user_dashboard_widgets where row_id = ?",
             Integer.class,
             rowId
         );
@@ -428,16 +537,16 @@ public class AvatarRepository {
         }
         AvatarDashboardRowWidget swap = widgets.get(target);
         Instant now = Instant.now();
-        jdbcTemplate.update("update avatar_dashboard_widgets set column_position = ?, updated_at = ? where id = ?",
+        jdbcTemplate.update("update user_dashboard_widgets set column_position = ?, updated_at = ? where id = ?",
             swap.columnPosition(), now.toString(), widget.id());
-        jdbcTemplate.update("update avatar_dashboard_widgets set column_position = ?, updated_at = ? where id = ?",
+        jdbcTemplate.update("update user_dashboard_widgets set column_position = ?, updated_at = ? where id = ?",
             widget.columnPosition(), now.toString(), swap.id());
         normalizeDashboardWidgets(widget.rowId());
         return findDashboardWidget(widget.id()).orElseThrow();
     }
 
     private AvatarDashboardRowWidget moveDashboardWidgetToAdjacentRow(AvatarDashboardRowWidget widget, int direction) {
-        List<DashboardRowRecord> rows = dashboardRowRecords();
+        List<DashboardRowRecord> rows = dashboardRowRecords(dashboardIdForRow(widget.rowId()));
         int currentRowIndex = indexOfRow(rows, widget.rowId());
         int targetRowIndex = currentRowIndex + direction;
         if (targetRowIndex < 0 || targetRowIndex >= rows.size()) {
@@ -448,7 +557,7 @@ public class AvatarRepository {
             throw new IllegalArgumentException("target row does not have enough available width");
         }
         jdbcTemplate.update(
-            "update avatar_dashboard_widgets set row_id = ?, column_position = ?, updated_at = ? where id = ?",
+            "update user_dashboard_widgets set row_id = ?, column_position = ?, updated_at = ? where id = ?",
             targetRowId,
             nextDashboardWidgetPosition(targetRowId),
             Instant.now().toString(),
@@ -468,25 +577,20 @@ public class AvatarRepository {
         throw new IllegalArgumentException("dashboard widget not found: " + widgetId);
     }
 
-    private void normalizeDashboardRows() {
+    private void normalizeDashboardRows(String dashboardId) {
         List<DashboardRowRecord> rows = jdbcTemplate.query(
-            "select * from avatar_dashboard_rows order by row_position, id",
-            (rs, rowNum) -> toDashboardRowRecord(rs)
+            "select * from user_dashboard_rows where dashboard_id = ? order by row_position, id",
+            (rs, rowNum) -> toDashboardRowRecord(rs),
+            dashboardId
         );
         Instant now = Instant.now();
         for (int i = 0; i < rows.size(); i++) {
             jdbcTemplate.update(
-                "update avatar_dashboard_rows set row_position = ?, updated_at = ? where id = ?",
+                "update user_dashboard_rows set row_position = ?, updated_at = ? where id = ?",
                 i,
                 now.toString(),
                 rows.get(i).id()
             );
-        }
-    }
-
-    private void normalizeDashboardWidgets() {
-        for (DashboardRowRecord row : dashboardRowRecords()) {
-            normalizeDashboardWidgets(row.id());
         }
     }
 
@@ -495,7 +599,7 @@ public class AvatarRepository {
         Instant now = Instant.now();
         for (int i = 0; i < widgets.size(); i++) {
             jdbcTemplate.update(
-                "update avatar_dashboard_widgets set column_position = ?, updated_at = ? where id = ?",
+                "update user_dashboard_widgets set column_position = ?, updated_at = ? where id = ?",
                 i,
                 now.toString(),
                 widgets.get(i).id()
@@ -504,95 +608,85 @@ public class AvatarRepository {
     }
 
     private void seedDashboardRowsFromLegacyLayoutIfNeeded() {
-        Integer rowCount = jdbcTemplate.queryForObject("select count(*) from avatar_dashboard_rows", Integer.class);
-        if (rowCount != null && rowCount > 0) {
-            return;
-        }
-        List<AvatarDashboardWidget> legacy = findDashboardLayout();
-        if (legacy.isEmpty()) {
-            return;
-        }
-        String rowId = null;
-        int rowPosition = -1;
-        int rowWidth = 0;
-        for (AvatarDashboardWidget widget : legacy) {
-            int width = widthForLegacySize(widget.size());
-            if (rowId == null || rowWidth + width > 12) {
-                rowId = insertDashboardRow(++rowPosition);
-                rowWidth = 0;
-            }
-            insertDashboardRowWidget(rowId, widget, width, nextDashboardWidgetPosition(rowId));
-            rowWidth += width;
-        }
+        ensureAssistantDashboard();
     }
 
     private void syncDashboardRowWidgetFromLegacy(AvatarDashboardWidget widget) {
-        seedDashboardRowsFromLegacyLayoutIfNeeded();
-        Optional<AvatarDashboardRowWidget> existing = findDashboardWidgetByKey(widget.widgetId());
-        int width = widthForLegacySize(widget.size());
-        if (existing.isPresent()) {
-            jdbcTemplate.update(
-                """
-                    update avatar_dashboard_widgets
-                    set column_width = ?, enabled = ?, collapsed = ?, settings_json = ?, updated_at = ?
-                    where id = ?
-                    """,
-                width,
-                widget.enabled() ? 1 : 0,
-                widget.collapsed() ? 1 : 0,
-                jsonMap(widget.settings()),
-                Instant.now().toString(),
-                existing.get().id()
-            );
-            return;
-        }
-        List<DashboardRowRecord> rows = dashboardRowRecords();
-        String rowId = rows.isEmpty() ? insertDashboardRow(0) : rows.get(rows.size() - 1).id();
-        if (dashboardRowWidth(rowId) + width > 12) {
-            rowId = insertDashboardRow(nextDashboardRowPosition());
-        }
-        insertDashboardRowWidget(rowId, widget, width, nextDashboardWidgetPosition(rowId));
+        ensureAssistantDashboard();
     }
 
-    private String insertDashboardRow(int position) {
+    private void ensureAssistantDashboard() {
+        Integer dashboardCount = jdbcTemplate.queryForObject(
+            "select count(*) from user_dashboards where id = ?",
+            Integer.class,
+            ASSISTANT_DASHBOARD_ID
+        );
+        if (dashboardCount == null || dashboardCount == 0) {
+            Instant now = Instant.now();
+            jdbcTemplate.update(
+                """
+                    insert into user_dashboards (
+                        id, dashboard_name, dashboard_position, default_dashboard, settings_json, created_at, updated_at
+                    )
+                    values (?, 'Assistant', 0, 1, '{}', ?, ?)
+                    """,
+                ASSISTANT_DASHBOARD_ID,
+                now.toString(),
+                now.toString()
+            );
+        }
+        Integer rowCount = jdbcTemplate.queryForObject(
+            "select count(*) from user_dashboard_rows where dashboard_id = ?",
+            Integer.class,
+            ASSISTANT_DASHBOARD_ID
+        );
+        if (rowCount != null && rowCount > 0) {
+            return;
+        }
+        String rowOne = insertUserDashboardRow(ASSISTANT_DASHBOARD_ID, 0);
+        insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowOne, "daily-tasks", 6, 0);
+        insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowOne, "todos", 3, 1);
+        insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowOne, "calendar", 3, 2);
+        String rowTwo = insertUserDashboardRow(ASSISTANT_DASHBOARD_ID, 1);
+        insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowTwo, "notes", 6, 0);
+        insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowTwo, "outputs", 6, 1);
+        String rowThree = insertUserDashboardRow(ASSISTANT_DASHBOARD_ID, 2);
+        insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowThree, "system", 4, 0);
+        insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowThree, "alerts", 4, 1);
+        insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowThree, "recent-work", 4, 2);
+    }
+
+    private String insertUserDashboardRow(String dashboardId, int position) {
         String rowId = "row-" + UUID.randomUUID();
         jdbcTemplate.update(
-            "insert into avatar_dashboard_rows (id, row_position, collapsed, settings_json, updated_at) values (?, ?, 0, '{}', ?)",
+            """
+                insert into user_dashboard_rows (id, dashboard_id, row_position, collapsed, settings_json, updated_at)
+                values (?, ?, ?, 0, '{}', ?)
+                """,
             rowId,
+            dashboardId,
             position,
             Instant.now().toString()
         );
         return rowId;
     }
 
-    private void insertDashboardRowWidget(String rowId, AvatarDashboardWidget widget, int width, int position) {
+    private void insertUserDashboardWidget(String dashboardId, String rowId, String widgetKey, int width, int position) {
         jdbcTemplate.update(
             """
-                insert into avatar_dashboard_widgets (
-                    id, row_id, widget_key, column_position, column_width, enabled, collapsed, settings_json, updated_at
+                insert into user_dashboard_widgets (
+                    id, dashboard_id, row_id, widget_key, column_position, column_width, enabled, collapsed, settings_json, updated_at
                 )
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, 1, 0, '{}', ?)
                 """,
             "widget-" + UUID.randomUUID(),
+            dashboardId,
             rowId,
-            requireText(widget.widgetId(), "widget id"),
+            requireText(widgetKey, "widget id"),
             position,
             width,
-            widget.enabled() ? 1 : 0,
-            widget.collapsed() ? 1 : 0,
-            jsonMap(widget.settings()),
             Instant.now().toString()
         );
-    }
-
-    private int widthForLegacySize(String size) {
-        if ("wide".equalsIgnoreCase(size)) {
-            return 6;
-        }
-        if ("compact".equalsIgnoreCase(size)) {
-            return 3;
-        }
-        return 4;
     }
 
     private int requireColumnWidth(int width) {
@@ -600,6 +694,39 @@ public class AvatarRepository {
             throw new IllegalArgumentException("column width must be between 1 and 12");
         }
         return width;
+    }
+
+    private void requireDashboard(String dashboardId) {
+        findDashboard(requireText(dashboardId, "dashboard id"))
+            .orElseThrow(() -> new IllegalArgumentException("dashboard not found: " + dashboardId));
+    }
+
+    private String dashboardIdForRow(String rowId) {
+        requireText(rowId, "row id");
+        return jdbcTemplate.query(
+            "select dashboard_id from user_dashboard_rows where id = ?",
+            rs -> rs.next() ? rs.getString("dashboard_id") : null,
+            rowId
+        );
+    }
+
+    private int nextUserDashboardPosition() {
+        Integer position = jdbcTemplate.queryForObject(
+            "select coalesce(max(dashboard_position), -1) + 1 from user_dashboards",
+            Integer.class
+        );
+        return position == null ? 0 : position;
+    }
+
+    private UserDashboard toUserDashboard(ResultSet rs) throws SQLException {
+        return new UserDashboard(
+            rs.getString("id"),
+            rs.getString("dashboard_name"),
+            rs.getInt("dashboard_position"),
+            rs.getInt("default_dashboard") == 1,
+            instant(rs.getString("created_at")),
+            instant(rs.getString("updated_at"))
+        );
     }
 
     private DashboardRowRecord toDashboardRowRecord(ResultSet rs) throws SQLException {

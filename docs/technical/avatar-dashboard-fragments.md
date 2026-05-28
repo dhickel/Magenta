@@ -1,103 +1,66 @@
-# Avatar Dashboard Fragment Routes
+# Assistant Dashboard Fragment Routes
 
-`/avatar` is a server-rendered SimplyPages shell with HTMX fragments for tab swaps, dashboard layout editing, widget detail flows, output preview, alerts, and Work Area file operations.
+`/` renders the dashboard home with the `Assistant` dashboard selected. Dashboard records are agent-agnostic widget containers stored in the dashboard persistence context.
 
 ## Shell Routes
 
-- `GET /avatar` renders the full Avatar shell.
-- `GET /avatar?tab=<dashboard|queue|history|profile|outputs|work-areas>` deep-links the initial tab.
-- `GET /avatar?tab=dashboard&edit=true` renders the dashboard tab in layout edit mode.
-- `GET /avatar/_tab-panel?tab=...`
-- `GET /avatar/_tab-panel/{tab}`
+- `GET /` renders the full dashboard home.
+- `GET /dashboards/{dashboardId}` renders a selected dashboard.
+- `GET /dashboards/_create` renders the create-dashboard modal.
+- `POST /dashboards` creates a new empty dashboard by name.
+- `GET /dashboards/_modal/clear` clears the shared modal host.
 
-Tab fragment responses return two pieces:
+## Layout Routes
 
-- `#avatar-tab-panel` as the primary swap target;
-- `#avatar-shell-tabs-wrap` as an out-of-band swap so active-tab styling and shell actions stay in sync without rerendering the left chat rail.
+- `POST /dashboards/{dashboardId}/_layout/rows`
+- `POST /_dashboards/_layout/rows`
+- `POST /_dashboards/_layout/rows/{rowId}/insert-after`
+- `POST /_dashboards/_layout/rows/{rowId}/move?direction=up|down`
+- `DELETE /_dashboards/_layout/rows/{rowId}`
+- `GET /_dashboards/_layout/rows/{rowId}/catalog`
+- `POST /_dashboards/_layout/rows/{rowId}/widgets`
+- `POST /_dashboards/_layout/widgets/{widgetId}/move?direction=left|right|up|down`
+- `GET /_dashboards/_layout/widgets/{widgetId}/width-picker`
+- `PUT /_dashboards/_layout/widgets/{widgetId}/width`
+- `POST /_dashboards/_layout/widgets/{widgetId}/width-cycle`
+- `DELETE /_dashboards/_layout/widgets/{widgetId}`
 
-`edit=true` is normalized away for all non-dashboard tabs. The shell pushes the canonical tab URL back into browser history with `HX-Push-Url`.
+Layout mutations refresh `#avatar-widget-grid` with out-of-band swaps and clear `#avatar-edit-container` when appropriate.
 
-## Dashboard Layout
+## Widget Routes
 
-- `GET /avatar/_widgets`
-- `GET /avatar/_widgets?edit=true`
-- `GET /avatar/_widgets/{widgetKey}`
-- `GET /avatar/_widgets/{widgetKey}/detail`
-- `GET /avatar/_edit`
-- `POST /avatar/_layout/rows`
-- `POST /avatar/_layout/rows/{rowId}/insert-after`
-- `POST /avatar/_layout/rows/{rowId}/move?direction=up|down`
-- `DELETE /avatar/_layout/rows/{rowId}`
-- `GET /avatar/_layout/rows/{rowId}/catalog`
-- `POST /avatar/_layout/rows/{rowId}/widgets`
-- `POST /avatar/_layout/widgets/{widgetId}/move?direction=left|right|up|down`
-- `GET /avatar/_layout/widgets/{widgetId}/width-picker`
-- `PUT /avatar/_layout/widgets/{widgetId}/width`
-- `POST /avatar/_layout/widgets/{widgetId}/width-cycle`
-- `DELETE /avatar/_layout/widgets/{widgetId}`
+- Todos: `POST /_dashboards/_todos`, `POST /_dashboards/_todos/{todoId}/complete`, `DELETE /_dashboards/_todos/{todoId}`
+- Daily tasks: `POST /_dashboards/_daily-tasks`, `POST /_dashboards/_daily-tasks/{taskId}/complete`
+- Notes: `POST /_dashboards/_notes`
+- Calendar: `POST /_dashboards/_calendar`, `DELETE /_dashboards/_calendar/{calendarId}`
+- Planner tasks: `POST /_dashboards/_planner-tasks`, `POST /_dashboards/_planner-tasks/{taskId}/subtodos`
+- Outputs: `GET /_dashboards/_outputs/{artifactId}`
+- Alerts: `POST /_dashboards/_alerts/{eventId}/dismiss`
 
-Only the `Dashboard` tab is layout-editable. Layout mutations refresh `#avatar-widget-grid` with an out-of-band swap and clear the shared `#avatar-edit-container` when appropriate.
+## Work Areas
 
-Edit chrome contract:
+Work Area browsing moved to agent detail:
 
-- widget controls stay in the widget corner;
-- row controls render through `.avatar-row-decoration` above row content;
-- empty rows render as `.avatar-empty-row-insert`;
-- insert-row affordances render as compact separators between populated rows.
+- `GET /agents/_detail/{agentId}/work-areas`
+- `GET /agents/_detail/{agentId}/work-areas/{workAreaId}/explorer`
+- `GET /agents/_detail/{agentId}/work-areas/{workAreaId}/viewer`
+- `GET /agents/_detail/{agentId}/work-areas/{workAreaId}/modal/{action}`
+- `POST /agents/_detail/{agentId}/work-areas/{workAreaId}/directories`
+- `POST|PUT /agents/_detail/{agentId}/work-areas/{workAreaId}/text`
+- `POST /agents/_detail/{agentId}/work-areas/{workAreaId}/files/rename`
+- `POST /agents/_detail/{agentId}/work-areas/{workAreaId}/files/delete`
+- `POST /agents/_detail/{agentId}/work-areas/{workAreaId}/files/action/{copy|move}`
+- `GET /agents/_detail/{agentId}/work-areas/{workAreaId}/files/directories`
+- `GET /agents/_detail/{agentId}/work-areas/{workAreaId}/files/action/{copy|move}/picker`
+- `GET|POST /agents/_detail/{agentId}/work-areas/{workAreaId}/modal/tag-editor...`
+- `POST|DELETE /agents/_detail/{agentId}/work-areas/{workAreaId}/files/tags`
 
-The old top-level `Organizer` and `Refresh Widgets` shell actions are intentionally removed from the shell contract.
+The route guard checks that the Work Area owner type is `AGENT` and the owner id matches the agent detail id. Newly rendered Work Area UI must call the agent-detail route family, not `/avatar/_work-areas`.
 
-## Widget And Modal Actions
+## Assets
 
-- Planner tasks: `POST /avatar/_planner-tasks` and `POST /avatar/_planner-tasks/{taskId}/subtodos`
-- Todos: `POST /avatar/_todos`, `POST /avatar/_todos/{todoId}/complete`, `DELETE /avatar/_todos/{todoId}`
-- Daily tasks: `POST /avatar/_daily-tasks`, `POST /avatar/_daily-tasks/{taskId}/complete`
-- Notes: `POST /avatar/_notes`
-- Calendar: `POST /avatar/_calendar`, `DELETE /avatar/_calendar/{calendarId}`
-- Outputs: `GET /avatar/_outputs/{artifactId}`
-- Alerts: `POST /avatar/_alerts/{eventId}/dismiss`
-- Work Areas: `GET /avatar/_work-areas/{workAreaId}/explorer`, `GET /avatar/_work-areas/{workAreaId}/explorer/list`, `GET /avatar/_work-areas/{workAreaId}/inspect`, `GET /avatar/_work-areas/{workAreaId}/viewer`, `GET /avatar/_work-areas/{workAreaId}/viewer/text`, `POST /avatar/_work-areas/{workAreaId}/viewer/markdown-preview`, legacy `GET /avatar/_work-areas/{workAreaId}/preview`, `GET /avatar/_work-areas/{workAreaId}/edit`, `GET /avatar/_work-areas/{workAreaId}/modal/{action}`, `GET /avatar/_work-areas/modal/clear`, `GET /avatar/_work-areas/{workAreaId}/modal/tag-editor`, `POST /avatar/_work-areas/{workAreaId}/modal/tag-editor/tags`, `POST /avatar/_work-areas/{workAreaId}/modal/tag-editor/assign`, `PUT /avatar/_work-areas/{workAreaId}/text`, `POST /avatar/_work-areas/{workAreaId}/directories`, `POST /avatar/_work-areas/{workAreaId}/text`, `POST /avatar/_work-areas/{workAreaId}/files/delete`, `POST /avatar/_work-areas/{workAreaId}/files/rename`, `POST /avatar/_work-areas/{workAreaId}/files/action/{copy|move}`, `POST /avatar/_work-areas/{workAreaId}/tags`, `POST|DELETE /avatar/_work-areas/{workAreaId}/files/tags`, `POST|DELETE /avatar/_work-areas/{workAreaId}/labels/note`, `POST /avatar/_work-areas/{workAreaId}/mark`, and compatibility `DELETE /avatar/_work-areas/{workAreaId}/files`.
-
-Planner, todo, calendar, and note flows still exist, but they are reached from dashboard widgets and detail surfaces rather than from a standalone shell toolbar action.
-
-## Work Area Explorer Fragment Contract
-
-The Work Area explorer uses stable HTMX targets:
-
-- `#avatar-workarea-explorer-shell`: full toolbar, path bar, details table, inspector, and modal container.
-- `#avatar-workarea-list-region`: details table/list region.
-- `#avatar-workarea-inspector`: selected file/directory metadata and operations.
-- `#avatar-workarea-modal`: stable empty modal host.
-
-Modal open routes target `#avatar-workarea-modal` with `innerHTML` and return modal body content without a duplicate `id="avatar-workarea-modal"` wrapper. Modal close controls target `#avatar-workarea-modal` with `outerHTML` and return the stable empty host from `GET /avatar/_work-areas/modal/clear`, preventing stale dialog DOM from intercepting later explorer clicks. Mutation routes that affect current explorer state return out-of-band fragments for the modal host, list region, and inspector so table and metadata stay coherent after save, tag, rename, delete, copy, or move.
-
-The visible explorer contract is a details/list layout with `Name`, `File Type`, `Size`, `Created`, `Last Modified`, `Tags`, and `Actions` columns plus a separate right inspector. Rows are selectable by full-row click while preserving button/link action clicks.
-
-Current remediation contract:
-
-- Shell header action reads `Close Workspace`.
-- Row actions are icon buttons for Open/View, Rename, Delete, Copy, and Move. Each icon action carries `aria-label` and `title`.
-- Inspector expanded state contains selected name/path, tags, a visible `Manage Tags` button, metadata, and a bounded preview box only.
-- Inspector no longer renders bottom action buttons or old `Preview & Details`/hint prose.
-- Inspector collapsed state renders a compact rail with only an explicit expand affordance and preserves selected-path context in the expand route.
-- Tag editor modal renders as a high-overlay bounded Work Area modal with header, Directory/File filters, an internal scroll body, compact row inventory, row-open edit forms, and no tag-definition deletion affordance.
-- Editor modal uses a full-window/resizable panel, title/path line, icon controls (Save/Undo/Redo/Revert), top-right close, status row, and segmented tabs (`Edit`, `Preview`, `Split` for markdown; `Edit` only for plain text).
-
-Viewer modals expose explicit state hooks:
-
-- Markdown editor: `data-viewer-kind="markdown"` with `data-active-tab="edit|preview|split"` and `data-avatar-workarea-editor="true"`.
-- Plain text editor: `data-viewer-kind="text"` with `data-active-tab="edit"` and no markdown preview controls.
-- Preview target: `POST /viewer/markdown-preview` returns sanitized rendered markdown only and does not persist file content.
-
-Copy and move forms expose operation-specific hooks such as `form[data-file-action="copy"]`, `input[aria-label="Copy destination directory"]`, and `button[data-file-action-submit="copy"]`. Destination is required; blank copy/move destinations are rejected instead of defaulting silently.
-
-## Client Assets
-
-- `/css/avatar-dashboard.css?v=6` owns Avatar dashboard, Work Area browser, tag modal, and editor modal styling.
-- `/js/avatar-chat.js?v=3` owns the compact Avatar chat surface.
+- `/css/avatar-dashboard.css?v=7` owns Assistant dashboard, compact chat rail, layout editor, and retained Work Area browser styling.
+- `/js/avatar-chat.js?v=4` owns the compact dashboard chat surface.
 - `/js/avatar-layout-edit.js?v=1` owns in-place dashboard edit helpers.
-- `/js/avatar-workarea-editor.js?v=1` owns local Work Area editor mode switching, dirty state, undo/redo/revert, and debounced unsaved markdown preview synchronization.
-- `/js/avatar-shell.js?v=6` owns desktop chat corner resizing and browser-local width/height persistence.
-
-`avatar-shell.js` stores the desktop rail width in `localStorage` under `magenta.avatar.chatRailWidthPx` and the desktop chat panel height under `magenta.avatar.chatPanelHeightPx`. The shell reads those values only at desktop breakpoints, clamps them before applying CSS variables, and ignores them on mobile stacked layouts.
-Desktop resize math starts from the chat panel's rendered box and writes `--avatar-chat-rail-width` plus `--avatar-chat-panel-height` on `.avatar-shell`. The rail width variable controls the left grid column so dashboard width responds immediately when the bottom-right chat corner handle moves. The handle now uses a compact sideways double-arrow affordance at the panel corner and allows both horizontal and vertical drag adjustments.
+- `/js/avatar-workarea-editor.js?v=2` owns local Work Area editor behavior.
+- `/js/avatar-shell.js?v=6` owns desktop chat corner resizing and local geometry persistence.

@@ -1,4 +1,4 @@
-// Compact Avatar chat. JavaScript is limited to POSTing and consuming the SSE
+// Compact dashboard chat. JavaScript is limited to POSTing and consuming the SSE
 // chat stream; dashboard widgets and editing stay HTMX/server-rendered.
 
 let conversationId = null;
@@ -33,7 +33,7 @@ function initAvatarChat() {
         let visibleResponse = false;
         const waitingNotice = window.setTimeout(() => {
             if (!visibleResponse) {
-                visibleResponse = append(messages, "system", "Avatar chat is still waiting for a response.");
+                visibleResponse = append(messages, "system", "Assistant dashboard chat is still waiting for a response.");
             }
         }, 12000);
         try {
@@ -64,7 +64,7 @@ function initAvatarChat() {
                 interrupt: data => append(messages, "user", eventText(data)),
                 error: data => {
                     setStatus(status, "Error");
-                    visibleResponse = append(messages, "system", eventText(data) || "Avatar chat failed.") || visibleResponse;
+                    visibleResponse = append(messages, "system", eventText(data) || "Assistant dashboard chat failed.") || visibleResponse;
                 },
                 done: data => {
                     conversationId = data.conversationId || conversationId;
@@ -73,11 +73,11 @@ function initAvatarChat() {
                 }
             });
             if (!visibleResponse) {
-                append(messages, "system", "Avatar chat finished without returning a visible response.");
+                append(messages, "system", "Assistant dashboard chat finished without returning a visible response.");
             }
         } catch (error) {
             setStatus(status, "Error");
-            append(messages, "system", error.message || "Avatar chat request failed.");
+            append(messages, "system", error.message || "Assistant dashboard chat request failed.");
         } finally {
             window.clearTimeout(waitingNotice);
             input.disabled = false;

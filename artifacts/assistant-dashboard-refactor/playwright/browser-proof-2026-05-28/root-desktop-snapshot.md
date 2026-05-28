@@ -1,0 +1,31 @@
+- generic [active] [ref=e1] [box=0,16,1366,1587]:
+  - banner [ref=e2] [box=16,16,1334,149]:
+    - generic [ref=e5] [box=55,37,1256,69]:
+      - heading "Assistant" [level=1] [ref=e6] [box=622,37,121,34]
+      - paragraph [ref=e7] [box=527,83,312,24]: User dashboards, chat, and operational widgets
+    - navigation [ref=e9] [box=69,117,1227,48]:
+      - generic [ref=e10] [box=78,123,1209,36]:
+        - link "Home" [ref=e11] [cursor=pointer] [box=78,123,65,36]:
+          - /url: /
+        - link "Chat" [ref=e12] [cursor=pointer] [box=148,123,56,36]:
+          - /url: /chat
+        - link "Agents" [ref=e13] [cursor=pointer] [box=210,123,75,36]:
+          - /url: /agents
+        - link "Manage" [ref=e14] [cursor=pointer] [box=290,123,81,36]:
+          - /url: /manage
+  - main [ref=e16] [box=16,181,1334,1406]:
+    - generic [ref=e19] [box=63,224,1240,1312]:
+      - generic [ref=e20] [box=63,224,1240,47]:
+        - link "Assistant" [ref=e21] [cursor=pointer] [box=70,231,85,32]:
+          - /url: /dashboards/assistant
+        - button "Create dashboard" [ref=e22] [cursor=pointer] [box=161,231,32,32]: +
+      - generic [ref=e23] [box=63,283,1240,1253]:
+        - complementary [ref=e25] [box=63,283,480,620]:
+          - generic [ref=e26] [box=76,296,454,44]
+          - generic [ref=e32] [box=76,351,454,26]
+          - generic [ref=e36] [box=87,399,431,26]: Ask the assistant for a quick update.
+          - generic [ref=e37] [box=76,725,454,164]
+          - button "Resize assistant chat" [ref=e40] [box=527,886,15,15]
+        - generic [ref=e42] [box=556,283,747,1253]:
+          - generic [ref=e43] [box=567,292,724,24]
+          - generic [ref=e47] [box=567,326,724,1200]
