@@ -154,4 +154,4 @@ For documentation-only changes like this phase:
 
 These routes are public `GET` routes in current alpha posture; avoid exposing secrets through them.
 
-Configured model map keys are the operator-facing aliases. The default browser chat model is selected from runtime settings when present, then file-configured `defaultModel`, then the legacy default-agent model. The `/chat` model selectors display alias names and submit alias keys; provider `remoteModelName` values are resolved by the model router.
+Configured model map keys are the operator-facing aliases. Runtime settings store and return those alias keys for model fields, while routing helpers resolve them to provider `remoteModelName` values only at the model-call boundary. The default browser chat model is selected from runtime settings when present, then file-configured `defaultModel`, then the legacy default-agent model. The `/chat` model selectors display alias names and submit alias keys.

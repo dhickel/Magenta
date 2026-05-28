@@ -43,27 +43,28 @@ public class RuntimeSettingsService {
     }
 
     public RuntimeSettings save(RuntimeSettings settings) {
-        validateModel(settings.defaultModel(), "defaultModel");
-        validateModel(settings.planningModel(), "planningModel");
-        validateModel(settings.summaryModel(), "summaryModel");
-        validateModel(settings.compactionModel(), "compactionModel");
-        validateModel(settings.systemChatModel(), "systemChatModel");
-        Integer buffer = settings.contextBufferPercent();
+        RuntimeSettings normalized = normalizeModelReferences(settings);
+        validateModel(normalized.defaultModel(), "defaultModel");
+        validateModel(normalized.planningModel(), "planningModel");
+        validateModel(normalized.summaryModel(), "summaryModel");
+        validateModel(normalized.compactionModel(), "compactionModel");
+        validateModel(normalized.systemChatModel(), "systemChatModel");
+        Integer buffer = normalized.contextBufferPercent();
         if (buffer != null && (buffer < 1 || buffer > 50)) {
             throw new IllegalArgumentException("contextBufferPercent must be between 1 and 50");
         }
-        Integer systemChatLimit = settings.systemChatContextLimit();
+        Integer systemChatLimit = normalized.systemChatContextLimit();
         if (systemChatLimit != null && (systemChatLimit < 1 || systemChatLimit > 100)) {
             throw new IllegalArgumentException("systemChatContextLimit must be between 1 and 100");
         }
-        Integer purgeDays = settings.assignmentHistoryAutoPurgeDays();
+        Integer purgeDays = normalized.assignmentHistoryAutoPurgeDays();
         if (purgeDays != null && purgeDays != -1 && purgeDays < 1) {
             throw new IllegalArgumentException("assignmentHistoryAutoPurgeDays must be -1 or at least 1");
         }
-        if (StringUtils.hasText(settings.defaultAgentId())) {
-            agentProfileService.get(settings.defaultAgentId());
+        if (StringUtils.hasText(normalized.defaultAgentId())) {
+            agentProfileService.get(normalized.defaultAgentId());
         }
-        return repository.save(settings);
+        return repository.save(normalized);
     }
 
     public String resolveModel(String explicitRequestModel) {
@@ -75,33 +76,49 @@ public class RuntimeSettingsService {
     }
 
     public String defaultModel() {
-        return resolveModel(null);
+        return remoteModelName(defaultModelKey());
+    }
+
+    public String defaultModelKey() {
+        return resolveModelKey(null, null);
     }
 
     public String planningModel() {
+        return remoteModelName(planningModelKey());
+    }
+
+    public String planningModelKey() {
         RuntimeSettings settings = get();
         String key = StringUtils.hasText(settings.planningModel())
             ? settings.planningModel()
             : aiConfig.resolvedPlanningModelKey();
-        return remoteModelName(key);
+        return keyForModelOrRemoteName(key, aiConfig.resolvedPlanningModelKey());
     }
 
     public String compactionModel() {
+        return remoteModelName(compactionModelKey());
+    }
+
+    public String compactionModelKey() {
         RuntimeSettings settings = get();
         String key = StringUtils.hasText(settings.compactionModel())
             ? settings.compactionModel()
             : (StringUtils.hasText(settings.summaryModel())
                 ? settings.summaryModel()
                 : aiConfig.resolvedCompactionModelKey());
-        return remoteModelName(key);
+        return keyForModelOrRemoteName(key, aiConfig.resolvedCompactionModelKey());
     }
 
     public String summaryModel() {
+        return remoteModelName(summaryModelKey());
+    }
+
+    public String summaryModelKey() {
         RuntimeSettings settings = get();
         String key = StringUtils.hasText(settings.summaryModel())
             ? settings.summaryModel()
             : aiConfig.resolvedSummaryModelKey();
-        return remoteModelName(key);
+        return keyForModelOrRemoteName(key, aiConfig.resolvedSummaryModelKey());
     }
 
     public int contextBufferPercent() {
@@ -122,11 +139,18 @@ public class RuntimeSettingsService {
     }
 
     public String systemChatModel() {
+        return remoteModelName(systemChatModelKey());
+    }
+
+    public String systemChatModelKey() {
         RuntimeSettings settings = get();
         String key = StringUtils.hasText(settings.systemChatModel())
             ? settings.systemChatModel()
             : settings.defaultModel();
-        return remoteModelName(StringUtils.hasText(key) ? key : aiConfig.resolvedDefaultModelKey());
+        return keyForModelOrRemoteName(
+            StringUtils.hasText(key) ? key : aiConfig.resolvedDefaultModelKey(),
+            aiConfig.resolvedDefaultModelKey()
+        );
     }
 
     public String systemChatPrompt() {
@@ -194,14 +218,14 @@ public class RuntimeSettingsService {
 
     private String resolveModelKey(String explicitRequestModel, String agentDefaultModel) {
         if (StringUtils.hasText(explicitRequestModel)) {
-            return keyForModelOrRemoteName(explicitRequestModel);
+            return keyForModelOrRemoteName(explicitRequestModel, null);
         }
         if (StringUtils.hasText(agentDefaultModel)) {
-            return agentDefaultModel;
+            return keyForModelOrRemoteName(agentDefaultModel, aiConfig.resolvedDefaultModelKey());
         }
         RuntimeSettings settings = get();
         if (StringUtils.hasText(settings.defaultModel())) {
-            return settings.defaultModel();
+            return keyForModelOrRemoteName(settings.defaultModel(), aiConfig.resolvedDefaultModelKey());
         }
         if (StringUtils.hasText(aiConfig.resolvedDefaultModelKey())) {
             return aiConfig.resolvedDefaultModelKey();
@@ -217,15 +241,49 @@ public class RuntimeSettingsService {
         return model.remoteModelName();
     }
 
-    private String keyForModelOrRemoteName(String value) {
+    private String keyForModelOrRemoteName(String value, String preferredKey) {
         if (aiConfig.models().containsKey(value)) {
             return value;
+        }
+        if (remoteModelNameMatches(preferredKey, value)) {
+            return preferredKey;
         }
         return aiConfig.models().entrySet().stream()
             .filter(entry -> value.equals(entry.getValue().remoteModelName()))
             .map(java.util.Map.Entry::getKey)
             .findFirst()
             .orElse(value);
+    }
+
+    private boolean remoteModelNameMatches(String modelKey, String remoteModelName) {
+        if (!StringUtils.hasText(modelKey) || !StringUtils.hasText(remoteModelName)) {
+            return false;
+        }
+        ModelConfig model = aiConfig.models().get(modelKey);
+        return model != null && remoteModelName.equals(model.remoteModelName());
+    }
+
+    private RuntimeSettings normalizeModelReferences(RuntimeSettings settings) {
+        return new RuntimeSettings(
+            settings.defaultAgentId(),
+            settings.defaultAgentName(),
+            normalizeModelReference(settings.defaultModel(), aiConfig.resolvedDefaultModelKey()),
+            normalizeModelReference(settings.planningModel(), aiConfig.resolvedPlanningModelKey()),
+            normalizeModelReference(settings.summaryModel(), aiConfig.resolvedSummaryModelKey()),
+            normalizeModelReference(settings.compactionModel(), aiConfig.resolvedCompactionModelKey()),
+            settings.contextBufferPercent(),
+            normalizeModelReference(settings.systemChatModel(), aiConfig.resolvedDefaultModelKey()),
+            settings.systemChatPrompt(),
+            settings.systemChatApprovedTools(),
+            settings.systemChatContextLimit(),
+            settings.systemChatEnabled(),
+            settings.assignmentHistoryAutoPurgeDays(),
+            settings.retainTempWork()
+        );
+    }
+
+    private String normalizeModelReference(String value, String preferredKey) {
+        return StringUtils.hasText(value) ? keyForModelOrRemoteName(value, preferredKey) : value;
     }
 
     private String legacyDefaultModelKey() {

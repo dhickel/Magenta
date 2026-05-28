@@ -24,6 +24,13 @@ class ChatModelRouterTest {
     }
 
     @Test
+    void emptyModelUsesConfiguredDefaultAliasBeforeDefaultAgentModel() {
+        ChatModelRouter router = new ChatModelRouter(configWithDefaultModel(), null, ObservationRegistry.NOOP);
+
+        assertThat(router.remoteModelName(null)).isEqualTo("gemma4");
+    }
+
+    @Test
     void rejectsUnknownModel() {
         ChatModelRouter router = new ChatModelRouter(aiConfig(), null, ObservationRegistry.NOOP);
 
@@ -225,6 +232,24 @@ class ChatModelRouterTest {
             "magenta",
             "magenta",
             10,
+            null,
+            Map.of(
+                "local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 8192, null, null),
+                "local-gemma", new ModelConfig("gemma4", "http://other-host:11434", EndpointType.OLLAMA, 32768, null, null)
+            ),
+            Map.of("magenta", new AgentConfig("local-qwen", "Prompt.", List.of()))
+        );
+    }
+
+    private AiConfig configWithDefaultModel() {
+        return new AiConfig(
+            "magenta",
+            "local-gemma",
+            "local-qwen",
+            "local-qwen",
+            null,
+            10,
+            null,
             null,
             Map.of(
                 "local-qwen", new ModelConfig("qwen3", "http://localhost:11434", EndpointType.OLLAMA, 8192, null, null),

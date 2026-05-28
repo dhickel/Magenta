@@ -247,7 +247,7 @@ public class ChatModelRouter {
         if (aiConfig == null || aiConfig.models() == null || aiConfig.models().isEmpty()) {
             throw new IllegalStateException("AI config must define models");
         }
-        String selected = StringUtils.hasText(model) ? model : defaultRemoteModelName();
+        String selected = StringUtils.hasText(model) ? model : defaultModelKey();
         ModelConfig byKey = aiConfig.models().get(selected);
         if (byKey != null) {
             return new ResolvedModel(selected, byKey);
@@ -259,9 +259,12 @@ public class ChatModelRouter {
             .orElseThrow(() -> new IllegalArgumentException("Unknown configured model: " + selected));
     }
 
-    private String defaultRemoteModelName() {
+    private String defaultModelKey() {
         if (runtimeSettingsService != null) {
-            return runtimeSettingsService.defaultModel();
+            return runtimeSettingsService.defaultModelKey();
+        }
+        if (StringUtils.hasText(aiConfig.resolvedDefaultModelKey())) {
+            return aiConfig.resolvedDefaultModelKey();
         }
         if (!StringUtils.hasText(aiConfig.defaultAgent()) || aiConfig.agents() == null) {
             throw new IllegalStateException("AI config must define defaultAgent");
@@ -271,7 +274,7 @@ public class ChatModelRouter {
         if (defaultModel == null) {
             throw new IllegalStateException("defaultAgent references missing model: " + defaultModelKey);
         }
-        return defaultModel.remoteModelName();
+        return defaultModelKey;
     }
 
     private record ResolvedModel(String key, ModelConfig config) { }

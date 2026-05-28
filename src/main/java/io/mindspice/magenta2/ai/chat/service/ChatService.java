@@ -1401,7 +1401,7 @@ public class ChatService {
 
     public String defaultModel() {
         if (runtimeSettingsService != null) {
-            return runtimeSettingsService.defaultModel();
+            return runtimeSettingsService.defaultModelKey();
         }
         if (aiConfig != null && StringUtils.hasText(aiConfig.resolvedDefaultModelKey())) {
             return aiConfig.resolvedDefaultModelKey();
@@ -1412,14 +1412,14 @@ public class ChatService {
 
     public String planningModel() {
         if (runtimeSettingsService != null) {
-            return runtimeSettingsService.planningModel();
+            return runtimeSettingsService.planningModelKey();
         }
         if (aiConfig == null || aiConfig.models() == null) {
             return defaultModel();
         }
         String modelKey = aiConfig.resolvedPlanningModelKey();
         ModelConfig model = aiConfig.models().get(modelKey);
-        return model == null ? defaultModel() : model.remoteModelName();
+        return model == null ? defaultModel() : modelKey;
     }
 
     private String resolvedPlanningModel(String conversationId) {
@@ -1428,8 +1428,7 @@ public class ChatService {
     }
 
     public List<String> availableModels() {
-        return aiConfig.models().values().stream()
-            .map(config -> config.remoteModelName())
+        return aiConfig.models().keySet().stream()
             .filter(StringUtils::hasText)
             .distinct()
             .toList();
@@ -1437,7 +1436,7 @@ public class ChatService {
 
     /**
      * Returns model options as (key, label) pairs where key is the configured
-     * model alias and label is the remote model name for display.
+     * model alias and label presents that alias as the primary display name.
      * The key is validated by {@code RuntimeSettingsService} as the canonical model reference.
      */
     public record ModelOption(String key, String label) {}
@@ -1460,7 +1459,7 @@ public class ChatService {
             return model;
         }
         if (runtimeSettingsService != null) {
-            String runtimeDefault = runtimeSettingsService.get().defaultModel();
+            String runtimeDefault = runtimeSettingsService.defaultModelKey();
             if (remoteModelNameMatches(runtimeDefault, model)) {
                 return runtimeDefault;
             }

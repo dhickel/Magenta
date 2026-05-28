@@ -121,7 +121,7 @@ public class RequestResolver {
 
     public String defaultModel() {
         if (runtimeSettingsService != null) {
-            return runtimeSettingsService.defaultModel();
+            return runtimeSettingsService.defaultModelKey();
         }
         if (aiConfig != null && StringUtils.hasText(aiConfig.resolvedDefaultModelKey())) {
             return aiConfig.resolvedDefaultModelKey();
@@ -132,14 +132,14 @@ public class RequestResolver {
 
     public String planningModel() {
         if (runtimeSettingsService != null) {
-            return runtimeSettingsService.planningModel();
+            return runtimeSettingsService.planningModelKey();
         }
         if (aiConfig == null || aiConfig.models() == null) {
             return defaultModel();
         }
         String modelKey = aiConfig.resolvedPlanningModelKey();
         ModelConfig model = aiConfig.models().get(modelKey);
-        return model == null ? defaultModel() : model.remoteModelName();
+        return model == null ? defaultModel() : modelKey;
     }
 
     public String resolvedPlanningModel(String conversationId) {
@@ -148,8 +148,7 @@ public class RequestResolver {
     }
 
     public List<String> availableModels() {
-        return aiConfig.models().values().stream()
-            .map(config -> config.remoteModelName())
+        return aiConfig.models().keySet().stream()
             .filter(StringUtils::hasText)
             .distinct()
             .toList();

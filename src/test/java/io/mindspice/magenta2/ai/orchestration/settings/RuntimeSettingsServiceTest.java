@@ -27,6 +27,7 @@ class RuntimeSettingsServiceTest {
         RuntimeSettingsService service = new RuntimeSettingsService(repository, aiConfig(), null);
 
         assertThat(service.compactionModel()).isEqualTo("compact-remote");
+        assertThat(service.compactionModelKey()).isEqualTo("compact");
     }
 
     @Test
@@ -36,6 +37,7 @@ class RuntimeSettingsServiceTest {
         RuntimeSettingsService service = new RuntimeSettingsService(repository, aiConfig(), null);
 
         assertThat(service.compactionModel()).isEqualTo("summary-remote");
+        assertThat(service.compactionModelKey()).isEqualTo("summary");
     }
 
     @Test
@@ -69,7 +71,68 @@ class RuntimeSettingsServiceTest {
         RuntimeSettingsService service = new RuntimeSettingsService(repository, aiConfig, agentService);
 
         assertThat(service.defaultModel()).isEqualTo("summary-remote");
+        assertThat(service.defaultModelKey()).isEqualTo("summary");
         assertThat(service.resolveModel(null, "main")).isEqualTo("main-remote");
+    }
+
+    @Test
+    void saveNormalizesRemoteModelNamesToAliasKeys() {
+        RuntimeSettingsRepository repository = repository();
+        RuntimeSettingsService service = new RuntimeSettingsService(repository, aiConfig(), null);
+
+        RuntimeSettings saved = service.save(new RuntimeSettings(
+            null,
+            "magenta",
+            "summary-remote",
+            "main-remote",
+            "summary-remote",
+            "compact-remote",
+            10,
+            "main-remote",
+            null,
+            null,
+            10,
+            true,
+            -1,
+            false
+        ));
+
+        assertThat(saved.defaultModel()).isEqualTo("summary");
+        assertThat(saved.planningModel()).isEqualTo("main");
+        assertThat(saved.summaryModel()).isEqualTo("summary");
+        assertThat(saved.compactionModel()).isEqualTo("compact");
+        assertThat(saved.systemChatModel()).isEqualTo("main");
+        assertThat(service.defaultModelKey()).isEqualTo("summary");
+        assertThat(service.defaultModel()).isEqualTo("summary-remote");
+    }
+
+    @Test
+    void keyAccessorsMapLegacyPersistedRemoteModelNamesWithoutMutatingSettings() {
+        RuntimeSettingsRepository repository = repository();
+        repository.save(new RuntimeSettings(
+            null,
+            "magenta",
+            "main",
+            "main-remote",
+            "summary-remote",
+            "compact-remote",
+            10,
+            "main-remote",
+            null,
+            null,
+            10,
+            true,
+            -1,
+            false
+        ));
+        RuntimeSettingsService service = new RuntimeSettingsService(repository, aiConfig(), null);
+
+        assertThat(service.defaultModelKey()).isEqualTo("main");
+        assertThat(service.planningModelKey()).isEqualTo("main");
+        assertThat(service.summaryModelKey()).isEqualTo("summary");
+        assertThat(service.compactionModelKey()).isEqualTo("compact");
+        assertThat(service.systemChatModelKey()).isEqualTo("main");
+        assertThat(repository.find().orElseThrow().summaryModel()).isEqualTo("summary-remote");
     }
 
     private RuntimeSettings settings(String summaryModel, String compactionModel) {
