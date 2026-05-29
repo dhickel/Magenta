@@ -19,7 +19,7 @@ Use the compact edit control on a dashboard to enter layout edit mode. Rows use 
 - Remove widgets and empty rows.
 - Open a widget's detail or settings controls from the compact widget corner buttons.
 
-New dashboards are created empty. The default `Assistant` dashboard starts with chat plus Today Planner, Calendar/Schedule, Tasks/Routines, notes, system, alerts, and recent work.
+New dashboards are created empty. The default `Assistant` dashboard starts with chat plus Today Planner, Calendar/Schedule, Tasks/Routines, notes, Habits/Trackers, Reminders/Alerts, system, Dashboard Context, and recent work.
 
 ## Planning Widgets
 
@@ -30,6 +30,12 @@ The Tasks/Routines widget shows planner tasks, status/range/recurrence filters i
 The Calendar/Schedule widget renders a real month grid plus agenda entries. Calendar events, task due dates, scheduled time blocks, reminder records, and recurrence projections are separate concepts in the UI and service model. The detail view includes in-dashboard forms for creating time blocks and reminder records.
 
 Reminders in this suite are dashboard records only. They can be viewed, linked, snoozed, rescheduled, completed, or dismissed inside Magenta, but they do not send email, push, PWA, or other external notifications.
+
+The Habits/Trackers widget supports build and quit trackers, daily/weekly/monthly targets, quantity/unit targets, optional display days and time ranges, archive state, history correction, skip, and restart. Progress chips are intentionally non-punitive: missed items can be skipped or restarted without marking a failure.
+
+The Reminders/Alerts widget is the dashboard inbox for reminder records. It separates due, upcoming, and snoozed reminders, shows linked source ids when present, and provides complete, snooze, skip, and reschedule controls. External delivery remains deferred.
+
+The Dashboard Context widget is read-only. It summarizes the selected dashboard/widget state and visible tool descriptor names, but it does not grant chat tools or imply new assistant actions.
 
 Some widget types can appear more than once on the same dashboard. Single-instance widgets remain disabled in the picker after they are already present.
 

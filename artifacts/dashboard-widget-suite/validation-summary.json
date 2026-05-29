@@ -1,6 +1,6 @@
 {
   "task_slug": "dashboard-widget-suite",
-  "status": "phase_04_browser_proof_passed_later_phases_pending",
+  "status": "phase_05_browser_proof_passed",
   "model_constraints": {
     "implementation_workers": {
       "required_model": "gpt-5.5",
@@ -80,9 +80,128 @@
         "Independent focused revalidation on 2026-05-29 passed the repaired selector path, nearby output/tool/Work Area regression suite, startup smoke, jq, and diff-check.",
         "Delegated Phase 04 browser proof on 2026-05-29 passed Agent Status/Queue no-agent/missing/selected states, Agent Outputs source modes and scoped preview/download, Agent Files/Notes Work Area selector/mini-browser/owner guard, mobile overflow/modal checks, and visual comparison against /manage, /agents, /agents/{agentId}, and Work Area explorer references."
       ]
+    },
+    {
+      "id": "phase-05-tracking-alerts-context",
+      "status": "phase_05_browser_proof_passed",
+      "worker_directive": ".internal-dev/plans/dashboard-widget-suite/worker-directives/phase-05-tracking-alerts-context.md",
+      "validation_review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-05-validation.md",
+      "notes": [
+        "Implemented Habits/Trackers with build/quit semantics, period targets, target quantity/unit, optional display metadata, archive state, day-level history correction, skip/restart, progress/trend chips, and optional streaks.",
+        "Implemented Reminders/Alerts as an in-dashboard inbox with due/upcoming/snoozed summary, linked source display, complete, snooze, reschedule, skip, and restart actions.",
+        "Added read-only Dashboard Context panel that summarizes selected dashboard/widget state and visible tool descriptors without granting chat action tools.",
+        "External push/email/PWA notifications and automatic assignment creation remain deferred and documented.",
+        "Phase 05 code validation on 2026-05-29 failed: reminder restart is implemented server-side but not rendered in the in-dashboard inbox, and the existing avatar_reminder_upsert tool descriptor/status handling conflicts with the Phase 05 reminder status contract. Required commands passed; browser proof must wait for repair.",
+        "Scoped Phase 05 repair on 2026-05-29 rendered restart actions for missed, snoozed, skipped, and completed reminder inbox rows, aligned avatar_reminder_upsert descriptor/status handling with OPEN/SNOOZED/COMPLETED/SKIPPED, mapped stale DONE/DISMISSED/CANCELED aliases to current closed statuses, rejected unknown statuses clearly, and passed local focused validation.",
+        "Independent Phase 05 repair code revalidation on 2026-05-29 passed focused controller/tool/registry tests, broader repository/service/controller/tool tests, startup smoke, jq, and diff-check. Documentation validation was skipped per user instruction. Browser proof remains pending.",
+        "Delegated Phase 05 browser proof on 2026-05-29 failed: Habits/Trackers does not visibly render configured display days/time ranges, habit history correction lacks a visible date correction UI, and Reminders/Alerts rows can collapse reminder title/meta to ~18px when the full action set is visible. Console/network evidence was clean.",
+        "Scoped Phase 05 browser-defect repair on 2026-05-29 added visible habit day/time metadata, a compact visible date correction form, and reminder row wrapping/readability CSS. Local focused validation passed; browser proof rerun remains pending.",
+        "Delegated Phase 05 browser proof rerun on 2026-05-29 passed after scoped repair: habit day/time chips, visible history correction form, readable reminder row action wrapping, reminder/context behavior, desktop/mobile screenshots, and clean console/network evidence."
+      ],
+      "browser_review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-05-browser-proof.md"
     }
   ],
   "commands": [
+    {
+      "command": "BASE_URL=http://127.0.0.1:18081 node artifacts/dashboard-widget-suite/phase-05-browser/browser-proof.mjs",
+      "result": "passed_browser_proof",
+      "evidence": "Phase 05 browser rerun on 2026-05-29 wrote artifacts/dashboard-widget-suite/phase-05-browser/browser-proof-results.json with PASS_BROWSER_PROOF and refreshed screenshots."
+    },
+    {
+      "command": "BASE_URL=http://127.0.0.1:18081 node artifacts/dashboard-widget-suite/phase-05-browser/browser-proof.mjs",
+      "result": "completed_fail_browser_proof",
+      "evidence": "Phase 05 browser proof on 2026-05-29 wrote artifacts/dashboard-widget-suite/phase-05-browser/browser-proof-results.json with FAIL_BROWSER_PROOF and screenshots for desktop/mobile/reference surfaces."
+    },
+    {
+      "command": "mvn -Dtest=AvatarDashboardControllerTest,AvatarToolsTest,ChatToolRegistryTest test",
+      "result": "passed",
+      "evidence": "Phase 05 repair revalidation on 2026-05-29: 42 tests run, 0 failures, 0 errors, 0 skipped."
+    },
+    {
+      "command": "mvn -Dtest=AvatarRepositoryTest,AvatarServiceTest,AvatarDashboardControllerTest,AvatarToolsTest,ChatToolRegistryTest test",
+      "result": "passed",
+      "evidence": "Phase 05 repair revalidation on 2026-05-29: 64 tests run, 0 failures, 0 errors, 0 skipped."
+    },
+    {
+      "command": "timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0",
+      "result": "started_then_timeout_stopped",
+      "evidence": "Phase 05 repair revalidation on 2026-05-29: Tomcat started on random port 37399; Magenta2Application started in 3.688 seconds; timeout produced expected exit code 124 after graceful shutdown."
+    },
+    {
+      "command": "jq . artifacts/dashboard-widget-suite/validation-summary.json >/dev/null",
+      "result": "passed",
+      "evidence": "Phase 05 repair revalidation on 2026-05-29: validation-summary.json parsed successfully before and after validator evidence updates."
+    },
+    {
+      "command": "git diff --check -- . ':(exclude).gitignore' ':(exclude).internal-dev/reviews/2026-05-28-model-alias-internal-review.md'",
+      "result": "passed",
+      "evidence": "Phase 05 repair revalidation on 2026-05-29: no whitespace errors reported while excluding known unrelated dirty files."
+    },
+    {
+      "command": "mvn -Dtest=AvatarDashboardControllerTest,AvatarToolsTest,ChatToolRegistryTest test",
+      "result": "passed",
+      "evidence": "Scoped Phase 05 repair worker on 2026-05-29: 42 tests run, 0 failures, 0 errors, 0 skipped. Added coverage for restart UI exposure, reminder status alias normalization/rejection, and current avatar_reminder_upsert status descriptor text."
+    },
+    {
+      "command": "mvn -Dtest=AvatarRepositoryTest,AvatarServiceTest,AvatarDashboardControllerTest,AvatarToolsTest,ChatToolRegistryTest test",
+      "result": "passed",
+      "evidence": "Scoped Phase 05 repair worker on 2026-05-29: 64 tests run, 0 failures, 0 errors, 0 skipped."
+    },
+    {
+      "command": "timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0",
+      "result": "started_then_timeout_stopped",
+      "evidence": "Scoped Phase 05 repair worker on 2026-05-29: Tomcat started on random port 34273; Magenta2Application started in 3.637 seconds; timeout produced expected exit code 124 after graceful shutdown."
+    },
+    {
+      "command": "jq . artifacts/dashboard-widget-suite/validation-summary.json >/dev/null",
+      "result": "passed",
+      "evidence": "Scoped Phase 05 repair worker on 2026-05-29: validation-summary.json parsed successfully after repair evidence update."
+    },
+    {
+      "command": "git diff --check -- . ':(exclude).gitignore' ':(exclude).internal-dev/reviews/2026-05-28-model-alias-internal-review.md'",
+      "result": "passed",
+      "evidence": "Scoped Phase 05 repair worker on 2026-05-29: no whitespace errors reported while excluding known unrelated dirty files."
+    },
+    {
+      "command": "mvn -Dtest=AvatarRepositoryTest,AvatarServiceTest,AvatarDashboardControllerTest,AvatarToolsTest,ChatToolRegistryTest test",
+      "result": "passed",
+      "evidence": "Phase 05 code validator on 2026-05-29: 64 tests run, 0 failures, 0 errors, 0 skipped."
+    },
+    {
+      "command": "timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0",
+      "result": "started_then_timeout_stopped",
+      "evidence": "Phase 05 code validator on 2026-05-29: Tomcat started on random port 41271; Magenta2Application started in 3.379 seconds; timeout produced expected exit code 124 after graceful shutdown."
+    },
+    {
+      "command": "jq . artifacts/dashboard-widget-suite/validation-summary.json >/dev/null",
+      "result": "passed",
+      "evidence": "Phase 05 code validator on 2026-05-29: validation-summary.json parsed successfully before validator evidence updates."
+    },
+    {
+      "command": "git diff --check -- . ':(exclude).gitignore' ':(exclude).internal-dev/reviews/2026-05-28-model-alias-internal-review.md'",
+      "result": "passed",
+      "evidence": "Phase 05 code validator on 2026-05-29: no whitespace errors reported while excluding known unrelated dirty files."
+    },
+    {
+      "command": "mvn -Dtest=AvatarRepositoryTest,AvatarServiceTest,AvatarDashboardControllerTest,AvatarToolsTest,ChatToolRegistryTest test",
+      "result": "passed",
+      "evidence": "Phase 05 implementation worker on 2026-05-29: 64 tests run, 0 failures, 0 errors, 0 skipped. Added coverage for habit history correction, non-punitive habit progress, reminder inbox actions, context panel read-only descriptor display, and existing Avatar tool registry compatibility."
+    },
+    {
+      "command": "timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0",
+      "result": "started_then_timeout_stopped",
+      "evidence": "Phase 05 implementation worker on 2026-05-29: Tomcat started on random port 37277; Magenta2Application started in 3.617 seconds; timeout produced expected exit code 124 after graceful shutdown."
+    },
+    {
+      "command": "jq . artifacts/dashboard-widget-suite/validation-summary.json >/dev/null",
+      "result": "passed",
+      "evidence": "Phase 05 implementation worker on 2026-05-29: validation-summary.json parsed successfully after Phase 05 evidence updates."
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed",
+      "evidence": "Phase 05 implementation worker on 2026-05-29: no whitespace errors reported."
+    },
     {
       "command": "mvn -Dtest=AvatarDashboardControllerTest test",
       "result": "passed",
@@ -1028,6 +1147,7 @@
     ".internal-dev/changelogs/2026-05-29-dashboard-widget-suite-phase-04-agent-ops.md",
     ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-04-validation.md",
     ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-04-browser-proof.md",
+    ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-05-validation.md",
     "artifacts/dashboard-widget-suite/phase-04-browser/",
     "artifacts/dashboard-widget-suite/phase-04-browser/browser-proof-consolidated.json"
   ],
@@ -1039,14 +1159,53 @@
   "residual_risks": [
     "Project artifact summaries use fixed typed JSON files and compact row rendering; richer per-artifact editing UX is intentionally limited until browser validation and later polish.",
     "Compatibility Notes route /_dashboards/_notes remains available for legacy/default callers and still resolves by widget type; rendered real Notes widget instances use instance-scoped routes.",
-    "Later dashboard-widget-suite phases remain pending; this status covers Phase 01, Phase 02, Phase 03, and Phase 04 browser proof only."
+    "Phase 05 browser proof rerun remains pending after browser-defect repair; local validation passed and browser validation must still check habit metadata/correction controls, reminder row readability, HTMX swaps, desktop/mobile layout, and visual quality."
   ],
   "stale_reference_sweep": {
     "status": "not_final_phase",
     "notes": "Final stale-reference sweep is required by the validation matrix before full suite closeout. Phase 01 scoped revalidation checked the repaired evidence index and review artifact only."
   },
   "final_reconciler": {
-    "status": "phase_04_browser_proof_passed_later_phases_pending",
-    "next_step": "Proceed to later dashboard-widget-suite phases and final integration reconciliation; do not claim full suite validation yet."
+    "status": "phase_05_browser_repair_local_validation_passed_browser_rerun_pending",
+    "next_step": "Proceed to delegated Phase 05 browser proof rerun; do not claim full suite validation until browser evidence and final integration reconciliation pass."
+  },
+  "phase_05_browser_proof": {
+    "status": "PASS_BROWSER_PROOF",
+    "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-05-browser-proof.md",
+    "evidence_dir": "artifacts/dashboard-widget-suite/phase-05-browser/",
+    "result_json": "artifacts/dashboard-widget-suite/phase-05-browser/browser-proof-results.json",
+    "screenshots": [
+      "artifacts/dashboard-widget-suite/phase-05-browser/desktop-home-seeded.png",
+      "artifacts/dashboard-widget-suite/phase-05-browser/desktop-habits-detail-modal.png",
+      "artifacts/dashboard-widget-suite/phase-05-browser/desktop-reminders-detail-modal.png",
+      "artifacts/dashboard-widget-suite/phase-05-browser/mobile-home-seeded.png",
+      "artifacts/dashboard-widget-suite/phase-05-browser/mobile-reminders-settings-modal.png",
+      "artifacts/dashboard-widget-suite/phase-05-browser/reference-manage-desktop.png",
+      "artifacts/dashboard-widget-suite/phase-05-browser/reference-agents-desktop.png"
+    ],
+    "supersedes": "Earlier FAIL_BROWSER_PROOF evidence in the same artifact path; browser-proof-results.json and screenshots were replaced by the 2026-05-29 rerun after scoped repair.",
+    "passed_evidence": [
+      "Habit display days and time windows rendered as compact chips in summary/detail rows.",
+      "Habit correction UI exposed visible date, quantity, status, and Apply controls backed by the existing HTMX log route.",
+      "Reminder rows preserved readable title/meta width while action and reschedule controls wrapped instead of squeezing text.",
+      "Build/quit habit rows, target quantity/unit, period, progress/trend/streak chips, archive count, and non-punitive wording rendered.",
+      "Due/upcoming/snoozed/completed/skipped reminders, linked source labels, summary counts, and dashboard-only notification boundary rendered.",
+      "Restart worked for closed, snoozed, and open due reminders as implemented; closed rows omitted Complete/Snooze/Skip buttons.",
+      "Dashboard Context remained read-only and did not imply unapproved action authorization.",
+      "Desktop 1440x900 and mobile 390x844 screenshots captured; console/network logs were clean."
+    ],
+    "failed_findings": [],
+    "commands": [
+      {
+        "command": "mvn spring-boot:run -Dspring-boot.run.arguments='--server.port=18081 --magenta.root.path=/tmp/magenta2-dashboard-widget-suite-phase-05-browser --spring.datasource.url=jdbc:sqlite:/tmp/magenta2-dashboard-widget-suite-phase-05-browser/magenta.sqlite?foreign_keys=true --magenta.orchestration.runner-delay-ms=60000 --magenta.orchestration.scheduler-delay-ms=60000 --magenta.orchestration.assignment-history-purge-delay-ms=60000'",
+        "result": "passed_startup",
+        "evidence": "Tomcat started on port 18081 with isolated root /tmp/magenta2-dashboard-widget-suite-phase-05-browser."
+      },
+      {
+        "command": "BASE_URL=http://127.0.0.1:18081 node artifacts/dashboard-widget-suite/phase-05-browser/browser-proof.mjs",
+        "result": "passed_browser_proof",
+        "evidence": "browser-proof-results.json recorded PASS_BROWSER_PROOF with 14 passed checks and no console/network errors."
+      }
+    ]
   }
 }

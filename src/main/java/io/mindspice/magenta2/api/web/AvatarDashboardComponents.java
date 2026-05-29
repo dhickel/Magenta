@@ -4,6 +4,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.WeekFields;
@@ -13,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobDefinition;
@@ -29,11 +31,15 @@ import io.mindspice.magenta2.avatar.AvatarDashboardRow;
 import io.mindspice.magenta2.avatar.AvatarDashboardRowWidget;
 import io.mindspice.magenta2.avatar.AvatarDashboardWidget;
 import io.mindspice.magenta2.avatar.AvatarEvent;
+import io.mindspice.magenta2.avatar.AvatarHabit;
+import io.mindspice.magenta2.avatar.AvatarHabitLog;
 import io.mindspice.magenta2.avatar.AvatarNote;
 import io.mindspice.magenta2.avatar.AvatarProfile;
 import io.mindspice.magenta2.avatar.AvatarTodo;
 import io.mindspice.magenta2.avatar.CalendarScheduleView;
+import io.mindspice.magenta2.avatar.HabitsTrackersView;
 import io.mindspice.magenta2.avatar.PlannerOccurrence;
+import io.mindspice.magenta2.avatar.ReminderInboxView;
 import io.mindspice.magenta2.avatar.UserDashboard;
 import io.mindspice.magenta2.avatar.dashboard.DashboardWidgetDefinition;
 import io.mindspice.magenta2.avatar.dashboard.DashboardWidgetRegistry;
@@ -74,6 +80,7 @@ final class AvatarDashboardComponents {
     static final List<DashboardWidgetDefinition> WIDGETS = WIDGET_REGISTRY.definitions();
 
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("MMM d", Locale.US);
+    private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm", Locale.US);
 
     private AvatarDashboardComponents() {
     }
@@ -826,6 +833,28 @@ final class AvatarDashboardComponents {
         return action == null ? "Update" : action.charAt(0) + action.substring(1).toLowerCase(Locale.ROOT);
     }
 
+    private static Component chip(String label, String tone) {
+        String css = "avatar-chip";
+        if ("neutral".equals(tone)) {
+            css += " avatar-chip-muted";
+        }
+        return new HtmlTag("span").withClass(css).withInnerText(label == null ? "" : label);
+    }
+
+    private static String trimNumber(double value) {
+        if (Math.rint(value) == value) {
+            return Long.toString(Math.round(value));
+        }
+        return String.format(Locale.US, "%.1f", value);
+    }
+
+    private static String sourceLabel(PlannerReminder reminder) {
+        if (reminder == null || reminder.sourceType() == null || reminder.sourceType().isBlank()) {
+            return "";
+        }
+        return " / source " + reminder.sourceType() + (reminder.sourceId() == null ? "" : " " + reminder.sourceId());
+    }
+
     private static String timeLabel(Instant instant) {
         if (instant == null) {
             return "unscheduled";
@@ -1078,6 +1107,9 @@ final class AvatarDashboardComponents {
             case "today-planner" -> todayPlanner(data.todayPlanner(), targetId);
             case "tasks-routines" -> tasksRoutines(data.tasksRoutines(), targetId);
             case "calendar-schedule" -> calendarSchedule(data.calendarSchedule(), targetId);
+            case "habits-trackers" -> habitsTrackers(data.habitsTrackers(), targetId);
+            case "reminders-alerts" -> remindersAlerts(data.reminderInbox(), targetId);
+            case "dashboard-context" -> dashboardContext(data);
             case "daily-tasks" -> dailyTasks(data.dailyTasks(), targetId);
             case "todos" -> todos(data.todos(), targetId);
             case "calendar" -> calendar(data.calendarItems(), targetId);
@@ -1323,6 +1355,289 @@ final class AvatarDashboardComponents {
         reminder.withChild(TextInput.create("remindAt").withAttribute("type", "datetime-local"));
         reminder.withChild(Button.submit("Add Reminder"));
         return body.withChild(reminder);
+    }
+
+    private static Component habitsTrackers(HabitsTrackersView view, String targetId) {
+        HabitsTrackersView safe = view == null
+            ? new HabitsTrackersView(LocalDate.now(), List.of(), List.of(), Map.of(), Map.of())
+            : view;
+        Div body = new Div().withClass("avatar-widget-body avatar-habits-widget");
+        body.withChild(new Div().withClass("avatar-planner-metrics")
+            .withChild(metric("Active", Integer.toString(safe.activeHabits().size())))
+            .withChild(metric("Archived", Integer.toString(safe.archivedHabits().size())))
+            .withChild(metric("Today", safe.today().format(DATE))));
+        Form form = Form.create().withClass("avatar-stack-form");
+        form.withAttribute("hx-post", "/_dashboards/_habits");
+        form.withAttribute("hx-target", "#" + targetId);
+        form.withAttribute("hx-swap", "outerHTML");
+        form.withChild(TextInput.create("title").withPlaceholder("Habit or tracker"));
+        form.withChild(new Div().withClass("avatar-form-grid")
+            .withChild(Select.create("habitType")
+                .addOption("BUILD", "Build", true)
+                .addOption("QUIT", "Quit", false))
+            .withChild(Select.create("period")
+                .addOption("DAILY", "Daily", true)
+                .addOption("WEEKLY", "Weekly", false)
+                .addOption("MONTHLY", "Monthly", false))
+            .withChild(TextInput.number("targetQuantity").withValue("1").withMin("0"))
+            .withChild(TextInput.create("targetUnit").withValue("times")));
+        form.withChild(Button.submit("Add Tracker"));
+        body.withChild(form);
+        Div list = new Div().withClass("avatar-list avatar-list-constrained");
+        if (safe.activeHabits().isEmpty()) {
+            list.withChild(empty("No habits yet. Add build or quit trackers without penalty language."));
+        }
+        for (AvatarHabit habit : safe.activeHabits().stream().limit(8).toList()) {
+            HabitsTrackersView.Progress progress = safe.progress().get(habit.id());
+            Div row = new Div().withClass("avatar-list-row avatar-habit-row");
+            row.withChild(new Div().withClass("avatar-list-row-main")
+                .withChild(new HtmlTag("strong").withInnerText(habit.title()))
+                .withChild(small(habit.habitType().toLowerCase(Locale.ROOT) + " / " + habit.period().toLowerCase(Locale.ROOT)
+                    + " / target " + trimNumber(habit.targetQuantity()) + " " + habit.targetUnit()))
+                .withChild(habitScheduleMeta(habit))
+                .withChild(habitChips(progress)));
+            row.withChild(habitActions(habit, targetId));
+            list.withChild(row);
+        }
+        body.withChild(list);
+        if (!safe.archivedHabits().isEmpty()) {
+            body.withChild(small(safe.archivedHabits().size() + " archived tracker(s) kept for history."));
+        }
+        return body;
+    }
+
+    private static Component habitChips(HabitsTrackersView.Progress progress) {
+        Div chips = new Div().withClass("avatar-source-strip avatar-habit-chips");
+        if (progress == null) {
+            return chips.withChild(chip("open", "neutral"));
+        }
+        chips.withChild(chip(progress.status(), "neutral"));
+        chips.withChild(chip(trimNumber(progress.loggedQuantity()) + "/" + trimNumber(progress.targetQuantity()) + " " + progress.targetUnit(), "neutral"));
+        chips.withChild(chip(progress.trendDays() + " active days", "neutral"));
+        if (progress.streakDays() > 0) {
+            chips.withChild(chip(progress.streakDays() + " streak", "neutral"));
+        }
+        return chips;
+    }
+
+    private static Component habitActions(AvatarHabit habit, String targetId) {
+        Div actions = new Div().withClass("avatar-row-actions");
+        Form log = Form.create().withClass("avatar-inline-action-form");
+        log.withAttribute("hx-post", "/_dashboards/_habits/" + habit.id() + "/logs");
+        log.withAttribute("hx-target", "#" + targetId);
+        log.withAttribute("hx-swap", "outerHTML");
+        log.withChild(hiddenInput("date", LocalDate.now().toString()));
+        log.withChild(hiddenInput("quantity", Double.toString(Math.max(habit.targetQuantity(), 1.0))));
+        log.withChild(hiddenInput("status", "LOGGED"));
+        log.withChild(Button.submit("Log"));
+        actions.withChild(log);
+        for (String status : List.of("SKIPPED", "RESTARTED")) {
+            Form form = Form.create().withClass("avatar-inline-action-form");
+            form.withAttribute("hx-post", "/_dashboards/_habits/" + habit.id() + "/logs");
+            form.withAttribute("hx-target", "#" + targetId);
+            form.withAttribute("hx-swap", "outerHTML");
+            form.withChild(hiddenInput("date", LocalDate.now().toString()));
+            form.withChild(hiddenInput("quantity", "0"));
+            form.withChild(hiddenInput("status", status));
+            form.withChild(Button.submit(actionLabel(status)));
+            actions.withChild(form);
+        }
+        Form archive = Form.create().withClass("avatar-inline-action-form");
+        archive.withAttribute("hx-post", "/_dashboards/_habits/" + habit.id() + "/archive");
+        archive.withAttribute("hx-target", "#" + targetId);
+        archive.withAttribute("hx-swap", "outerHTML");
+        archive.withChild(Button.submit("Archive"));
+        actions.withChild(archive);
+        actions.withChild(habitCorrectionForm(habit, targetId));
+        return actions;
+    }
+
+    private static Component habitScheduleMeta(AvatarHabit habit) {
+        String days = habitDayLabel(habit.displayDays());
+        String window = habitTimeWindow(habit.startTime(), habit.endTime());
+        if (!hasText(days) && !hasText(window)) {
+            return new Div().withClass("avatar-habit-schedule")
+                .withChild(new HtmlTag("span").withClass("avatar-chip avatar-chip-muted").withInnerText("All days"));
+        }
+        Div meta = new Div().withClass("avatar-source-strip avatar-habit-schedule");
+        if (hasText(days)) {
+            meta.withChild(new HtmlTag("span").withClass("avatar-chip avatar-chip-muted").withInnerText("Days " + days));
+        }
+        if (hasText(window)) {
+            meta.withChild(new HtmlTag("span").withClass("avatar-chip avatar-chip-muted").withInnerText("Window " + window));
+        }
+        return meta;
+    }
+
+    private static Component habitCorrectionForm(AvatarHabit habit, String targetId) {
+        Form form = Form.create().withClass("avatar-history-correction-form");
+        form.withAttribute("hx-post", "/_dashboards/_habits/" + habit.id() + "/logs");
+        form.withAttribute("hx-target", "#" + targetId);
+        form.withAttribute("hx-swap", "outerHTML");
+        form.withChild(new HtmlTag("span").withClass("avatar-history-correction-label").withInnerText("Correct"));
+        form.withChild(TextInput.create("date")
+            .withAttribute("type", "date")
+            .withAttribute("value", LocalDate.now().toString())
+            .withAttribute("aria-label", "Correction date for " + habit.title()));
+        form.withChild(TextInput.number("quantity")
+            .withValue(trimNumber(Math.max(habit.targetQuantity(), 0.0)))
+            .withMin("0")
+            .withAttribute("aria-label", "Correction quantity for " + habit.title()));
+        form.withChild(Select.create("status")
+            .addOption("LOGGED", "Logged", true)
+            .addOption("SKIPPED", "Skipped", false)
+            .addOption("RESTARTED", "Restarted", false));
+        form.withChild(Button.submit("Apply"));
+        return form;
+    }
+
+    private static Component remindersAlerts(ReminderInboxView view, String targetId) {
+        ReminderInboxView safe = view == null
+            ? new ReminderInboxView(Instant.now(), List.of(), List.of(), List.of(), List.of())
+            : view;
+        Div body = new Div().withClass("avatar-widget-body avatar-reminders-widget");
+        body.withChild(new Div().withClass("avatar-planner-metrics")
+            .withChild(metric("Due", Integer.toString(safe.due().size())))
+            .withChild(metric("Upcoming", Integer.toString(safe.upcoming().size())))
+            .withChild(metric("Snoozed", Integer.toString(safe.snoozed().size()))));
+        body.withChild(small("Dashboard inbox only. External push, email, and PWA delivery are deferred."));
+        Form create = Form.create().withClass("avatar-stack-form");
+        create.withAttribute("hx-post", "/_dashboards/_reminders");
+        create.withAttribute("hx-target", "#" + targetId);
+        create.withAttribute("hx-swap", "outerHTML");
+        create.withChild(TextInput.create("title").withPlaceholder("Reminder"));
+        create.withChild(TextInput.create("remindAt").withAttribute("type", "datetime-local"));
+        create.withChild(Button.submit("Add Reminder"));
+        body.withChild(create);
+        Div list = new Div().withClass("avatar-list avatar-list-constrained");
+        List<PlannerReminder> visible = new ArrayList<>();
+        visible.addAll(safe.due());
+        visible.addAll(safe.snoozed());
+        visible.addAll(safe.upcoming());
+        visible.addAll(safe.closed());
+        if (visible.isEmpty()) {
+            list.withChild(empty("No reminder alerts in the dashboard inbox."));
+        }
+        for (PlannerReminder reminder : visible.stream().limit(8).toList()) {
+            list.withChild(reminderRow(reminder, targetId, safe.now()));
+        }
+        return body.withChild(list);
+    }
+
+    private static Component reminderRow(PlannerReminder reminder, String targetId, Instant now) {
+        Div row = new Div().withClass("avatar-list-row avatar-reminder-row");
+        row.withChild(new Div().withClass("avatar-list-row-main")
+            .withChild(new HtmlTag("strong").withInnerText(reminder.title()))
+            .withChild(small(reminder.status() + " / " + timeLabel(reminder.remindAt()) + sourceLabel(reminder))));
+        Div actions = new Div().withClass("avatar-row-actions");
+        String status = reminder.status() == null ? "OPEN" : reminder.status().toUpperCase(Locale.ROOT);
+        Instant comparisonTime = now == null ? Instant.now() : now;
+        boolean closed = Set.of("COMPLETED", "SKIPPED").contains(status);
+        boolean restartable = closed
+            || "SNOOZED".equals(status)
+            || ("OPEN".equals(status) && reminder.remindAt() != null && !reminder.remindAt().isAfter(comparisonTime));
+        if (!closed) {
+            actions.withChild(actionForm("Complete", "/_dashboards/_reminders/" + reminder.id() + "/complete", targetId));
+            actions.withChild(actionForm("Snooze", "/_dashboards/_reminders/" + reminder.id() + "/snooze", targetId));
+            actions.withChild(actionForm("Skip", "/_dashboards/_reminders/" + reminder.id() + "/skip", targetId));
+        }
+        if (restartable) {
+            actions.withChild(actionForm("Restart", "/_dashboards/_reminders/" + reminder.id() + "/restart", targetId));
+        }
+        Form reschedule = Form.create().withClass("avatar-inline-action-form avatar-reminder-reschedule");
+        reschedule.withAttribute("hx-post", "/_dashboards/_reminders/" + reminder.id() + "/reschedule");
+        reschedule.withAttribute("hx-target", "#" + targetId);
+        reschedule.withAttribute("hx-swap", "outerHTML");
+        reschedule.withChild(TextInput.create("remindAt").withAttribute("type", "datetime-local"));
+        reschedule.withChild(Button.submit("Reschedule"));
+        actions.withChild(reschedule);
+        row.withChild(actions);
+        return row;
+    }
+
+    private static String habitDayLabel(List<String> displayDays) {
+        if (displayDays == null || displayDays.isEmpty()) {
+            return "";
+        }
+        return displayDays.stream()
+            .filter(AvatarDashboardComponents::hasText)
+            .map(AvatarDashboardComponents::shortDayLabel)
+            .distinct()
+            .toList()
+            .stream()
+            .reduce((left, right) -> left + ", " + right)
+            .orElse("");
+    }
+
+    private static String shortDayLabel(String value) {
+        String normalized = value.strip().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "MONDAY", "MON" -> "Mon";
+            case "TUESDAY", "TUE", "TUES" -> "Tue";
+            case "WEDNESDAY", "WED" -> "Wed";
+            case "THURSDAY", "THU", "THUR", "THURS" -> "Thu";
+            case "FRIDAY", "FRI" -> "Fri";
+            case "SATURDAY", "SAT" -> "Sat";
+            case "SUNDAY", "SUN" -> "Sun";
+            default -> normalized.substring(0, 1) + normalized.substring(1).toLowerCase(Locale.ROOT);
+        };
+    }
+
+    private static String habitTimeWindow(LocalTime startTime, LocalTime endTime) {
+        if (startTime == null && endTime == null) {
+            return "";
+        }
+        if (startTime == null) {
+            return "until " + TIME.format(endTime);
+        }
+        if (endTime == null) {
+            return "from " + TIME.format(startTime);
+        }
+        return TIME.format(startTime) + "-" + TIME.format(endTime);
+    }
+
+    private static Component actionForm(String label, String url, String targetId) {
+        Form form = Form.create().withClass("avatar-inline-action-form");
+        form.withAttribute("hx-post", url);
+        form.withAttribute("hx-target", "#" + targetId);
+        form.withAttribute("hx-swap", "outerHTML");
+        form.withChild(Button.submit(label));
+        return form;
+    }
+
+    private static Component dashboardContext(AvatarDashboardData data) {
+        Div body = new Div().withClass("avatar-widget-body avatar-context-panel");
+        body.withChild(small("Read-only dashboard context. These descriptors do not grant chat actions."));
+        body.withChild(new Div().withClass("avatar-planner-metrics")
+            .withChild(metric("Rows", Integer.toString(data.rows() == null ? 0 : data.rows().size())))
+            .withChild(metric("Widgets", Long.toString(data.rows() == null ? 0 : data.rows().stream().flatMap(row -> row.widgets().stream()).count())))
+            .withChild(metric("Dashboard", data.dashboard() == null ? "unknown" : data.dashboard().name())));
+        Div list = new Div().withClass("avatar-list avatar-list-constrained");
+        if (data.rows() != null) {
+            data.rows().stream()
+                .flatMap(row -> row.widgets().stream())
+                .limit(10)
+                .forEach(widget -> {
+                    DashboardWidgetDefinition definition = definition(widget.widgetKey());
+                    list.withChild(new Div().withClass("avatar-list-row avatar-context-row")
+                        .withChild(new Div().withClass("avatar-list-row-main")
+                            .withChild(new HtmlTag("strong").withInnerText(definition.title()))
+                            .withChild(small("type " + definition.type() + " / binding "
+                                + definition.bindingMode().name().toLowerCase(Locale.ROOT)))
+                            .withChild(toolContract(definition))));
+                });
+        }
+        return body.withChild(list);
+    }
+
+    private static Component toolContract(DashboardWidgetDefinition definition) {
+        Div tools = new Div().withClass("avatar-source-strip avatar-tool-contracts");
+        if (definition.toolDescriptor().readTools().isEmpty() && definition.toolDescriptor().mutationTools().isEmpty()) {
+            return tools.withChild(chip("read-only context", "neutral"));
+        }
+        definition.toolDescriptor().readTools().forEach(tool -> tools.withChild(chip("read " + tool, "neutral")));
+        definition.toolDescriptor().mutationTools().forEach(tool -> tools.withChild(chip("tool " + tool, "neutral")));
+        return tools;
     }
 
     private static Component phaseList(String title, List<PlannerTask> tasks, int limit) {
@@ -2884,6 +3199,8 @@ final class AvatarDashboardComponents {
         TodayPlannerView todayPlanner,
         TasksRoutinesView tasksRoutines,
         CalendarScheduleView calendarSchedule,
+        HabitsTrackersView habitsTrackers,
+        ReminderInboxView reminderInbox,
         List<AvatarNote> notes,
         Map<String, DashboardNotesView> noteViews,
         Map<String, DashboardProjectContextView> projectViews,

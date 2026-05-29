@@ -40,6 +40,7 @@ import io.mindspice.magenta2.avatar.AvatarDashboardRow;
 import io.mindspice.magenta2.avatar.AvatarDashboardWidget;
 import io.mindspice.magenta2.avatar.AvatarDashboardRowWidget;
 import io.mindspice.magenta2.avatar.AvatarEvent;
+import io.mindspice.magenta2.avatar.AvatarHabit;
 import io.mindspice.magenta2.avatar.AvatarNote;
 import io.mindspice.magenta2.avatar.AvatarPriority;
 import io.mindspice.magenta2.avatar.AvatarService;
@@ -88,7 +89,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Controller
 public class AvatarDashboardController {
-    private static final String AVATAR_CSS = "/css/avatar-dashboard.css?v=11";
+    private static final String AVATAR_CSS = "/css/avatar-dashboard.css?v=12";
     private static final String AVATAR_AGENT_ID = "avatar";
     private static final String DEFAULT_AVATAR_TAB = "dashboard";
 
@@ -860,7 +861,94 @@ public class AvatarDashboardController {
             null,
             null
         ));
-        return firstWidgetByType("calendar-schedule");
+        return firstAvailableWidgetByType("reminders-alerts", "calendar-schedule");
+    }
+
+    @PostMapping("/_dashboards/_reminders/{reminderId}/complete")
+    @ResponseBody
+    public String completeReminder(@PathVariable String reminderId) {
+        avatarService.completeReminder(reminderId);
+        return firstWidgetByType("reminders-alerts");
+    }
+
+    @PostMapping("/_dashboards/_reminders/{reminderId}/snooze")
+    @ResponseBody
+    public String snoozeReminder(@PathVariable String reminderId,
+                                 @RequestParam(value = "snoozedUntil", required = false) String snoozedUntil) {
+        avatarService.snoozeReminder(reminderId, parseOptionalDateTime(snoozedUntil));
+        return firstWidgetByType("reminders-alerts");
+    }
+
+    @PostMapping("/_dashboards/_reminders/{reminderId}/reschedule")
+    @ResponseBody
+    public String rescheduleReminder(@PathVariable String reminderId,
+                                     @RequestParam String remindAt) {
+        avatarService.rescheduleReminder(reminderId, parseDateTime(remindAt));
+        return firstWidgetByType("reminders-alerts");
+    }
+
+    @PostMapping("/_dashboards/_reminders/{reminderId}/skip")
+    @ResponseBody
+    public String skipReminder(@PathVariable String reminderId) {
+        avatarService.skipReminder(reminderId);
+        return firstWidgetByType("reminders-alerts");
+    }
+
+    @PostMapping("/_dashboards/_reminders/{reminderId}/restart")
+    @ResponseBody
+    public String restartReminder(@PathVariable String reminderId) {
+        avatarService.restartReminder(reminderId);
+        return firstWidgetByType("reminders-alerts");
+    }
+
+    @PostMapping("/_dashboards/_habits")
+    @ResponseBody
+    public String createHabit(@RequestParam String title,
+                              @RequestParam(value = "notes", required = false) String notes,
+                              @RequestParam(value = "habitType", defaultValue = "BUILD") String habitType,
+                              @RequestParam(value = "period", defaultValue = "DAILY") String period,
+                              @RequestParam(value = "targetQuantity", defaultValue = "1") double targetQuantity,
+                              @RequestParam(value = "targetUnit", defaultValue = "times") String targetUnit,
+                              @RequestParam(value = "displayDays", required = false) String displayDays,
+                              @RequestParam(value = "startTime", required = false) String startTime,
+                              @RequestParam(value = "endTime", required = false) String endTime,
+                              @RequestParam(value = "streakEnabled", defaultValue = "true") boolean streakEnabled) {
+        avatarService.saveHabit(new AvatarHabit(
+            null,
+            title.strip(),
+            notes,
+            habitType,
+            period,
+            targetQuantity,
+            targetUnit,
+            splitDisplayDays(displayDays),
+            parseOptionalTime(startTime),
+            parseOptionalTime(endTime),
+            streakEnabled,
+            false,
+            null,
+            null,
+            null
+        ));
+        return firstWidgetByType("habits-trackers");
+    }
+
+    @PostMapping("/_dashboards/_habits/{habitId}/logs")
+    @ResponseBody
+    public String logHabit(@PathVariable String habitId,
+                           @RequestParam(value = "date", required = false) String date,
+                           @RequestParam(value = "quantity", defaultValue = "0") double quantity,
+                           @RequestParam(value = "status", defaultValue = "LOGGED") String status,
+                           @RequestParam(value = "notes", required = false) String notes) {
+        avatarService.logHabit(habitId, parseOptionalDate(date), quantity, status, notes);
+        return firstWidgetByType("habits-trackers");
+    }
+
+    @PostMapping("/_dashboards/_habits/{habitId}/archive")
+    @ResponseBody
+    public String archiveHabit(@PathVariable String habitId) {
+        avatarService.archiveHabit(habitId);
+        return firstWidgetByType("habits-trackers");
     }
 
     @GetMapping("/_dashboards/_outputs/{artifactId}")
@@ -1787,6 +1875,8 @@ public class AvatarDashboardController {
             avatarService.todayPlanner(LocalDate.now()),
             avatarService.tasksRoutines(),
             avatarService.calendarSchedule(LocalDate.now(), LocalDate.now().plusDays(30)),
+            avatarService.habitsTrackers(LocalDate.now()),
+            avatarService.reminderInbox(),
             avatarService.notes(false),
             noteViews(rows),
             projectViews(rows),
@@ -1837,6 +1927,8 @@ public class AvatarDashboardController {
             base.todayPlanner(),
             avatarService.tasksRoutines(status, range, recurrence),
             base.calendarSchedule(),
+            base.habitsTrackers(),
+            base.reminderInbox(),
             base.notes(),
             base.noteViews(),
             base.projectViews(),
@@ -1994,6 +2086,8 @@ public class AvatarDashboardController {
             base.todayPlanner(),
             base.tasksRoutines(),
             base.calendarSchedule(),
+            base.habitsTrackers(),
+            base.reminderInbox(),
             base.notes(),
             base.noteViews(),
             base.projectViews(),
@@ -2023,6 +2117,14 @@ public class AvatarDashboardController {
                 current,
                 AvatarDashboardComponents.defaultWidget(AvatarDashboardComponents.definition(widgetType), 0)
             ).render());
+    }
+
+    private String firstAvailableWidgetByType(String preferredType, String fallbackType) {
+        AvatarDashboardComponents.AvatarDashboardData current = data();
+        boolean hasPreferred = current.rows().stream()
+            .flatMap(row -> row.widgets().stream())
+            .anyMatch(widget -> preferredType.equals(widget.widgetKey()));
+        return firstWidgetByType(hasPreferred ? preferredType : fallbackType);
     }
 
     private List<WorkAssignment> assignments(List<AgentProfile> agents) {
@@ -2623,6 +2725,18 @@ public class AvatarDashboardController {
         return java.util.Arrays.stream(tags.split(","))
             .map(String::trim)
             .filter(StringUtils::hasText)
+            .distinct()
+            .toList();
+    }
+
+    private List<String> splitDisplayDays(String days) {
+        if (!StringUtils.hasText(days)) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(days.split(","))
+            .map(String::trim)
+            .filter(StringUtils::hasText)
+            .map(value -> value.toUpperCase(Locale.ROOT))
             .distinct()
             .toList();
     }

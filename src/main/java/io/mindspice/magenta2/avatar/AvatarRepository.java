@@ -785,9 +785,12 @@ public class AvatarRepository {
         insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowTwo, "tasks-routines", 6, 0);
         insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowTwo, "notes", 6, 1);
         String rowThree = insertUserDashboardRow(ASSISTANT_DASHBOARD_ID, 2);
-        insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowThree, "system", 4, 0);
-        insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowThree, "alerts", 4, 1);
-        insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowThree, "recent-work", 4, 2);
+        insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowThree, "habits-trackers", 6, 0);
+        insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowThree, "reminders-alerts", 6, 1);
+        String rowFour = insertUserDashboardRow(ASSISTANT_DASHBOARD_ID, 3);
+        insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowFour, "system", 4, 0);
+        insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowFour, "dashboard-context", 4, 1);
+        insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowFour, "recent-work", 4, 2);
     }
 
     private String insertUserDashboardRow(String dashboardId, int position) {
@@ -1115,6 +1118,136 @@ public class AvatarRepository {
         return jdbcTemplate.query(
             "select * from avatar_notes where archived = 0 order by updated_at desc, title",
             (rs, rowNum) -> toNote(rs)
+        );
+    }
+
+    public AvatarHabit saveHabit(AvatarHabit habit) {
+        String id = id(habit.id());
+        Instant now = Instant.now();
+        Instant createdAt = habit.createdAt() == null ? now : habit.createdAt();
+        boolean archived = habit.archived();
+        jdbcTemplate.update(
+            """
+                insert into avatar_habits (
+                    id, title, notes, habit_type, period, target_quantity, target_unit, display_days_json,
+                    start_time, end_time, streak_enabled, archived, created_at, updated_at, archived_at
+                )
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                on conflict(id) do update set
+                    title = excluded.title,
+                    notes = excluded.notes,
+                    habit_type = excluded.habit_type,
+                    period = excluded.period,
+                    target_quantity = excluded.target_quantity,
+                    target_unit = excluded.target_unit,
+                    display_days_json = excluded.display_days_json,
+                    start_time = excluded.start_time,
+                    end_time = excluded.end_time,
+                    streak_enabled = excluded.streak_enabled,
+                    archived = excluded.archived,
+                    updated_at = excluded.updated_at,
+                    archived_at = excluded.archived_at
+                """,
+            id,
+            requireText(habit.title(), "habit title"),
+            habit.notes(),
+            normalizeChoice(habit.habitType(), "BUILD", List.of("BUILD", "QUIT")),
+            normalizeChoice(habit.period(), "DAILY", List.of("DAILY", "WEEKLY", "MONTHLY")),
+            habit.targetQuantity() <= 0 ? 1.0 : habit.targetQuantity(),
+            StringUtils.hasText(habit.targetUnit()) ? habit.targetUnit().strip() : "times",
+            jsonList(habit.displayDays()),
+            string(habit.startTime()),
+            string(habit.endTime()),
+            habit.streakEnabled() ? 1 : 0,
+            archived ? 1 : 0,
+            createdAt.toString(),
+            now.toString(),
+            archived ? string(habit.archivedAt() == null ? now : habit.archivedAt()) : null
+        );
+        return findHabit(id).orElseThrow();
+    }
+
+    public Optional<AvatarHabit> findHabit(String id) {
+        return jdbcTemplate.query(
+            "select * from avatar_habits where id = ?",
+            rs -> rs.next() ? Optional.of(toHabit(rs)) : Optional.empty(),
+            requireText(id, "habit id")
+        );
+    }
+
+    public List<AvatarHabit> findHabits(boolean includeArchived) {
+        if (includeArchived) {
+            return jdbcTemplate.query(
+                "select * from avatar_habits order by archived, title",
+                (rs, rowNum) -> toHabit(rs)
+            );
+        }
+        return jdbcTemplate.query(
+            "select * from avatar_habits where archived = 0 order by title",
+            (rs, rowNum) -> toHabit(rs)
+        );
+    }
+
+    public AvatarHabitLog saveHabitLog(AvatarHabitLog log) {
+        findHabit(requireText(log.habitId(), "habit id"))
+            .orElseThrow(() -> new IllegalArgumentException("habit not found: " + log.habitId()));
+        String id = id(log.id());
+        Instant now = Instant.now();
+        Instant createdAt = log.createdAt() == null ? now : log.createdAt();
+        String status = normalizeChoice(log.status(), "LOGGED", List.of("LOGGED", "SKIPPED", "RESTARTED"));
+        jdbcTemplate.update(
+            """
+                insert into avatar_habit_logs (
+                    id, habit_id, log_date, quantity, status, notes, skipped_at, restarted_at, created_at, updated_at
+                )
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                on conflict(habit_id, log_date) do update set
+                    quantity = excluded.quantity,
+                    status = excluded.status,
+                    notes = excluded.notes,
+                    skipped_at = excluded.skipped_at,
+                    restarted_at = excluded.restarted_at,
+                    updated_at = excluded.updated_at
+                """,
+            id,
+            log.habitId(),
+            requireDate(log.logDate()).toString(),
+            Math.max(log.quantity(), 0.0),
+            status,
+            log.notes(),
+            string(log.skippedAt()),
+            string(log.restartedAt()),
+            createdAt.toString(),
+            now.toString()
+        );
+        return findHabitLog(log.habitId(), log.logDate()).orElseThrow();
+    }
+
+    public Optional<AvatarHabitLog> findHabitLog(String habitId, LocalDate logDate) {
+        return jdbcTemplate.query(
+            "select * from avatar_habit_logs where habit_id = ? and log_date = ?",
+            rs -> rs.next() ? Optional.of(toHabitLog(rs)) : Optional.empty(),
+            requireText(habitId, "habit id"),
+            requireDate(logDate).toString()
+        );
+    }
+
+    public List<AvatarHabitLog> findHabitLogs(LocalDate from, LocalDate to) {
+        if (from == null || to == null) {
+            return jdbcTemplate.query(
+                "select * from avatar_habit_logs order by log_date desc, habit_id",
+                (rs, rowNum) -> toHabitLog(rs)
+            );
+        }
+        return jdbcTemplate.query(
+            """
+                select * from avatar_habit_logs
+                where log_date >= ? and log_date <= ?
+                order by log_date desc, habit_id
+                """,
+            (rs, rowNum) -> toHabitLog(rs),
+            from.toString(),
+            to.toString()
         );
     }
 
@@ -1687,6 +1820,41 @@ public class AvatarRepository {
         );
     }
 
+    private AvatarHabit toHabit(ResultSet rs) throws SQLException {
+        return new AvatarHabit(
+            rs.getString("id"),
+            rs.getString("title"),
+            rs.getString("notes"),
+            rs.getString("habit_type"),
+            rs.getString("period"),
+            rs.getDouble("target_quantity"),
+            rs.getString("target_unit"),
+            list(rs.getString("display_days_json")),
+            time(rs.getString("start_time")),
+            time(rs.getString("end_time")),
+            rs.getInt("streak_enabled") == 1,
+            rs.getInt("archived") == 1,
+            instant(rs.getString("created_at")),
+            instant(rs.getString("updated_at")),
+            instant(rs.getString("archived_at"))
+        );
+    }
+
+    private AvatarHabitLog toHabitLog(ResultSet rs) throws SQLException {
+        return new AvatarHabitLog(
+            rs.getString("id"),
+            rs.getString("habit_id"),
+            LocalDate.parse(rs.getString("log_date")),
+            rs.getDouble("quantity"),
+            rs.getString("status"),
+            rs.getString("notes"),
+            instant(rs.getString("skipped_at")),
+            instant(rs.getString("restarted_at")),
+            instant(rs.getString("created_at")),
+            instant(rs.getString("updated_at"))
+        );
+    }
+
     private PlannerTask toPlannerTask(ResultSet rs) throws SQLException {
         return new PlannerTask(
             rs.getString("id"),
@@ -1847,12 +2015,28 @@ public class AvatarRepository {
         return value == null ? fallback : value;
     }
 
+    private String normalizeChoice(String value, String fallback, List<String> allowed) {
+        String normalized = StringUtils.hasText(value) ? value.strip().toUpperCase(Locale.ROOT) : fallback;
+        if (!allowed.contains(normalized)) {
+            throw new IllegalArgumentException("unsupported value: " + value);
+        }
+        return normalized;
+    }
+
     private String string(Instant instant) {
         return instant == null ? null : instant.toString();
     }
 
+    private String string(LocalTime time) {
+        return time == null ? null : time.toString();
+    }
+
     private Instant instant(String value) {
         return StringUtils.hasText(value) ? Instant.parse(value) : null;
+    }
+
+    private LocalTime time(String value) {
+        return StringUtils.hasText(value) ? LocalTime.parse(value) : null;
     }
 
     private String jsonMap(Map<String, Object> value) {

@@ -134,7 +134,7 @@ class AvatarDashboardControllerTest {
     void homeRendersAssistantDashboardSelectorChatAndScopedAssets() {
         String html = controller.avatar(false);
 
-        assertThat(html).contains("/css/avatar-dashboard.css?v=11");
+        assertThat(html).contains("/css/avatar-dashboard.css?v=12");
         assertThat(html).contains("/js/avatar-chat.js?v=4");
         assertThat(html).contains("/js/avatar-layout-edit.js?v=1");
         assertThat(html).contains("/js/avatar-workarea-editor.js?v=2");
@@ -172,7 +172,10 @@ class AvatarDashboardControllerTest {
         assertThat(html)
             .contains("data-avatar-widget-type=\"today-planner\"")
             .contains("data-avatar-widget-type=\"tasks-routines\"")
-            .contains("data-avatar-widget-type=\"calendar-schedule\"");
+            .contains("data-avatar-widget-type=\"calendar-schedule\"")
+            .contains("data-avatar-widget-type=\"habits-trackers\"")
+            .contains("data-avatar-widget-type=\"reminders-alerts\"")
+            .contains("data-avatar-widget-type=\"dashboard-context\"");
 
         String editHtml = controller.avatar(true);
         assertThat(editHtml).contains("avatar-widget-grid-editing");
@@ -327,6 +330,44 @@ class AvatarDashboardControllerTest {
             .contains("File overdue invoice")
             .contains("Unscheduled")
             .contains("Sort unscheduled inbox");
+    }
+
+    @Test
+    void habitsRemindersAndContextWidgetsRenderScopedDashboardContracts() {
+        String habitHtml = controller.createHabit(
+            "Drink water",
+            "gentle build",
+            "BUILD",
+            "DAILY",
+            3,
+            "cups",
+            "MONDAY,TUESDAY",
+            "08:00",
+            "20:00",
+            true
+        );
+        assertThat(habitHtml)
+            .contains("data-avatar-widget-type=\"habits-trackers\"")
+            .contains("Drink water")
+            .contains("target 3 cups")
+            .contains("Days Mon, Tue")
+            .contains("Window 08:00-20:00")
+            .contains("avatar-history-correction-form")
+            .contains("type=\"date\"")
+            .contains("aria-label=\"Correction date for Drink water\"")
+            .contains("Skip")
+            .contains("Restart")
+            .doesNotContain("failed");
+
+        String logged = controller.logHabit(avatarService.habits(false).getFirst().id(), LocalDate.now().toString(), 3, "LOGGED", null);
+        assertThat(logged).contains("3/3 cups").contains("on track");
+
+        String context = controller.widget("dashboard-context");
+        assertThat(context)
+            .contains("Read-only dashboard context")
+            .contains("These descriptors do not grant chat actions")
+            .contains("read-only context")
+            .contains("avatar_reminder_upsert");
     }
 
     @Test
@@ -1093,7 +1134,24 @@ class AvatarDashboardControllerTest {
             taskId
         );
         assertThat(reminderHtml)
-            .contains("data-avatar-widget-type=\"calendar-schedule\"")
+            .contains("data-avatar-widget-type=\"reminders-alerts\"")
+            .contains("Dashboard inbox only. External push, email, and PWA delivery are deferred.")
+            .contains("avatar-reminder-row")
+            .contains("avatar-reminder-reschedule")
+            .contains("Complete")
+            .contains("Snooze")
+            .contains("Reschedule")
+            .contains("Check planting block");
+        String reminderId = avatarService.reminders(null, null, true).getFirst().id();
+        String skippedReminderHtml = controller.skipReminder(reminderId);
+        assertThat(skippedReminderHtml)
+            .contains("SKIPPED")
+            .contains("Restart")
+            .contains("hx-post=\"/_dashboards/_reminders/" + reminderId + "/restart\"");
+        String restartedReminderHtml = controller.restartReminder(reminderId);
+        assertThat(restartedReminderHtml)
+            .contains("OPEN")
+            .contains("Restart")
             .contains("Check planting block");
 
         String occurrenceHtml = controller.updatePlannerOccurrence(

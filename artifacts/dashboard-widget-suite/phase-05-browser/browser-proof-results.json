@@ -1,0 +1,405 @@
+{
+  "verdict": "PASS_BROWSER_PROOF",
+  "baseUrl": "http://127.0.0.1:18081",
+  "runtime": {
+    "command": "mvn spring-boot:run -Dspring-boot.run.arguments='--server.port=18081 --magenta.root.path=/tmp/magenta2-dashboard-widget-suite-phase-05-browser --spring.datasource.url=jdbc:sqlite:/tmp/magenta2-dashboard-widget-suite-phase-05-browser/magenta.sqlite?foreign_keys=true --magenta.orchestration.runner-delay-ms=60000 --magenta.orchestration.scheduler-delay-ms=60000 --magenta.orchestration.assignment-history-purge-delay-ms=60000'",
+    "port": 18081,
+    "isolatedRoot": "/tmp/magenta2-dashboard-widget-suite-phase-05-browser"
+  },
+  "screenshots": [
+    "artifacts/dashboard-widget-suite/phase-05-browser/desktop-home-seeded.png",
+    "artifacts/dashboard-widget-suite/phase-05-browser/desktop-habits-detail-modal.png",
+    "artifacts/dashboard-widget-suite/phase-05-browser/desktop-reminders-detail-modal.png",
+    "artifacts/dashboard-widget-suite/phase-05-browser/reference-manage-desktop.png",
+    "artifacts/dashboard-widget-suite/phase-05-browser/reference-agents-desktop.png",
+    "artifacts/dashboard-widget-suite/phase-05-browser/mobile-home-seeded.png",
+    "artifacts/dashboard-widget-suite/phase-05-browser/mobile-reminders-settings-modal.png"
+  ],
+  "checks": [
+    {
+      "id": "habits_build_quit_target_period_progress_trend_streak_render",
+      "status": "passed",
+      "evidence": {
+        "buildRow": "Build hydration tracker\nbuild / daily / target 3 cups\nDays Mon, Wed, Fri\nWindow 08:00-18:00\non track\n3/3 cups\n2 active days\n1 streak\nLog\nSkipped\nRestarted\nArchive\nCorrect\nLogged\nSkipped\nRestarted\nApply",
+        "quitRow": "Quit late snacks tracker\nquit / weekly / target 1 cravings\nDays Tue, Thu\nWindow 19:00-22:00\nclear\n0/1 cravings\n1 active days\n1 streak\nLog\nSkipped\nRestarted\nArchive\nCorrect\nLogged\nSkipped\nRestarted\nApply"
+      }
+    },
+    {
+      "id": "habits_display_days_and_time_range_render",
+      "status": "passed",
+      "evidence": {
+        "buildRow": "Build hydration tracker\nbuild / daily / target 3 cups\nDays Mon, Wed, Fri\nWindow 08:00-18:00\non track\n3/3 cups\n2 active days\n1 streak\nLog\nSkipped\nRestarted\nArchive\nCorrect\nLogged\nSkipped\nRestarted\nApply",
+        "quitRow": "Quit late snacks tracker\nquit / weekly / target 1 cravings\nDays Tue, Thu\nWindow 19:00-22:00\nclear\n0/1 cravings\n1 active days\n1 streak\nLog\nSkipped\nRestarted\nArchive\nCorrect\nLogged\nSkipped\nRestarted\nApply",
+        "expected": "created displayDays/time ranges should be visible in summary or detail rows"
+      }
+    },
+    {
+      "id": "habits_archive_state_and_non_punitive_copy_render",
+      "status": "passed",
+      "evidence": "Habits/Trackers\n2\nActive\n1\nArchived\nMay 29\nToday\nBuild\nQuit\nDaily\nWeekly\nMonthly\nAdd Tracker\nBuild hydration tracker\nbuild / daily / target 3 cups\nDays Mon, Wed, Fri\nWindow 08:00-18:00\non track\n3/3 cups\n2 active days\n1 streak\nLog\nSkipped\nRestarted\nArchive\nCorrect\nLogged\nSkipped\nRestarted\nApply\nQuit late snacks tracker\nquit / weekly / target 1 cravings\nDays Tue, Thu\nWindow 19:00-22:00\nclear\n0/1 cravings\n1 active days\n1 streak\nLog\nSkipped\nRestarted\nArchive\nCorrect\nLogged\nSkipped\nRestarted\nApply\n1 archived tracker(s) kept for history."
+    },
+    {
+      "id": "habits_history_correction_ui_action_render",
+      "status": "passed",
+      "evidence": {
+        "habitLogForms": 8,
+        "visibleHabitDateInputs": 2,
+        "expected": "history correction should expose a visible date/log correction control, not only hidden current-day buttons"
+      }
+    },
+    {
+      "id": "reminders_due_upcoming_snoozed_completed_skipped_and_source_labels_render",
+      "status": "passed",
+      "evidence": {
+        "dueRow": "Due open reminder\nOPEN / May 29 10:35 / source project phase05-household\nComplete\nSnooze\nSkip\nRestart\nReschedule",
+        "upcomingRow": "Upcoming linked reminder\nOPEN / May 29 16:35 / source calendar phase05-calendar-source\nComplete\nSnooze\nSkip\nReschedule",
+        "snoozedRow": "Snooze action reminder\nSNOOZED / May 29 11:05 / source task phase05-task-source\nComplete\nSnooze\nSkip\nRestart\nReschedule",
+        "completedRow": "Complete action reminder\nCOMPLETED / May 29 11:15 / source project phase05-project-source\nRestart\nReschedule",
+        "skippedRow": "Skip action reminder\nSKIPPED / May 29 11:25 / source habit phase05-habit-source\nRestart\nReschedule"
+      }
+    },
+    {
+      "id": "closed_reminder_rows_hide_complete_snooze_skip_and_show_restart",
+      "status": "passed",
+      "evidence": {
+        "Complete action reminder": {
+          "text": "Complete action reminder\nCOMPLETED / May 29 11:15 / source project phase05-project-source\nRestart\nReschedule",
+          "buttons": [
+            "Restart",
+            "Reschedule"
+          ],
+          "hasComplete": false,
+          "hasSnooze": false,
+          "hasSkip": false,
+          "hasRestart": true
+        },
+        "Skip action reminder": {
+          "text": "Skip action reminder\nSKIPPED / May 29 11:25 / source habit phase05-habit-source\nRestart\nReschedule",
+          "buttons": [
+            "Restart",
+            "Reschedule"
+          ],
+          "hasComplete": false,
+          "hasSnooze": false,
+          "hasSkip": false,
+          "hasRestart": true
+        }
+      }
+    },
+    {
+      "id": "restart_action_visible_and_works_for_closed_snoozed_and_open_due",
+      "status": "passed",
+      "evidence": {
+        "restartedClosedRow": "Closed restart proof reminder\nOPEN / May 29 12:35 / source project phase05-closed-restart\nComplete\nSnooze\nSkip\nRestart\nReschedule",
+        "restartedSnoozedRow": "Snoozed restart proof reminder\nOPEN / May 29 12:35 / source calendar phase05-snooze-restart\nComplete\nSnooze\nSkip\nRestart\nReschedule",
+        "restartedDueRow": "Open due restart proof reminder\nOPEN / May 29 12:35 / source task phase05-open-restart\nComplete\nSnooze\nSkip\nRestart\nReschedule"
+      }
+    },
+    {
+      "id": "reminders_reschedule_actions_visible",
+      "status": "passed",
+      "evidence": {
+        "rescheduleCount": 8
+      }
+    },
+    {
+      "id": "reminder_rows_readable_not_crushed_by_actions",
+      "status": "passed",
+      "evidence": [
+        {
+          "text": "Due open reminder\nOPEN / May 29 10:35 / source project phase05-household\nComplete\nSnooze\nSkip\nRestart\nReschedule",
+          "mainWidth": 348.046875,
+          "titleWidth": 348.046875,
+          "titleHeight": 25.59375,
+          "actionButtons": [
+            "Complete",
+            "Snooze",
+            "Skip",
+            "Restart",
+            "Reschedule"
+          ]
+        },
+        {
+          "text": "Closed restart proof reminder\nOPEN / May 29 12:35 / source project phase05-closed-restart\nComplete\nSnooze\nSkip\nRestart\nReschedule",
+          "mainWidth": 348.046875,
+          "titleWidth": 348.046875,
+          "titleHeight": 25.59375,
+          "actionButtons": [
+            "Complete",
+            "Snooze",
+            "Skip",
+            "Restart",
+            "Reschedule"
+          ]
+        },
+        {
+          "text": "Snoozed restart proof reminder\nOPEN / May 29 12:35 / source calendar phase05-snooze-restart\nComplete\nSnooze\nSkip\nRestart\nReschedule",
+          "mainWidth": 348.046875,
+          "titleWidth": 348.046875,
+          "titleHeight": 25.59375,
+          "actionButtons": [
+            "Complete",
+            "Snooze",
+            "Skip",
+            "Restart",
+            "Reschedule"
+          ]
+        },
+        {
+          "text": "Open due restart proof reminder\nOPEN / May 29 12:35 / source task phase05-open-restart\nComplete\nSnooze\nSkip\nRestart\nReschedule",
+          "mainWidth": 348.046875,
+          "titleWidth": 348.046875,
+          "titleHeight": 25.59375,
+          "actionButtons": [
+            "Complete",
+            "Snooze",
+            "Skip",
+            "Restart",
+            "Reschedule"
+          ]
+        },
+        {
+          "text": "Snooze action reminder\nSNOOZED / May 29 11:05 / source task phase05-task-source\nComplete\nSnooze\nSkip\nRestart\nReschedule",
+          "mainWidth": 348.046875,
+          "titleWidth": 348.046875,
+          "titleHeight": 25.59375,
+          "actionButtons": [
+            "Complete",
+            "Snooze",
+            "Skip",
+            "Restart",
+            "Reschedule"
+          ]
+        },
+        {
+          "text": "Upcoming linked reminder\nOPEN / May 29 16:35 / source calendar phase05-calendar-source\nComplete\nSnooze\nSkip\nReschedule",
+          "mainWidth": 348.046875,
+          "titleWidth": 348.046875,
+          "titleHeight": 25.59375,
+          "actionButtons": [
+            "Complete",
+            "Snooze",
+            "Skip",
+            "Reschedule"
+          ]
+        },
+        {
+          "text": "Complete action reminder\nCOMPLETED / May 29 11:15 / source project phase05-project-source\nRestart\nReschedule",
+          "mainWidth": 348.046875,
+          "titleWidth": 348.046875,
+          "titleHeight": 25.59375,
+          "actionButtons": [
+            "Restart",
+            "Reschedule"
+          ]
+        },
+        {
+          "text": "Skip action reminder\nSKIPPED / May 29 11:25 / source habit phase05-habit-source\nRestart\nReschedule",
+          "mainWidth": 348.046875,
+          "titleWidth": 348.046875,
+          "titleHeight": 25.59375,
+          "actionButtons": [
+            "Restart",
+            "Reschedule"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dashboard_context_read_only_contract_boundary",
+      "status": "passed",
+      "evidence": "Dashboard Context\nRead-only dashboard context. These descriptors do not grant chat actions.\n4\nRows\n9\nWidgets\nAssistant\nDashboard\nToday Planner\ntype today-planner / binding none\nread avatar_today_plan_get\ntool avatar_today_plan_update\ntool avatar_quick_capture\ntool avatar_day_restart\nCalendar/Schedule\ntype calendar-schedule / binding none\nread avatar_calendar_schedule_get\ntool avatar_calendar_upsert\ntool avatar_timeblock_upsert\ntool avatar_reminder_upsert\nTasks/Routines\ntype tasks-routines / binding none\nread avatar_tasks_routines_get\ntool avatar_task_upsert\ntool avatar_task_occurrence_update\ntool avatar_reminder_upsert\nNotes\ntype notes / binding optional_work_area\nread avatar_note_search\nread avatar_file_note_read\ntool avatar_note_append\ntool avatar_file_note_update\nHabits/Trackers\ntype habits-trackers / binding none\nread-only context\nReminders/Alerts\ntype reminders-alerts / binding none\nread avatar_tasks_routines_get\nread avatar_calendar_schedule_get\ntool avatar_reminder_upsert\nSystem\ntype system / binding system\nread-only context\nDashboard Context\ntype dashboard-context / binding system\nread-only context\nRecent Work\ntype recent-work / binding output_source\nread-only context"
+    },
+    {
+      "id": "desktop_1440_no_horizontal_overflow_or_duplicate_ids",
+      "status": "passed",
+      "evidence": {
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "scrollWidth": 1440,
+        "clientWidth": 1440,
+        "horizontalOverflow": false,
+        "duplicateIds": [],
+        "widgetTypes": [
+          "today-planner",
+          "calendar-schedule",
+          "tasks-routines",
+          "notes",
+          "habits-trackers",
+          "reminders-alerts",
+          "system",
+          "dashboard-context",
+          "recent-work"
+        ],
+        "clipped": []
+      }
+    },
+    {
+      "id": "mobile_390_no_horizontal_overflow_or_clipped_controls",
+      "status": "passed",
+      "evidence": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "scrollWidth": 390,
+        "clientWidth": 390,
+        "horizontalOverflow": false,
+        "duplicateIds": [],
+        "widgetTypes": [
+          "today-planner",
+          "calendar-schedule",
+          "tasks-routines",
+          "notes",
+          "habits-trackers",
+          "reminders-alerts",
+          "system",
+          "dashboard-context",
+          "recent-work"
+        ],
+        "clipped": []
+      }
+    },
+    {
+      "id": "mobile_settings_modal_usable_and_scroll_bounded",
+      "status": "passed",
+      "evidence": {
+        "modal": {
+          "x": 0,
+          "y": 0,
+          "width": 390,
+          "height": 844,
+          "top": 0,
+          "right": 390,
+          "bottom": 844,
+          "left": 0
+        },
+        "panel": {
+          "x": 8,
+          "y": 8,
+          "width": 374,
+          "height": 812,
+          "top": 8,
+          "right": 382,
+          "bottom": 820,
+          "left": 8
+        },
+        "panelScrollHeight": 810,
+        "panelClientHeight": 810,
+        "overflowY": "auto",
+        "closeVisible": true
+      }
+    },
+    {
+      "id": "console_network_no_unexpected_errors",
+      "status": "passed",
+      "evidence": {
+        "pageErrors": [],
+        "network": []
+      }
+    }
+  ],
+  "console": [],
+  "pageErrors": [],
+  "network": [],
+  "seed": {
+    "habitIds": {
+      "Archived screen-time tracker": "c7b5a48f-bbb6-4cd4-b99d-7ff88d350116",
+      "Build hydration tracker": "e404a688-0f43-40d6-8d42-04b0c70bc771",
+      "Quit late snacks tracker": "7ee7f224-2a09-4703-b4bc-113b583e5d16"
+    },
+    "widgetIds": {
+      "today-planner": "widget-cf60b9ae-a74a-4456-a9e6-122efb12173b",
+      "calendar-schedule": "widget-92239c93-7ed8-4651-8e69-5e3aa7297626",
+      "tasks-routines": "widget-397ba0b1-c84c-46b0-9f49-6ab0c06d4d63",
+      "notes": "widget-07eff593-cb39-4689-8fb2-b8c129c4b50f",
+      "habits-trackers": "widget-b85473fe-f066-4c07-be2a-89d0649b8751",
+      "reminders-alerts": "widget-737b1901-073e-4c19-9517-c71deee1d3db",
+      "system": "widget-d7782efc-33d6-4803-a1d6-94262b292c73",
+      "dashboard-context": "widget-7e87a5c8-64e7-4bc1-b096-63d5c7785e15",
+      "recent-work": "widget-7f038dc8-1141-4e6d-89e0-7f410b393a89"
+    }
+  },
+  "visualMetrics": {
+    "desktop": {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "horizontalOverflow": false,
+      "duplicateIds": [],
+      "widgetTypes": [
+        "today-planner",
+        "calendar-schedule",
+        "tasks-routines",
+        "notes",
+        "habits-trackers",
+        "reminders-alerts",
+        "system",
+        "dashboard-context",
+        "recent-work"
+      ],
+      "clipped": []
+    },
+    "mobile": {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "horizontalOverflow": false,
+      "duplicateIds": [],
+      "widgetTypes": [
+        "today-planner",
+        "calendar-schedule",
+        "tasks-routines",
+        "notes",
+        "habits-trackers",
+        "reminders-alerts",
+        "system",
+        "dashboard-context",
+        "recent-work"
+      ],
+      "clipped": []
+    },
+    "mobileModal": {
+      "modal": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 844,
+        "top": 0,
+        "right": 390,
+        "bottom": 844,
+        "left": 0
+      },
+      "panel": {
+        "x": 8,
+        "y": 8,
+        "width": 374,
+        "height": 812,
+        "top": 8,
+        "right": 382,
+        "bottom": 820,
+        "left": 8
+      },
+      "panelScrollHeight": 810,
+      "panelClientHeight": 810,
+      "overflowY": "auto",
+      "closeVisible": true
+    }
+  },
+  "visualCritique": [
+    "Desktop: seeded Phase 05 widgets keep the existing operational dashboard frame, compact controls, thin panel borders, and row/list presentation used by the dashboard suite.",
+    "Desktop: context rows are scan-friendly and avoid decorative nested cards; chips remain restrained and semantic.",
+    "Desktop: reminder rows preserve readable title/meta width while action and reschedule controls wrap below/alongside without forcing one-letter title columns.",
+    "Desktop: habit rows show compact day/time metadata and expose a visible correction form for date, quantity, status, and Apply.",
+    "Mobile: the dashboard stacks into a single column without measured document overflow; the settings modal is bounded and close controls remain reachable.",
+    "No remaining visual blocker was observed in the focused rerun."
+  ]
+}

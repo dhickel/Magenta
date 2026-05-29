@@ -330,6 +330,88 @@ public class AvatarService {
             .toList();
     }
 
+    public AvatarHabit saveHabit(AvatarHabit habit) {
+        return repository.saveHabit(habit);
+    }
+
+    public AvatarHabit habit(String id) {
+        requireText(id, "habit id");
+        return repository.findHabit(id).orElseThrow(() -> new IllegalArgumentException("habit not found: " + id));
+    }
+
+    public List<AvatarHabit> habits(boolean includeArchived) {
+        return repository.findHabits(includeArchived);
+    }
+
+    public AvatarHabit archiveHabit(String id) {
+        AvatarHabit current = habit(id);
+        return repository.saveHabit(new AvatarHabit(
+            current.id(),
+            current.title(),
+            current.notes(),
+            current.habitType(),
+            current.period(),
+            current.targetQuantity(),
+            current.targetUnit(),
+            current.displayDays(),
+            current.startTime(),
+            current.endTime(),
+            current.streakEnabled(),
+            true,
+            current.createdAt(),
+            current.updatedAt(),
+            Instant.now()
+        ));
+    }
+
+    public AvatarHabitLog logHabit(String habitId, LocalDate date, double quantity, String status, String notes) {
+        String normalized = StringUtils.hasText(status) ? status.strip().toUpperCase(Locale.ROOT) : "LOGGED";
+        Instant now = Instant.now();
+        return repository.saveHabitLog(new AvatarHabitLog(
+            null,
+            habitId,
+            date == null ? LocalDate.now() : date,
+            Math.max(quantity, 0.0),
+            normalized,
+            notes,
+            "SKIPPED".equals(normalized) ? now : null,
+            "RESTARTED".equals(normalized) ? now : null,
+            null,
+            null
+        ));
+    }
+
+    public AvatarHabitLog restartHabit(String habitId, LocalDate date) {
+        return logHabit(habitId, date, 0.0, "RESTARTED", "Restarted without penalty");
+    }
+
+    public List<AvatarHabitLog> habitLogs(LocalDate from, LocalDate to) {
+        return repository.findHabitLogs(from, to);
+    }
+
+    public HabitsTrackersView habitsTrackers(LocalDate date) {
+        LocalDate today = date == null ? LocalDate.now() : date;
+        LocalDate from = today.minusDays(30);
+        List<AvatarHabit> all = habits(true);
+        List<AvatarHabitLog> logs = habitLogs(from, today);
+        Map<String, List<AvatarHabitLog>> byHabit = logs.stream()
+            .collect(Collectors.groupingBy(AvatarHabitLog::habitId, LinkedHashMap::new, Collectors.toList()));
+        Map<String, HabitsTrackersView.Progress> progress = all.stream()
+            .collect(Collectors.toMap(
+                AvatarHabit::id,
+                habit -> habitProgress(habit, byHabit.getOrDefault(habit.id(), List.of()), today),
+                (left, right) -> left,
+                LinkedHashMap::new
+            ));
+        return new HabitsTrackersView(
+            today,
+            all.stream().filter(habit -> !habit.archived()).toList(),
+            all.stream().filter(AvatarHabit::archived).toList(),
+            byHabit,
+            progress
+        );
+    }
+
     public PlannerTask savePlannerTask(PlannerTask task) {
         PlannerTask saved = repository.savePlannerTask(task);
         repository.replacePlannerCalendarProjection(saved.id(), project(saved, 60));
@@ -426,8 +508,115 @@ public class AvatarService {
         return repository.savePlannerReminder(reminder);
     }
 
+    public PlannerReminder reminder(String id) {
+        requireText(id, "reminder id");
+        return repository.findPlannerReminder(id)
+            .orElseThrow(() -> new IllegalArgumentException("reminder not found: " + id));
+    }
+
+    public PlannerReminder completeReminder(String id) {
+        PlannerReminder current = reminder(id);
+        return repository.savePlannerReminder(new PlannerReminder(
+            current.id(),
+            current.title(),
+            current.notes(),
+            current.remindAt(),
+            "COMPLETED",
+            current.sourceType(),
+            current.sourceId(),
+            null,
+            current.createdAt(),
+            current.updatedAt()
+        ));
+    }
+
+    public PlannerReminder snoozeReminder(String id, Instant snoozedUntil) {
+        PlannerReminder current = reminder(id);
+        Instant next = snoozedUntil == null ? Instant.now().plusSeconds(3600) : snoozedUntil;
+        return repository.savePlannerReminder(new PlannerReminder(
+            current.id(),
+            current.title(),
+            current.notes(),
+            current.remindAt(),
+            "SNOOZED",
+            current.sourceType(),
+            current.sourceId(),
+            next,
+            current.createdAt(),
+            current.updatedAt()
+        ));
+    }
+
+    public PlannerReminder rescheduleReminder(String id, Instant remindAt) {
+        PlannerReminder current = reminder(id);
+        return repository.savePlannerReminder(new PlannerReminder(
+            current.id(),
+            current.title(),
+            current.notes(),
+            requireInstant(remindAt, "reminder time"),
+            "OPEN",
+            current.sourceType(),
+            current.sourceId(),
+            null,
+            current.createdAt(),
+            current.updatedAt()
+        ));
+    }
+
+    public PlannerReminder skipReminder(String id) {
+        PlannerReminder current = reminder(id);
+        return repository.savePlannerReminder(new PlannerReminder(
+            current.id(),
+            current.title(),
+            current.notes(),
+            current.remindAt(),
+            "SKIPPED",
+            current.sourceType(),
+            current.sourceId(),
+            null,
+            current.createdAt(),
+            current.updatedAt()
+        ));
+    }
+
+    public PlannerReminder restartReminder(String id) {
+        PlannerReminder current = reminder(id);
+        return repository.savePlannerReminder(new PlannerReminder(
+            current.id(),
+            current.title(),
+            current.notes(),
+            Instant.now(),
+            "OPEN",
+            current.sourceType(),
+            current.sourceId(),
+            null,
+            current.createdAt(),
+            current.updatedAt()
+        ));
+    }
+
     public List<PlannerReminder> reminders(Instant from, Instant to, boolean includeClosed) {
         return repository.findPlannerReminders(from, to, includeClosed);
+    }
+
+    public ReminderInboxView reminderInbox() {
+        Instant now = Instant.now();
+        List<PlannerReminder> reminders = reminders(null, null, true);
+        return new ReminderInboxView(
+            now,
+            reminders.stream()
+                .filter(reminder -> "OPEN".equals(reminder.status()) && !reminder.remindAt().isAfter(now))
+                .toList(),
+            reminders.stream()
+                .filter(reminder -> "OPEN".equals(reminder.status()) && reminder.remindAt().isAfter(now))
+                .toList(),
+            reminders.stream()
+                .filter(reminder -> "SNOOZED".equals(reminder.status()))
+                .toList(),
+            reminders.stream()
+                .filter(reminder -> Set.of("COMPLETED", "SKIPPED").contains(reminder.status()))
+                .toList()
+        );
     }
 
     public PlannerOccurrence updateOccurrence(String taskId, Instant occurrenceStart, String action, Instant snoozedUntil) {
@@ -828,8 +1017,59 @@ public class AvatarService {
             || (note.tags() != null && note.tags().stream().anyMatch(tag -> contains(tag, query)));
     }
 
+    private HabitsTrackersView.Progress habitProgress(AvatarHabit habit, List<AvatarHabitLog> logs, LocalDate today) {
+        AvatarHabitLog todayLog = logs.stream()
+            .filter(log -> today.equals(log.logDate()))
+            .findFirst()
+            .orElse(null);
+        double logged = todayLog == null ? 0.0 : todayLog.quantity();
+        String status;
+        if (todayLog != null && "SKIPPED".equals(todayLog.status())) {
+            status = "skipped";
+        } else if (todayLog != null && "RESTARTED".equals(todayLog.status())) {
+            status = "restarted";
+        } else if ("QUIT".equals(habit.habitType())) {
+            status = logged <= 0.0 ? "clear" : "logged";
+        } else {
+            status = logged >= habit.targetQuantity() ? "on track" : "open";
+        }
+        long trend = logs.stream()
+            .filter(log -> !log.logDate().isBefore(today.minusDays(6)))
+            .filter(log -> !"SKIPPED".equals(log.status()))
+            .count();
+        int streak = habit.streakEnabled() ? streakDays(habit, logs, today) : 0;
+        return new HabitsTrackersView.Progress(logged, habit.targetQuantity(), habit.targetUnit(), status, (int) trend, streak);
+    }
+
+    private int streakDays(AvatarHabit habit, List<AvatarHabitLog> logs, LocalDate today) {
+        Map<LocalDate, AvatarHabitLog> byDate = logs.stream()
+            .collect(Collectors.toMap(AvatarHabitLog::logDate, log -> log, (left, right) -> right));
+        int streak = 0;
+        for (LocalDate cursor = today; !cursor.isBefore(today.minusDays(30)); cursor = cursor.minusDays(1)) {
+            AvatarHabitLog log = byDate.get(cursor);
+            if (log == null || "SKIPPED".equals(log.status())) {
+                break;
+            }
+            boolean success = "QUIT".equals(habit.habitType())
+                ? log.quantity() <= 0.0 || "RESTARTED".equals(log.status())
+                : log.quantity() >= habit.targetQuantity() || "RESTARTED".equals(log.status());
+            if (!success) {
+                break;
+            }
+            streak++;
+        }
+        return streak;
+    }
+
     private boolean contains(String value, String query) {
         return value != null && value.toLowerCase(Locale.ROOT).contains(query);
+    }
+
+    private Instant requireInstant(Instant instant, String name) {
+        if (instant == null) {
+            throw new IllegalArgumentException(name + " is required");
+        }
+        return instant;
     }
 
     private void requireText(String value, String name) {

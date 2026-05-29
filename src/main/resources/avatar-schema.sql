@@ -169,6 +169,45 @@ create table if not exists avatar_notes (
 create index if not exists idx_avatar_notes_archived_updated
     on avatar_notes (archived, updated_at);
 
+create table if not exists avatar_habits (
+    id text primary key,
+    title text not null,
+    notes text,
+    habit_type text not null default 'BUILD',
+    period text not null default 'DAILY',
+    target_quantity real not null default 1,
+    target_unit text not null default 'times',
+    display_days_json text not null default '[]',
+    start_time text,
+    end_time text,
+    streak_enabled integer not null default 1,
+    archived integer not null default 0,
+    created_at text not null,
+    updated_at text not null,
+    archived_at text
+);
+
+create index if not exists idx_avatar_habits_archived_title
+    on avatar_habits (archived, title);
+
+create table if not exists avatar_habit_logs (
+    id text primary key,
+    habit_id text not null,
+    log_date text not null,
+    quantity real not null default 0,
+    status text not null default 'LOGGED',
+    notes text,
+    skipped_at text,
+    restarted_at text,
+    created_at text not null,
+    updated_at text not null,
+    unique(habit_id, log_date),
+    foreign key(habit_id) references avatar_habits(id) on delete cascade
+);
+
+create index if not exists idx_avatar_habit_logs_habit_date
+    on avatar_habit_logs (habit_id, log_date);
+
 create table if not exists avatar_planner_tasks (
     id text primary key,
     title text not null,

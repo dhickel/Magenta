@@ -262,7 +262,7 @@ public class AvatarAssistantTools {
         String notes,
         @ToolParam(description = "ISO remind-at instant.")
         String remindAt,
-        @ToolParam(required = false, description = "Reminder status: OPEN, SNOOZED, DONE, DISMISSED, or CANCELED.")
+        @ToolParam(required = false, description = "Reminder status: OPEN, SNOOZED, COMPLETED, or SKIPPED.")
         String status,
         @ToolParam(required = false, description = "Optional source type such as task or calendar.")
         String sourceType,

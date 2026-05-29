@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import io.mindspice.magenta2.ai.chat.task.TaskService;
 import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.AssignmentRecord;
@@ -414,7 +415,7 @@ public class AvatarAssistantToolService {
             requireText(title, "title"),
             notes,
             requireInstant(remindAt, "remindAt"),
-            StringUtils.hasText(status) ? status.trim().toUpperCase(Locale.ROOT) : "OPEN",
+            normalizeReminderStatus(status),
             trimToNull(sourceType),
             trimToNull(sourceId),
             instant(snoozedUntil),
@@ -422,6 +423,24 @@ public class AvatarAssistantToolService {
             null
         ));
         return new ReminderResponse(reminderRecord(saved));
+    }
+
+    private String normalizeReminderStatus(String status) {
+        if (!StringUtils.hasText(status)) {
+            return "OPEN";
+        }
+        String normalized = status.trim().toUpperCase(Locale.ROOT);
+        normalized = switch (normalized) {
+            case "DONE" -> "COMPLETED";
+            case "DISMISSED", "CANCELED", "CANCELLED" -> "SKIPPED";
+            default -> normalized;
+        };
+        if (!Set.of("OPEN", "SNOOZED", "COMPLETED", "SKIPPED").contains(normalized)) {
+            throw new IllegalArgumentException(
+                "unsupported reminder status: " + status + ". Use OPEN, SNOOZED, COMPLETED, or SKIPPED."
+            );
+        }
+        return normalized;
     }
 
     public NoteResponse noteAppend(String id, String title, String body, List<String> tags) {

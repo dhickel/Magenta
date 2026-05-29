@@ -45,6 +45,8 @@ Layout mutations refresh `#avatar-widget-grid` with out-of-band swaps and clear 
 - Agent Work Area mini-view: `GET /dashboards/{dashboardId}/widgets/{widgetInstanceId}/_work-area-file?path=...`
 - Calendar: `POST /_dashboards/_calendar`, `DELETE /_dashboards/_calendar/{calendarId}`
 - Planner tasks: `POST /_dashboards/_planner-tasks`, `POST /_dashboards/_planner-tasks/{taskId}/subtodos`
+- Habits/Trackers: `POST /_dashboards/_habits`, `POST /_dashboards/_habits/{habitId}/logs`, `POST /_dashboards/_habits/{habitId}/archive`
+- Reminders/Alerts: `POST /_dashboards/_reminders`, `POST /_dashboards/_reminders/{reminderId}/complete`, `POST /_dashboards/_reminders/{reminderId}/snooze`, `POST /_dashboards/_reminders/{reminderId}/reschedule`, `POST /_dashboards/_reminders/{reminderId}/skip`, `POST /_dashboards/_reminders/{reminderId}/restart`
 - Outputs: `GET /_dashboards/_outputs/{artifactId}`
 - Alerts: `POST /_dashboards/_alerts/{eventId}/dismiss`
 
@@ -70,7 +72,7 @@ The route guard checks that the Work Area owner type is `AGENT` and the owner id
 
 ## Assets
 
-- `/css/avatar-dashboard.css?v=11` owns Assistant dashboard, compact chat rail, layout editor, notes/project/agent operational widgets, and retained Work Area browser styling.
+- `/css/avatar-dashboard.css?v=12` owns Assistant dashboard, compact chat rail, layout editor, planner/habit/reminder/context widgets, notes/project/agent operational widgets, and retained Work Area browser styling.
 - `/js/avatar-chat.js?v=4` owns the compact dashboard chat surface.
 - `/js/avatar-layout-edit.js?v=1` owns in-place dashboard edit helpers.
 - `/js/avatar-workarea-editor.js?v=2` owns local Work Area editor behavior.
@@ -93,3 +95,11 @@ Agent Status/Queue binds to `agentId` and renders no-agent, missing-agent, and s
 Agent Outputs uses `sourceMode=agent|project|job|work_area|dashboard` plus the matching binding id. It queries `OutputArtifactService` with explicit filters. The instance-scoped preview route rejects artifacts outside the current widget scope; the compatibility output preview route remains available for older generic widgets.
 
 Agent Files/Notes binds to a selected Work Area, optionally constrained by `agentId`. The dashboard route verifies the Work Area owner is an agent and matches the selected agent when present, then previews through `WorkAreaExplorerService`. Newly rendered mini-view controls use `/dashboards/{dashboardId}/widgets/{widgetInstanceId}/_work-area-file` and do not emit legacy `/avatar/_work-areas` links.
+
+## Tracking, Alerts, And Context Widgets
+
+Habits/Trackers stores Avatar-owned build/quit habits in `avatar_habits` and day-level correction logs in `avatar_habit_logs`. The widget renders compact non-punitive progress, trend, and optional streak chips. History correction uses the unique habit/date log row, so a user can log, skip, or restart the same date without creating duplicate punitive entries.
+
+Reminders/Alerts uses `avatar_planner_reminders` as an in-dashboard inbox. It supports create, complete, snooze, skip, restart, and reschedule actions through HTMX fragments. Reminder rows may show linked source type/id, but they do not create assignments and do not send email, push, PWA, or other external notifications.
+
+Dashboard Context is read-only. It summarizes the selected dashboard rows/widgets and visible registry tool descriptors. It intentionally says descriptors do not grant chat actions, preserving the current approved-tool boundary.

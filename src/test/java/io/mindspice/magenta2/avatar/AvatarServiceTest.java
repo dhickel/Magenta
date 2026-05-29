@@ -232,6 +232,69 @@ class AvatarServiceTest {
     }
 
     @Test
+    void habitsAndReminderInboxUseNonPunitiveRestartSkipSnoozeStates() {
+        AvatarHabit build = service.saveHabit(new AvatarHabit(
+            null,
+            "Drink water",
+            null,
+            "BUILD",
+            "DAILY",
+            3,
+            "cups",
+            List.of(),
+            null,
+            null,
+            true,
+            false,
+            null,
+            null,
+            null
+        ));
+        AvatarHabit quit = service.saveHabit(new AvatarHabit(
+            null,
+            "No late coffee",
+            null,
+            "QUIT",
+            "DAILY",
+            1,
+            "coffee",
+            List.of(),
+            null,
+            null,
+            true,
+            false,
+            null,
+            null,
+            null
+        ));
+
+        service.logHabit(build.id(), LocalDate.now(), 3, "LOGGED", null);
+        service.restartHabit(quit.id(), LocalDate.now());
+        HabitsTrackersView view = service.habitsTrackers(LocalDate.now());
+
+        assertThat(view.activeHabits()).extracting(AvatarHabit::title).contains("Drink water", "No late coffee");
+        assertThat(view.progress().get(build.id()).status()).isEqualTo("on track");
+        assertThat(view.progress().get(quit.id()).status()).isEqualTo("restarted");
+
+        PlannerReminder reminder = service.saveReminder(new PlannerReminder(
+            null,
+            "Check plants",
+            null,
+            Instant.now().minusSeconds(60),
+            "OPEN",
+            "habit",
+            build.id(),
+            null,
+            null,
+            null
+        ));
+        service.snoozeReminder(reminder.id(), Instant.now().plusSeconds(3600));
+        assertThat(service.reminderInbox().snoozed()).extracting(PlannerReminder::id).contains(reminder.id());
+        service.skipReminder(reminder.id());
+        assertThat(service.reminderInbox().closed()).extracting(PlannerReminder::status).contains("SKIPPED");
+    }
+
+    @Test
     void calendarScheduleOverlaysOccurrenceStatusWithoutChangingParentTask() {
         PlannerTask task = service.savePlannerTask(new PlannerTask(
             null,

@@ -36,6 +36,7 @@ import io.mindspice.magenta2.avatar.dashboard.ProjectArtifactService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
@@ -265,6 +266,40 @@ class AvatarToolsTest {
             null
         )).path("reminder");
         assertThat(reminder.path("status").asText()).isEqualTo("OPEN");
+        JsonNode completedReminder = json(tools.avatarReminderUpsert(
+            null,
+            "Finished reminder",
+            "Legacy alias from older descriptors",
+            "2026-05-29T18:30:00Z",
+            "DONE",
+            "task",
+            taskId,
+            null
+        )).path("reminder");
+        assertThat(completedReminder.path("status").asText()).isEqualTo("COMPLETED");
+        JsonNode skippedReminder = json(tools.avatarReminderUpsert(
+            null,
+            "Dismissed reminder",
+            "Legacy alias from older descriptors",
+            "2026-05-29T19:30:00Z",
+            "DISMISSED",
+            "task",
+            taskId,
+            null
+        )).path("reminder");
+        assertThat(skippedReminder.path("status").asText()).isEqualTo("SKIPPED");
+        assertThatThrownBy(() -> tools.avatarReminderUpsert(
+            null,
+            "Bad reminder",
+            null,
+            "2026-05-29T20:30:00Z",
+            "CLOSED",
+            null,
+            null,
+            null
+        ))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Use OPEN, SNOOZED, COMPLETED, or SKIPPED");
 
         JsonNode today = json(tools.avatarTodayPlanGet("2026-05-29"));
         assertThat(today.path("unscheduled").size()).isGreaterThanOrEqualTo(1);
@@ -281,14 +316,24 @@ class AvatarToolsTest {
     }
 
     @Test
-    void registersAvatarOrganizerToolsWithChatToolRegistry() {
+    void registersAvatarOrganizerToolsWithChatToolRegistry() throws Exception {
         ToolCallbackProvider provider = new AvatarAssistantToolConfiguration()
             .avatarAssistantToolCallbackProvider(tools);
-        List<String> names = Arrays.stream(provider.getToolCallbacks())
-            .map(callback -> callback.getToolDefinition().name())
-            .collect(Collectors.toList());
+        Map<String, ToolCallback> callbacks = Arrays.stream(provider.getToolCallbacks())
+            .collect(Collectors.toMap(callback -> callback.getToolDefinition().name(), callback -> callback));
+        List<String> names = callbacks.keySet().stream().toList();
 
         assertThat(names).containsExactlyInAnyOrderElementsOf(ORGANIZER_TOOLS);
+        String statusDescription = objectMapper.readTree(callbacks.get("avatar_reminder_upsert")
+                .getToolDefinition()
+                .inputSchema())
+            .path("properties")
+            .path("status")
+            .path("description")
+            .asText();
+        assertThat(statusDescription)
+            .contains("OPEN", "SNOOZED", "COMPLETED", "SKIPPED")
+            .doesNotContain("DONE", "DISMISSED", "CANCELED");
 
         ChatToolRegistry registry = new ChatToolRegistry(List.of(), List.of(provider));
         assertThat(registry.resolveApprovedTools(List.of("avatar_todo_list", "avatar_note_search")))

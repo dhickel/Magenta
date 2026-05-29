@@ -19,6 +19,9 @@ public final class DashboardWidgetRegistry {
         planner("calendar-schedule", "Calendar/Schedule", "Calendar grid with events, time blocks, recurrence, and reminders.", 6,
             List.of("avatar_calendar_schedule_get"),
             List.of("avatar_calendar_upsert", "avatar_timeblock_upsert", "avatar_reminder_upsert")),
+        personal("habits-trackers", "Habits/Trackers", "Build and quit trackers with gentle progress, history correction, and streaks.", 6, WidgetInstancePolicy.SINGLE_PER_DASHBOARD),
+        remindersAlerts(),
+        contextPanel(),
         personal("daily-tasks", "Daily Tasks", "Today-focused task capture.", 6, WidgetInstancePolicy.SINGLE_PER_DASHBOARD),
         personal("todos", "Todos", "Priority queue and quick completion.", 4, WidgetInstancePolicy.SINGLE_PER_DASHBOARD),
         personal("calendar", "Calendar", "Upcoming dated work.", 4, WidgetInstancePolicy.SINGLE_PER_DASHBOARD),
@@ -142,6 +145,54 @@ public final class DashboardWidgetRegistry {
                 false,
                 50
             )
+        );
+    }
+
+    private static DashboardWidgetDefinition remindersAlerts() {
+        return new DashboardWidgetDefinition(
+            "reminders-alerts",
+            "Reminders/Alerts",
+            "In-dashboard reminders inbox with snooze, complete, reschedule, skip, and linked source display.",
+            "planner",
+            "avatar.sqlite",
+            6,
+            STANDARD_WIDTHS,
+            WidgetInstancePolicy.SINGLE_PER_DASHBOARD,
+            WidgetBindingMode.NONE,
+            WidgetSettingsSchema.basic("dashboard"),
+            "reminders-alerts",
+            "reminders-alerts",
+            "generic",
+            WidgetRefreshPolicy.MANUAL,
+            WidgetEmptyStatePolicy.NO_DATA,
+            new WidgetToolDescriptor(
+                List.of("avatar_tasks_routines_get", "avatar_calendar_schedule_get"),
+                List.of("avatar_reminder_upsert"),
+                "AVATAR_SUPERVISOR",
+                false,
+                50
+            )
+        );
+    }
+
+    private static DashboardWidgetDefinition contextPanel() {
+        return new DashboardWidgetDefinition(
+            "dashboard-context",
+            "Dashboard Context",
+            "Read-only summary of selected dashboard state and visible tool contracts.",
+            "context",
+            "dashboard registry",
+            6,
+            STANDARD_WIDTHS,
+            WidgetInstancePolicy.SINGLE_PER_DASHBOARD,
+            WidgetBindingMode.SYSTEM,
+            WidgetSettingsSchema.basic("dashboard"),
+            "dashboard-context",
+            "dashboard-context",
+            "generic",
+            WidgetRefreshPolicy.MANUAL,
+            WidgetEmptyStatePolicy.NO_DATA,
+            WidgetToolDescriptor.none()
         );
     }
 

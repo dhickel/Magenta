@@ -2258,6 +2258,71 @@
     min-width: 8rem;
 }
 
+.avatar-habit-row,
+.avatar-reminder-row,
+.avatar-context-row {
+    align-items: flex-start;
+}
+
+.avatar-habit-row .avatar-list-row-main {
+    flex: 1 1 14rem;
+}
+
+.avatar-reminder-row {
+    flex-wrap: wrap;
+}
+
+.avatar-reminder-row .avatar-list-row-main {
+    flex: 1 1 16rem;
+    min-width: min(14rem, 100%);
+}
+
+.avatar-reminder-row .avatar-row-actions {
+    flex: 1 1 18rem;
+    min-width: min(18rem, 100%);
+}
+
+.avatar-habit-chips,
+.avatar-habit-schedule,
+.avatar-tool-contracts {
+    margin-top: 0.35rem;
+}
+
+.avatar-history-correction-form {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    flex: 1 1 18rem;
+    gap: 0.3rem;
+    max-width: 100%;
+}
+
+.avatar-history-correction-label {
+    color: #475569;
+    font-size: 0.72rem;
+    font-weight: 800;
+}
+
+.avatar-history-correction-form input,
+.avatar-history-correction-form select {
+    min-height: 1.7rem;
+    max-width: 8.5rem;
+    padding: 0.18rem 0.35rem;
+    font-size: 0.72rem;
+}
+
+.avatar-reminder-reschedule {
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    max-width: 100%;
+}
+
+.avatar-reminder-reschedule input {
+    flex: 1 1 10rem;
+    min-width: min(10rem, 100%);
+    max-width: 100%;
+}
+
 .avatar-calendar-grid {
     display: grid;
     grid-template-columns: repeat(7, minmax(0, 1fr));

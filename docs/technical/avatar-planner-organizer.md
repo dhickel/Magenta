@@ -10,8 +10,10 @@ The planner/organizer records that originated with the legacy personal-dashboard
 - `avatar_planner_calendar_projection` stores generated occurrences for calendar-style views.
 - `avatar_planner_day_maps` stores date-specific top priorities, now/next/later ids, restart metadata, and daily review notes.
 - `avatar_planner_time_blocks` stores scheduled blocks independently from task due dates.
-- `avatar_planner_reminders` stores in-dashboard reminder records with `OPEN`, `SNOOZED`, `DONE`, `DISMISSED`, or `CANCELED` style statuses.
+- `avatar_planner_reminders` stores in-dashboard reminder records with `OPEN`, `SNOOZED`, `COMPLETED`, or `SKIPPED` statuses. Reminder records are dashboard inbox items only; no external notification delivery is implied.
 - `avatar_planner_occurrences` stores projected recurring-task occurrence state such as skip, snooze, and restart metadata without completing or corrupting the parent task.
+- `avatar_habits` stores build/quit trackers with period, quantity/unit target, optional display days/time range, streak preference, and archive state.
+- `avatar_habit_logs` stores day-level history corrections by unique habit/date, including logged, skipped, and restarted states.
 
 Recurrence JSON is written explicitly as scalar fields so repository tests and lightweight tools do not depend on Jackson Java Time modules. Supported friendly modes are `NONE`, `DAILY`, `WEEKLY`, and `MONTHLY`; `CRON` is stored as an advanced value but is not automated in v1.
 
@@ -24,6 +26,9 @@ Phase 02 planner widgets expose:
 - Today Planner: top priorities, now/next/later, overdue, unscheduled, time blocks, quick capture, restart day, and daily review.
 - Tasks/Routines: filters, recurrence metadata, subtasks, project links, status, and skip/snooze/restart occurrence controls.
 - Calendar/Schedule: month grid plus agenda view that merges calendar events, time blocks, recurrence projections, and reminders while preserving their distinct source types. The dashboard detail surface exposes HTMX creation forms for time blocks and in-dashboard reminders.
+- Habits/Trackers: build/quit tracker summary with non-punitive progress/trend/streak chips, day-level history correction, skip, restart, and archive controls.
+- Reminders/Alerts: in-dashboard inbox with due/upcoming/snoozed summaries, linked source display, complete, snooze, skip, and reschedule controls.
+- Dashboard Context: read-only dashboard/widget state and visible tool descriptor summary. It is deliberately separate from chat action tooling.
 
 The shared organizer modal uses HTMX tab swaps for:
 

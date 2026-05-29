@@ -85,7 +85,7 @@ class AvatarRepositoryTest {
         assertThat(repository.findDashboardLayout()).singleElement()
             .satisfies(widget -> assertThat(widget.settings()).containsEntry("accent", "green"));
         assertThat(repository.assistantDashboard().name()).isEqualTo("Assistant");
-        assertThat(repository.findDashboardRows()).hasSize(3);
+        assertThat(repository.findDashboardRows()).hasSize(4);
         assertThat(repository.findFacts()).singleElement()
             .satisfies(fact -> {
                 assertThat(fact.value()).containsEntry("value", "UTC");
@@ -290,6 +290,63 @@ class AvatarRepositoryTest {
         assertThat(repository.findPlannerTimeBlocks(LocalDate.of(2026, 5, 29), LocalDate.of(2026, 5, 29))).containsExactly(block);
         assertThat(repository.findPlannerReminders(null, null, false)).containsExactly(reminder);
         assertThat(repository.findPlannerOccurrences(null, null)).contains(occurrence);
+    }
+
+    @Test
+    void savesHabitsAndCorrectsHistoryByDay() {
+        AvatarHabit habit = repository.saveHabit(new AvatarHabit(
+            null,
+            "Drink water",
+            "gentle build tracker",
+            "BUILD",
+            "DAILY",
+            3,
+            "cups",
+            List.of("MONDAY", "TUESDAY"),
+            LocalTime.of(8, 0),
+            LocalTime.of(20, 0),
+            true,
+            false,
+            null,
+            null,
+            null
+        ));
+
+        AvatarHabitLog first = repository.saveHabitLog(new AvatarHabitLog(
+            null,
+            habit.id(),
+            LocalDate.of(2026, 5, 29),
+            2,
+            "LOGGED",
+            "morning",
+            null,
+            null,
+            null,
+            null
+        ));
+        AvatarHabitLog corrected = repository.saveHabitLog(new AvatarHabitLog(
+            first.id(),
+            habit.id(),
+            LocalDate.of(2026, 5, 29),
+            3,
+            "RESTARTED",
+            "corrected",
+            null,
+            Instant.parse("2026-05-29T12:00:00Z"),
+            first.createdAt(),
+            null
+        ));
+
+        assertThat(repository.findHabits(false)).containsExactly(habit);
+        assertThat(repository.findHabitLogs(LocalDate.of(2026, 5, 29), LocalDate.of(2026, 5, 29)))
+            .singleElement()
+            .satisfies(log -> {
+                assertThat(log.id()).isEqualTo(first.id());
+                assertThat(log.quantity()).isEqualTo(3);
+                assertThat(log.status()).isEqualTo("RESTARTED");
+                assertThat(log.notes()).isEqualTo("corrected");
+            });
+        assertThat(corrected.updatedAt()).isNotNull();
     }
 
     @Test
