@@ -75,6 +75,7 @@ final class AvatarDashboardComponents {
         return new Div()
             .withId("dashboard-home")
             .withClass(dashboardEditMode ? "avatar-page avatar-page-editing" : "avatar-page")
+            .withAttribute("data-avatar-shell", "true")
             .withAttribute("data-dashboard-home", "true")
             .withAttribute("data-dashboard-id", data.dashboard().id())
             .withChild(new Div().withClass("avatar-shell")

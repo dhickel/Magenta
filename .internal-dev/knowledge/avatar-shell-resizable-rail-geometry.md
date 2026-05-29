@@ -17,6 +17,7 @@ Avatar shell resizable rail geometry.
 - Keep JavaScript rail bounds aligned with CSS grid bounds. If CSS uses `minmax(22.85rem, var(--avatar-chat-rail-width))`, JavaScript persistence should not store a lower value that the browser cannot visibly render.
 - Treat click and drag as separate interactions. Do not apply or persist a resize until pointer movement crosses a small threshold.
 - Sticky behavior belongs on the rail container when the visual card sits inside a dashboard grid. A sticky child inside a content-sized grid item may not have enough containing height to follow long dashboard scrolling.
+- The dashboard root that wraps `.avatar-shell-grid`, `[data-avatar-chat='true']`, and `[data-avatar-chat-corner-resizer='true']` must include `data-avatar-shell='true'`; otherwise `avatar-shell.js` exits before restoring saved size or binding corner resize handlers.
 
 ## Engine Relevance
 

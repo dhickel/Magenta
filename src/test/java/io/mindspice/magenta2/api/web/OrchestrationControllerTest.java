@@ -1086,8 +1086,14 @@ class OrchestrationControllerTest {
         assertThat(html).contains("browser-detail");
         assertThat(html).contains("agent-list");
         assertThat(html).contains("agent-detail-container");
-        assertThat(html).contains("/js/orchestration/agents.js?v=1");
+        assertThat(html).contains("/js/orchestration/agents.js?v=2");
         assertThat(html).doesNotContain("/js/chat-client.js");
+        assertThat(html).contains("<h1>Agents</h1>");
+        assertThat(html).doesNotContain("Magenta Operations");
+        assertThat(html).doesNotContain("Operational management");
+        assertThat(html).doesNotContain("main-sidebar");
+        assertThat(html).doesNotContain("System</");
+        assertThat(html).doesNotContain("Settings</");
 
         // HTMX containers for list loading
         assertThat(html).contains("hx-get=\"/agents/_list\"");
@@ -1117,7 +1123,13 @@ class OrchestrationControllerTest {
         assertThat(html).contains("entity-detail-layout");
         assertThat(html).contains("entity-detail-layout-full");
         assertThat(html).contains("orch-tabs");
-        assertThat(html).contains("/js/orchestration/agents.js?v=1");
+        assertThat(html).contains("/js/orchestration/agents.js?v=2");
+        assertThat(html).contains("agent-list");
+        assertThat(html).contains("selectedAgentId");
+        assertThat(html).contains("data-selected-agent-id=\"agent-1\"");
+        assertThat(html).contains("hx-get=\"/agents/_list?selectedAgentId=agent-1\"");
+        assertThat(html).doesNotContain("Magenta Operations");
+        assertThat(html).doesNotContain("main-sidebar");
 
         // Tab buttons
         assertThat(html).contains("manage");
@@ -1162,10 +1174,44 @@ class OrchestrationControllerTest {
 
         assertThat(html).contains("agents-list-table");
         assertThat(html).contains("agent-card-list");
+        assertThat(html).contains("agent-selector-row");
+        assertThat(html).contains("data-agent-selector-row=\"true\"");
         assertThat(html).contains("Test Agent");
-        assertThat(html).contains("ACTIVE");
-        assertThat(html).contains("Refresh");
-        assertThat(html).contains("/agents/_lifecycle/agent-1/disable?view=list");
+        assertThat(html).contains(">Active</span>");
+        assertThat(html).contains("Queue assignments: 0");
+        assertThat(html).contains("Inbox messages: 0");
+        assertThat(html).doesNotContain(">ACTIVE</span>");
+        assertThat(html).doesNotContain("Refresh");
+        assertThat(html).doesNotContain("Disable");
+        assertThat(html).doesNotContain("Delete");
+        assertThat(html).doesNotContain("/agents/_lifecycle/agent-1/disable?view=list");
+        assertThat(html).contains("hx-get=\"/agents/_detail/agent-1\"");
+        assertThat(html).contains("hx-target=\"#agent-detail-container\"");
+        assertThat(html).contains("hx-push-url=\"/agents/agent-1\"");
+    }
+
+    @Test
+    void agentListFragmentPreservesSelectedRowAndMapsWorkspaceFailureToError() {
+        AgentWorkspaceStatus status = new AgentWorkspaceStatus(
+            "agent-1",
+            "agents/agent-1/workspace",
+            AgentWorkspaceStatus.WorkspaceHealth.ERROR,
+            false,
+            false,
+            0,
+            0,
+            List.of(),
+            0,
+            0,
+            null,
+            "workspace unavailable"
+        );
+
+        String html = controllerWithWorkspaceStatus(status).agentList(null, "agent-1");
+
+        assertThat(html).contains("agent-selector-row selected");
+        assertThat(html).contains(">Error</span>");
+        assertThat(html).doesNotContain(">Active</span>");
     }
 
     @Test
@@ -1822,7 +1868,7 @@ class OrchestrationControllerTest {
     }
 
     @Test
-    void allOrchestrationPagesUseDashboardShellWithSidebar() {
+    void manageOrchestrationPagesUseDashboardShellWithSidebar() {
         OrchestrationController controller = controller();
 
         List<String> pages = List.of(
@@ -1833,7 +1879,6 @@ class OrchestrationControllerTest {
             controller.projects(),
             controller.inbox(),
             controller.outputs(),
-            controller.agents(),
             controller.settings()
         );
 

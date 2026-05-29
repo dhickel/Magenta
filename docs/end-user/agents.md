@@ -6,13 +6,16 @@ Use `/agents` to manage execution agents, inspect queues and histories, operate 
 
 The agents page has:
 
-- A sidebar with **Create Agent**, **Reload**, filter, and agent cards.
+- An Agents-specific shell with the primary top navigation and no Manage side navigation.
+- A sidebar with **Create Agent**, **Reload**, filter, and compact agent selector rows.
 - Agent detail tabs: manage, profile, queue, inbox, jobs, schedules, reactions, workspace, Work Areas, outputs, exec, history, and submit.
 - A collapsible **Chat with Agent** panel.
 
 ## Create And Select An Agent
 
-Select **Create Agent** to create an active agent profile with a generated name. Select an agent card to open its detail panel. Agent cards show status, workspace health, queue count, inbox count, and default model.
+Select **Create Agent** to create an active agent profile with a generated name. Select an agent row to open its detail panel. Agent rows show one status chip, queue count, and inbox count. The status chip reads **Active** for active agents, **Inactive** for disabled agents, and **Error** when workspace health is failing.
+
+Lifecycle actions are in the agent detail manage tab, not in selector rows.
 
 Use **Reload** or refresh the page if another operator creates or deletes agents while you are viewing the list.
 

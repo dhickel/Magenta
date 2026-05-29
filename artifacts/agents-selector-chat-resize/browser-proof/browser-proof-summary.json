@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "workUnit": "agents-selector-chat-resize",
+  "validatedAt": "2026-05-29T01:10:00-04:00",
+  "tooling": {
+    "playwrightMcp": "available",
+    "modelPolicy": "gpt-5.3-codex medium per repo testing policy",
+    "origin": "http://localhost:8082",
+    "allowedOriginEvidence": "Active Playwright MCP command line included http://localhost:8082 and http://127.0.0.1:8082.",
+    "startup": {
+      "status": "passed-with-port-substitution",
+      "preferredPort18080": "occupied by existing non-isolated Magenta process started with --server.port=18080",
+      "port8080": "occupied by existing IntelliJ-launched Magenta process",
+      "usedPort": 8082,
+      "database": "jdbc:sqlite:/tmp/magenta2-agents-selector-chat-resize.sqlite",
+      "log": "artifacts/agents-selector-chat-resize/browser-proof/app-8082.log"
+    }
+  },
+  "screenshots": [
+    "artifacts/agents-selector-chat-resize/browser-proof/agents-desktop-8082.png",
+    "artifacts/agents-selector-chat-resize/browser-proof/agents-desktop-selected-8082.png",
+    "artifacts/agents-selector-chat-resize/browser-proof/agents-mobile-8082.png",
+    "artifacts/agents-selector-chat-resize/browser-proof/agents-mobile-selected-8082.png",
+    "artifacts/agents-selector-chat-resize/browser-proof/agent-detail-desktop-8082.png",
+    "artifacts/agents-selector-chat-resize/browser-proof/agent-detail-mobile-8082.png",
+    "artifacts/agents-selector-chat-resize/browser-proof/home-before-resize-8082.png",
+    "artifacts/agents-selector-chat-resize/browser-proof/home-after-horizontal-resize-8082.png",
+    "artifacts/agents-selector-chat-resize/browser-proof/home-after-vertical-resize-8082.png"
+  ],
+  "criteria": {
+    "agentsDesktop": {
+      "status": "pass",
+      "evidence": "Top nav order Home|Chat|Agents|Manage; no side nav; compact selector rows; no Refresh/Disable/Delete in selector rows; selecting Assistant navigated to /agents/avatar and marked the row selected with detail visible."
+    },
+    "agentsMobile": {
+      "status": "pass",
+      "evidence": "390x844 viewport had scrollWidth 390 and bodyScrollWidth 390; selector rows stacked cleanly; selected detail stacked below selector without horizontal overflow."
+    },
+    "agentDirectDesktop": {
+      "status": "pass",
+      "evidence": "/agents/avatar direct load had selected Assistant row, visible detail, exact top nav order, no Manage side nav, and no horizontal overflow."
+    },
+    "agentDirectMobile": {
+      "status": "pass",
+      "evidence": "/agents/avatar at 390x844 had selected Assistant row, visible detail/tabs wrapping into rows, no Manage side nav, and no horizontal overflow."
+    },
+    "homeDashboardResize": {
+      "status": "pass",
+      "evidence": "Browser mouse drag against [data-avatar-chat-corner-resizer='true'] changed rail width and rail height; main dashboard consumed remaining horizontal space."
+    },
+    "consoleNetwork": {
+      "status": "pass",
+      "evidence": "Final Playwright MCP console capture reported 0 errors and 0 warnings; final non-static network capture showed no non-static request failures."
+    }
+  },
+  "resizeGeometry": {
+    "before": {
+      "rail": {"x": 63, "y": 282.515625, "w": 480, "h": 620},
+      "main": {"x": 555.796875, "y": 282.515625, "w": 747.203125, "h": 1253.21875},
+      "overflow": false
+    },
+    "afterHorizontal": {
+      "rail": {"x": 63, "y": 282.515625, "w": 620, "h": 594},
+      "main": {"x": 695.796875, "y": 282.515625, "w": 607.203125, "h": 1253.21875},
+      "overflow": false
+    },
+    "afterVertical": {
+      "rail": {"x": 63, "y": 282.515625, "w": 620, "h": 474},
+      "main": {"x": 695.796875, "y": 282.515625, "w": 607.203125, "h": 1253.21875},
+      "overflow": false
+    },
+    "deltas": {
+      "railWidthHorizontal": 140,
+      "mainWidthHorizontal": -140,
+      "railHeightVertical": -120
+    },
+    "note": "Horizontal drag also clamped initial 620px rail height to viewport max 594px; a follow-up upward vertical drag changed height from 594px to 474px."
+  },
+  "visualCritique": [
+    "Agents desktop uses a dense operational two-pane layout with compact selector rows and a clear selected state; no Manage side chrome is present.",
+    "Agents mobile stacks selector then detail cleanly with no horizontal overflow; detail tabs wrap into multiple rows without clipping.",
+    "Home dashboard resize preserves the rail/main relationship: widening the chat rail reduces the main dashboard width by the same amount, and vertical resizing moves the handle with the rail without pushing content sideways.",
+    "No top-nav/modal overlap or modal overflow issues were observed in this work unit's checked states."
+  ],
+  "commands": [
+    "ss -ltnp '( sport = :18080 )' || true",
+    "ss -ltnp '( sport = :8080 )' || true",
+    "ss -ltnp '( sport = :8082 )' || true",
+    "mvn spring-boot:run -Dspring-boot.run.arguments='--server.port=8082 --spring.datasource.url=jdbc:sqlite:/tmp/magenta2-agents-selector-chat-resize.sqlite --magenta.executor.chat-threads=4'"
+  ],
+  "blockers": [],
+  "residualRisk": [
+    "Preferred port 18080 could not be used because an existing non-isolated Magenta process occupied it; validation used MCP-allowed port 8082 instead."
+  ]
+}

@@ -996,8 +996,25 @@
     border: 1px solid #dde5ef;
     border-radius: 8px;
     background: #fbfcfe;
-    padding: 0.65rem;
+    padding: 0.5rem 0.6rem;
     min-width: 0;
+}
+
+.agent-selector-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.35rem;
+    transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
+}
+
+.agent-selector-row:hover,
+.agent-selector-row.selected {
+    border-color: #315d91;
+    background: #f5f8fb;
+}
+
+.agent-selector-row.selected {
+    box-shadow: inset 3px 0 0 #315d91;
 }
 
 .agent-card-name,
@@ -1008,7 +1025,14 @@
 .agent-card-name {
     display: block;
     font-weight: 700;
-    margin-bottom: 0.4rem;
+    margin-bottom: 0;
+    text-decoration: none;
+    color: #202936;
+}
+
+.agent-card-name:hover {
+    color: #1f4979;
+    text-decoration: underline;
 }
 
 .agent-card-meta {
@@ -1016,7 +1040,20 @@
     flex-wrap: wrap;
     gap: 0.3rem;
     align-items: center;
-    margin-bottom: 0.4rem;
+    margin-bottom: 0;
+}
+
+.agent-count-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.45rem;
+    border: 1px solid #ccd7e4;
+    border-radius: 999px;
+    background: #ffffff;
+    padding: 0.05rem 0.45rem;
+    font-size: 0.74rem;
+    color: #405066;
+    white-space: nowrap;
 }
 
 .agent-card-model {

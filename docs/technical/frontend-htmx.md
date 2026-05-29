@@ -21,7 +21,7 @@ Source anchors:
 - `/api/fragments/chat/sessions`
 - `/api/fragments/chat/planning`
 
-`OrchestrationController` owns the operational UI routes and HTMX fragments for dashboard, plans, workflows, jobs, projects, inbox, outputs, agents, and settings.
+`OrchestrationController` owns the operational UI routes and HTMX fragments for dashboard, plans, workflows, jobs, projects, inbox, outputs, agents, and settings. `/agents` and `/agents/{agentId}` use an Agents-specific shell with the primary top navigation but without the Manage side navigation.
 
 JSON API controllers provide the route families consumed by both HTMX fragments and JavaScript islands.
 
@@ -53,7 +53,7 @@ Existing JavaScript is justified where persistent browser state, SSE, or client-
 - `orchestration/api.js` and `dom.js`: small shared helpers for operational islands.
 - `orchestration/dashboard.js`: dashboard refresh/poll style behavior.
 - `orchestration/agent-chat.js`: agent side-panel SSE chat behavior.
-- `orchestration/agents.js`: agent detail/editor behaviors that need local UI state.
+- `orchestration/agents.js`: selected agent-row and tab affordances; list/detail swaps, editor saves, and submit flows stay HTMX-owned.
 - `orchestration/plans.js`: richer plan/workflow editor interactions where client-side state simplifies repeated node/field operations.
 - `orchestration/projects.js`: project detail interactions that coordinate fragment updates.
 

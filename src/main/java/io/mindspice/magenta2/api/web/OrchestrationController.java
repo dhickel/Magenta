@@ -129,7 +129,7 @@ public class OrchestrationController {
     private static final String DASHBOARD_CSS = AppNavigation.OPERATIONAL_CSS;
     private static final String AVATAR_WORKAREA_CSS = "/css/avatar-dashboard.css?v=7";
     private static final String DASHBOARD_JS = "/js/orchestration/dashboard.js?v=5";
-    private static final String AGENTS_JS = "/js/orchestration/agents.js?v=1";
+    private static final String AGENTS_JS = "/js/orchestration/agents.js?v=2";
     private static final String AGENT_CHAT_JS = "/js/orchestration/agent-chat.js?v=2";
     private static final String PLANS_JS = "/js/orchestration/plans.js?v=4";
     private static final String PROJECTS_JS = "/js/orchestration/projects.js?v=3";
@@ -293,11 +293,28 @@ public class OrchestrationController {
         return builder.buildTemplate();
     }
 
+    private ShellTemplate createAgentsShell() {
+        return ShellBuilder.create()
+            .withPageTitle("Magenta Agents")
+            .withCustomCss(DASHBOARD_CSS)
+            .addCustomCss(AVATAR_WORKAREA_CSS)
+            .withTopBanner(BannerBuilder.create()
+                .withLayout(BannerBuilder.BannerLayout.CENTERED)
+                .withTitle("Agents")
+                .withSubtitle("Agent operations, queues, inboxes, and workspace")
+                .build())
+            .withTopNav(AppNavigation.primaryTopNav())
+            .buildTemplate();
+    }
+
     private String renderPage(Component content) {
         return dashboardShell.renderWithContent(content);
     }
 
     private String renderPage(Component content, String activePath) {
+        if (activePath != null && activePath.startsWith("/agents")) {
+            return createAgentsShell().renderWithContent(content);
+        }
         return createDashboardShell(activePath).renderWithContent(content);
     }
 
@@ -5535,13 +5552,23 @@ public class OrchestrationController {
     @GetMapping("/agents")
     @ResponseBody
     public String agents() {
+        return renderPage(agentBrowserPage(null, agentDetailEmptyState()), "/agents");
+    }
+
+    private Component agentBrowserPage(String selectedAgentId, Component detail) {
         Component body = new Div()
             .withId("agents-page")
             .withAttribute("data-orchestration-page", "agents")
+            .withAttribute("data-selected-agent-id", selectedAgentId == null ? "" : selectedAgentId)
             .withChild(Header.H1("Agents"))
             .withChild(new Paragraph("Manage agent profiles, queues, inboxes, assignments, and workspace."))
             .withChild(new Div().withClass("browser-layout browser-layout-wide")
                 .withChild(new Div().withClass("browser-sidebar")
+                    .withChild(new HtmlTag("input")
+                        .withAttribute("type", "hidden")
+                        .withAttribute("id", "selected-agent-id")
+                        .withAttribute("name", "selectedAgentId")
+                        .withAttribute("value", selectedAgentId == null ? "" : selectedAgentId))
                     .withChild(new Div().withClass("browser-sidebar-header")
                         .withChild(Button.create("Create Agent").withClass("orch-primary")
                             .withAttribute("hx-post", "/agents/_create")
@@ -5557,19 +5584,21 @@ public class OrchestrationController {
                         .withAttribute("hx-trigger", "keyup changed delay:300ms")
                         .withAttribute("hx-target", "#agent-list")
                         .withAttribute("hx-swap", "innerHTML")
-                        .withAttribute("hx-include", "#agent-filter"))
+                        .withAttribute("hx-include", "#agent-filter, #selected-agent-id"))
                     .withChild(new Div().withId("agent-list")
                         .withClass("entity-list")
-                        .withAttribute("hx-get", "/agents/_list")
+                        .withAttribute("hx-get", selectedAgentId == null || selectedAgentId.isBlank()
+                            ? "/agents/_list"
+                            : "/agents/_list?selectedAgentId=" + escapeAttr(selectedAgentId))
                         .withAttribute("hx-trigger", "load")
                         .withAttribute("hx-swap", "innerHTML")
                         .withChild(loadingPlaceholder())))
                 .withChild(new Div().withClass("browser-detail")
                     .withChild(new Div().withId("agent-detail-container")
-                        .withChild(agentDetailEmptyState()))))
+                        .withChild(detail))))
             .withChild(moduleScript(AGENTS_JS))
             .withChild(moduleScript(AGENT_CHAT_JS));
-        return renderPage(body, "/agents");
+        return body;
     }
 
     private Component agentDetailEmptyState() {
@@ -5581,7 +5610,8 @@ public class OrchestrationController {
 
     @GetMapping("/agents/_list")
     @ResponseBody
-    public String agentList(@RequestParam(value = "agentFilter", required = false) String filter) {
+    public String agentList(@RequestParam(value = "agentFilter", required = false) String filter,
+                            @RequestParam(value = "selectedAgentId", required = false) String selectedAgentId) {
         List<AgentProfile> agents = agentProfileService.list();
         String f = filter != null ? filter.toLowerCase().trim() : "";
         if (!f.isEmpty()) {
@@ -5600,25 +5630,66 @@ public class OrchestrationController {
         for (var a : agents) {
             int queueCount = countAssignments(a.id());
             int inboxCount = countInboxMessages(a.id());
-            String workspaceHealth = agentWorkspaceHealth(a);
-            cards.withChild(new Div().withClass("agent-card")
+            String statusLabel = agentSelectorStatusLabel(a);
+            String selectedClass = a.id().equals(selectedAgentId) ? " selected" : "";
+            cards.withChild(new Div().withClass("agent-card agent-selector-row" + selectedClass)
+                .withAttribute("data-agent-selector-row", "true")
+                .withAttribute("data-agent-id", a.id())
                 .withChild(new HtmlTag("a")
                     .withAttribute("href", "/agents/" + escapeAttr(a.id()))
                     .withAttribute("hx-get", "/agents/_detail/" + escapeAttr(a.id()))
                     .withAttribute("hx-target", "#agent-detail-container")
                     .withAttribute("hx-swap", "innerHTML")
+                    .withAttribute("hx-push-url", "/agents/" + escapeAttr(a.id()))
                     .withClass("agent-card-name")
                     .withInnerText(displayAgentName(a)))
                 .withChild(new Div().withClass("agent-card-meta")
-                    .withChild(statusBadgeHtml(a.status() != null ? a.status().name() : "UNKNOWN"))
-                    .withChild(statusBadgeHtml(workspaceHealth))
-                    .withChild(new HtmlTag("span").withInnerText("Q " + queueCount))
-                    .withChild(new HtmlTag("span").withInnerText("Inbox " + inboxCount)))
-                .withChild(new Div().withClass("agent-card-model")
-                    .withInnerText(a.defaultModel() != null ? a.defaultModel() : "unset"))
-                .withChild(agentRowActions(a)));
+                    .withChild(agentSelectorStatusChip(statusLabel))
+                    .withChild(agentCountChip("Q", queueCount, "Queue assignments"))
+                    .withChild(agentCountChip("Inbox", inboxCount, "Inbox messages"))));
         }
         return cards.render();
+    }
+
+    String agentList(String filter) {
+        return agentList(filter, null);
+    }
+
+    private Component agentSelectorStatusChip(String label) {
+        String css = switch (label) {
+            case "Active" -> "orch-status-chip active";
+            case "Inactive", "Error" -> "orch-status-chip disabled";
+            default -> "orch-chip";
+        };
+        return new HtmlTag("span").withClass(css).withInnerText(label);
+    }
+
+    private Component agentCountChip(String label, int count, String title) {
+        return new HtmlTag("span")
+            .withClass("agent-count-chip")
+            .withAttribute("title", title)
+            .withAttribute("aria-label", title + ": " + count)
+            .withInnerText(label + " " + count);
+    }
+
+    private String agentSelectorStatusLabel(AgentProfile agent) {
+        AgentWorkspaceStatus status = agentWorkspaceStatus(agent.id());
+        if (status != null && isWorkspaceFailure(status.health())) {
+            return "Error";
+        }
+        if (agent.status() == AgentProfileStatus.ACTIVE) {
+            return "Active";
+        }
+        if (agent.status() == AgentProfileStatus.DISABLED) {
+            return "Inactive";
+        }
+        return "Unknown";
+    }
+
+    private boolean isWorkspaceFailure(AgentWorkspaceStatus.WorkspaceHealth health) {
+        return health == AgentWorkspaceStatus.WorkspaceHealth.ERROR
+            || health == AgentWorkspaceStatus.WorkspaceHealth.MISSING
+            || health == AgentWorkspaceStatus.WorkspaceHealth.READ_ONLY;
     }
 
     private int countAssignments(String agentId) {
@@ -5693,7 +5764,7 @@ public class OrchestrationController {
                 "", "", java.util.List.of(), java.util.List.of(), false, null, null
             ));
             // Return the updated agent list with the new agent
-            return agentList(null);
+            return agentList(null, null);
         } catch (Exception e) {
             return new Div().withClass("orch-error")
                 .withInnerText("Error creating agent: " + e.getMessage()).render();
@@ -5710,24 +5781,15 @@ public class OrchestrationController {
             agent = agentProfileService.get(agentId);
         } catch (Exception e) {
             Component body = new Div()
-                .withId("agents-page")
+                .withId("agent-not-found")
                 .withChild(Header.H1("Agent Not Found"))
                 .withChild(new Paragraph("Agent " + escapeAttr(agentId) + " does not exist."))
                 .withChild(new HtmlTag("a").withAttribute("href", "/agents")
                     .withInnerText("Back to agents"));
-            return renderPage(body, "/agents");
+            return renderPage(agentBrowserPage(null, body), "/agents");
         }
 
-        Component body = new Div()
-            .withId("agents-page")
-            .withAttribute("data-orchestration-page", "agents")
-            .withAttribute("data-agent-id", agent.id())
-            .withChild(Header.H1("Agent: " + displayAgentName(agent)))
-            .withChild(new Paragraph("Profile, queue, inbox, workspace, and history."))
-            .withChild(agentDetailLayout(agent))
-            .withChild(moduleScript(AGENTS_JS))
-            .withChild(moduleScript(AGENT_CHAT_JS));
-        return renderPage(body, "/agents/" + agentId);
+        return renderPage(agentBrowserPage(agent.id(), agentDetailLayout(agent)), "/agents/" + agentId);
     }
 
     // ── Agent detail HTMX partial ──
@@ -5747,6 +5809,9 @@ public class OrchestrationController {
 
     private Component agentDetailLayout(AgentProfile agent) {
         return new Div()
+            .withChild(new Div().withClass("agent-detail-heading")
+                .withChild(Header.H2("Agent: " + displayAgentName(agent)))
+                .withChild(new Paragraph("Profile, queue, inbox, workspace, and history.")))
             .withChild(new HtmlTag("details").withClass("agent-chat-accordion")
                 .withChild(new HtmlTag("summary").withInnerText("Chat with Agent"))
                 .withChild(agentChatPanel(agent.id())))
@@ -8031,7 +8096,7 @@ public class OrchestrationController {
         if ("lifecycle".equalsIgnoreCase(view)) {
             return agentLifecyclePanel(agentId, "Agent enabled.").render();
         }
-        return "list".equalsIgnoreCase(view) ? agentList(null) : agentDetailFragment(agentId);
+        return "list".equalsIgnoreCase(view) ? agentList(null, null) : agentDetailFragment(agentId);
     }
 
     @PostMapping("/agents/_lifecycle/{agentId}/disable")
@@ -8044,7 +8109,7 @@ public class OrchestrationController {
         if ("lifecycle".equalsIgnoreCase(view)) {
             return agentLifecyclePanel(agentId, "Agent disabled.").render();
         }
-        return "list".equalsIgnoreCase(view) ? agentList(null) : agentDetailFragment(agentId);
+        return "list".equalsIgnoreCase(view) ? agentList(null, null) : agentDetailFragment(agentId);
     }
 
     @GetMapping("/agents/_lifecycle/{agentId}/delete-confirm")

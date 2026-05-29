@@ -64,3 +64,5 @@ The route guard checks that the Work Area owner type is `AGENT` and the owner id
 - `/js/avatar-layout-edit.js?v=1` owns in-place dashboard edit helpers.
 - `/js/avatar-workarea-editor.js?v=2` owns local Work Area editor behavior.
 - `/js/avatar-shell.js?v=6` owns desktop chat corner resizing and local geometry persistence.
+
+The dashboard root must render `data-avatar-shell="true"` around `.avatar-shell-grid`, `[data-avatar-chat="true"]`, and `[data-avatar-chat-corner-resizer="true"]`; `avatar-shell.js` uses that hook to bind horizontal rail width and vertical panel height resizing.

@@ -135,6 +135,7 @@ class AvatarDashboardControllerTest {
         assertThat(html).contains("data-avatar-chat=\"true\"");
         assertThat(html).contains("data-avatar-chat-corner-resizer=\"true\"");
         assertThat(html).doesNotContain("data-avatar-chat-resizer=\"true\"");
+        assertThat(html).contains("data-avatar-shell=\"true\"");
         assertThat(html).contains("data-dashboard-home=\"true\"");
         int railIndex = html.indexOf("class=\"avatar-shell-rail\"");
         int mainIndex = html.indexOf("class=\"avatar-shell-main\"");

@@ -4,6 +4,8 @@ The home route `/` is the user dashboard surface. It opens with the `Assistant` 
 
 Dashboards are configurable widget containers. They are not agents, Work Areas, or execution contexts.
 
+The left chat rail can be resized on desktop with the bottom-right corner handle. Horizontal resizing changes the chat rail width while dashboard widgets fill the remaining space; vertical resizing changes the chat panel height.
+
 ## Editing
 
 Use the compact edit control on a dashboard to enter layout edit mode. Rows use the existing 12-column layout controls:

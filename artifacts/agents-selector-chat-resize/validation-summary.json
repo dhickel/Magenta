@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "workUnit": "agents-selector-chat-resize",
+  "status": "fully_validated",
+  "generatedAt": "2026-05-29T01:03:00-04:00",
+  "implementationSummary": [
+    "/agents and /agents/{agentId} render with an Agents-specific shell instead of the Manage side-nav shell.",
+    "Agent selector rows are compact HTMX rows with display name, one status chip, queue count, inbox count, selected-state preservation, and right-hand detail swaps.",
+    "Assistant dashboard home renders data-avatar-shell so avatar-shell.js can bind the existing corner resize behavior."
+  ],
+  "acceptanceCriteria": {
+    "topNavOrderHomeChatAgentsManage": "passed",
+    "agentsPagesExcludeManageSideNav": "passed",
+    "compactSelectorRows": "passed",
+    "selectedStateAfterHtmxDetailSwap": "passed",
+    "selectorRowsNoLifecycleActions": "passed",
+    "htmxDetailTarget": "passed",
+    "homeDashboardResizeHook": "passed",
+    "resizeWidthHeightRuntimeBehavior": "passed",
+    "narrowJavaScript": "passed"
+  },
+  "commands": [
+    {
+      "command": "mvn -Dtest=OrchestrationControllerTest test",
+      "result": "passed",
+      "evidence": "Tests run: 101, Failures: 0, Errors: 0, Skipped: 0"
+    },
+    {
+      "command": "mvn -Dtest=AvatarDashboardControllerTest test",
+      "result": "passed",
+      "evidence": "Tests run: 17, Failures: 0, Errors: 0, Skipped: 0"
+    },
+    {
+      "command": "timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0",
+      "result": "started-then-timeout-stopped",
+      "evidence": "Tomcat started on port 36079; Magenta2Application started in 3.086 seconds; timeout then triggered graceful shutdown with exit code 124."
+    }
+  ],
+  "browserValidationChecklist": [
+    {
+      "target": "/agents",
+      "viewport": "desktop",
+      "checks": [
+        "Top nav order is Home, Chat, Agents, Manage.",
+        "No Manage side nav or Manage banner text is visible.",
+        "Agent selector rows are compact and no row contains Refresh, Disable, or Delete.",
+        "Clicking a selector row swaps detail into the right-hand panel and marks the row selected."
+      ],
+      "status": "passed"
+    },
+    {
+      "target": "/agents",
+      "viewport": "mobile",
+      "checks": [
+        "No horizontal overflow.",
+        "Selector and detail stack coherently.",
+        "Rows remain compact and tappable."
+      ],
+      "status": "passed"
+    },
+    {
+      "target": "/agents/{agentId}",
+      "viewport": "desktop",
+      "checks": [
+        "Initial selected row is preserved.",
+        "Detail is visible on load.",
+        "No Manage side nav or Manage banner text is visible."
+      ],
+      "status": "passed"
+    },
+    {
+      "target": "/agents/{agentId}",
+      "viewport": "mobile",
+      "checks": [
+        "Initial selected row is visible or reachable.",
+        "Detail tabs fit without clipping.",
+        "No horizontal overflow."
+      ],
+      "status": "passed"
+    },
+    {
+      "target": "/",
+      "viewport": "desktop",
+      "checks": [
+        "Before resize, chat rail, main dashboard panel, and corner resize handle are visible.",
+        "Horizontal drag changes chat rail width and main dashboard fills remaining space.",
+        "Vertical drag changes chat panel height without pushing the handle out of view."
+      ],
+      "status": "passed"
+    }
+  ],
+  "browserProof": "artifacts/agents-selector-chat-resize/browser-proof/browser-proof-summary.json",
+  "residualRisk": [
+    "Preferred browser-validation port 18080 was occupied by an existing non-isolated Magenta process; Playwright MCP proof used allowed isolated port 8082 instead."
+  ]
+}
