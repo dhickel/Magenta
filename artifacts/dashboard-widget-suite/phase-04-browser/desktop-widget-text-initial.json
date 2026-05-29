@@ -1,0 +1,42 @@
+{
+  "status": "Agent Status/Queue\nselected agent\nPhase 04 Research Agent With Long Operational Name\nactive\nStatus\n1\nQueue\n0\nInbox\n0\nRunning\n1\nWaiting\nPhase 04 Research Agent With Long Operational Name\nmodel local-qwen / tools 0\n2e25f953-12ba-4ca9-bcb3-c59d5001ca56\nWAIT_FOR_MESSAGE / waiting\np4\ncc583715-0c60-4ab2-ab9e-3edef07b2578\nAGENT_MESSAGE / completed\np7",
+  "outputs": "Agent Outputs\nselected agent\nAgent Phase 04 Research Agent With Long Operational Name\nwork area summary\ntext\nPreview\njob summary\ntext\nPreview\nagent summary\ntext\nPreview",
+  "files": "Agent Files/Notes\nwork area\nPhase 04 Research Work Area\nFILES\nphase-04-very-long-operational-note-name-that-should-wrap-in-mobile.md\nMarkdown / notes/phase-04-very-long-operational-note-name-that-should-wrap-in-mobile.md\nnote\nOpen\nqueue-status.txt\nText / notes/queue-status.txt\nuntagged\nOpen\nTAGGED NOTES\nphase-04-very-long-operational-note-name-that-should-wrap-in-mobile.md\nMarkdown / notes/phase-04-very-long-operational-note-name-that-should-wrap-in-mobile.md\nnote\nOpen\nqueue-status.txt\nText / notes/queue-status.txt\nuntagged\nOpen",
+  "duplicateIds": [],
+  "widths": {
+    "body": 1280,
+    "client": 1280
+  },
+  "links": [
+    {
+      "text": "",
+      "href": null,
+      "hx": "/dashboards/assistant/widgets/widget-07501761-d556-493c-93f2-095fa8e96748/detail"
+    },
+    {
+      "text": "",
+      "href": null,
+      "hx": "/dashboards/assistant/widgets/widget-07501761-d556-493c-93f2-095fa8e96748/settings"
+    },
+    {
+      "text": "Open",
+      "href": null,
+      "hx": "/dashboards/assistant/widgets/widget-07501761-d556-493c-93f2-095fa8e96748/_work-area-file?path=notes%2Fphase-04-very-long-operational-note-name-that-should-wrap-in-mobile.md"
+    },
+    {
+      "text": "Open",
+      "href": null,
+      "hx": "/dashboards/assistant/widgets/widget-07501761-d556-493c-93f2-095fa8e96748/_work-area-file?path=notes%2Fqueue-status.txt"
+    },
+    {
+      "text": "Open",
+      "href": null,
+      "hx": "/dashboards/assistant/widgets/widget-07501761-d556-493c-93f2-095fa8e96748/_work-area-file?path=notes%2Fphase-04-very-long-operational-note-name-that-should-wrap-in-mobile.md"
+    },
+    {
+      "text": "Open",
+      "href": null,
+      "hx": "/dashboards/assistant/widgets/widget-07501761-d556-493c-93f2-095fa8e96748/_work-area-file?path=notes%2Fqueue-status.txt"
+    }
+  ]
+}

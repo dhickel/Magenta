@@ -1,0 +1,24 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e5]:
+      - heading "Assistant" [level=1] [ref=e6]
+      - paragraph [ref=e7]: User dashboards, chat, and operational widgets
+    - navigation [ref=e9]:
+      - generic [ref=e10]:
+        - link "Home" [ref=e11] [cursor=pointer]:
+          - /url: /
+        - link "Chat" [ref=e12] [cursor=pointer]:
+          - /url: /chat
+        - link "Agents" [ref=e13] [cursor=pointer]:
+          - /url: /agents
+        - link "Manage" [ref=e14] [cursor=pointer]:
+          - /url: /manage
+  - main [ref=e16]:
+    - generic [ref=e19]:
+      - generic [ref=e20]:
+        - link "Assistant" [ref=e21] [cursor=pointer]:
+          - /url: /dashboards/assistant
+        - button "Create dashboard" [ref=e22] [cursor=pointer]: +
+      - generic [ref=e23]:
+        - complementary [ref=e25]
+        - generic [ref=e42]

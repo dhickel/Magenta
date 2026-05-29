@@ -19,9 +19,12 @@ import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileStatus;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService;
+import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentType;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobDefinition;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobService;
+import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationStatus;
 import io.mindspice.magenta2.ai.orchestration.runtime.WorkAssignment;
+import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactQuery;
 import io.mindspice.magenta2.ai.orchestration.workflow.InboxMessage;
 import io.mindspice.magenta2.ai.orchestration.workflow.InboxMessageToType;
 import io.mindspice.magenta2.ai.orchestration.workflow.InboxMessageType;
@@ -120,7 +123,7 @@ class AvatarDashboardControllerTest {
             new StubOutputArtifactService(tempDir),
             new StubAgentProfileService(),
             new StubJobService(),
-            new EmptyAssignmentProvider(),
+            new FixedProvider<>(new StubAssignmentService()),
             new FixedProvider<>(workAreaService),
             new FixedProvider<>(workAreaExplorerService),
             new StubInboxService()
@@ -131,7 +134,7 @@ class AvatarDashboardControllerTest {
     void homeRendersAssistantDashboardSelectorChatAndScopedAssets() {
         String html = controller.avatar(false);
 
-        assertThat(html).contains("/css/avatar-dashboard.css?v=10");
+        assertThat(html).contains("/css/avatar-dashboard.css?v=11");
         assertThat(html).contains("/js/avatar-chat.js?v=4");
         assertThat(html).contains("/js/avatar-layout-edit.js?v=1");
         assertThat(html).contains("/js/avatar-workarea-editor.js?v=2");
@@ -1114,6 +1117,135 @@ class AvatarDashboardControllerTest {
     }
 
     @Test
+    void agentStatusQueueWidgetShowsSelectedNoAgentAndMissingAgentStates() {
+        var row = avatarService.addDashboardRow("assistant");
+        var widget = avatarService.addDashboardWidget("assistant", row.id(), "agent-status-queue", 6);
+
+        String noAgent = controller.widgetByInstance("assistant", widget.id());
+        assertThat(noAgent)
+            .contains("Agent Status/Queue")
+            .contains("No agent selected")
+            .contains("Choose an agent in widget settings.");
+
+        avatarService.updateDashboardWidgetSettings("assistant", widget.id(), Map.of("agentId", "agent-1"));
+        String selected = controller.widgetByInstance("assistant", widget.id());
+        assertThat(selected)
+            .contains("selected agent")
+            .contains("Research Agent")
+            .contains("model qwen3")
+            .contains("Queue")
+            .contains("Running")
+            .contains("Waiting")
+            .contains("Internal agent inbox message");
+
+        avatarService.updateDashboardWidgetSettings("assistant", widget.id(), Map.of("agentId", "missing-agent"));
+        String missing = controller.widgetByInstance("assistant", widget.id());
+        assertThat(missing).contains("Selected agent is missing: missing-agent");
+    }
+
+    @Test
+    void agentOutputsStayScopedUntilDashboardWideIsExplicit() {
+        var row = avatarService.addDashboardRow("assistant");
+        var widget = avatarService.addDashboardWidget("assistant", row.id(), "agent-outputs", 6);
+
+        String noAgent = controller.widgetByInstance("assistant", widget.id());
+        assertThat(noAgent)
+            .contains("Choose an agent for scoped outputs.")
+            .doesNotContain("agent summary")
+            .doesNotContain("project summary");
+
+        avatarService.updateDashboardWidgetSettings("assistant", widget.id(), Map.of(
+            "sourceMode", "agent",
+            "agentId", "agent-1"
+        ));
+        String agentScoped = controller.widgetByInstance("assistant", widget.id());
+        assertThat(agentScoped)
+            .contains("selected agent")
+            .contains("Agent Research Agent")
+            .contains("agent summary")
+            .contains("/dashboards/assistant/widgets/" + widget.id() + "/_outputs/agent-artifact")
+            .doesNotContain("project summary");
+        assertThatThrownBy(() -> controller.scopedOutputPreview("assistant", widget.id(), "project-artifact"))
+            .isInstanceOf(ResponseStatusException.class)
+            .extracting(error -> ((ResponseStatusException) error).getStatusCode())
+            .isEqualTo(HttpStatus.NOT_FOUND);
+
+        avatarService.updateDashboardWidgetSettings("assistant", widget.id(), Map.of("sourceMode", "dashboard"));
+        String dashboardWide = controller.widgetByInstance("assistant", widget.id());
+        assertThat(dashboardWide)
+            .contains("dashboard-wide")
+            .contains("agent summary")
+            .contains("project summary");
+    }
+
+    @Test
+    void agentFilesNotesUsesServiceConfinedWorkAreaRoutesAndOwnerGuard() throws Exception {
+        var home = workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Research Home");
+        String workAreaId = home.id();
+        workAreaExplorerService.createDirectory(workAreaId, "notes");
+        workAreaExplorerService.createMarkdownFile(workAreaId, "notes", "ops.md");
+        workAreaExplorerService.saveText(workAreaId, "notes/ops.md", "# Ops\n\nQueue checks");
+        workAreaExplorerService.ensureTag("note", "Note");
+        workAreaExplorerService.addLabel(workAreaId, "notes/ops.md", "note");
+
+        var row = avatarService.addDashboardRow("assistant");
+        var widget = avatarService.addDashboardWidget("assistant", row.id(), "agent-files-notes", 6);
+        avatarService.updateDashboardWidgetSettings("assistant", widget.id(), Map.of(
+            "agentId", "agent-1",
+            "workAreaId", workAreaId,
+            "filePath", "notes"
+        ));
+
+        String html = controller.widgetByInstance("assistant", widget.id());
+        assertThat(html)
+            .contains("Agent Files/Notes")
+            .contains("Research Home")
+            .contains("ops.md")
+            .contains("Tagged notes")
+            .contains("/dashboards/assistant/widgets/" + widget.id() + "/_work-area-file?path=notes%2Fops.md")
+            .doesNotContain("/avatar/_work-areas/");
+
+        String modal = controller.openAgentWorkAreaFile("assistant", widget.id(), "notes/ops.md");
+        assertThat(modal)
+            .contains("service-confined")
+            .contains("<h1>Ops</h1>");
+
+        avatarService.updateDashboardWidgetSettings("assistant", widget.id(), Map.of(
+            "agentId", "agent-2",
+            "workAreaId", workAreaId,
+            "filePath", "notes"
+        ));
+        String guarded = controller.widgetByInstance("assistant", widget.id());
+        assertThat(guarded).contains("Selected Work Area is unavailable for this agent.");
+        assertThatThrownBy(() -> controller.openAgentWorkAreaFile("assistant", widget.id(), "notes/ops.md"))
+            .isInstanceOf(ResponseStatusException.class)
+            .extracting(error -> ((ResponseStatusException) error).getStatusCode())
+            .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void agentFilesNotesSettingsIncludesSelectedAgentWorkArea() {
+        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "avatar", "Avatar Home");
+        var home = workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "agent-1", "Research Home");
+
+        var row = avatarService.addDashboardRow("assistant");
+        var widget = avatarService.addDashboardWidget("assistant", row.id(), "agent-files-notes", 6);
+        avatarService.updateDashboardWidgetSettings("assistant", widget.id(), Map.of(
+            "agentId", "agent-1",
+            "workAreaId", home.id(),
+            "filePath", "."
+        ));
+
+        String settings = controller.widgetSettings("assistant", widget.id());
+
+        assertThat(settings)
+            .contains("Agent Files/Notes Settings")
+            .contains("Research Home (agent-1)")
+            .contains("value=\"" + home.id() + "\" selected")
+            .doesNotContain("Avatar Home (avatar)");
+    }
+
+    @Test
     void alertDismissAppendsInternalAvatarEventOnly() {
         String html = controller.dismissAlert("alert-1");
 
@@ -1155,7 +1287,10 @@ class AvatarDashboardControllerTest {
 
         @Override
         public RunOutputArtifact getArtifact(String artifactId) {
-            return artifact();
+            return artifacts().stream()
+                .filter(artifact -> artifact.id().equals(artifactId))
+                .findFirst()
+                .orElseThrow();
         }
 
         @Override
@@ -1163,21 +1298,122 @@ class AvatarDashboardControllerTest {
             return "hello output";
         }
 
+        @Override
+        public List<RunOutputArtifact> query(OutputArtifactQuery query) {
+            return artifacts().stream()
+                .filter(artifact -> query == null || query.agentId() == null || query.agentId().equals(artifact.agentId()))
+                .filter(artifact -> query == null || query.projectId() == null || query.projectId().equals(artifact.projectId()))
+                .filter(artifact -> query == null || query.jobId() == null || query.jobId().equals(artifact.jobId()))
+                .filter(artifact -> query == null || query.workspaceId() == null || query.workspaceId().equals(artifact.workspaceId()))
+                .toList();
+        }
+
         private RunOutputArtifact artifact() {
-            return new RunOutputArtifact(
-                "artifact-1",
-                "run-1",
-                "plan-1",
-                "avatar",
+            return artifacts().getFirst();
+        }
+
+        private List<RunOutputArtifact> artifacts() {
+            return List.of(
+                new RunOutputArtifact(
+                    "artifact-1",
+                    "run-0",
+                    "plan-0",
+                    "avatar",
+                    "job-1",
+                    "project-1",
+                    "workspace-1",
+                    "PLAN",
+                    "summary",
+                    "text",
+                    "summary.txt",
+                    "outputs/summary.txt",
+                    null,
+                    Instant.parse("2026-05-22T10:00:00Z")
+                ),
+                new RunOutputArtifact(
+                    "agent-artifact",
+                    "run-1",
+                    "plan-1",
+                    "agent-1",
+                    "job-1",
+                    "project-1",
+                    "workspace-1",
+                    "PLAN",
+                    "agent summary",
+                    "text",
+                    "agent-summary.txt",
+                    "outputs/agent-summary.txt",
+                    null,
+                    Instant.parse("2026-05-22T10:00:00Z")
+                ),
+                new RunOutputArtifact(
+                    "project-artifact",
+                    "run-2",
+                    "plan-2",
+                    "agent-2",
+                    "job-2",
+                    "project-2",
+                    "workspace-2",
+                    "PLAN",
+                    "project summary",
+                    "text",
+                    "project-summary.txt",
+                    "outputs/project-summary.txt",
+                    null,
+                    Instant.parse("2026-05-22T11:00:00Z")
+                )
+            );
+        }
+    }
+
+    private static class StubAssignmentService extends AssignmentService {
+        StubAssignmentService() {
+            super(null, null, null, null);
+        }
+
+        @Override
+        public List<WorkAssignment> assignments(String agentId) {
+            if (!"agent-1".equals(agentId)) {
+                return List.of();
+            }
+            return List.of(
+                assignment("assignment-running", OrchestrationStatus.RUNNING),
+                assignment("assignment-waiting", OrchestrationStatus.WAITING)
+            );
+        }
+
+        private WorkAssignment assignment(String id, OrchestrationStatus status) {
+            return new WorkAssignment(
+                id,
+                "agent-1",
                 "job-1",
-                "project-1",
-                "workspace-1",
-                "PLAN",
-                "summary",
-                "text",
-                "summary.txt",
-                "outputs/summary.txt",
                 null,
+                AssignmentType.JOB_RUN,
+                "Run " + id,
+                1,
+                status,
+                null,
+                null,
+                "project-1",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                0,
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                null,
+                null,
+                null,
+                Instant.parse("2026-05-22T10:00:00Z"),
+                Instant.parse("2026-05-22T10:00:00Z"),
+                Instant.parse("2026-05-22T10:00:00Z"),
+                null,
+                Instant.parse("2026-05-22T10:00:00Z"),
                 Instant.parse("2026-05-22T10:00:00Z")
             );
         }
@@ -1190,9 +1426,21 @@ class AvatarDashboardControllerTest {
 
         @Override
         public List<AgentProfile> list() {
-            return List.of(new AgentProfile(
-                "agent-1",
-                "Research Agent",
+            return List.of(agent("agent-1", "Research Agent"), agent("agent-2", "Other Agent"));
+        }
+
+        @Override
+        public AgentProfile get(String id) {
+            return list().stream()
+                .filter(agent -> agent.id().equals(id))
+                .findFirst()
+                .orElseThrow();
+        }
+
+        private AgentProfile agent(String id, String name) {
+            return new AgentProfile(
+                id,
+                name,
                 AgentProfileStatus.ACTIVE,
                 "qwen3",
                 null,
@@ -1201,7 +1449,7 @@ class AvatarDashboardControllerTest {
                 false,
                 Instant.parse("2026-05-22T10:00:00Z"),
                 Instant.parse("2026-05-22T10:00:00Z")
-            ));
+            );
         }
     }
 
@@ -1212,7 +1460,34 @@ class AvatarDashboardControllerTest {
 
         @Override
         public List<JobDefinition> listDefinitions() {
-            return List.of();
+            return List.of(job("job-1", "Research Job"), job("job-2", "Project Job"));
+        }
+
+        @Override
+        public JobDefinition getDefinition(String id) {
+            return listDefinitions().stream()
+                .filter(job -> job.id().equals(id))
+                .findFirst()
+                .orElseThrow();
+        }
+
+        private JobDefinition job(String id, String title) {
+            return new JobDefinition(
+                id,
+                "agent-1",
+                "project-1",
+                null,
+                false,
+                "ACTIVE",
+                title,
+                null,
+                List.of(),
+                null,
+                null,
+                null,
+                Instant.parse("2026-05-22T10:00:00Z"),
+                Instant.parse("2026-05-22T10:00:00Z")
+            );
         }
     }
 
@@ -1230,6 +1505,27 @@ class AvatarDashboardControllerTest {
                 "agent-1",
                 InboxMessageType.INFO,
                 "Internal inbox message",
+                null,
+                null,
+                null,
+                null,
+                Instant.parse("2026-05-22T10:00:00Z"),
+                Instant.parse("2026-05-22T10:00:00Z")
+            ));
+        }
+
+        @Override
+        public List<InboxMessage> agentInbox(String agentId) {
+            if (!"agent-1".equals(agentId)) {
+                return List.of();
+            }
+            return List.of(new InboxMessage(
+                "agent-message-1",
+                InboxMessageToType.AGENT,
+                "agent-1",
+                "avatar",
+                InboxMessageType.INFO,
+                "Internal agent inbox message",
                 null,
                 null,
                 null,

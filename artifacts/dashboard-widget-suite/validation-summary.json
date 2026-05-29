@@ -1,6 +1,6 @@
 {
   "task_slug": "dashboard-widget-suite",
-  "status": "phase_01_02_03_browser_proof_passed_later_phases_pending",
+  "status": "phase_04_browser_proof_passed_later_phases_pending",
   "model_constraints": {
     "implementation_workers": {
       "required_model": "gpt-5.5",
@@ -62,6 +62,23 @@
         "Scoped Phase 03 repair on 2026-05-29 normalized project file-note paths before policy checks, rejected absolute/traversal paths outside .magenta/project/, hardened typed project artifacts against symlinked parents/files, and added representative Avatar tool behavior/boundary tests. Browser proof passed on 2026-05-29.",
         "Independent Phase 03 focused revalidation on 2026-05-29 passed: project file-note path normalization/confinement, project artifact symlink hardening, new Avatar tool behavior/boundary tests, focused Maven suite, startup, jq, and diff-check. Browser proof passed on 2026-05-29.",
         "Delegated Phase 03 browser proof on 2026-05-29 passed Notes personal mode, Work Area file-note mode, project traversal negative, household/code project widgets, Contacts/Materials, missing binding recovery, mobile overflow/modal checks, and visual comparison against /manage, /agents, and Work Area explorer references."
+      ]
+    },
+    {
+      "id": "phase-04-agent-operational-widgets",
+      "status": "phase_04_browser_proof_passed_later_phases_pending",
+      "validation_review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-04-validation.md",
+      "worker_directive": ".internal-dev/plans/dashboard-widget-suite/worker-directives/phase-04-agent-operational-widgets.md",
+      "notes": [
+        "Implemented Agent Status/Queue, Agent Outputs, and Agent Files/Notes widgets on the existing dashboard widget platform.",
+        "Agent-bound widgets render selected source chips and explicit no-agent, missing-agent, and missing-binding states.",
+        "Agent Outputs requires an explicit source mode and scopes preview/download eligibility through OutputArtifactQuery before delegating to existing output services.",
+        "Agent Files/Notes uses selected Work Area bindings, service-confined WorkAreaExplorerService preview/list behavior, and an agent-detail route-family dashboard endpoint instead of legacy /avatar/_work-areas routes.",
+        "Focused controller and tool-descriptor tests passed locally; delegated browser proof remains pending by directive.",
+        "Independent Phase 04 code validation on 2026-05-29 failed: Agent Files/Notes settings can render a non-Avatar agent Work Area only after direct settings writes, but the actual Work Area selector is populated from avatarWorkAreas() and only lists the reserved Avatar agent's Work Areas.",
+        "Scoped repair on 2026-05-29 made Agent Files/Notes settings render Work Areas for the selected/bound agent, preserved an existing selected agent Work Area, kept legacy Avatar Work Area lists for non-Agent-Files/Notes surfaces, and added controller coverage for an agent-1 Work Area in the settings modal.",
+        "Independent focused revalidation on 2026-05-29 passed the repaired selector path, nearby output/tool/Work Area regression suite, startup smoke, jq, and diff-check.",
+        "Delegated Phase 04 browser proof on 2026-05-29 passed Agent Status/Queue no-agent/missing/selected states, Agent Outputs source modes and scoped preview/download, Agent Files/Notes Work Area selector/mini-browser/owner guard, mobile overflow/modal checks, and visual comparison against /manage, /agents, /agents/{agentId}, and Work Area explorer references."
       ]
     }
   ],
@@ -360,6 +377,71 @@
       "command": "Playwright console and network capture for Phase 03 browser proof",
       "result": "passed_with_expected_400_noise",
       "evidence": "console-messages.txt and network-requests.txt contain only the expected browser 400 resource/error entry from the traversal-negative project file-note route; no unexpected JavaScript errors or 500 responses were captured."
+    },
+    {
+      "command": "mvn -Dtest=AvatarDashboardControllerTest,AgentOperationalToolConfigurationTest test",
+      "result": "passed",
+      "evidence": "Phase 04 implementation worker on 2026-05-29: initial compile failed on Select fluent return typing and a missing JobDefinition import; after repair, 28 tests run, 0 failures, 0 errors, 0 skipped."
+    },
+    {
+      "command": "mvn -Dtest=AvatarDashboardControllerTest,AgentOperationalToolConfigurationTest,AgentOperationalToolServiceTest,AgentToolAuthorizationServiceTest,ChatToolRegistryTest,WorkAreaServiceTest,WorkAreaExplorerServiceTest,OutputArtifactServiceAttributionTest,OutputArtifactPathSemanticsTest test",
+      "result": "passed",
+      "evidence": "Phase 04 implementation worker on 2026-05-29: 90 tests run, 0 failures, 0 errors, 0 skipped. Warnings were limited to Mockito/Byte Buddy dynamic loading, SQLite native access, and Unsafe deprecation warnings."
+    },
+    {
+      "command": "timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0",
+      "result": "started_then_timeout_stopped",
+      "evidence": "Phase 04 implementation worker on 2026-05-29: Tomcat started on random port 46263; Magenta2Application started in 2.969 seconds; timeout produced expected exit code 124 after graceful shutdown."
+    },
+    {
+      "command": "mvn -Dtest=AvatarDashboardControllerTest,AgentOperationalToolConfigurationTest,AgentOperationalToolServiceTest,AgentToolAuthorizationServiceTest,ChatToolRegistryTest,WorkAreaServiceTest,WorkAreaExplorerServiceTest,OutputArtifactServiceAttributionTest,OutputArtifactPathSemanticsTest test",
+      "result": "passed",
+      "evidence": "Independent Phase 04 code validation on 2026-05-29: 90 tests run, 0 failures, 0 errors, 0 skipped."
+    },
+    {
+      "command": "timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0",
+      "result": "started_then_timeout_stopped",
+      "evidence": "Independent Phase 04 code validation on 2026-05-29: Tomcat started on random port 38977; Magenta2Application started in 3.039 seconds; timeout produced expected exit code 124 after graceful shutdown."
+    },
+    {
+      "command": "mvn -Dtest=AvatarDashboardControllerTest test",
+      "result": "passed",
+      "evidence": "Scoped Phase 04 selector repair on 2026-05-29: 26 tests run, 0 failures, 0 errors, 0 skipped. Added coverage proving Agent Files/Notes settings includes and preserves an agent-1 Work Area while omitting the reserved Avatar Work Area."
+    },
+    {
+      "command": "mvn -Dtest=AvatarDashboardControllerTest,AgentOperationalToolConfigurationTest,AgentOperationalToolServiceTest,AgentToolAuthorizationServiceTest,ChatToolRegistryTest,WorkAreaServiceTest,WorkAreaExplorerServiceTest,OutputArtifactServiceAttributionTest,OutputArtifactPathSemanticsTest test",
+      "result": "passed",
+      "evidence": "Scoped Phase 04 selector repair on 2026-05-29: 91 tests run, 0 failures, 0 errors, 0 skipped."
+    },
+    {
+      "command": "timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0",
+      "result": "started_then_timeout_stopped",
+      "evidence": "Scoped Phase 04 selector repair on 2026-05-29: Tomcat started on random port 42595; Magenta2Application started in 3.098 seconds; timeout produced expected exit code 124 after graceful shutdown."
+    },
+    {
+      "command": "mvn -Dtest=AvatarDashboardControllerTest,AgentOperationalToolConfigurationTest,AgentOperationalToolServiceTest,AgentToolAuthorizationServiceTest,ChatToolRegistryTest,WorkAreaServiceTest,WorkAreaExplorerServiceTest,OutputArtifactServiceAttributionTest,OutputArtifactPathSemanticsTest test",
+      "result": "passed",
+      "evidence": "Independent Phase 04 selector repair revalidation on 2026-05-29: 91 tests run, 0 failures, 0 errors, 0 skipped."
+    },
+    {
+      "command": "timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0",
+      "result": "started_then_timeout_stopped",
+      "evidence": "Independent Phase 04 selector repair revalidation on 2026-05-29: Tomcat started on random port 35301; Magenta2Application started in 3.035 seconds; timeout produced expected exit code 124 after graceful shutdown."
+    },
+    {
+      "command": "mvn spring-boot:run -Dspring-boot.run.arguments='--server.port=18080 --magenta.root.path=/tmp/magenta2-dashboard-widget-suite-phase-04-browser --spring.datasource.url=jdbc:sqlite:/tmp/magenta2-dashboard-widget-suite-phase-04-browser/magenta.sqlite?foreign_keys=true --magenta.orchestration.runner-delay-ms=60000 --magenta.orchestration.scheduler-delay-ms=60000 --magenta.orchestration.assignment-history-purge-delay-ms=60000'",
+      "result": "passed",
+      "evidence": "Phase 04 browser proof runtime on 2026-05-29: Tomcat started on port 18080 with isolated runtime root /tmp/magenta2-dashboard-widget-suite-phase-04-browser."
+    },
+    {
+      "command": "Playwright MCP browser proof against http://localhost:18080 at desktop 1440x900 and mobile 390x844",
+      "result": "passed",
+      "evidence": "artifacts/dashboard-widget-suite/phase-04-browser/browser-proof-consolidated.json reports PASS_BROWSER_PROOF. Desktop browser-proof-results.json reports 13 checks passing; mobile output proof supersedes one harness selector miss and passes with screenshot evidence."
+    },
+    {
+      "command": "Playwright console and network capture for Phase 04 browser proof",
+      "result": "passed",
+      "evidence": "console-messages.txt reports zero errors/warnings; network-requests.txt has no unexpected 4xx/5xx entries."
     }
   ],
   "validators": [
@@ -507,10 +589,49 @@
           "evidence": "AvatarToolsTest exercises avatar_file_note_read/update and avatar_project_context_get/artifact_update with service-backed success and project boundary rejection propagation."
         }
       ]
+    },
+    {
+      "id": "phase-04-code-validator",
+      "status": "passed_code_validation_playwright_pending",
+      "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-04-validation.md",
+      "verdict": "PASS_CODE_VALIDATION",
+      "findings": [
+        {
+          "id": "phase-04-agent-files-notes-workarea-selector-scope",
+          "classification": "code_defect",
+          "status": "passed_revalidation",
+          "evidence": "AvatarDashboardController.widgetSettingsData() now supplies Agent Files/Notes settings with Work Areas owned by the selected/bound agent and preserves the selected Work Area when it belongs to that agent. AvatarDashboardControllerTest covers an agent-1 Work Area appearing and remaining selected in the settings modal while the reserved Avatar Work Area stays out of that selector. Independent focused suite passed with 91 tests."
+        },
+        {
+          "id": "phase-04-normal-agent-tool-scope",
+          "classification": "authorization_contract",
+          "status": "passed_local_tests",
+          "evidence": "AgentOperationalToolConfigurationTest validates Phase 04 dashboard widget tool descriptors against registered agent_* tools; normal-agent context authorization tests remained in the focused Maven suite."
+        },
+        {
+          "id": "phase-04-output-source-scoping",
+          "classification": "behavior_contract",
+          "status": "passed_local_tests",
+          "evidence": "AvatarDashboardControllerTest covers selected-agent/project output source scoping, explicit dashboard-wide mode, scoped preview allow-list behavior, and no-agent source states."
+        },
+        {
+          "id": "phase-04-work-area-mini-view-confinement",
+          "classification": "behavior_contract",
+          "status": "passed_local_tests",
+          "evidence": "AvatarDashboardControllerTest covers service-confined Work Area mini-browser routes, owner guard behavior, and missing-agent/Work Area states."
+        }
+      ]
+    },
+    {
+      "id": "phase-04-browser-proof-validator",
+      "status": "passed_browser_proof_later_phases_pending",
+      "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-04-browser-proof.md",
+      "verdict": "PASS_BROWSER_PROOF",
+      "findings": []
     }
   ],
   "browser": {
-    "status": "phase_01_02_03_browser_proof_passed_later_phases_pending",
+    "status": "phase_01_02_03_04_browser_proof_passed_later_phases_pending",
     "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-01-browser-proof.md",
     "runtime": {
       "port": 18080,
@@ -812,6 +933,75 @@
         "File-note modal stays within the shared modal host and keeps save controls reachable on mobile. Mobile dashboard stacks widgets without horizontal overflow.",
         "Work Area file-note wording matches the file explorer source/path language closely enough for this widget scope; the widget does not duplicate the full explorer."
       ]
+    },
+    "phase_04": {
+      "status": "passed_browser_proof_later_phases_pending",
+      "verdict": "PASS_BROWSER_PROOF",
+      "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-04-browser-proof.md",
+      "artifact_directory": "artifacts/dashboard-widget-suite/phase-04-browser/",
+      "runtime": {
+        "port": 18080,
+        "isolated_root": "/tmp/magenta2-dashboard-widget-suite-phase-04-browser",
+        "command": "mvn spring-boot:run -Dspring-boot.run.arguments='--server.port=18080 --magenta.root.path=/tmp/magenta2-dashboard-widget-suite-phase-04-browser --spring.datasource.url=jdbc:sqlite:/tmp/magenta2-dashboard-widget-suite-phase-04-browser/magenta.sqlite?foreign_keys=true --magenta.orchestration.runner-delay-ms=60000 --magenta.orchestration.scheduler-delay-ms=60000 --magenta.orchestration.assignment-history-purge-delay-ms=60000'"
+      },
+      "scenarios": [
+        {
+          "id": "desktop_home_widgets_single_shell",
+          "status": "passed_browser_proof",
+          "evidence": "Agent Status/Queue, Agent Outputs, and Agent Files/Notes rendered on / with one shell/nav/root and no duplicate ids."
+        },
+        {
+          "id": "agent_status_queue_states_and_rows",
+          "status": "passed_browser_proof",
+          "evidence": "No-agent, missing-agent, selected-agent, queue rows, running/waiting counts, inbox count/rows, and selected-agent source chip were verified."
+        },
+        {
+          "id": "agent_outputs_modes_scoped_preview_download",
+          "status": "passed_browser_proof",
+          "evidence": "Dashboard-wide, selected-agent, selected-project, selected-job, and selected-Work-Area modes rendered; positive scoped preview/download passed and out-of-scope preview returned 404."
+        },
+        {
+          "id": "agent_files_notes_workarea_selector_preview_owner_guard",
+          "status": "passed_browser_proof",
+          "evidence": "Settings listed the selected agent Work Area, mini-browser rendered files/tagged notes, preview used /dashboards/{dashboardId}/widgets/{widgetInstanceId}/_work-area-file, and mismatched owner state recovered with a 404 preview."
+        },
+        {
+          "id": "mobile_overflow_modal_long_names",
+          "status": "passed_with_superseded_harness_note",
+          "evidence": "Mobile home/file modal/output preview had no horizontal overflow; long filenames wrapped; top-nav layering was acceptable. mobile-proof-results.json output-click check is superseded by mobile-output-proof-results.json and browser-proof-consolidated.json."
+        },
+        {
+          "id": "visual_reference_manage_agents_workarea",
+          "status": "passed_with_visual_notes",
+          "evidence": "Reference screenshots captured for /manage, /agents, /agents/{agentId}, and Work Area explorer; widgets matched compact blue-gray operational styling."
+        }
+      ],
+      "screenshots": [
+        "artifacts/dashboard-widget-suite/phase-04-browser/desktop-home-final.png",
+        "artifacts/dashboard-widget-suite/phase-04-browser/desktop-files-settings-modal.png",
+        "artifacts/dashboard-widget-suite/phase-04-browser/desktop-files-preview-modal.png",
+        "artifacts/dashboard-widget-suite/phase-04-browser/desktop-output-preview-modal.png",
+        "artifacts/dashboard-widget-suite/phase-04-browser/mobile-home-final.png",
+        "artifacts/dashboard-widget-suite/phase-04-browser/mobile-files-preview-modal.png",
+        "artifacts/dashboard-widget-suite/phase-04-browser/mobile-output-preview-modal.png",
+        "artifacts/dashboard-widget-suite/phase-04-browser/reference-manage-desktop.png",
+        "artifacts/dashboard-widget-suite/phase-04-browser/reference-agents-desktop.png",
+        "artifacts/dashboard-widget-suite/phase-04-browser/reference-agent-detail-desktop.png",
+        "artifacts/dashboard-widget-suite/phase-04-browser/reference-workarea-explorer-desktop.png"
+      ],
+      "logs": [
+        "artifacts/dashboard-widget-suite/phase-04-browser/browser-proof-results.json",
+        "artifacts/dashboard-widget-suite/phase-04-browser/mobile-output-proof-results.json",
+        "artifacts/dashboard-widget-suite/phase-04-browser/browser-proof-consolidated.json",
+        "artifacts/dashboard-widget-suite/phase-04-browser/console-messages.txt",
+        "artifacts/dashboard-widget-suite/phase-04-browser/network-requests.txt"
+      ],
+      "visual_critique": [
+        "Desktop widgets use compact operational cards with source chips, thin blue-gray borders, bounded rows, and small action buttons.",
+        "Agent Status/Queue rows are dense and readable; long agent names wrap inside widget bounds.",
+        "Agent Outputs and Agent Files/Notes use scan-friendly row/list language and avoid exposing internal run or workspace roots.",
+        "Mobile stacks widgets without horizontal overflow; long file names wrap in the widget and preview fragment; modal overlay sits above top navigation."
+      ]
     }
   },
   "artifacts": [
@@ -834,7 +1024,12 @@
     "artifacts/dashboard-widget-suite/phase-03-browser/",
     "artifacts/dashboard-widget-suite/phase-03-browser/browser-proof-results.json",
     "artifacts/dashboard-widget-suite/phase-03-browser/console-messages.txt",
-    "artifacts/dashboard-widget-suite/phase-03-browser/network-requests.txt"
+    "artifacts/dashboard-widget-suite/phase-03-browser/network-requests.txt",
+    ".internal-dev/changelogs/2026-05-29-dashboard-widget-suite-phase-04-agent-ops.md",
+    ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-04-validation.md",
+    ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-04-browser-proof.md",
+    "artifacts/dashboard-widget-suite/phase-04-browser/",
+    "artifacts/dashboard-widget-suite/phase-04-browser/browser-proof-consolidated.json"
   ],
   "superseded_artifacts": [
     "artifacts/dashboard-widget-suite/phase-01-browser/",
@@ -844,14 +1039,14 @@
   "residual_risks": [
     "Project artifact summaries use fixed typed JSON files and compact row rendering; richer per-artifact editing UX is intentionally limited until browser validation and later polish.",
     "Compatibility Notes route /_dashboards/_notes remains available for legacy/default callers and still resolves by widget type; rendered real Notes widget instances use instance-scoped routes.",
-    "Later dashboard-widget-suite phases remain pending; this status covers Phase 01, Phase 02, and Phase 03 browser proof only."
+    "Later dashboard-widget-suite phases remain pending; this status covers Phase 01, Phase 02, Phase 03, and Phase 04 browser proof only."
   ],
   "stale_reference_sweep": {
     "status": "not_final_phase",
     "notes": "Final stale-reference sweep is required by the validation matrix before full suite closeout. Phase 01 scoped revalidation checked the repaired evidence index and review artifact only."
   },
   "final_reconciler": {
-    "status": "code_validation_passed_playwright_pending",
-    "next_step": "Run delegated Phase 03 browser proof for Notes personal mode, Work Area file-note mode, Markdown viewer/editor, Projects widget, Contacts/Materials widget, mobile modal scrolling, and visual consistency; do not claim full suite validation yet."
+    "status": "phase_04_browser_proof_passed_later_phases_pending",
+    "next_step": "Proceed to later dashboard-widget-suite phases and final integration reconciliation; do not claim full suite validation yet."
   }
 }

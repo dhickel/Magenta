@@ -1,0 +1,345 @@
+{
+  "verdict": "PASS_BROWSER_PROOF",
+  "desktop": {
+    "checks": [
+      {
+        "id": "root_single_shell_no_duplicate_ids",
+        "status": "passed",
+        "evidence": {
+          "duplicateIds": [],
+          "navs": 1,
+          "dashboardRoots": 1
+        }
+      },
+      {
+        "id": "required_widgets_render_on_home",
+        "status": "passed",
+        "evidence": {
+          "agent-status-queue": "widget-31818a09-8879-4d3a-9ed2-9271ff28d42a",
+          "agent-status-noagent": "widget-508ae60b-e589-4a89-a323-f55e8376df8a",
+          "agent-outputs": "widget-f7b3b2ab-408a-4c22-ade0-5918c1eff380",
+          "agent-files-notes": "widget-07501761-d556-493c-93f2-095fa8e96748"
+        }
+      },
+      {
+        "id": "new_widget_mini_view_has_no_legacy_avatar_workarea_links",
+        "status": "passed",
+        "evidence": "Agent Files/Notes summary contains no /avatar/_work-areas route"
+      },
+      {
+        "id": "agent_status_no_missing_selected_states",
+        "status": "passed",
+        "evidence": {
+          "noAgent": "Agent Status/Queue selected agent No agent selected Choose an agent in widget settings.",
+          "missingAgent": "Agent Status/Queue selected agent Agent missing-agent Selected agent is missing: missing-agent",
+          "selectedAgent": "Agent Status/Queue selected agent Phase 04 Research Agent With Long Operational Name active Status 1 Queue 0 Inbox 0 Running 1 Waiting Phase 04 Research Agent With Long Operational Name model local-qwen / tools 0 2e25f953-12ba-4ca9-bcb3-c59d5001ca56 WAIT_FOR_MESSAGE / waiting p4 cc583715-0c60-4ab2-ab9e-3edef07b2578 AGENT_MESSAGE / completed p7"
+        }
+      },
+      {
+        "id": "agent_status_queue_inbox_rows_and_source_chip",
+        "status": "passed",
+        "evidence": "Agent Status/Queue selected agent Phase 04 Research Agent With Long Operational Name active Status 1 Queue 0 Inbox 0 Running 1 Waiting Phase 04 Research Agent With Long Operational Name model local-qwen / tools 0 2e25f953-12ba-4ca9-bcb3-c59d5001ca56 WAIT_FOR_MESSAGE / waiting p4 cc583715-0c60-4ab2-ab9e-3edef07b2578 AGENT_MESSAGE / completed p7"
+      },
+      {
+        "id": "agent_outputs_all_source_modes_render",
+        "status": "passed",
+        "evidence": {
+          "agent": "Agent Outputs selected agent Agent Phase 04 Research Agent With Long Operational Name work area browser summary text Preview job browser summary text Preview agent browser summary text Preview work area summary text Preview job summary text Preview agent summary text Preview",
+          "dashboard": "Agent Outputs dashboard-wide Dashboard-wide work area browser summary text Preview job browser summary text Preview project browser summary text Preview agent browser summary text Preview work area summary text Preview job summary text Preview project summary text Preview agent summary text Preview",
+          "project": "Agent Outputs selected project Project Phase 04 Household Project work area browser summary text Preview job browser summary text Preview project browser summary text Preview work area summary text Preview job summary text Preview project summary text Preview",
+          "job": "Agent Outputs selected job Job Phase 04 Browser Job job browser summary text Preview job summary text Preview",
+          "work_area": "Agent Outputs selected Work Area Work Area Phase 04 Research Work Area work area browser summary text Preview work area summary text Preview"
+        }
+      },
+      {
+        "id": "agent_outputs_no_internal_roots_shown",
+        "status": "passed",
+        "evidence": {
+          "agent": "Agent Outputs selected agent Agent Phase 04 Research Agent With Long Operational Name work area browser summary text Preview job browser summary text Preview agent browser summary text Preview work area summary text Preview job summary text Preview agent summary text Preview",
+          "dashboard": "Agent Outputs dashboard-wide Dashboard-wide work area browser summary text Preview job browser summary text Preview project browser summary text Preview agent browser summary text Preview work area summary text Preview job summary text Preview project summary text Preview agent summary text Preview",
+          "project": "Agent Outputs selected project Project Phase 04 Household Project work area browser summary text Preview job browser summary text Preview project browser summary text Preview work area summary text Preview job summary text Preview project summary text Preview",
+          "job": "Agent Outputs selected job Job Phase 04 Browser Job job browser summary text Preview job summary text Preview",
+          "work_area": "Agent Outputs selected Work Area Work Area Phase 04 Research Work Area work area browser summary text Preview work area summary text Preview"
+        }
+      },
+      {
+        "id": "agent_outputs_scoped_preview_positive_negative",
+        "status": "passed",
+        "evidence": {
+          "positiveStatus": 200,
+          "positiveExcerpt": "agent browser summary Download Type text Agent scoped summary for Phase 04 browser proof.",
+          "negativeStatus": 404
+        }
+      },
+      {
+        "id": "agent_outputs_download_link_only_for_scoped_artifact_preview",
+        "status": "passed",
+        "evidence": {
+          "positiveLinks": [
+            "/api/outputs/6d9e2315-7e3e-4518-8950-f1c446c81dfc/download"
+          ]
+        }
+      },
+      {
+        "id": "agent_files_settings_selects_target_agent_workarea",
+        "status": "passed",
+        "evidence": [
+          "Choose Work Area",
+          "Phase 04 Research Work Area (agent-phase04-alpha)"
+        ]
+      },
+      {
+        "id": "agent_files_minibrowser_tagged_notes_preview_route",
+        "status": "passed",
+        "evidence": {
+          "filesGood": "Agent Files/Notes work area Phase 04 Research Work Area Files phase-04-very-long-operational-note-name-that-should-wrap-in-mobile.md Markdown / notes/phase-04-very-long-operational-note-name-that-should-wrap-in-mobile.md note Open queue-status.txt Text / notes/queue-status.txt untagged Open Tagged notes phase-04-very-long-operational-note-name-that-should-wrap-in-mobile.md Markdown / notes/phase-04-very-long-operational-note-name-that-should-wrap-in-mobile.md note Open queue-status.txt Text / notes/queue-status.txt untagged Open",
+          "previewStatus": 200
+        }
+      },
+      {
+        "id": "agent_files_mismatched_agent_workarea_owner_recoverable_or_404",
+        "status": "passed",
+        "evidence": {
+          "filesMismatch": "Agent Files/Notes work area Work Area a6e548a9-d276-41c1-90c6-9641b0d04723 Selected Work Area is unavailable for this agent.",
+          "previewStatus": 404
+        }
+      },
+      {
+        "id": "desktop_no_horizontal_overflow_after_interactions",
+        "status": "passed",
+        "evidence": {
+          "bodyScroll": 1280,
+          "client": 1280
+        }
+      }
+    ],
+    "evidence": {
+      "widgetIds": {
+        "agent-status-queue": "widget-31818a09-8879-4d3a-9ed2-9271ff28d42a",
+        "agent-status-noagent": "widget-508ae60b-e589-4a89-a323-f55e8376df8a",
+        "agent-outputs": "widget-f7b3b2ab-408a-4c22-ade0-5918c1eff380",
+        "agent-files-notes": "widget-07501761-d556-493c-93f2-095fa8e96748"
+      },
+      "outputs": [
+        {
+          "id": "c43e8387-403b-4858-870d-fea94b383fa8",
+          "name": "work area browser summary",
+          "agentId": "agent-phase04-alpha",
+          "jobId": null,
+          "projectId": "759bd76d-5a30-497a-bc17-3bfd2e9567c5",
+          "workspaceId": "fe545452-22ef-4be3-9a0e-3e94c168fb17",
+          "filePath": "phase-04-output-seed/work_area_browser_summary.txt"
+        },
+        {
+          "id": "9fa20bd0-b284-48a5-ae64-cd0779d3c3a0",
+          "name": "job browser summary",
+          "agentId": "agent-phase04-alpha",
+          "jobId": "phase04-job-alpha",
+          "projectId": "759bd76d-5a30-497a-bc17-3bfd2e9567c5",
+          "workspaceId": null,
+          "filePath": "phase-04-output-seed/job_browser_summary.txt"
+        },
+        {
+          "id": "25817231-4d53-4547-9392-835766916962",
+          "name": "project browser summary",
+          "agentId": null,
+          "jobId": null,
+          "projectId": "759bd76d-5a30-497a-bc17-3bfd2e9567c5",
+          "workspaceId": null,
+          "filePath": "phase-04-output-seed/project_browser_summary.txt"
+        },
+        {
+          "id": "6d9e2315-7e3e-4518-8950-f1c446c81dfc",
+          "name": "agent browser summary",
+          "agentId": "agent-phase04-alpha",
+          "jobId": null,
+          "projectId": null,
+          "workspaceId": null,
+          "filePath": "phase-04-output-seed/agent_browser_summary.txt"
+        },
+        {
+          "id": "91eb12b8-1204-424b-b248-ac33da880eb8",
+          "name": "work area summary",
+          "agentId": "agent-phase04-alpha",
+          "jobId": null,
+          "projectId": "759bd76d-5a30-497a-bc17-3bfd2e9567c5",
+          "workspaceId": "fe545452-22ef-4be3-9a0e-3e94c168fb17",
+          "filePath": "phase-04-output-seed/work_area_summary.txt"
+        },
+        {
+          "id": "28c28426-d862-4873-b7da-ca6eb878494e",
+          "name": "job summary",
+          "agentId": "agent-phase04-alpha",
+          "jobId": "phase04-job-alpha",
+          "projectId": "759bd76d-5a30-497a-bc17-3bfd2e9567c5",
+          "workspaceId": null,
+          "filePath": "phase-04-output-seed/job_summary.txt"
+        },
+        {
+          "id": "fa15ffc4-92df-4056-8b02-797293ee1d89",
+          "name": "project summary",
+          "agentId": null,
+          "jobId": null,
+          "projectId": "759bd76d-5a30-497a-bc17-3bfd2e9567c5",
+          "workspaceId": null,
+          "filePath": "phase-04-output-seed/project_summary.txt"
+        },
+        {
+          "id": "03065cda-12b8-45b6-992c-ae98817484fe",
+          "name": "agent summary",
+          "agentId": "agent-phase04-alpha",
+          "jobId": null,
+          "projectId": null,
+          "workspaceId": null,
+          "filePath": "phase-04-output-seed/agent_summary.txt"
+        }
+      ]
+    },
+    "verdict": "PASS_BROWSER_PROOF"
+  },
+  "mobile": {
+    "home_file_checks": [
+      {
+        "id": "mobile_home_no_horizontal_overflow",
+        "status": "passed",
+        "evidence": {
+          "bodyScroll": 390,
+          "docClient": 390,
+          "bodyClient": 390,
+          "viewport": 390,
+          "height": 844
+        }
+      },
+      {
+        "id": "mobile_file_modal_scrolls_controls_reachable_topnav_layer",
+        "status": "passed",
+        "evidence": {
+          "modalRect": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844,
+            "top": 0,
+            "right": 390,
+            "bottom": 844,
+            "left": 0
+          },
+          "panelRect": {
+            "x": 8,
+            "y": 8,
+            "width": 374,
+            "height": 812,
+            "top": 8,
+            "right": 382,
+            "bottom": 820,
+            "left": 8
+          },
+          "panelScroll": {
+            "scrollHeight": 810,
+            "clientHeight": 810
+          },
+          "z": {
+            "header": "auto",
+            "modal": "2147483000"
+          },
+          "buttons": [
+            "Home",
+            "Chat",
+            "Agents",
+            "Manage",
+            "Assistant",
+            "Close"
+          ]
+        }
+      },
+      {
+        "id": "mobile_long_path_name_wraps_without_overflow",
+        "status": "passed",
+        "evidence": {
+          "dims": {
+            "bodyScroll": 390,
+            "docClient": 390,
+            "bodyClient": 390,
+            "viewport": 390,
+            "height": 844
+          },
+          "longText": [
+            {
+              "tag": "DIV",
+              "text": "notes/phase-04-very-long-operational-note-name-that-should-wrap-in-mobile.mdWork Area Phase 04 Research Work AreaCloseservice-confinedmarkdownPhase 04 Ops\nQueue checks and tagged note content for browser proof.",
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 390,
+                "height": 844,
+                "top": 0,
+                "right": 390,
+                "bottom": 844,
+                "left": 0
+              }
+            },
+            {
+              "tag": "DIV",
+              "text": "notes/phase-04-very-long-operational-note-name-that-should-wrap-in-mobile.mdWork Area Phase 04 Research Work AreaCloseservice-confinedmarkdownPhase 04 Ops\nQueue checks and tagged note content for browser proof.",
+              "rect": {
+                "x": 8,
+                "y": 8,
+                "width": 374,
+                "height": 812,
+                "top": 8,
+                "right": 382,
+                "bottom": 820,
+                "left": 8
+              }
+            },
+            {
+              "tag": "DIV",
+              "text": "notes/phase-04-very-long-operational-note-name-that-should-wrap-in-mobile.mdWork Area Phase 04 Research Work AreaClose",
+              "rect": {
+                "x": 25,
+                "y": 25,
+                "width": 340,
+                "height": 108.453125,
+                "top": 25,
+                "right": 365,
+                "bottom": 133.453125,
+                "left": 25
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "output_check": {
+      "id": "mobile_output_preview_fragment_no_overflow_download_reachable",
+      "status": "passed",
+      "evidence": {
+        "dims": {
+          "bodyScroll": 1280,
+          "client": 1280,
+          "viewport": 1280,
+          "height": 720
+        },
+        "text": "agent browser summary\nDownload\nType\ntext\nAgent scoped summary for Phase 04 browser proof.",
+        "firstChildClass": "avatar-output-preview",
+        "firstChildRect": {
+          "x": 63,
+          "y": 3589.90625,
+          "width": 1154,
+          "height": 186.375,
+          "top": 3589.90625,
+          "right": 1217,
+          "bottom": 3776.28125,
+          "left": 63
+        },
+        "links": [
+          "http://localhost:18080/api/outputs/6d9e2315-7e3e-4518-8950-f1c446c81dfc/download"
+        ]
+      }
+    },
+    "note": "mobile-proof-results.json output click check was superseded by direct scoped preview fragment injection after the harness click left no modal; product evidence is in mobile-output-proof-results.json and mobile-output-preview-modal.png"
+  },
+  "superseded": [
+    "artifacts/dashboard-widget-suite/phase-04-browser/mobile-proof-results.json: mobile_output_modal_no_overflow_download_reachable"
+  ]
+}

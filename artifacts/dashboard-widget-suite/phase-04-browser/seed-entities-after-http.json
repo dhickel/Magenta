@@ -1,0 +1,73 @@
+{
+  "agents": [
+    {
+      "id": "avatar",
+      "name": "Avatar",
+      "status": "DISABLED"
+    },
+    {
+      "id": "agent-phase04-beta",
+      "name": "Phase 04 Beta Guard Agent",
+      "status": "ACTIVE"
+    },
+    {
+      "id": "agent-phase04-alpha",
+      "name": "Phase 04 Research Agent With Long Operational Name",
+      "status": "ACTIVE"
+    },
+    {
+      "id": "c0306045-be55-4d7b-a763-707e01c3d38c",
+      "name": "magenta",
+      "status": "ACTIVE"
+    }
+  ],
+  "projects": [
+    {
+      "id": "759bd76d-5a30-497a-bc17-3bfd2e9567c5",
+      "name": "Phase 04 Household Project",
+      "description": "Browser proof project",
+      "ownerAgentId": "agent-phase04-alpha",
+      "gitRepoUrl": null,
+      "promptProfile": null,
+      "model": null,
+      "settingsOverrideJson": null,
+      "createdAt": "2026-05-29T15:42:42.745663761Z",
+      "updatedAt": "2026-05-29T15:42:42.745757077Z"
+    }
+  ],
+  "jobs": [
+    {
+      "id": "phase04-job-alpha",
+      "ownerAgentId": "agent-phase04-alpha",
+      "projectId": "759bd76d-5a30-497a-bc17-3bfd2e9567c5",
+      "workspaceId": null,
+      "persistentWorkspaceEnabled": false,
+      "status": "ACTIVE",
+      "title": "Phase 04 Browser Job",
+      "summary": "Job used for output source mode proof",
+      "items": [],
+      "promptProfile": "default",
+      "model": "local-qwen",
+      "settingsOverrideJson": null,
+      "createdAt": "2026-05-29T15:42:42.761919544Z",
+      "updatedAt": "2026-05-29T15:42:42.762781327Z"
+    }
+  ],
+  "workAreas": [
+    {
+      "id": "a6e548a9-d276-41c1-90c6-9641b0d04723",
+      "ownerType": "AGENT",
+      "ownerId": "agent-phase04-alpha",
+      "workspaceId": "fe545452-22ef-4be3-9a0e-3e94c168fb17",
+      "rootRelativePath": "workspace/agent-phase04-alpha",
+      "areaRelativePath": "home",
+      "displayName": "Phase 04 Research Work Area",
+      "system": true,
+      "home": true,
+      "active": true,
+      "metadataJson": "{}",
+      "createdAt": "2026-05-29T15:42:42.775541086Z",
+      "updatedAt": "2026-05-29T15:42:42.775541086Z"
+    }
+  ]
+}

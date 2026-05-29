@@ -6,6 +6,7 @@ import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mindspice.magenta2.ai.chat.tool.ChatToolRegistry;
+import io.mindspice.magenta2.avatar.dashboard.DashboardWidgetRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallbackProvider;
 
@@ -94,5 +95,31 @@ class AgentOperationalToolConfigurationTest {
         assertThatThrownBy(() -> registry.resolveApprovedTools(List.of("agent_missing")))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("agent_missing");
+    }
+
+    @Test
+    void phase04DashboardWidgetToolDescriptorsMatchRegisteredAgentOperationalTools() {
+        AgentOperationalTools tools = new AgentOperationalTools(mock(AgentOperationalToolService.class), new ObjectMapper());
+        ToolCallbackProvider provider = new AgentOperationalToolConfiguration().agentOperationalToolCallbackProvider(tools);
+        List<String> registeredNames = Arrays.stream(provider.getToolCallbacks())
+            .map(callback -> callback.getToolDefinition().name())
+            .toList();
+
+        List<String> declaredPhase04Tools = List.of(
+                "agent-status-queue",
+                "agent-outputs",
+                "agent-files-notes"
+            ).stream()
+            .flatMap(type -> {
+                var descriptor = DashboardWidgetRegistry.defaultRegistry().require(type).toolDescriptor();
+                return java.util.stream.Stream.concat(descriptor.readTools().stream(), descriptor.mutationTools().stream());
+            })
+            .distinct()
+            .toList();
+
+        assertThat(declaredPhase04Tools)
+            .allMatch(name -> name.startsWith("agent_"))
+            .isNotEmpty();
+        assertThat(registeredNames).containsAll(declaredPhase04Tools);
     }
 }

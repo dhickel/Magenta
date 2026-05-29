@@ -18,6 +18,7 @@ import io.mindspice.magenta2.ai.chat.service.ChatService;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService;
+import io.mindspice.magenta2.ai.orchestration.runtime.JobDefinition;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobService;
 import io.mindspice.magenta2.ai.orchestration.runtime.Project;
 import io.mindspice.magenta2.ai.orchestration.runtime.ProjectService;
@@ -58,6 +59,9 @@ import io.mindspice.magenta2.avatar.PlannerTimeBlock;
 import io.mindspice.magenta2.avatar.TasksRoutinesView;
 import io.mindspice.magenta2.avatar.TodayPlannerView;
 import io.mindspice.magenta2.avatar.dashboard.WidgetSettingsValidation;
+import io.mindspice.magenta2.avatar.dashboard.AgentFilesNotesView;
+import io.mindspice.magenta2.avatar.dashboard.AgentOutputsView;
+import io.mindspice.magenta2.avatar.dashboard.AgentStatusQueueView;
 import io.mindspice.magenta2.avatar.dashboard.DashboardFileNote;
 import io.mindspice.magenta2.avatar.dashboard.DashboardNotesView;
 import io.mindspice.magenta2.avatar.dashboard.DashboardProjectContextView;
@@ -84,7 +88,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Controller
 public class AvatarDashboardController {
-    private static final String AVATAR_CSS = "/css/avatar-dashboard.css?v=10";
+    private static final String AVATAR_CSS = "/css/avatar-dashboard.css?v=11";
     private static final String AVATAR_AGENT_ID = "avatar";
     private static final String DEFAULT_AVATAR_TAB = "dashboard";
 
@@ -294,7 +298,8 @@ public class AvatarDashboardController {
     @ResponseBody
     public String widgetSettings(@PathVariable String dashboardId, @PathVariable String widgetInstanceId) {
         AvatarDashboardRowWidget rowWidget = requireDashboardWidget(dashboardId, widgetInstanceId);
-        return AvatarDashboardComponents.widgetSettingsModal(data(dashboardId), rowWidget, null).render();
+        return AvatarDashboardComponents.widgetSettingsModal(widgetSettingsData(dashboardId, rowWidget, null), rowWidget, null)
+            .render();
     }
 
     @GetMapping("/_dashboards/_layout/widgets/{widgetInstanceId}/settings")
@@ -317,7 +322,8 @@ public class AvatarDashboardController {
         WidgetSettingsValidation validation = avatarService.validateDashboardWidgetSettings(rowWidget.widgetKey(), settings);
         if (!validation.valid()) {
             response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            return AvatarDashboardComponents.widgetSettingsModal(data(dashboardId), rowWidget, validation).render();
+            return AvatarDashboardComponents.widgetSettingsModal(widgetSettingsData(dashboardId, rowWidget, validation), rowWidget, validation)
+                .render();
         }
         AvatarDashboardRowWidget saved = avatarService.updateDashboardWidgetSettings(dashboardId, widgetInstanceId, settings);
         return AvatarDashboardComponents.widgetSettingsSaveResponse(data(dashboardId), saved).render();
@@ -869,6 +875,46 @@ public class AvatarDashboardController {
                 "Unable to preview output: " + exception.getMessage(),
                 true
             ).render();
+        }
+    }
+
+    @GetMapping("/dashboards/{dashboardId}/widgets/{widgetInstanceId}/_outputs/{artifactId}")
+    @ResponseBody
+    public String scopedOutputPreview(
+        @PathVariable String dashboardId,
+        @PathVariable String widgetInstanceId,
+        @PathVariable String artifactId
+    ) {
+        AvatarDashboardRowWidget widget = requireDashboardWidget(dashboardId, widgetInstanceId);
+        AgentOutputsView view = agentOutputsView(widget);
+        if (view.outputs().stream().noneMatch(output -> artifactId.equals(output.id()))) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Output artifact is not in this widget scope");
+        }
+        return outputPreview(artifactId);
+    }
+
+    @GetMapping("/dashboards/{dashboardId}/widgets/{widgetInstanceId}/_work-area-file")
+    @ResponseBody
+    public String openAgentWorkAreaFile(
+        @PathVariable String dashboardId,
+        @PathVariable String widgetInstanceId,
+        @RequestParam String path
+    ) {
+        AvatarDashboardRowWidget widget = requireDashboardWidget(dashboardId, widgetInstanceId);
+        if (!"agent-files-notes".equals(widget.widgetKey())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "dashboard widget is not Agent Files/Notes: " + widgetInstanceId);
+        }
+        WorkArea workArea = guardedAgentWorkArea(widget, true);
+        WorkAreaExplorerService explorer = requireExplorerService();
+        try {
+            return AvatarDashboardComponents.agentWorkAreaFileModal(
+                dashboardId,
+                widgetInstanceId,
+                workArea,
+                explorer.preview(workArea.id(), path)
+            ).render();
+        } catch (RuntimeException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         }
     }
 
@@ -1744,9 +1790,13 @@ public class AvatarDashboardController {
             avatarService.notes(false),
             noteViews(rows),
             projectViews(rows),
+            agentStatusViews(rows),
+            agentOutputViews(rows),
+            agentFilesViews(rows),
             avatarService.events(),
             safeList(() -> outputArtifactService.query(null, null, null, 20)),
             agents,
+            projects(),
             avatarWorkAreas(),
             safeList(jobService::listDefinitions),
             assignments(agents),
@@ -1790,14 +1840,35 @@ public class AvatarDashboardController {
             base.notes(),
             base.noteViews(),
             base.projectViews(),
+            base.agentStatusViews(),
+            base.agentOutputViews(),
+            base.agentFilesViews(),
             base.events(),
             base.outputs(),
             base.agents(),
+            base.projects(),
             base.workAreas(),
             base.jobs(),
             base.assignments(),
             base.userInbox(),
             base.defaultModel()
+        );
+    }
+
+    private AvatarDashboardComponents.AvatarDashboardData widgetSettingsData(
+        String dashboardId,
+        AvatarDashboardRowWidget widget,
+        WidgetSettingsValidation validation
+    ) {
+        AvatarDashboardComponents.AvatarDashboardData base = data(dashboardId);
+        if (!"agent-files-notes".equals(widget.widgetKey())) {
+            return base;
+        }
+        return copyData(
+            base,
+            base.outputs(),
+            agentFilesNotesSettingsWorkAreas(widget, validation),
+            base.assignments()
         );
     }
 
@@ -1926,9 +1997,13 @@ public class AvatarDashboardController {
             base.notes(),
             base.noteViews(),
             base.projectViews(),
+            base.agentStatusViews(),
+            base.agentOutputViews(),
+            base.agentFilesViews(),
             base.events(),
             outputs,
             base.agents(),
+            base.projects(),
             workAreas,
             base.jobs(),
             assignments,
@@ -2019,6 +2094,38 @@ public class AvatarDashboardController {
         return List.copyOf(byId.values());
     }
 
+    private List<WorkArea> agentFilesNotesSettingsWorkAreas(
+        AvatarDashboardRowWidget widget,
+        WidgetSettingsValidation validation
+    ) {
+        WorkAreaService service = workAreaService.getIfAvailable();
+        if (service == null) {
+            return List.of();
+        }
+        Map<String, Object> settings = validation == null || validation.settings().isEmpty()
+            ? widget.settings()
+            : validation.settings();
+        String agentId = setting(settings, "agentId");
+        String workAreaId = setting(settings, "workAreaId");
+        Map<String, WorkArea> byId = new LinkedHashMap<>();
+        if (StringUtils.hasText(agentId)) {
+            safeList(() -> service.list(WorkspaceOwnerType.AGENT, agentId, false))
+                .forEach(workArea -> byId.put(workArea.id(), workArea));
+        }
+        if (StringUtils.hasText(workAreaId) && !byId.containsKey(workAreaId)) {
+            try {
+                WorkArea selected = service.get(workAreaId);
+                if (selected.ownerType() == WorkspaceOwnerType.AGENT
+                    && (!StringUtils.hasText(agentId) || agentId.equals(selected.ownerId()))) {
+                    byId.put(selected.id(), selected);
+                }
+            } catch (RuntimeException ignored) {
+                // Settings validation will surface missing Work Areas; the selector should just omit unavailable rows.
+            }
+        }
+        return List.copyOf(byId.values());
+    }
+
     private Map<String, List<PlannerSubtodo>> plannerSubtodos() {
         return avatarService.plannerTasks().stream()
             .collect(java.util.stream.Collectors.toMap(
@@ -2073,6 +2180,217 @@ public class AvatarDashboardController {
                 : service.context(projectId));
         }
         return views;
+    }
+
+    private Map<String, AgentStatusQueueView> agentStatusViews(List<AvatarDashboardRow> rows) {
+        Map<String, AgentStatusQueueView> views = new LinkedHashMap<>();
+        for (AvatarDashboardRowWidget widget : dashboardWidgets(rows, "agent-status-queue")) {
+            views.put(widget.id(), agentStatusView(widget));
+        }
+        return views;
+    }
+
+    private AgentStatusQueueView agentStatusView(AvatarDashboardRowWidget widget) {
+        String agentId = setting(widget, "agentId");
+        if (!StringUtils.hasText(agentId)) {
+            return new AgentStatusQueueView("No agent selected", "Choose an agent in widget settings.", null, List.of(), List.of());
+        }
+        AgentProfile agent = agent(agentId);
+        if (agent == null) {
+            return new AgentStatusQueueView("Agent " + agentId, "Selected agent is missing: " + agentId, null, List.of(), List.of());
+        }
+        List<WorkAssignment> assignments = safeList(() -> {
+            AssignmentService service = assignmentService.getIfAvailable();
+            return service == null ? List.<WorkAssignment>of() : service.assignments(agent.id());
+        });
+        List<InboxMessage> inbox = safeList(() -> inboxService.agentInbox(agent.id()));
+        return new AgentStatusQueueView(agent.name(), null, agent, assignments, inbox);
+    }
+
+    private Map<String, AgentOutputsView> agentOutputViews(List<AvatarDashboardRow> rows) {
+        Map<String, AgentOutputsView> views = new LinkedHashMap<>();
+        for (AvatarDashboardRowWidget widget : dashboardWidgets(rows, "agent-outputs", "outputs")) {
+            views.put(widget.id(), agentOutputsView(widget));
+        }
+        return views;
+    }
+
+    private AgentOutputsView agentOutputsView(AvatarDashboardRowWidget widget) {
+        String mode = normalizeOutputSourceMode(setting(widget, "sourceMode"));
+        String missing = missingOutputBinding(widget, mode);
+        OutputArtifactQuery query = outputQuery(widget, mode, missing);
+        List<RunOutputArtifact> outputs = missing == null
+            ? safeList(() -> outputArtifactService.query(query))
+            : List.of();
+        return new AgentOutputsView(mode, outputSourceLabel(widget, mode), missing, outputs);
+    }
+
+    private OutputArtifactQuery outputQuery(AvatarDashboardRowWidget widget, String mode, String missing) {
+        if (missing != null) {
+            return OutputArtifactQuery.of(null, null, null, null, null, null, null, null, null, setting(widget, "artifactType"), 20);
+        }
+        String workspaceId = null;
+        if ("work_area".equals(mode)) {
+            WorkArea workArea = workArea(setting(widget, "workAreaId"));
+            workspaceId = workArea == null ? null : workArea.workspaceId();
+        }
+        return OutputArtifactQuery.of(
+            "agent".equals(mode) ? setting(widget, "agentId") : null,
+            "job".equals(mode) ? setting(widget, "jobId") : null,
+            null,
+            null,
+            "project".equals(mode) ? setting(widget, "projectId") : null,
+            workspaceId,
+            null,
+            null,
+            null,
+            setting(widget, "artifactType"),
+            20
+        );
+    }
+
+    private Map<String, AgentFilesNotesView> agentFilesViews(List<AvatarDashboardRow> rows) {
+        Map<String, AgentFilesNotesView> views = new LinkedHashMap<>();
+        for (AvatarDashboardRowWidget widget : dashboardWidgets(rows, "agent-files-notes")) {
+            views.put(widget.id(), agentFilesView(widget));
+        }
+        return views;
+    }
+
+    private AgentFilesNotesView agentFilesView(AvatarDashboardRowWidget widget) {
+        String workAreaId = setting(widget, "workAreaId");
+        if (!StringUtils.hasText(workAreaId)) {
+            return new AgentFilesNotesView("No Work Area selected", "Choose a Work Area in widget settings.", null, null, List.of());
+        }
+        WorkArea workArea = guardedAgentWorkArea(widget, false);
+        if (workArea == null) {
+            return new AgentFilesNotesView("Work Area " + workAreaId, "Selected Work Area is unavailable for this agent.", null, null, List.of());
+        }
+        WorkAreaExplorerService explorer = workAreaExplorerService == null ? null : workAreaExplorerService.getIfAvailable();
+        if (explorer == null) {
+            return new AgentFilesNotesView(workArea.displayName(), "Work Area explorer is unavailable.", workArea, null, List.of());
+        }
+        String path = StringUtils.hasText(setting(widget, "filePath")) ? setting(widget, "filePath") : ".";
+        try {
+            WorkAreaExplorerService.DirectoryListing listing = explorer.list(workArea.id(), path);
+            List<WorkAreaExplorerService.Entry> notes = listing.entries().stream()
+                .filter(WorkAreaExplorerService.Entry::regularFile)
+                .filter(this::noteLike)
+                .limit(5)
+                .toList();
+            return new AgentFilesNotesView(workArea.displayName(), null, workArea, listing, notes);
+        } catch (RuntimeException exception) {
+            return new AgentFilesNotesView(workArea.displayName(), exception.getMessage(), workArea, null, List.of());
+        }
+    }
+
+    private List<Project> projects() {
+        ProjectService service = projectService == null ? null : projectService.getIfAvailable();
+        return service == null ? List.of() : safeList(service::listProjects);
+    }
+
+    private AgentProfile agent(String agentId) {
+        if (!StringUtils.hasText(agentId)) {
+            return null;
+        }
+        try {
+            return agentProfileService.get(agentId);
+        } catch (RuntimeException exception) {
+            return null;
+        }
+    }
+
+    private WorkArea workArea(String workAreaId) {
+        WorkAreaService service = workAreaService == null ? null : workAreaService.getIfAvailable();
+        if (service == null || !StringUtils.hasText(workAreaId)) {
+            return null;
+        }
+        try {
+            return service.get(workAreaId);
+        } catch (RuntimeException exception) {
+            return null;
+        }
+    }
+
+    private WorkArea guardedAgentWorkArea(AvatarDashboardRowWidget widget, boolean throwOnFailure) {
+        String workAreaId = setting(widget, "workAreaId");
+        WorkArea workArea = workArea(workAreaId);
+        String selectedAgentId = setting(widget, "agentId");
+        if (workArea == null
+            || workArea.ownerType() != WorkspaceOwnerType.AGENT
+            || (StringUtils.hasText(selectedAgentId) && !selectedAgentId.equals(workArea.ownerId()))) {
+            if (throwOnFailure) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Work Area unavailable for selected agent");
+            }
+            return null;
+        }
+        return workArea;
+    }
+
+    private String normalizeOutputSourceMode(String value) {
+        if (!StringUtils.hasText(value)) {
+            return "agent";
+        }
+        return switch (value.trim().toLowerCase(Locale.ROOT)) {
+            case "dashboard", "agent", "project", "job", "work_area" -> value.trim().toLowerCase(Locale.ROOT);
+            default -> "agent";
+        };
+    }
+
+    private String missingOutputBinding(AvatarDashboardRowWidget widget, String mode) {
+        if ("agent".equals(mode) && !StringUtils.hasText(setting(widget, "agentId"))) {
+            return "Choose an agent for scoped outputs.";
+        }
+        if ("project".equals(mode) && !StringUtils.hasText(setting(widget, "projectId"))) {
+            return "Choose a project for scoped outputs.";
+        }
+        if ("job".equals(mode) && !StringUtils.hasText(setting(widget, "jobId"))) {
+            return "Choose a job for scoped outputs.";
+        }
+        if ("work_area".equals(mode) && !StringUtils.hasText(setting(widget, "workAreaId"))) {
+            return "Choose a Work Area for scoped outputs.";
+        }
+        if ("work_area".equals(mode) && workArea(setting(widget, "workAreaId")) == null) {
+            return "Selected Work Area is missing.";
+        }
+        return null;
+    }
+
+    private String outputSourceLabel(AvatarDashboardRowWidget widget, String mode) {
+        return switch (mode) {
+            case "dashboard" -> "Dashboard-wide";
+            case "project" -> "Project " + fallback(projectName(setting(widget, "projectId")), fallback(setting(widget, "projectId"), "unbound"));
+            case "job" -> "Job " + fallback(jobTitle(setting(widget, "jobId")), fallback(setting(widget, "jobId"), "unbound"));
+            case "work_area" -> "Work Area " + fallback(workAreaName(setting(widget, "workAreaId")), fallback(setting(widget, "workAreaId"), "unbound"));
+            default -> "Agent " + fallback(agentName(setting(widget, "agentId")), fallback(setting(widget, "agentId"), "unbound"));
+        };
+    }
+
+    private String agentName(String agentId) {
+        AgentProfile agent = agent(agentId);
+        return agent == null ? null : agent.name();
+    }
+
+    private String projectName(String projectId) {
+        Project project = project(projectId);
+        return project == null ? null : project.name();
+    }
+
+    private String jobTitle(String jobId) {
+        if (!StringUtils.hasText(jobId)) {
+            return null;
+        }
+        try {
+            JobDefinition job = jobService.getDefinition(jobId);
+            return job.title();
+        } catch (RuntimeException exception) {
+            return null;
+        }
+    }
+
+    private String workAreaName(String workAreaId) {
+        WorkArea workArea = workArea(workAreaId);
+        return workArea == null ? null : workArea.displayName();
     }
 
     private List<AvatarDashboardRowWidget> dashboardWidgets(List<AvatarDashboardRow> rows, String... types) {
@@ -2282,6 +2600,11 @@ public class AvatarDashboardController {
 
     private String setting(AvatarDashboardRowWidget widget, String key) {
         Object value = widget.settings() == null ? null : widget.settings().get(key);
+        return value == null ? "" : value.toString();
+    }
+
+    private String setting(Map<String, Object> settings, String key) {
+        Object value = settings == null ? null : settings.get(key);
         return value == null ? "" : value.toString();
     }
 

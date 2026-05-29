@@ -45,6 +45,14 @@ The Contacts/Materials widget is a narrower project-bound view of the same typed
 
 Work Areas are no longer dashboard widgets. Open an agent detail page from `Agents`, then use that agent's `Work Areas` tab to browse and edit the Work Areas owned by that agent.
 
+The Agent Files/Notes widget is a compact exception for selected Work Area visibility. It shows a selected Work Area source chip, a bounded file row list, tagged/Markdown notes, and confined file previews. It does not expose internal run roots or replace the full agent detail Work Area browser.
+
+## Agent Operations
+
+The Agent Status/Queue widget binds to one selected agent. It shows the selected source, agent status/model, queue counts, running/waiting counts, recent queue rows, and agent inbox messages. If no agent is selected or the selected agent is missing, the widget shows a recoverable settings prompt.
+
+The Agent Outputs widget always shows its source mode. It can be scoped to the selected agent, project, job, or Work Area. Dashboard-wide output browsing is available only when the widget source mode is explicitly set to dashboard-wide.
+
 ## Manage
 
 The old operational dashboard is now `Manage` at `/manage`. The top navigation order is `Home`, `Chat`, `Agents`, `Manage`.

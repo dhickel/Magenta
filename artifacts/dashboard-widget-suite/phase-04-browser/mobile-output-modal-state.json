@@ -1,0 +1,12 @@
+{
+  "status": 200,
+  "modalText": "agent browser summary\nDownload\nType\ntext\nAgent scoped summary for Phase 04 browser proof.",
+  "links": [
+    "http://localhost:18080/api/outputs/6d9e2315-7e3e-4518-8950-f1c446c81dfc/download"
+  ],
+  "dims": {
+    "bodyScroll": 390,
+    "client": 390,
+    "viewport": 390
+  }
+}

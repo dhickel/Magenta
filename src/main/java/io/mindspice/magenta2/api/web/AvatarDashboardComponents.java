@@ -17,6 +17,7 @@ import java.util.Map;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobDefinition;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationStatus;
+import io.mindspice.magenta2.ai.orchestration.runtime.Project;
 import io.mindspice.magenta2.ai.orchestration.runtime.WorkAssignment;
 import io.mindspice.magenta2.ai.orchestration.workflow.InboxMessage;
 import io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact;
@@ -36,6 +37,9 @@ import io.mindspice.magenta2.avatar.PlannerOccurrence;
 import io.mindspice.magenta2.avatar.UserDashboard;
 import io.mindspice.magenta2.avatar.dashboard.DashboardWidgetDefinition;
 import io.mindspice.magenta2.avatar.dashboard.DashboardWidgetRegistry;
+import io.mindspice.magenta2.avatar.dashboard.AgentFilesNotesView;
+import io.mindspice.magenta2.avatar.dashboard.AgentOutputsView;
+import io.mindspice.magenta2.avatar.dashboard.AgentStatusQueueView;
 import io.mindspice.magenta2.avatar.dashboard.DashboardFileNote;
 import io.mindspice.magenta2.avatar.dashboard.DashboardNotesView;
 import io.mindspice.magenta2.avatar.dashboard.DashboardProjectArtifact;
@@ -389,6 +393,22 @@ final class AvatarDashboardComponents {
         for (WidgetSettingsField field : definition.settingsSchema().fields()) {
             if (field.hidden()) {
                 form.withChild(hiddenInput(field.name(), value(settings, field.name())));
+            } else if ("agentId".equals(field.name())) {
+                form.withChild(new Div().withClass("avatar-settings-field")
+                    .withChild(new HtmlTag("label").withInnerText(field.label()))
+                    .withChild(agentSelector(data.agents(), field.name(), value(settings, field.name()))));
+            } else if ("projectId".equals(field.name())) {
+                form.withChild(new Div().withClass("avatar-settings-field")
+                    .withChild(new HtmlTag("label").withInnerText(field.label()))
+                    .withChild(projectSelector(data.projects(), field.name(), value(settings, field.name()))));
+            } else if ("workAreaId".equals(field.name())) {
+                form.withChild(new Div().withClass("avatar-settings-field")
+                    .withChild(new HtmlTag("label").withInnerText(field.label()))
+                    .withChild(workAreaSelector(data.workAreas(), field.name(), value(settings, field.name()))));
+            } else if ("jobId".equals(field.name())) {
+                form.withChild(new Div().withClass("avatar-settings-field")
+                    .withChild(new HtmlTag("label").withInnerText(field.label()))
+                    .withChild(jobSelector(data.jobs(), field.name(), value(settings, field.name()))));
             } else if (!field.allowedValues().isEmpty()) {
                 Select select = Select.create(field.name());
                 for (String option : field.allowedValues()) {
@@ -406,6 +426,47 @@ final class AvatarDashboardComponents {
         form.withChild(Button.submit("Save Settings"));
         panel.withChild(form);
         return new Div().withId("avatar-widget-settings-modal").withClass("avatar-modal").withChild(panel);
+    }
+
+    private static Component agentSelector(List<AgentProfile> agents, String name, String selected) {
+        Select select = Select.create(name);
+        select.withAttribute("data-binding-selector", "agent");
+        select.addOption("", "Choose agent", !hasText(selected));
+        for (AgentProfile agent : agents == null ? List.<AgentProfile>of() : agents) {
+            select.addOption(agent.id(), agent.name() + " (" + agent.id() + ")", agent.id().equals(selected));
+        }
+        return select;
+    }
+
+    private static Component projectSelector(List<Project> projects, String name, String selected) {
+        Select select = Select.create(name);
+        select.withAttribute("data-binding-selector", "project");
+        select.addOption("", "Choose project", !hasText(selected));
+        for (Project project : projects == null ? List.<Project>of() : projects) {
+            select.addOption(project.id(), project.name() + " (" + project.id() + ")", project.id().equals(selected));
+        }
+        return select;
+    }
+
+    private static Component workAreaSelector(List<WorkArea> workAreas, String name, String selected) {
+        Select select = Select.create(name);
+        select.withAttribute("data-binding-selector", "work_area");
+        select.addOption("", "Choose Work Area", !hasText(selected));
+        for (WorkArea workArea : workAreas == null ? List.<WorkArea>of() : workAreas) {
+            String label = workArea.displayName() + " (" + workArea.ownerId() + ")";
+            select.addOption(workArea.id(), label, workArea.id().equals(selected));
+        }
+        return select;
+    }
+
+    private static Component jobSelector(List<JobDefinition> jobs, String name, String selected) {
+        Select select = Select.create(name);
+        select.withAttribute("data-binding-selector", "job");
+        select.addOption("", "Choose job", !hasText(selected));
+        for (JobDefinition job : jobs == null ? List.<JobDefinition>of() : jobs) {
+            select.addOption(job.id(), job.title() + " (" + job.id() + ")", job.id().equals(selected));
+        }
+        return select;
     }
 
     static Component widgetSettingsSaveResponse(AvatarDashboardData data, AvatarDashboardRowWidget rowWidget) {
@@ -1023,8 +1084,11 @@ final class AvatarDashboardComponents {
             case "notes" -> notes(noteView(data, widget), targetId, notesPostUrl(data, widget), data, widget);
             case "projects" -> projects(projectView(data, widget), targetId, false);
             case "contacts-materials" -> projects(projectView(data, widget), targetId, true);
+            case "agent-status-queue" -> agentStatusQueue(agentStatusView(data, widget));
+            case "agent-outputs" -> agentOutputs(agentOutputsView(data, widget), data, widget);
+            case "agent-files-notes" -> agentFilesNotes(agentFilesView(data, widget), data, widget);
             case "files" -> files(data.workAreas());
-            case "outputs" -> outputs(data.outputs());
+            case "outputs" -> agentOutputs(agentOutputsView(data, widget), data, widget);
             case "system" -> system(data.agents(), data.jobs(), data.assignments());
             case "alerts" -> alerts(data.events(), data.userInbox(), targetId);
             case "recent-work" -> recentWork(data.jobs(), data.assignments(), data.outputs());
@@ -1052,6 +1116,34 @@ final class AvatarDashboardComponents {
         DashboardProjectContextView view = data == null || data.projectViews() == null ? null : data.projectViews().get(widget.widgetId());
         return view == null
             ? new DashboardProjectContextView(null, false, null, "Choose a project in widget settings.", List.of(), List.of(), List.of())
+            : view;
+    }
+
+    private static AgentStatusQueueView agentStatusView(AvatarDashboardData data, AvatarDashboardWidget widget) {
+        AgentStatusQueueView view = data == null || data.agentStatusViews() == null
+            ? null
+            : data.agentStatusViews().get(widget.widgetId());
+        return view == null
+            ? new AgentStatusQueueView("No agent selected", "Choose an agent in widget settings.", null, List.of(), List.of())
+            : view;
+    }
+
+    private static AgentOutputsView agentOutputsView(AvatarDashboardData data, AvatarDashboardWidget widget) {
+        AgentOutputsView view = data == null || data.agentOutputViews() == null
+            ? null
+            : data.agentOutputViews().get(widget.widgetId());
+        if (view != null) {
+            return view;
+        }
+        return new AgentOutputsView("dashboard", "Dashboard-wide", null, data == null ? List.of() : data.outputs());
+    }
+
+    private static AgentFilesNotesView agentFilesView(AvatarDashboardData data, AvatarDashboardWidget widget) {
+        AgentFilesNotesView view = data == null || data.agentFilesViews() == null
+            ? null
+            : data.agentFilesViews().get(widget.widgetId());
+        return view == null
+            ? new AgentFilesNotesView("No Work Area selected", "Choose a Work Area in widget settings.", null, null, List.of())
             : view;
     }
 
@@ -1546,6 +1638,167 @@ final class AvatarDashboardComponents {
         return row;
     }
 
+    private static Component agentStatusQueue(AgentStatusQueueView view) {
+        Div body = new Div().withClass("avatar-widget-body avatar-agent-status-widget");
+        AgentStatusQueueView safe = view == null
+            ? new AgentStatusQueueView("No agent selected", "Choose an agent in widget settings.", null, List.of(), List.of())
+            : view;
+        body.withChild(new Div().withClass("avatar-source-strip")
+            .withChild(new HtmlTag("span").withClass("avatar-chip").withInnerText("selected agent"))
+            .withChild(new HtmlTag("span").withClass("avatar-chip avatar-chip-muted").withInnerText(safe.sourceLabel())));
+        if (safe.missingBinding()) {
+            return body.withChild(empty(safe.missingBindingMessage()));
+        }
+        AgentProfile agent = safe.agent();
+        long running = safe.assignments().stream().filter(item -> item.status() == OrchestrationStatus.RUNNING).count();
+        long waiting = safe.assignments().stream().filter(item -> item.status() == OrchestrationStatus.WAITING).count();
+        long active = safe.assignments().stream().filter(item -> item.status() == null || !item.status().isTerminal()).count();
+        long openInbox = safe.inbox().stream().filter(item -> item.handledAt() == null).count();
+        body.withChild(new Div().withClass("avatar-planner-metrics")
+            .withChild(metric("Status", agent.status() == null ? "unknown" : agent.status().name().toLowerCase(Locale.ROOT)))
+            .withChild(metric("Queue", Long.toString(active)))
+            .withChild(metric("Inbox", Long.toString(openInbox)))
+            .withChild(metric("Running", Long.toString(running)))
+            .withChild(metric("Waiting", Long.toString(waiting))));
+        body.withChild(new Div().withClass("avatar-agent-health")
+            .withChild(new HtmlTag("strong").withInnerText(agent.name()))
+            .withChild(small("model " + (agent.defaultModel() == null || agent.defaultModel().isBlank() ? "unset" : agent.defaultModel())
+                + " / tools " + (agent.approvedTools() == null ? 0 : agent.approvedTools().size()))));
+        Div list = new Div().withClass("avatar-list avatar-list-constrained");
+        for (WorkAssignment assignment : safe.assignments().stream().limit(5).toList()) {
+            list.withChild(new Div().withClass("avatar-list-row")
+                .withChild(new Div()
+                    .withChild(new HtmlTag("strong").withInnerText(assignment.runDisplayName() == null ? assignment.id() : assignment.runDisplayName()))
+                    .withChild(small((assignment.assignmentType() == null ? "assignment" : assignment.assignmentType().name())
+                        + " / " + (assignment.status() == null ? "unknown" : assignment.status().name().toLowerCase(Locale.ROOT)))))
+                .withChild(new HtmlTag("span").withClass("avatar-chip").withInnerText(assignment.priority() > 0 ? "p" + assignment.priority() : "queued")));
+        }
+        if (safe.assignments().isEmpty()) {
+            list.withChild(empty("No queued or retained assignments for this agent."));
+        }
+        body.withChild(list);
+        if (!safe.inbox().isEmpty()) {
+            body.withChild(new Div().withClass("avatar-section-heading").withInnerText("Inbox"));
+            Div inbox = new Div().withClass("avatar-list");
+            for (InboxMessage message : safe.inbox().stream().limit(3).toList()) {
+                inbox.withChild(new Div().withClass("avatar-list-row")
+                    .withChild(new Div()
+                        .withChild(new HtmlTag("strong").withInnerText(message.messageType() == null ? "message" : message.messageType().name()))
+                        .withChild(small(snippet(message.body(), 120))))
+                    .withChild(new HtmlTag("span").withClass("avatar-chip avatar-chip-muted")
+                        .withInnerText(message.handledAt() == null ? "open" : "handled")));
+            }
+            body.withChild(inbox);
+        }
+        return body;
+    }
+
+    private static Component agentOutputs(AgentOutputsView view, AvatarDashboardData data, AvatarDashboardWidget widget) {
+        Div body = new Div().withClass("avatar-widget-body");
+        AgentOutputsView safe = view == null
+            ? new AgentOutputsView("dashboard", "Dashboard-wide", null, data == null ? List.of() : data.outputs())
+            : view;
+        body.withChild(new Div().withClass("avatar-source-strip")
+            .withChild(new HtmlTag("span").withClass("avatar-chip").withInnerText(outputModeLabel(safe.sourceMode())))
+            .withChild(new HtmlTag("span").withClass("avatar-chip avatar-chip-muted").withInnerText(safe.sourceLabel())));
+        if (safe.missingBinding()) {
+            return body.withChild(empty(safe.missingBindingMessage()));
+        }
+        return body.withChild(outputsList(safe.outputs(), data, widget));
+    }
+
+    private static Component agentFilesNotes(AgentFilesNotesView view, AvatarDashboardData data, AvatarDashboardWidget widget) {
+        Div body = new Div().withClass("avatar-widget-body avatar-agent-files-widget");
+        AgentFilesNotesView safe = view == null
+            ? new AgentFilesNotesView("No Work Area selected", "Choose a Work Area in widget settings.", null, null, List.of())
+            : view;
+        body.withChild(new Div().withClass("avatar-source-strip")
+            .withChild(new HtmlTag("span").withClass("avatar-chip").withInnerText("work area"))
+            .withChild(new HtmlTag("span").withClass("avatar-chip avatar-chip-muted").withInnerText(safe.sourceLabel())));
+        if (safe.missingBinding()) {
+            return body.withChild(empty(safe.missingBindingMessage()));
+        }
+        WorkAreaExplorerService.DirectoryListing listing = safe.listing();
+        if (listing == null) {
+            return body.withChild(empty("No Work Area listing is available."));
+        }
+        body.withChild(new Div().withClass("avatar-section-heading").withInnerText("Files"));
+        Div files = new Div().withClass("avatar-list avatar-list-constrained");
+        for (WorkAreaExplorerService.Entry entry : listing.entries().stream().limit(6).toList()) {
+            files.withChild(agentFileRow(data, widget, entry));
+        }
+        if (listing.entries().isEmpty()) {
+            files.withChild(empty("No files in this Work Area path."));
+        }
+        body.withChild(files);
+        body.withChild(new Div().withClass("avatar-section-heading").withInnerText("Tagged notes"));
+        Div notes = new Div().withClass("avatar-list");
+        for (WorkAreaExplorerService.Entry entry : safe.notes()) {
+            notes.withChild(agentFileRow(data, widget, entry));
+        }
+        if (safe.notes().isEmpty()) {
+            notes.withChild(empty("No tagged or Markdown notes in this path."));
+        }
+        return body.withChild(notes);
+    }
+
+    private static Component agentFileRow(AvatarDashboardData data, AvatarDashboardWidget widget, WorkAreaExplorerService.Entry entry) {
+        Div row = new Div().withClass("avatar-list-row avatar-file-row")
+            .withChild(new Div()
+                .withChild(new HtmlTag("strong").withInnerText(entry.name()))
+                .withChild(small((entry.directory() ? "directory" : entry.fileType()) + " / " + entry.path()))
+                .withChild(tagStrip(entry.tags().stream().map(tag -> tag.slug()).toList())));
+        if (entry.regularFile() && entry.canView() && data != null && data.dashboard() != null && widget != null) {
+            row.withChild(Button.create("Open")
+                .withAttribute("type", "button")
+                .withAttribute("hx-get", "/dashboards/" + url(data.dashboard().id()) + "/widgets/" + url(widget.widgetId())
+                    + "/_work-area-file?path=" + url(entry.path()))
+                .withAttribute("hx-target", "#avatar-edit-container")
+                .withAttribute("hx-swap", "innerHTML"));
+        } else {
+            row.withChild(new HtmlTag("span").withClass("avatar-chip avatar-chip-muted").withInnerText(entry.directory() ? "browse in detail" : "not viewable"));
+        }
+        return row;
+    }
+
+    static Component agentWorkAreaFileModal(
+        String dashboardId,
+        String widgetInstanceId,
+        WorkArea workArea,
+        WorkAreaExplorerService.FilePreview preview
+    ) {
+        Div panel = new Div().withClass("avatar-edit-panel avatar-widget-detail-panel");
+        panel.withChild(new Div().withClass("avatar-edit-header")
+            .withChild(new Div()
+                .withChild(Header.H2(preview.path()))
+                .withChild(small("Work Area " + (workArea == null ? "" : workArea.displayName()))))
+            .withChild(Button.create("Close")
+                .withAttribute("type", "button")
+                .withAttribute("hx-get", "/dashboards/_modal/clear")
+                .withAttribute("hx-target", "#avatar-edit-container")
+                .withAttribute("hx-swap", "innerHTML")));
+        Div body = new Div().withClass("avatar-file-note-modal-body");
+        body.withChild(new Div().withClass("avatar-source-strip")
+            .withChild(new HtmlTag("span").withClass("avatar-chip").withInnerText("service-confined"))
+            .withChild(new HtmlTag("span").withClass("avatar-chip avatar-chip-muted").withInnerText(preview.kind())));
+        if (preview.text()) {
+            if ("markdown".equals(preview.kind())) {
+                body.withChild(new Markdown(preview.content() == null ? "" : preview.content()));
+            } else {
+                body.withChild(new HtmlTag("pre").withClass("avatar-output-content").withInnerText(preview.content() == null ? "" : preview.content()));
+            }
+        } else {
+            body.withChild(empty("Preview unavailable for this file type."));
+        }
+        panel.withChild(body);
+        return new Div()
+            .withId("avatar-agent-workarea-file-modal")
+            .withClass("avatar-modal")
+            .withAttribute("data-dashboard-id", dashboardId)
+            .withAttribute("data-widget-instance-id", widgetInstanceId)
+            .withChild(panel);
+    }
+
     static Component personalNoteDetailModal(AvatarDashboardData data, AvatarDashboardRowWidget widget, AvatarNote note) {
         Div body = new Div().withClass("avatar-stack-form");
         body.withChild(new Div().withClass("avatar-source-strip")
@@ -1905,6 +2158,10 @@ final class AvatarDashboardComponents {
     }
 
     private static Component outputs(List<RunOutputArtifact> outputs) {
+        return outputsList(outputs, null, null);
+    }
+
+    private static Component outputsList(List<RunOutputArtifact> outputs, AvatarDashboardData data, AvatarDashboardWidget widget) {
         Div body = new Div().withClass("avatar-widget-body");
         if (outputs == null || outputs.isEmpty()) {
             return body.withChild(empty("No recent outputs."));
@@ -1917,7 +2174,7 @@ final class AvatarDashboardComponents {
             Component action = viewable
                 ? new HtmlTag("button")
                     .withAttribute("type", "button")
-                    .withAttribute("hx-get", "/_dashboards/_outputs/" + output.id())
+                    .withAttribute("hx-get", outputPreviewUrl(output, data, widget))
                     .withAttribute("hx-target", "#avatar-output-preview")
                     .withAttribute("hx-swap", "outerHTML")
                     .withInnerText("Preview")
@@ -1932,6 +2189,24 @@ final class AvatarDashboardComponents {
                 .withChild(action));
         }
         return body.withChild(list);
+    }
+
+    private static String outputPreviewUrl(RunOutputArtifact output, AvatarDashboardData data, AvatarDashboardWidget widget) {
+        if (data != null && data.dashboard() != null && widget != null && widget.widgetId() != null
+            && !widget.widgetId().equals(widgetType(widget))) {
+            return "/dashboards/" + url(data.dashboard().id()) + "/widgets/" + url(widget.widgetId()) + "/_outputs/" + url(output.id());
+        }
+        return "/_dashboards/_outputs/" + output.id();
+    }
+
+    private static String outputModeLabel(String value) {
+        return switch (value == null ? "" : value) {
+            case "dashboard" -> "dashboard-wide";
+            case "project" -> "selected project";
+            case "job" -> "selected job";
+            case "work_area" -> "selected Work Area";
+            default -> "selected agent";
+        };
     }
 
     private static Component system(List<AgentProfile> agents, List<JobDefinition> jobs, List<WorkAssignment> assignments) {
@@ -2554,6 +2829,10 @@ final class AvatarDashboardComponents {
         return value == null ? "" : value.toString();
     }
 
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
     private static String policyLabel(WidgetInstancePolicy policy) {
         return switch (policy) {
             case SINGLE_PER_DASHBOARD -> "single per dashboard";
@@ -2608,9 +2887,13 @@ final class AvatarDashboardComponents {
         List<AvatarNote> notes,
         Map<String, DashboardNotesView> noteViews,
         Map<String, DashboardProjectContextView> projectViews,
+        Map<String, AgentStatusQueueView> agentStatusViews,
+        Map<String, AgentOutputsView> agentOutputViews,
+        Map<String, AgentFilesNotesView> agentFilesViews,
         List<AvatarEvent> events,
         List<RunOutputArtifact> outputs,
         List<AgentProfile> agents,
+        List<Project> projects,
         List<WorkArea> workAreas,
         List<JobDefinition> jobs,
         List<WorkAssignment> assignments,

@@ -25,6 +25,9 @@ public final class DashboardWidgetRegistry {
         notes(),
         project("projects", "Projects", "Goals, materials, contacts, blockers, next actions, outputs, notes, and progress.", 6),
         project("contacts-materials", "Contacts/Materials", "Project contacts and materials with source binding.", 6),
+        agentStatusQueue(),
+        agentOutputs(),
+        agentFilesNotes(),
         operational("outputs", "Outputs", "Recent generated artifacts.", 6, WidgetInstancePolicy.MULTI_INSTANCE, WidgetBindingMode.OUTPUT_SOURCE),
         operational("system", "System", "Agent and queue counters.", 4, WidgetInstancePolicy.SINGLE_SYSTEM, WidgetBindingMode.SYSTEM),
         operational("alerts", "Alerts", "Inbox and system alerts.", 4, WidgetInstancePolicy.SINGLE_PER_DASHBOARD, WidgetBindingMode.SYSTEM),
@@ -174,6 +177,108 @@ public final class DashboardWidgetRegistry {
                 "AVATAR_SUPERVISOR",
                 false,
                 50
+            )
+        );
+    }
+
+    private static DashboardWidgetDefinition agentStatusQueue() {
+        return new DashboardWidgetDefinition(
+            "agent-status-queue",
+            "Agent Status/Queue",
+            "Selected agent profile, model, queue, inbox, running, waiting, and health.",
+            "operations",
+            "magenta services",
+            6,
+            STANDARD_WIDTHS,
+            WidgetInstancePolicy.MULTI_INSTANCE,
+            WidgetBindingMode.REQUIRED_AGENT,
+            new WidgetSettingsSchema(List.of(
+                new WidgetSettingsField("sourceMode", "Source", "agent", List.of("agent"), true),
+                new WidgetSettingsField("agentId", "Agent", "", List.of(), false),
+                new WidgetSettingsField("projectId", "Project", "", List.of(), false),
+                new WidgetSettingsField("workAreaId", "Work Area", "", List.of(), false),
+                new WidgetSettingsField("density", "Density", "compact", List.of("compact", "comfortable"), false)
+            )),
+            "agent-status-queue",
+            "agent-status-queue",
+            "generic",
+            WidgetRefreshPolicy.MANUAL,
+            WidgetEmptyStatePolicy.MISSING_BINDING,
+            new WidgetToolDescriptor(
+                List.of("agent_workspace_status", "agent_queue_list", "agent_inbox_list"),
+                List.of("agent_assignment_cancel", "agent_assignment_pause", "agent_assignment_resume"),
+                "CURRENT_AGENT_CONTEXT",
+                false,
+                50
+            )
+        );
+    }
+
+    private static DashboardWidgetDefinition agentOutputs() {
+        return new DashboardWidgetDefinition(
+            "agent-outputs",
+            "Agent Outputs",
+            "Scoped output artifacts for dashboard, agent, project, job, or Work Area sources.",
+            "operations",
+            "magenta output services",
+            6,
+            STANDARD_WIDTHS,
+            WidgetInstancePolicy.MULTI_INSTANCE,
+            WidgetBindingMode.OUTPUT_SOURCE,
+            new WidgetSettingsSchema(List.of(
+                new WidgetSettingsField("sourceMode", "Source", "agent",
+                    List.of("dashboard", "agent", "project", "job", "work_area"), false),
+                new WidgetSettingsField("agentId", "Agent", "", List.of(), false),
+                new WidgetSettingsField("projectId", "Project", "", List.of(), false),
+                new WidgetSettingsField("jobId", "Job", "", List.of(), false),
+                new WidgetSettingsField("workAreaId", "Work Area", "", List.of(), false),
+                new WidgetSettingsField("artifactType", "Artifact Type", "", List.of(), false),
+                new WidgetSettingsField("density", "Density", "compact", List.of("compact", "comfortable"), false)
+            )),
+            "agent-outputs",
+            "agent-outputs",
+            "generic",
+            WidgetRefreshPolicy.MANUAL,
+            WidgetEmptyStatePolicy.MISSING_BINDING,
+            new WidgetToolDescriptor(
+                List.of("agent_output_list", "agent_output_read", "agent_job_outputs"),
+                List.of(),
+                "CURRENT_AGENT_CONTEXT",
+                false,
+                50
+            )
+        );
+    }
+
+    private static DashboardWidgetDefinition agentFilesNotes() {
+        return new DashboardWidgetDefinition(
+            "agent-files-notes",
+            "Agent Files/Notes",
+            "Selected Work Area mini-browser and tagged notes.",
+            "operations",
+            "confined Work Area services",
+            6,
+            STANDARD_WIDTHS,
+            WidgetInstancePolicy.MULTI_INSTANCE,
+            WidgetBindingMode.REQUIRED_WORK_AREA,
+            new WidgetSettingsSchema(List.of(
+                new WidgetSettingsField("sourceMode", "Source", "work_area", List.of("work_area"), true),
+                new WidgetSettingsField("agentId", "Agent", "", List.of(), false),
+                new WidgetSettingsField("workAreaId", "Work Area", "", List.of(), false),
+                new WidgetSettingsField("filePath", "Path", ".", List.of(), false),
+                new WidgetSettingsField("density", "Density", "compact", List.of("compact", "comfortable"), false)
+            )),
+            "agent-files-notes",
+            "agent-files-notes",
+            "generic",
+            WidgetRefreshPolicy.MANUAL,
+            WidgetEmptyStatePolicy.MISSING_BINDING,
+            new WidgetToolDescriptor(
+                List.of("agent_workspace_status"),
+                List.of(),
+                "CURRENT_AGENT_CONTEXT",
+                false,
+                25
             )
         );
     }

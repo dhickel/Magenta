@@ -1,0 +1,30 @@
+{
+  "rowId": "row-2d6b1afa-b28d-4653-a2f5-185231d4197e",
+  "statusWidget": {
+    "id": "widget-31818a09-8879-4d3a-9ed2-9271ff28d42a",
+    "type": "agent-status-queue"
+  },
+  "outputsWidget": {
+    "id": "widget-f7b3b2ab-408a-4c22-ade0-5918c1eff380",
+    "type": "agent-outputs"
+  },
+  "filesWidget": {
+    "id": "widget-07501761-d556-493c-93f2-095fa8e96748",
+    "type": "agent-files-notes"
+  },
+  "workArea": {
+    "id": "a6e548a9-d276-41c1-90c6-9641b0d04723",
+    "ownerType": "AGENT",
+    "ownerId": "agent-phase04-alpha",
+    "workspaceId": "fe545452-22ef-4be3-9a0e-3e94c168fb17",
+    "rootRelativePath": "workspace/agent-phase04-alpha",
+    "areaRelativePath": "home",
+    "displayName": "Phase 04 Research Work Area",
+    "system": true,
+    "home": true,
+    "active": true,
+    "metadataJson": "{}",
+    "createdAt": "2026-05-29T15:42:42.775541086Z",
+    "updatedAt": "2026-05-29T15:42:42.775541086Z"
+  }
+}

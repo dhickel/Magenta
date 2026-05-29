@@ -41,6 +41,8 @@ Layout mutations refresh `#avatar-widget-grid` with out-of-band swaps and clear 
 - Instance notes: `POST /dashboards/{dashboardId}/widgets/{widgetInstanceId}/_notes`, `GET /dashboards/{dashboardId}/widgets/{widgetInstanceId}/_notes/{noteId}`
 - File notes: `GET|PUT /dashboards/{dashboardId}/widgets/{widgetInstanceId}/_file-note?source=project|work_area|agent&path=...`
 - Project artifacts: `PUT /dashboards/{dashboardId}/widgets/{widgetInstanceId}/_project-artifacts/{artifactType}`
+- Scoped outputs: `GET /dashboards/{dashboardId}/widgets/{widgetInstanceId}/_outputs/{artifactId}`
+- Agent Work Area mini-view: `GET /dashboards/{dashboardId}/widgets/{widgetInstanceId}/_work-area-file?path=...`
 - Calendar: `POST /_dashboards/_calendar`, `DELETE /_dashboards/_calendar/{calendarId}`
 - Planner tasks: `POST /_dashboards/_planner-tasks`, `POST /_dashboards/_planner-tasks/{taskId}/subtodos`
 - Outputs: `GET /_dashboards/_outputs/{artifactId}`
@@ -68,7 +70,7 @@ The route guard checks that the Work Area owner type is `AGENT` and the owner id
 
 ## Assets
 
-- `/css/avatar-dashboard.css?v=10` owns Assistant dashboard, compact chat rail, layout editor, notes/project widgets, and retained Work Area browser styling.
+- `/css/avatar-dashboard.css?v=11` owns Assistant dashboard, compact chat rail, layout editor, notes/project/agent operational widgets, and retained Work Area browser styling.
 - `/js/avatar-chat.js?v=4` owns the compact dashboard chat surface.
 - `/js/avatar-layout-edit.js?v=1` owns in-place dashboard edit helpers.
 - `/js/avatar-workarea-editor.js?v=2` owns local Work Area editor behavior.
@@ -83,3 +85,11 @@ Dashboard selector links and dashboard edit toggles should target `#dashboard-ho
 Notes widget settings use `noteSourceMode=personal|agent|project|work_area|mixed` plus optional `agentId`, `projectId`, and `workAreaId` bindings. Personal notes remain in `avatar_notes`; file-backed notes are read and saved through `WorkAreaExplorerService` or project owner-root file service paths. Last-opened personal and file references are stored as widget settings metadata.
 
 The Projects and Contacts/Materials widgets bind to `projectId`. Typed household project artifacts are fixed JSON files under the project workspace at `.magenta/project/`: `goals.json`, `materials.json`, `contacts.json`, `blockers.json`, `next-actions.json`, and `progress.json`. `ProjectArtifactService` creates defaults, validates the expected top-level JSON field for each artifact, and keeps output and note summaries read-only in the widget.
+
+## Agent Operational Widgets
+
+Agent Status/Queue binds to `agentId` and renders no-agent, missing-agent, and selected-agent states. The read model comes from agent profile, assignment, and agent inbox services.
+
+Agent Outputs uses `sourceMode=agent|project|job|work_area|dashboard` plus the matching binding id. It queries `OutputArtifactService` with explicit filters. The instance-scoped preview route rejects artifacts outside the current widget scope; the compatibility output preview route remains available for older generic widgets.
+
+Agent Files/Notes binds to a selected Work Area, optionally constrained by `agentId`. The dashboard route verifies the Work Area owner is an agent and matches the selected agent when present, then previews through `WorkAreaExplorerService`. Newly rendered mini-view controls use `/dashboards/{dashboardId}/widgets/{widgetInstanceId}/_work-area-file` and do not emit legacy `/avatar/_work-areas` links.

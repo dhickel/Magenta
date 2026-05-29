@@ -54,6 +54,9 @@ public final class WidgetSettingsValidator {
         if ("project".equals(sourceMode) && !hasText(settings.get("projectId"))) {
             errors.add("Project source mode requires a project id.");
         }
+        if ("job".equals(sourceMode) && !hasText(settings.get("jobId"))) {
+            errors.add("Job source mode requires a job id.");
+        }
         if ("work_area".equals(sourceMode) && !hasText(settings.get("workAreaId"))) {
             errors.add("Work Area source mode requires a Work Area id.");
         }

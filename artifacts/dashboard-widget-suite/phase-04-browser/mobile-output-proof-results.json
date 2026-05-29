@@ -1,0 +1,32 @@
+{
+  "checks": [
+    {
+      "id": "mobile_output_preview_fragment_no_overflow_download_reachable",
+      "status": "passed",
+      "evidence": {
+        "dims": {
+          "bodyScroll": 1280,
+          "client": 1280,
+          "viewport": 1280,
+          "height": 720
+        },
+        "text": "agent browser summary\nDownload\nType\ntext\nAgent scoped summary for Phase 04 browser proof.",
+        "firstChildClass": "avatar-output-preview",
+        "firstChildRect": {
+          "x": 63,
+          "y": 3589.90625,
+          "width": 1154,
+          "height": 186.375,
+          "top": 3589.90625,
+          "right": 1217,
+          "bottom": 3776.28125,
+          "left": 63
+        },
+        "links": [
+          "http://localhost:18080/api/outputs/6d9e2315-7e3e-4518-8950-f1c446c81dfc/download"
+        ]
+      }
+    }
+  ],
+  "verdict": "PASS_MOBILE_OUTPUT"
+}

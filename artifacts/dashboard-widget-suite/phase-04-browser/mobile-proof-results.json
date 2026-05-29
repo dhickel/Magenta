@@ -1,0 +1,130 @@
+{
+  "checks": [
+    {
+      "id": "mobile_home_no_horizontal_overflow",
+      "status": "passed",
+      "evidence": {
+        "bodyScroll": 390,
+        "docClient": 390,
+        "bodyClient": 390,
+        "viewport": 390,
+        "height": 844
+      }
+    },
+    {
+      "id": "mobile_file_modal_scrolls_controls_reachable_topnav_layer",
+      "status": "passed",
+      "evidence": {
+        "modalRect": {
+          "x": 0,
+          "y": 0,
+          "width": 390,
+          "height": 844,
+          "top": 0,
+          "right": 390,
+          "bottom": 844,
+          "left": 0
+        },
+        "panelRect": {
+          "x": 8,
+          "y": 8,
+          "width": 374,
+          "height": 812,
+          "top": 8,
+          "right": 382,
+          "bottom": 820,
+          "left": 8
+        },
+        "panelScroll": {
+          "scrollHeight": 810,
+          "clientHeight": 810
+        },
+        "z": {
+          "header": "auto",
+          "modal": "2147483000"
+        },
+        "buttons": [
+          "Home",
+          "Chat",
+          "Agents",
+          "Manage",
+          "Assistant",
+          "Close"
+        ]
+      }
+    },
+    {
+      "id": "mobile_long_path_name_wraps_without_overflow",
+      "status": "passed",
+      "evidence": {
+        "dims": {
+          "bodyScroll": 390,
+          "docClient": 390,
+          "bodyClient": 390,
+          "viewport": 390,
+          "height": 844
+        },
+        "longText": [
+          {
+            "tag": "DIV",
+            "text": "notes/phase-04-very-long-operational-note-name-that-should-wrap-in-mobile.mdWork Area Phase 04 Research Work AreaCloseservice-confinedmarkdownPhase 04 Ops\nQueue checks and tagged note content for browser proof.",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 390,
+              "height": 844,
+              "top": 0,
+              "right": 390,
+              "bottom": 844,
+              "left": 0
+            }
+          },
+          {
+            "tag": "DIV",
+            "text": "notes/phase-04-very-long-operational-note-name-that-should-wrap-in-mobile.mdWork Area Phase 04 Research Work AreaCloseservice-confinedmarkdownPhase 04 Ops\nQueue checks and tagged note content for browser proof.",
+            "rect": {
+              "x": 8,
+              "y": 8,
+              "width": 374,
+              "height": 812,
+              "top": 8,
+              "right": 382,
+              "bottom": 820,
+              "left": 8
+            }
+          },
+          {
+            "tag": "DIV",
+            "text": "notes/phase-04-very-long-operational-note-name-that-should-wrap-in-mobile.mdWork Area Phase 04 Research Work AreaClose",
+            "rect": {
+              "x": 25,
+              "y": 25,
+              "width": 340,
+              "height": 108.453125,
+              "top": 25,
+              "right": 365,
+              "bottom": 133.453125,
+              "left": 25
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "mobile_output_modal_no_overflow_download_reachable",
+      "status": "failed",
+      "evidence": {
+        "dims": {
+          "bodyScroll": 390,
+          "docClient": 390,
+          "bodyClient": 390,
+          "viewport": 390,
+          "height": 844
+        },
+        "text": "",
+        "panelScroll": {}
+      }
+    }
+  ],
+  "verdict": "NEEDS_REPAIR"
+}

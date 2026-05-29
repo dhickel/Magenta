@@ -458,6 +458,28 @@
     flex-wrap: wrap;
 }
 
+.avatar-agent-status-widget,
+.avatar-agent-files-widget {
+    min-width: 0;
+}
+
+.avatar-agent-health {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.7rem;
+    min-width: 0;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid #dbe4ee;
+    border-radius: 7px;
+    background: #f8fbff;
+}
+
+.avatar-file-row strong,
+.avatar-agent-health strong {
+    overflow-wrap: anywhere;
+}
+
 .avatar-chip-muted {
     background: #f8fafc;
     color: #526174;

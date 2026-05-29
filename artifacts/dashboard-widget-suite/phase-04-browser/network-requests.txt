@@ -1,0 +1,8 @@
+11. [GET] http://localhost:18080/dashboards/assistant/widgets/widget-07501761-d556-493c-93f2-095fa8e96748/_work-area-file?path=notes%2Fphase-04-very-long-operational-note-name-that-should-wrap-in-mobile.md => [200]
+12. [GET] http://localhost:18080/dashboards/_modal/clear => [200]
+13. [GET] http://localhost:18080/dashboards/assistant/widgets/widget-f7b3b2ab-408a-4c22-ade0-5918c1eff380/_outputs/6d9e2315-7e3e-4518-8950-f1c446c81dfc => [200]
+14. [GET] http://localhost:18080/dashboards/assistant/widgets/widget-f7b3b2ab-408a-4c22-ade0-5918c1eff380/_outputs/6d9e2315-7e3e-4518-8950-f1c446c81dfc => [200]
+15. [GET] http://localhost:18080/dashboards/_modal/clear => [200]
+16. [GET] http://localhost:18080/dashboards/assistant/widgets/widget-07501761-d556-493c-93f2-095fa8e96748/_work-area-file?path=notes%2Fphase-04-very-long-operational-note-name-that-should-wrap-in-mobile.md => [200]
+
+Note: 10 static requests not shown, run with "static" option to see them.

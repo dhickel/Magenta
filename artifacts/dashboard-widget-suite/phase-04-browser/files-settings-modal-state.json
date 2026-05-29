@@ -1,0 +1,16 @@
+{
+  "modal": "Agent Files/Notes Settings\nWidget instance widget-07501761-d556-493c-93f2-095fa8e96748\nClose\nType\nagent-files-notes\nPolicy\nmulti-instance\nBinding\nrequired_work_area\nAgent\nChoose agent\nAvatar (avatar)\nPhase 04 Beta Guard Agent (agent-phase04-beta)\nPhase 04 Research Agent With Long Operational Name (agent-phase04-alpha)\nmagenta (c0306045-be55-4d7b-a763-707e01c3d38c)\nWork Area\nChoose Work Area\nPhase 04 Research Work Area (agent-phase04-alpha)\nPath\nDensity\ncompact\ncomfortable\nSave Settings",
+  "selectedWorkArea": "Phase 04 Research Work Area (agent-phase04-alpha)",
+  "options": [
+    {
+      "value": "",
+      "text": "Choose Work Area",
+      "selected": false
+    },
+    {
+      "value": "a6e548a9-d276-41c1-90c6-9641b0d04723",
+      "text": "Phase 04 Research Work Area (agent-phase04-alpha)",
+      "selected": true
+    }
+  ]
+}
