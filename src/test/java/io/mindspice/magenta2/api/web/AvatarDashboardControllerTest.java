@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +45,14 @@ import io.mindspice.magenta2.avatar.AvatarRepository;
 import io.mindspice.magenta2.avatar.AvatarSchemaInitializer;
 import io.mindspice.magenta2.avatar.AvatarService;
 import io.mindspice.magenta2.avatar.AvatarTaskStatus;
+import io.mindspice.magenta2.avatar.AvatarTodoStatus;
+import io.mindspice.magenta2.avatar.AvatarPriority;
+import io.mindspice.magenta2.avatar.PlannerRecurrence;
+import io.mindspice.magenta2.avatar.PlannerRecurrenceMode;
+import io.mindspice.magenta2.avatar.PlannerSubtodo;
+import io.mindspice.magenta2.avatar.PlannerTask;
+import io.mindspice.magenta2.avatar.PlannerTaskLink;
+import io.mindspice.magenta2.avatar.PlannerTaskStatus;
 import io.mindspice.magenta2.avatar.dashboard.DashboardWidgetDefinition;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -122,7 +131,7 @@ class AvatarDashboardControllerTest {
     void homeRendersAssistantDashboardSelectorChatAndScopedAssets() {
         String html = controller.avatar(false);
 
-        assertThat(html).contains("/css/avatar-dashboard.css?v=7");
+        assertThat(html).contains("/css/avatar-dashboard.css?v=9");
         assertThat(html).contains("/js/avatar-chat.js?v=4");
         assertThat(html).contains("/js/avatar-layout-edit.js?v=1");
         assertThat(html).contains("/js/avatar-workarea-editor.js?v=2");
@@ -157,9 +166,10 @@ class AvatarDashboardControllerTest {
         assertThat(html).doesNotContain("Organizer");
         assertThat(html).doesNotContain("Refresh Widgets");
         assertThat(html).doesNotContain(">Avatar<");
-        for (DashboardWidgetDefinition widget : AvatarDashboardComponents.WIDGETS) {
-            assertThat(html).contains("data-avatar-widget-type=\"" + widget.type() + "\"");
-        }
+        assertThat(html)
+            .contains("data-avatar-widget-type=\"today-planner\"")
+            .contains("data-avatar-widget-type=\"tasks-routines\"")
+            .contains("data-avatar-widget-type=\"calendar-schedule\"");
 
         String editHtml = controller.avatar(true);
         assertThat(editHtml).contains("avatar-widget-grid-editing");
@@ -227,6 +237,93 @@ class AvatarDashboardControllerTest {
             .isInstanceOf(ResponseStatusException.class)
             .extracting(error -> ((ResponseStatusException) error).getStatusCode())
             .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void tasksRoutinesDetailRendersAndAppliesHtmxFilters() {
+        PlannerTask activeRecurring = avatarService.savePlannerTask(new PlannerTask(
+            null,
+            "Water plants",
+            null,
+            PlannerTaskStatus.ACTIVE,
+            AvatarPriority.HIGH,
+            Instant.now().plusSeconds(3600),
+            null,
+            "UTC",
+            new PlannerRecurrence(PlannerRecurrenceMode.DAILY, 1, LocalDate.now(), null,
+                LocalTime.of(13, 0), null, null, null),
+            new PlannerTaskLink("project-1", null, null, null),
+            null,
+            null,
+            null
+        ));
+        avatarService.savePlannerSubtodo(new PlannerSubtodo(
+            null,
+            activeRecurring.id(),
+            "Check moisture",
+            AvatarTodoStatus.OPEN,
+            0,
+            null,
+            null
+        ));
+        avatarService.savePlannerTask(new PlannerTask(
+            null,
+            "Archive receipts",
+            null,
+            PlannerTaskStatus.DONE,
+            AvatarPriority.NORMAL,
+            Instant.now().plusSeconds(7200),
+            null,
+            "UTC",
+            new PlannerRecurrence(PlannerRecurrenceMode.NONE, 1, null, null, null, null, null, null),
+            new PlannerTaskLink(null, null, null, null),
+            null,
+            null,
+            null
+        ));
+
+        String html = controller.widgetDetail("tasks-routines", "ACTIVE", "WEEK", "RECURRING");
+
+        assertThat(html)
+            .contains("name=\"status\"")
+            .contains("name=\"range\"")
+            .contains("name=\"recurrence\"")
+            .contains("hx-get=\"/_dashboards/_widgets/tasks-routines/detail\"")
+            .contains("Water plants")
+            .contains("project project-1")
+            .contains("Check moisture")
+            .doesNotContain("Archive receipts");
+        assertThat(avatarService.tasksRoutines("ACTIVE", "WEEK", "RECURRING").tasks())
+            .extracting(PlannerTask::id)
+            .containsExactly(activeRecurring.id());
+    }
+
+    @Test
+    void todayPlannerDetailRendersOverdueAndUnscheduledWork() {
+        avatarService.savePlannerTask(new PlannerTask(
+            null,
+            "File overdue invoice",
+            null,
+            PlannerTaskStatus.PLANNED,
+            AvatarPriority.HIGH,
+            LocalDate.now().minusDays(1).atTime(9, 0).atZone(java.time.ZoneId.systemDefault()).toInstant(),
+            null,
+            "UTC",
+            new PlannerRecurrence(PlannerRecurrenceMode.NONE, 1, null, null, null, null, null, null),
+            new PlannerTaskLink(null, null, null, null),
+            null,
+            null,
+            null
+        ));
+        avatarService.quickCapture("Sort unscheduled inbox", null);
+
+        String html = controller.widgetDetail("today-planner");
+
+        assertThat(html)
+            .contains("Overdue")
+            .contains("File overdue invoice")
+            .contains("Unscheduled")
+            .contains("Sort unscheduled inbox");
     }
 
     @Test
@@ -892,8 +989,8 @@ class AvatarDashboardControllerTest {
             "Review projects",
             "Look for blocked work",
             "HIGH",
-            "",
-            "",
+            "2026-05-29T13:00:00",
+            "2026-05-29T14:00:00",
             "DAILY",
             1,
             LocalDate.now().toString(),
@@ -912,6 +1009,57 @@ class AvatarDashboardControllerTest {
         String subtodoHtml = controller.createPlannerSubtodo(taskId, "Check queue");
         assertThat(subtodoHtml).contains("Check queue");
         assertThat(controller.organizer("calendar")).contains("Planner projection");
+
+        String captureHtml = controller.quickCapturePlannerTask("Sort seed trays", null);
+        assertThat(captureHtml)
+            .contains("data-avatar-widget-type=\"today-planner\"")
+            .contains("Quick capture")
+            .contains("Unscheduled")
+            .contains("Sort seed trays")
+            .contains("Restart")
+            .contains("name=\"reviewNotes\"");
+        assertThat(avatarService.plannerTasks()).extracting("title").contains("Sort seed trays");
+        String reviewHtml = controller.reviewTodayPlanner("Good progress; move watering to tomorrow.");
+        assertThat(reviewHtml)
+            .contains("data-avatar-widget-type=\"today-planner\"")
+            .contains("Good progress; move watering to tomorrow.");
+        assertThat(avatarService.dayMap(LocalDate.now()).reviewNotes())
+            .isEqualTo("Good progress; move watering to tomorrow.");
+
+        String blockHtml = controller.createTimeBlock(
+            "Planting block",
+            "2026-05-29T15:00:00",
+            "2026-05-29T16:00:00",
+            "task",
+            taskId
+        );
+        assertThat(blockHtml)
+            .contains("data-calendar-structure=\"month\"")
+            .contains("Planting block")
+            .contains("hx-post=\"/_dashboards/_reminders\"")
+            .contains("name=\"remindAt\"")
+            .contains("Agenda");
+
+        String reminderHtml = controller.createReminder(
+            "Check planting block",
+            "2026-05-29T14:30:00",
+            null,
+            "task",
+            taskId
+        );
+        assertThat(reminderHtml)
+            .contains("data-avatar-widget-type=\"calendar-schedule\"")
+            .contains("Check planting block");
+
+        String occurrenceHtml = controller.updatePlannerOccurrence(
+            taskId,
+            avatarService.plannerCalendarProjection(null, null).getFirst().occurrenceStart().toString(),
+            "SKIPPED",
+            null
+        );
+        assertThat(occurrenceHtml)
+            .contains("data-avatar-widget-type=\"tasks-routines\"")
+            .contains("Skipped");
     }
 
     @Test

@@ -24,6 +24,41 @@ public final class AvatarAssistantToolResponses {
     public record CalendarResponse(CalendarRecord item) {
     }
 
+    public record TodayPlanResponse(
+        String date,
+        List<TaskRecord> topPriorities,
+        List<TaskRecord> now,
+        List<TaskRecord> next,
+        List<TaskRecord> later,
+        List<TaskRecord> overdue,
+        List<TaskRecord> unscheduled,
+        List<TimeBlockRecord> timeBlocks,
+        List<ReminderRecord> reminders
+    ) {
+    }
+
+    public record TasksRoutinesResponse(
+        List<TaskRecord> tasks,
+        List<OccurrenceRecord> occurrences,
+        List<ReminderRecord> reminders
+    ) {
+    }
+
+    public record CalendarScheduleResponse(String startDate, String endDate, List<CalendarEntryRecord> entries) {
+    }
+
+    public record TaskResponse(TaskRecord task) {
+    }
+
+    public record OccurrenceResponse(OccurrenceRecord occurrence) {
+    }
+
+    public record ReminderResponse(ReminderRecord reminder) {
+    }
+
+    public record TimeBlockResponse(TimeBlockRecord timeBlock) {
+    }
+
     public record DeletedResponse(String id, boolean deleted) {
     }
 
@@ -78,6 +113,68 @@ public final class AvatarAssistantToolResponses {
         String location,
         String status,
         String updatedAt
+    ) {
+    }
+
+    public record TaskRecord(
+        String id,
+        String title,
+        String notes,
+        String status,
+        String priority,
+        String startsAt,
+        String dueAt,
+        String recurrenceMode,
+        String linkedProjectId,
+        String updatedAt,
+        String completedAt
+    ) {
+    }
+
+    public record OccurrenceRecord(
+        String id,
+        String taskId,
+        String occurrenceStart,
+        String occurrenceEnd,
+        String status,
+        String skippedAt,
+        String snoozedUntil,
+        String restartedAt
+    ) {
+    }
+
+    public record ReminderRecord(
+        String id,
+        String title,
+        String notes,
+        String remindAt,
+        String status,
+        String sourceType,
+        String sourceId,
+        String snoozedUntil
+    ) {
+    }
+
+    public record TimeBlockRecord(
+        String id,
+        String blockDate,
+        String title,
+        String startsAt,
+        String endsAt,
+        String sourceType,
+        String sourceId,
+        String status
+    ) {
+    }
+
+    public record CalendarEntryRecord(
+        String kind,
+        String sourceId,
+        String title,
+        String startsAt,
+        String endsAt,
+        String status,
+        String meta
     ) {
     }
 

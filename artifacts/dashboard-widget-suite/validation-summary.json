@@ -1,6 +1,6 @@
 {
   "task_slug": "dashboard-widget-suite",
-  "status": "phase_01_browser_proof_passed_later_phases_pending",
+  "status": "phase_02_browser_proof_passed_later_phases_pending",
   "model_constraints": {
     "implementation_workers": {
       "required_model": "gpt-5.5",
@@ -29,6 +29,22 @@
         "Delegated browser proof on 2026-05-29 found product/UI contract defects in settings error rendering, modal close root uniqueness, catalog single-instance presentation, and stale /dashboard reference criteria.",
         "Scoped browser-findings repair on 2026-05-29 added HTML error swap behavior for 400 settings/catalog fragments, cleared the modal host without duplicate ids, kept used single-instance catalog entries visible as disabled, and corrected visual-reference criteria to /manage.",
         "Independent focused revalidation found the HTMX 400 swap hook needed to live on the #avatar-edit-container swap target, applied validator self-remediation to the modal host/OOB host fragments, and passed focused tests/startup."
+      ]
+    },
+    {
+      "id": "phase-02-personal-planning-core",
+      "status": "phase_02_browser_proof_passed_later_phases_pending",
+      "worker_directive": ".internal-dev/plans/dashboard-widget-suite/worker-directives/phase-02-personal-planning-core.md",
+      "notes": [
+        "Implemented Today Planner, Tasks/Routines, and Calendar/Schedule widgets on the Phase 01 registry/instance platform.",
+        "Added additive planner day map, time block, in-dashboard reminder, and occurrence status tables in avatar.sqlite schema.",
+        "Extended Avatar planner services and tools while preserving the no-external-notification and no-automatic-assignment boundaries.",
+        "Focused repository, service, controller, tool, registry, and startup checks passed locally. Browser proof is pending by directive.",
+        "Scoped Phase 02 repair on 2026-05-29 overlaid occurrence status into Calendar/Schedule, added HTMX server-side Tasks/Routines filters, and added Today Planner review notes persistence coverage.",
+        "Delegated Phase 02 browser proof on 2026-05-29 failed product/UI criteria: Today Planner hides overdue/unscheduled detail work and quick-captured items, Tasks/Routines hides subtodos, and Calendar/Schedule lacks a visible HTMX reminder creation affordance.",
+        "Scoped Phase 02 browser-findings repair on 2026-05-29 added Today Planner overdue/unscheduled sections, made quick-captured unscheduled items visible after refresh, rendered compact Tasks/Routines subtodo rows, and added a Calendar/Schedule HTMX reminder form. Browser rerun remains pending.",
+        "Independent Phase 02 browser-findings code revalidation on 2026-05-29 passed: Today Planner overdue/unscheduled and quick-capture visibility, Tasks/Routines subtodo rows, Calendar/Schedule reminder form, CSS cache bump, focused tests, startup, jq, and diff-check. Browser rerun remains pending.",
+        "Delegated Phase 02 browser rerun on 2026-05-29 passed all 21 rerun checks with desktop/mobile screenshots, empty console/network logs, visible Today overdue/unscheduled/quick-capture content, Tasks/Routines subtodos/project/filters/actions, and Calendar/Schedule HTMX time-block/reminder creation."
       ]
     }
   ],
@@ -132,6 +148,111 @@
       "command": "Playwright MCP console and network capture",
       "result": "passed_with_expected_400_noise",
       "evidence": "console-messages.txt contains only expected 400 resource messages from invalid settings and forced duplicate-add negative tests; network-requests.txt records the expected 400 and successful fragment requests."
+    },
+    {
+      "command": "mvn -Dtest=AvatarRepositoryTest,AvatarServiceTest,AvatarDashboardControllerTest,AvatarToolsTest,ChatToolRegistryTest test",
+      "result": "passed",
+      "evidence": "Phase 02 implementation worker on 2026-05-29: 48 tests run, 0 failures, 0 errors, 0 skipped."
+    },
+    {
+      "command": "mvn -Dtest=AvatarRepositoryTest,AvatarServiceTest,AvatarDashboardControllerTest,AvatarToolsTest,ChatToolRegistryTest test",
+      "result": "passed",
+      "evidence": "Scoped Phase 02 repair worker on 2026-05-29: 51 tests run, 0 failures, 0 errors, 0 skipped. Added coverage for Calendar occurrence status overlay, Tasks/Routines filters, and Today review note persistence."
+    },
+    {
+      "command": "mvn -DskipTests compile",
+      "result": "passed",
+      "evidence": "Phase 02 implementation worker compile check passed after planner widget/tool/schema changes."
+    },
+    {
+      "command": "timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0",
+      "result": "started_then_timeout_stopped",
+      "evidence": "Phase 02 implementation worker on 2026-05-29: Tomcat started on random port 35967; Magenta2Application started in 3.404 seconds; timeout produced expected exit code 124 after graceful shutdown."
+    },
+    {
+      "command": "timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0",
+      "result": "started_then_timeout_stopped",
+      "evidence": "Scoped Phase 02 repair worker on 2026-05-29: Tomcat started on random port 35119; Magenta2Application started in 3.141 seconds; timeout produced expected exit code 124 after graceful shutdown."
+    },
+    {
+      "command": "jq . artifacts/dashboard-widget-suite/validation-summary.json >/dev/null",
+      "result": "passed",
+      "evidence": "Phase 02 evidence index JSON parsed successfully."
+    },
+    {
+      "command": "jq . artifacts/dashboard-widget-suite/validation-summary.json >/dev/null",
+      "result": "passed",
+      "evidence": "Scoped Phase 02 repair evidence index JSON parsed successfully."
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed",
+      "evidence": "No whitespace errors reported after Phase 02 implementation and closeout updates."
+    },
+    {
+      "command": "mvn spring-boot:run -Dspring-boot.run.arguments='--server.port=18080 --magenta.root.path=/tmp/magenta2-dashboard-widget-suite-phase-02-browser --spring.datasource.url=jdbc:sqlite:/tmp/magenta2-dashboard-widget-suite-phase-02-browser/magenta.sqlite?foreign_keys=true --magenta.orchestration.runner-delay-ms=60000 --magenta.orchestration.scheduler-delay-ms=60000 --magenta.orchestration.assignment-history-purge-delay-ms=60000'",
+      "result": "passed",
+      "evidence": "Phase 02 browser proof runtime on 2026-05-29: Tomcat started on port 18080 with isolated root /tmp/magenta2-dashboard-widget-suite-phase-02-browser."
+    },
+    {
+      "command": "node artifacts/dashboard-widget-suite/phase-02-browser/browser-proof.mjs",
+      "result": "failed_product_defects",
+      "evidence": "artifacts/dashboard-widget-suite/phase-02-browser/browser-proof-results.json reports NEEDS_REPAIR with 4 failed browser checks and no tooling constraints."
+    },
+    {
+      "command": "mvn -Dtest=AvatarRepositoryTest,AvatarServiceTest,AvatarDashboardControllerTest,AvatarToolsTest,ChatToolRegistryTest test",
+      "result": "passed",
+      "evidence": "Scoped Phase 02 browser-findings repair on 2026-05-29: 52 tests run, 0 failures, 0 errors, 0 skipped. Initial attempt failed at test compile due to a missing AvatarTodoStatus import, then passed after import repair."
+    },
+    {
+      "command": "timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0",
+      "result": "started_then_timeout_stopped",
+      "evidence": "Scoped Phase 02 browser-findings repair on 2026-05-29: Tomcat started on random port 43895; Magenta2Application started in 3.09 seconds; timeout produced expected exit code 124 after graceful shutdown."
+    },
+    {
+      "command": "mvn -Dtest=AvatarRepositoryTest,AvatarServiceTest,AvatarDashboardControllerTest,AvatarToolsTest,ChatToolRegistryTest test",
+      "result": "passed",
+      "evidence": "Independent Phase 02 browser-findings code revalidation on 2026-05-29: 52 tests run, 0 failures, 0 errors, 0 skipped."
+    },
+    {
+      "command": "timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0",
+      "result": "started_then_timeout_stopped",
+      "evidence": "Independent Phase 02 browser-findings code revalidation on 2026-05-29: Tomcat started on random port 41719; Magenta2Application started in 3.156 seconds; timeout produced expected exit code 124 after graceful shutdown."
+    },
+    {
+      "command": "jq . artifacts/dashboard-widget-suite/validation-summary.json >/dev/null",
+      "result": "passed",
+      "evidence": "Independent Phase 02 browser-findings code revalidation on 2026-05-29: JSON parsed successfully before artifact update."
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed",
+      "evidence": "Independent Phase 02 browser-findings code revalidation on 2026-05-29: no whitespace errors reported before artifact update."
+    },
+    {
+      "command": "jq . artifacts/dashboard-widget-suite/validation-summary.json >/dev/null",
+      "result": "passed",
+      "evidence": "Independent Phase 02 browser-findings code revalidation on 2026-05-29: JSON parsed successfully after artifact update."
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed",
+      "evidence": "Independent Phase 02 browser-findings code revalidation on 2026-05-29: no whitespace errors reported after artifact update."
+    },
+    {
+      "command": "mvn spring-boot:run -Dspring-boot.run.arguments='--server.port=18080 --magenta.root.path=/tmp/magenta2-dashboard-widget-suite-phase-02-browser-rerun --spring.datasource.url=jdbc:sqlite:/tmp/magenta2-dashboard-widget-suite-phase-02-browser-rerun/magenta.sqlite?foreign_keys=true --magenta.orchestration.runner-delay-ms=60000 --magenta.orchestration.scheduler-delay-ms=60000 --magenta.orchestration.assignment-history-purge-delay-ms=60000'",
+      "result": "passed",
+      "evidence": "Phase 02 browser rerun runtime on 2026-05-29: Tomcat started on port 18080 with isolated root /tmp/magenta2-dashboard-widget-suite-phase-02-browser-rerun."
+    },
+    {
+      "command": "BASE_URL=http://localhost:18080 node artifacts/dashboard-widget-suite/phase-02-browser-rerun/browser-proof-rerun.mjs",
+      "result": "passed",
+      "evidence": "artifacts/dashboard-widget-suite/phase-02-browser-rerun/browser-proof-results.json reports PASS_BROWSER_PROOF with 21 checks passing and no failures."
+    },
+    {
+      "command": "Playwright console and network capture for Phase 02 browser rerun",
+      "result": "passed",
+      "evidence": "console-messages.txt and network-requests.txt are empty; no console messages or HTTP >=400 responses captured."
     }
   ],
   "validators": [
@@ -183,10 +304,80 @@
           "evidence": "Settings invalid binding, modal clear, disabled used single-instance catalog semantics, duplicate-add HTML 400 catalog fragment, and /manage criteria alignment passed focused code review and tests."
         }
       ]
+    },
+    {
+      "id": "phase-02-code-validator",
+      "status": "passed_code_validation_browser_pending",
+      "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-02-validation.md",
+      "findings": [
+        {
+          "id": "phase-02-calendar-occurrence-status-overlay",
+          "classification": "code_defect",
+          "initial_status": "failed",
+          "repair_status": "independent_revalidation_passed",
+          "evidence": "AvatarService.calendarSchedule now overlays avatar_planner_occurrences by taskId plus occurrenceStart and emits occurrence status/metadata when present. AvatarServiceTest proves a SNOOZED occurrence appears in Calendar while the parent task remains ACTIVE. Independent focused revalidation passed 51 tests."
+        },
+        {
+          "id": "phase-02-tasks-routines-filters-ranges",
+          "classification": "code_defect",
+          "initial_status": "failed",
+          "repair_status": "independent_revalidation_passed",
+          "evidence": "Tasks/Routines detail now renders HTMX status/range/recurrence controls and calls AvatarService.tasksRoutines(status, range, recurrence). Controller and service tests prove an ACTIVE/WEEK/RECURRING filter includes the matching task and excludes a DONE one-off task. Independent focused revalidation passed 51 tests."
+        },
+        {
+          "id": "phase-02-today-review-notes-ui",
+          "classification": "code_defect",
+          "initial_status": "failed",
+          "repair_status": "independent_revalidation_passed",
+          "evidence": "Today Planner now renders a compact HTMX review form with textarea name=reviewNotes. Controller coverage submits notes and asserts they persist in the PlannerDayMap. Independent focused revalidation passed 51 tests."
+        }
+      ]
+    },
+    {
+      "id": "phase-02-browser-findings-code-revalidator",
+      "status": "passed_code_validation_browser_rerun_ready",
+      "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-02-validation.md",
+      "findings": [
+        {
+          "id": "phase-02-today-overdue-unscheduled-hidden",
+          "classification": "code_defect",
+          "initial_status": "failed_browser_proof",
+          "revalidation_status": "passed_code_validation_browser_rerun_ready",
+          "evidence": "AvatarDashboardComponents renders bounded Overdue and Unscheduled sections in Today Planner; AvatarDashboardControllerTest covers seeded overdue and unscheduled items. Browser rerun pending."
+        },
+        {
+          "id": "phase-02-quick-capture-no-visible-confirmation",
+          "classification": "code_defect",
+          "initial_status": "failed_browser_proof",
+          "revalidation_status": "passed_code_validation_browser_rerun_ready",
+          "evidence": "Quick-captured unscheduled items are visible through the Unscheduled section after widget refresh; controller coverage asserts the captured title renders. Browser rerun pending."
+        },
+        {
+          "id": "phase-02-tasks-subtodos-hidden",
+          "classification": "code_defect",
+          "initial_status": "failed_browser_proof",
+          "revalidation_status": "passed_code_validation_browser_rerun_ready",
+          "evidence": "Tasks/Routines rows render compact subtodo entries when present; controller coverage asserts a seeded subtodo renders. Browser rerun pending."
+        },
+        {
+          "id": "phase-02-calendar-reminder-affordance-missing",
+          "classification": "code_defect",
+          "initial_status": "failed_browser_proof",
+          "revalidation_status": "passed_code_validation_browser_rerun_ready",
+          "evidence": "Calendar/Schedule renders a visible HTMX reminder form targeting the widget root; controller coverage asserts the form and CSS cache version v=9. Browser rerun pending."
+        }
+      ]
+    },
+    {
+      "id": "phase-02-browser-rerun-validator",
+      "status": "passed_browser_proof_later_phases_pending",
+      "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-02-browser-proof.md",
+      "verdict": "PASS_BROWSER_PROOF",
+      "findings": []
     }
   ],
   "browser": {
-    "status": "passed_browser_proof",
+    "status": "phase_01_and_phase_02_browser_proof_passed_later_phases_pending",
     "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-01-browser-proof.md",
     "runtime": {
       "port": 18080,
@@ -285,30 +476,158 @@
       "artifacts/dashboard-widget-suite/phase-01-browser-rerun/desktop-second-note-submit.png",
       "artifacts/dashboard-widget-suite/phase-01-browser-rerun/reference-manage.png",
       "artifacts/dashboard-widget-suite/phase-01-browser-rerun/reference-agents.png"
-    ]
+    ],
+    "phase_02": {
+      "status": "passed_browser_rerun_later_phases_pending",
+      "verdict": "PASS_BROWSER_PROOF",
+      "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-02-browser-proof.md",
+      "artifact_directory": "artifacts/dashboard-widget-suite/phase-02-browser-rerun/",
+      "runtime": {
+        "port": 18080,
+        "isolated_root": "/tmp/magenta2-dashboard-widget-suite-phase-02-browser-rerun",
+        "command": "mvn spring-boot:run -Dspring-boot.run.arguments='--server.port=18080 --magenta.root.path=/tmp/magenta2-dashboard-widget-suite-phase-02-browser-rerun --spring.datasource.url=jdbc:sqlite:/tmp/magenta2-dashboard-widget-suite-phase-02-browser-rerun/magenta.sqlite?foreign_keys=true --magenta.orchestration.runner-delay-ms=60000 --magenta.orchestration.scheduler-delay-ms=60000 --magenta.orchestration.assignment-history-purge-delay-ms=60000'"
+      },
+      "scenarios": [
+        {
+          "id": "desktop_normal_dashboard_widgets_and_single_shell",
+          "status": "passed_browser_rerun",
+          "evidence": "Today Planner, Tasks/Routines, Calendar/Schedule rendered on / with one nav, one dashboard root, one shell root, and no duplicate ids."
+        },
+        {
+          "id": "today_detail_overdue_and_unscheduled_are_usable",
+          "status": "passed_browser_rerun",
+          "evidence": "Today Planner detail showed Top priorities, Now, Next, Later, Overdue, and Unscheduled sections plus quick capture, restart, review notes, and time block content."
+        },
+        {
+          "id": "quick_capture_refresh_boundaries",
+          "status": "passed_browser_rerun",
+          "evidence": "Quick-captured item appeared in the refreshed Today Planner widget with one edit container, one nav, one dashboard root, and no duplicate ids."
+        },
+        {
+          "id": "today_review_notes_visible_after_submit",
+          "status": "passed_browser_rerun",
+          "evidence": "Submitted review notes were visible after reopening Today Planner detail."
+        },
+        {
+          "id": "tasks_filters_subtodos_project_occurrence_actions",
+          "status": "passed_browser_rerun",
+          "evidence": "Tasks/Routines detail showed status/range/recurrence filters, daily recurrence, occurrence actions, linked project text, subtodo text, and server-filtered recurring week results."
+        },
+        {
+          "id": "tasks_occurrence_status_parent_unchanged_calendar_reflection",
+          "status": "passed_browser_rerun",
+          "evidence": "Skip action left parent meta planned while Tasks/Routines and Calendar/Schedule reflected skipped occurrence status."
+        },
+        {
+          "id": "calendar_grid_agenda_distinct_kinds",
+          "status": "passed_browser_rerun",
+          "evidence": "Calendar/Schedule showed a 42-cell month grid, agenda, and event, recurrence, time_block, and reminder kinds."
+        },
+        {
+          "id": "calendar_timeblock_reminder_htmx_creation",
+          "status": "passed_browser_rerun",
+          "evidence": "Time block and reminder were both created through visible HTMX forms and refreshed the Calendar/Schedule widget without duplicate ids."
+        },
+        {
+          "id": "mobile_modal_overflow_and_controls",
+          "status": "passed_browser_rerun",
+          "evidence": "Mobile Today, Tasks, and Calendar detail modals had no horizontal overflow; Tasks controls stayed in view."
+        },
+        {
+          "id": "visual_reference_manage_agents",
+          "status": "passed_with_notes_browser_rerun",
+          "evidence": "Reference /manage and /agents screenshots captured; planner widgets match dense operational styling. Calendar remains dense on mobile and should be watched for touch ergonomics, but no blocking overflow or hidden controls were observed."
+        }
+      ],
+      "findings": [
+        {
+          "id": "phase-02-today-overdue-unscheduled-hidden",
+          "classification": "code_defect",
+          "status": "passed_browser_rerun",
+          "evidence": "Today Planner detail now renders Overdue and Unscheduled sections in browser proof."
+        },
+        {
+          "id": "phase-02-quick-capture-no-visible-confirmation",
+          "classification": "code_defect",
+          "status": "passed_browser_rerun",
+          "evidence": "Quick capture refresh visibly showed the captured item and preserved widget/root boundaries."
+        },
+        {
+          "id": "phase-02-tasks-subtodos-hidden",
+          "classification": "code_defect",
+          "status": "passed_browser_rerun",
+          "evidence": "Tasks/Routines detail rendered seeded subtodo text with project and occurrence controls."
+        },
+        {
+          "id": "phase-02-calendar-reminder-affordance-missing",
+          "classification": "code_defect",
+          "status": "passed_browser_rerun",
+          "evidence": "Calendar/Schedule rendered a visible HTMX reminder form and successfully created a reminder through it."
+        }
+      ],
+      "screenshots": [
+        "artifacts/dashboard-widget-suite/phase-02-browser-rerun/desktop-home-seeded.png",
+        "artifacts/dashboard-widget-suite/phase-02-browser-rerun/desktop-today-detail.png",
+        "artifacts/dashboard-widget-suite/phase-02-browser-rerun/desktop-after-quick-capture.png",
+        "artifacts/dashboard-widget-suite/phase-02-browser-rerun/desktop-today-review-notes-persisted.png",
+        "artifacts/dashboard-widget-suite/phase-02-browser-rerun/desktop-tasks-detail.png",
+        "artifacts/dashboard-widget-suite/phase-02-browser-rerun/desktop-tasks-filtered-recurring-week.png",
+        "artifacts/dashboard-widget-suite/phase-02-browser-rerun/desktop-tasks-after-occurrence-action.png",
+        "artifacts/dashboard-widget-suite/phase-02-browser-rerun/desktop-calendar-detail-before-actions.png",
+        "artifacts/dashboard-widget-suite/phase-02-browser-rerun/desktop-after-timeblock-submit.png",
+        "artifacts/dashboard-widget-suite/phase-02-browser-rerun/desktop-calendar-after-reminder-form.png",
+        "artifacts/dashboard-widget-suite/phase-02-browser-rerun/reference-manage-desktop.png",
+        "artifacts/dashboard-widget-suite/phase-02-browser-rerun/reference-agents-desktop.png",
+        "artifacts/dashboard-widget-suite/phase-02-browser-rerun/mobile-today-detail.png",
+        "artifacts/dashboard-widget-suite/phase-02-browser-rerun/mobile-tasks-detail.png",
+        "artifacts/dashboard-widget-suite/phase-02-browser-rerun/mobile-calendar-detail.png"
+      ],
+      "logs": [
+        "artifacts/dashboard-widget-suite/phase-02-browser-rerun/browser-proof-results.json",
+        "artifacts/dashboard-widget-suite/phase-02-browser-rerun/console-messages.txt",
+        "artifacts/dashboard-widget-suite/phase-02-browser-rerun/network-requests.txt"
+      ],
+      "visual_critique": [
+        "Desktop / keeps a dense operational shell with chat rail plus widget grid and compact blue-gray cards.",
+        "Planner widgets match low-radius panel language and avoid hero or marketing composition.",
+        "Calendar/Schedule uses a real month grid, agenda, and visible HTMX forms for time blocks and reminders.",
+        "Today Planner exposes overdue, unscheduled, and quick-captured work in usable sections.",
+        "Tasks/Routines filters are compact and HTMX-first, with recurrence, project, subtodo, and occurrence action details visible.",
+        "Mobile modals are scrollable and compact; calendar density should be watched for touch ergonomics but did not block validation."
+      ]
+    }
   },
   "artifacts": [
     ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-01-browser-proof.md",
     ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-01-validation.md",
+    ".internal-dev/changelogs/2026-05-29-dashboard-widget-suite-phase-02-planning-core.md",
     "artifacts/dashboard-widget-suite/phase-01-browser-rerun/",
     "artifacts/dashboard-widget-suite/phase-01-browser/",
-    "artifacts/dashboard-widget-suite/validation-summary.json"
+    "artifacts/dashboard-widget-suite/validation-summary.json",
+    ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-02-browser-proof.md",
+    "artifacts/dashboard-widget-suite/phase-02-browser/",
+    "artifacts/dashboard-widget-suite/phase-02-browser/browser-proof-results.json",
+    "artifacts/dashboard-widget-suite/phase-02-browser-rerun/",
+    "artifacts/dashboard-widget-suite/phase-02-browser-rerun/browser-proof-results.json",
+    "artifacts/dashboard-widget-suite/phase-02-browser-rerun/console-messages.txt",
+    "artifacts/dashboard-widget-suite/phase-02-browser-rerun/network-requests.txt"
   ],
   "superseded_artifacts": [
-    "artifacts/dashboard-widget-suite/phase-01-browser/"
+    "artifacts/dashboard-widget-suite/phase-01-browser/",
+    "artifacts/dashboard-widget-suite/phase-02-browser/"
   ],
   "tooling_constraints": [],
   "residual_risks": [
-    "Later dashboard-widget-suite phases remain pending; this status is limited to Phase 01 code validation plus browser proof.",
     "Compatibility Notes route /_dashboards/_notes remains available for legacy/default callers and still resolves by widget type; rendered real Notes widget instances use instance-scoped routes.",
-    "Edit-mode icon clusters remain visually dense on narrow widgets; acceptable for Phase 01 rerun because interactions remained reachable and no clipping/overflow/duplicate roots were observed, but should be watched in later visual polish."
+    "Edit-mode icon clusters remain visually dense on narrow widgets; acceptable for Phase 01 rerun because interactions remained reachable and no clipping/overflow/duplicate roots were observed, but should be watched in later visual polish.",
+    "Later dashboard-widget-suite phases remain pending; this status is limited to Phase 01 code/browser proof and Phase 02 code/browser proof."
   ],
   "stale_reference_sweep": {
     "status": "not_final_phase",
     "notes": "Final stale-reference sweep is required by the validation matrix before full suite closeout. Phase 01 scoped revalidation checked the repaired evidence index and review artifact only."
   },
   "final_reconciler": {
-    "status": "phase_01_browser_proof_passed_later_phases_pending",
-    "next_step": "Proceed only to later dashboard-widget-suite phases; do not claim full suite validation until those phases and final integration validation pass."
+    "status": "phase_02_browser_proof_passed_later_phases_pending",
+    "next_step": "Proceed to later dashboard-widget-suite phases and final integration validation; do not claim full suite validation yet."
   }
 }

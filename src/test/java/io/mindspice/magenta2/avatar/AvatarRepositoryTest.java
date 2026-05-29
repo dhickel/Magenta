@@ -219,6 +219,80 @@ class AvatarRepositoryTest {
     }
 
     @Test
+    void savesPlannerDayMapsTimeBlocksRemindersAndOccurrenceStatus() {
+        PlannerTask task = repository.savePlannerTask(new PlannerTask(
+            null,
+            "Water plants",
+            null,
+            PlannerTaskStatus.ACTIVE,
+            AvatarPriority.HIGH,
+            Instant.parse("2026-05-29T13:00:00Z"),
+            Instant.parse("2026-05-29T14:00:00Z"),
+            "UTC",
+            new PlannerRecurrence(PlannerRecurrenceMode.DAILY, 1, LocalDate.of(2026, 5, 29), null,
+                LocalTime.of(13, 0), null, null, null),
+            new PlannerTaskLink("project-1", null, null, null),
+            null,
+            null,
+            null
+        ));
+        PlannerDayMap dayMap = repository.savePlannerDayMap(new PlannerDayMap(
+            null,
+            LocalDate.of(2026, 5, 29),
+            List.of(task.id()),
+            task.id(),
+            null,
+            List.of(),
+            "reset afternoon",
+            Instant.parse("2026-05-29T15:00:00Z"),
+            null,
+            null,
+            null
+        ));
+        PlannerTimeBlock block = repository.savePlannerTimeBlock(new PlannerTimeBlock(
+            null,
+            LocalDate.of(2026, 5, 29),
+            "Garden block",
+            Instant.parse("2026-05-29T15:00:00Z"),
+            Instant.parse("2026-05-29T16:00:00Z"),
+            "task",
+            task.id(),
+            "PLANNED",
+            null,
+            null
+        ));
+        PlannerReminder reminder = repository.savePlannerReminder(new PlannerReminder(
+            null,
+            "Check plants",
+            null,
+            Instant.parse("2026-05-29T14:30:00Z"),
+            "OPEN",
+            "task",
+            task.id(),
+            null,
+            null,
+            null
+        ));
+        PlannerOccurrence occurrence = repository.savePlannerOccurrence(new PlannerOccurrence(
+            null,
+            task.id(),
+            Instant.parse("2026-05-29T13:00:00Z"),
+            Instant.parse("2026-05-29T14:00:00Z"),
+            "SKIPPED",
+            Instant.parse("2026-05-29T13:05:00Z"),
+            null,
+            null,
+            null,
+            null
+        ));
+
+        assertThat(repository.findPlannerDayMap(LocalDate.of(2026, 5, 29))).contains(dayMap);
+        assertThat(repository.findPlannerTimeBlocks(LocalDate.of(2026, 5, 29), LocalDate.of(2026, 5, 29))).containsExactly(block);
+        assertThat(repository.findPlannerReminders(null, null, false)).containsExactly(reminder);
+        assertThat(repository.findPlannerOccurrences(null, null)).contains(occurrence);
+    }
+
+    @Test
     void appendsEventsInOccurredOrder() {
         repository.appendEvent(new AvatarEvent(
             "later",

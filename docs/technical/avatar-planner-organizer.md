@@ -8,12 +8,22 @@ The planner/organizer records that originated with the legacy personal-dashboard
 - `avatar_planner_subtodos` stores checklist items owned by a planner task.
 - `avatar_planner_task_notes` links planner tasks to existing organizer notes.
 - `avatar_planner_calendar_projection` stores generated occurrences for calendar-style views.
+- `avatar_planner_day_maps` stores date-specific top priorities, now/next/later ids, restart metadata, and daily review notes.
+- `avatar_planner_time_blocks` stores scheduled blocks independently from task due dates.
+- `avatar_planner_reminders` stores in-dashboard reminder records with `OPEN`, `SNOOZED`, `DONE`, `DISMISSED`, or `CANCELED` style statuses.
+- `avatar_planner_occurrences` stores projected recurring-task occurrence state such as skip, snooze, and restart metadata without completing or corrupting the parent task.
 
 Recurrence JSON is written explicitly as scalar fields so repository tests and lightweight tools do not depend on Jackson Java Time modules. Supported friendly modes are `NONE`, `DAILY`, `WEEKLY`, and `MONTHLY`; `CRON` is stored as an advanced value but is not automated in v1.
 
 ## UI Contract
 
 Planner, todo, calendar, and note operations are reached from Assistant dashboard widgets and their detail flows. They are dashboard widget content, not top-level shell tabs.
+
+Phase 02 planner widgets expose:
+
+- Today Planner: top priorities, now/next/later, overdue, unscheduled, time blocks, quick capture, restart day, and daily review.
+- Tasks/Routines: filters, recurrence metadata, subtasks, project links, status, and skip/snooze/restart occurrence controls.
+- Calendar/Schedule: month grid plus agenda view that merges calendar events, time blocks, recurrence projections, and reminders while preserving their distinct source types. The dashboard detail surface exposes HTMX creation forms for time blocks and in-dashboard reminders.
 
 The shared organizer modal uses HTMX tab swaps for:
 
@@ -26,4 +36,4 @@ Mutations return the same modal target so the user stays in context. The planner
 
 ## Deferred Automation
 
-Planner tasks can link existing Magenta work in v1. New scheduler behavior, contact-user automation, wait-for-input automation, reminder delivery, and task-to-assignment execution are future work and should not be inferred from the planner tables.
+Planner tasks can link existing Magenta work in v1. In-dashboard reminders are accepted for the widget suite, but external notification delivery, contact-user automation, wait-for-input automation, and task-to-assignment execution remain future work and should not be inferred from the planner tables.

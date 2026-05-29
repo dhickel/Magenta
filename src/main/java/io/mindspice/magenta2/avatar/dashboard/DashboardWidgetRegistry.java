@@ -10,6 +10,15 @@ import java.util.Optional;
 public final class DashboardWidgetRegistry {
     private static final List<Integer> STANDARD_WIDTHS = List.of(3, 4, 6, 8, 12);
     private static final DashboardWidgetRegistry DEFAULT = new DashboardWidgetRegistry(List.of(
+        planner("today-planner", "Today Planner", "Top priorities, day map, time blocks, and review.", 6,
+            List.of("avatar_today_plan_get"),
+            List.of("avatar_today_plan_update", "avatar_quick_capture", "avatar_day_restart")),
+        planner("tasks-routines", "Tasks/Routines", "Planner tasks, routines, recurrence, subtasks, and status.", 6,
+            List.of("avatar_tasks_routines_get"),
+            List.of("avatar_task_upsert", "avatar_task_occurrence_update", "avatar_reminder_upsert")),
+        planner("calendar-schedule", "Calendar/Schedule", "Calendar grid with events, time blocks, recurrence, and reminders.", 6,
+            List.of("avatar_calendar_schedule_get"),
+            List.of("avatar_calendar_upsert", "avatar_timeblock_upsert", "avatar_reminder_upsert")),
         personal("daily-tasks", "Daily Tasks", "Today-focused task capture.", 6, WidgetInstancePolicy.SINGLE_PER_DASHBOARD),
         personal("todos", "Todos", "Priority queue and quick completion.", 4, WidgetInstancePolicy.SINGLE_PER_DASHBOARD),
         personal("calendar", "Calendar", "Upcoming dated work.", 4, WidgetInstancePolicy.SINGLE_PER_DASHBOARD),
@@ -62,6 +71,34 @@ public final class DashboardWidgetRegistry {
         WidgetInstancePolicy policy
     ) {
         return definition(type, title, description, "personal", "avatar.sqlite", defaultWidth, policy, WidgetBindingMode.NONE);
+    }
+
+    private static DashboardWidgetDefinition planner(
+        String type,
+        String title,
+        String description,
+        int defaultWidth,
+        List<String> readTools,
+        List<String> mutationTools
+    ) {
+        return new DashboardWidgetDefinition(
+            type,
+            title,
+            description,
+            "planner",
+            "avatar.sqlite",
+            defaultWidth,
+            STANDARD_WIDTHS,
+            WidgetInstancePolicy.SINGLE_PER_DASHBOARD,
+            WidgetBindingMode.NONE,
+            WidgetSettingsSchema.basic("dashboard"),
+            type,
+            type,
+            "generic",
+            WidgetRefreshPolicy.MANUAL,
+            WidgetEmptyStatePolicy.NO_DATA,
+            new WidgetToolDescriptor(readTools, mutationTools, "AVATAR_SUPERVISOR", false, 50)
+        );
     }
 
     private static DashboardWidgetDefinition operational(

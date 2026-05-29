@@ -42,12 +42,18 @@ import io.mindspice.magenta2.avatar.AvatarService;
 import io.mindspice.magenta2.avatar.AvatarTaskStatus;
 import io.mindspice.magenta2.avatar.AvatarTodo;
 import io.mindspice.magenta2.avatar.AvatarTodoStatus;
+import io.mindspice.magenta2.avatar.CalendarScheduleView;
+import io.mindspice.magenta2.avatar.PlannerOccurrence;
 import io.mindspice.magenta2.avatar.PlannerRecurrence;
 import io.mindspice.magenta2.avatar.PlannerRecurrenceMode;
+import io.mindspice.magenta2.avatar.PlannerReminder;
 import io.mindspice.magenta2.avatar.PlannerSubtodo;
 import io.mindspice.magenta2.avatar.PlannerTask;
 import io.mindspice.magenta2.avatar.PlannerTaskLink;
 import io.mindspice.magenta2.avatar.PlannerTaskStatus;
+import io.mindspice.magenta2.avatar.PlannerTimeBlock;
+import io.mindspice.magenta2.avatar.TasksRoutinesView;
+import io.mindspice.magenta2.avatar.TodayPlannerView;
 import io.mindspice.magenta2.avatar.dashboard.WidgetSettingsValidation;
 import io.mindspice.simplypages.builders.BannerBuilder;
 import io.mindspice.simplypages.builders.ShellBuilder;
@@ -70,7 +76,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Controller
 public class AvatarDashboardController {
-    private static final String AVATAR_CSS = "/css/avatar-dashboard.css?v=7";
+    private static final String AVATAR_CSS = "/css/avatar-dashboard.css?v=9";
     private static final String AVATAR_AGENT_ID = "avatar";
     private static final String DEFAULT_AVATAR_TAB = "dashboard";
 
@@ -204,9 +210,14 @@ public class AvatarDashboardController {
 
     @GetMapping("/_dashboards/_widgets/{widgetKey}/detail")
     @ResponseBody
-    public String widgetDetail(@PathVariable String widgetKey) {
+    public String widgetDetail(
+        @PathVariable String widgetKey,
+        @RequestParam(value = "status", required = false) String status,
+        @RequestParam(value = "range", required = false) String range,
+        @RequestParam(value = "recurrence", required = false) String recurrence
+    ) {
         requireWidget(widgetKey);
-        AvatarDashboardComponents.AvatarDashboardData data = data();
+        AvatarDashboardComponents.AvatarDashboardData data = widgetDetailData(widgetKey, status, range, recurrence);
         AvatarDashboardWidget widget = data.rows().stream()
             .flatMap(row -> row.widgets().stream())
             .filter(item -> item.widgetKey().equals(widgetKey))
@@ -216,14 +227,28 @@ public class AvatarDashboardController {
         return AvatarDashboardComponents.widgetDetailModal(data, widget).render();
     }
 
+    public String widgetDetail(String widgetKey) {
+        return widgetDetail(widgetKey, null, null, null);
+    }
+
     @GetMapping("/dashboards/{dashboardId}/widgets/{widgetInstanceId}/detail")
     @ResponseBody
-    public String widgetDetailByInstance(@PathVariable String dashboardId, @PathVariable String widgetInstanceId) {
+    public String widgetDetailByInstance(
+        @PathVariable String dashboardId,
+        @PathVariable String widgetInstanceId,
+        @RequestParam(value = "status", required = false) String status,
+        @RequestParam(value = "range", required = false) String range,
+        @RequestParam(value = "recurrence", required = false) String recurrence
+    ) {
         AvatarDashboardRowWidget rowWidget = requireDashboardWidget(dashboardId, widgetInstanceId);
         return AvatarDashboardComponents.widgetDetailModal(
-            data(dashboardId),
+            widgetDetailData(dashboardId, rowWidget.widgetKey(), status, range, recurrence),
             AvatarDashboardComponents.displayWidget(rowWidget)
         ).render();
+    }
+
+    public String widgetDetailByInstance(String dashboardId, String widgetInstanceId) {
+        return widgetDetailByInstance(dashboardId, widgetInstanceId, null, null, null);
     }
 
     @GetMapping("/dashboards/{dashboardId}/widgets/{widgetInstanceId}/settings")
@@ -645,6 +670,83 @@ public class AvatarDashboardController {
             null
         ));
         return organizer("planner");
+    }
+
+    @PostMapping("/_dashboards/_today/quick-capture")
+    @ResponseBody
+    public String quickCapturePlannerTask(@RequestParam String title,
+                                          @RequestParam(value = "notes", required = false) String notes) {
+        avatarService.quickCapture(title, notes);
+        return firstWidgetByType("today-planner");
+    }
+
+    @PostMapping("/_dashboards/_today/restart")
+    @ResponseBody
+    public String restartTodayPlanner() {
+        avatarService.restartDay(LocalDate.now());
+        return firstWidgetByType("today-planner");
+    }
+
+    @PostMapping("/_dashboards/_today/review")
+    @ResponseBody
+    public String reviewTodayPlanner(@RequestParam(value = "reviewNotes", required = false) String reviewNotes) {
+        avatarService.reviewDay(LocalDate.now(), reviewNotes);
+        return firstWidgetByType("today-planner");
+    }
+
+    @PostMapping("/_dashboards/_planner-tasks/{taskId}/occurrences")
+    @ResponseBody
+    public String updatePlannerOccurrence(@PathVariable String taskId,
+                                          @RequestParam String occurrenceStart,
+                                          @RequestParam String action,
+                                          @RequestParam(value = "snoozedUntil", required = false) String snoozedUntil) {
+        avatarService.updateOccurrence(taskId, Instant.parse(occurrenceStart), action, parseOptionalDateTime(snoozedUntil));
+        return firstWidgetByType("tasks-routines");
+    }
+
+    @PostMapping("/_dashboards/_time-blocks")
+    @ResponseBody
+    public String createTimeBlock(@RequestParam String title,
+                                  @RequestParam String startsAt,
+                                  @RequestParam(value = "endsAt", required = false) String endsAt,
+                                  @RequestParam(value = "sourceType", required = false) String sourceType,
+                                  @RequestParam(value = "sourceId", required = false) String sourceId) {
+        Instant start = parseDateTime(startsAt);
+        avatarService.saveTimeBlock(new PlannerTimeBlock(
+            null,
+            start.atZone(ZoneId.systemDefault()).toLocalDate(),
+            title.strip(),
+            start,
+            parseOptionalDateTime(endsAt),
+            blankToNull(sourceType),
+            blankToNull(sourceId),
+            "PLANNED",
+            null,
+            null
+        ));
+        return firstWidgetByType("calendar-schedule");
+    }
+
+    @PostMapping("/_dashboards/_reminders")
+    @ResponseBody
+    public String createReminder(@RequestParam String title,
+                                 @RequestParam String remindAt,
+                                 @RequestParam(value = "notes", required = false) String notes,
+                                 @RequestParam(value = "sourceType", required = false) String sourceType,
+                                 @RequestParam(value = "sourceId", required = false) String sourceId) {
+        avatarService.saveReminder(new PlannerReminder(
+            null,
+            title.strip(),
+            notes,
+            parseDateTime(remindAt),
+            "OPEN",
+            blankToNull(sourceType),
+            blankToNull(sourceId),
+            null,
+            null,
+            null
+        ));
+        return firstWidgetByType("calendar-schedule");
     }
 
     @GetMapping("/_dashboards/_outputs/{artifactId}")
@@ -1527,6 +1629,9 @@ public class AvatarDashboardController {
             avatarService.dailyTasks(LocalDate.now()),
             avatarService.todos(),
             avatarService.calendarItems(),
+            avatarService.todayPlanner(LocalDate.now()),
+            avatarService.tasksRoutines(),
+            avatarService.calendarSchedule(LocalDate.now(), LocalDate.now().plusDays(30)),
             avatarService.notes(false),
             avatarService.events(),
             safeList(() -> outputArtifactService.query(null, null, null, 20)),
@@ -1536,6 +1641,50 @@ public class AvatarDashboardController {
             assignments(agents),
             safeList(inboxService::userInbox),
             chatService.defaultModel()
+        );
+    }
+
+    private AvatarDashboardComponents.AvatarDashboardData widgetDetailData(
+        String widgetKey,
+        String status,
+        String range,
+        String recurrence
+    ) {
+        return widgetDetailData(avatarService.assistantDashboard().id(), widgetKey, status, range, recurrence);
+    }
+
+    private AvatarDashboardComponents.AvatarDashboardData widgetDetailData(
+        String dashboardId,
+        String widgetKey,
+        String status,
+        String range,
+        String recurrence
+    ) {
+        AvatarDashboardComponents.AvatarDashboardData base = data(dashboardId);
+        if (!"tasks-routines".equals(widgetKey)) {
+            return base;
+        }
+        return new AvatarDashboardComponents.AvatarDashboardData(
+            base.dashboard(),
+            base.dashboards(),
+            base.profile(),
+            base.layout(),
+            base.rows(),
+            base.dailyTasks(),
+            base.todos(),
+            base.calendarItems(),
+            base.todayPlanner(),
+            avatarService.tasksRoutines(status, range, recurrence),
+            base.calendarSchedule(),
+            base.notes(),
+            base.events(),
+            base.outputs(),
+            base.agents(),
+            base.workAreas(),
+            base.jobs(),
+            base.assignments(),
+            base.userInbox(),
+            base.defaultModel()
         );
     }
 
@@ -1658,6 +1807,9 @@ public class AvatarDashboardController {
             base.dailyTasks(),
             base.todos(),
             base.calendarItems(),
+            base.todayPlanner(),
+            base.tasksRoutines(),
+            base.calendarSchedule(),
             base.notes(),
             base.events(),
             outputs,
@@ -1668,6 +1820,19 @@ public class AvatarDashboardController {
             base.userInbox(),
             base.defaultModel()
         );
+    }
+
+    private String firstWidgetByType(String widgetType) {
+        AvatarDashboardComponents.AvatarDashboardData current = data();
+        return current.rows().stream()
+            .flatMap(row -> row.widgets().stream())
+            .filter(widget -> widgetType.equals(widget.widgetKey()))
+            .findFirst()
+            .map(widget -> AvatarDashboardComponents.widget(current, AvatarDashboardComponents.displayWidget(widget)).render())
+            .orElseGet(() -> AvatarDashboardComponents.widget(
+                current,
+                AvatarDashboardComponents.defaultWidget(AvatarDashboardComponents.definition(widgetType), 0)
+            ).render());
     }
 
     private List<WorkAssignment> assignments(List<AgentProfile> agents) {

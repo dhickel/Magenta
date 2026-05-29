@@ -779,12 +779,11 @@ public class AvatarRepository {
             return;
         }
         String rowOne = insertUserDashboardRow(ASSISTANT_DASHBOARD_ID, 0);
-        insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowOne, "daily-tasks", 6, 0);
-        insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowOne, "todos", 3, 1);
-        insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowOne, "calendar", 3, 2);
+        insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowOne, "today-planner", 6, 0);
+        insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowOne, "calendar-schedule", 6, 1);
         String rowTwo = insertUserDashboardRow(ASSISTANT_DASHBOARD_ID, 1);
-        insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowTwo, "notes", 6, 0);
-        insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowTwo, "outputs", 6, 1);
+        insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowTwo, "tasks-routines", 6, 0);
+        insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowTwo, "notes", 6, 1);
         String rowThree = insertUserDashboardRow(ASSISTANT_DASHBOARD_ID, 2);
         insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowThree, "system", 4, 0);
         insertUserDashboardWidget(ASSISTANT_DASHBOARD_ID, rowThree, "alerts", 4, 1);
@@ -1264,6 +1263,18 @@ public class AvatarRepository {
                 createdAt.toString(),
                 now.toString()
             );
+            ensurePlannerOccurrence(new PlannerOccurrence(
+                null,
+                taskId,
+                projection.occurrenceStart(),
+                projection.occurrenceEnd(),
+                "PROJECTED",
+                null,
+                null,
+                null,
+                null,
+                null
+            ));
         }
     }
 
@@ -1281,6 +1292,241 @@ public class AvatarRepository {
                 order by occurrence_start, task_id
                 """,
             (rs, rowNum) -> toPlannerProjection(rs),
+            from.toString(),
+            to.toString()
+        );
+    }
+
+    public PlannerDayMap savePlannerDayMap(PlannerDayMap dayMap) {
+        String id = id(dayMap.id());
+        Instant now = Instant.now();
+        Instant createdAt = dayMap.createdAt() == null ? now : dayMap.createdAt();
+        jdbcTemplate.update(
+            """
+                insert into avatar_planner_day_maps (
+                    id, map_date, top_priority_ids_json, now_item_id, next_item_id, later_item_ids_json,
+                    review_notes, restarted_at, reviewed_at, created_at, updated_at
+                )
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                on conflict(map_date) do update set
+                    top_priority_ids_json = excluded.top_priority_ids_json,
+                    now_item_id = excluded.now_item_id,
+                    next_item_id = excluded.next_item_id,
+                    later_item_ids_json = excluded.later_item_ids_json,
+                    review_notes = excluded.review_notes,
+                    restarted_at = excluded.restarted_at,
+                    reviewed_at = excluded.reviewed_at,
+                    updated_at = excluded.updated_at
+                """,
+            id,
+            requireDate(dayMap.mapDate()).toString(),
+            jsonList(dayMap.topPriorityIds()),
+            dayMap.nowItemId(),
+            dayMap.nextItemId(),
+            jsonList(dayMap.laterItemIds()),
+            dayMap.reviewNotes(),
+            string(dayMap.restartedAt()),
+            string(dayMap.reviewedAt()),
+            createdAt.toString(),
+            now.toString()
+        );
+        return findPlannerDayMap(dayMap.mapDate()).orElseThrow();
+    }
+
+    public Optional<PlannerDayMap> findPlannerDayMap(LocalDate date) {
+        return jdbcTemplate.query(
+            "select * from avatar_planner_day_maps where map_date = ?",
+            rs -> rs.next() ? Optional.of(toPlannerDayMap(rs)) : Optional.empty(),
+            requireDate(date).toString()
+        );
+    }
+
+    public PlannerTimeBlock savePlannerTimeBlock(PlannerTimeBlock block) {
+        String id = id(block.id());
+        Instant now = Instant.now();
+        Instant createdAt = block.createdAt() == null ? now : block.createdAt();
+        jdbcTemplate.update(
+            """
+                insert into avatar_planner_time_blocks (
+                    id, block_date, title, starts_at, ends_at, source_type, source_id, status, created_at, updated_at
+                )
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                on conflict(id) do update set
+                    block_date = excluded.block_date,
+                    title = excluded.title,
+                    starts_at = excluded.starts_at,
+                    ends_at = excluded.ends_at,
+                    source_type = excluded.source_type,
+                    source_id = excluded.source_id,
+                    status = excluded.status,
+                    updated_at = excluded.updated_at
+                """,
+            id,
+            requireDate(block.blockDate()).toString(),
+            requireText(block.title(), "time block title"),
+            requireInstant(block.startsAt(), "time block start").toString(),
+            string(block.endsAt()),
+            block.sourceType(),
+            block.sourceId(),
+            StringUtils.hasText(block.status()) ? block.status() : "PLANNED",
+            createdAt.toString(),
+            now.toString()
+        );
+        return findPlannerTimeBlock(id).orElseThrow();
+    }
+
+    public Optional<PlannerTimeBlock> findPlannerTimeBlock(String id) {
+        return jdbcTemplate.query(
+            "select * from avatar_planner_time_blocks where id = ?",
+            rs -> rs.next() ? Optional.of(toPlannerTimeBlock(rs)) : Optional.empty(),
+            requireText(id, "time block id")
+        );
+    }
+
+    public List<PlannerTimeBlock> findPlannerTimeBlocks(LocalDate from, LocalDate to) {
+        if (from == null || to == null) {
+            return jdbcTemplate.query(
+                "select * from avatar_planner_time_blocks order by block_date, starts_at, title",
+                (rs, rowNum) -> toPlannerTimeBlock(rs)
+            );
+        }
+        return jdbcTemplate.query(
+            """
+                select * from avatar_planner_time_blocks
+                where block_date >= ? and block_date <= ?
+                order by block_date, starts_at, title
+                """,
+            (rs, rowNum) -> toPlannerTimeBlock(rs),
+            from.toString(),
+            to.toString()
+        );
+    }
+
+    public PlannerReminder savePlannerReminder(PlannerReminder reminder) {
+        String id = id(reminder.id());
+        Instant now = Instant.now();
+        Instant createdAt = reminder.createdAt() == null ? now : reminder.createdAt();
+        jdbcTemplate.update(
+            """
+                insert into avatar_planner_reminders (
+                    id, title, notes, remind_at, status, source_type, source_id, snoozed_until, created_at, updated_at
+                )
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                on conflict(id) do update set
+                    title = excluded.title,
+                    notes = excluded.notes,
+                    remind_at = excluded.remind_at,
+                    status = excluded.status,
+                    source_type = excluded.source_type,
+                    source_id = excluded.source_id,
+                    snoozed_until = excluded.snoozed_until,
+                    updated_at = excluded.updated_at
+                """,
+            id,
+            requireText(reminder.title(), "reminder title"),
+            reminder.notes(),
+            requireInstant(reminder.remindAt(), "reminder time").toString(),
+            StringUtils.hasText(reminder.status()) ? reminder.status() : "OPEN",
+            reminder.sourceType(),
+            reminder.sourceId(),
+            string(reminder.snoozedUntil()),
+            createdAt.toString(),
+            now.toString()
+        );
+        return findPlannerReminder(id).orElseThrow();
+    }
+
+    public Optional<PlannerReminder> findPlannerReminder(String id) {
+        return jdbcTemplate.query(
+            "select * from avatar_planner_reminders where id = ?",
+            rs -> rs.next() ? Optional.of(toPlannerReminder(rs)) : Optional.empty(),
+            requireText(id, "reminder id")
+        );
+    }
+
+    public List<PlannerReminder> findPlannerReminders(Instant from, Instant to, boolean includeClosed) {
+        String statusFilter = includeClosed ? "" : " and status in ('OPEN', 'SNOOZED')";
+        if (from == null || to == null) {
+            return jdbcTemplate.query(
+                "select * from avatar_planner_reminders where 1 = 1" + statusFilter + " order by remind_at, title",
+                (rs, rowNum) -> toPlannerReminder(rs)
+            );
+        }
+        return jdbcTemplate.query(
+            "select * from avatar_planner_reminders where remind_at >= ? and remind_at <= ?" + statusFilter
+                + " order by remind_at, title",
+            (rs, rowNum) -> toPlannerReminder(rs),
+            from.toString(),
+            to.toString()
+        );
+    }
+
+    public PlannerOccurrence ensurePlannerOccurrence(PlannerOccurrence occurrence) {
+        Optional<PlannerOccurrence> existing = findPlannerOccurrence(occurrence.taskId(), occurrence.occurrenceStart());
+        if (existing.isPresent()) {
+            return existing.orElseThrow();
+        }
+        return savePlannerOccurrence(occurrence);
+    }
+
+    public PlannerOccurrence savePlannerOccurrence(PlannerOccurrence occurrence) {
+        findPlannerTask(requireText(occurrence.taskId(), "planner task id"))
+            .orElseThrow(() -> new IllegalArgumentException("planner task not found: " + occurrence.taskId()));
+        String id = id(occurrence.id());
+        Instant now = Instant.now();
+        Instant createdAt = occurrence.createdAt() == null ? now : occurrence.createdAt();
+        jdbcTemplate.update(
+            """
+                insert into avatar_planner_occurrences (
+                    id, task_id, occurrence_start, occurrence_end, status, skipped_at, snoozed_until,
+                    restarted_at, created_at, updated_at
+                )
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                on conflict(task_id, occurrence_start) do update set
+                    occurrence_end = excluded.occurrence_end,
+                    status = excluded.status,
+                    skipped_at = excluded.skipped_at,
+                    snoozed_until = excluded.snoozed_until,
+                    restarted_at = excluded.restarted_at,
+                    updated_at = excluded.updated_at
+                """,
+            id,
+            occurrence.taskId(),
+            requireInstant(occurrence.occurrenceStart(), "occurrence start").toString(),
+            string(occurrence.occurrenceEnd()),
+            StringUtils.hasText(occurrence.status()) ? occurrence.status() : "PROJECTED",
+            string(occurrence.skippedAt()),
+            string(occurrence.snoozedUntil()),
+            string(occurrence.restartedAt()),
+            createdAt.toString(),
+            now.toString()
+        );
+        return findPlannerOccurrence(occurrence.taskId(), occurrence.occurrenceStart()).orElseThrow();
+    }
+
+    public Optional<PlannerOccurrence> findPlannerOccurrence(String taskId, Instant occurrenceStart) {
+        return jdbcTemplate.query(
+            "select * from avatar_planner_occurrences where task_id = ? and occurrence_start = ?",
+            rs -> rs.next() ? Optional.of(toPlannerOccurrence(rs)) : Optional.empty(),
+            requireText(taskId, "planner task id"),
+            requireInstant(occurrenceStart, "occurrence start").toString()
+        );
+    }
+
+    public List<PlannerOccurrence> findPlannerOccurrences(Instant from, Instant to) {
+        if (from == null || to == null) {
+            return jdbcTemplate.query(
+                "select * from avatar_planner_occurrences order by occurrence_start, task_id",
+                (rs, rowNum) -> toPlannerOccurrence(rs)
+            );
+        }
+        return jdbcTemplate.query(
+            """
+                select * from avatar_planner_occurrences
+                where occurrence_start >= ? and occurrence_start <= ?
+                order by occurrence_start, task_id
+                """,
+            (rs, rowNum) -> toPlannerOccurrence(rs),
             from.toString(),
             to.toString()
         );
@@ -1483,6 +1729,67 @@ public class AvatarRepository {
             instant(rs.getString("occurrence_start")),
             instant(rs.getString("occurrence_end")),
             PlannerTaskStatus.valueOf(rs.getString("status")),
+            instant(rs.getString("created_at")),
+            instant(rs.getString("updated_at"))
+        );
+    }
+
+    private PlannerDayMap toPlannerDayMap(ResultSet rs) throws SQLException {
+        return new PlannerDayMap(
+            rs.getString("id"),
+            LocalDate.parse(rs.getString("map_date")),
+            list(rs.getString("top_priority_ids_json")),
+            rs.getString("now_item_id"),
+            rs.getString("next_item_id"),
+            list(rs.getString("later_item_ids_json")),
+            rs.getString("review_notes"),
+            instant(rs.getString("restarted_at")),
+            instant(rs.getString("reviewed_at")),
+            instant(rs.getString("created_at")),
+            instant(rs.getString("updated_at"))
+        );
+    }
+
+    private PlannerTimeBlock toPlannerTimeBlock(ResultSet rs) throws SQLException {
+        return new PlannerTimeBlock(
+            rs.getString("id"),
+            LocalDate.parse(rs.getString("block_date")),
+            rs.getString("title"),
+            instant(rs.getString("starts_at")),
+            instant(rs.getString("ends_at")),
+            rs.getString("source_type"),
+            rs.getString("source_id"),
+            rs.getString("status"),
+            instant(rs.getString("created_at")),
+            instant(rs.getString("updated_at"))
+        );
+    }
+
+    private PlannerReminder toPlannerReminder(ResultSet rs) throws SQLException {
+        return new PlannerReminder(
+            rs.getString("id"),
+            rs.getString("title"),
+            rs.getString("notes"),
+            instant(rs.getString("remind_at")),
+            rs.getString("status"),
+            rs.getString("source_type"),
+            rs.getString("source_id"),
+            instant(rs.getString("snoozed_until")),
+            instant(rs.getString("created_at")),
+            instant(rs.getString("updated_at"))
+        );
+    }
+
+    private PlannerOccurrence toPlannerOccurrence(ResultSet rs) throws SQLException {
+        return new PlannerOccurrence(
+            rs.getString("id"),
+            rs.getString("task_id"),
+            instant(rs.getString("occurrence_start")),
+            instant(rs.getString("occurrence_end")),
+            rs.getString("status"),
+            instant(rs.getString("skipped_at")),
+            instant(rs.getString("snoozed_until")),
+            instant(rs.getString("restarted_at")),
             instant(rs.getString("created_at")),
             instant(rs.getString("updated_at"))
         );

@@ -7,9 +7,13 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import io.mindspice.magenta2.avatar.dashboard.DashboardWidgetDefinition;
 import io.mindspice.magenta2.avatar.dashboard.DashboardWidgetRegistry;
@@ -359,6 +363,244 @@ public class AvatarService {
         return repository.findPlannerCalendarProjection(from, to);
     }
 
+    public PlannerDayMap dayMap(LocalDate date) {
+        LocalDate day = date == null ? LocalDate.now() : date;
+        return repository.findPlannerDayMap(day).orElseGet(() -> repository.savePlannerDayMap(new PlannerDayMap(
+            null,
+            day,
+            List.of(),
+            null,
+            null,
+            List.of(),
+            null,
+            null,
+            null,
+            null,
+            null
+        )));
+    }
+
+    public PlannerDayMap restartDay(LocalDate date) {
+        PlannerDayMap current = dayMap(date);
+        return repository.savePlannerDayMap(new PlannerDayMap(
+            current.id(),
+            current.mapDate(),
+            current.topPriorityIds(),
+            current.nowItemId(),
+            current.nextItemId(),
+            current.laterItemIds(),
+            current.reviewNotes(),
+            Instant.now(),
+            current.reviewedAt(),
+            current.createdAt(),
+            current.updatedAt()
+        ));
+    }
+
+    public PlannerDayMap reviewDay(LocalDate date, String notes) {
+        PlannerDayMap current = dayMap(date);
+        return repository.savePlannerDayMap(new PlannerDayMap(
+            current.id(),
+            current.mapDate(),
+            current.topPriorityIds(),
+            current.nowItemId(),
+            current.nextItemId(),
+            current.laterItemIds(),
+            notes,
+            current.restartedAt(),
+            Instant.now(),
+            current.createdAt(),
+            current.updatedAt()
+        ));
+    }
+
+    public PlannerTimeBlock saveTimeBlock(PlannerTimeBlock block) {
+        return repository.savePlannerTimeBlock(block);
+    }
+
+    public List<PlannerTimeBlock> timeBlocks(LocalDate from, LocalDate to) {
+        return repository.findPlannerTimeBlocks(from, to);
+    }
+
+    public PlannerReminder saveReminder(PlannerReminder reminder) {
+        return repository.savePlannerReminder(reminder);
+    }
+
+    public List<PlannerReminder> reminders(Instant from, Instant to, boolean includeClosed) {
+        return repository.findPlannerReminders(from, to, includeClosed);
+    }
+
+    public PlannerOccurrence updateOccurrence(String taskId, Instant occurrenceStart, String action, Instant snoozedUntil) {
+        PlannerTask task = plannerTask(taskId);
+        PlannerOccurrence current = repository.findPlannerOccurrence(taskId, occurrenceStart)
+            .orElseGet(() -> repository.ensurePlannerOccurrence(new PlannerOccurrence(
+                null,
+                task.id(),
+                occurrenceStart,
+                task.dueAt(),
+                "PROJECTED",
+                null,
+                null,
+                null,
+                null,
+                null
+            )));
+        String normalized = requireAction(action);
+        Instant now = Instant.now();
+        return repository.savePlannerOccurrence(new PlannerOccurrence(
+            current.id(),
+            current.taskId(),
+            current.occurrenceStart(),
+            current.occurrenceEnd(),
+            normalized,
+            "SKIPPED".equals(normalized) ? now : current.skippedAt(),
+            "SNOOZED".equals(normalized) ? (snoozedUntil == null ? now.plusSeconds(3600) : snoozedUntil) : current.snoozedUntil(),
+            "RESTARTED".equals(normalized) ? now : current.restartedAt(),
+            current.createdAt(),
+            current.updatedAt()
+        ));
+    }
+
+    public List<PlannerOccurrence> plannerOccurrences(Instant from, Instant to) {
+        return repository.findPlannerOccurrences(from, to);
+    }
+
+    public PlannerTask quickCapture(String title, String notes) {
+        requireText(title, "planner task title");
+        return savePlannerTask(new PlannerTask(
+            null,
+            title.strip(),
+            notes,
+            PlannerTaskStatus.PLANNED,
+            AvatarPriority.NORMAL,
+            null,
+            null,
+            ZoneId.systemDefault().getId(),
+            new PlannerRecurrence(PlannerRecurrenceMode.NONE, 1, null, null, null, null, null, null),
+            new PlannerTaskLink(null, null, null, null),
+            null,
+            null,
+            null
+        ));
+    }
+
+    public TodayPlannerView todayPlanner(LocalDate date) {
+        LocalDate day = date == null ? LocalDate.now() : date;
+        PlannerDayMap map = dayMap(day);
+        List<PlannerTask> openTasks = plannerTasks().stream()
+            .filter(task -> task.status() != PlannerTaskStatus.DONE && task.status() != PlannerTaskStatus.CANCELLED)
+            .toList();
+        Map<String, PlannerTask> byId = openTasks.stream().collect(Collectors.toMap(PlannerTask::id, task -> task, (a, b) -> a, LinkedHashMap::new));
+        List<PlannerTask> top = orderedTasks(map.topPriorityIds(), byId);
+        if (top.isEmpty()) {
+            top = openTasks.stream()
+                .filter(task -> task.priority() == AvatarPriority.URGENT || task.priority() == AvatarPriority.HIGH)
+                .sorted(taskComparator())
+                .limit(3)
+                .toList();
+        }
+        List<PlannerTask> overdue = openTasks.stream()
+            .filter(task -> task.dueAt() != null && task.dueAt().isBefore(day.atStartOfDay(ZoneId.systemDefault()).toInstant()))
+            .sorted(taskComparator())
+            .limit(6)
+            .toList();
+        List<PlannerTask> today = openTasks.stream()
+            .filter(task -> occursOn(task, day))
+            .sorted(taskComparator())
+            .toList();
+        List<PlannerTask> unscheduled = openTasks.stream()
+            .filter(task -> task.startsAt() == null && task.dueAt() == null && noRecurrence(task))
+            .sorted(taskComparator())
+            .limit(8)
+            .toList();
+        return new TodayPlannerView(
+            day,
+            map,
+            top,
+            splitPhase(today, map.nowItemId(), 0),
+            splitPhase(today, map.nextItemId(), 1),
+            splitLater(today, map.laterItemIds()),
+            overdue,
+            unscheduled,
+            timeBlocks(day, day),
+            reminders(day.atStartOfDay(ZoneId.systemDefault()).toInstant(),
+                day.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant(), false)
+        );
+    }
+
+    public TasksRoutinesView tasksRoutines() {
+        return tasksRoutines("ALL", "ALL", "ALL");
+    }
+
+    public TasksRoutinesView tasksRoutines(String status, String range, String recurrence) {
+        String statusFilter = normalizePlannerStatusFilter(status);
+        String rangeFilter = normalizePlannerRangeFilter(range);
+        String recurrenceFilter = normalizePlannerRecurrenceFilter(recurrence);
+        LocalDate today = LocalDate.now();
+        ZoneId zone = ZoneId.systemDefault();
+        List<PlannerTask> tasks = plannerTasks().stream()
+            .filter(task -> matchesPlannerStatus(task, statusFilter))
+            .filter(task -> matchesPlannerRange(task, rangeFilter, today, zone))
+            .filter(task -> matchesPlannerRecurrence(task, recurrenceFilter))
+            .toList();
+        Map<String, List<PlannerSubtodo>> subtodos = tasks.stream()
+            .collect(Collectors.toMap(PlannerTask::id, task -> plannerSubtodos(task.id()), (a, b) -> a, LinkedHashMap::new));
+        List<String> taskIds = tasks.stream().map(PlannerTask::id).toList();
+        return new TasksRoutinesView(
+            tasks,
+            subtodos,
+            plannerOccurrences(null, null).stream()
+                .filter(occurrence -> taskIds.contains(occurrence.taskId()))
+                .toList(),
+            reminders(null, null, false),
+            statusFilter,
+            rangeFilter,
+            recurrenceFilter
+        );
+    }
+
+    public CalendarScheduleView calendarSchedule(LocalDate start, LocalDate end) {
+        LocalDate from = start == null ? LocalDate.now() : start;
+        LocalDate toDate = end == null ? from.plusDays(30) : end;
+        ZoneId zone = ZoneId.systemDefault();
+        Instant fromInstant = from.atStartOfDay(zone).toInstant();
+        Instant toInstant = toDate.plusDays(1).atStartOfDay(zone).toInstant();
+        List<CalendarScheduleView.Entry> entries = new ArrayList<>();
+        calendarItems().stream()
+            .filter(item -> !item.startsAt().isBefore(fromInstant) && item.startsAt().isBefore(toInstant))
+            .forEach(item -> entries.add(new CalendarScheduleView.Entry(
+                "event", item.id(), item.title(), item.startsAt(), item.endsAt(), item.status().name(), item.location()
+            )));
+        timeBlocks(from, toDate).forEach(block -> entries.add(new CalendarScheduleView.Entry(
+            "time_block", block.id(), block.title(), block.startsAt(), block.endsAt(), block.status(), block.sourceType()
+        )));
+        Map<String, PlannerOccurrence> occurrences = plannerOccurrences(fromInstant, toInstant).stream()
+            .collect(Collectors.toMap(
+                occurrence -> occurrence.taskId() + "\n" + occurrence.occurrenceStart(),
+                occurrence -> occurrence,
+                (left, right) -> right,
+                LinkedHashMap::new
+            ));
+        plannerCalendarProjection(fromInstant, toInstant).forEach(projection -> {
+            PlannerTask task = plannerTask(projection.taskId());
+            PlannerOccurrence occurrence = occurrences.get(projection.taskId() + "\n" + projection.occurrenceStart());
+            entries.add(new CalendarScheduleView.Entry(
+                "recurrence",
+                projection.taskId(),
+                task.title(),
+                projection.occurrenceStart(),
+                occurrence == null || occurrence.occurrenceEnd() == null ? projection.occurrenceEnd() : occurrence.occurrenceEnd(),
+                occurrence == null ? projection.status().name() : occurrence.status(),
+                occurrence == null ? "task projection" : occurrenceCalendarMeta(occurrence)
+            ));
+        });
+        reminders(fromInstant, toInstant, false).forEach(reminder -> entries.add(new CalendarScheduleView.Entry(
+            "reminder", reminder.id(), reminder.title(), reminder.remindAt(), reminder.snoozedUntil(), reminder.status(), reminder.sourceType()
+        )));
+        entries.sort(Comparator.comparing(CalendarScheduleView.Entry::startsAt, Comparator.nullsLast(Comparator.naturalOrder())));
+        return new CalendarScheduleView(from, toDate, entries);
+    }
+
     public AvatarFact upsertFact(AvatarFact fact) {
         return repository.upsertFact(fact);
     }
@@ -447,6 +689,137 @@ public class AvatarService {
 
     private PlannerCalendarProjection projection(PlannerTask task, Instant start) {
         return new PlannerCalendarProjection(null, task.id(), start, task.dueAt(), task.status(), null, null);
+    }
+
+    private String requireAction(String action) {
+        if (!StringUtils.hasText(action)) {
+            throw new IllegalArgumentException("occurrence action is required");
+        }
+        String normalized = action.trim().toUpperCase(Locale.ROOT);
+        if (!Set.of("SKIPPED", "SNOOZED", "RESTARTED").contains(normalized)) {
+            throw new IllegalArgumentException("unsupported occurrence action: " + action);
+        }
+        return normalized;
+    }
+
+    private Comparator<PlannerTask> taskComparator() {
+        return Comparator
+            .comparing((PlannerTask task) -> task.dueAt() == null ? task.startsAt() : task.dueAt(),
+                Comparator.nullsLast(Comparator.naturalOrder()))
+            .thenComparing(PlannerTask::title, Comparator.nullsLast(String::compareToIgnoreCase));
+    }
+
+    private boolean occursOn(PlannerTask task, LocalDate day) {
+        ZoneId zone = StringUtils.hasText(task.timezone()) ? ZoneId.of(task.timezone()) : ZoneId.systemDefault();
+        if (task.startsAt() != null && task.startsAt().atZone(zone).toLocalDate().equals(day)) {
+            return true;
+        }
+        if (task.dueAt() != null && task.dueAt().atZone(zone).toLocalDate().equals(day)) {
+            return true;
+        }
+        return plannerCalendarProjection(day.atStartOfDay(zone).toInstant(), day.plusDays(1).atStartOfDay(zone).toInstant()).stream()
+            .anyMatch(projection -> projection.taskId().equals(task.id()));
+    }
+
+    private String normalizePlannerStatusFilter(String status) {
+        if (!StringUtils.hasText(status) || "ALL".equalsIgnoreCase(status)) {
+            return "ALL";
+        }
+        return PlannerTaskStatus.valueOf(status.strip().toUpperCase(Locale.ROOT)).name();
+    }
+
+    private String normalizePlannerRangeFilter(String range) {
+        if (!StringUtils.hasText(range)) {
+            return "ALL";
+        }
+        return switch (range.strip().toUpperCase(Locale.ROOT)) {
+            case "TODAY", "WEEK", "MONTH", "OVERDUE" -> range.strip().toUpperCase(Locale.ROOT);
+            default -> "ALL";
+        };
+    }
+
+    private String normalizePlannerRecurrenceFilter(String recurrence) {
+        if (!StringUtils.hasText(recurrence)) {
+            return "ALL";
+        }
+        return switch (recurrence.strip().toUpperCase(Locale.ROOT)) {
+            case "RECURRING", "ONE_OFF" -> recurrence.strip().toUpperCase(Locale.ROOT);
+            default -> "ALL";
+        };
+    }
+
+    private boolean matchesPlannerStatus(PlannerTask task, String statusFilter) {
+        return "ALL".equals(statusFilter) || task.status().name().equals(statusFilter);
+    }
+
+    private boolean matchesPlannerRange(PlannerTask task, String rangeFilter, LocalDate today, ZoneId zone) {
+        if ("ALL".equals(rangeFilter)) {
+            return true;
+        }
+        Instant reference = task.startsAt() == null ? task.dueAt() : task.startsAt();
+        if (reference == null) {
+            return false;
+        }
+        LocalDate taskDate = reference.atZone(zone).toLocalDate();
+        return switch (rangeFilter) {
+            case "TODAY" -> taskDate.equals(today);
+            case "WEEK" -> !taskDate.isBefore(today) && !taskDate.isAfter(today.plusDays(7));
+            case "MONTH" -> !taskDate.isBefore(today) && !taskDate.isAfter(today.plusDays(30));
+            case "OVERDUE" -> reference.isBefore(today.atStartOfDay(zone).toInstant());
+            default -> true;
+        };
+    }
+
+    private boolean matchesPlannerRecurrence(PlannerTask task, String recurrenceFilter) {
+        if ("ALL".equals(recurrenceFilter)) {
+            return true;
+        }
+        boolean recurring = !noRecurrence(task);
+        return "RECURRING".equals(recurrenceFilter) ? recurring : !recurring;
+    }
+
+    private String occurrenceCalendarMeta(PlannerOccurrence occurrence) {
+        if (occurrence.snoozedUntil() != null) {
+            return "task occurrence / snoozed until " + occurrence.snoozedUntil();
+        }
+        if (occurrence.skippedAt() != null) {
+            return "task occurrence / skipped " + occurrence.skippedAt();
+        }
+        if (occurrence.restartedAt() != null) {
+            return "task occurrence / restarted " + occurrence.restartedAt();
+        }
+        return "task occurrence";
+    }
+
+    private boolean noRecurrence(PlannerTask task) {
+        return task.recurrence() == null || task.recurrence().mode() == null || task.recurrence().mode() == PlannerRecurrenceMode.NONE;
+    }
+
+    private List<PlannerTask> orderedTasks(List<String> ids, Map<String, PlannerTask> byId) {
+        return ids == null ? List.of() : ids.stream()
+            .map(byId::get)
+            .filter(java.util.Objects::nonNull)
+            .toList();
+    }
+
+    private List<PlannerTask> splitPhase(List<PlannerTask> tasks, String preferredId, int fallbackIndex) {
+        if (StringUtils.hasText(preferredId)) {
+            PlannerTask preferred = tasks.stream().filter(task -> preferredId.equals(task.id())).findFirst().orElse(null);
+            if (preferred != null) {
+                return List.of(preferred);
+            }
+        }
+        return tasks.size() > fallbackIndex ? List.of(tasks.get(fallbackIndex)) : List.of();
+    }
+
+    private List<PlannerTask> splitLater(List<PlannerTask> tasks, List<String> preferredIds) {
+        Map<String, PlannerTask> byId = tasks.stream()
+            .collect(Collectors.toMap(PlannerTask::id, task -> task, (a, b) -> a, LinkedHashMap::new));
+        List<PlannerTask> preferred = orderedTasks(preferredIds, byId);
+        if (!preferred.isEmpty()) {
+            return preferred;
+        }
+        return tasks.stream().skip(2).limit(6).toList();
     }
 
     private boolean matches(AvatarNote note, String query) {

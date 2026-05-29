@@ -138,6 +138,142 @@ public class AvatarAssistantTools {
         return json(service.calendarDelete(id));
     }
 
+    @Tool(name = "avatar_today_plan_get", description = "Avatar supervisor only: read the Today Planner summary with priorities, day map, time blocks, reminders, overdue, and unscheduled tasks.")
+    public String avatarTodayPlanGet(
+        @ToolParam(required = false, description = "Optional ISO date such as 2026-05-29. Defaults to today.")
+        String date
+    ) {
+        return json(service.todayPlanGet(date));
+    }
+
+    @Tool(name = "avatar_today_plan_update", description = "Avatar supervisor only: update in-dashboard Today Planner review metadata or restart the day.")
+    public String avatarTodayPlanUpdate(
+        @ToolParam(required = false, description = "Optional ISO date such as 2026-05-29. Defaults to today.")
+        String date,
+        @ToolParam(required = false, description = "Optional daily review notes.")
+        String reviewNotes,
+        @ToolParam(required = false, description = "Whether to mark this date as restarted.")
+        Boolean restart
+    ) {
+        return json(service.todayPlanUpdate(date, reviewNotes, restart));
+    }
+
+    @Tool(name = "avatar_quick_capture", description = "Avatar supervisor only: quickly capture an unscheduled planner task.")
+    public String avatarQuickCapture(
+        @ToolParam(description = "Task title to capture.")
+        String title,
+        @ToolParam(required = false, description = "Optional task notes.")
+        String notes
+    ) {
+        return json(service.quickCapture(title, notes));
+    }
+
+    @Tool(name = "avatar_day_restart", description = "Avatar supervisor only: non-punitively restart a planner day.")
+    public String avatarDayRestart(
+        @ToolParam(required = false, description = "Optional ISO date such as 2026-05-29. Defaults to today.")
+        String date
+    ) {
+        return json(service.dayRestart(date));
+    }
+
+    @Tool(name = "avatar_tasks_routines_get", description = "Avatar supervisor only: list planner tasks, routines, occurrences, reminders, and recurrence state.")
+    public String avatarTasksRoutinesGet(
+        @ToolParam(required = false, description = "Maximum tasks/occurrences/reminders to return, bounded to 1..100.")
+        Integer limit
+    ) {
+        return json(service.tasksRoutinesGet(limit));
+    }
+
+    @Tool(name = "avatar_task_upsert", description = "Avatar supervisor only: create or update one planner task/routine with optional recurrence.")
+    public String avatarTaskUpsert(
+        @ToolParam(required = false, description = "Existing planner task id to update, or omit to create.")
+        String id,
+        @ToolParam(required = false, description = "Task title. Required when creating.")
+        String title,
+        @ToolParam(required = false, description = "Optional notes.")
+        String notes,
+        @ToolParam(required = false, description = "Status: PLANNED, ACTIVE, WAITING, DONE, or CANCELLED.")
+        String status,
+        @ToolParam(required = false, description = "Priority: LOW, NORMAL, HIGH, or URGENT.")
+        String priority,
+        @ToolParam(required = false, description = "Optional scheduled start instant.")
+        String startsAt,
+        @ToolParam(required = false, description = "Optional due instant.")
+        String dueAt,
+        @ToolParam(required = false, description = "Recurrence mode: NONE, DAILY, WEEKLY, MONTHLY, or CRON.")
+        String recurrenceMode,
+        @ToolParam(required = false, description = "Optional linked project id.")
+        String projectId
+    ) {
+        return json(service.taskUpsert(id, title, notes, status, priority, startsAt, dueAt, recurrenceMode, projectId));
+    }
+
+    @Tool(name = "avatar_task_occurrence_update", description = "Avatar supervisor only: skip, snooze, or restart a recurring task occurrence without completing the whole task.")
+    public String avatarTaskOccurrenceUpdate(
+        @ToolParam(description = "Planner task id.")
+        String taskId,
+        @ToolParam(description = "Occurrence start ISO instant.")
+        String occurrenceStart,
+        @ToolParam(description = "Action: SKIPPED, SNOOZED, or RESTARTED.")
+        String action,
+        @ToolParam(required = false, description = "Optional ISO instant used when action is SNOOZED.")
+        String snoozedUntil
+    ) {
+        return json(service.taskOccurrenceUpdate(taskId, occurrenceStart, action, snoozedUntil));
+    }
+
+    @Tool(name = "avatar_calendar_schedule_get", description = "Avatar supervisor only: read merged calendar/schedule entries with events, time blocks, reminders, and recurrence projections.")
+    public String avatarCalendarScheduleGet(
+        @ToolParam(required = false, description = "Optional ISO start date.")
+        String startDate,
+        @ToolParam(required = false, description = "Optional ISO end date.")
+        String endDate
+    ) {
+        return json(service.calendarScheduleGet(startDate, endDate));
+    }
+
+    @Tool(name = "avatar_timeblock_upsert", description = "Avatar supervisor only: create or update one scheduled planner time block.")
+    public String avatarTimeblockUpsert(
+        @ToolParam(required = false, description = "Existing time block id to update, or omit to create.")
+        String id,
+        @ToolParam(description = "ISO date for the block.")
+        String date,
+        @ToolParam(description = "Time block title.")
+        String title,
+        @ToolParam(description = "ISO start instant.")
+        String startsAt,
+        @ToolParam(required = false, description = "Optional ISO end instant.")
+        String endsAt,
+        @ToolParam(required = false, description = "Optional source type such as task.")
+        String sourceType,
+        @ToolParam(required = false, description = "Optional linked source id.")
+        String sourceId
+    ) {
+        return json(service.timeblockUpsert(id, date, title, startsAt, endsAt, sourceType, sourceId));
+    }
+
+    @Tool(name = "avatar_reminder_upsert", description = "Avatar supervisor only: create or update one in-dashboard reminder record.")
+    public String avatarReminderUpsert(
+        @ToolParam(required = false, description = "Existing reminder id to update, or omit to create.")
+        String id,
+        @ToolParam(description = "Reminder title.")
+        String title,
+        @ToolParam(required = false, description = "Optional reminder notes.")
+        String notes,
+        @ToolParam(description = "ISO remind-at instant.")
+        String remindAt,
+        @ToolParam(required = false, description = "Reminder status: OPEN, SNOOZED, DONE, DISMISSED, or CANCELED.")
+        String status,
+        @ToolParam(required = false, description = "Optional source type such as task or calendar.")
+        String sourceType,
+        @ToolParam(required = false, description = "Optional linked source id.")
+        String sourceId,
+        @ToolParam(required = false, description = "Optional ISO snoozed-until instant.")
+        String snoozedUntil
+    ) {
+        return json(service.reminderUpsert(id, title, notes, remindAt, status, sourceType, sourceId, snoozedUntil));
+    }
+
     @Tool(name = "avatar_note_append", description = "Avatar supervisor only: create a note or append text to an existing Avatar note.")
     public String avatarNoteAppend(
         @ToolParam(required = false, description = "Existing note id to append to, or omit to create.")

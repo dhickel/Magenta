@@ -28,7 +28,7 @@ The repository enforces row width totals at or below 12 columns, persists regist
 
 ## Default Dashboard
 
-The default dashboard is `Assistant`. It is seeded from the intended default widget composition and excludes Work Area browser widgets. New dashboards start empty and editable.
+The default dashboard is `Assistant`. It is seeded from the intended default widget composition and excludes Work Area browser widgets. Phase 02 default widgets are Today Planner, Calendar/Schedule, Tasks/Routines, Notes, System, Alerts, and Recent Work. New dashboards start empty and editable.
 
 ## Editor UI Contract
 

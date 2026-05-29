@@ -6,6 +6,8 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.WeekFields;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,6 +31,8 @@ import io.mindspice.magenta2.avatar.AvatarEvent;
 import io.mindspice.magenta2.avatar.AvatarNote;
 import io.mindspice.magenta2.avatar.AvatarProfile;
 import io.mindspice.magenta2.avatar.AvatarTodo;
+import io.mindspice.magenta2.avatar.CalendarScheduleView;
+import io.mindspice.magenta2.avatar.PlannerOccurrence;
 import io.mindspice.magenta2.avatar.UserDashboard;
 import io.mindspice.magenta2.avatar.dashboard.DashboardWidgetDefinition;
 import io.mindspice.magenta2.avatar.dashboard.DashboardWidgetRegistry;
@@ -36,8 +40,12 @@ import io.mindspice.magenta2.avatar.dashboard.WidgetInstancePolicy;
 import io.mindspice.magenta2.avatar.dashboard.WidgetSettingsField;
 import io.mindspice.magenta2.avatar.dashboard.WidgetSettingsValidation;
 import io.mindspice.magenta2.avatar.PlannerCalendarProjection;
+import io.mindspice.magenta2.avatar.PlannerReminder;
 import io.mindspice.magenta2.avatar.PlannerSubtodo;
 import io.mindspice.magenta2.avatar.PlannerTask;
+import io.mindspice.magenta2.avatar.PlannerTimeBlock;
+import io.mindspice.magenta2.avatar.TasksRoutinesView;
+import io.mindspice.magenta2.avatar.TodayPlannerView;
 import io.mindspice.simplypages.components.Div;
 import io.mindspice.simplypages.components.Header;
 import io.mindspice.simplypages.components.Markdown;
@@ -726,6 +734,30 @@ final class AvatarDashboardComponents {
         return status + " / due " + due + " / repeat " + recurrence;
     }
 
+    private static boolean recurring(PlannerTask task) {
+        return task.recurrence() != null
+            && task.recurrence().mode() != null
+            && !"NONE".equals(task.recurrence().mode().name());
+    }
+
+    private static String projectLinkText(PlannerTask task) {
+        if (task.link() == null || task.link().projectId() == null || task.link().projectId().isBlank()) {
+            return "";
+        }
+        return " / project " + task.link().projectId();
+    }
+
+    private static String actionLabel(String action) {
+        return action == null ? "Update" : action.charAt(0) + action.substring(1).toLowerCase(Locale.ROOT);
+    }
+
+    private static String timeLabel(Instant instant) {
+        if (instant == null) {
+            return "unscheduled";
+        }
+        return DateTimeFormatter.ofPattern("MMM d HH:mm", Locale.US).format(instant.atZone(ZoneId.systemDefault()));
+    }
+
     static Component outputPreview(RunOutputArtifact artifact, String content) {
         return new Div()
             .withId("avatar-output-preview")
@@ -968,6 +1000,9 @@ final class AvatarDashboardComponents {
     private static Component widgetBody(AvatarDashboardData data, AvatarDashboardWidget widget) {
         String targetId = rootId(widget.widgetId());
         return switch (widgetType(widget)) {
+            case "today-planner" -> todayPlanner(data.todayPlanner(), targetId);
+            case "tasks-routines" -> tasksRoutines(data.tasksRoutines(), targetId);
+            case "calendar-schedule" -> calendarSchedule(data.calendarSchedule(), targetId);
             case "daily-tasks" -> dailyTasks(data.dailyTasks(), targetId);
             case "todos" -> todos(data.todos(), targetId);
             case "calendar" -> calendar(data.calendarItems(), targetId);
@@ -988,6 +1023,241 @@ final class AvatarDashboardComponents {
             return "/dashboards/" + url(data.dashboard().id()) + "/widgets/" + url(widgetId) + "/_notes";
         }
         return "/_dashboards/_notes";
+    }
+
+    private static Component todayPlanner(TodayPlannerView view, String targetId) {
+        Div body = new Div().withClass("avatar-widget-body avatar-planner-summary");
+        TodayPlannerView safe = view == null
+            ? new TodayPlannerView(LocalDate.now(), null, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of())
+            : view;
+        body.withChild(new Div().withClass("avatar-planner-metrics")
+            .withChild(metric("Top", Integer.toString(safe.topPriorities().size())))
+            .withChild(metric("Overdue", Integer.toString(safe.overdue().size())))
+            .withChild(metric("Blocks", Integer.toString(safe.timeBlocks().size()))));
+        Form capture = Form.create().withClass("avatar-inline-form");
+        capture.withAttribute("hx-post", "/_dashboards/_today/quick-capture");
+        capture.withAttribute("hx-target", "#" + targetId);
+        capture.withAttribute("hx-swap", "outerHTML");
+        capture.withChild(TextInput.create("title").withPlaceholder("Quick capture"));
+        capture.withChild(Button.submit("Capture"));
+        body.withChild(capture);
+        body.withChild(phaseList("Top priorities", safe.topPriorities(), 3));
+        body.withChild(phaseList("Now", safe.now(), 1));
+        body.withChild(phaseList("Next", safe.next(), 1));
+        body.withChild(phaseList("Later", safe.later(), 4));
+        body.withChild(phaseList("Overdue", safe.overdue(), 4));
+        body.withChild(phaseList("Unscheduled", safe.unscheduled(), 4));
+        if (!safe.timeBlocks().isEmpty()) {
+            Div blocks = new Div().withClass("avatar-timeblock-strip");
+            for (PlannerTimeBlock block : safe.timeBlocks().stream().limit(4).toList()) {
+                blocks.withChild(new Div().withClass("avatar-timeblock-chip")
+                    .withChild(new HtmlTag("strong").withInnerText(timeLabel(block.startsAt()) + " " + block.title()))
+                    .withChild(small(block.status())));
+            }
+            body.withChild(blocks);
+        }
+        Form review = Form.create().withClass("avatar-stack-form avatar-review-form");
+        review.withAttribute("hx-post", "/_dashboards/_today/review");
+        review.withAttribute("hx-target", "#" + targetId);
+        review.withAttribute("hx-swap", "outerHTML");
+        review.withChild(TextArea.create("reviewNotes")
+            .withRows(2)
+            .withPlaceholder("Review notes")
+            .withInnerText(safe.dayMap() == null || safe.dayMap().reviewNotes() == null ? "" : safe.dayMap().reviewNotes()));
+        review.withChild(new Div().withClass("avatar-row-actions")
+            .withChild(Button.create("Restart")
+                .withAttribute("type", "button")
+                .withAttribute("hx-post", "/_dashboards/_today/restart")
+                .withAttribute("hx-target", "#" + targetId)
+                .withAttribute("hx-swap", "outerHTML"))
+            .withChild(Button.submit("Review")));
+        body.withChild(review);
+        return body;
+    }
+
+    private static Component tasksRoutines(TasksRoutinesView view, String targetId) {
+        Div body = new Div().withClass("avatar-widget-body avatar-tasks-routines");
+        TasksRoutinesView safe = view == null
+            ? new TasksRoutinesView(List.of(), Map.of(), List.of(), List.of())
+            : view;
+        body.withChild(new Div().withClass("avatar-planner-metrics")
+            .withChild(metric("Tasks", Integer.toString(safe.tasks().size())))
+            .withChild(metric("Recurring", Long.toString(safe.tasks().stream().filter(AvatarDashboardComponents::recurring).count())))
+            .withChild(metric("Reminders", Integer.toString(safe.reminders().size()))));
+        body.withChild(tasksRoutineFilters(safe));
+        Form create = Form.create().withClass("avatar-stack-form");
+        create.withAttribute("hx-post", "/_dashboards/_planner-tasks");
+        create.withAttribute("hx-target", "#avatar-edit-container");
+        create.withAttribute("hx-swap", "innerHTML");
+        create.withChild(TextInput.create("title").withPlaceholder("Task or routine"));
+        create.withChild(new Div().withClass("avatar-form-grid")
+            .withChild(prioritySelect())
+            .withChild(Select.create("recurrenceMode")
+                .addOption("NONE", "No repeat", true)
+                .addOption("DAILY", "Daily", false)
+                .addOption("WEEKLY", "Weekly", false)
+                .addOption("MONTHLY", "Monthly", false)));
+        create.withChild(Button.submit("Add Task"));
+        body.withChild(create);
+        Div list = new Div().withClass("avatar-list avatar-list-constrained");
+        if (safe.tasks().isEmpty()) {
+            list.withChild(empty("No planner tasks yet."));
+        }
+        for (PlannerTask task : safe.tasks().stream().limit(8).toList()) {
+            Div row = new Div().withClass("avatar-list-row avatar-planner-task");
+            row.withChild(new Div()
+                .withChild(new HtmlTag("strong").withInnerText(task.title()))
+                .withChild(small(taskMeta(task) + projectLinkText(task))));
+            List<PlannerSubtodo> taskSubtodos = safe.subtodos().getOrDefault(task.id(), List.of());
+            if (!taskSubtodos.isEmpty()) {
+                Div subtodos = new Div().withClass("avatar-subtodo-list");
+                for (PlannerSubtodo subtodo : taskSubtodos.stream().limit(3).toList()) {
+                    subtodos.withChild(small(subtodo.title() + " / " + subtodo.status()));
+                }
+                row.withChild(subtodos);
+            }
+            safe.occurrences().stream()
+                .filter(occurrence -> task.id().equals(occurrence.taskId()))
+                .findFirst()
+                .ifPresent(occurrence -> row.withChild(occurrenceActions(task, occurrence, targetId)));
+            list.withChild(row);
+        }
+        return body.withChild(list);
+    }
+
+    private static Component tasksRoutineFilters(TasksRoutinesView view) {
+        Form filters = Form.create().withClass("avatar-inline-form avatar-planner-filters");
+        filters.withAttribute("hx-get", "/_dashboards/_widgets/tasks-routines/detail");
+        filters.withAttribute("hx-target", "#avatar-edit-container");
+        filters.withAttribute("hx-swap", "innerHTML");
+        filters.withChild(filterSelect("status", safeFilter(view.statusFilter(), "ALL"), List.of(
+            Map.entry("ALL", "All statuses"),
+            Map.entry("PLANNED", "Planned"),
+            Map.entry("ACTIVE", "Active"),
+            Map.entry("WAITING", "Waiting"),
+            Map.entry("DONE", "Done"),
+            Map.entry("CANCELLED", "Cancelled")
+        )));
+        filters.withChild(filterSelect("range", safeFilter(view.rangeFilter(), "ALL"), List.of(
+            Map.entry("ALL", "All ranges"),
+            Map.entry("TODAY", "Today"),
+            Map.entry("WEEK", "Next 7 days"),
+            Map.entry("MONTH", "Next 30 days"),
+            Map.entry("OVERDUE", "Overdue")
+        )));
+        filters.withChild(filterSelect("recurrence", safeFilter(view.recurrenceFilter(), "ALL"), List.of(
+            Map.entry("ALL", "All repeats"),
+            Map.entry("RECURRING", "Recurring"),
+            Map.entry("ONE_OFF", "One-off")
+        )));
+        filters.withChild(Button.submit("Apply"));
+        return filters;
+    }
+
+    private static Component filterSelect(String name, String selected, List<Map.Entry<String, String>> options) {
+        Select select = Select.create(name);
+        for (Map.Entry<String, String> option : options) {
+            select.addOption(option.getKey(), option.getValue(), option.getKey().equals(selected));
+        }
+        return select;
+    }
+
+    private static String safeFilter(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private static Component calendarSchedule(CalendarScheduleView view, String targetId) {
+        CalendarScheduleView safe = view == null
+            ? new CalendarScheduleView(LocalDate.now(), LocalDate.now().plusDays(30), List.of())
+            : view;
+        Div body = new Div().withClass("avatar-widget-body avatar-calendar-schedule");
+        body.withChild(calendarMonthGrid(safe));
+        body.withChild(new Div().withClass("avatar-agenda")
+            .withChild(new HtmlTag("strong").withInnerText("Agenda")));
+        Div agenda = new Div().withClass("avatar-list avatar-list-constrained");
+        if (safe.entries().isEmpty()) {
+            agenda.withChild(empty("No scheduled items in range."));
+        }
+        for (CalendarScheduleView.Entry entry : safe.entries().stream().limit(8).toList()) {
+            agenda.withChild(new Div().withClass("avatar-list-row")
+                .withChild(new Div()
+                    .withChild(new HtmlTag("strong").withInnerText(entry.title()))
+                    .withChild(small(entry.kind() + " / " + timeLabel(entry.startsAt()) + " / " + entry.status()))));
+        }
+        body.withChild(agenda);
+        Form block = Form.create().withClass("avatar-stack-form");
+        block.withAttribute("hx-post", "/_dashboards/_time-blocks");
+        block.withAttribute("hx-target", "#" + targetId);
+        block.withAttribute("hx-swap", "outerHTML");
+        block.withChild(TextInput.create("title").withPlaceholder("Time block"));
+        block.withChild(TextInput.create("startsAt").withAttribute("type", "datetime-local"));
+        block.withChild(Button.submit("Block"));
+        body.withChild(block);
+        Form reminder = Form.create().withClass("avatar-stack-form");
+        reminder.withAttribute("hx-post", "/_dashboards/_reminders");
+        reminder.withAttribute("hx-target", "#" + targetId);
+        reminder.withAttribute("hx-swap", "outerHTML");
+        reminder.withChild(TextInput.create("title").withPlaceholder("Reminder"));
+        reminder.withChild(TextInput.create("remindAt").withAttribute("type", "datetime-local"));
+        reminder.withChild(Button.submit("Add Reminder"));
+        return body.withChild(reminder);
+    }
+
+    private static Component phaseList(String title, List<PlannerTask> tasks, int limit) {
+        Div section = new Div().withClass("avatar-phase-list");
+        section.withChild(new HtmlTag("strong").withInnerText(title));
+        if (tasks == null || tasks.isEmpty()) {
+            return section.withChild(small("none"));
+        }
+        for (PlannerTask task : tasks.stream().limit(limit).toList()) {
+            section.withChild(new Div().withClass("avatar-phase-row")
+                .withChild(new HtmlTag("span").withInnerText(task.title()))
+                .withChild(small(taskMeta(task))));
+        }
+        return section;
+    }
+
+    private static Component occurrenceActions(PlannerTask task, PlannerOccurrence occurrence, String targetId) {
+        Div actions = new Div().withClass("avatar-row-actions avatar-occurrence-actions");
+        for (String action : List.of("SKIPPED", "SNOOZED", "RESTARTED")) {
+            Form form = Form.create().withClass("avatar-inline-action-form");
+            form.withAttribute("hx-post", "/_dashboards/_planner-tasks/" + task.id() + "/occurrences");
+            form.withAttribute("hx-target", "#" + targetId);
+            form.withAttribute("hx-swap", "outerHTML");
+            form.withChild(hiddenInput("occurrenceStart", string(occurrence.occurrenceStart())));
+            form.withChild(hiddenInput("action", action));
+            form.withChild(Button.submit(actionLabel(action)));
+            actions.withChild(form);
+        }
+        return actions;
+    }
+
+    private static Component calendarMonthGrid(CalendarScheduleView view) {
+        LocalDate first = view.startDate().withDayOfMonth(1);
+        LocalDate cursor = first.minusDays(first.getDayOfWeek().getValue() % 7);
+        Div grid = new Div().withClass("avatar-calendar-grid")
+            .withAttribute("data-calendar-structure", "month");
+        for (String day : List.of("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")) {
+            grid.withChild(new Div().withClass("avatar-calendar-heading").withInnerText(day));
+        }
+        for (int i = 0; i < 42; i++) {
+            LocalDate cellDate = cursor.plusDays(i);
+            Div cell = new Div().withClass(cellDate.getMonth() == first.getMonth()
+                ? "avatar-calendar-cell"
+                : "avatar-calendar-cell avatar-calendar-cell-muted");
+            cell.withChild(new HtmlTag("span").withClass("avatar-calendar-day").withInnerText(Integer.toString(cellDate.getDayOfMonth())));
+            List<CalendarScheduleView.Entry> cellEntries = view.entries().stream()
+                .filter(entry -> entry.startsAt() != null
+                    && entry.startsAt().atZone(ZoneId.systemDefault()).toLocalDate().equals(cellDate))
+                .limit(3)
+                .toList();
+            for (CalendarScheduleView.Entry entry : cellEntries) {
+                cell.withChild(new Div().withClass("avatar-calendar-pill avatar-calendar-pill-" + entry.kind())
+                    .withInnerText(entry.title()));
+            }
+            grid.withChild(cell);
+        }
+        return grid;
     }
 
     private static Component dailyTasks(List<AvatarDailyTask> tasks, String targetId) {
@@ -1937,6 +2207,10 @@ final class AvatarDashboardComponents {
         return DATE.format(instant.atZone(ZoneId.systemDefault()));
     }
 
+    private static String string(Instant instant) {
+        return instant == null ? "" : instant.toString();
+    }
+
     private static String fileName(String path) {
         if (path == null || path.isBlank()) {
             return "file";
@@ -2110,6 +2384,9 @@ final class AvatarDashboardComponents {
         List<AvatarDailyTask> dailyTasks,
         List<AvatarTodo> todos,
         List<AvatarCalendarItem> calendarItems,
+        TodayPlannerView todayPlanner,
+        TasksRoutinesView tasksRoutines,
+        CalendarScheduleView calendarSchedule,
         List<AvatarNote> notes,
         List<AvatarEvent> events,
         List<RunOutputArtifact> outputs,

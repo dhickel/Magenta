@@ -3,6 +3,7 @@ package io.mindspice.magenta2.ai.chat.tool.avatar;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.io.IOException;
+import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -12,8 +13,10 @@ import io.mindspice.magenta2.ai.chat.task.TaskService;
 import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.AssignmentRecord;
 import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.AssignmentResponse;
 import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.CalendarListResponse;
+import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.CalendarEntryRecord;
 import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.CalendarRecord;
 import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.CalendarResponse;
+import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.CalendarScheduleResponse;
 import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.DailyTaskListResponse;
 import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.DailyTaskRecord;
 import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.DailyTaskResponse;
@@ -21,9 +24,19 @@ import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.De
 import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.NoteListResponse;
 import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.NoteRecord;
 import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.NoteResponse;
+import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.OccurrenceRecord;
+import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.OccurrenceResponse;
 import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.OutputContentResponse;
 import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.OutputListResponse;
 import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.OutputRecord;
+import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.ReminderRecord;
+import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.ReminderResponse;
+import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.TaskRecord;
+import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.TaskResponse;
+import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.TasksRoutinesResponse;
+import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.TimeBlockRecord;
+import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.TimeBlockResponse;
+import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.TodayPlanResponse;
 import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.TodoListResponse;
 import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.TodoRecord;
 import io.mindspice.magenta2.ai.chat.tool.avatar.AvatarAssistantToolResponses.TodoResponse;
@@ -43,6 +56,16 @@ import io.mindspice.magenta2.avatar.AvatarService;
 import io.mindspice.magenta2.avatar.AvatarTaskStatus;
 import io.mindspice.magenta2.avatar.AvatarTodo;
 import io.mindspice.magenta2.avatar.AvatarTodoStatus;
+import io.mindspice.magenta2.avatar.CalendarScheduleView;
+import io.mindspice.magenta2.avatar.PlannerOccurrence;
+import io.mindspice.magenta2.avatar.PlannerRecurrence;
+import io.mindspice.magenta2.avatar.PlannerRecurrenceMode;
+import io.mindspice.magenta2.avatar.PlannerReminder;
+import io.mindspice.magenta2.avatar.PlannerTask;
+import io.mindspice.magenta2.avatar.PlannerTaskLink;
+import io.mindspice.magenta2.avatar.PlannerTaskStatus;
+import io.mindspice.magenta2.avatar.PlannerTimeBlock;
+import io.mindspice.magenta2.avatar.TodayPlannerView;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -212,6 +235,173 @@ public class AvatarAssistantToolService {
         return new DeletedResponse(id, true);
     }
 
+    public TodayPlanResponse todayPlanGet(String date) {
+        authorization.requireAvatarSupervisor("avatar_today_plan_get");
+        TodayPlannerView view = avatarService.todayPlanner(firstValue(localDate(date), LocalDate.now()));
+        return new TodayPlanResponse(
+            view.date().toString(),
+            view.topPriorities().stream().map(this::taskRecord).toList(),
+            view.now().stream().map(this::taskRecord).toList(),
+            view.next().stream().map(this::taskRecord).toList(),
+            view.later().stream().map(this::taskRecord).toList(),
+            view.overdue().stream().map(this::taskRecord).toList(),
+            view.unscheduled().stream().map(this::taskRecord).toList(),
+            view.timeBlocks().stream().map(this::timeBlockRecord).toList(),
+            view.reminders().stream().map(this::reminderRecord).toList()
+        );
+    }
+
+    public TodayPlanResponse todayPlanUpdate(String date, String reviewNotes, Boolean restart) {
+        authorization.requireAvatarSupervisor("avatar_today_plan_update");
+        LocalDate day = firstValue(localDate(date), LocalDate.now());
+        if (Boolean.TRUE.equals(restart)) {
+            avatarService.restartDay(day);
+        }
+        if (StringUtils.hasText(reviewNotes)) {
+            avatarService.reviewDay(day, reviewNotes);
+        }
+        return todayPlanGet(day.toString());
+    }
+
+    public TaskResponse quickCapture(String title, String notes) {
+        authorization.requireAvatarSupervisor("avatar_quick_capture");
+        return new TaskResponse(taskRecord(avatarService.quickCapture(title, notes)));
+    }
+
+    public TodayPlanResponse dayRestart(String date) {
+        authorization.requireAvatarSupervisor("avatar_day_restart");
+        LocalDate day = firstValue(localDate(date), LocalDate.now());
+        avatarService.restartDay(day);
+        return todayPlanGet(day.toString());
+    }
+
+    public TasksRoutinesResponse tasksRoutinesGet(Integer limit) {
+        authorization.requireAvatarSupervisor("avatar_tasks_routines_get");
+        int bounded = boundLimit(limit);
+        return new TasksRoutinesResponse(
+            avatarService.tasksRoutines().tasks().stream().limit(bounded).map(this::taskRecord).toList(),
+            avatarService.tasksRoutines().occurrences().stream().limit(bounded).map(this::occurrenceRecord).toList(),
+            avatarService.tasksRoutines().reminders().stream().limit(bounded).map(this::reminderRecord).toList()
+        );
+    }
+
+    public TaskResponse taskUpsert(
+        String id,
+        String title,
+        String notes,
+        String status,
+        String priority,
+        String startsAt,
+        String dueAt,
+        String recurrenceMode,
+        String projectId
+    ) {
+        authorization.requireAvatarSupervisor("avatar_task_upsert");
+        PlannerTask current = StringUtils.hasText(id) ? avatarService.plannerTask(id) : null;
+        PlannerRecurrence recurrence = new PlannerRecurrence(
+            enumValue(PlannerRecurrenceMode.class, recurrenceMode, current == null || current.recurrence() == null
+                ? PlannerRecurrenceMode.NONE
+                : current.recurrence().mode()),
+            current == null || current.recurrence() == null ? 1 : current.recurrence().interval(),
+            current == null || current.recurrence() == null ? null : current.recurrence().startDate(),
+            current == null || current.recurrence() == null ? null : current.recurrence().endDate(),
+            current == null || current.recurrence() == null ? null : current.recurrence().time(),
+            current == null || current.recurrence() == null ? null : current.recurrence().weekday(),
+            current == null || current.recurrence() == null ? null : current.recurrence().monthDay(),
+            current == null || current.recurrence() == null ? null : current.recurrence().cron()
+        );
+        PlannerTask saved = avatarService.savePlannerTask(new PlannerTask(
+            current == null ? trimToNull(id) : current.id(),
+            requireText(firstText(title, current == null ? null : current.title()), "title"),
+            firstValue(notes, current == null ? null : current.notes()),
+            enumValue(PlannerTaskStatus.class, status, current == null ? PlannerTaskStatus.PLANNED : current.status()),
+            enumValue(AvatarPriority.class, priority, current == null ? AvatarPriority.NORMAL : current.priority()),
+            firstValue(instant(startsAt), current == null ? null : current.startsAt()),
+            firstValue(instant(dueAt), current == null ? null : current.dueAt()),
+            current == null ? ZoneId.systemDefault().getId() : current.timezone(),
+            recurrence,
+            new PlannerTaskLink(firstValue(projectId, current == null || current.link() == null ? null : current.link().projectId()),
+                current == null || current.link() == null ? null : current.link().assignmentId(),
+                current == null || current.link() == null ? null : current.link().jobId(),
+                current == null || current.link() == null ? null : current.link().outputId()),
+            current == null ? null : current.createdAt(),
+            current == null ? null : current.updatedAt(),
+            current == null ? null : current.completedAt()
+        ));
+        return new TaskResponse(taskRecord(saved));
+    }
+
+    public OccurrenceResponse taskOccurrenceUpdate(String taskId, String occurrenceStart, String action, String snoozedUntil) {
+        authorization.requireAvatarSupervisor("avatar_task_occurrence_update");
+        return new OccurrenceResponse(occurrenceRecord(avatarService.updateOccurrence(
+            taskId,
+            requireInstant(occurrenceStart, "occurrenceStart"),
+            action,
+            instant(snoozedUntil)
+        )));
+    }
+
+    public CalendarScheduleResponse calendarScheduleGet(String startDate, String endDate) {
+        authorization.requireAvatarSupervisor("avatar_calendar_schedule_get");
+        CalendarScheduleView view = avatarService.calendarSchedule(localDate(startDate), localDate(endDate));
+        return new CalendarScheduleResponse(
+            view.startDate().toString(),
+            view.endDate().toString(),
+            view.entries().stream().map(this::calendarEntryRecord).toList()
+        );
+    }
+
+    public TimeBlockResponse timeblockUpsert(
+        String id,
+        String date,
+        String title,
+        String startsAt,
+        String endsAt,
+        String sourceType,
+        String sourceId
+    ) {
+        authorization.requireAvatarSupervisor("avatar_timeblock_upsert");
+        PlannerTimeBlock saved = avatarService.saveTimeBlock(new PlannerTimeBlock(
+            trimToNull(id),
+            requireDate(date),
+            requireText(title, "title"),
+            requireInstant(startsAt, "startsAt"),
+            instant(endsAt),
+            trimToNull(sourceType),
+            trimToNull(sourceId),
+            "PLANNED",
+            null,
+            null
+        ));
+        return new TimeBlockResponse(timeBlockRecord(saved));
+    }
+
+    public ReminderResponse reminderUpsert(
+        String id,
+        String title,
+        String notes,
+        String remindAt,
+        String status,
+        String sourceType,
+        String sourceId,
+        String snoozedUntil
+    ) {
+        authorization.requireAvatarSupervisor("avatar_reminder_upsert");
+        PlannerReminder saved = avatarService.saveReminder(new PlannerReminder(
+            trimToNull(id),
+            requireText(title, "title"),
+            notes,
+            requireInstant(remindAt, "remindAt"),
+            StringUtils.hasText(status) ? status.trim().toUpperCase(Locale.ROOT) : "OPEN",
+            trimToNull(sourceType),
+            trimToNull(sourceId),
+            instant(snoozedUntil),
+            null,
+            null
+        ));
+        return new ReminderResponse(reminderRecord(saved));
+    }
+
     public NoteResponse noteAppend(String id, String title, String body, List<String> tags) {
         authorization.requireAvatarSupervisor("avatar_note_append");
         return new NoteResponse(noteRecord(avatarService.appendNote(id, title, body, cleanTags(tags))));
@@ -350,6 +540,73 @@ public class AvatarAssistantToolService {
             item.location(),
             item.status().name(),
             string(item.updatedAt())
+        );
+    }
+
+    private TaskRecord taskRecord(PlannerTask task) {
+        return new TaskRecord(
+            task.id(),
+            task.title(),
+            task.notes(),
+            task.status() == null ? null : task.status().name(),
+            task.priority() == null ? null : task.priority().name(),
+            string(task.startsAt()),
+            string(task.dueAt()),
+            task.recurrence() == null || task.recurrence().mode() == null ? "NONE" : task.recurrence().mode().name(),
+            task.link() == null ? null : task.link().projectId(),
+            string(task.updatedAt()),
+            string(task.completedAt())
+        );
+    }
+
+    private OccurrenceRecord occurrenceRecord(PlannerOccurrence occurrence) {
+        return new OccurrenceRecord(
+            occurrence.id(),
+            occurrence.taskId(),
+            string(occurrence.occurrenceStart()),
+            string(occurrence.occurrenceEnd()),
+            occurrence.status(),
+            string(occurrence.skippedAt()),
+            string(occurrence.snoozedUntil()),
+            string(occurrence.restartedAt())
+        );
+    }
+
+    private ReminderRecord reminderRecord(PlannerReminder reminder) {
+        return new ReminderRecord(
+            reminder.id(),
+            reminder.title(),
+            reminder.notes(),
+            string(reminder.remindAt()),
+            reminder.status(),
+            reminder.sourceType(),
+            reminder.sourceId(),
+            string(reminder.snoozedUntil())
+        );
+    }
+
+    private TimeBlockRecord timeBlockRecord(PlannerTimeBlock block) {
+        return new TimeBlockRecord(
+            block.id(),
+            block.blockDate().toString(),
+            block.title(),
+            string(block.startsAt()),
+            string(block.endsAt()),
+            block.sourceType(),
+            block.sourceId(),
+            block.status()
+        );
+    }
+
+    private CalendarEntryRecord calendarEntryRecord(CalendarScheduleView.Entry entry) {
+        return new CalendarEntryRecord(
+            entry.kind(),
+            entry.sourceId(),
+            entry.title(),
+            string(entry.startsAt()),
+            string(entry.endsAt()),
+            entry.status(),
+            entry.meta()
         );
     }
 

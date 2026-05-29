@@ -228,6 +228,73 @@ create table if not exists avatar_planner_calendar_projection (
 create index if not exists idx_avatar_planner_projection_start
     on avatar_planner_calendar_projection (occurrence_start, task_id);
 
+create table if not exists avatar_planner_day_maps (
+    id text primary key,
+    map_date text not null unique,
+    top_priority_ids_json text not null default '[]',
+    now_item_id text,
+    next_item_id text,
+    later_item_ids_json text not null default '[]',
+    review_notes text,
+    restarted_at text,
+    reviewed_at text,
+    created_at text not null,
+    updated_at text not null
+);
+
+create index if not exists idx_avatar_planner_day_maps_date
+    on avatar_planner_day_maps (map_date);
+
+create table if not exists avatar_planner_time_blocks (
+    id text primary key,
+    block_date text not null,
+    title text not null,
+    starts_at text not null,
+    ends_at text,
+    source_type text,
+    source_id text,
+    status text not null default 'PLANNED',
+    created_at text not null,
+    updated_at text not null
+);
+
+create index if not exists idx_avatar_planner_time_blocks_date_start
+    on avatar_planner_time_blocks (block_date, starts_at);
+
+create table if not exists avatar_planner_reminders (
+    id text primary key,
+    title text not null,
+    notes text,
+    remind_at text not null,
+    status text not null default 'OPEN',
+    source_type text,
+    source_id text,
+    snoozed_until text,
+    created_at text not null,
+    updated_at text not null
+);
+
+create index if not exists idx_avatar_planner_reminders_status_time
+    on avatar_planner_reminders (status, remind_at);
+
+create table if not exists avatar_planner_occurrences (
+    id text primary key,
+    task_id text not null,
+    occurrence_start text not null,
+    occurrence_end text,
+    status text not null default 'PROJECTED',
+    skipped_at text,
+    snoozed_until text,
+    restarted_at text,
+    created_at text not null,
+    updated_at text not null,
+    unique(task_id, occurrence_start),
+    foreign key(task_id) references avatar_planner_tasks(id) on delete cascade
+);
+
+create index if not exists idx_avatar_planner_occurrences_task_start
+    on avatar_planner_occurrences (task_id, occurrence_start);
+
 create table if not exists avatar_facts (
     namespace text not null,
     fact_key text not null,

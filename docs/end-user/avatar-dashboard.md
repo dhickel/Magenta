@@ -19,7 +19,17 @@ Use the compact edit control on a dashboard to enter layout edit mode. Rows use 
 - Remove widgets and empty rows.
 - Open a widget's detail or settings controls from the compact widget corner buttons.
 
-New dashboards are created empty. The default `Assistant` dashboard starts with chat plus daily tasks, todos, calendar, notes, outputs, system, alerts, and recent work.
+New dashboards are created empty. The default `Assistant` dashboard starts with chat plus Today Planner, Calendar/Schedule, Tasks/Routines, notes, system, alerts, and recent work.
+
+## Planning Widgets
+
+The Today Planner widget shows top priorities, now/next/later buckets, overdue and unscheduled work, time blocks, quick capture, restart day, and daily review notes.
+
+The Tasks/Routines widget shows planner tasks, status/range/recurrence filters in the detail view, recurrence metadata, subtasks, project links, reminder counts, and non-punitive skip, snooze, and restart actions for projected recurring occurrences.
+
+The Calendar/Schedule widget renders a real month grid plus agenda entries. Calendar events, task due dates, scheduled time blocks, reminder records, and recurrence projections are separate concepts in the UI and service model. The detail view includes in-dashboard forms for creating time blocks and reminder records.
+
+Reminders in this suite are dashboard records only. They can be viewed, linked, snoozed, rescheduled, completed, or dismissed inside Magenta, but they do not send email, push, PWA, or other external notifications.
 
 Some widget types can appear more than once on the same dashboard. Single-instance widgets remain disabled in the picker after they are already present.
 

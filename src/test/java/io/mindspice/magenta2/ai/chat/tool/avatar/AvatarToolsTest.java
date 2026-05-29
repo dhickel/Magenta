@@ -56,6 +56,16 @@ class AvatarToolsTest {
         "avatar_calendar_list",
         "avatar_calendar_upsert",
         "avatar_calendar_delete",
+        "avatar_today_plan_get",
+        "avatar_today_plan_update",
+        "avatar_quick_capture",
+        "avatar_day_restart",
+        "avatar_tasks_routines_get",
+        "avatar_task_upsert",
+        "avatar_task_occurrence_update",
+        "avatar_calendar_schedule_get",
+        "avatar_timeblock_upsert",
+        "avatar_reminder_upsert",
         "avatar_note_append",
         "avatar_note_search",
         "avatar_submit_task",
@@ -181,6 +191,70 @@ class AvatarToolsTest {
         assertThat(notes.size()).isEqualTo(1);
         assertThat(notes.get(0).path("id").asText()).isEqualTo(noteId);
         assertThat(notes.get(0).path("snippet").asText()).contains("Water seedlings");
+    }
+
+    @Test
+    void plannerWidgetToolsExposeTodayTasksScheduleReminderAndOccurrenceState() throws Exception {
+        JsonNode captured = json(tools.avatarQuickCapture("Plan water schedule", "Use morning block")).path("task");
+        String taskId = captured.path("id").asText();
+        assertThat(captured.path("title").asText()).isEqualTo("Plan water schedule");
+
+        JsonNode recurring = json(tools.avatarTaskUpsert(
+            null,
+            "Water plants",
+            "Every morning",
+            "ACTIVE",
+            "HIGH",
+            "2026-05-29T13:00:00Z",
+            "2026-05-29T14:00:00Z",
+            "DAILY",
+            "project-1"
+        )).path("task");
+        assertThat(recurring.path("recurrenceMode").asText()).isEqualTo("DAILY");
+
+        JsonNode occurrence = json(tools.avatarTaskOccurrenceUpdate(
+            recurring.path("id").asText(),
+            "2026-05-29T13:00:00Z",
+            "SNOOZED",
+            "2026-05-29T16:00:00Z"
+        )).path("occurrence");
+        assertThat(occurrence.path("status").asText()).isEqualTo("SNOOZED");
+
+        JsonNode timeBlock = json(tools.avatarTimeblockUpsert(
+            null,
+            "2026-05-29",
+            "Focus block",
+            "2026-05-29T15:00:00Z",
+            "2026-05-29T16:00:00Z",
+            "task",
+            taskId
+        )).path("timeBlock");
+        assertThat(timeBlock.path("sourceType").asText()).isEqualTo("task");
+
+        JsonNode reminder = json(tools.avatarReminderUpsert(
+            null,
+            "Check block",
+            "Dashboard only",
+            "2026-05-29T14:30:00Z",
+            "OPEN",
+            "task",
+            taskId,
+            null
+        )).path("reminder");
+        assertThat(reminder.path("status").asText()).isEqualTo("OPEN");
+
+        JsonNode today = json(tools.avatarTodayPlanGet("2026-05-29"));
+        assertThat(today.path("unscheduled").size()).isGreaterThanOrEqualTo(1);
+        assertThat(today.path("timeBlocks").size()).isEqualTo(1);
+        assertThat(json(tools.avatarDayRestart("2026-05-29")).path("date").asText()).isEqualTo("2026-05-29");
+
+        JsonNode tasks = json(tools.avatarTasksRoutinesGet(10));
+        assertThat(tasks.path("tasks").size()).isGreaterThanOrEqualTo(2);
+        assertThat(tasks.path("occurrences").size()).isGreaterThanOrEqualTo(1);
+
+        JsonNode schedule = json(tools.avatarCalendarScheduleGet("2026-05-29", "2026-05-30"));
+        assertThat(schedule.path("entries").findValuesAsText("kind"))
+            .contains("time_block", "reminder", "recurrence");
     }
 
     @Test

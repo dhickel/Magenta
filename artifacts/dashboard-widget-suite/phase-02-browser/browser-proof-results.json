@@ -1,0 +1,270 @@
+{
+  "verdict": "NEEDS_REPAIR",
+  "baseUrl": "http://localhost:18080",
+  "runtime": {
+    "command": "mvn spring-boot:run -Dspring-boot.run.arguments='--server.port=18080 --magenta.root.path=/tmp/magenta2-dashboard-widget-suite-phase-02-browser --spring.datasource.url=jdbc:sqlite:/tmp/magenta2-dashboard-widget-suite-phase-02-browser/magenta.sqlite?foreign_keys=true --magenta.orchestration.runner-delay-ms=60000 --magenta.orchestration.scheduler-delay-ms=60000 --magenta.orchestration.assignment-history-purge-delay-ms=60000'",
+    "port": 18080,
+    "isolatedRoot": "/tmp/magenta2-dashboard-widget-suite-phase-02-browser"
+  },
+  "screenshots": [
+    "artifacts/dashboard-widget-suite/phase-02-browser/desktop-home-seeded.png",
+    "artifacts/dashboard-widget-suite/phase-02-browser/desktop-today-detail.png",
+    "artifacts/dashboard-widget-suite/phase-02-browser/desktop-after-quick-capture.png",
+    "artifacts/dashboard-widget-suite/phase-02-browser/desktop-today-review-notes-persisted.png",
+    "artifacts/dashboard-widget-suite/phase-02-browser/desktop-tasks-detail.png",
+    "artifacts/dashboard-widget-suite/phase-02-browser/desktop-tasks-filtered-recurring-week.png",
+    "artifacts/dashboard-widget-suite/phase-02-browser/desktop-tasks-after-occurrence-action.png",
+    "artifacts/dashboard-widget-suite/phase-02-browser/desktop-calendar-detail-before-actions.png",
+    "artifacts/dashboard-widget-suite/phase-02-browser/desktop-after-timeblock-submit.png",
+    "artifacts/dashboard-widget-suite/phase-02-browser/desktop-calendar-after-reminder-route.png",
+    "artifacts/dashboard-widget-suite/phase-02-browser/reference-manage-desktop.png",
+    "artifacts/dashboard-widget-suite/phase-02-browser/reference-agents-desktop.png",
+    "artifacts/dashboard-widget-suite/phase-02-browser/mobile-today-detail.png",
+    "artifacts/dashboard-widget-suite/phase-02-browser/mobile-tasks-detail.png",
+    "artifacts/dashboard-widget-suite/phase-02-browser/mobile-calendar-detail.png"
+  ],
+  "checks": [
+    {
+      "id": "desktop_normal_dashboard_widgets_and_single_shell",
+      "status": "passed",
+      "evidence": "widgets=today-planner,calendar-schedule,tasks-routines,notes,system,alerts,recent-work; navs=1; dashboardHomes=1; duplicates=none",
+      "health": {
+        "title": "Assistant Dashboard",
+        "topNavs": 1,
+        "dashboardHomes": 1,
+        "shellRoots": 1,
+        "editContainers": 1,
+        "widgetTypes": [
+          "today-planner",
+          "calendar-schedule",
+          "tasks-routines",
+          "notes",
+          "system",
+          "alerts",
+          "recent-work"
+        ],
+        "duplicateIds": [],
+        "horizontalOverflow": false,
+        "viewport": {
+          "width": 1440,
+          "height": 900,
+          "scrollWidth": 1440
+        }
+      }
+    },
+    {
+      "id": "today_detail_core_controls",
+      "status": "passed",
+      "evidence": "sections=Top priorities,Now,Next,Later; quick=true; review=true; restart=true"
+    },
+    {
+      "id": "today_detail_overdue_and_unscheduled_are_usable",
+      "status": "failed",
+      "evidence": "detail sections=Top priorities,Now,Next,Later; modal text contains Overdue=true, Unscheduled=false"
+    },
+    {
+      "id": "quick_capture_refresh_boundaries",
+      "status": "failed",
+      "evidence": "quick visible=false; editContainers=1; duplicates=none"
+    },
+    {
+      "id": "today_review_notes_visible_after_submit",
+      "status": "passed",
+      "evidence": "review textarea value=Reviewed in browser proof 1780052286555"
+    },
+    {
+      "id": "tasks_detail_filters_and_recurrence_controls",
+      "status": "passed",
+      "evidence": "status=true; range=true; recurrence=true; has daily=true"
+    },
+    {
+      "id": "tasks_detail_project_and_subtodo_placeholders",
+      "status": "failed",
+      "evidence": "project link visible=true; subtodo visible=false"
+    },
+    {
+      "id": "tasks_detail_occurrence_actions_visible",
+      "status": "passed",
+      "evidence": "occurrence action text present=true"
+    },
+    {
+      "id": "tasks_filters_apply_server_fragment",
+      "status": "passed",
+      "evidence": "filtered text includes recurring=true; excludes unscheduled=true"
+    },
+    {
+      "id": "tasks_occurrence_status_visible_and_parent_unchanged",
+      "status": "passed",
+      "evidence": "parent task meta contains planned=true; visible skipped occurrence status=true"
+    },
+    {
+      "id": "calendar_grid_and_agenda_structure",
+      "status": "passed",
+      "evidence": "grid cells=42; agenda=true"
+    },
+    {
+      "id": "calendar_distinct_item_kinds",
+      "status": "passed",
+      "evidence": "agendaKinds={\"event\":true,\"recurrence\":true,\"timeBlock\":true,\"reminder\":true}; pill classes=avatar-calendar-pill avatar-calendar-pill-recurrence | avatar-calendar-pill avatar-calendar-pill-recurrence | avatar-calendar-pill avatar-calendar-pill-time_block | avatar-calendar-pill avatar-calendar-pill-recurrence | avatar-calendar-pill avatar-calendar-pill-event | avatar-calendar-pill avatar-calendar-pill-recurrence | avatar-calendar-pill avatar-calendar-pill-recurrence | avatar-calendar-pill avatar-calendar-pill-recurrence | avatar-calendar-pill avatar-calendar-pill-recurrence | avatar-calendar-pill avatar-calendar-pill-recurrence | avatar-calendar-pill avatar-calendar-pill-recurrence | avatar-calendar-pill avatar-calendar-pill-recurrence"
+    },
+    {
+      "id": "calendar_timeblock_and_reminder_htmx_affordances",
+      "status": "failed",
+      "evidence": "time block form=true; reminder form=false"
+    },
+    {
+      "id": "timeblock_htmx_refresh_boundaries",
+      "status": "passed",
+      "evidence": "time block visible=true; duplicates=none"
+    },
+    {
+      "id": "reminder_htmx_route_returns_calendar_fragment",
+      "status": "passed",
+      "evidence": "route status=200; fragment has calendar-schedule=true"
+    },
+    {
+      "id": "calendar_reflects_occurrence_status_and_reminder",
+      "status": "passed",
+      "evidence": "calendar skipped visible=true; reminder visible=true"
+    },
+    {
+      "id": "reference_manage_loads_without_overflow_or_duplicate_ids",
+      "status": "passed",
+      "evidence": "overflow=false; duplicates=none",
+      "health": {
+        "title": "Magenta Manage",
+        "topNavs": 1,
+        "dashboardHomes": 0,
+        "shellRoots": 0,
+        "editContainers": 0,
+        "widgetTypes": [],
+        "duplicateIds": [],
+        "horizontalOverflow": false,
+        "viewport": {
+          "width": 1440,
+          "height": 900,
+          "scrollWidth": 1440
+        }
+      }
+    },
+    {
+      "id": "reference_agents_loads_without_overflow_or_duplicate_ids",
+      "status": "passed",
+      "evidence": "overflow=false; duplicates=none",
+      "health": {
+        "title": "Magenta Agents",
+        "topNavs": 1,
+        "dashboardHomes": 0,
+        "shellRoots": 0,
+        "editContainers": 0,
+        "widgetTypes": [],
+        "duplicateIds": [],
+        "horizontalOverflow": false,
+        "viewport": {
+          "width": 1440,
+          "height": 900,
+          "scrollWidth": 1440
+        }
+      }
+    },
+    {
+      "id": "mobile_today_modal_no_horizontal_overflow",
+      "status": "passed",
+      "evidence": "viewport={\"width\":390,\"height\":844,\"scrollWidth\":390}",
+      "health": {
+        "title": "Assistant Dashboard",
+        "topNavs": 1,
+        "dashboardHomes": 1,
+        "shellRoots": 1,
+        "editContainers": 1,
+        "widgetTypes": [
+          "today-planner",
+          "calendar-schedule",
+          "tasks-routines",
+          "notes",
+          "system",
+          "alerts",
+          "recent-work"
+        ],
+        "duplicateIds": [],
+        "horizontalOverflow": false,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "scrollWidth": 390
+        }
+      }
+    },
+    {
+      "id": "mobile_tasks_modal_controls_stay_in_view",
+      "status": "passed",
+      "evidence": "overflow=false; offscreen controls=[]",
+      "health": {
+        "title": "Assistant Dashboard",
+        "topNavs": 1,
+        "dashboardHomes": 1,
+        "shellRoots": 1,
+        "editContainers": 1,
+        "widgetTypes": [
+          "today-planner",
+          "calendar-schedule",
+          "tasks-routines",
+          "notes",
+          "system",
+          "alerts",
+          "recent-work"
+        ],
+        "duplicateIds": [],
+        "horizontalOverflow": false,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "scrollWidth": 390
+        }
+      }
+    },
+    {
+      "id": "mobile_calendar_modal_no_horizontal_overflow",
+      "status": "passed",
+      "evidence": "viewport={\"width\":390,\"height\":844,\"scrollWidth\":390}",
+      "health": {
+        "title": "Assistant Dashboard",
+        "topNavs": 1,
+        "dashboardHomes": 1,
+        "shellRoots": 1,
+        "editContainers": 1,
+        "widgetTypes": [
+          "today-planner",
+          "calendar-schedule",
+          "tasks-routines",
+          "notes",
+          "system",
+          "alerts",
+          "recent-work"
+        ],
+        "duplicateIds": [],
+        "horizontalOverflow": false,
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "scrollWidth": 390
+        }
+      }
+    }
+  ],
+  "console": [],
+  "pageErrors": [],
+  "network": [],
+  "seed": {
+    "recurringTaskId": "32da9ac3-b601-4453-8ba1-57049b549e86",
+    "occurrenceStart": "2026-05-29T13:00:00.000Z"
+  },
+  "visualCritique": [
+    "Desktop / keeps a dense operational shell with chat rail plus widget grid and compact blue-gray cards.",
+    "The planner widgets match the low-radius panel language and avoid hero/marketing composition.",
+    "Calendar/Schedule uses a real month grid and agenda, but missing visible reminder creation weakens the expected in-dashboard workflow.",
+    "Today Planner hierarchy is compact, but overdue and unscheduled data are not exposed as usable detail sections.",
+    "Tasks/Routines filters are compact and HTMX-first, but subtodos and occurrence state visibility are weak in the detail surface.",
+    "Mobile modals are scrollable and mostly compact, but the calendar grid is dense and should be watched for touch ergonomics."
+  ]
+}
