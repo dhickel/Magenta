@@ -44,6 +44,7 @@ import io.mindspice.magenta2.avatar.AvatarRepository;
 import io.mindspice.magenta2.avatar.AvatarSchemaInitializer;
 import io.mindspice.magenta2.avatar.AvatarService;
 import io.mindspice.magenta2.avatar.AvatarTaskStatus;
+import io.mindspice.magenta2.avatar.dashboard.DashboardWidgetDefinition;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -136,6 +137,8 @@ class AvatarDashboardControllerTest {
         assertThat(html).contains("hx-push-url=\"/dashboards/assistant\"");
         assertThat(html).contains("aria-label=\"Create dashboard\"");
         assertThat(html).contains("id=\"avatar-chat\"");
+        assertThat(html).contains("id=\"avatar-edit-container\"");
+        assertThat(html).contains("hx-on::before-swap=\"if (event.detail.xhr.status === 400)");
         assertThat(html).contains("data-avatar-chat=\"true\"");
         assertThat(html).contains("data-avatar-chat-corner-resizer=\"true\"");
         assertThat(html).doesNotContain("data-avatar-chat-resizer=\"true\"");
@@ -154,8 +157,8 @@ class AvatarDashboardControllerTest {
         assertThat(html).doesNotContain("Organizer");
         assertThat(html).doesNotContain("Refresh Widgets");
         assertThat(html).doesNotContain(">Avatar<");
-        for (AvatarDashboardComponents.WidgetDefinition widget : AvatarDashboardComponents.WIDGETS) {
-            assertThat(html).contains("id=\"avatar-widget-" + widget.key() + "\"");
+        for (DashboardWidgetDefinition widget : AvatarDashboardComponents.WIDGETS) {
+            assertThat(html).contains("data-avatar-widget-type=\"" + widget.type() + "\"");
         }
 
         String editHtml = controller.avatar(true);
@@ -217,7 +220,7 @@ class AvatarDashboardControllerTest {
 
         assertThat(grid).contains("id=\"avatar-widget-grid\"");
         assertThat(editGrid).contains("avatar-widget-grid-editing");
-        assertThat(todos).contains("id=\"avatar-widget-todos\"");
+        assertThat(todos).contains("data-avatar-widget-type=\"todos\"");
         assertThat(todos).contains("hx-post=\"/_dashboards/_todos\"");
         assertThat(controller.widgetDetail("todos")).contains("avatar-widget-detail-modal");
         assertThatThrownBy(() -> controller.widget("unknown"))
@@ -684,6 +687,7 @@ class AvatarDashboardControllerTest {
 
         String emptyWorkAreaModal = controller.clearWorkAreaModal();
         assertThat(emptyWorkAreaModal).isEqualTo("<div id=\"avatar-workarea-modal\"></div>");
+        assertThat(controller.clearDashboardModal()).isEmpty();
 
         String dashboardId = avatarService.createDashboard("Layout Test").id();
         String afterRow = controller.addLayoutRow(dashboardId);
@@ -711,6 +715,26 @@ class AvatarDashboardControllerTest {
             .isEqualTo(HttpStatus.BAD_REQUEST);
 
         controller.addLayoutWidget(rowId, "todos", 4);
+        String catalogAfterTodos = controller.widgetCatalog(rowId);
+        assertThat(catalogAfterTodos)
+            .contains("Todos")
+            .contains("avatar-catalog-item-disabled")
+            .contains("Already on this dashboard.")
+            .contains("aria-disabled=\"true\"")
+            .contains("Notes")
+            .contains("hx-on::before-swap");
+
+        var duplicateResponse = new org.springframework.mock.web.MockHttpServletResponse();
+        String duplicateTodos = controller.addLayoutWidget(rowId, "todos", 4, duplicateResponse);
+        assertThat(duplicateResponse.getStatus()).isEqualTo(400);
+        assertThat(duplicateTodos)
+            .contains("dashboard widget already exists: todos")
+            .contains("avatar-widget-catalog")
+            .contains("Todos")
+            .contains("Already on this dashboard.")
+            .doesNotContain("id=\"avatar-widget-grid\"");
+
+        controller.addLayoutWidget(rowId, "notes", 4);
         controller.addLayoutWidget(rowId, "notes", 4);
         String todosId = avatarService.dashboardRows(dashboardId).getFirst().widgets().stream()
             .filter(widget -> widget.widgetKey().equals("todos"))
@@ -722,6 +746,47 @@ class AvatarDashboardControllerTest {
             .findFirst()
             .orElseThrow()
             .id();
+        String extraNotesId = avatarService.dashboardRows(dashboardId).getFirst().widgets().stream()
+            .filter(widget -> widget.widgetKey().equals("notes"))
+            .skip(1)
+            .findFirst()
+            .orElseThrow()
+            .id();
+        assertThat(avatarService.dashboardRows(dashboardId).getFirst().widgets())
+            .filteredOn(widget -> widget.widgetKey().equals("notes"))
+            .hasSize(2);
+
+        String settings = controller.widgetSettings(dashboardId, notesId);
+        assertThat(settings).contains("Notes Settings");
+        assertThat(settings).contains("hx-put=\"/dashboards/" + dashboardId + "/widgets/" + notesId + "/settings\"");
+        assertThat(settings).contains("name=\"sourceMode\"");
+        assertThat(settings).contains("value=\"dashboard\"");
+
+        LinkedMultiValueMap<String, String> invalidSettings = new LinkedMultiValueMap<>();
+        invalidSettings.add("sourceMode", "agent");
+        var invalidSettingsResponse = new org.springframework.mock.web.MockHttpServletResponse();
+        String invalidSettingsHtml = controller.saveWidgetSettings(
+            dashboardId,
+            notesId,
+            invalidSettings,
+            invalidSettingsResponse
+        );
+        assertThat(invalidSettingsResponse.getStatus()).isEqualTo(400);
+        assertThat(invalidSettingsHtml).contains("Agent source mode requires an agent id.");
+        assertThat(invalidSettingsHtml).contains("hx-on::before-swap");
+
+        LinkedMultiValueMap<String, String> validSettings = new LinkedMultiValueMap<>();
+        validSettings.add("sourceMode", "agent");
+        validSettings.add("agentId", "agent-1");
+        String savedSettings = controller.saveWidgetSettings(
+            dashboardId,
+            notesId,
+            validSettings,
+            new org.springframework.mock.web.MockHttpServletResponse()
+        );
+        assertThat(savedSettings).contains("hx-swap-oob=\"true\"");
+        assertThat(savedSettings).contains("id=\"avatar-widget-" + notesId + "\"");
+        controller.removeLayoutWidget(extraNotesId);
 
         String widthPicker = controller.widgetWidthPicker(todosId);
         assertThat(widthPicker).contains("Widget width");
@@ -730,7 +795,7 @@ class AvatarDashboardControllerTest {
         assertThat(widthPicker).contains("12/12");
 
         String resized = controller.resizeLayoutWidget(todosId, 5);
-        assertThat(resized).contains("id=\"avatar-widget-todos\"");
+        assertThat(resized).contains("id=\"avatar-widget-" + todosId + "\"");
         assertThat(avatarService.dashboardRows(dashboardId).getFirst().widgets()).anySatisfy(widget -> {
             assertThat(widget.widgetKey()).isEqualTo("todos");
             assertThat(widget.columnWidth()).isEqualTo(5);
@@ -765,6 +830,41 @@ class AvatarDashboardControllerTest {
         String secondRowId = avatarService.dashboardRows(dashboardId).get(1).id();
         controller.moveLayoutRow(secondRowId, "up");
         assertThat(avatarService.dashboardRows(dashboardId).getFirst().id()).isEqualTo(secondRowId);
+    }
+
+    @Test
+    void noteCaptureRefreshesSubmittingWidgetInstanceWhenMultipleNotesWidgetsExist() {
+        String dashboardId = avatarService.createDashboard("Notes Instances").id();
+        controller.addLayoutRow(dashboardId);
+        String rowId = avatarService.dashboardRows(dashboardId).getFirst().id();
+        controller.addLayoutWidget(rowId, "notes", 4);
+        controller.addLayoutWidget(rowId, "notes", 4);
+        List<String> noteWidgetIds = avatarService.dashboardRows(dashboardId).getFirst().widgets().stream()
+            .filter(widget -> widget.widgetKey().equals("notes"))
+            .map(widget -> widget.id())
+            .toList();
+        String firstNotesId = noteWidgetIds.getFirst();
+        String secondNotesId = noteWidgetIds.get(1);
+
+        String secondBeforeSubmit = controller.widgetByInstance(dashboardId, secondNotesId);
+        assertThat(secondBeforeSubmit)
+            .contains("id=\"avatar-widget-" + secondNotesId + "\"")
+            .contains("hx-post=\"/dashboards/" + dashboardId + "/widgets/" + secondNotesId + "/_notes\"")
+            .contains("hx-target=\"#avatar-widget-" + secondNotesId + "\"")
+            .doesNotContain("hx-post=\"/_dashboards/_notes\"");
+
+        String submitted = controller.createNoteForWidget(dashboardId, secondNotesId, "Garden", "Water seedlings");
+
+        assertThat(submitted)
+            .contains("id=\"avatar-widget-" + secondNotesId + "\"")
+            .contains("data-avatar-widget=\"" + secondNotesId + "\"")
+            .contains("hx-target=\"#avatar-widget-" + secondNotesId + "\"")
+            .contains("Garden")
+            .doesNotContain("id=\"avatar-widget-" + firstNotesId + "\"")
+            .doesNotContain("data-avatar-widget=\"" + firstNotesId + "\"");
+        assertThat(submitted.split("id=\"avatar-widget-" + secondNotesId + "\"", -1)).hasSize(2);
+        assertThat(avatarService.notes(false)).singleElement()
+            .satisfies(note -> assertThat(note.body()).contains("Water seedlings"));
     }
 
     @Test
@@ -827,7 +927,7 @@ class AvatarDashboardControllerTest {
     void alertDismissAppendsInternalAvatarEventOnly() {
         String html = controller.dismissAlert("alert-1");
 
-        assertThat(html).contains("id=\"avatar-widget-alerts\"");
+        assertThat(html).contains("data-avatar-widget-type=\"alerts\"");
         assertThat(avatarService.events()).anySatisfy(event -> {
             assertThat(event.eventType()).isEqualTo("alert.dismissed");
             assertThat(event.payload()).containsEntry("eventId", "alert-1");

@@ -17,8 +17,11 @@ Use the compact edit control on a dashboard to enter layout edit mode. Rows use 
 - Move rows and widgets in place.
 - Resize widgets with the width picker.
 - Remove widgets and empty rows.
+- Open a widget's detail or settings controls from the compact widget corner buttons.
 
 New dashboards are created empty. The default `Assistant` dashboard starts with chat plus daily tasks, todos, calendar, notes, outputs, system, alerts, and recent work.
+
+Some widget types can appear more than once on the same dashboard. Single-instance widgets remain disabled in the picker after they are already present.
 
 ## Work Areas
 

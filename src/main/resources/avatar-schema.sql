@@ -83,19 +83,29 @@ create table if not exists user_dashboard_widgets (
     dashboard_id text not null,
     row_id text not null,
     widget_key text not null,
+    widget_type text not null,
+    instance_label text,
     column_position integer not null,
     column_width integer not null,
     enabled integer not null default 1,
     collapsed integer not null default 0,
     settings_json text not null default '{}',
+    single_instance_key text,
+    created_at text not null,
     updated_at text not null,
-    unique(dashboard_id, widget_key),
+    unique(dashboard_id, single_instance_key),
     foreign key(dashboard_id) references user_dashboards(id) on delete cascade,
     foreign key(row_id) references user_dashboard_rows(id) on delete cascade
 );
 
 create index if not exists idx_user_dashboard_widgets_row
     on user_dashboard_widgets(row_id, column_position);
+
+create index if not exists idx_user_dashboard_widgets_dashboard_type
+    on user_dashboard_widgets(dashboard_id, widget_type);
+
+create index if not exists idx_user_dashboard_widgets_dashboard_row_position
+    on user_dashboard_widgets(dashboard_id, row_id, column_position);
 
 create table if not exists avatar_todos (
     id text primary key,

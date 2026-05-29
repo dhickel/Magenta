@@ -1,0 +1,80 @@
+- generic [active] [ref=e1] [box=0,16,1440,1267]:
+  - banner [ref=e2] [box=16,16,1408,149]:
+    - generic [ref=e5] [box=55,37,1330,69]:
+      - heading "Assistant" [level=1] [ref=e6] [box=659,37,121,34]
+      - paragraph [ref=e7] [box=564,83,312,24]: User dashboards, chat, and operational widgets
+    - navigation [ref=e9] [box=72,117,1295,48]:
+      - generic [ref=e10] [box=81,123,1277,36]:
+        - link "Home" [ref=e11] [cursor=pointer] [box=81,123,65,36]:
+          - /url: /
+        - link "Chat" [ref=e12] [cursor=pointer] [box=151,123,56,36]:
+          - /url: /chat
+        - link "Agents" [ref=e13] [cursor=pointer] [box=213,123,75,36]:
+          - /url: /agents
+        - link "Manage" [ref=e14] [cursor=pointer] [box=293,123,81,36]:
+          - /url: /manage
+  - main [ref=e16] [box=16,181,1408,1087]:
+    - generic [ref=e19] [box=63,224,1314,993]:
+      - generic [ref=e20] [box=63,224,1314,47]:
+        - link "Assistant" [ref=e21] [cursor=pointer] [box=70,231,85,32]:
+          - /url: /dashboards/assistant
+        - button "Create dashboard" [ref=e22] [cursor=pointer] [box=161,231,32,32]: +
+      - generic [ref=e23] [box=63,283,1314,934]:
+        - complementary [ref=e25] [box=63,283,480,620]:
+          - generic [ref=e26] [box=76,296,454,44]:
+            - generic [ref=e27] [box=76,296,172,44]:
+              - heading "Assistant Chat" [level=2] [ref=e28] [box=76,296,172,18]
+              - text: Dashboard assistant channel
+            - generic [ref=e29] [box=341,306,189,22]:
+              - generic [ref=e30] [box=341,306,106,22]: surface home
+              - generic [ref=e31] [box=454,306,76,22]: new chat
+          - generic [ref=e32] [box=76,351,454,26]:
+            - generic [ref=e33] [box=76,351,46,26]: Ready
+            - generic [ref=e34] [box=405,351,125,26]: model local-qwen
+          - generic [ref=e36] [box=87,399,431,26]: Ask the assistant for a quick update.
+          - generic [ref=e37] [box=76,725,454,164]:
+            - textbox "Ask the assistant" [ref=e38] [box=76,725,454,118]
+            - button "Send" [ref=e39] [cursor=pointer] [box=76,852,454,38]
+          - button "Resize assistant chat" [ref=e40] [box=527,886,15,15]
+        - generic [ref=e42] [box=556,283,821,934]:
+          - generic [ref=e43] [box=567,292,798,24]:
+            - generic [ref=e44] [box=567,294,63,20]: Dashboard
+            - link "Edit dashboard layout" [ref=e45] [cursor=pointer] [box=1342,292,24,24]:
+              - /url: /dashboards/assistant?edit=true
+              - img [box=1346,296,16,16]
+          - generic [ref=e47] [box=567,326,798,881]:
+            - generic [ref=e49] [box=559,326,814,220]:
+              - generic [ref=e51] [box=559,326,401,128]:
+                - generic [ref=e52] [box=901,331,54,22]
+                - heading "Daily Tasks" [level=2] [ref=e56] [box=572,339,82,18]
+                - generic [ref=e57] [box=572,366,375,75]
+              - generic [ref=e63] [box=973,326,194,213]:
+                - generic [ref=e64] [box=1107,331,54,22]
+                - heading "Todos" [level=2] [ref=e68] [box=986,339,44,18]
+                - generic [ref=e69] [box=986,366,168,160]
+              - generic [ref=e76] [box=1180,326,194,220]:
+                - generic [ref=e77] [box=1314,331,54,22]
+                - heading "Calendar" [level=2] [ref=e81] [box=1193,339,65,18]
+                - generic [ref=e82] [box=1193,366,168,167]
+            - generic [ref=e89] [box=559,570,814,269]:
+              - generic [ref=e91] [box=559,570,401,269]:
+                - generic [ref=e92] [box=901,575,54,22]
+                - heading "Notes" [level=2] [ref=e96] [box=572,583,42,18]
+                - generic [ref=e97] [box=572,610,375,216]
+              - generic [ref=e104] [box=973,570,401,79]:
+                - generic [ref=e105] [box=1314,575,54,22]
+                - heading "Outputs" [level=2] [ref=e109] [box=986,583,58,18]
+                - generic [ref=e111] [box=986,610,375,26]: No recent outputs.
+            - generic [ref=e113] [box=559,863,814,334]:
+              - generic [ref=e115] [box=559,863,263,334]:
+                - generic [ref=e116] [box=763,868,54,22]
+                - heading "System" [level=2] [ref=e120] [box=572,876,54,18]
+                - generic [ref=e121] [box=572,903,237,281]
+              - generic [ref=e129] [box=835,863,263,79]:
+                - generic [ref=e130] [box=1039,868,54,22]
+                - heading "Alerts" [level=2] [ref=e134] [box=848,876,43,18]
+                - generic [ref=e136] [box=848,903,237,26]: No alerts.
+              - generic [ref=e138] [box=1111,863,263,79]:
+                - generic [ref=e139] [box=1314,868,54,22]
+                - heading "Recent Work" [level=2] [ref=e143] [box=1124,876,93,18]
+                - generic [ref=e145] [box=1124,903,237,26]: No recent work.

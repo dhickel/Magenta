@@ -9,16 +9,23 @@ import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
+import io.mindspice.magenta2.avatar.dashboard.DashboardWidgetDefinition;
+import io.mindspice.magenta2.avatar.dashboard.DashboardWidgetRegistry;
+import io.mindspice.magenta2.avatar.dashboard.WidgetSettingsValidation;
+import io.mindspice.magenta2.avatar.dashboard.WidgetSettingsValidator;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 @Service
 public class AvatarService {
     private final AvatarRepository repository;
+    private final DashboardWidgetRegistry widgetRegistry;
 
     public AvatarService(AvatarRepository repository) {
         this.repository = repository;
+        this.widgetRegistry = DashboardWidgetRegistry.defaultRegistry();
     }
 
     public AvatarProfile profile() {
@@ -112,11 +119,54 @@ public class AvatarService {
     }
 
     public AvatarDashboardRowWidget addDashboardWidget(String rowId, String widgetKey, int columnWidth) {
-        return repository.addDashboardWidget(rowId, widgetKey, columnWidth);
+        String dashboardId = repository.dashboardIdForDashboardRow(rowId);
+        return addDashboardWidget(dashboardId, rowId, widgetKey, columnWidth);
     }
 
     public AvatarDashboardRowWidget addDashboardWidget(String dashboardId, String rowId, String widgetKey, int columnWidth) {
-        return repository.addDashboardWidget(dashboardId, rowId, widgetKey, columnWidth);
+        DashboardWidgetDefinition definition = widgetRegistry.require(widgetKey);
+        if (!definition.supportsWidth(columnWidth)) {
+            throw new IllegalArgumentException("unsupported width for " + definition.title() + ": " + columnWidth);
+        }
+        if (definition.singleInstance() && dashboardHasWidgetType(dashboardId, widgetKey)) {
+            throw new IllegalArgumentException("dashboard widget already exists: " + widgetKey);
+        }
+        return repository.addDashboardWidget(
+            dashboardId,
+            rowId,
+            definition.type(),
+            columnWidth,
+            definition.settingsSchema().defaults()
+        );
+    }
+
+    public AvatarDashboardRowWidget dashboardWidget(String widgetId) {
+        requireText(widgetId, "widget id");
+        return repository.findDashboardRowWidget(widgetId)
+            .orElseThrow(() -> new IllegalArgumentException("dashboard widget not found: " + widgetId));
+    }
+
+    public AvatarDashboardRowWidget updateDashboardWidgetSettings(
+        String dashboardId,
+        String widgetId,
+        Map<String, ?> submittedSettings
+    ) {
+        AvatarDashboardRowWidget widget = dashboardWidget(widgetId);
+        String actualDashboardId = dashboardIdForWidget(widgetId);
+        if (!actualDashboardId.equals(dashboardId)) {
+            throw new IllegalArgumentException("dashboard widget not found on dashboard: " + widgetId);
+        }
+        DashboardWidgetDefinition definition = widgetRegistry.require(widget.widgetKey());
+        WidgetSettingsValidation validation = validateDashboardWidgetSettings(definition.type(), submittedSettings);
+        if (!validation.valid()) {
+            throw new IllegalArgumentException(String.join(" ", validation.errors()));
+        }
+        return repository.updateDashboardWidgetSettings(widgetId, validation.settings());
+    }
+
+    public WidgetSettingsValidation validateDashboardWidgetSettings(String widgetType, Map<String, ?> submittedSettings) {
+        DashboardWidgetDefinition definition = widgetRegistry.require(widgetType);
+        return WidgetSettingsValidator.validate(definition, submittedSettings);
     }
 
     public AvatarDashboardRowWidget resizeDashboardWidget(String widgetId, int columnWidth) {
@@ -133,6 +183,12 @@ public class AvatarService {
 
     public void removeDashboardWidget(String widgetId) {
         repository.removeDashboardWidget(widgetId);
+    }
+
+    private boolean dashboardHasWidgetType(String dashboardId, String widgetType) {
+        return dashboardRows(dashboardId).stream()
+            .flatMap(row -> row.widgets().stream())
+            .anyMatch(widget -> widgetType.equals(widget.widgetKey()));
     }
 
     public AvatarTodo saveTodo(AvatarTodo todo) {

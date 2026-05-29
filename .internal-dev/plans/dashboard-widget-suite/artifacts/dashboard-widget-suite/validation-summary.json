@@ -1,0 +1,30 @@
+{
+  "task_slug": "dashboard-widget-suite",
+  "status": "planning_only",
+  "model_constraints": {
+    "implementation_workers": "gpt-5.5-high",
+    "code_validators": "gpt-5.5-xhigh",
+    "planning_red_team": "gpt-5.3-codex-xhigh",
+    "playwright": "gpt-5.5-high-or-xhigh-if-selectable"
+  },
+  "work_units": [],
+  "commands": [],
+  "validators": [],
+  "browser": {
+    "required": true,
+    "artifact_directory": null,
+    "scenarios": [],
+    "screenshots": [],
+    "result": "pending"
+  },
+  "artifacts": [],
+  "superseded_artifacts": [],
+  "tooling_constraints": [],
+  "residual_risks": [],
+  "stale_reference_sweep": {
+    "completed": false,
+    "queries": [],
+    "findings": []
+  },
+  "final_reconciler": null
+}

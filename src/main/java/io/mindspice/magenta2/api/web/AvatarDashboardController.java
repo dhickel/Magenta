@@ -48,6 +48,7 @@ import io.mindspice.magenta2.avatar.PlannerSubtodo;
 import io.mindspice.magenta2.avatar.PlannerTask;
 import io.mindspice.magenta2.avatar.PlannerTaskLink;
 import io.mindspice.magenta2.avatar.PlannerTaskStatus;
+import io.mindspice.magenta2.avatar.dashboard.WidgetSettingsValidation;
 import io.mindspice.simplypages.builders.BannerBuilder;
 import io.mindspice.simplypages.builders.ShellBuilder;
 import io.mindspice.simplypages.builders.ShellTemplate;
@@ -186,7 +187,7 @@ public class AvatarDashboardController {
             .findFirst()
             .map(AvatarDashboardComponents::displayWidget)
             .orElseGet(() -> AvatarDashboardComponents.normalizedLayout(data.layout()).stream()
-                .filter(item -> item.widgetId().equals(widgetKey))
+                .filter(item -> widgetKey.equals(item.settings().get("widgetType")) || item.widgetId().equals(widgetKey))
                 .findFirst()
                 .orElseGet(() -> AvatarDashboardComponents.defaultWidget(
                     AvatarDashboardComponents.definition(widgetKey), 0
@@ -194,11 +195,68 @@ public class AvatarDashboardController {
         return AvatarDashboardComponents.widget(data, widget).render();
     }
 
+    @GetMapping("/dashboards/{dashboardId}/widgets/{widgetInstanceId}")
+    @ResponseBody
+    public String widgetByInstance(@PathVariable String dashboardId, @PathVariable String widgetInstanceId) {
+        AvatarDashboardRowWidget rowWidget = requireDashboardWidget(dashboardId, widgetInstanceId);
+        return AvatarDashboardComponents.widget(data(dashboardId), AvatarDashboardComponents.displayWidget(rowWidget)).render();
+    }
+
     @GetMapping("/_dashboards/_widgets/{widgetKey}/detail")
     @ResponseBody
     public String widgetDetail(@PathVariable String widgetKey) {
         requireWidget(widgetKey);
-        return AvatarDashboardComponents.widgetDetailModal(data(), widgetKey).render();
+        AvatarDashboardComponents.AvatarDashboardData data = data();
+        AvatarDashboardWidget widget = data.rows().stream()
+            .flatMap(row -> row.widgets().stream())
+            .filter(item -> item.widgetKey().equals(widgetKey))
+            .findFirst()
+            .map(AvatarDashboardComponents::displayWidget)
+            .orElseGet(() -> AvatarDashboardComponents.defaultWidget(AvatarDashboardComponents.definition(widgetKey), 0));
+        return AvatarDashboardComponents.widgetDetailModal(data, widget).render();
+    }
+
+    @GetMapping("/dashboards/{dashboardId}/widgets/{widgetInstanceId}/detail")
+    @ResponseBody
+    public String widgetDetailByInstance(@PathVariable String dashboardId, @PathVariable String widgetInstanceId) {
+        AvatarDashboardRowWidget rowWidget = requireDashboardWidget(dashboardId, widgetInstanceId);
+        return AvatarDashboardComponents.widgetDetailModal(
+            data(dashboardId),
+            AvatarDashboardComponents.displayWidget(rowWidget)
+        ).render();
+    }
+
+    @GetMapping("/dashboards/{dashboardId}/widgets/{widgetInstanceId}/settings")
+    @ResponseBody
+    public String widgetSettings(@PathVariable String dashboardId, @PathVariable String widgetInstanceId) {
+        AvatarDashboardRowWidget rowWidget = requireDashboardWidget(dashboardId, widgetInstanceId);
+        return AvatarDashboardComponents.widgetSettingsModal(data(dashboardId), rowWidget, null).render();
+    }
+
+    @GetMapping("/_dashboards/_layout/widgets/{widgetInstanceId}/settings")
+    @ResponseBody
+    public String widgetSettingsCompatibility(@PathVariable String widgetInstanceId) {
+        String dashboardId = avatarService.dashboardIdForWidget(widgetInstanceId);
+        return widgetSettings(dashboardId, widgetInstanceId);
+    }
+
+    @PutMapping("/dashboards/{dashboardId}/widgets/{widgetInstanceId}/settings")
+    @ResponseBody
+    public String saveWidgetSettings(
+        @PathVariable String dashboardId,
+        @PathVariable String widgetInstanceId,
+        @RequestParam MultiValueMap<String, String> params,
+        HttpServletResponse response
+    ) {
+        AvatarDashboardRowWidget rowWidget = requireDashboardWidget(dashboardId, widgetInstanceId);
+        Map<String, String> settings = firstValues(params);
+        WidgetSettingsValidation validation = avatarService.validateDashboardWidgetSettings(rowWidget.widgetKey(), settings);
+        if (!validation.valid()) {
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            return AvatarDashboardComponents.widgetSettingsModal(data(dashboardId), rowWidget, validation).render();
+        }
+        AvatarDashboardRowWidget saved = avatarService.updateDashboardWidgetSettings(dashboardId, widgetInstanceId, settings);
+        return AvatarDashboardComponents.widgetSettingsSaveResponse(data(dashboardId), saved).render();
     }
 
     @GetMapping("/_dashboards/_edit")
@@ -222,7 +280,7 @@ public class AvatarDashboardController {
     @GetMapping("/dashboards/_modal/clear")
     @ResponseBody
     public String clearDashboardModal() {
-        return new Div().withId("avatar-edit-container").render();
+        return "";
     }
 
     @PostMapping("/dashboards")
@@ -301,15 +359,28 @@ public class AvatarDashboardController {
     public String addLayoutWidget(
         @PathVariable String rowId,
         @RequestParam String widgetKey,
-        @RequestParam(defaultValue = "4") int columnWidth
+        @RequestParam(defaultValue = "4") int columnWidth,
+        HttpServletResponse response
     ) {
         requireWidget(widgetKey);
         try {
             avatarService.addDashboardWidget(rowId, widgetKey, columnWidth);
         } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+            if (response != null) {
+                response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            }
+            String dashboardId = avatarService.dashboardIdForRow(rowId);
+            return AvatarDashboardComponents.widgetCatalogModal(
+                avatarService.dashboardRows(dashboardId),
+                rowId,
+                exception.getMessage()
+            ).render();
         }
         return AvatarDashboardComponents.layoutEditResponse(data(avatarService.dashboardIdForRow(rowId)), true).render();
+    }
+
+    public String addLayoutWidget(String rowId, String widgetKey, int columnWidth) {
+        return addLayoutWidget(rowId, widgetKey, columnWidth, null);
     }
 
     @PostMapping("/_dashboards/_layout/widgets/{widgetId}/move")
@@ -445,9 +516,27 @@ public class AvatarDashboardController {
     @ResponseBody
     public String createNote(@RequestParam(value = "title", required = false) String title,
                              @RequestParam String body) {
+        appendDashboardNote(title, body);
+        return widget("notes");
+    }
+
+    @PostMapping("/dashboards/{dashboardId}/widgets/{widgetInstanceId}/_notes")
+    @ResponseBody
+    public String createNoteForWidget(@PathVariable String dashboardId,
+                                      @PathVariable String widgetInstanceId,
+                                      @RequestParam(value = "title", required = false) String title,
+                                      @RequestParam String body) {
+        AvatarDashboardRowWidget rowWidget = requireDashboardWidget(dashboardId, widgetInstanceId);
+        if (!"notes".equals(rowWidget.widgetKey())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "dashboard widget is not notes: " + widgetInstanceId);
+        }
+        appendDashboardNote(title, body);
+        return widgetByInstance(dashboardId, widgetInstanceId);
+    }
+
+    private void appendDashboardNote(String title, String body) {
         requireText(body, "note body");
         avatarService.appendNote(null, title, body, List.of("avatar-dashboard"));
-        return widget("notes");
     }
 
     @PostMapping("/_dashboards/_calendar")
@@ -1673,6 +1762,30 @@ public class AvatarDashboardController {
         if (!AvatarDashboardComponents.isKnownWidget(widgetKey)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown widget key: " + widgetKey);
         }
+    }
+
+    private AvatarDashboardRowWidget requireDashboardWidget(String dashboardId, String widgetInstanceId) {
+        try {
+            AvatarDashboardRowWidget widget = avatarService.dashboardWidget(widgetInstanceId);
+            if (!avatarService.dashboardIdForWidget(widgetInstanceId).equals(dashboardId)) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "dashboard widget not found: " + widgetInstanceId);
+            }
+            return widget;
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage());
+        }
+    }
+
+    private static Map<String, String> firstValues(MultiValueMap<String, String> params) {
+        Map<String, String> values = new LinkedHashMap<>();
+        if (params == null) {
+            return values;
+        }
+        for (Map.Entry<String, List<String>> entry : params.entrySet()) {
+            List<String> entryValues = entry.getValue();
+            values.put(entry.getKey(), entryValues == null || entryValues.isEmpty() ? "" : entryValues.getFirst());
+        }
+        return values;
     }
 
     private void requireText(String value, String name) {

@@ -1,0 +1,60 @@
+- generic [active] [ref=e1] [box=0,16,1440,1892]:
+  - banner [ref=e2] [box=16,16,1408,149]:
+    - generic [ref=e5] [box=55,37,1330,69]:
+      - heading "Assistant" [level=1] [ref=e6] [box=659,37,121,34]
+      - paragraph [ref=e7] [box=564,83,312,24]: User dashboards, chat, and operational widgets
+    - navigation [ref=e9] [box=72,117,1295,48]:
+      - generic [ref=e10] [box=81,123,1277,36]:
+        - link "Home" [ref=e11] [cursor=pointer] [box=81,123,65,36]:
+          - /url: /
+        - link "Chat" [ref=e12] [cursor=pointer] [box=151,123,56,36]:
+          - /url: /chat
+        - link "Agents" [ref=e13] [cursor=pointer] [box=213,123,75,36]:
+          - /url: /agents
+        - link "Manage" [ref=e14] [cursor=pointer] [box=293,123,81,36]:
+          - /url: /manage
+  - main [ref=e16] [box=16,181,1408,1711]:
+    - generic [ref=e147] [box=63,224,1314,1617]:
+      - generic [ref=e148] [box=63,224,1314,47]:
+        - link "Assistant" [ref=e149] [cursor=pointer] [box=70,231,85,32]:
+          - /url: /dashboards/assistant
+        - button "Create dashboard" [ref=e150] [cursor=pointer] [box=161,231,32,32]: +
+      - generic [ref=e151] [box=63,283,1314,1558]:
+        - complementary [ref=e153] [box=63,283,480,620]:
+          - generic [ref=e154] [box=76,296,454,44]:
+            - generic [ref=e155] [box=76,296,172,44]:
+              - heading "Assistant Chat" [level=2] [ref=e156] [box=76,296,172,18]
+              - text: Dashboard assistant channel
+            - generic [ref=e157] [box=341,306,189,22]:
+              - generic [ref=e158] [box=341,306,106,22]: surface home
+              - generic [ref=e159] [box=454,306,76,22]: new chat
+          - generic [ref=e160] [box=76,351,454,26]:
+            - generic [ref=e161] [box=76,351,46,26]: Ready
+            - generic [ref=e162] [box=405,351,125,26]: model local-qwen
+          - generic [ref=e164] [box=87,399,431,26]: Ask the assistant for a quick update.
+          - generic [ref=e165] [box=76,725,454,164]:
+            - textbox "Ask the assistant" [ref=e166] [box=76,725,454,118]
+            - button "Send" [ref=e167] [cursor=pointer] [box=76,852,454,38]
+          - button "Resize assistant chat" [ref=e168] [box=527,886,15,15]
+        - generic [ref=e170] [box=556,283,821,1558]:
+          - generic [ref=e171] [box=567,292,798,24]:
+            - generic [ref=e172] [box=567,294,122,20]: Dashboard edit mode
+            - link "Exit dashboard layout edit" [ref=e173] [cursor=pointer] [box=1342,292,24,24]:
+              - /url: /dashboards/assistant
+              - img [box=1346,296,16,16]
+          - generic [ref=e175] [box=567,326,798,1505]:
+            - generic [ref=e176] [box=567,326,798,317]:
+              - generic [box=567,326,798,24]
+              - generic [ref=e181] [box=575,342,782,227]
+              - button "+ Add Widget" [ref=e239] [cursor=pointer] [box=893,581,148,46]
+            - button "+ Insert Row Below" [ref=e241] [cursor=pointer] [box=889,712,155,30]
+            - generic [ref=e242] [box=567,778,798,366]:
+              - generic [box=567,778,798,24]
+              - generic [ref=e247] [box=575,794,782,276]
+              - button "+ Add Widget" [ref=e283] [cursor=pointer] [box=893,1082,148,46]
+            - button "+ Insert Row Below" [ref=e285] [cursor=pointer] [box=889,1213,155,30]
+            - generic [ref=e286] [box=567,1279,798,430]:
+              - generic [box=567,1279,798,24]
+              - generic [ref=e291] [box=575,1295,782,340]
+              - button "+ Add Widget" [ref=e343] [cursor=pointer] [box=893,1647,148,46]
+            - button "+ Insert Row Below" [ref=e345] [cursor=pointer] [box=889,1778,155,30]

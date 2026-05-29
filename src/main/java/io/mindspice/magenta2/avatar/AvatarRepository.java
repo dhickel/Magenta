@@ -16,6 +16,7 @@ import java.util.UUID;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mindspice.magenta2.avatar.dashboard.DashboardWidgetRegistry;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -35,6 +36,7 @@ public class AvatarRepository {
     public AvatarRepository(@Qualifier("avatarJdbcTemplate") JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
+        migrateUserDashboardWidgetsIfNeeded();
     }
 
     public Optional<AvatarProfile> findProfile() {
@@ -224,6 +226,10 @@ public class AvatarRepository {
         );
     }
 
+    public Optional<AvatarDashboardRowWidget> findDashboardRowWidget(String widgetId) {
+        return findDashboardWidget(widgetId);
+    }
+
     public List<AvatarDashboardRow> findDashboardRows() {
         return findDashboardRows(ASSISTANT_DASHBOARD_ID);
     }
@@ -339,13 +345,26 @@ public class AvatarRepository {
     }
 
     public AvatarDashboardRowWidget addDashboardWidget(String dashboardId, String rowId, String widgetKey, int columnWidth) {
+        return addDashboardWidget(
+            dashboardId,
+            rowId,
+            widgetKey,
+            columnWidth,
+            DashboardWidgetRegistry.defaultRegistry().require(widgetKey).settingsSchema().defaults()
+        );
+    }
+
+    public AvatarDashboardRowWidget addDashboardWidget(
+        String dashboardId,
+        String rowId,
+        String widgetType,
+        int columnWidth,
+        Map<String, Object> settings
+    ) {
         requireText(rowId, "row id");
         requireDashboard(dashboardId);
-        requireText(widgetKey, "widget key");
+        requireText(widgetType, "widget type");
         int width = requireColumnWidth(columnWidth);
-        if (findDashboardWidgetByKey(dashboardId, widgetKey).isPresent()) {
-            throw new IllegalArgumentException("dashboard widget already exists: " + widgetKey);
-        }
         findDashboardRow(rowId).orElseThrow(() -> new IllegalArgumentException("dashboard row not found: " + rowId));
         int usedWidth = dashboardRowWidth(rowId);
         if (usedWidth + width > 12) {
@@ -353,22 +372,40 @@ public class AvatarRepository {
         }
         String id = "widget-" + UUID.randomUUID();
         Instant now = Instant.now();
+        String singleInstanceKey = DashboardWidgetRegistry.defaultRegistry().singleInstanceKey(widgetType);
         jdbcTemplate.update(
             """
                 insert into user_dashboard_widgets (
-                    id, dashboard_id, row_id, widget_key, column_position, column_width, enabled, collapsed, settings_json, updated_at
+                    id, dashboard_id, row_id, widget_key, widget_type, column_position, column_width, enabled,
+                    collapsed, settings_json, single_instance_key, created_at, updated_at
                 )
-                values (?, ?, ?, ?, ?, ?, 1, 0, '{}', ?)
+                values (?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?)
                 """,
             id,
             dashboardId,
             rowId,
-            widgetKey,
+            widgetType,
+            widgetType,
             nextDashboardWidgetPosition(rowId),
             width,
+            jsonMap(settings),
+            singleInstanceKey,
+            now.toString(),
             now.toString()
         );
         return findDashboardWidget(id).orElseThrow();
+    }
+
+    public AvatarDashboardRowWidget updateDashboardWidgetSettings(String widgetId, Map<String, Object> settings) {
+        requireText(widgetId, "widget id");
+        findDashboardWidget(widgetId).orElseThrow(() -> new IllegalArgumentException("dashboard widget not found: " + widgetId));
+        jdbcTemplate.update(
+            "update user_dashboard_widgets set settings_json = ?, updated_at = ? where id = ?",
+            jsonMap(settings),
+            Instant.now().toString(),
+            widgetId
+        );
+        return findDashboardWidget(widgetId).orElseThrow();
     }
 
     public AvatarDashboardRowWidget resizeDashboardWidget(String widgetId, int columnWidth) {
@@ -615,6 +652,104 @@ public class AvatarRepository {
         ensureAssistantDashboard();
     }
 
+    private void migrateUserDashboardWidgetsIfNeeded() {
+        if (!tableExists("user_dashboard_widgets") || hasColumn("user_dashboard_widgets", "widget_type")) {
+            return;
+        }
+        jdbcTemplate.execute("pragma foreign_keys = off");
+        jdbcTemplate.execute(
+            """
+                create table if not exists user_dashboard_widgets_new (
+                    id text primary key,
+                    dashboard_id text not null,
+                    row_id text not null,
+                    widget_key text not null,
+                    widget_type text not null,
+                    instance_label text,
+                    column_position integer not null,
+                    column_width integer not null,
+                    enabled integer not null default 1,
+                    collapsed integer not null default 0,
+                    settings_json text not null default '{}',
+                    single_instance_key text,
+                    created_at text not null,
+                    updated_at text not null,
+                    unique(dashboard_id, single_instance_key),
+                    foreign key(dashboard_id) references user_dashboards(id) on delete cascade,
+                    foreign key(row_id) references user_dashboard_rows(id) on delete cascade
+                )
+                """
+        );
+        jdbcTemplate.update(
+            """
+                insert into user_dashboard_widgets_new (
+                    id, dashboard_id, row_id, widget_key, widget_type, instance_label, column_position,
+                    column_width, enabled, collapsed, settings_json, single_instance_key, created_at, updated_at
+                )
+                select
+                    id,
+                    dashboard_id,
+                    row_id,
+                    widget_key,
+                    widget_key,
+                    null,
+                    column_position,
+                    column_width,
+                    enabled,
+                    collapsed,
+                    settings_json,
+                    null,
+                    updated_at,
+                    updated_at
+                from user_dashboard_widgets
+                """
+        );
+        for (String type : DashboardWidgetRegistry.defaultRegistry().definitions().stream()
+            .filter(definition -> definition.singleInstance())
+            .map(definition -> definition.type())
+            .toList()) {
+            jdbcTemplate.update(
+                "update user_dashboard_widgets_new set single_instance_key = widget_type where widget_type = ?",
+                type
+            );
+        }
+        jdbcTemplate.execute("drop table user_dashboard_widgets");
+        jdbcTemplate.execute("alter table user_dashboard_widgets_new rename to user_dashboard_widgets");
+        jdbcTemplate.execute(
+            """
+                create index if not exists idx_user_dashboard_widgets_row
+                    on user_dashboard_widgets(row_id, column_position)
+                """
+        );
+        jdbcTemplate.execute(
+            """
+                create index if not exists idx_user_dashboard_widgets_dashboard_type
+                    on user_dashboard_widgets(dashboard_id, widget_type)
+                """
+        );
+        jdbcTemplate.execute(
+            """
+                create index if not exists idx_user_dashboard_widgets_dashboard_row_position
+                    on user_dashboard_widgets(dashboard_id, row_id, column_position)
+                """
+        );
+        jdbcTemplate.execute("pragma foreign_keys = on");
+    }
+
+    private boolean tableExists(String tableName) {
+        Integer count = jdbcTemplate.queryForObject(
+            "select count(*) from sqlite_master where type = 'table' and name = ?",
+            Integer.class,
+            tableName
+        );
+        return count != null && count > 0;
+    }
+
+    private boolean hasColumn(String tableName, String columnName) {
+        return jdbcTemplate.queryForList("pragma table_info(" + tableName + ")").stream()
+            .anyMatch(row -> columnName.equals(row.get("name")));
+    }
+
     private void ensureAssistantDashboard() {
         Integer dashboardCount = jdbcTemplate.queryForObject(
             "select count(*) from user_dashboards where id = ?",
@@ -672,20 +807,27 @@ public class AvatarRepository {
     }
 
     private void insertUserDashboardWidget(String dashboardId, String rowId, String widgetKey, int width, int position) {
+        Instant now = Instant.now();
+        String singleInstanceKey = DashboardWidgetRegistry.defaultRegistry().singleInstanceKey(widgetKey);
         jdbcTemplate.update(
             """
                 insert into user_dashboard_widgets (
-                    id, dashboard_id, row_id, widget_key, column_position, column_width, enabled, collapsed, settings_json, updated_at
+                    id, dashboard_id, row_id, widget_key, widget_type, column_position, column_width, enabled,
+                    collapsed, settings_json, single_instance_key, created_at, updated_at
                 )
-                values (?, ?, ?, ?, ?, ?, 1, 0, '{}', ?)
+                values (?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?)
                 """,
             "widget-" + UUID.randomUUID(),
             dashboardId,
             rowId,
             requireText(widgetKey, "widget id"),
+            widgetKey,
             position,
             width,
-            Instant.now().toString()
+            jsonMap(DashboardWidgetRegistry.defaultRegistry().require(widgetKey).settingsSchema().defaults()),
+            singleInstanceKey,
+            now.toString(),
+            now.toString()
         );
     }
 
@@ -743,7 +885,7 @@ public class AvatarRepository {
         return new AvatarDashboardRowWidget(
             rs.getString("id"),
             rs.getString("row_id"),
-            rs.getString("widget_key"),
+            rs.getString("widget_type"),
             rs.getInt("column_position"),
             rs.getInt("column_width"),
             rs.getInt("enabled") == 1,

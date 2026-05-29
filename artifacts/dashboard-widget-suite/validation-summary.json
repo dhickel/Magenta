@@ -1,0 +1,314 @@
+{
+  "task_slug": "dashboard-widget-suite",
+  "status": "phase_01_browser_proof_passed_later_phases_pending",
+  "model_constraints": {
+    "implementation_workers": {
+      "required_model": "gpt-5.5",
+      "reasoning": "high"
+    },
+    "code_validators": {
+      "required_model": "gpt-5.5",
+      "reasoning": "xhigh"
+    },
+    "browser_proof": {
+      "required_model": "gpt-5.5",
+      "reasoning": "high_or_xhigh_if_selectable",
+      "fallback_rule": "Record TOOLING_CONSTRAINT and stop before substituting."
+    }
+  },
+  "work_units": [
+    {
+      "id": "phase-01-platform-foundation",
+      "status": "phase_01_browser_proof_passed_later_phases_pending",
+      "worker_directive": ".internal-dev/plans/dashboard-widget-suite/worker-directives/phase-01-platform-foundation.md",
+      "validation_review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-01-validation.md",
+      "notes": [
+        "Initial code validation found a multi-instance Notes action root defect and a missing evidence index.",
+        "Repair added instance-scoped Notes post route and regression coverage for the second Notes widget.",
+        "Independent revalidation passed focused tests and startup smoke.",
+        "Delegated browser proof on 2026-05-29 found product/UI contract defects in settings error rendering, modal close root uniqueness, catalog single-instance presentation, and stale /dashboard reference criteria.",
+        "Scoped browser-findings repair on 2026-05-29 added HTML error swap behavior for 400 settings/catalog fragments, cleared the modal host without duplicate ids, kept used single-instance catalog entries visible as disabled, and corrected visual-reference criteria to /manage.",
+        "Independent focused revalidation found the HTMX 400 swap hook needed to live on the #avatar-edit-container swap target, applied validator self-remediation to the modal host/OOB host fragments, and passed focused tests/startup."
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "command": "mvn -Dtest=AvatarDashboardControllerTest test",
+      "result": "passed",
+      "evidence": "Repair worker reported 19 tests, 0 failures, 0 errors, 0 skipped."
+    },
+    {
+      "command": "mvn -Dtest=AvatarRepositoryTest,AvatarServiceTest,AvatarDashboardControllerTest test",
+      "result": "passed",
+      "evidence": "Independent revalidation on 2026-05-29: 34 tests, 0 failures, 0 errors, 0 skipped."
+    },
+    {
+      "command": "timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0",
+      "result": "started_then_timeout_stopped",
+      "evidence": "Independent revalidation on 2026-05-29: Tomcat started on random port 38179; Magenta2Application started in 3.097 seconds; timeout produced expected exit code 124 after graceful shutdown."
+    },
+    {
+      "command": "jq . artifacts/dashboard-widget-suite/validation-summary.json >/dev/null",
+      "result": "passed",
+      "evidence": "JSON parsed successfully after scoped browser-findings repair evidence update."
+    },
+    {
+      "command": "git diff --check -- src/main/java/io/mindspice/magenta2/api/web/AvatarDashboardController.java src/main/java/io/mindspice/magenta2/api/web/AvatarDashboardComponents.java src/test/java/io/mindspice/magenta2/api/web/AvatarDashboardControllerTest.java .internal-dev/plans/dashboard-widget-suite/00-specification-lock.md .internal-dev/plans/dashboard-widget-suite/06-ui-ux-contract-and-visual-validation-criteria.md .internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-01-browser-proof.md artifacts/dashboard-widget-suite/validation-summary.json",
+      "result": "passed",
+      "evidence": "No whitespace errors reported. The repo still has untracked plan/review/artifact directories from the broader Phase 01 work, so Git only emitted diff-check diagnostics for tracked paths."
+    },
+    {
+      "command": "mvn spring-boot:run -Dspring-boot.run.arguments='--server.port=18080 --magenta.root.path=/tmp/magenta2-dashboard-widget-suite-browser --spring.datasource.url=jdbc:sqlite:/tmp/magenta2-dashboard-widget-suite-browser/magenta.sqlite?foreign_keys=true --magenta.orchestration.runner-delay-ms=60000 --magenta.orchestration.scheduler-delay-ms=60000 --magenta.orchestration.assignment-history-purge-delay-ms=60000'",
+      "result": "passed",
+      "evidence": "Browser proof runtime on 2026-05-29: Tomcat started on port 18080 with isolated root /tmp/magenta2-dashboard-widget-suite-browser."
+    },
+    {
+      "command": "Playwright MCP browser proof against http://localhost:18080 at desktop 1440x900 and mobile 390x844",
+      "result": "failed_product_defects",
+      "evidence": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-01-browser-proof.md and artifacts/dashboard-widget-suite/phase-01-browser/."
+    },
+    {
+      "command": "curl -i -s http://localhost:18080/dashboard",
+      "result": "superseded_criteria",
+      "evidence": "The /dashboard reference was a stale plan criterion; .internal-dev/plans/dashboard-widget-suite/06-ui-ux-contract-and-visual-validation-criteria.md now names /manage, matching .internal-dev/specifications/web.md."
+    },
+    {
+      "command": "mvn -Dtest=AvatarDashboardControllerTest test",
+      "result": "passed",
+      "evidence": "Scoped browser-findings repair on 2026-05-29: 19 tests run, 0 failures, 0 errors, 0 skipped. Added coverage for invalid settings 400 error rendering/swap hook, clear modal empty response, disabled used single-instance catalog entries, and duplicate add 400 HTML catalog fragment."
+    },
+    {
+      "command": "mvn -Dtest=AvatarRepositoryTest,AvatarServiceTest,AvatarDashboardControllerTest test",
+      "result": "passed",
+      "evidence": "Scoped browser-findings repair on 2026-05-29: 34 tests run, 0 failures, 0 errors, 0 skipped."
+    },
+    {
+      "command": "timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0",
+      "result": "started_then_timeout_stopped",
+      "evidence": "Scoped browser-findings repair on 2026-05-29: Tomcat started on random port 44463; Magenta2Application started in 3.226 seconds; timeout produced expected exit code 124 after graceful shutdown."
+    },
+    {
+      "command": "mvn -Dtest=AvatarDashboardControllerTest test",
+      "result": "passed",
+      "evidence": "Independent focused browser-findings repair revalidation on 2026-05-29 after validator self-remediation: 19 tests run, 0 failures, 0 errors, 0 skipped."
+    },
+    {
+      "command": "mvn -Dtest=AvatarRepositoryTest,AvatarServiceTest,AvatarDashboardControllerTest test",
+      "result": "passed",
+      "evidence": "Independent focused browser-findings repair revalidation on 2026-05-29: 34 tests run, 0 failures, 0 errors, 0 skipped."
+    },
+    {
+      "command": "timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0",
+      "result": "started_then_timeout_stopped",
+      "evidence": "Independent focused browser-findings repair revalidation on 2026-05-29: Tomcat started on random port 37219; Magenta2Application started in 3.152 seconds; timeout produced expected exit code 124 after graceful shutdown."
+    },
+    {
+      "command": "jq . artifacts/dashboard-widget-suite/validation-summary.json >/dev/null",
+      "result": "passed",
+      "evidence": "JSON parsed successfully during independent focused browser-findings repair revalidation."
+    },
+    {
+      "command": "git diff --check -- src/main/java/io/mindspice/magenta2/api/web/AvatarDashboardController.java src/main/java/io/mindspice/magenta2/api/web/AvatarDashboardComponents.java src/test/java/io/mindspice/magenta2/api/web/AvatarDashboardControllerTest.java .internal-dev/plans/dashboard-widget-suite/00-specification-lock.md .internal-dev/plans/dashboard-widget-suite/06-ui-ux-contract-and-visual-validation-criteria.md .internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-01-browser-proof.md artifacts/dashboard-widget-suite/validation-summary.json",
+      "result": "passed",
+      "evidence": "No whitespace errors reported during independent focused browser-findings repair revalidation."
+    },
+    {
+      "command": "rm -rf /tmp/magenta2-dashboard-widget-suite-browser-rerun && mkdir -p /tmp/magenta2-dashboard-widget-suite-browser-rerun artifacts/dashboard-widget-suite/phase-01-browser-rerun",
+      "result": "passed",
+      "evidence": "Prepared isolated runtime root and distinct browser-rerun evidence directory."
+    },
+    {
+      "command": "mvn spring-boot:run -Dspring-boot.run.arguments='--server.port=18080 --magenta.root.path=/tmp/magenta2-dashboard-widget-suite-browser-rerun --spring.datasource.url=jdbc:sqlite:/tmp/magenta2-dashboard-widget-suite-browser-rerun/magenta.sqlite?foreign_keys=true --magenta.orchestration.runner-delay-ms=60000 --magenta.orchestration.scheduler-delay-ms=60000 --magenta.orchestration.assignment-history-purge-delay-ms=60000'",
+      "result": "passed",
+      "evidence": "Browser rerun runtime on 2026-05-29: Tomcat started on port 18080 with isolated root /tmp/magenta2-dashboard-widget-suite-browser-rerun."
+    },
+    {
+      "command": "Playwright MCP browser rerun against http://localhost:18080 at desktop 1440x900 and mobile 390x844",
+      "result": "passed",
+      "evidence": "artifacts/dashboard-widget-suite/phase-01-browser-rerun/browser-rerun-results.json reports PASS_BROWSER_PROOF with 12 checks passing and no failures."
+    },
+    {
+      "command": "Playwright MCP console and network capture",
+      "result": "passed_with_expected_400_noise",
+      "evidence": "console-messages.txt contains only expected 400 resource messages from invalid settings and forced duplicate-add negative tests; network-requests.txt records the expected 400 and successful fragment requests."
+    }
+  ],
+  "validators": [
+    {
+      "id": "phase-01-code-validator",
+      "status": "passed_code_validation_playwright_pending",
+      "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-01-validation.md",
+      "findings": [
+        {
+          "id": "phase-01-notes-multi-instance-action-root",
+          "classification": "code_defect",
+          "initial_status": "failed",
+          "revalidation_status": "passed",
+          "evidence": "Rendered Notes widgets emit /dashboards/{dashboardId}/widgets/{widgetInstanceId}/_notes for real instances; POST handler validates the Notes instance and returns widgetByInstance; regression test covers second Notes widget."
+        },
+        {
+          "id": "phase-01-missing-canonical-evidence-index",
+          "classification": "docs_or_evidence_defect",
+          "initial_status": "failed",
+          "revalidation_status": "validator_self_remediated",
+          "evidence": "Validation index now uses the required top-level fields from shared/validation-matrix.md."
+        },
+        {
+          "id": "phase-01-gitignore-unrelated-change",
+          "classification": "docs_or_evidence_defect",
+          "initial_status": "not_phase_scope",
+          "revalidation_status": "unchanged_unrelated",
+          "evidence": ".gitignore still contains the pre-existing broad /config/ ignore change and remains outside Phase 01 validation scope."
+        }
+      ]
+    },
+    {
+      "id": "phase-01-browser-findings-code-revalidator",
+      "status": "passed_code_validation_browser_rerun_ready",
+      "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-01-validation.md",
+      "findings": [
+        {
+          "id": "phase-01-htmx-400-swap-hook-target",
+          "classification": "simple_validator_edit",
+          "initial_status": "form_local_hook_risk",
+          "revalidation_status": "validator_self_remediated_passed",
+          "evidence": "The 400 swap hook now lives on the stable #avatar-edit-container target and OOB replacement fragments; focused controller test asserts the host hook is rendered."
+        },
+        {
+          "id": "phase-01-browser-findings-repair",
+          "classification": "code_validation",
+          "initial_status": "focused_revalidation_requested",
+          "revalidation_status": "passed_browser_rerun_ready",
+          "evidence": "Settings invalid binding, modal clear, disabled used single-instance catalog semantics, duplicate-add HTML 400 catalog fragment, and /manage criteria alignment passed focused code review and tests."
+        }
+      ]
+    }
+  ],
+  "browser": {
+    "status": "passed_browser_proof",
+    "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-01-browser-proof.md",
+    "runtime": {
+      "port": 18080,
+      "isolated_root": "/tmp/magenta2-dashboard-widget-suite-browser-rerun",
+      "command": "mvn spring-boot:run -Dspring-boot.run.arguments='--server.port=18080 --magenta.root.path=/tmp/magenta2-dashboard-widget-suite-browser-rerun --spring.datasource.url=jdbc:sqlite:/tmp/magenta2-dashboard-widget-suite-browser-rerun/magenta.sqlite?foreign_keys=true --magenta.orchestration.runner-delay-ms=60000 --magenta.orchestration.scheduler-delay-ms=60000 --magenta.orchestration.assignment-history-purge-delay-ms=60000'"
+    },
+    "scenarios": [
+      {
+        "id": "desktop_mobile_screenshots",
+        "status": "passed_rerun",
+        "evidence": [
+          "artifacts/dashboard-widget-suite/phase-01-browser-rerun/desktop-home.png",
+          "artifacts/dashboard-widget-suite/phase-01-browser-rerun/mobile-home.png",
+          "artifacts/dashboard-widget-suite/phase-01-browser-rerun/desktop-edit.png",
+          "artifacts/dashboard-widget-suite/phase-01-browser-rerun/mobile-edit.png"
+        ]
+      },
+      {
+        "id": "normal_dashboard_roots",
+        "status": "passed_rerun",
+        "evidence": "Desktop and mobile / had one nav, one #dashboard-home, one chat rail, no duplicate ids, and no mobile horizontal overflow."
+      },
+      {
+        "id": "edit_mode_controls",
+        "status": "passed_with_visual_notes_rerun",
+        "evidence": "Compact in-place add-widget, insert-row, move, remove, and width-picker controls were present. Icon clusters remain dense on narrow widgets but did not block tested interactions or create duplicate roots."
+      },
+      {
+        "id": "dashboard_selector_fragment_switching",
+        "status": "passed_rerun",
+        "evidence": "Created a Browser Rerun dashboard, clicked selector link, observed GET /dashboards/{dashboardId}/_page 200, canonical URL push, one shell/root, and no duplicate ids."
+      },
+      {
+        "id": "widget_catalog_instance_policy",
+        "status": "passed_rerun",
+        "evidence": "Used single-instance Todos remained visible disabled with Already on this dashboard; multi-instance Notes and Outputs remained enabled where row width allowed."
+      },
+      {
+        "id": "multi_instance_notes_second_submit",
+        "status": "passed_rerun",
+        "evidence": "Second Notes form posted to /dashboards/assistant/widgets/widget-b4e39672-855c-4683-9bfb-17c2dc8e9c1e/_notes, refreshed the second widget root, and no duplicate avatar-widget ids remained."
+      },
+      {
+        "id": "single_instance_duplicate_rejection",
+        "status": "passed_rerun",
+        "evidence": "Forced stale duplicate Todos HTMX submit returned HTTP 400 with HTML catalog error text dashboard widget already exists: todos, preserved disabled catalog state, and left one modal host/no duplicate ids."
+      },
+      {
+        "id": "settings_modal",
+        "status": "passed_rerun",
+        "evidence": "Invalid sourceMode=agent without agentId returned HTTP 400 and visibly rendered Agent source mode requires an agent id.; Close cleared #avatar-edit-container without nested duplicate hosts."
+      },
+      {
+        "id": "visual_reference_dashboard_agents",
+        "status": "passed_rerun",
+        "evidence": "Compared /, edit mode, /manage, and /agents. /manage and /agents loaded without duplicate ids or horizontal overflow; /manage correctly has both top nav and management side nav."
+      }
+    ],
+    "findings": [
+      {
+        "id": "phase-01-settings-invalid-agent-error-not-visible",
+        "classification": "code_defect",
+        "status": "passed_browser_rerun",
+        "evidence": "HTTP 400 settings response visibly rendered Agent source mode requires an agent id. in the modal and preserved a single modal host."
+      },
+      {
+        "id": "phase-01-settings-close-duplicates-edit-container",
+        "classification": "code_defect",
+        "status": "passed_browser_rerun",
+        "evidence": "Close request to /dashboards/_modal/clear returned 200 and left one empty #avatar-edit-container with no nested host."
+      },
+      {
+        "id": "phase-01-catalog-used-single-instance-hidden",
+        "classification": "code_defect",
+        "status": "passed_browser_rerun",
+        "evidence": "Catalog screenshot and DOM show used single-instance Todos visible and disabled with the clear reason Already on this dashboard."
+      },
+      {
+        "id": "phase-01-dashboard-reference-404",
+        "classification": "plan_defect_or_product_contract_defect",
+        "status": "passed_browser_rerun_criteria_corrected",
+        "evidence": "Rerun used /manage per corrected criteria and active web spec; /manage loaded as the operational reference."
+      }
+    ],
+    "rerun_artifacts": [
+      "artifacts/dashboard-widget-suite/phase-01-browser-rerun/browser-rerun-results.json",
+      "artifacts/dashboard-widget-suite/phase-01-browser-rerun/console-messages.txt",
+      "artifacts/dashboard-widget-suite/phase-01-browser-rerun/network-requests.txt",
+      "artifacts/dashboard-widget-suite/phase-01-browser-rerun/desktop-home.png",
+      "artifacts/dashboard-widget-suite/phase-01-browser-rerun/mobile-home.png",
+      "artifacts/dashboard-widget-suite/phase-01-browser-rerun/desktop-edit.png",
+      "artifacts/dashboard-widget-suite/phase-01-browser-rerun/mobile-edit.png",
+      "artifacts/dashboard-widget-suite/phase-01-browser-rerun/desktop-settings-invalid-agent-visible.png",
+      "artifacts/dashboard-widget-suite/phase-01-browser-rerun/desktop-widget-catalog-disabled-items.png",
+      "artifacts/dashboard-widget-suite/phase-01-browser-rerun/desktop-duplicate-todos-recoverable-error.png",
+      "artifacts/dashboard-widget-suite/phase-01-browser-rerun/desktop-second-note-submit.png",
+      "artifacts/dashboard-widget-suite/phase-01-browser-rerun/reference-manage.png",
+      "artifacts/dashboard-widget-suite/phase-01-browser-rerun/reference-agents.png"
+    ]
+  },
+  "artifacts": [
+    ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-01-browser-proof.md",
+    ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-01-validation.md",
+    "artifacts/dashboard-widget-suite/phase-01-browser-rerun/",
+    "artifacts/dashboard-widget-suite/phase-01-browser/",
+    "artifacts/dashboard-widget-suite/validation-summary.json"
+  ],
+  "superseded_artifacts": [
+    "artifacts/dashboard-widget-suite/phase-01-browser/"
+  ],
+  "tooling_constraints": [],
+  "residual_risks": [
+    "Later dashboard-widget-suite phases remain pending; this status is limited to Phase 01 code validation plus browser proof.",
+    "Compatibility Notes route /_dashboards/_notes remains available for legacy/default callers and still resolves by widget type; rendered real Notes widget instances use instance-scoped routes.",
+    "Edit-mode icon clusters remain visually dense on narrow widgets; acceptable for Phase 01 rerun because interactions remained reachable and no clipping/overflow/duplicate roots were observed, but should be watched in later visual polish."
+  ],
+  "stale_reference_sweep": {
+    "status": "not_final_phase",
+    "notes": "Final stale-reference sweep is required by the validation matrix before full suite closeout. Phase 01 scoped revalidation checked the repaired evidence index and review artifact only."
+  },
+  "final_reconciler": {
+    "status": "phase_01_browser_proof_passed_later_phases_pending",
+    "next_step": "Proceed only to later dashboard-widget-suite phases; do not claim full suite validation until those phases and final integration validation pass."
+  }
+}

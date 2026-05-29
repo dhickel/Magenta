@@ -1,0 +1,578 @@
+{
+  "startedAt": "2026-05-29T10:18:02.347Z",
+  "base": "http://localhost:18080",
+  "screenshots": [
+    "artifacts/dashboard-widget-suite/phase-01-browser-rerun/desktop-home.png",
+    "artifacts/dashboard-widget-suite/phase-01-browser-rerun/mobile-home.png",
+    "artifacts/dashboard-widget-suite/phase-01-browser-rerun/desktop-edit.png",
+    "artifacts/dashboard-widget-suite/phase-01-browser-rerun/desktop-width-picker.png",
+    "artifacts/dashboard-widget-suite/phase-01-browser-rerun/desktop-settings-modal.png",
+    "artifacts/dashboard-widget-suite/phase-01-browser-rerun/desktop-settings-invalid-agent-visible.png",
+    "artifacts/dashboard-widget-suite/phase-01-browser-rerun/desktop-settings-closed.png",
+    "artifacts/dashboard-widget-suite/phase-01-browser-rerun/desktop-widget-catalog-disabled-items.png",
+    "artifacts/dashboard-widget-suite/phase-01-browser-rerun/desktop-two-notes.png",
+    "artifacts/dashboard-widget-suite/phase-01-browser-rerun/desktop-second-note-submit.png",
+    "artifacts/dashboard-widget-suite/phase-01-browser-rerun/desktop-duplicate-before-submit.png",
+    "artifacts/dashboard-widget-suite/phase-01-browser-rerun/desktop-duplicate-todos-recoverable-error.png",
+    "artifacts/dashboard-widget-suite/phase-01-browser-rerun/desktop-dashboard-selector-switched.png",
+    "artifacts/dashboard-widget-suite/phase-01-browser-rerun/reference-manage.png",
+    "artifacts/dashboard-widget-suite/phase-01-browser-rerun/reference-agents.png",
+    "artifacts/dashboard-widget-suite/phase-01-browser-rerun/mobile-edit.png"
+  ],
+  "checks": {
+    "desktop_normal_dashboard_roots": {
+      "pass": true,
+      "evidence": {
+        "url": "http://localhost:18080/",
+        "title": "Assistant Dashboard",
+        "navCount": 1,
+        "dashboardHomeCount": 1,
+        "chatRailCount": 1,
+        "editContainerCount": 1,
+        "duplicateIds": [],
+        "horizontalOverflow": false,
+        "bodyWidth": 1440,
+        "viewportWidth": 1440
+      }
+    },
+    "mobile_normal_dashboard_no_overflow": {
+      "pass": true,
+      "evidence": {
+        "url": "http://localhost:18080/",
+        "title": "Assistant Dashboard",
+        "navCount": 1,
+        "dashboardHomeCount": 1,
+        "chatRailCount": 1,
+        "editContainerCount": 1,
+        "duplicateIds": [],
+        "horizontalOverflow": false,
+        "bodyWidth": 390,
+        "viewportWidth": 390
+      }
+    },
+    "edit_mode_compact_controls_present": {
+      "pass": true,
+      "evidence": {
+        "addWidgetButtons": 6,
+        "insertRowButtons": 4,
+        "moveButtons": 52,
+        "removeButtons": 10,
+        "widthPickers": 10,
+        "oversizedEditorText": false
+      }
+    },
+    "width_picker_opens_in_shared_modal_host": {
+      "pass": true,
+      "evidence": {
+        "text": "Widget widthTodos is 3/12. Up to 3/12 fits in this row.\nPresets\n3/12\n4/12\n6/12\n8/12\n12/12\nCustom\nApply\nEnter any width from 1/12 to 3/12 that still fits this row.",
+        "hostCount": 1
+      }
+    },
+    "settings_invalid_binding_visible_400_modal_error": {
+      "pass": true,
+      "evidence": {
+        "responseStatus": 400,
+        "statusTextVisible": true,
+        "text": "Todos Settings\nWidget instance widget-0e289977-4932-4377-b3f6-83727e15b00a\nClose\nAgent source mode requires an agent id.\nType\ntodos\nPolicy\nsingle per dashboard\nBinding\nnone\nSource\ndashboard\nagent\nproject\nwork area\nAgent\nProject\nWork Area\nDensity\ncompact\ncomfortable\nSave Settings",
+        "hostCount": 1,
+        "nestedHosts": 0,
+        "duplicateIds": []
+      }
+    },
+    "settings_close_no_duplicate_modal_host": {
+      "pass": true,
+      "evidence": {
+        "hostCount": 1,
+        "nestedHosts": 0,
+        "hostText": "",
+        "duplicateIds": []
+      }
+    },
+    "catalog_single_instance_visible_disabled_multi_addable": {
+      "pass": true,
+      "evidence": {
+        "todosEntry": {
+          "i": 1,
+          "key": "todos",
+          "text": "TodosPriority queue and quick completion.Already on this dashboard.Quarter (3/12)Third (4/12)Half (6/12)Two Thirds (8/12)Full (12/12)Added",
+          "disabledItem": true,
+          "ariaDisabled": "true",
+          "buttonDisabled": true,
+          "buttonText": "Added",
+          "action": "/_dashboards/_layout/rows/row-bd1ad100-530b-4e87-9b99-27176f05e2e9/widgets",
+          "target": "#avatar-edit-container",
+          "swap": "innerHTML",
+          "width": "4"
+        },
+        "notesEntry": {
+          "i": 3,
+          "key": "notes",
+          "text": "NotesShort personal notes.Quarter (3/12)Third (4/12)Half (6/12)Two Thirds (8/12)Full (12/12)Add",
+          "disabledItem": false,
+          "ariaDisabled": null,
+          "buttonDisabled": false,
+          "buttonText": "Add",
+          "action": "/_dashboards/_layout/rows/row-bd1ad100-530b-4e87-9b99-27176f05e2e9/widgets",
+          "target": "#avatar-edit-container",
+          "swap": "innerHTML",
+          "width": "6"
+        },
+        "outputsEntry": {
+          "i": 4,
+          "key": "outputs",
+          "text": "OutputsRecent generated artifacts.Quarter (3/12)Third (4/12)Half (6/12)Two Thirds (8/12)Full (12/12)Add",
+          "disabledItem": false,
+          "ariaDisabled": null,
+          "buttonDisabled": false,
+          "buttonText": "Add",
+          "action": "/_dashboards/_layout/rows/row-bd1ad100-530b-4e87-9b99-27176f05e2e9/widgets",
+          "target": "#avatar-edit-container",
+          "swap": "innerHTML",
+          "width": "6"
+        },
+        "all": [
+          {
+            "i": 0,
+            "key": "daily-tasks",
+            "text": "Daily TasksToday-focused task capture.Already on this dashboard.Quarter (3/12)Third (4/12)Half (6/12)Two Thirds (8/12)Full (12/12)Added",
+            "disabledItem": true,
+            "ariaDisabled": "true",
+            "buttonDisabled": true,
+            "buttonText": "Added",
+            "action": "/_dashboards/_layout/rows/row-bd1ad100-530b-4e87-9b99-27176f05e2e9/widgets",
+            "target": "#avatar-edit-container",
+            "swap": "innerHTML",
+            "width": "6"
+          },
+          {
+            "i": 1,
+            "key": "todos",
+            "text": "TodosPriority queue and quick completion.Already on this dashboard.Quarter (3/12)Third (4/12)Half (6/12)Two Thirds (8/12)Full (12/12)Added",
+            "disabledItem": true,
+            "ariaDisabled": "true",
+            "buttonDisabled": true,
+            "buttonText": "Added",
+            "action": "/_dashboards/_layout/rows/row-bd1ad100-530b-4e87-9b99-27176f05e2e9/widgets",
+            "target": "#avatar-edit-container",
+            "swap": "innerHTML",
+            "width": "4"
+          },
+          {
+            "i": 2,
+            "key": "calendar",
+            "text": "CalendarUpcoming dated work.Already on this dashboard.Quarter (3/12)Third (4/12)Half (6/12)Two Thirds (8/12)Full (12/12)Added",
+            "disabledItem": true,
+            "ariaDisabled": "true",
+            "buttonDisabled": true,
+            "buttonText": "Added",
+            "action": "/_dashboards/_layout/rows/row-bd1ad100-530b-4e87-9b99-27176f05e2e9/widgets",
+            "target": "#avatar-edit-container",
+            "swap": "innerHTML",
+            "width": "4"
+          },
+          {
+            "i": 3,
+            "key": "notes",
+            "text": "NotesShort personal notes.Quarter (3/12)Third (4/12)Half (6/12)Two Thirds (8/12)Full (12/12)Add",
+            "disabledItem": false,
+            "ariaDisabled": null,
+            "buttonDisabled": false,
+            "buttonText": "Add",
+            "action": "/_dashboards/_layout/rows/row-bd1ad100-530b-4e87-9b99-27176f05e2e9/widgets",
+            "target": "#avatar-edit-container",
+            "swap": "innerHTML",
+            "width": "6"
+          },
+          {
+            "i": 4,
+            "key": "outputs",
+            "text": "OutputsRecent generated artifacts.Quarter (3/12)Third (4/12)Half (6/12)Two Thirds (8/12)Full (12/12)Add",
+            "disabledItem": false,
+            "ariaDisabled": null,
+            "buttonDisabled": false,
+            "buttonText": "Add",
+            "action": "/_dashboards/_layout/rows/row-bd1ad100-530b-4e87-9b99-27176f05e2e9/widgets",
+            "target": "#avatar-edit-container",
+            "swap": "innerHTML",
+            "width": "6"
+          },
+          {
+            "i": 5,
+            "key": "system",
+            "text": "SystemAgent and queue counters.Already on this dashboard.Quarter (3/12)Third (4/12)Half (6/12)Two Thirds (8/12)Full (12/12)Added",
+            "disabledItem": true,
+            "ariaDisabled": "true",
+            "buttonDisabled": true,
+            "buttonText": "Added",
+            "action": "/_dashboards/_layout/rows/row-bd1ad100-530b-4e87-9b99-27176f05e2e9/widgets",
+            "target": "#avatar-edit-container",
+            "swap": "innerHTML",
+            "width": "4"
+          },
+          {
+            "i": 6,
+            "key": "alerts",
+            "text": "AlertsInbox and system alerts.Already on this dashboard.Quarter (3/12)Third (4/12)Half (6/12)Two Thirds (8/12)Full (12/12)Added",
+            "disabledItem": true,
+            "ariaDisabled": "true",
+            "buttonDisabled": true,
+            "buttonText": "Added",
+            "action": "/_dashboards/_layout/rows/row-bd1ad100-530b-4e87-9b99-27176f05e2e9/widgets",
+            "target": "#avatar-edit-container",
+            "swap": "innerHTML",
+            "width": "4"
+          },
+          {
+            "i": 7,
+            "key": "recent-work",
+            "text": "Recent WorkRecent jobs, assignments, and outputs.Quarter (3/12)Third (4/12)Half (6/12)Two Thirds (8/12)Full (12/12)Add",
+            "disabledItem": false,
+            "ariaDisabled": null,
+            "buttonDisabled": false,
+            "buttonText": "Add",
+            "action": "/_dashboards/_layout/rows/row-bd1ad100-530b-4e87-9b99-27176f05e2e9/widgets",
+            "target": "#avatar-edit-container",
+            "swap": "innerHTML",
+            "width": "4"
+          }
+        ]
+      }
+    },
+    "multi_instance_notes_second_submit_instance_scoped": {
+      "pass": true,
+      "evidence": {
+        "secondNotes": {
+          "id": "avatar-widget-widget-b4e39672-855c-4683-9bfb-17c2dc8e9c1e",
+          "widgetId": "widget-b4e39672-855c-4683-9bfb-17c2dc8e9c1e",
+          "formAction": "/dashboards/assistant/widgets/widget-b4e39672-855c-4683-9bfb-17c2dc8e9c1e/_notes",
+          "target": "#avatar-widget-widget-b4e39672-855c-4683-9bfb-17c2dc8e9c1e",
+          "text": "Notes\nSave Note\nNo notes yet."
+        },
+        "responseStatus": 200,
+        "notesAfterSubmit": {
+          "secondRootExists": true,
+          "duplicateWidgetIds": [],
+          "secondText": "Notes\nSave Note\nUntitled note\n\nSecond widget browser rerun note",
+          "allNotes": [
+            {
+              "id": "avatar-widget-widget-7a74bf3c-7cfc-4845-a4c0-32e6b3efe8ea",
+              "widgetId": "widget-7a74bf3c-7cfc-4845-a4c0-32e6b3efe8ea"
+            },
+            {
+              "id": "avatar-widget-widget-b493fd57-0090-4de7-8729-a23b663be770",
+              "widgetId": "widget-b493fd57-0090-4de7-8729-a23b663be770"
+            },
+            {
+              "id": "avatar-widget-widget-d5f4a404-01b5-4d12-9bdd-5141eb49a8c5",
+              "widgetId": "widget-d5f4a404-01b5-4d12-9bdd-5141eb49a8c5"
+            },
+            {
+              "id": "avatar-widget-widget-1116bfa5-8410-451c-b30b-c1f159f7cc09",
+              "widgetId": "widget-1116bfa5-8410-451c-b30b-c1f159f7cc09"
+            },
+            {
+              "id": "avatar-widget-widget-b4e39672-855c-4683-9bfb-17c2dc8e9c1e",
+              "widgetId": "widget-b4e39672-855c-4683-9bfb-17c2dc8e9c1e"
+            }
+          ]
+        }
+      }
+    },
+    "duplicate_single_instance_add_recoverable_html_htmx": {
+      "pass": true,
+      "evidence": {
+        "responseStatus": 400,
+        "modalText": "Add Widget\nPick one module for this row. Widths follow the 12-column dashboard grid.\nClose\ndashboard widget already exists: todos\nDaily TasksToday-focused task capture.\nAlready on this dashboard.\nQuarter (3/12)\nThird (4/12)\nHalf (6/12)\nTwo Thirds (8/12)\nFull (12/12)\nAdded\nTodosPriority queue and quick completion.\nAlready on this dashboard.\nQuarter (3/12)\nThird (4/12)\nHalf (6/12)\nTwo Thirds (8/12)\nFull (12/12)\nAdded\nCalendarUpcoming dated work.\nAlready on this dashboard.\nQuarter (3/12)\nThird (4/12)\nHalf (6/12)\nTwo Thirds (8/12)\nFull (12/12)\nAdded\nNotesShort personal notes.\nQuarter (3/12)\nThird (4/12)\nHalf (6/12)\nTwo Thirds (8/12)\nFull (12/12)\nAdd\nOutputsRecent generated artifacts.\nQuarter (3/12)\nThird (4/12)\nHalf (6/12)\nTwo Thirds (8/12)\nFull (12/12)\nAdd\nSystemAgent and queue counters.\nAlready on this dashboard.\nQuarter (3/12)\nThird (4/12)\nHalf (6/12)\nTwo Thirds (8/12)\nFull (12/12)\nAdded\nAlertsInbox and system alerts.\nAlready on this dashboard.\nQuarter (3/12)\nThird (4/12)\nHalf (6/12)\nTwo Thirds (8/12)\nFull (12/12)\nAdded\nRecent WorkRecent jobs, assignments, and outputs.\nQuarter (3/12)\nThird (4/12)\nHalf (6/12)\nTwo Thirds (8/12)\nFull (12/12)\nAdd",
+        "hostCount": 1,
+        "nestedHosts": 0,
+        "duplicateIds": [],
+        "forms": [
+          {
+            "key": "daily-tasks",
+            "disabled": true,
+            "text": "Daily TasksToday-focused task capture.Already on this dashboard.Quarter (3/12)Third (4/12)Half (6/12)Two Thirds (8/12)Full (12/12)Added"
+          },
+          {
+            "key": "todos",
+            "disabled": true,
+            "text": "TodosPriority queue and quick completion.Already on this dashboard.Quarter (3/12)Third (4/12)Half (6/12)Two Thirds (8/12)Full (12/12)Added"
+          },
+          {
+            "key": "calendar",
+            "disabled": true,
+            "text": "CalendarUpcoming dated work.Already on this dashboard.Quarter (3/12)Third (4/12)Half (6/12)Two Thirds (8/12)Full (12/12)Added"
+          },
+          {
+            "key": "notes",
+            "disabled": false,
+            "text": "NotesShort personal notes.Quarter (3/12)Third (4/12)Half (6/12)Two Thirds (8/12)Full (12/12)Add"
+          },
+          {
+            "key": "outputs",
+            "disabled": false,
+            "text": "OutputsRecent generated artifacts.Quarter (3/12)Third (4/12)Half (6/12)Two Thirds (8/12)Full (12/12)Add"
+          },
+          {
+            "key": "system",
+            "disabled": true,
+            "text": "SystemAgent and queue counters.Already on this dashboard.Quarter (3/12)Third (4/12)Half (6/12)Two Thirds (8/12)Full (12/12)Added"
+          },
+          {
+            "key": "alerts",
+            "disabled": true,
+            "text": "AlertsInbox and system alerts.Already on this dashboard.Quarter (3/12)Third (4/12)Half (6/12)Two Thirds (8/12)Full (12/12)Added"
+          },
+          {
+            "key": "recent-work",
+            "disabled": false,
+            "text": "Recent WorkRecent jobs, assignments, and outputs.Quarter (3/12)Third (4/12)Half (6/12)Two Thirds (8/12)Full (12/12)Add"
+          }
+        ]
+      }
+    },
+    "dashboard_selector_fragment_switching": {
+      "pass": true,
+      "evidence": {
+        "created": true,
+        "createInfo": {
+          "text": "Create Dashboard\nClose\nCreate Dashboard",
+          "inputs": [
+            {
+              "name": "name",
+              "type": "text",
+              "value": ""
+            }
+          ]
+        },
+        "selectorLinks": [
+          {
+            "text": "Assistant",
+            "href": "/dashboards/assistant",
+            "hxGet": "/dashboards/assistant/_page"
+          },
+          {
+            "text": "Browser Rerun 1780049896582",
+            "href": "/dashboards/dashboard-d9defb15-c219-4bc4-96f6-d1a65a0f7e84",
+            "hxGet": "/dashboards/dashboard-d9defb15-c219-4bc4-96f6-d1a65a0f7e84/_page"
+          }
+        ],
+        "targetLink": {
+          "text": "Browser Rerun 1780049896582",
+          "href": "/dashboards/dashboard-d9defb15-c219-4bc4-96f6-d1a65a0f7e84",
+          "hxGet": "/dashboards/dashboard-d9defb15-c219-4bc4-96f6-d1a65a0f7e84/_page"
+        },
+        "responseStatus": 200,
+        "after": {
+          "url": "http://localhost:18080/dashboards/dashboard-d9defb15-c219-4bc4-96f6-d1a65a0f7e84",
+          "title": "Assistant Dashboard",
+          "navCount": 1,
+          "dashboardHomeCount": 1,
+          "chatRailCount": 1,
+          "editContainerCount": 1,
+          "duplicateIds": [],
+          "horizontalOverflow": false,
+          "bodyWidth": 1440,
+          "viewportWidth": 1440
+        }
+      }
+    },
+    "visual_references_manage_agents_load": {
+      "pass": true,
+      "evidence": {
+        "manage": {
+          "url": "http://localhost:18080/manage",
+          "title": "Magenta Manage",
+          "navCount": 2,
+          "dashboardHomeCount": 0,
+          "chatRailCount": 0,
+          "editContainerCount": 0,
+          "duplicateIds": [],
+          "horizontalOverflow": false,
+          "bodyWidth": 1440,
+          "viewportWidth": 1440
+        },
+        "agents": {
+          "url": "http://localhost:18080/agents",
+          "title": "Magenta Agents",
+          "navCount": 1,
+          "dashboardHomeCount": 0,
+          "chatRailCount": 0,
+          "editContainerCount": 0,
+          "duplicateIds": [],
+          "horizontalOverflow": false,
+          "bodyWidth": 1440,
+          "viewportWidth": 1440
+        }
+      },
+      "harnessNote": "/manage has both top nav and management side nav; exact navCount === 1 was an invalid assertion for this reference surface."
+    },
+    "mobile_edit_no_horizontal_overflow_duplicate_roots": {
+      "pass": true,
+      "evidence": {
+        "url": "http://localhost:18080/dashboards/assistant?edit=true",
+        "title": "Assistant Dashboard",
+        "navCount": 1,
+        "dashboardHomeCount": 1,
+        "chatRailCount": 1,
+        "editContainerCount": 1,
+        "duplicateIds": [],
+        "horizontalOverflow": false,
+        "bodyWidth": 390,
+        "viewportWidth": 390
+      }
+    }
+  },
+  "responses": [
+    {
+      "method": "GET",
+      "url": "http://localhost:18080/",
+      "status": 200,
+      "contentType": "text/html;charset=UTF-8"
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:18080/",
+      "status": 200,
+      "contentType": "text/html;charset=UTF-8"
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:18080/dashboards/assistant?edit=true",
+      "status": 200,
+      "contentType": "text/html;charset=UTF-8"
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:18080/dashboards/assistant/widgets/widget-0e289977-4932-4377-b3f6-83727e15b00a/settings",
+      "status": 200,
+      "contentType": "text/plain;charset=UTF-8"
+    },
+    {
+      "method": "PUT",
+      "url": "http://localhost:18080/dashboards/assistant/widgets/widget-0e289977-4932-4377-b3f6-83727e15b00a/settings",
+      "status": 400,
+      "contentType": "text/plain;charset=UTF-8"
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:18080/dashboards/_modal/clear",
+      "status": 200,
+      "contentType": "text/plain;charset=UTF-8"
+    },
+    {
+      "method": "POST",
+      "url": "http://localhost:18080/dashboards/assistant/widgets/widget-b4e39672-855c-4683-9bfb-17c2dc8e9c1e/_notes",
+      "status": 200,
+      "contentType": "text/plain;charset=UTF-8"
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:18080/dashboards/assistant?edit=true",
+      "status": 200,
+      "contentType": "text/html;charset=UTF-8"
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:18080/dashboards/_create",
+      "status": 200,
+      "contentType": "text/plain;charset=UTF-8"
+    },
+    {
+      "method": "POST",
+      "url": "http://localhost:18080/dashboards",
+      "status": 200,
+      "contentType": "text/plain;charset=UTF-8"
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:18080/dashboards/dashboard-d9defb15-c219-4bc4-96f6-d1a65a0f7e84/_page",
+      "status": 200,
+      "contentType": "text/plain;charset=UTF-8"
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:18080/manage",
+      "status": 200,
+      "contentType": "text/html;charset=UTF-8"
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:18080/manage/_open-projects",
+      "status": 200,
+      "contentType": "text/plain;charset=UTF-8"
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:18080/manage/_stats",
+      "status": 200,
+      "contentType": "text/plain;charset=UTF-8"
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:18080/manage/_active-work",
+      "status": 200,
+      "contentType": "text/plain;charset=UTF-8"
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:18080/manage/_side-outputs",
+      "status": 200,
+      "contentType": "text/plain;charset=UTF-8"
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:18080/manage/_side-inbox",
+      "status": 200,
+      "contentType": "text/plain;charset=UTF-8"
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:18080/manage/_side-events",
+      "status": 200,
+      "contentType": "text/plain;charset=UTF-8"
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:18080/manage/_agents",
+      "status": 200,
+      "contentType": "text/plain;charset=UTF-8"
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:18080/agents",
+      "status": 200,
+      "contentType": "text/html;charset=UTF-8"
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:18080/js/orchestration/agents.js?v=2",
+      "status": 200,
+      "contentType": "text/javascript"
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:18080/agents/_list",
+      "status": 200,
+      "contentType": "text/plain;charset=UTF-8"
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost:18080/dashboards/assistant?edit=true",
+      "status": 200,
+      "contentType": "text/html;charset=UTF-8"
+    }
+  ],
+  "console": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    }
+  ],
+  "failures": [],
+  "finishedAt": "2026-05-29T10:18:20.431Z",
+  "verdict": "PASS_BROWSER_PROOF"
+}

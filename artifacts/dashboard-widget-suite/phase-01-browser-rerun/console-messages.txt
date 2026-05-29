@@ -1,0 +1,7 @@
+Total messages: 0 (Errors: 0, Warnings: 0)
+Returning 4 messages for level "info"
+
+[ERROR] Failed to load resource: the server responded with a status of 400 () @ http://localhost:18080/dashboards/assistant/widgets/widget-0e289977-4932-4377-b3f6-83727e15b00a/settings:0
+[ERROR] Failed to load resource: the server responded with a status of 400 () @ http://localhost:18080/dashboards/assistant/widgets/widget-0e289977-4932-4377-b3f6-83727e15b00a/settings:0
+[ERROR] Failed to load resource: the server responded with a status of 400 () @ http://localhost:18080/dashboards/assistant/widgets/widget-0e289977-4932-4377-b3f6-83727e15b00a/settings:0
+[ERROR] Failed to load resource: the server responded with a status of 400 () @ http://localhost:18080/_dashboards/_layout/rows/row-4c1cef1f-8ace-4314-81a6-37bae6fa599c/widgets:0

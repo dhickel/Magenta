@@ -17,6 +17,7 @@ import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
 class AvatarRepositoryTest {
     private AvatarRepository repository;
+    private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
     void setUp() {
@@ -25,7 +26,8 @@ class AvatarRepositoryTest {
             true
         );
         new AvatarSchemaInitializer(dataSource).initialize();
-        repository = new AvatarRepository(new JdbcTemplate(dataSource), new ObjectMapper());
+        jdbcTemplate = new JdbcTemplate(dataSource);
+        repository = new AvatarRepository(jdbcTemplate, new ObjectMapper());
     }
 
     @Test
@@ -244,20 +246,20 @@ class AvatarRepositoryTest {
 
         AvatarDashboardRow rowOne = repository.addDashboardRow(dashboard.id());
         AvatarDashboardRow rowTwo = repository.addDashboardRow(dashboard.id());
-        repository.addDashboardWidget(dashboard.id(), rowOne.id(), "one", 6);
-        repository.addDashboardWidget(dashboard.id(), rowOne.id(), "two", 6);
-        repository.addDashboardWidget(dashboard.id(), rowTwo.id(), "three", 4);
+        repository.addDashboardWidget(dashboard.id(), rowOne.id(), "notes", 6);
+        repository.addDashboardWidget(dashboard.id(), rowOne.id(), "outputs", 6);
+        repository.addDashboardWidget(dashboard.id(), rowTwo.id(), "recent-work", 4);
 
         List<AvatarDashboardRow> rows = repository.findDashboardRows(dashboard.id());
         assertThat(rows).hasSize(2);
         assertThat(rows.get(0).position()).isZero();
         assertThat(rows.get(0).widgets()).extracting(AvatarDashboardRowWidget::widgetKey)
-            .containsExactly("one", "two");
+            .containsExactly("notes", "outputs");
         assertThat(rows.get(0).widgets()).extracting(AvatarDashboardRowWidget::columnWidth)
             .containsExactly(6, 6);
         assertThat(rows.get(1).position()).isEqualTo(1);
         assertThat(rows.get(1).widgets()).extracting(AvatarDashboardRowWidget::widgetKey)
-            .containsExactly("three");
+            .containsExactly("recent-work");
     }
 
     @Test
@@ -274,8 +276,8 @@ class AvatarRepositoryTest {
         assertThat(repository.findDashboardRows(dashboard.id())).singleElement()
             .satisfies(saved -> assertThat(saved.widgets().getFirst().columnWidth()).isEqualTo(5));
         assertThatThrownBy(() -> repository.addDashboardWidget(dashboard.id(), row.id(), "todos", 3))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("already exists");
+            .isInstanceOf(Exception.class)
+            .hasMessageContaining("dashboard_id");
         assertThatThrownBy(() -> repository.resizeDashboardWidget(first.id(), 12))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("cannot exceed 12");
@@ -295,6 +297,110 @@ class AvatarRepositoryTest {
         repository.removeDashboardWidget(first.id());
         repository.removeDashboardRow(row.id());
         assertThat(repository.findDashboardRows(dashboard.id())).isEmpty();
+    }
+
+    @Test
+    void allowsMultiInstanceWidgetsAndUsesSingleInstanceSentinelConstraint() {
+        UserDashboard dashboard = repository.createDashboard("Instances");
+        AvatarDashboardRow row = repository.addDashboardRow(dashboard.id());
+
+        repository.addDashboardWidget(dashboard.id(), row.id(), "notes", 4);
+        repository.addDashboardWidget(dashboard.id(), row.id(), "notes", 4);
+        repository.addDashboardWidget(dashboard.id(), row.id(), "todos", 4);
+
+        assertThat(repository.findDashboardRows(dashboard.id())).singleElement()
+            .satisfies(saved -> {
+                assertThat(saved.widgets()).extracting(AvatarDashboardRowWidget::widgetKey)
+                    .containsExactly("notes", "notes", "todos");
+                assertThat(saved.widgets().stream()
+                    .filter(widget -> widget.widgetKey().equals("notes"))
+                    .map(widget -> widget.settings().get("sourceMode")))
+                    .containsExactly("dashboard", "dashboard");
+            });
+
+        AvatarDashboardRow secondRow = repository.addDashboardRow(dashboard.id());
+        assertThatThrownBy(() -> repository.addDashboardWidget(dashboard.id(), secondRow.id(), "todos", 4))
+            .isInstanceOf(Exception.class)
+            .hasMessageContaining("dashboard");
+    }
+
+    @Test
+    void migratesLegacyUserDashboardWidgetTableToInstanceModel() {
+        SingleConnectionDataSource dataSource = new SingleConnectionDataSource(
+            "jdbc:sqlite::memory:?foreign_keys=true",
+            true
+        );
+        JdbcTemplate legacyJdbc = new JdbcTemplate(dataSource);
+        legacyJdbc.execute("""
+            create table user_dashboards (
+                id text primary key,
+                dashboard_name text not null,
+                dashboard_position integer not null,
+                default_dashboard integer not null default 0,
+                settings_json text not null default '{}',
+                created_at text not null,
+                updated_at text not null,
+                unique(dashboard_name)
+            )
+            """);
+        legacyJdbc.execute("""
+            create table user_dashboard_rows (
+                id text primary key,
+                dashboard_id text not null,
+                row_position integer not null,
+                collapsed integer not null default 0,
+                settings_json text not null default '{}',
+                updated_at text not null,
+                foreign key(dashboard_id) references user_dashboards(id) on delete cascade
+            )
+            """);
+        legacyJdbc.execute("""
+            create table user_dashboard_widgets (
+                id text primary key,
+                dashboard_id text not null,
+                row_id text not null,
+                widget_key text not null,
+                column_position integer not null,
+                column_width integer not null,
+                enabled integer not null default 1,
+                collapsed integer not null default 0,
+                settings_json text not null default '{}',
+                updated_at text not null,
+                unique(dashboard_id, widget_key),
+                foreign key(dashboard_id) references user_dashboards(id) on delete cascade,
+                foreign key(row_id) references user_dashboard_rows(id) on delete cascade
+            )
+            """);
+        legacyJdbc.update(
+            "insert into user_dashboards (id, dashboard_name, dashboard_position, default_dashboard, settings_json, created_at, updated_at) values ('assistant', 'Assistant', 0, 1, '{}', ?, ?)",
+            Instant.parse("2026-05-28T10:00:00Z").toString(),
+            Instant.parse("2026-05-28T10:00:00Z").toString()
+        );
+        legacyJdbc.update(
+            "insert into user_dashboard_rows (id, dashboard_id, row_position, collapsed, settings_json, updated_at) values ('row-legacy', 'assistant', 0, 0, '{}', ?)",
+            Instant.parse("2026-05-28T10:00:00Z").toString()
+        );
+        legacyJdbc.update(
+            "insert into user_dashboard_widgets (id, dashboard_id, row_id, widget_key, column_position, column_width, enabled, collapsed, settings_json, updated_at) values ('widget-legacy', 'assistant', 'row-legacy', 'notes', 0, 6, 1, 0, '{\"density\":\"comfortable\"}', ?)",
+            Instant.parse("2026-05-28T10:00:00Z").toString()
+        );
+
+        AvatarRepository migrated = new AvatarRepository(legacyJdbc, new ObjectMapper());
+
+        assertThat(legacyJdbc.queryForList("pragma table_info(user_dashboard_widgets)"))
+            .extracting(row -> row.get("name"))
+            .contains("widget_type", "single_instance_key", "created_at");
+        assertThat(migrated.findDashboardRows("assistant")).singleElement()
+            .satisfies(row -> assertThat(row.widgets()).singleElement()
+                .satisfies(widget -> {
+                    assertThat(widget.id()).isEqualTo("widget-legacy");
+                    assertThat(widget.widgetKey()).isEqualTo("notes");
+                    assertThat(widget.settings()).containsEntry("density", "comfortable");
+                }));
+        migrated.addDashboardWidget("assistant", "row-legacy", "notes", 6);
+        assertThat(migrated.findDashboardRows("assistant").getFirst().widgets())
+            .filteredOn(widget -> widget.widgetKey().equals("notes"))
+            .hasSize(2);
     }
 
     @Test

@@ -30,6 +30,11 @@ Layout mutations refresh `#avatar-widget-grid` with out-of-band swaps and clear 
 
 ## Widget Routes
 
+- `GET /dashboards/{dashboardId}/widgets/{widgetInstanceId}` returns a summary fragment rooted at `#avatar-widget-{widgetInstanceId}`.
+- `GET /dashboards/{dashboardId}/widgets/{widgetInstanceId}/detail` opens the detail modal.
+- `GET /dashboards/{dashboardId}/widgets/{widgetInstanceId}/settings` opens the generic settings modal shell.
+- `PUT /dashboards/{dashboardId}/widgets/{widgetInstanceId}/settings` validates settings and returns OOB modal close plus summary refresh.
+- Compatibility routes under `/_dashboards/_widgets/{widgetKey}` remain for older quick-action fragments and resolve the first matching widget instance.
 - Todos: `POST /_dashboards/_todos`, `POST /_dashboards/_todos/{todoId}/complete`, `DELETE /_dashboards/_todos/{todoId}`
 - Daily tasks: `POST /_dashboards/_daily-tasks`, `POST /_dashboards/_daily-tasks/{taskId}/complete`
 - Notes: `POST /_dashboards/_notes`

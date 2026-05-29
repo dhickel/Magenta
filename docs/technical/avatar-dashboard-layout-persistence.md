@@ -6,10 +6,10 @@ User dashboard layout persistence is stored in `avatar.sqlite` for the current a
 
 - `user_dashboards`: dashboard records with stable ids, names, ordering/default metadata, and timestamps.
 - `user_dashboard_rows`: per-dashboard row records with stable ids, row positions, collapsed state, settings JSON, and update timestamps.
-- `user_dashboard_widgets`: row-scoped widget placements with stable ids, first-party `widget_key`, column position, 12-column width, enabled/collapsed state, settings JSON, and update timestamps.
+- `user_dashboard_widgets`: row-scoped widget instances with stable ids, compatibility `widget_key`, registry-backed `widget_type`, optional instance label, column position, 12-column width, enabled/collapsed state, per-instance settings JSON, optional `single_instance_key`, and timestamps.
 - Legacy `avatar_dashboard_*` tables may remain in the datasource but are not the current user-dashboard contract.
 
-Widget uniqueness is scoped to the dashboard model as implemented by the user-dashboard tables, not globally across all dashboards.
+Widget uniqueness is no longer type-wide for every widget. Multi-instance registry types can appear more than once on a dashboard. Single-instance registry types set `single_instance_key = widget_type`, and SQLite enforces `unique(dashboard_id, single_instance_key)` while allowing multi-instance rows to keep that sentinel null.
 
 ## Service Contract
 
@@ -18,11 +18,13 @@ Widget uniqueness is scoped to the dashboard model as implemented by the user-da
 - list dashboard rows with widgets;
 - add and move rows;
 - add widgets to a row;
+- validate widget type, supported width, row capacity, and single-instance policy through the widget registry;
+- save per-instance widget settings with deterministic defaults and validation;
 - move widgets left, right, up, or down;
 - resize widgets to any width from `1` through `12` that still fits the row;
 - remove widgets.
 
-The repository enforces row width totals at or below 12 columns, rejects duplicate widget keys where required by the dashboard contract, and rejects width values outside `1..12`.
+The repository enforces row width totals at or below 12 columns, persists registry-derived settings defaults, enforces the single-instance sentinel constraint, and rejects width values outside `1..12`.
 
 ## Default Dashboard
 
@@ -42,6 +44,17 @@ The in-place dashboard layout editor uses per-action HTMX requests and OOB grid 
 - `DELETE /dashboards/{dashboardId}/_layout/widgets/{widgetId}`
 
 The editor uses SimplyPages row/column layout primitives for the 12-column placement model and keeps mutations scoped to the shared edit overlay/popover surface with the dashboard widget grid refreshed out of band.
+
+## Widget Instance Routes
+
+Widget summaries, detail surfaces, and settings surfaces use stable widget instance ids:
+
+- `GET /dashboards/{dashboardId}/widgets/{widgetInstanceId}`
+- `GET /dashboards/{dashboardId}/widgets/{widgetInstanceId}/detail`
+- `GET /dashboards/{dashboardId}/widgets/{widgetInstanceId}/settings`
+- `PUT /dashboards/{dashboardId}/widgets/{widgetInstanceId}/settings`
+
+Compatibility routes under `/_dashboards/_widgets/{widgetKey}` still resolve the first matching instance or a default shell for older widget actions.
 
 There is no current Assistant inner tab shell. Layout edit mode applies to the selected dashboard surface only. Queue, history, profile, outputs, and Work Areas are not Assistant dashboard tabs; Work Areas are exposed through agent detail.
 

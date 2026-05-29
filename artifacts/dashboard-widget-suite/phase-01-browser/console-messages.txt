@@ -1,0 +1,13 @@
+Total messages: 0 (Errors: 0, Warnings: 0)
+Returning 10 messages for level "info"
+
+[ERROR] Failed to load resource: the server responded with a status of 400 () @ http://localhost:18080/_dashboards/_layout/rows/row-b2a48cfa-b7f8-40dc-a41d-1fc62b477ab3/widgets:0
+[ERROR] Response Status Error Code 400 from /_dashboards/_layout/rows/row-b2a48cfa-b7f8-40dc-a41d-1fc62b477ab3/widgets @ http://localhost:18080/webjars/htmx.org/dist/htmx.min.js:0
+[ERROR] Failed to load resource: the server responded with a status of 400 () @ http://localhost:18080/_dashboards/_layout/rows/row-b2a48cfa-b7f8-40dc-a41d-1fc62b477ab3/widgets:0
+[ERROR] Response Status Error Code 400 from /_dashboards/_layout/rows/row-b2a48cfa-b7f8-40dc-a41d-1fc62b477ab3/widgets @ http://localhost:18080/webjars/htmx.org/dist/htmx.min.js:0
+[ERROR] Failed to load resource: the server responded with a status of 400 () @ http://localhost:18080/_dashboards/_layout/rows/row-b2a48cfa-b7f8-40dc-a41d-1fc62b477ab3/widgets:0
+[ERROR] Failed to load resource: the server responded with a status of 405 () @ http://localhost:18080/dashboards/undefined:0
+[ERROR] Failed to load resource: the server responded with a status of 400 () @ http://localhost:18080/_dashboards/_layout/rows/row-6619a232-41ac-4e9a-b125-fde97b701225/widgets:0
+[ERROR] Failed to load resource: the server responded with a status of 400 () @ http://localhost:18080/dashboards/dashboard-2de03988-acb6-4d39-9b36-436e46432610/widgets/widget-8b35657f-1e9c-4a09-8380-25a987f0ef8a/settings:0
+[ERROR] Response Status Error Code 400 from /dashboards/dashboard-2de03988-acb6-4d39-9b36-436e46432610/widgets/widget-8b35657f-1e9c-4a09-8380-25a987f0ef8a/settings @ http://localhost:18080/webjars/htmx.org/dist/htmx.min.js:0
+[ERROR] Failed to load resource: the server responded with a status of 404 () @ http://localhost:18080/dashboard:0

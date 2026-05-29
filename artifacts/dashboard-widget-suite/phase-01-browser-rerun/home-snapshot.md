@@ -1,0 +1,11 @@
+- generic [active] [ref=e1] [box=0,16,1440,1267]:
+  - banner [ref=e2] [box=16,16,1408,149]:
+    - generic [ref=e5] [box=55,37,1330,69]:
+      - heading "Assistant" [level=1] [ref=e6] [box=659,37,121,34]
+      - paragraph [ref=e7] [box=564,83,312,24]: User dashboards, chat, and operational widgets
+    - navigation [ref=e9] [box=72,117,1295,48]:
+      - generic [ref=e10] [box=81,123,1277,36]
+  - main [ref=e16] [box=16,181,1408,1087]:
+    - generic [ref=e19] [box=63,224,1314,993]:
+      - generic [ref=e20] [box=63,224,1314,47]
+      - generic [ref=e23] [box=63,283,1314,934]
