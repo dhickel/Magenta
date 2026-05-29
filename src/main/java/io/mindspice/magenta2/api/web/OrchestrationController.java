@@ -5562,7 +5562,7 @@ public class OrchestrationController {
             .withAttribute("data-selected-agent-id", selectedAgentId == null ? "" : selectedAgentId)
             .withChild(Header.H1("Agents"))
             .withChild(new Paragraph("Manage agent profiles, queues, inboxes, assignments, and workspace."))
-            .withChild(new Div().withClass("browser-layout browser-layout-wide")
+            .withChild(new Div().withClass("browser-layout browser-layout-wide agent-browser-layout")
                 .withChild(new Div().withClass("browser-sidebar")
                     .withChild(new HtmlTag("input")
                         .withAttribute("type", "hidden")

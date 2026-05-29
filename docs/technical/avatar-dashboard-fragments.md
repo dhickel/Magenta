@@ -6,6 +6,7 @@
 
 - `GET /` renders the full dashboard home.
 - `GET /dashboards/{dashboardId}` renders a selected dashboard.
+- `GET /dashboards/{dashboardId}/_page` renders the `#dashboard-home` fragment for HTMX dashboard selector/edit swaps and pushes `/dashboards/{dashboardId}` or `/dashboards/{dashboardId}?edit=true`.
 - `GET /dashboards/_create` renders the create-dashboard modal.
 - `POST /dashboards` creates a new empty dashboard by name.
 - `GET /dashboards/_modal/clear` clears the shared modal host.
@@ -66,3 +67,5 @@ The route guard checks that the Work Area owner type is `AGENT` and the owner id
 - `/js/avatar-shell.js?v=6` owns desktop chat corner resizing and local geometry persistence.
 
 The dashboard root must render `data-avatar-shell="true"` around `.avatar-shell-grid`, `[data-avatar-chat="true"]`, and `[data-avatar-chat-corner-resizer="true"]`; `avatar-shell.js` uses that hook to bind horizontal rail width and vertical panel height resizing.
+
+Dashboard selector links and dashboard edit toggles should target `#dashboard-home` with `hx-swap="outerHTML"` and `hx-push-url` so switching dashboards refreshes the dashboard component without reloading the full shell or top navigation.

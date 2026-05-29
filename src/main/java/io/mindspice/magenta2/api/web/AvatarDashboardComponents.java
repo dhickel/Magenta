@@ -70,9 +70,17 @@ final class AvatarDashboardComponents {
     }
 
     static Component page(AvatarDashboardData data, String activeTab, boolean editMode) {
+        return page(data, activeTab, editMode, true);
+    }
+
+    static Component pageFragment(AvatarDashboardData data, boolean editMode) {
+        return page(data, "dashboard", editMode, false);
+    }
+
+    private static Component page(AvatarDashboardData data, String activeTab, boolean editMode, boolean includeAssets) {
         String normalizedTab = normalizeTab(activeTab);
         boolean dashboardEditMode = editMode && "dashboard".equals(normalizedTab);
-        return new Div()
+        Div root = new Div()
             .withId("dashboard-home")
             .withClass(dashboardEditMode ? "avatar-page avatar-page-editing" : "avatar-page")
             .withAttribute("data-avatar-shell", "true")
@@ -86,11 +94,14 @@ final class AvatarDashboardComponents {
                     .withChild(new Div().withClass("avatar-shell-main")
                         .withChild(dashboardPanel(data, dashboardEditMode)))))
             .withChild(new Div().withId("avatar-edit-container"))
-            .withChild(new Div().withId("avatar-output-preview").withClass("avatar-output-preview"))
-            .withChild(moduleScript("/js/avatar-chat.js?v=4"))
-            .withChild(moduleScript("/js/avatar-layout-edit.js?v=1"))
-            .withChild(moduleScript("/js/avatar-workarea-editor.js?v=2"))
-            .withChild(moduleScript("/js/avatar-shell.js?v=6"));
+            .withChild(new Div().withId("avatar-output-preview").withClass("avatar-output-preview"));
+        if (includeAssets) {
+            root.withChild(moduleScript("/js/avatar-chat.js?v=4"))
+                .withChild(moduleScript("/js/avatar-layout-edit.js?v=1"))
+                .withChild(moduleScript("/js/avatar-workarea-editor.js?v=2"))
+                .withChild(moduleScript("/js/avatar-shell.js?v=6"));
+        }
+        return root;
     }
 
     private static Component dashboardSelector(AvatarDashboardData data) {
@@ -103,6 +114,10 @@ final class AvatarDashboardComponents {
                 .withClass("dashboard-selector-item"
                     + (dashboard.id().equals(data.dashboard().id()) ? " active" : ""))
                 .withAttribute("href", "/dashboards/" + url(dashboard.id()))
+                .withAttribute("hx-get", "/dashboards/" + url(dashboard.id()) + "/_page")
+                .withAttribute("hx-target", "#dashboard-home")
+                .withAttribute("hx-swap", "outerHTML")
+                .withAttribute("hx-push-url", "/dashboards/" + url(dashboard.id()))
                 .withInnerText(dashboard.name());
             selector.withChild(link);
         }
@@ -150,6 +165,20 @@ final class AvatarDashboardComponents {
     }
 
     private static Component dashboardPanel(AvatarDashboardData data, boolean editMode) {
+        String dashboardUrl = editMode
+            ? "/dashboards/" + url(data.dashboard().id())
+            : "/dashboards/" + url(data.dashboard().id()) + "?edit=true";
+        HtmlTag editLink = iconLink(
+            editMode ? "close" : "settings",
+            editMode ? "Exit dashboard layout edit" : "Edit dashboard layout",
+            dashboardUrl
+        );
+        editLink.withAttribute("hx-get", editMode
+                ? "/dashboards/" + url(data.dashboard().id()) + "/_page"
+                : "/dashboards/" + url(data.dashboard().id()) + "/_page?edit=true")
+            .withAttribute("hx-target", "#dashboard-home")
+            .withAttribute("hx-swap", "outerHTML")
+            .withAttribute("hx-push-url", dashboardUrl);
         return new Div()
             .withId("dashboard-panel")
             .withClass("avatar-tab-panel avatar-tab-panel-dashboard")
@@ -157,13 +186,7 @@ final class AvatarDashboardComponents {
             .withChild(new Div().withClass("avatar-shell-strip")
                 .withChild(new HtmlTag("span").withClass("avatar-shell-note")
                     .withInnerText(editMode ? "Dashboard edit mode" : "Dashboard"))
-                .withChild(iconLink(
-                    editMode ? "close" : "settings",
-                    editMode ? "Exit dashboard layout edit" : "Edit dashboard layout",
-                    editMode
-                        ? "/dashboards/" + url(data.dashboard().id())
-                        : "/dashboards/" + url(data.dashboard().id()) + "?edit=true"
-                )))
+                .withChild(editLink))
             .withChild(new Div().withClass("avatar-dashboard-panel")
                 .withChild(widgetGrid(data, editMode)));
     }
@@ -208,6 +231,10 @@ final class AvatarDashboardComponents {
             empty.withChild(new HtmlTag("a")
                 .withClass("button button-secondary small")
                 .withAttribute("href", "/dashboards/" + url(dashboard.id()) + "?edit=true")
+                .withAttribute("hx-get", "/dashboards/" + url(dashboard.id()) + "/_page?edit=true")
+                .withAttribute("hx-target", "#dashboard-home")
+                .withAttribute("hx-swap", "outerHTML")
+                .withAttribute("hx-push-url", "/dashboards/" + url(dashboard.id()) + "?edit=true")
                 .withInnerText("Edit"));
         }
         return empty;

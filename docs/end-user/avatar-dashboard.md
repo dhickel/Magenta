@@ -4,6 +4,8 @@ The home route `/` is the user dashboard surface. It opens with the `Assistant` 
 
 Dashboards are configurable widget containers. They are not agents, Work Areas, or execution contexts.
 
+Selecting another dashboard updates the dashboard area in place and keeps the page shell, top navigation, and chat rail context intact while the browser URL changes to the selected dashboard.
+
 The left chat rail can be resized on desktop with the bottom-right corner handle. Horizontal resizing changes the chat rail width while dashboard widgets fill the remaining space; vertical resizing changes the chat panel height.
 
 ## Editing

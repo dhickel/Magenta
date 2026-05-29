@@ -130,6 +130,10 @@ class AvatarDashboardControllerTest {
         assertThat(html).contains("id=\"content-area\" class=\"avatar-content-area\"");
         assertThat(html).contains("id=\"dashboard-selector\"");
         assertThat(html).contains(">Assistant</a>");
+        assertThat(html).contains("hx-get=\"/dashboards/assistant/_page\"");
+        assertThat(html).contains("hx-target=\"#dashboard-home\"");
+        assertThat(html).contains("hx-swap=\"outerHTML\"");
+        assertThat(html).contains("hx-push-url=\"/dashboards/assistant\"");
         assertThat(html).contains("aria-label=\"Create dashboard\"");
         assertThat(html).contains("id=\"avatar-chat\"");
         assertThat(html).contains("data-avatar-chat=\"true\"");
@@ -158,6 +162,8 @@ class AvatarDashboardControllerTest {
         assertThat(editHtml).contains("avatar-widget-grid-editing");
         assertThat(editHtml).contains("Dashboard edit mode");
         assertThat(editHtml).contains("avatar-icon-link");
+        assertThat(editHtml).contains("hx-get=\"/dashboards/assistant/_page\"");
+        assertThat(editHtml).contains("hx-push-url=\"/dashboards/assistant\"");
 
         String editRowsHtml = controller.avatar(true);
         assertThat(editRowsHtml).contains("editable-row-wrapper");
@@ -170,6 +176,24 @@ class AvatarDashboardControllerTest {
         assertThat(editRowsHtml).doesNotContain("/avatar/_layout");
         assertThat(editRowsHtml).doesNotContain("Refresh Widgets");
         assertThat(editRowsHtml).doesNotContain("avatar-widget-decoration");
+    }
+
+    @Test
+    void dashboardPageFragmentSwapsDashboardHomeWithoutFullShell() {
+        var dashboard = avatarService.createDashboard("Research");
+        var response = new org.springframework.mock.web.MockHttpServletResponse();
+
+        String fragment = controller.dashboardPageFragment(dashboard.id(), false, response);
+
+        assertThat(response.getHeader("HX-Push-Url")).isEqualTo("/dashboards/" + dashboard.id());
+        assertThat(fragment).contains("id=\"dashboard-home\"");
+        assertThat(fragment).contains("data-avatar-shell=\"true\"");
+        assertThat(fragment).contains("Research is empty");
+        assertThat(fragment).contains("hx-get=\"/dashboards/assistant/_page\"");
+        assertThat(fragment).contains("hx-get=\"/dashboards/" + dashboard.id() + "/_page\"");
+        assertThat(fragment).contains("hx-target=\"#dashboard-home\"");
+        assertThat(fragment).doesNotContain("id=\"content-area\"");
+        assertThat(fragment).doesNotContain("/js/avatar-shell.js");
     }
 
     private static void assertPrimaryTopNav(String html) {

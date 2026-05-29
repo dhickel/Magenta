@@ -129,6 +129,15 @@ public class AvatarDashboardController {
         return shell.renderWithContent(AvatarDashboardComponents.page(data(dashboardId), "dashboard", edit));
     }
 
+    @GetMapping("/dashboards/{dashboardId}/_page")
+    @ResponseBody
+    public String dashboardPageFragment(@PathVariable String dashboardId,
+                                        @RequestParam(value = "edit", required = false) boolean edit,
+                                        HttpServletResponse response) {
+        response.setHeader("HX-Push-Url", edit ? "/dashboards/" + dashboardId + "?edit=true" : "/dashboards/" + dashboardId);
+        return AvatarDashboardComponents.pageFragment(data(dashboardId), edit).render();
+    }
+
     public String avatar(@RequestParam(value = "tab", required = false) String tab,
                          @RequestParam(value = "edit", required = false) boolean edit) {
         return home(edit);

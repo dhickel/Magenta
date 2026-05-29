@@ -21,6 +21,8 @@ Source anchors:
 - `/api/fragments/chat/sessions`
 - `/api/fragments/chat/planning`
 
+`AvatarDashboardController` owns the Assistant dashboard home and dashboard fragment swaps. Dashboard selector/edit links fetch `/dashboards/{dashboardId}/_page`, target `#dashboard-home`, use `outerHTML`, and push the selected full dashboard URL.
+
 `OrchestrationController` owns the operational UI routes and HTMX fragments for dashboard, plans, workflows, jobs, projects, inbox, outputs, agents, and settings. `/agents` and `/agents/{agentId}` use an Agents-specific shell with the primary top navigation but without the Manage side navigation.
 
 JSON API controllers provide the route families consumed by both HTMX fragments and JavaScript islands.

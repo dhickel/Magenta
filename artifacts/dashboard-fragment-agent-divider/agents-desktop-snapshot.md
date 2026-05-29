@@ -1,0 +1,22 @@
+- generic [active] [ref=e1] [box=0,16,1365,989]:
+  - banner [ref=e2] [box=16,16,1333,149]:
+    - generic [ref=e5] [box=55,37,1255,69]:
+      - heading "Agents" [level=1] [ref=e6] [box=637,37,92,34]
+      - paragraph [ref=e7] [box=516,83,334,24]: Agent operations, queues, inboxes, and workspace
+    - navigation [ref=e9] [box=69,117,1226,48]:
+      - generic [ref=e10] [box=78,123,1208,36]:
+        - link "Home" [ref=e11] [cursor=pointer] [box=78,123,65,36]:
+          - /url: /
+        - link "Chat" [ref=e12] [cursor=pointer] [box=148,123,56,36]:
+          - /url: /chat
+        - link "Agents" [ref=e13] [cursor=pointer] [box=210,123,75,36]:
+          - /url: /agents
+        - link "Manage" [ref=e14] [cursor=pointer] [box=290,123,81,36]:
+          - /url: /manage
+  - main [ref=e16] [box=16,181,1333,808]:
+    - generic [ref=e18] [box=47,220,1271,404]:
+      - heading "Agents" [level=1] [ref=e19] [box=47,220,1271,48]
+      - paragraph [ref=e20] [box=47,280,1271,26]: Manage agent profiles, queues, inboxes, assignments, and workspace.
+      - generic [ref=e21] [box=47,321,1271,302]:
+        - generic [ref=e22] [box=48,322,256,300]
+        - generic [ref=e43] [box=316,334,989,70]: Select an agent from the list or create a new one.

@@ -1082,6 +1082,7 @@ class OrchestrationControllerTest {
 
         assertThat(html).contains("Manage agent profiles");
         assertThat(html).contains("browser-layout");
+        assertThat(html).contains("agent-browser-layout");
         assertThat(html).contains("browser-sidebar");
         assertThat(html).contains("browser-detail");
         assertThat(html).contains("agent-list");

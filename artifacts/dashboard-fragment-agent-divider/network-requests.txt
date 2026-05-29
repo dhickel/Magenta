@@ -1,0 +1,6 @@
+11. [GET] http://localhost:18080/agents/_list => [200] 
+22. [GET] http://localhost:18080/agents/_list => [200] 
+23. [GET] http://localhost:18080/agents/_detail/avatar => [200] 
+24. [GET] http://localhost:18080/agents/_detail/avatar/manage => [200] 
+
+Note: 20 static requests not shown, run with "static" option to see them.
