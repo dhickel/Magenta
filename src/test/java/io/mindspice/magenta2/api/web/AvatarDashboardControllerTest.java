@@ -131,7 +131,7 @@ class AvatarDashboardControllerTest {
     void homeRendersAssistantDashboardSelectorChatAndScopedAssets() {
         String html = controller.avatar(false);
 
-        assertThat(html).contains("/css/avatar-dashboard.css?v=9");
+        assertThat(html).contains("/css/avatar-dashboard.css?v=10");
         assertThat(html).contains("/js/avatar-chat.js?v=4");
         assertThat(html).contains("/js/avatar-layout-edit.js?v=1");
         assertThat(html).contains("/js/avatar-workarea-editor.js?v=2");
@@ -324,6 +324,48 @@ class AvatarDashboardControllerTest {
             .contains("File overdue invoice")
             .contains("Unscheduled")
             .contains("Sort unscheduled inbox");
+    }
+
+    @Test
+    void notesWidgetShowsSourceModesPersonalTagsAndWorkAreaFileNotes() throws Exception {
+        var row = avatarService.addDashboardRow("assistant");
+        var notes = avatarService.addDashboardWidget("assistant", row.id(), "notes", 6);
+        var personal = avatarService.appendNote(null, "Seedlings", "Water tomato starts", List.of("garden", "plants"));
+
+        avatarService.updateDashboardWidgetSettings("assistant", notes.id(), Map.of(
+            "noteSourceMode", "personal",
+            "noteQuery", "garden"
+        ));
+        String personalHtml = controller.widgetByInstance("assistant", notes.id());
+        assertThat(personalHtml)
+            .contains("Personal notes")
+            .contains("Seedlings")
+            .contains("garden")
+            .contains("/dashboards/assistant/widgets/" + notes.id() + "/_notes/" + personal.id());
+
+        workAreaService.ensureHome(WorkspaceOwnerType.AGENT, "avatar", "Home");
+        String workAreaId = workAreaService.list(WorkspaceOwnerType.AGENT, "avatar", false).getFirst().id();
+        workAreaExplorerService.createDirectory(workAreaId, "notes");
+        workAreaExplorerService.createMarkdownFile(workAreaId, "notes", "house.md");
+        workAreaExplorerService.saveText(workAreaId, "notes/house.md", "# House\n\nMeasure windows");
+        workAreaExplorerService.ensureTag("note", "Note");
+        workAreaExplorerService.addLabel(workAreaId, "notes/house.md", "note");
+        avatarService.updateDashboardWidgetSettings("assistant", notes.id(), Map.of(
+            "noteSourceMode", "work_area",
+            "workAreaId", workAreaId
+        ));
+
+        String fileHtml = controller.widgetByInstance("assistant", notes.id());
+        assertThat(fileHtml)
+            .contains("work area")
+            .contains("house.md")
+            .contains("_file-note?source=work_area&amp;path=notes%2Fhouse.md");
+
+        String modal = controller.openFileNote("assistant", notes.id(), "work_area", "notes/house.md");
+        assertThat(modal)
+            .contains("File Note")
+            .contains("<h1>House</h1>")
+            .contains("Save File Note");
     }
 
     @Test

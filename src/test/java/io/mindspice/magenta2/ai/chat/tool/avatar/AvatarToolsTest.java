@@ -20,13 +20,19 @@ import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentType;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationStatus;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContext;
 import io.mindspice.magenta2.ai.orchestration.runtime.OrchestrationTaskContextHolder;
+import io.mindspice.magenta2.ai.orchestration.runtime.Project;
 import io.mindspice.magenta2.ai.orchestration.runtime.WorkAssignment;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactQuery;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaExplorerService;
 import io.mindspice.magenta2.avatar.AvatarRepository;
 import io.mindspice.magenta2.avatar.AvatarSchemaInitializer;
 import io.mindspice.magenta2.avatar.AvatarService;
+import io.mindspice.magenta2.avatar.dashboard.DashboardFileNote;
+import io.mindspice.magenta2.avatar.dashboard.DashboardProjectArtifact;
+import io.mindspice.magenta2.avatar.dashboard.DashboardProjectContextView;
+import io.mindspice.magenta2.avatar.dashboard.ProjectArtifactService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,6 +41,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
@@ -68,6 +75,10 @@ class AvatarToolsTest {
         "avatar_reminder_upsert",
         "avatar_note_append",
         "avatar_note_search",
+        "avatar_file_note_read",
+        "avatar_file_note_update",
+        "avatar_project_context_get",
+        "avatar_project_artifact_update",
         "avatar_submit_task",
         "avatar_submit_research_assignment",
         "avatar_list_outputs",
@@ -78,6 +89,8 @@ class AvatarToolsTest {
     private TaskService taskService;
     private AssignmentService assignmentService;
     private OutputArtifactService outputArtifactService;
+    private ProjectArtifactService projectArtifactService;
+    private WorkAreaExplorerService workAreaExplorerService;
     private AvatarAssistantTools tools;
 
     @BeforeEach
@@ -105,8 +118,18 @@ class AvatarToolsTest {
         taskService = mock(TaskService.class);
         assignmentService = mock(AssignmentService.class);
         outputArtifactService = mock(OutputArtifactService.class);
+        projectArtifactService = mock(ProjectArtifactService.class);
+        workAreaExplorerService = mock(WorkAreaExplorerService.class);
         tools = new AvatarAssistantTools(
-            new AvatarAssistantToolService(avatarService, authorization, taskService, assignmentService, outputArtifactService),
+            new AvatarAssistantToolService(
+                avatarService,
+                authorization,
+                taskService,
+                assignmentService,
+                outputArtifactService,
+                projectArtifactService,
+                workAreaExplorerService
+            ),
             objectMapper
         );
         OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
@@ -346,6 +369,91 @@ class AvatarToolsTest {
         assertThat(outputs.path("outputs").get(0).path("id").asText()).isEqualTo("artifact-1");
         assertThat(content.path("content").asText()).isEqualTo("output text");
         verify(outputArtifactService).loadContent("artifact-1", 128L);
+    }
+
+    @Test
+    void fileNoteToolsReadAndUpdateThroughWorkAreaExplorerService() throws Exception {
+        when(workAreaExplorerService.preview("workarea-1", "notes/log.md"))
+            .thenReturn(new WorkAreaExplorerService.FilePreview("notes/log.md", 12L, true, "hello", false, "markdown"));
+        when(workAreaExplorerService.saveText("workarea-1", "notes/log.md", "updated"))
+            .thenReturn(new WorkAreaExplorerService.FilePreview("notes/log.md", 7L, true, "updated", false, "markdown"));
+
+        JsonNode read = json(tools.avatarFileNoteRead("work_area", "workarea-1", "notes/log.md"));
+        JsonNode update = json(tools.avatarFileNoteUpdate("work_area", "workarea-1", "notes/log.md", "updated"));
+
+        assertThat(read.path("source").asText()).isEqualTo("work_area");
+        assertThat(read.path("content").asText()).isEqualTo("hello");
+        assertThat(update.path("saved").asBoolean()).isTrue();
+        assertThat(update.path("path").asText()).isEqualTo("notes/log.md");
+        verify(workAreaExplorerService).preview("workarea-1", "notes/log.md");
+        verify(workAreaExplorerService).saveText("workarea-1", "notes/log.md", "updated");
+    }
+
+    @Test
+    void projectContextAndArtifactToolsUseProjectArtifactService() throws Exception {
+        Project project = new Project(
+            "project-1",
+            "Kitchen Remodel",
+            "Household work",
+            null,
+            null,
+            null,
+            null,
+            "{}",
+            Instant.now(),
+            Instant.now()
+        );
+        DashboardProjectArtifact goals = new DashboardProjectArtifact(
+            "goals",
+            "Goals",
+            ".magenta/project/goals.json",
+            List.of("Demo cabinets"),
+            "1",
+            null
+        );
+        when(projectArtifactService.context("project-1")).thenReturn(new DashboardProjectContextView(
+            project,
+            false,
+            "projects/project-1/.magenta/project",
+            null,
+            List.of(goals),
+            List.of(new DashboardFileNote(
+                "project",
+                "Kitchen Remodel",
+                "project-1",
+                ".magenta/project/notes.md",
+                "notes.md",
+                "12 B",
+                List.of("note"),
+                Instant.now(),
+                true,
+                true
+            )),
+            List.of(artifact("artifact-1"))
+        ));
+        when(projectArtifactService.updateArtifact("project-1", "goals", "{\"goals\":[]}")).thenReturn(goals);
+
+        JsonNode context = json(tools.avatarProjectContextGet("project-1"));
+        JsonNode update = json(tools.avatarProjectArtifactUpdate("project-1", "goals", "{\"goals\":[]}"));
+
+        assertThat(context.path("available").isMissingNode()).isTrue();
+        assertThat(context.path("name").asText()).isEqualTo("Kitchen Remodel");
+        assertThat(context.path("artifacts").get(0).path("type").asText()).isEqualTo("goals");
+        assertThat(context.path("notes").get(0).path("path").asText()).isEqualTo(".magenta/project/notes.md");
+        assertThat(update.path("saved").asBoolean()).isTrue();
+        assertThat(update.path("artifact").path("items").get(0).asText()).isEqualTo("Demo cabinets");
+        verify(projectArtifactService).context("project-1");
+        verify(projectArtifactService).updateArtifact("project-1", "goals", "{\"goals\":[]}");
+    }
+
+    @Test
+    void fileNoteToolPropagatesProjectBoundaryRejection() {
+        when(projectArtifactService.readProjectFile("project-1", ".magenta/project/../outside.md"))
+            .thenThrow(new IllegalArgumentException("project note path must stay under .magenta/project"));
+
+        assertThatThrownBy(() -> tools.avatarFileNoteRead("project", "project-1", ".magenta/project/../outside.md"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining(".magenta/project");
     }
 
     private JsonNode json(String value) throws Exception {

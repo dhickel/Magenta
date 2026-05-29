@@ -22,7 +22,9 @@ public final class DashboardWidgetRegistry {
         personal("daily-tasks", "Daily Tasks", "Today-focused task capture.", 6, WidgetInstancePolicy.SINGLE_PER_DASHBOARD),
         personal("todos", "Todos", "Priority queue and quick completion.", 4, WidgetInstancePolicy.SINGLE_PER_DASHBOARD),
         personal("calendar", "Calendar", "Upcoming dated work.", 4, WidgetInstancePolicy.SINGLE_PER_DASHBOARD),
-        personal("notes", "Notes", "Short personal notes.", 6, WidgetInstancePolicy.MULTI_INSTANCE),
+        notes(),
+        project("projects", "Projects", "Goals, materials, contacts, blockers, next actions, outputs, notes, and progress.", 6),
+        project("contacts-materials", "Contacts/Materials", "Project contacts and materials with source binding.", 6),
         operational("outputs", "Outputs", "Recent generated artifacts.", 6, WidgetInstancePolicy.MULTI_INSTANCE, WidgetBindingMode.OUTPUT_SOURCE),
         operational("system", "System", "Agent and queue counters.", 4, WidgetInstancePolicy.SINGLE_SYSTEM, WidgetBindingMode.SYSTEM),
         operational("alerts", "Alerts", "Inbox and system alerts.", 4, WidgetInstancePolicy.SINGLE_PER_DASHBOARD, WidgetBindingMode.SYSTEM),
@@ -98,6 +100,81 @@ public final class DashboardWidgetRegistry {
             WidgetRefreshPolicy.MANUAL,
             WidgetEmptyStatePolicy.NO_DATA,
             new WidgetToolDescriptor(readTools, mutationTools, "AVATAR_SUPERVISOR", false, 50)
+        );
+    }
+
+    private static DashboardWidgetDefinition notes() {
+        return new DashboardWidgetDefinition(
+            "notes",
+            "Notes",
+            "Personal and file-backed notes.",
+            "context",
+            "avatar.sqlite and confined project/work area files",
+            6,
+            STANDARD_WIDTHS,
+            WidgetInstancePolicy.MULTI_INSTANCE,
+            WidgetBindingMode.OPTIONAL_WORK_AREA,
+            new WidgetSettingsSchema(List.of(
+                new WidgetSettingsField("noteSourceMode", "Note Source", "personal",
+                    List.of("personal", "agent", "project", "work_area", "mixed"), false),
+                new WidgetSettingsField("sourceMode", "Source", "dashboard",
+                    List.of("dashboard", "agent", "project", "work_area"), true),
+                new WidgetSettingsField("agentId", "Agent", "", List.of(), false),
+                new WidgetSettingsField("projectId", "Project", "", List.of(), false),
+                new WidgetSettingsField("workAreaId", "Work Area", "", List.of(), false),
+                new WidgetSettingsField("noteQuery", "Search", "", List.of(), false),
+                new WidgetSettingsField("lastOpenedNoteId", "Last Personal Note", "", List.of(), true),
+                new WidgetSettingsField("lastOpenedFilePath", "Last File Note", "", List.of(), true),
+                new WidgetSettingsField("density", "Density", "compact", List.of("compact", "comfortable"), false)
+            )),
+            "notes",
+            "notes",
+            "generic",
+            WidgetRefreshPolicy.MANUAL,
+            WidgetEmptyStatePolicy.NO_DATA,
+            new WidgetToolDescriptor(
+                List.of("avatar_note_search", "avatar_file_note_read"),
+                List.of("avatar_note_append", "avatar_file_note_update"),
+                "AVATAR_SUPERVISOR",
+                false,
+                50
+            )
+        );
+    }
+
+    private static DashboardWidgetDefinition project(
+        String type,
+        String title,
+        String description,
+        int defaultWidth
+    ) {
+        return new DashboardWidgetDefinition(
+            type,
+            title,
+            description,
+            "context",
+            "magenta project workspace",
+            defaultWidth,
+            STANDARD_WIDTHS,
+            WidgetInstancePolicy.MULTI_INSTANCE,
+            WidgetBindingMode.REQUIRED_PROJECT,
+            new WidgetSettingsSchema(List.of(
+                new WidgetSettingsField("sourceMode", "Source", "project", List.of("project"), true),
+                new WidgetSettingsField("projectId", "Project", "", List.of(), false),
+                new WidgetSettingsField("density", "Density", "compact", List.of("compact", "comfortable"), false)
+            )),
+            type,
+            type,
+            "generic",
+            WidgetRefreshPolicy.MANUAL,
+            WidgetEmptyStatePolicy.MISSING_BINDING,
+            new WidgetToolDescriptor(
+                List.of("avatar_project_context_get"),
+                List.of("avatar_project_artifact_update"),
+                "AVATAR_SUPERVISOR",
+                false,
+                50
+            )
         );
     }
 

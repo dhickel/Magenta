@@ -447,6 +447,42 @@
     min-width: 0;
 }
 
+.avatar-list-row-main {
+    min-width: 0;
+}
+
+.avatar-source-strip {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+
+.avatar-chip-muted {
+    background: #f8fafc;
+    color: #526174;
+}
+
+.avatar-file-note {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+}
+
+.avatar-file-note-detail {
+    max-height: min(72vh, 46rem);
+    overflow: auto;
+}
+
+.avatar-project-widget .avatar-planner-metrics {
+    margin-bottom: 0.2rem;
+}
+
+.avatar-project-artifact {
+    align-items: flex-start;
+}
+
 .avatar-dashboard-row > .col-3 .avatar-inline-form,
 .avatar-dashboard-row > .col-4 .avatar-inline-form {
     grid-template-columns: 1fr;

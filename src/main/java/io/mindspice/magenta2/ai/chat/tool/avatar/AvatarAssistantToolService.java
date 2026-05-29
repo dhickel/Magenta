@@ -47,6 +47,10 @@ import io.mindspice.magenta2.ai.orchestration.runtime.WorkAssignment;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactQuery;
 import io.mindspice.magenta2.ai.orchestration.workspaces.OutputArtifactService;
 import io.mindspice.magenta2.ai.orchestration.workspaces.RunOutputArtifact;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaExplorerService;
+import io.mindspice.magenta2.avatar.dashboard.DashboardProjectArtifact;
+import io.mindspice.magenta2.avatar.dashboard.DashboardProjectContextView;
+import io.mindspice.magenta2.avatar.dashboard.ProjectArtifactService;
 import io.mindspice.magenta2.avatar.AvatarCalendarItem;
 import io.mindspice.magenta2.avatar.AvatarCalendarStatus;
 import io.mindspice.magenta2.avatar.AvatarDailyTask;
@@ -67,6 +71,7 @@ import io.mindspice.magenta2.avatar.PlannerTaskStatus;
 import io.mindspice.magenta2.avatar.PlannerTimeBlock;
 import io.mindspice.magenta2.avatar.TodayPlannerView;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -80,6 +85,8 @@ public class AvatarAssistantToolService {
     private final TaskService taskService;
     private final AssignmentService assignmentService;
     private final OutputArtifactService outputArtifactService;
+    private final ProjectArtifactService projectArtifactService;
+    private final WorkAreaExplorerService workAreaExplorerService;
 
     public AvatarAssistantToolService(
         AvatarService avatarService,
@@ -88,11 +95,26 @@ public class AvatarAssistantToolService {
         @Lazy AssignmentService assignmentService,
         @Lazy OutputArtifactService outputArtifactService
     ) {
+        this(avatarService, authorization, taskService, assignmentService, outputArtifactService, null, null);
+    }
+
+    @Autowired
+    public AvatarAssistantToolService(
+        AvatarService avatarService,
+        AvatarAssistantToolAuthorizationService authorization,
+        @Lazy TaskService taskService,
+        @Lazy AssignmentService assignmentService,
+        @Lazy OutputArtifactService outputArtifactService,
+        @Lazy ProjectArtifactService projectArtifactService,
+        @Lazy WorkAreaExplorerService workAreaExplorerService
+    ) {
         this.avatarService = avatarService;
         this.authorization = authorization;
         this.taskService = taskService;
         this.assignmentService = assignmentService;
         this.outputArtifactService = outputArtifactService;
+        this.projectArtifactService = projectArtifactService;
+        this.workAreaExplorerService = workAreaExplorerService;
     }
 
     public TodoListResponse todoList(String status, Boolean includeDone, Integer limit) {
@@ -419,6 +441,67 @@ public class AvatarAssistantToolService {
         return new NoteListResponse(notes);
     }
 
+    public Map<String, Object> fileNoteRead(String source, String bindingId, String path) {
+        authorization.requireAvatarSupervisor("avatar_file_note_read");
+        WorkAreaExplorerService.FilePreview preview = filePreview(source, bindingId, path, false, null);
+        return Map.of(
+            "source", normalizeSource(source),
+            "bindingId", bindingId,
+            "path", preview.path(),
+            "kind", preview.kind(),
+            "text", preview.text(),
+            "content", preview.content() == null ? "" : preview.content(),
+            "size", preview.size()
+        );
+    }
+
+    public Map<String, Object> fileNoteUpdate(String source, String bindingId, String path, String content) {
+        authorization.requireAvatarSupervisor("avatar_file_note_update");
+        WorkAreaExplorerService.FilePreview preview = filePreview(source, bindingId, path, true, content);
+        return Map.of(
+            "source", normalizeSource(source),
+            "bindingId", bindingId,
+            "path", preview.path(),
+            "kind", preview.kind(),
+            "saved", true,
+            "size", preview.size()
+        );
+    }
+
+    public Map<String, Object> projectContextGet(String projectId) {
+        authorization.requireAvatarSupervisor("avatar_project_context_get");
+        ProjectArtifactService service = requireProjectArtifactService();
+        DashboardProjectContextView context = service.context(requireText(projectId, "projectId"));
+        if (context.missingBinding()) {
+            return Map.of("projectId", projectId, "available", false, "message", context.missingBindingMessage());
+        }
+        return Map.of(
+            "projectId", context.project().id(),
+            "name", context.project().name(),
+            "codeProject", context.codeProject(),
+            "storageRoot", context.storageRootLabel(),
+            "artifacts", context.artifacts().stream().map(this::projectArtifactMap).toList(),
+            "notes", context.notes().stream().map(note -> Map.of(
+                "source", note.sourceMode(),
+                "path", note.path(),
+                "title", note.title(),
+                "tags", note.tags()
+            )).toList(),
+            "outputs", context.outputs().stream().limit(10).map(output -> Map.of(
+                "id", output.id(),
+                "name", output.outputName() == null ? "" : output.outputName(),
+                "type", output.artifactType() == null ? "" : output.artifactType()
+            )).toList()
+        );
+    }
+
+    public Map<String, Object> projectArtifactUpdate(String projectId, String artifactType, String content) {
+        authorization.requireAvatarSupervisor("avatar_project_artifact_update");
+        DashboardProjectArtifact artifact = requireProjectArtifactService()
+            .updateArtifact(requireText(projectId, "projectId"), requireText(artifactType, "artifactType"), content);
+        return Map.of("projectId", projectId, "artifact", projectArtifactMap(artifact), "saved", true);
+    }
+
     public AssignmentResponse submitTask(
         String taskId,
         String agentId,
@@ -679,6 +762,67 @@ public class AvatarAssistantToolService {
             artifact.artifactType(),
             artifact.fileName(),
             string(artifact.createdAt())
+        );
+    }
+
+    private WorkAreaExplorerService.FilePreview filePreview(
+        String source,
+        String bindingId,
+        String path,
+        boolean save,
+        String content
+    ) {
+        String normalized = normalizeSource(source);
+        requireText(bindingId, "bindingId");
+        requireText(path, "path");
+        if ("project".equals(normalized)) {
+            ProjectArtifactService service = requireProjectArtifactService();
+            return save
+                ? service.saveProjectFile(bindingId, path, content)
+                : service.readProjectFile(bindingId, path);
+        }
+        if ("work_area".equals(normalized)) {
+            WorkAreaExplorerService service = requireWorkAreaExplorerService();
+            return save
+                ? service.saveText(bindingId, path, content)
+                : service.preview(bindingId, path);
+        }
+        throw new IllegalArgumentException("file note source must be project or work_area");
+    }
+
+    private String normalizeSource(String source) {
+        if (!StringUtils.hasText(source)) {
+            throw new IllegalArgumentException("source is required");
+        }
+        return switch (source.trim().toLowerCase(Locale.ROOT)) {
+            case "project" -> "project";
+            case "work_area", "work-area" -> "work_area";
+            default -> throw new IllegalArgumentException("unsupported file note source: " + source);
+        };
+    }
+
+    private ProjectArtifactService requireProjectArtifactService() {
+        if (projectArtifactService == null) {
+            throw new IllegalStateException("project artifact service is unavailable");
+        }
+        return projectArtifactService;
+    }
+
+    private WorkAreaExplorerService requireWorkAreaExplorerService() {
+        if (workAreaExplorerService == null) {
+            throw new IllegalStateException("Work Area explorer service is unavailable");
+        }
+        return workAreaExplorerService;
+    }
+
+    private Map<String, Object> projectArtifactMap(DashboardProjectArtifact artifact) {
+        return Map.of(
+            "type", artifact.type(),
+            "title", artifact.title(),
+            "path", artifact.path(),
+            "items", artifact.items(),
+            "status", artifact.status() == null ? "" : artifact.status(),
+            "error", artifact.error() == null ? "" : artifact.error()
         );
     }
 

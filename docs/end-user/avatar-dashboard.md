@@ -33,6 +33,14 @@ Reminders in this suite are dashboard records only. They can be viewed, linked, 
 
 Some widget types can appear more than once on the same dashboard. Single-instance widgets remain disabled in the picker after they are already present.
 
+## Notes And Projects
+
+The Notes widget can show personal notes, agent files, project files, Work Area files, or a mixed source view depending on the widget instance settings. Personal notes are quick-captured into Avatar notes and support search, tags, and last-opened note memory. File-backed notes stay in the selected agent/project/Work Area file store and open through confined file-note viewer/editor fragments.
+
+The Projects widget summarizes a selected project without treating every project as a code repository. It shows whether the project has a git URL, then summarizes typed project artifacts for goals, materials, contacts, blockers, next actions, progress, notes, and recent outputs. Household artifacts are stored under the project workspace at `.magenta/project/*.json`.
+
+The Contacts/Materials widget is a narrower project-bound view of the same typed project artifact files. Use it when a dashboard needs a compact household/project supplies and people panel without the full project summary.
+
 ## Work Areas
 
 Work Areas are no longer dashboard widgets. Open an agent detail page from `Agents`, then use that agent's `Work Areas` tab to browse and edit the Work Areas owned by that agent.

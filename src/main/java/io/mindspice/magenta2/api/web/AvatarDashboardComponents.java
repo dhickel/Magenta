@@ -36,6 +36,10 @@ import io.mindspice.magenta2.avatar.PlannerOccurrence;
 import io.mindspice.magenta2.avatar.UserDashboard;
 import io.mindspice.magenta2.avatar.dashboard.DashboardWidgetDefinition;
 import io.mindspice.magenta2.avatar.dashboard.DashboardWidgetRegistry;
+import io.mindspice.magenta2.avatar.dashboard.DashboardFileNote;
+import io.mindspice.magenta2.avatar.dashboard.DashboardNotesView;
+import io.mindspice.magenta2.avatar.dashboard.DashboardProjectArtifact;
+import io.mindspice.magenta2.avatar.dashboard.DashboardProjectContextView;
 import io.mindspice.magenta2.avatar.dashboard.WidgetInstancePolicy;
 import io.mindspice.magenta2.avatar.dashboard.WidgetSettingsField;
 import io.mindspice.magenta2.avatar.dashboard.WidgetSettingsValidation;
@@ -679,7 +683,17 @@ final class AvatarDashboardComponents {
 
     private static Component organizerNotesTab(List<AvatarNote> notes) {
         Div body = new Div().withClass("avatar-organizer-body");
-        return body.withChild(notes(notes, rootId("notes"), "/_dashboards/_notes"));
+        DashboardNotesView view = new DashboardNotesView(
+            "personal",
+            "Personal notes",
+            null,
+            "",
+            "",
+            "",
+            notes,
+            List.of()
+        );
+        return body.withChild(notes(view, rootId("notes"), "/_dashboards/_notes", null, defaultWidget(definition("notes"), 0)));
     }
 
     private static Component recurrenceFields() {
@@ -1006,7 +1020,9 @@ final class AvatarDashboardComponents {
             case "daily-tasks" -> dailyTasks(data.dailyTasks(), targetId);
             case "todos" -> todos(data.todos(), targetId);
             case "calendar" -> calendar(data.calendarItems(), targetId);
-            case "notes" -> notes(data.notes(), targetId, notesPostUrl(data, widget));
+            case "notes" -> notes(noteView(data, widget), targetId, notesPostUrl(data, widget), data, widget);
+            case "projects" -> projects(projectView(data, widget), targetId, false);
+            case "contacts-materials" -> projects(projectView(data, widget), targetId, true);
             case "files" -> files(data.workAreas());
             case "outputs" -> outputs(data.outputs());
             case "system" -> system(data.agents(), data.jobs(), data.assignments());
@@ -1023,6 +1039,20 @@ final class AvatarDashboardComponents {
             return "/dashboards/" + url(data.dashboard().id()) + "/widgets/" + url(widgetId) + "/_notes";
         }
         return "/_dashboards/_notes";
+    }
+
+    private static DashboardNotesView noteView(AvatarDashboardData data, AvatarDashboardWidget widget) {
+        DashboardNotesView view = data == null || data.noteViews() == null ? null : data.noteViews().get(widget.widgetId());
+        return view == null
+            ? new DashboardNotesView("personal", "Personal notes", null, "", "", "", data == null ? List.of() : data.notes(), List.of())
+            : view;
+    }
+
+    private static DashboardProjectContextView projectView(AvatarDashboardData data, AvatarDashboardWidget widget) {
+        DashboardProjectContextView view = data == null || data.projectViews() == null ? null : data.projectViews().get(widget.widgetId());
+        return view == null
+            ? new DashboardProjectContextView(null, false, null, "Choose a project in widget settings.", List.of(), List.of(), List.of())
+            : view;
     }
 
     private static Component todayPlanner(TodayPlannerView view, String targetId) {
@@ -1381,25 +1411,213 @@ final class AvatarDashboardComponents {
         return body.withChild(list);
     }
 
-    private static Component notes(List<AvatarNote> notes, String targetId, String postUrl) {
+    private static Component notes(DashboardNotesView view, String targetId, String postUrl, AvatarDashboardData data, AvatarDashboardWidget widget) {
         Div body = new Div().withClass("avatar-widget-body");
+        DashboardNotesView safe = view == null
+            ? new DashboardNotesView("personal", "Personal notes", null, "", "", "", List.of(), List.of())
+            : view;
+        body.withChild(new Div().withClass("avatar-source-strip")
+            .withChild(new HtmlTag("span").withClass("avatar-chip").withInnerText(sourceModeLabel(safe.sourceMode())))
+            .withChild(new HtmlTag("span").withClass("avatar-chip avatar-chip-muted").withInnerText(safe.sourceLabel())));
+        if (safe.missingBinding()) {
+            body.withChild(empty(safe.missingBindingMessage()));
+        }
+        if (data != null && data.dashboard() != null && widget != null) {
+            Form search = Form.create().withClass("avatar-inline-form");
+            search.withAttribute("hx-put", "/dashboards/" + url(data.dashboard().id()) + "/widgets/" + url(widget.widgetId()) + "/settings");
+            search.withAttribute("hx-target", "#avatar-edit-container");
+            search.withAttribute("hx-swap", "innerHTML");
+            search.withChild(hiddenInput("noteSourceMode", safe.sourceMode()));
+            search.withChild(hiddenInput("agentId", value(widget.settings(), "agentId")));
+            search.withChild(hiddenInput("projectId", value(widget.settings(), "projectId")));
+            search.withChild(hiddenInput("workAreaId", value(widget.settings(), "workAreaId")));
+            search.withChild(hiddenInput("density", value(widget.settings(), "density")));
+            search.withChild(TextInput.create("noteQuery").withValue(safe.query()).withPlaceholder("Search notes or tags"));
+            search.withChild(Button.submit("Search"));
+            body.withChild(search);
+        }
         body.withChild(Form.create().withClass("avatar-stack-form")
             .withAttribute("hx-post", postUrl)
             .withAttribute("hx-target", "#" + targetId)
             .withAttribute("hx-swap", "outerHTML")
             .withChild(TextInput.create("title").withPlaceholder("Note title"))
+            .withChild(TextInput.create("tags").withPlaceholder("Tags, comma separated"))
             .withChild(TextArea.create("body").withRows(3).withPlaceholder("Capture a note"))
             .withChild(Button.submit("Save Note")));
-        if (notes == null || notes.isEmpty()) {
+        if (safe.personalNotes().isEmpty() && safe.fileNotes().isEmpty()) {
             return body.withChild(empty("No notes yet."));
         }
         Div list = new Div().withClass("avatar-list");
-        for (AvatarNote note : notes.stream().limit(4).toList()) {
-            list.withChild(new Div().withClass("avatar-note")
-                .withChild(new HtmlTag("strong").withInnerText(note.title()))
-                .withChild(new Paragraph(snippet(note.body(), 160))));
+        for (AvatarNote note : safe.personalNotes().stream().limit(4).toList()) {
+            Div row = new Div().withClass("avatar-note")
+                .withChild(new Div().withClass("avatar-list-row-main")
+                    .withChild(new HtmlTag("strong").withInnerText(note.title()))
+                    .withChild(new Paragraph(snippet(note.body(), 160)))
+                    .withChild(tagStrip(note.tags())));
+            if (data != null && data.dashboard() != null && widget != null) {
+                row.withChild(Button.create("Open")
+                    .withAttribute("type", "button")
+                    .withAttribute("hx-get", "/dashboards/" + url(data.dashboard().id()) + "/widgets/" + url(widget.widgetId())
+                        + "/_notes/" + url(note.id()))
+                    .withAttribute("hx-target", "#avatar-edit-container")
+                    .withAttribute("hx-swap", "innerHTML"));
+            }
+            list.withChild(row);
+        }
+        for (DashboardFileNote note : safe.fileNotes().stream().limit(4).toList()) {
+            if (data != null && widget != null) {
+                list.withChild(fileNoteRow(data, widget, note));
+            }
         }
         return body.withChild(list);
+    }
+
+    private static Component fileNoteRow(AvatarDashboardData data, AvatarDashboardWidget widget, DashboardFileNote note) {
+        return new Div().withClass("avatar-note avatar-file-note")
+            .withChild(new Div().withClass("avatar-list-row-main")
+                .withChild(new HtmlTag("strong").withInnerText(note.title()))
+                .withChild(small(note.sourceLabel() + " / " + note.path()))
+                .withChild(tagStrip(note.tags())))
+            .withChild(Button.create(note.markdown() ? "View/Edit" : "Open")
+                .withAttribute("type", "button")
+                .withAttribute("hx-get", "/dashboards/" + url(data.dashboard().id()) + "/widgets/" + url(widget.widgetId())
+                    + "/_file-note?source=" + url(note.sourceMode()) + "&path=" + url(note.path()))
+                .withAttribute("hx-target", "#avatar-edit-container")
+                .withAttribute("hx-swap", "innerHTML"));
+    }
+
+    private static Component projects(DashboardProjectContextView view, String targetId, boolean contactsMaterialsOnly) {
+        Div body = new Div().withClass("avatar-widget-body avatar-project-widget");
+        if (view == null || view.missingBinding()) {
+            return body.withChild(new Div().withClass("avatar-source-strip")
+                    .withChild(new HtmlTag("span").withClass("avatar-chip").withInnerText("project")))
+                .withChild(empty(view == null ? "Choose a project in widget settings." : view.missingBindingMessage()));
+        }
+        body.withChild(new Div().withClass("avatar-source-strip")
+            .withChild(new HtmlTag("span").withClass("avatar-chip").withInnerText(view.codeProject() ? "code project" : "household project"))
+            .withChild(new HtmlTag("span").withClass("avatar-chip avatar-chip-muted").withInnerText(view.project().name())));
+        List<DashboardProjectArtifact> artifacts = contactsMaterialsOnly
+            ? view.artifacts().stream()
+                .filter(artifact -> "contacts".equals(artifact.type()) || "materials".equals(artifact.type()))
+                .toList()
+            : view.artifacts();
+        Div metrics = new Div().withClass("avatar-planner-metrics");
+        metrics.withChild(metric("Artifacts", Integer.toString(artifacts.size())))
+            .withChild(metric("Outputs", Integer.toString(view.outputs().size())))
+            .withChild(metric("Notes", Integer.toString(view.notes().size())));
+        body.withChild(metrics);
+        Div list = new Div().withClass("avatar-list avatar-list-constrained");
+        for (DashboardProjectArtifact artifact : artifacts) {
+            list.withChild(projectArtifactRow(artifact));
+        }
+        if (artifacts.isEmpty()) {
+            list.withChild(empty("No project artifacts yet."));
+        }
+        body.withChild(list);
+        if (!contactsMaterialsOnly && !view.outputs().isEmpty()) {
+            body.withChild(new Div().withClass("avatar-section-heading").withInnerText("Recent outputs"));
+            Div outputs = new Div().withClass("avatar-list");
+            for (RunOutputArtifact output : view.outputs().stream().limit(3).toList()) {
+                outputs.withChild(new Div().withClass("avatar-list-row")
+                    .withChild(new Div()
+                        .withChild(new HtmlTag("strong").withInnerText(output.outputName() == null ? "output" : output.outputName()))
+                        .withChild(small(output.artifactType()))));
+            }
+            body.withChild(outputs);
+        }
+        return body;
+    }
+
+    private static Component projectArtifactRow(DashboardProjectArtifact artifact) {
+        Div row = new Div().withClass("avatar-list-row avatar-project-artifact")
+            .withAttribute("data-project-artifact", artifact.type());
+        Div main = new Div()
+            .withChild(new HtmlTag("strong").withInnerText(artifact.title()))
+            .withChild(small(artifact.error() == null ? artifact.path() : artifact.error()));
+        if (artifact.items().isEmpty()) {
+            main.withChild(small("empty"));
+        } else {
+            for (String item : artifact.items().stream().limit(3).toList()) {
+                main.withChild(small(item));
+            }
+        }
+        row.withChild(main);
+        row.withChild(new HtmlTag("span").withClass("avatar-chip avatar-chip-muted").withInnerText(artifact.status()));
+        return row;
+    }
+
+    static Component personalNoteDetailModal(AvatarDashboardData data, AvatarDashboardRowWidget widget, AvatarNote note) {
+        Div body = new Div().withClass("avatar-stack-form");
+        body.withChild(new Div().withClass("avatar-source-strip")
+            .withChild(new HtmlTag("span").withClass("avatar-chip").withInnerText("personal"))
+            .withChild(new HtmlTag("span").withClass("avatar-chip avatar-chip-muted").withInnerText("avatar_notes")));
+        body.withChild(tagStrip(note.tags()));
+        body.withChild(new Markdown(note.body() == null ? "" : note.body()));
+        return detailModal("Personal Note", body);
+    }
+
+    static Component fileNoteDetailModal(
+        AvatarDashboardData data,
+        AvatarDashboardRowWidget widget,
+        String source,
+        WorkAreaExplorerService.FilePreview preview,
+        String message
+    ) {
+        Div body = new Div().withClass("avatar-stack-form avatar-file-note-detail");
+        if (message != null && !message.isBlank()) {
+            body.withChild(new Div().withClass("orch-status").withInnerText(message));
+        }
+        body.withChild(new Div().withClass("avatar-source-strip")
+            .withChild(new HtmlTag("span").withClass("avatar-chip").withInnerText(sourceModeLabel(source)))
+            .withChild(new HtmlTag("span").withClass("avatar-chip avatar-chip-muted").withInnerText(preview.path())));
+        if (!preview.text()) {
+            body.withChild(empty("Preview unavailable for this file note."));
+            return detailModal("File Note", body);
+        }
+        if ("markdown".equals(preview.kind())) {
+            body.withChild(new Markdown(preview.content() == null ? "" : preview.content()));
+        }
+        Form form = Form.create().withClass("avatar-stack-form");
+        form.withAttribute("hx-put", "/dashboards/" + url(data.dashboard().id()) + "/widgets/" + url(widget.id()) + "/_file-note");
+        form.withAttribute("hx-target", "#avatar-edit-container");
+        form.withAttribute("hx-swap", "innerHTML");
+        form.withChild(hiddenInput("source", source));
+        form.withChild(hiddenInput("path", preview.path()));
+        form.withChild(TextArea.create("content").withRows(14).withInnerText(preview.content() == null ? "" : preview.content()));
+        form.withChild(Button.submit("Save File Note"));
+        body.withChild(form);
+        return detailModal("File Note", body);
+    }
+
+    private static Component detailModal(String title, Component body) {
+        return new Div().withId("avatar-widget-detail-modal").withClass("avatar-modal")
+            .withChild(new Div().withClass("avatar-edit-panel avatar-widget-detail-panel")
+                .withChild(new Div().withClass("avatar-edit-header")
+                    .withChild(Header.H2(title))
+                    .withChild(Button.create("Close")
+                        .withAttribute("type", "button")
+                        .withAttribute("hx-get", "/dashboards/_modal/clear")
+                        .withAttribute("hx-target", "#avatar-edit-container")
+                        .withAttribute("hx-swap", "innerHTML")))
+                .withChild(body));
+    }
+
+    private static Component tagStrip(List<String> tags) {
+        Div strip = new Div().withClass("file-entry-tags");
+        if (tags == null || tags.isEmpty()) {
+            return strip.withChild(new HtmlTag("span").withClass("tag tag-muted").withInnerText("untagged"));
+        }
+        for (String tag : tags.stream().limit(4).toList()) {
+            strip.withChild(new HtmlTag("span").withClass("tag").withInnerText(tag));
+        }
+        return strip;
+    }
+
+    private static String sourceModeLabel(String value) {
+        if (value == null || value.isBlank()) {
+            return "personal";
+        }
+        return value.replace('_', ' ');
     }
 
     static Component workAreaPreview(String workAreaId, WorkAreaExplorerService.FilePreview preview) {
@@ -2388,6 +2606,8 @@ final class AvatarDashboardComponents {
         TasksRoutinesView tasksRoutines,
         CalendarScheduleView calendarSchedule,
         List<AvatarNote> notes,
+        Map<String, DashboardNotesView> noteViews,
+        Map<String, DashboardProjectContextView> projectViews,
         List<AvatarEvent> events,
         List<RunOutputArtifact> outputs,
         List<AgentProfile> agents,

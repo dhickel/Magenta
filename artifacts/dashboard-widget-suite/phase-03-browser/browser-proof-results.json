@@ -1,0 +1,301 @@
+{
+  "verdict": "PASS_BROWSER_PROOF",
+  "baseUrl": "http://localhost:18080",
+  "runtime": {
+    "command": "mvn spring-boot:run -Dspring-boot.run.arguments='--server.port=18080 --magenta.root.path=/tmp/magenta2-dashboard-widget-suite-phase-03-browser --spring.datasource.url=jdbc:sqlite:/tmp/magenta2-dashboard-widget-suite-phase-03-browser/magenta.sqlite?foreign_keys=true --magenta.orchestration.runner-delay-ms=60000 --magenta.orchestration.scheduler-delay-ms=60000 --magenta.orchestration.assignment-history-purge-delay-ms=60000'",
+    "port": 18080,
+    "isolatedRoot": "/tmp/magenta2-dashboard-widget-suite-phase-03-browser"
+  },
+  "screenshots": [
+    "artifacts/dashboard-widget-suite/phase-03-browser/desktop-home-seeded.png",
+    "artifacts/dashboard-widget-suite/phase-03-browser/desktop-personal-note-quick-capture.png",
+    "artifacts/dashboard-widget-suite/phase-03-browser/desktop-personal-note-modal.png",
+    "artifacts/dashboard-widget-suite/phase-03-browser/desktop-workarea-file-note-modal-before-save.png",
+    "artifacts/dashboard-widget-suite/phase-03-browser/desktop-workarea-file-note-modal-after-save.png",
+    "artifacts/dashboard-widget-suite/phase-03-browser/desktop-projects-contacts-seeded.png",
+    "artifacts/dashboard-widget-suite/phase-03-browser/reference-manage-desktop.png",
+    "artifacts/dashboard-widget-suite/phase-03-browser/reference-agents-desktop.png",
+    "artifacts/dashboard-widget-suite/phase-03-browser/reference-agent-avatar-desktop.png",
+    "artifacts/dashboard-widget-suite/phase-03-browser/reference-workarea-explorer-desktop.png",
+    "artifacts/dashboard-widget-suite/phase-03-browser/mobile-home-seeded.png",
+    "artifacts/dashboard-widget-suite/phase-03-browser/mobile-workarea-file-note-modal.png",
+    "artifacts/dashboard-widget-suite/phase-03-browser/mobile-projects-long-names.png"
+  ],
+  "checks": [
+    {
+      "id": "desktop_home_seeded_single_shell_and_widget_suite",
+      "status": "passed",
+      "evidence": "widgets=today-planner,calendar-schedule,tasks-routines,notes,system,alerts,recent-work,notes,projects,contacts-materials,projects; navs=1; homes=1; editContainers=1; duplicates=none",
+      "health": {
+        "title": "Assistant Dashboard",
+        "topNavs": 1,
+        "dashboardHomes": 1,
+        "shellRoots": 1,
+        "editContainers": 1,
+        "modalRoots": 0,
+        "widgetTypes": [
+          "today-planner",
+          "calendar-schedule",
+          "tasks-routines",
+          "notes",
+          "system",
+          "alerts",
+          "recent-work",
+          "notes",
+          "projects",
+          "contacts-materials",
+          "projects"
+        ],
+        "duplicateIds": [],
+        "horizontalOverflow": false,
+        "scrollWidth": 1440,
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        }
+      }
+    },
+    {
+      "id": "missing_binding_states_visible_before_recovery",
+      "status": "passed",
+      "evidence": "projects missing before binding=true,true; contacts missing before binding=true"
+    },
+    {
+      "id": "personal_notes_source_search_quick_capture_db_distinction",
+      "status": "passed",
+      "evidence": "Notes\npersonal\nPersonal notes\nSearch\nSave Note\nPersonal quick capture 1780067300924\n\nBrowser personal DB-backed quick capture note.\n\nproof\nalpha\nOpen\nBrowser proof personal seed note\n\nPersonal DB note seeded with alpha tag.\n\navatar-dashboard\nOpen"
+    },
+    {
+      "id": "personal_last_opened_modal_db_backed",
+      "status": "passed",
+      "evidence": "Personal Note\nClose\npersonal\navatar_notes\nproof\nalpha\n\nBrowser personal DB-backed quick capture note.",
+      "modal": {
+        "text": "Personal Note\nClose\npersonal\navatar_notes\nproof\nalpha\n\nBrowser personal DB-backed quick capture note.",
+        "modalCount": 1,
+        "editContainerCount": 1,
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 1440,
+          "height": 900
+        },
+        "panelRect": {
+          "x": 320,
+          "y": 362.15625,
+          "width": 800,
+          "height": 175.671875
+        },
+        "bodyScrolls": false,
+        "horizontalOverflow": false
+      }
+    },
+    {
+      "id": "work_area_file_notes_source_chip_and_file_backed_distinction",
+      "status": "passed",
+      "evidence": "Notes\nwork area\nWork Area 8e9d05ec-bfb3-4867-9dbb-a8aec6a752eb\nSearch\nSave Note\nphase03-workarea-note.md\nWork Area 8e9d05ec-bfb3-4867-9dbb-a8aec6a752eb / notes/phase03-workarea-note.md\nuntagged\nView/Edit"
+    },
+    {
+      "id": "work_area_file_note_markdown_edit_save_refresh",
+      "status": "passed",
+      "evidence": "File Note\nClose\nSaved notes/phase03-workarea-note.md\nwork area\nnotes/phase03-workarea-note.md\nWork Area Browser Note\n\nSaved through dashboard file-backed flow.\n\nSave File Note",
+      "modal": {
+        "text": "File Note\nClose\nSaved notes/phase03-workarea-note.md\nwork area\nnotes/phase03-workarea-note.md\nWork Area Browser Note\n\nSaved through dashboard file-backed flow.\n\nSave File Note",
+        "modalCount": 1,
+        "editContainerCount": 1,
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 1440,
+          "height": 900
+        },
+        "panelRect": {
+          "x": 320,
+          "y": 109.984375,
+          "width": 800,
+          "height": 680.015625
+        },
+        "bodyScrolls": false,
+        "horizontalOverflow": false
+      }
+    },
+    {
+      "id": "project_file_note_traversal_rejected",
+      "status": "passed",
+      "evidence": "status=400; body={\"error\":\"project note path must stay under .magenta/project\"}"
+    },
+    {
+      "id": "projects_household_artifacts_and_no_repo_only_language",
+      "status": "passed",
+      "evidence": "Projects\nhousehold project\nHousehold Pantry Renovation Browser Proof Long Named Project\n6\nArtifacts\n0\nOutputs\n0\nNotes\nNext Actions\n.magenta/project/next-actions.jsonMeasure cabinet depthCall supplier\n2\nGoals\n.magenta/project/goals.jsonRestock pantry staplesInstall labeled shelf bins\n2\nBlockers\n.magenta/project/blockers.jsonAwaiting shelf measurements\n1\nMaterials\n.magenta/project/materials.jsonClear storage binsLabel maker tape\n2\nProgress\n.magenta/project/progress.jsonon track / 55%\non track\nContacts\n.magenta/project/contacts.jsonCasey electricianMorgan supplier\n2"
+    },
+    {
+      "id": "projects_code_vs_household_distinction_visible",
+      "status": "passed",
+      "evidence": "Projects\ncode project\nCode Integration Browser Proof Project\n6\nArtifacts\n0\nOutputs\n0\nNotes\nNext Actions\n.magenta/project/next-actions.jsonempty\n0\nGoals\n.magenta/project/goals.jsonempty\n0\nBlockers\n.magenta/project/blockers.jsonempty\n0\nMaterials\n.magenta/project/materials.jsonempty\n0\nProgress\n.magenta/project/progress.jsonplanning / 0%\nplanning\nContacts\n.magenta/project/contacts.jsonempty\n0"
+    },
+    {
+      "id": "contacts_materials_binding_useful_bounded_rows",
+      "status": "passed",
+      "evidence": "Contacts/Materials\nhousehold project\nHousehold Pantry Renovation Browser Proof Long Named Project\n2\nArtifacts\n0\nOutputs\n0\nNotes\nMaterials\n.magenta/project/materials.jsonClear storage binsLabel maker tape\n2\nContacts\n.magenta/project/contacts.jsonCasey electricianMorgan supplier\n2"
+    },
+    {
+      "id": "mobile_home_no_horizontal_overflow",
+      "status": "passed",
+      "evidence": "scrollWidth=390; viewport=390; duplicates=none",
+      "health": {
+        "title": "Assistant Dashboard",
+        "topNavs": 1,
+        "dashboardHomes": 1,
+        "shellRoots": 1,
+        "editContainers": 1,
+        "modalRoots": 0,
+        "widgetTypes": [
+          "today-planner",
+          "calendar-schedule",
+          "tasks-routines",
+          "notes",
+          "system",
+          "alerts",
+          "recent-work",
+          "notes",
+          "projects",
+          "contacts-materials",
+          "projects"
+        ],
+        "duplicateIds": [],
+        "horizontalOverflow": false,
+        "scrollWidth": 390,
+        "viewport": {
+          "width": 390,
+          "height": 844
+        }
+      }
+    },
+    {
+      "id": "mobile_modal_scrolling_and_controls_reachable",
+      "status": "passed",
+      "evidence": "panel={\"x\":8,\"y\":8,\"width\":374,\"height\":812}; bodyScrolls=false; saveVisible=true; overflow=false",
+      "modal": {
+        "text": "File Note\nClose\nwork area\nnotes/phase03-workarea-note.md\nWork Area Browser Note\n\nSaved through dashboard file-backed flow.\n\nSave File Note",
+        "modalCount": 1,
+        "editContainerCount": 1,
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 390,
+          "height": 844
+        },
+        "panelRect": {
+          "x": 8,
+          "y": 8,
+          "width": 374,
+          "height": 812
+        },
+        "bodyScrolls": false,
+        "horizontalOverflow": false
+      }
+    },
+    {
+      "id": "mobile_long_names_wrap_or_truncate_without_overflow",
+      "status": "passed",
+      "evidence": "overflowing elements=0",
+      "badCount": 0,
+      "bad": []
+    },
+    {
+      "id": "console_and_network_clean_except_expected_400_negative",
+      "status": "passed",
+      "evidence": "consoleErrors=0; serverErrors=0; >=400=400 http://localhost:18080/dashboards/assistant/widgets/widget-b13e585b-de5d-4427-bc5d-f6805119d81b/_file-note"
+    }
+  ],
+  "console": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    }
+  ],
+  "pageErrors": [],
+  "network": [
+    {
+      "status": 400,
+      "url": "http://localhost:18080/dashboards/assistant/widgets/widget-b13e585b-de5d-4427-bc5d-f6805119d81b/_file-note"
+    }
+  ],
+  "visualCritique": [
+    "Desktop dashboard uses the same compact operational language as /manage and /agents: thin bordered panels, restrained chips, small controls, and scan-friendly rows.",
+    "Notes, Projects, and Contacts/Materials summaries remain bounded; project artifacts render as rows instead of nested card stacks.",
+    "File-note modal stays within the shared modal host and keeps save controls reachable on mobile. Mobile dashboard stacks widgets without horizontal overflow.",
+    "Work Area file-note wording matches the file explorer source/path language closely enough for this widget scope; the widget does not duplicate the full explorer."
+  ],
+  "seed": {
+    "householdProject": {
+      "id": "68c472a7-99c1-48ed-97b7-041afdeb3175",
+      "name": "Household Pantry Renovation Browser Proof Long Named Project",
+      "description": "Household project seeded through API for dashboard browser proof",
+      "ownerAgentId": "avatar",
+      "gitRepoUrl": null,
+      "promptProfile": null,
+      "model": null,
+      "settingsOverrideJson": null,
+      "createdAt": "2026-05-29T15:08:18.219466544Z",
+      "updatedAt": "2026-05-29T15:08:18.219567464Z"
+    },
+    "codeProject": {
+      "id": "160c9008-ff38-4073-bd7d-b21a35828fa3",
+      "name": "Code Integration Browser Proof Project",
+      "description": "Code project seeded to prove code-vs-household language",
+      "ownerAgentId": "avatar",
+      "gitRepoUrl": "https://example.invalid/magenta/browser-proof.git",
+      "promptProfile": null,
+      "model": null,
+      "settingsOverrideJson": null,
+      "createdAt": "2026-05-29T15:08:18.240581864Z",
+      "updatedAt": "2026-05-29T15:08:18.240611490Z"
+    },
+    "workArea": {
+      "id": "8e9d05ec-bfb3-4867-9dbb-a8aec6a752eb",
+      "ownerType": "AGENT",
+      "ownerId": "avatar",
+      "workspaceId": "048a250a-6f90-458c-9169-15ac5810a0d8",
+      "rootRelativePath": "workspace/avatar",
+      "areaRelativePath": "home",
+      "displayName": "Home",
+      "system": true,
+      "home": true,
+      "active": true,
+      "metadataJson": "{}",
+      "createdAt": "2026-05-29T15:08:17.568709433Z",
+      "updatedAt": "2026-05-29T15:08:17.568709433Z"
+    },
+    "personalNotesId": "widget-36ec2ec7-928a-448e-874f-1741cbc73fb4",
+    "workAreaNotesId": "widget-c6fe1a04-2658-4322-a729-1b6a28d5f232",
+    "householdProjectsId": "widget-b13e585b-de5d-4427-bc5d-f6805119d81b",
+    "codeProjectsId": "widget-6a4065f0-10d9-4488-9dc2-119bcb6420eb",
+    "contactsWidgetId": "widget-c1595b18-ff4b-4bd0-b41e-d20c3754347a",
+    "missingBeforeBinding": {
+      "projects": [
+        true,
+        true
+      ],
+      "contacts": true
+    }
+  },
+  "networkRequests": [
+    {
+      "status": 400,
+      "url": "http://localhost:18080/dashboards/assistant/widgets/widget-b13e585b-de5d-4427-bc5d-f6805119d81b/_file-note"
+    }
+  ]
+}

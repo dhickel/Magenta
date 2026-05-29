@@ -38,6 +38,9 @@ Layout mutations refresh `#avatar-widget-grid` with out-of-band swaps and clear 
 - Todos: `POST /_dashboards/_todos`, `POST /_dashboards/_todos/{todoId}/complete`, `DELETE /_dashboards/_todos/{todoId}`
 - Daily tasks: `POST /_dashboards/_daily-tasks`, `POST /_dashboards/_daily-tasks/{taskId}/complete`
 - Notes: `POST /_dashboards/_notes`
+- Instance notes: `POST /dashboards/{dashboardId}/widgets/{widgetInstanceId}/_notes`, `GET /dashboards/{dashboardId}/widgets/{widgetInstanceId}/_notes/{noteId}`
+- File notes: `GET|PUT /dashboards/{dashboardId}/widgets/{widgetInstanceId}/_file-note?source=project|work_area|agent&path=...`
+- Project artifacts: `PUT /dashboards/{dashboardId}/widgets/{widgetInstanceId}/_project-artifacts/{artifactType}`
 - Calendar: `POST /_dashboards/_calendar`, `DELETE /_dashboards/_calendar/{calendarId}`
 - Planner tasks: `POST /_dashboards/_planner-tasks`, `POST /_dashboards/_planner-tasks/{taskId}/subtodos`
 - Outputs: `GET /_dashboards/_outputs/{artifactId}`
@@ -65,7 +68,7 @@ The route guard checks that the Work Area owner type is `AGENT` and the owner id
 
 ## Assets
 
-- `/css/avatar-dashboard.css?v=7` owns Assistant dashboard, compact chat rail, layout editor, and retained Work Area browser styling.
+- `/css/avatar-dashboard.css?v=10` owns Assistant dashboard, compact chat rail, layout editor, notes/project widgets, and retained Work Area browser styling.
 - `/js/avatar-chat.js?v=4` owns the compact dashboard chat surface.
 - `/js/avatar-layout-edit.js?v=1` owns in-place dashboard edit helpers.
 - `/js/avatar-workarea-editor.js?v=2` owns local Work Area editor behavior.
@@ -74,3 +77,9 @@ The route guard checks that the Work Area owner type is `AGENT` and the owner id
 The dashboard root must render `data-avatar-shell="true"` around `.avatar-shell-grid`, `[data-avatar-chat="true"]`, and `[data-avatar-chat-corner-resizer="true"]`; `avatar-shell.js` uses that hook to bind horizontal rail width and vertical panel height resizing.
 
 Dashboard selector links and dashboard edit toggles should target `#dashboard-home` with `hx-swap="outerHTML"` and `hx-push-url` so switching dashboards refreshes the dashboard component without reloading the full shell or top navigation.
+
+## Notes And Project Context Widgets
+
+Notes widget settings use `noteSourceMode=personal|agent|project|work_area|mixed` plus optional `agentId`, `projectId`, and `workAreaId` bindings. Personal notes remain in `avatar_notes`; file-backed notes are read and saved through `WorkAreaExplorerService` or project owner-root file service paths. Last-opened personal and file references are stored as widget settings metadata.
+
+The Projects and Contacts/Materials widgets bind to `projectId`. Typed household project artifacts are fixed JSON files under the project workspace at `.magenta/project/`: `goals.json`, `materials.json`, `contacts.json`, `blockers.json`, `next-actions.json`, and `progress.json`. `ProjectArtifactService` creates defaults, validates the expected top-level JSON field for each artifact, and keeps output and note summaries read-only in the widget.

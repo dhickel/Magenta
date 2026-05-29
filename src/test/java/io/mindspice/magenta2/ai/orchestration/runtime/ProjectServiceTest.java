@@ -2,11 +2,22 @@ package io.mindspice.magenta2.ai.orchestration.runtime;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mindspice.magenta2.ai.config.user.AiConfig;
+import io.mindspice.magenta2.ai.orchestration.workspaces.RootRelativePathService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaExplorerService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaRepository;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkAreaService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceDirectoryService;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceRepository;
+import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceService;
+import io.mindspice.magenta2.avatar.dashboard.DashboardProjectContextView;
+import io.mindspice.magenta2.avatar.dashboard.ProjectArtifactService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -15,6 +26,7 @@ import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class ProjectServiceTest {
 
@@ -130,6 +142,88 @@ class ProjectServiceTest {
         assertThat(events).extracting(ProjectEvent::type).contains("test", "update");
     }
 
+    @Test
+    void projectArtifactAdapterCreatesAndValidatesTypedHouseholdFilesUnderProjectRoot() throws Exception {
+        ProjectArtifactFixture fixture = projectArtifactFixture();
+        ProjectService service = fixture.projectService();
+        WorkAreaService workAreas = fixture.workAreaService();
+        Project project = service.createProject("Kitchen Remodel", "Household work", null, null);
+        ProjectArtifactService artifacts = fixture.artifacts();
+
+        DashboardProjectContextView context = artifacts.context(project.id());
+
+        assertThat(context.missingBinding()).isFalse();
+        assertThat(context.codeProject()).isFalse();
+        assertThat(context.artifacts()).extracting("type")
+            .contains("goals", "materials", "contacts", "blockers", "next-actions", "progress");
+        java.nio.file.Path root = workAreas.ownerRoot(
+            io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceOwnerType.PROJECT,
+            project.id()
+        );
+        assertThat(root.resolve(".magenta/project/goals.json")).exists();
+
+        artifacts.updateArtifact(project.id(), "goals", "{\"goals\":[{\"title\":\"Demo cabinets\",\"status\":\"active\"}]}");
+        assertThat(artifacts.context(project.id()).artifacts())
+            .filteredOn(artifact -> "goals".equals(artifact.type()))
+            .singleElement()
+            .satisfies(artifact -> assertThat(artifact.items()).contains("Demo cabinets"));
+
+        assertThatThrownBy(() -> artifacts.updateArtifact(project.id(), "materials", "{\"wrong\":[]}"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("materials");
+    }
+
+    @Test
+    void projectFileNotesRejectNormalizedTraversalOutsideProjectNamespace() throws Exception {
+        ProjectArtifactFixture fixture = projectArtifactFixture();
+        Project project = fixture.projectService().createProject("Notes", "Household notes", null, null);
+
+        assertThatThrownBy(() -> fixture.artifacts().readProjectFile(project.id(), ".magenta/project/../outside.md"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining(".magenta/project");
+        assertThatThrownBy(() -> fixture.artifacts().saveProjectFile(project.id(), ".magenta/project/../outside.md", "x"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining(".magenta/project");
+        assertThatThrownBy(() -> fixture.artifacts().readProjectFile(project.id(), tempDir.resolve("note.md").toString()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("absolute");
+    }
+
+    @Test
+    void projectArtifactsRejectSymlinkedArtifactDirectory() throws Exception {
+        ProjectArtifactFixture fixture = projectArtifactFixture();
+        Project project = fixture.projectService().createProject("Linked", "Linked project artifacts", null, null);
+        Path root = fixture.workAreaService().ownerRoot(
+            io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceOwnerType.PROJECT,
+            project.id()
+        );
+        Files.createDirectories(root.resolve(".magenta"));
+        Path outside = Files.createDirectories(tempDir.resolve("outside-artifacts"));
+        createSymlinkOrSkip(root.resolve(".magenta/project"), outside);
+
+        assertThatThrownBy(() -> fixture.artifacts().updateArtifact(project.id(), "goals", "{\"goals\":[]}"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("symbolic links");
+    }
+
+    @Test
+    void projectArtifactsRejectSymlinkedArtifactFile() throws Exception {
+        ProjectArtifactFixture fixture = projectArtifactFixture();
+        Project project = fixture.projectService().createProject("Linked File", "Linked project artifact file", null, null);
+        Path root = fixture.workAreaService().ownerRoot(
+            io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceOwnerType.PROJECT,
+            project.id()
+        );
+        Files.createDirectories(root.resolve(".magenta/project"));
+        Path outside = tempDir.resolve("outside-goals.json");
+        Files.writeString(outside, "{\"goals\":[]}");
+        createSymlinkOrSkip(root.resolve(".magenta/project/goals.json"), outside);
+
+        assertThatThrownBy(() -> fixture.artifacts().updateArtifact(project.id(), "goals", "{\"goals\":[]}"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("symbolic links");
+    }
+
     private ProjectRepository repository() {
         return new ProjectRepository(jdbcTemplate(), new ObjectMapper());
     }
@@ -137,5 +231,43 @@ class ProjectServiceTest {
     private JdbcTemplate jdbcTemplate() {
         SingleConnectionDataSource ds = new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true);
         return new JdbcTemplate(ds);
+    }
+
+    private ProjectArtifactFixture projectArtifactFixture() throws IOException {
+        JdbcTemplate jdbc = jdbcTemplate();
+        ProjectRepository projects = new ProjectRepository(jdbc, new ObjectMapper());
+        AiConfig config = new AiConfig(null, null, null, 10, tempDir.resolve("data"), Map.of(), Map.of());
+        WorkspaceDirectoryService directoryService = new WorkspaceDirectoryService(config);
+        WorkspaceService workspaceService = new WorkspaceService(
+            new WorkspaceRepository(jdbc),
+            config,
+            new RootRelativePathService(directoryService)
+        );
+        WorkAreaService workAreas = new WorkAreaService(new WorkAreaRepository(jdbc), workspaceService, directoryService);
+        ProjectService service = new ProjectService(projects, directoryService, workspaceService, null, null);
+        ProjectArtifactService artifacts = new ProjectArtifactService(
+            service,
+            workAreas,
+            new WorkAreaExplorerService(workAreas),
+            null,
+            new ObjectMapper()
+        );
+        return new ProjectArtifactFixture(service, workAreas, artifacts);
+    }
+
+    private void createSymlinkOrSkip(Path link, Path target) {
+        try {
+            Files.createSymbolicLink(link, target);
+            assumeTrue(Files.isSymbolicLink(link), "symlinks are unavailable");
+        } catch (UnsupportedOperationException | IOException | SecurityException exception) {
+            assumeTrue(false, "symlinks are unavailable: " + exception.getMessage());
+        }
+    }
+
+    private record ProjectArtifactFixture(
+        ProjectService projectService,
+        WorkAreaService workAreaService,
+        ProjectArtifactService artifacts
+    ) {
     }
 }

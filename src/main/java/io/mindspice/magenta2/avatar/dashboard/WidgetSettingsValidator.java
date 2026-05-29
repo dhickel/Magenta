@@ -57,6 +57,16 @@ public final class WidgetSettingsValidator {
         if ("work_area".equals(sourceMode) && !hasText(settings.get("workAreaId"))) {
             errors.add("Work Area source mode requires a Work Area id.");
         }
+        Object noteSourceMode = settings.get("noteSourceMode");
+        if ("agent".equals(noteSourceMode) && !hasText(settings.get("agentId"))) {
+            errors.add("Agent note source requires an agent id.");
+        }
+        if ("project".equals(noteSourceMode) && !hasText(settings.get("projectId"))) {
+            errors.add("Project note source requires a project id.");
+        }
+        if ("work_area".equals(noteSourceMode) && !hasText(settings.get("workAreaId"))) {
+            errors.add("Work Area note source requires a Work Area id.");
+        }
     }
 
     private static boolean hasText(Object value) {

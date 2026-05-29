@@ -19,6 +19,8 @@ import io.mindspice.magenta2.ai.orchestration.agents.AgentProfile;
 import io.mindspice.magenta2.ai.orchestration.agents.AgentProfileService;
 import io.mindspice.magenta2.ai.orchestration.runtime.AssignmentService;
 import io.mindspice.magenta2.ai.orchestration.runtime.JobService;
+import io.mindspice.magenta2.ai.orchestration.runtime.Project;
+import io.mindspice.magenta2.ai.orchestration.runtime.ProjectService;
 import io.mindspice.magenta2.ai.orchestration.runtime.WorkAssignment;
 import io.mindspice.magenta2.ai.orchestration.workflow.InboxMessage;
 import io.mindspice.magenta2.ai.orchestration.workflow.InboxService;
@@ -33,6 +35,7 @@ import io.mindspice.magenta2.ai.orchestration.workspaces.WorkspaceOwnerType;
 import io.mindspice.magenta2.avatar.AvatarCalendarItem;
 import io.mindspice.magenta2.avatar.AvatarCalendarStatus;
 import io.mindspice.magenta2.avatar.AvatarDailyTask;
+import io.mindspice.magenta2.avatar.AvatarDashboardRow;
 import io.mindspice.magenta2.avatar.AvatarDashboardWidget;
 import io.mindspice.magenta2.avatar.AvatarDashboardRowWidget;
 import io.mindspice.magenta2.avatar.AvatarEvent;
@@ -55,12 +58,17 @@ import io.mindspice.magenta2.avatar.PlannerTimeBlock;
 import io.mindspice.magenta2.avatar.TasksRoutinesView;
 import io.mindspice.magenta2.avatar.TodayPlannerView;
 import io.mindspice.magenta2.avatar.dashboard.WidgetSettingsValidation;
+import io.mindspice.magenta2.avatar.dashboard.DashboardFileNote;
+import io.mindspice.magenta2.avatar.dashboard.DashboardNotesView;
+import io.mindspice.magenta2.avatar.dashboard.DashboardProjectContextView;
+import io.mindspice.magenta2.avatar.dashboard.ProjectArtifactService;
 import io.mindspice.simplypages.builders.BannerBuilder;
 import io.mindspice.simplypages.builders.ShellBuilder;
 import io.mindspice.simplypages.builders.ShellTemplate;
 import io.mindspice.simplypages.components.Div;
 import io.mindspice.simplypages.core.Component;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
 import org.springframework.util.StringUtils;
@@ -76,7 +84,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Controller
 public class AvatarDashboardController {
-    private static final String AVATAR_CSS = "/css/avatar-dashboard.css?v=9";
+    private static final String AVATAR_CSS = "/css/avatar-dashboard.css?v=10";
     private static final String AVATAR_AGENT_ID = "avatar";
     private static final String DEFAULT_AVATAR_TAB = "dashboard";
 
@@ -88,6 +96,8 @@ public class AvatarDashboardController {
     private final ObjectProvider<AssignmentService> assignmentService;
     private final ObjectProvider<WorkAreaService> workAreaService;
     private final ObjectProvider<WorkAreaExplorerService> workAreaExplorerService;
+    private final ObjectProvider<ProjectService> projectService;
+    private final ObjectProvider<ProjectArtifactService> projectArtifactService;
     private final InboxService inboxService;
     private final ShellTemplate shell;
 
@@ -100,6 +110,33 @@ public class AvatarDashboardController {
                                      ObjectProvider<WorkAreaService> workAreaService,
                                      ObjectProvider<WorkAreaExplorerService> workAreaExplorerService,
                                      InboxService inboxService) {
+        this(
+            avatarService,
+            chatService,
+            outputArtifactService,
+            agentProfileService,
+            jobService,
+            assignmentService,
+            workAreaService,
+            workAreaExplorerService,
+            new EmptyObjectProvider<>(),
+            new EmptyObjectProvider<>(),
+            inboxService
+        );
+    }
+
+    @Autowired
+    public AvatarDashboardController(AvatarService avatarService,
+                                     ChatService chatService,
+                                     OutputArtifactService outputArtifactService,
+                                     AgentProfileService agentProfileService,
+                                     JobService jobService,
+                                     ObjectProvider<AssignmentService> assignmentService,
+                                     ObjectProvider<WorkAreaService> workAreaService,
+                                     ObjectProvider<WorkAreaExplorerService> workAreaExplorerService,
+                                     ObjectProvider<ProjectService> projectService,
+                                     ObjectProvider<ProjectArtifactService> projectArtifactService,
+                                     InboxService inboxService) {
         this.avatarService = avatarService;
         this.chatService = chatService;
         this.outputArtifactService = outputArtifactService;
@@ -108,6 +145,8 @@ public class AvatarDashboardController {
         this.assignmentService = assignmentService;
         this.workAreaService = workAreaService;
         this.workAreaExplorerService = workAreaExplorerService;
+        this.projectService = projectService;
+        this.projectArtifactService = projectArtifactService;
         this.inboxService = inboxService;
         this.shell = ShellBuilder.create()
             .withPageTitle("Assistant Dashboard")
@@ -550,18 +589,87 @@ public class AvatarDashboardController {
     public String createNoteForWidget(@PathVariable String dashboardId,
                                       @PathVariable String widgetInstanceId,
                                       @RequestParam(value = "title", required = false) String title,
-                                      @RequestParam String body) {
+                                      @RequestParam String body,
+                                      @RequestParam(value = "tags", required = false) String tags) {
         AvatarDashboardRowWidget rowWidget = requireDashboardWidget(dashboardId, widgetInstanceId);
         if (!"notes".equals(rowWidget.widgetKey())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "dashboard widget is not notes: " + widgetInstanceId);
         }
-        appendDashboardNote(title, body);
+        appendDashboardNote(title, body, splitTags(tags));
         return widgetByInstance(dashboardId, widgetInstanceId);
     }
 
+    String createNoteForWidget(String dashboardId, String widgetInstanceId, String title, String body) {
+        return createNoteForWidget(dashboardId, widgetInstanceId, title, body, null);
+    }
+
     private void appendDashboardNote(String title, String body) {
+        appendDashboardNote(title, body, List.of("avatar-dashboard"));
+    }
+
+    private void appendDashboardNote(String title, String body, List<String> tags) {
         requireText(body, "note body");
-        avatarService.appendNote(null, title, body, List.of("avatar-dashboard"));
+        avatarService.appendNote(null, title, body, tags == null || tags.isEmpty() ? List.of("avatar-dashboard") : tags);
+    }
+
+    @GetMapping("/dashboards/{dashboardId}/widgets/{widgetInstanceId}/_notes/{noteId}")
+    @ResponseBody
+    public String openPersonalNote(
+        @PathVariable String dashboardId,
+        @PathVariable String widgetInstanceId,
+        @PathVariable String noteId
+    ) {
+        AvatarDashboardRowWidget rowWidget = requireDashboardWidget(dashboardId, widgetInstanceId);
+        AvatarNote note = avatarService.note(noteId);
+        rememberWidgetSetting(dashboardId, rowWidget, Map.of("lastOpenedNoteId", note.id()));
+        return AvatarDashboardComponents.personalNoteDetailModal(data(dashboardId), rowWidget, note).render();
+    }
+
+    @GetMapping("/dashboards/{dashboardId}/widgets/{widgetInstanceId}/_file-note")
+    @ResponseBody
+    public String openFileNote(
+        @PathVariable String dashboardId,
+        @PathVariable String widgetInstanceId,
+        @RequestParam String source,
+        @RequestParam String path
+    ) {
+        AvatarDashboardRowWidget rowWidget = requireDashboardWidget(dashboardId, widgetInstanceId);
+        WorkAreaExplorerService.FilePreview preview = readBoundFileNote(rowWidget, source, path);
+        rememberWidgetSetting(dashboardId, rowWidget, Map.of("lastOpenedFilePath", path, "lastOpenedSource", source));
+        return AvatarDashboardComponents.fileNoteDetailModal(data(dashboardId), rowWidget, source, preview, null).render();
+    }
+
+    @PutMapping("/dashboards/{dashboardId}/widgets/{widgetInstanceId}/_file-note")
+    @ResponseBody
+    public String saveFileNote(
+        @PathVariable String dashboardId,
+        @PathVariable String widgetInstanceId,
+        @RequestParam String source,
+        @RequestParam String path,
+        @RequestParam String content
+    ) {
+        AvatarDashboardRowWidget rowWidget = requireDashboardWidget(dashboardId, widgetInstanceId);
+        WorkAreaExplorerService.FilePreview preview = saveBoundFileNote(rowWidget, source, path, content);
+        rememberWidgetSetting(dashboardId, rowWidget, Map.of("lastOpenedFilePath", path, "lastOpenedSource", source));
+        return AvatarDashboardComponents.fileNoteDetailModal(data(dashboardId), rowWidget, source, preview, "Saved " + path).render();
+    }
+
+    @PutMapping("/dashboards/{dashboardId}/widgets/{widgetInstanceId}/_project-artifacts/{artifactType}")
+    @ResponseBody
+    public String saveProjectArtifact(
+        @PathVariable String dashboardId,
+        @PathVariable String widgetInstanceId,
+        @PathVariable String artifactType,
+        @RequestParam String content
+    ) {
+        AvatarDashboardRowWidget rowWidget = requireDashboardWidget(dashboardId, widgetInstanceId);
+        if (!"projects".equals(rowWidget.widgetKey()) && !"contacts-materials".equals(rowWidget.widgetKey())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "dashboard widget is not project-backed: " + widgetInstanceId);
+        }
+        String projectId = setting(rowWidget, "projectId");
+        ProjectArtifactService service = requireProjectArtifactService();
+        service.updateArtifact(projectId, artifactType, content);
+        return widgetByInstance(dashboardId, widgetInstanceId);
     }
 
     @PostMapping("/_dashboards/_calendar")
@@ -1620,12 +1728,13 @@ public class AvatarDashboardController {
 
     private AvatarDashboardComponents.AvatarDashboardData data(String dashboardId) {
         List<AgentProfile> agents = safeList(agentProfileService::list);
+        List<AvatarDashboardRow> rows = avatarService.dashboardRows(dashboardId);
         return new AvatarDashboardComponents.AvatarDashboardData(
             avatarService.dashboard(dashboardId),
             avatarService.dashboards(),
             avatarService.profile(),
             avatarService.dashboardLayout(),
-            avatarService.dashboardRows(dashboardId),
+            rows,
             avatarService.dailyTasks(LocalDate.now()),
             avatarService.todos(),
             avatarService.calendarItems(),
@@ -1633,6 +1742,8 @@ public class AvatarDashboardController {
             avatarService.tasksRoutines(),
             avatarService.calendarSchedule(LocalDate.now(), LocalDate.now().plusDays(30)),
             avatarService.notes(false),
+            noteViews(rows),
+            projectViews(rows),
             avatarService.events(),
             safeList(() -> outputArtifactService.query(null, null, null, 20)),
             agents,
@@ -1677,6 +1788,8 @@ public class AvatarDashboardController {
             avatarService.tasksRoutines(status, range, recurrence),
             base.calendarSchedule(),
             base.notes(),
+            base.noteViews(),
+            base.projectViews(),
             base.events(),
             base.outputs(),
             base.agents(),
@@ -1811,6 +1924,8 @@ public class AvatarDashboardController {
             base.tasksRoutines(),
             base.calendarSchedule(),
             base.notes(),
+            base.noteViews(),
+            base.projectViews(),
             base.events(),
             outputs,
             base.agents(),
@@ -1912,6 +2027,285 @@ public class AvatarDashboardController {
                 (left, right) -> left,
                 java.util.LinkedHashMap::new
             ));
+    }
+
+    private Map<String, DashboardNotesView> noteViews(List<AvatarDashboardRow> rows) {
+        Map<String, DashboardNotesView> views = new LinkedHashMap<>();
+        for (AvatarDashboardRowWidget widget : dashboardWidgets(rows, "notes")) {
+            views.put(widget.id(), noteView(widget));
+        }
+        return views;
+    }
+
+    private DashboardNotesView noteView(AvatarDashboardRowWidget widget) {
+        String mode = normalizeNoteSourceMode(setting(widget, "noteSourceMode"));
+        String query = setting(widget, "noteQuery");
+        List<AvatarNote> personal = ("personal".equals(mode) || "mixed".equals(mode))
+            ? avatarService.searchNotes(query, false, 8)
+            : List.of();
+        List<DashboardFileNote> fileNotes = switch (mode) {
+            case "agent" -> agentFileNotes(widget, query);
+            case "project" -> projectFileNotes(widget, query);
+            case "work_area" -> workAreaFileNotes(widget, query);
+            case "mixed" -> mixedFileNotes(widget, query);
+            default -> List.of();
+        };
+        String missing = missingNoteBinding(widget, mode);
+        return new DashboardNotesView(
+            mode,
+            noteSourceLabel(widget, mode),
+            missing,
+            query,
+            setting(widget, "lastOpenedNoteId"),
+            setting(widget, "lastOpenedFilePath"),
+            personal,
+            fileNotes
+        );
+    }
+
+    private Map<String, DashboardProjectContextView> projectViews(List<AvatarDashboardRow> rows) {
+        ProjectArtifactService service = projectArtifactService == null ? null : projectArtifactService.getIfAvailable();
+        Map<String, DashboardProjectContextView> views = new LinkedHashMap<>();
+        for (AvatarDashboardRowWidget widget : dashboardWidgets(rows, "projects", "contacts-materials")) {
+            String projectId = setting(widget, "projectId");
+            views.put(widget.id(), service == null
+                ? new DashboardProjectContextView(null, false, null, "Project artifact service is unavailable.", List.of(), List.of(), List.of())
+                : service.context(projectId));
+        }
+        return views;
+    }
+
+    private List<AvatarDashboardRowWidget> dashboardWidgets(List<AvatarDashboardRow> rows, String... types) {
+        java.util.Set<String> wanted = java.util.Set.of(types);
+        return (rows == null ? List.<AvatarDashboardRow>of() : rows).stream()
+            .flatMap(row -> row.widgets().stream())
+            .filter(widget -> wanted.contains(widget.widgetKey()))
+            .toList();
+    }
+
+    private List<DashboardFileNote> mixedFileNotes(AvatarDashboardRowWidget widget, String query) {
+        java.util.ArrayList<DashboardFileNote> notes = new java.util.ArrayList<>();
+        notes.addAll(agentFileNotes(widget, query));
+        notes.addAll(projectFileNotes(widget, query));
+        notes.addAll(workAreaFileNotes(widget, query));
+        return notes.stream().limit(8).toList();
+    }
+
+    private List<DashboardFileNote> agentFileNotes(AvatarDashboardRowWidget widget, String query) {
+        String agentId = setting(widget, "agentId");
+        if (!StringUtils.hasText(agentId)) {
+            return List.of();
+        }
+        return ownerFileNotes(WorkspaceOwnerType.AGENT, agentId, agentId, "agent", agentId, query);
+    }
+
+    private List<DashboardFileNote> projectFileNotes(AvatarDashboardRowWidget widget, String query) {
+        String projectId = setting(widget, "projectId");
+        if (!StringUtils.hasText(projectId)) {
+            return List.of();
+        }
+        Project project = project(projectId);
+        if (project == null) {
+            return List.of();
+        }
+        return ownerFileNotes(WorkspaceOwnerType.PROJECT, project.id(), project.name(), "project", project.name(), query);
+    }
+
+    private List<DashboardFileNote> workAreaFileNotes(AvatarDashboardRowWidget widget, String query) {
+        String workAreaId = setting(widget, "workAreaId");
+        if (!StringUtils.hasText(workAreaId)) {
+            return List.of();
+        }
+        WorkAreaExplorerService explorer = workAreaExplorerService == null ? null : workAreaExplorerService.getIfAvailable();
+        if (explorer == null) {
+            return List.of();
+        }
+        return mergeFileNotes(List.of(
+            fileNotes(() -> explorer.list(workAreaId, "."), "work_area", workAreaId, "Work Area " + workAreaId, query),
+            fileNotes(() -> explorer.list(workAreaId, "notes"), "work_area", workAreaId, "Work Area " + workAreaId, query)
+        ));
+    }
+
+    private List<DashboardFileNote> ownerFileNotes(
+        WorkspaceOwnerType ownerType,
+        String ownerId,
+        String displayName,
+        String sourceMode,
+        String sourceLabel,
+        String query
+    ) {
+        WorkAreaExplorerService explorer = workAreaExplorerService == null ? null : workAreaExplorerService.getIfAvailable();
+        if (explorer == null) {
+            return List.of();
+        }
+        return mergeFileNotes(List.of(
+            fileNotes(() -> explorer.listOwnerRoot(ownerType, ownerId, displayName, "."), sourceMode, ownerId, sourceLabel, query),
+            fileNotes(() -> explorer.listOwnerRoot(ownerType, ownerId, displayName, "notes"), sourceMode, ownerId, sourceLabel, query)
+        ));
+    }
+
+    private List<DashboardFileNote> mergeFileNotes(List<List<DashboardFileNote>> groups) {
+        Map<String, DashboardFileNote> byKey = new LinkedHashMap<>();
+        for (List<DashboardFileNote> group : groups) {
+            for (DashboardFileNote note : group) {
+                byKey.putIfAbsent(note.sourceMode() + ":" + note.bindingId() + ":" + note.path(), note);
+            }
+        }
+        return byKey.values().stream().limit(8).toList();
+    }
+
+    private List<DashboardFileNote> fileNotes(
+        ListingSupplier listingSupplier,
+        String sourceMode,
+        String bindingId,
+        String sourceLabel,
+        String query
+    ) {
+        try {
+            String normalizedQuery = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+            return listingSupplier.get().entries().stream()
+                .filter(WorkAreaExplorerService.Entry::regularFile)
+                .filter(this::noteLike)
+                .filter(entry -> normalizedQuery.isBlank()
+                    || entry.name().toLowerCase(Locale.ROOT).contains(normalizedQuery)
+                    || entry.tags().stream().anyMatch(tag -> tag.slug().toLowerCase(Locale.ROOT).contains(normalizedQuery)))
+                .limit(8)
+                .map(entry -> new DashboardFileNote(
+                    sourceMode,
+                    sourceLabel,
+                    bindingId,
+                    entry.path(),
+                    entry.name(),
+                    entry.sizeLabel(),
+                    entry.tags().stream().map(tag -> tag.slug()).toList(),
+                    entry.modifiedAt(),
+                    entry.canView(),
+                    entry.path().endsWith(".md") || entry.path().endsWith(".markdown")
+                ))
+                .toList();
+        } catch (RuntimeException exception) {
+            return List.of();
+        }
+    }
+
+    private boolean noteLike(WorkAreaExplorerService.Entry entry) {
+        String path = entry.path().toLowerCase(Locale.ROOT);
+        return path.endsWith(".md")
+            || path.endsWith(".txt")
+            || entry.tags().stream().anyMatch(tag -> "note".equals(tag.slug()));
+    }
+
+    private String missingNoteBinding(AvatarDashboardRowWidget widget, String mode) {
+        if ("agent".equals(mode) && !StringUtils.hasText(setting(widget, "agentId"))) {
+            return "Choose an agent for agent file notes.";
+        }
+        if ("project".equals(mode) && !StringUtils.hasText(setting(widget, "projectId"))) {
+            return "Choose a project for project file notes.";
+        }
+        if ("work_area".equals(mode) && !StringUtils.hasText(setting(widget, "workAreaId"))) {
+            return "Choose a Work Area for file notes.";
+        }
+        return null;
+    }
+
+    private String noteSourceLabel(AvatarDashboardRowWidget widget, String mode) {
+        return switch (mode) {
+            case "agent" -> "Agent " + fallback(setting(widget, "agentId"), "unbound");
+            case "project" -> "Project " + fallback(setting(widget, "projectId"), "unbound");
+            case "work_area" -> "Work Area " + fallback(setting(widget, "workAreaId"), "unbound");
+            case "mixed" -> "Mixed sources";
+            default -> "Personal notes";
+        };
+    }
+
+    private String normalizeNoteSourceMode(String value) {
+        if (!StringUtils.hasText(value)) {
+            return "personal";
+        }
+        return switch (value.trim().toLowerCase(Locale.ROOT)) {
+            case "agent", "project", "work_area", "mixed" -> value.trim().toLowerCase(Locale.ROOT);
+            default -> "personal";
+        };
+    }
+
+    private WorkAreaExplorerService.FilePreview readBoundFileNote(AvatarDashboardRowWidget widget, String source, String path) {
+        String normalized = normalizeNoteSourceMode(source);
+        WorkAreaExplorerService explorer = requireExplorerService();
+        return switch (normalized) {
+            case "agent" -> explorer.previewOwnerRoot(WorkspaceOwnerType.AGENT, requiredSetting(widget, "agentId"), requiredSetting(widget, "agentId"), path);
+            case "project" -> requireProjectArtifactService().readProjectFile(requiredSetting(widget, "projectId"), path);
+            case "work_area" -> explorer.preview(requiredSetting(widget, "workAreaId"), path);
+            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "file note source is not file-backed: " + source);
+        };
+    }
+
+    private WorkAreaExplorerService.FilePreview saveBoundFileNote(AvatarDashboardRowWidget widget, String source, String path, String content) {
+        String normalized = normalizeNoteSourceMode(source);
+        WorkAreaExplorerService explorer = requireExplorerService();
+        return switch (normalized) {
+            case "agent" -> explorer.saveTextOwnerRoot(WorkspaceOwnerType.AGENT, requiredSetting(widget, "agentId"), requiredSetting(widget, "agentId"), path, content);
+            case "project" -> requireProjectArtifactService().saveProjectFile(requiredSetting(widget, "projectId"), path, content);
+            case "work_area" -> explorer.saveText(requiredSetting(widget, "workAreaId"), path, content);
+            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "file note source is not file-backed: " + source);
+        };
+    }
+
+    private void rememberWidgetSetting(String dashboardId, AvatarDashboardRowWidget widget, Map<String, String> updates) {
+        Map<String, Object> merged = new LinkedHashMap<>(widget.settings() == null ? Map.of() : widget.settings());
+        merged.putAll(updates);
+        try {
+            avatarService.updateDashboardWidgetSettings(dashboardId, widget.id(), merged);
+        } catch (IllegalArgumentException ignored) {
+            // Last-opened hints are convenience metadata; opening a note should still succeed if settings validation changes.
+        }
+    }
+
+    private Project project(String projectId) {
+        ProjectService service = projectService == null ? null : projectService.getIfAvailable();
+        if (service == null || !StringUtils.hasText(projectId)) {
+            return null;
+        }
+        try {
+            return service.getProject(projectId);
+        } catch (RuntimeException exception) {
+            return null;
+        }
+    }
+
+    private ProjectArtifactService requireProjectArtifactService() {
+        ProjectArtifactService service = projectArtifactService == null ? null : projectArtifactService.getIfAvailable();
+        if (service == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Project artifact service is unavailable");
+        }
+        return service;
+    }
+
+    private String setting(AvatarDashboardRowWidget widget, String key) {
+        Object value = widget.settings() == null ? null : widget.settings().get(key);
+        return value == null ? "" : value.toString();
+    }
+
+    private String requiredSetting(AvatarDashboardRowWidget widget, String key) {
+        String value = setting(widget, key);
+        if (!StringUtils.hasText(value)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, key + " binding is required");
+        }
+        return value;
+    }
+
+    private List<String> splitTags(String tags) {
+        if (!StringUtils.hasText(tags)) {
+            return List.of("avatar-dashboard");
+        }
+        return java.util.Arrays.stream(tags.split(","))
+            .map(String::trim)
+            .filter(StringUtils::hasText)
+            .distinct()
+            .toList();
+    }
+
+    private String fallback(String value, String fallback) {
+        return StringUtils.hasText(value) ? value : fallback;
     }
 
     private <T> List<T> safeList(ListSupplier<T> supplier) {
@@ -2259,6 +2653,32 @@ public class AvatarDashboardController {
     @FunctionalInterface
     private interface ListSupplier<T> {
         List<T> get();
+    }
+
+    private interface ListingSupplier {
+        WorkAreaExplorerService.DirectoryListing get();
+    }
+
+    private static final class EmptyObjectProvider<T> implements ObjectProvider<T> {
+        @Override
+        public T getObject(Object... args) {
+            throw new org.springframework.beans.factory.NoSuchBeanDefinitionException(Object.class);
+        }
+
+        @Override
+        public T getIfAvailable() {
+            return null;
+        }
+
+        @Override
+        public T getIfUnique() {
+            return null;
+        }
+
+        @Override
+        public T getObject() {
+            throw new org.springframework.beans.factory.NoSuchBeanDefinitionException(Object.class);
+        }
     }
 
     private record AssistantTabState(String activeTab, boolean editMode) {

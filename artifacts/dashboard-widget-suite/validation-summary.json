@@ -1,6 +1,6 @@
 {
   "task_slug": "dashboard-widget-suite",
-  "status": "phase_02_browser_proof_passed_later_phases_pending",
+  "status": "phase_01_02_03_browser_proof_passed_later_phases_pending",
   "model_constraints": {
     "implementation_workers": {
       "required_model": "gpt-5.5",
@@ -45,6 +45,23 @@
         "Scoped Phase 02 browser-findings repair on 2026-05-29 added Today Planner overdue/unscheduled sections, made quick-captured unscheduled items visible after refresh, rendered compact Tasks/Routines subtodo rows, and added a Calendar/Schedule HTMX reminder form. Browser rerun remains pending.",
         "Independent Phase 02 browser-findings code revalidation on 2026-05-29 passed: Today Planner overdue/unscheduled and quick-capture visibility, Tasks/Routines subtodo rows, Calendar/Schedule reminder form, CSS cache bump, focused tests, startup, jq, and diff-check. Browser rerun remains pending.",
         "Delegated Phase 02 browser rerun on 2026-05-29 passed all 21 rerun checks with desktop/mobile screenshots, empty console/network logs, visible Today overdue/unscheduled/quick-capture content, Tasks/Routines subtodos/project/filters/actions, and Calendar/Schedule HTMX time-block/reminder creation."
+      ]
+    },
+    {
+      "id": "phase-03-notes-project-context",
+      "status": "phase_03_browser_proof_passed_later_phases_pending",
+      "worker_directive": ".internal-dev/plans/dashboard-widget-suite/worker-directives/phase-03-notes-project-context.md",
+      "notes": [
+        "Implemented source-aware Notes widget settings for personal, agent, project, Work Area, and mixed modes.",
+        "Personal notes remain in avatar_notes with quick capture, search, tags, and last-opened metadata stored only in widget settings.",
+        "File-backed notes are read/edited through Work Area/project owner-root service paths and render distinct source chips.",
+        "Added Projects and Contacts/Materials widgets backed by fixed typed project artifact JSON files under .magenta/project/.",
+        "Registered controlled Avatar tools for file-note read/update and project context/artifact update.",
+        "Focused service/controller/tool checks passed locally; delegated browser proof remains pending by directive.",
+        "Phase 03 code validation on 2026-05-29 failed: project file-note path validation happens before normalization, typed project artifact writes lack symlink/real-path hardening, and new file-note/project tools need representative behavior/boundary tests. Review: .internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-03-validation.md.",
+        "Scoped Phase 03 repair on 2026-05-29 normalized project file-note paths before policy checks, rejected absolute/traversal paths outside .magenta/project/, hardened typed project artifacts against symlinked parents/files, and added representative Avatar tool behavior/boundary tests. Browser proof passed on 2026-05-29.",
+        "Independent Phase 03 focused revalidation on 2026-05-29 passed: project file-note path normalization/confinement, project artifact symlink hardening, new Avatar tool behavior/boundary tests, focused Maven suite, startup, jq, and diff-check. Browser proof passed on 2026-05-29.",
+        "Delegated Phase 03 browser proof on 2026-05-29 passed Notes personal mode, Work Area file-note mode, project traversal negative, household/code project widgets, Contacts/Materials, missing binding recovery, mobile overflow/modal checks, and visual comparison against /manage, /agents, and Work Area explorer references."
       ]
     }
   ],
@@ -253,6 +270,96 @@
       "command": "Playwright console and network capture for Phase 02 browser rerun",
       "result": "passed",
       "evidence": "console-messages.txt and network-requests.txt are empty; no console messages or HTTP >=400 responses captured."
+    },
+    {
+      "command": "mvn -DskipTests compile",
+      "result": "passed",
+      "evidence": "Phase 03 implementation worker on 2026-05-29: compiled 369 source files successfully after notes/project widget changes."
+    },
+    {
+      "command": "mvn -Dtest=AvatarRepositoryTest,AvatarServiceTest,AvatarDashboardControllerTest,ProjectServiceTest,ProjectRepositoryTest,WorkAreaServiceTest,WorkAreaExplorerServiceTest,WorkAreaControllerTest,AvatarToolsTest,ChatToolRegistryTest test",
+      "result": "passed",
+      "evidence": "Phase 03 implementation worker on 2026-05-29: 103 tests run, 0 failures, 0 errors, 0 skipped. First attempt failed at test compile due to old createNoteForWidget helper signature, second attempt failed because Work Area note search only listed the root path; both were repaired and the rerun passed."
+    },
+    {
+      "command": "timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0",
+      "result": "started_then_timeout_stopped",
+      "evidence": "Phase 03 implementation worker on 2026-05-29: Tomcat started on random port 46495; Magenta2Application started in 3.161 seconds; timeout produced expected exit code 124 after graceful shutdown."
+    },
+    {
+      "command": "jq . artifacts/dashboard-widget-suite/validation-summary.json >/dev/null",
+      "result": "passed",
+      "evidence": "Phase 03 evidence index JSON parsed successfully after implementation evidence update."
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed",
+      "evidence": "No whitespace errors reported after Phase 03 implementation, docs/specs/changelog, and evidence updates."
+    },
+    {
+      "command": "mvn -Dtest=AvatarRepositoryTest,AvatarServiceTest,AvatarDashboardControllerTest,ProjectServiceTest,ProjectRepositoryTest,WorkAreaServiceTest,WorkAreaExplorerServiceTest,WorkAreaControllerTest,AvatarToolsTest test",
+      "result": "passed",
+      "evidence": "Phase 03 code validation on 2026-05-29: 96 tests run, 0 failures, 0 errors, 0 skipped."
+    },
+    {
+      "command": "timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0",
+      "result": "started_then_timeout_stopped",
+      "evidence": "Phase 03 code validation on 2026-05-29: Tomcat started on random port 34991; Magenta2Application started in 3.168 seconds; timeout produced expected exit code 124 after graceful shutdown."
+    },
+    {
+      "command": "jq . artifacts/dashboard-widget-suite/validation-summary.json >/dev/null",
+      "result": "passed",
+      "evidence": "Phase 03 code validation on 2026-05-29: JSON parsed successfully before evidence update."
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed",
+      "evidence": "Phase 03 code validation on 2026-05-29: no whitespace errors reported before evidence update."
+    },
+    {
+      "command": "mvn -Dtest=AvatarRepositoryTest,AvatarServiceTest,AvatarDashboardControllerTest,ProjectServiceTest,ProjectRepositoryTest,WorkAreaServiceTest,WorkAreaExplorerServiceTest,WorkAreaControllerTest,AvatarToolsTest test",
+      "result": "passed",
+      "evidence": "Scoped Phase 03 repair on 2026-05-29: 102 tests run, 0 failures, 0 errors, 0 skipped. Covers normalized project-note traversal rejection, symlinked project artifact parent/file rejection, and representative new Avatar tool read/update/context/artifact behavior."
+    },
+    {
+      "command": "timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0",
+      "result": "started_then_timeout_stopped",
+      "evidence": "Scoped Phase 03 repair on 2026-05-29: Tomcat started on random port 44639; Magenta2Application started in 3.221 seconds; timeout produced expected exit code 124 after graceful shutdown."
+    },
+    {
+      "command": "mvn -Dtest=AvatarRepositoryTest,AvatarServiceTest,AvatarDashboardControllerTest,ProjectServiceTest,ProjectRepositoryTest,WorkAreaServiceTest,WorkAreaExplorerServiceTest,WorkAreaControllerTest,AvatarToolsTest test",
+      "result": "passed",
+      "evidence": "Independent Phase 03 focused revalidation on 2026-05-29 after scoped repair: 102 tests run, 0 failures, 0 errors, 0 skipped."
+    },
+    {
+      "command": "timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0",
+      "result": "started_then_timeout_stopped",
+      "evidence": "Independent Phase 03 focused revalidation on 2026-05-29 after scoped repair: Tomcat started on random port 33995; Magenta2Application started in 3.291 seconds; timeout produced expected exit code 124 after graceful shutdown."
+    },
+    {
+      "command": "jq . artifacts/dashboard-widget-suite/validation-summary.json >/dev/null",
+      "result": "passed",
+      "evidence": "Independent Phase 03 focused revalidation on 2026-05-29 after scoped repair: JSON parsed successfully before evidence update."
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed",
+      "evidence": "Independent Phase 03 focused revalidation on 2026-05-29 after scoped repair: no whitespace errors reported before evidence update."
+    },
+    {
+      "command": "mvn spring-boot:run -Dspring-boot.run.arguments='--server.port=18080 --magenta.root.path=/tmp/magenta2-dashboard-widget-suite-phase-03-browser --spring.datasource.url=jdbc:sqlite:/tmp/magenta2-dashboard-widget-suite-phase-03-browser/magenta.sqlite?foreign_keys=true --magenta.orchestration.runner-delay-ms=60000 --magenta.orchestration.scheduler-delay-ms=60000 --magenta.orchestration.assignment-history-purge-delay-ms=60000'",
+      "result": "passed",
+      "evidence": "Phase 03 browser proof runtime on 2026-05-29: Tomcat started on port 18080 with isolated root /tmp/magenta2-dashboard-widget-suite-phase-03-browser."
+    },
+    {
+      "command": "node artifacts/dashboard-widget-suite/phase-03-browser/browser-proof.mjs",
+      "result": "passed",
+      "evidence": "artifacts/dashboard-widget-suite/phase-03-browser/browser-proof-results.json reports PASS_BROWSER_PROOF with 14 checks passing and no failures."
+    },
+    {
+      "command": "Playwright console and network capture for Phase 03 browser proof",
+      "result": "passed_with_expected_400_noise",
+      "evidence": "console-messages.txt and network-requests.txt contain only the expected browser 400 resource/error entry from the traversal-negative project file-note route; no unexpected JavaScript errors or 500 responses were captured."
     }
   ],
   "validators": [
@@ -374,10 +481,36 @@
       "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-02-browser-proof.md",
       "verdict": "PASS_BROWSER_PROOF",
       "findings": []
+    },
+    {
+      "id": "phase-03-code-validator",
+      "status": "passed_code_validation_browser_pending",
+      "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-03-validation.md",
+      "verdict": "PASS_CODE_VALIDATION",
+      "findings": [
+        {
+          "id": "phase-03-project-note-path-pre-normalization",
+          "classification": "code_defect",
+          "status": "passed_revalidation",
+          "evidence": "ProjectArtifactService normalizes project file-note paths before explorer delegation and rejects absolute/traversal paths outside .magenta/project/. ProjectServiceTest covers read/save traversal rejection and absolute path rejection."
+        },
+        {
+          "id": "phase-03-project-artifact-symlink-hardening",
+          "classification": "code_defect",
+          "status": "passed_revalidation",
+          "evidence": "ProjectArtifactService resolves project root real paths, creates artifact parents segment-by-segment, rejects symlinked parent directories and symlinked artifact files. ProjectServiceTest covers symlinked .magenta/project and goals.json rejection."
+        },
+        {
+          "id": "phase-03-new-tool-behavior-tests",
+          "classification": "code_defect",
+          "status": "passed_revalidation",
+          "evidence": "AvatarToolsTest exercises avatar_file_note_read/update and avatar_project_context_get/artifact_update with service-backed success and project boundary rejection propagation."
+        }
+      ]
     }
   ],
   "browser": {
-    "status": "phase_01_and_phase_02_browser_proof_passed_later_phases_pending",
+    "status": "phase_01_02_03_browser_proof_passed_later_phases_pending",
     "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-01-browser-proof.md",
     "runtime": {
       "port": 18080,
@@ -595,6 +728,90 @@
         "Tasks/Routines filters are compact and HTMX-first, with recurrence, project, subtodo, and occurrence action details visible.",
         "Mobile modals are scrollable and compact; calendar density should be watched for touch ergonomics but did not block validation."
       ]
+    },
+    "phase_03": {
+      "status": "passed_browser_proof_later_phases_pending",
+      "verdict": "PASS_BROWSER_PROOF",
+      "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-03-browser-proof.md",
+      "artifact_directory": "artifacts/dashboard-widget-suite/phase-03-browser/",
+      "runtime": {
+        "port": 18080,
+        "isolated_root": "/tmp/magenta2-dashboard-widget-suite-phase-03-browser",
+        "command": "mvn spring-boot:run -Dspring-boot.run.arguments='--server.port=18080 --magenta.root.path=/tmp/magenta2-dashboard-widget-suite-phase-03-browser --spring.datasource.url=jdbc:sqlite:/tmp/magenta2-dashboard-widget-suite-phase-03-browser/magenta.sqlite?foreign_keys=true --magenta.orchestration.runner-delay-ms=60000 --magenta.orchestration.scheduler-delay-ms=60000 --magenta.orchestration.assignment-history-purge-delay-ms=60000'"
+      },
+      "scenarios": [
+        {
+          "id": "desktop_home_seeded_single_shell_and_widget_suite",
+          "status": "passed_browser_proof",
+          "evidence": "Personal Notes, Work Area file Notes, Projects, and Contacts/Materials rendered on / with one top nav, one dashboard root, one shell root, one edit container, and no duplicate ids."
+        },
+        {
+          "id": "personal_notes_source_search_quick_capture_db_distinction",
+          "status": "passed_browser_proof",
+          "evidence": "Personal Notes showed source chips, search/tag filtering, quick capture result, and DB-backed avatar_notes distinction in the personal note modal."
+        },
+        {
+          "id": "work_area_file_note_markdown_edit_save_refresh",
+          "status": "passed_browser_proof",
+          "evidence": "Work Area Notes showed source chip and file path; Markdown modal saved through the file-backed flow and refreshed the modal without duplicate roots."
+        },
+        {
+          "id": "project_file_note_traversal_rejected",
+          "status": "passed_browser_proof",
+          "evidence": "Dashboard project file-note save rejected .magenta/project/../outside.md with expected HTTP 400 confinement error."
+        },
+        {
+          "id": "projects_household_and_code_artifacts",
+          "status": "passed_browser_proof",
+          "evidence": "Household Projects widget showed goals, materials, contacts, blockers, next actions, progress, notes metric, and no repo-only language; separate code project rendered code project chip."
+        },
+        {
+          "id": "contacts_materials_binding_useful_bounded_rows",
+          "status": "passed_browser_proof",
+          "evidence": "Contacts/Materials widget showed selected household project binding and useful contacts/materials rows."
+        },
+        {
+          "id": "missing_binding_recovery",
+          "status": "passed_browser_proof",
+          "evidence": "Project and Contacts/Materials widgets displayed missing binding states before settings recovery; bound widgets later rendered seeded data."
+        },
+        {
+          "id": "mobile_modal_overflow_and_long_names",
+          "status": "passed_browser_proof",
+          "evidence": "Mobile home and Work Area file-note modal had no horizontal overflow; save control remained reachable; long project/widget names did not overflow."
+        },
+        {
+          "id": "visual_reference_manage_agents_workarea",
+          "status": "passed_with_visual_notes",
+          "evidence": "Reference screenshots captured for /manage, /agents, /agents/avatar, and Work Area explorer; Phase 03 widgets matched dense operational panel/chip/list language."
+        }
+      ],
+      "screenshots": [
+        "artifacts/dashboard-widget-suite/phase-03-browser/desktop-home-seeded.png",
+        "artifacts/dashboard-widget-suite/phase-03-browser/desktop-personal-note-quick-capture.png",
+        "artifacts/dashboard-widget-suite/phase-03-browser/desktop-personal-note-modal.png",
+        "artifacts/dashboard-widget-suite/phase-03-browser/desktop-workarea-file-note-modal-before-save.png",
+        "artifacts/dashboard-widget-suite/phase-03-browser/desktop-workarea-file-note-modal-after-save.png",
+        "artifacts/dashboard-widget-suite/phase-03-browser/desktop-projects-contacts-seeded.png",
+        "artifacts/dashboard-widget-suite/phase-03-browser/reference-manage-desktop.png",
+        "artifacts/dashboard-widget-suite/phase-03-browser/reference-agents-desktop.png",
+        "artifacts/dashboard-widget-suite/phase-03-browser/reference-agent-avatar-desktop.png",
+        "artifacts/dashboard-widget-suite/phase-03-browser/reference-workarea-explorer-desktop.png",
+        "artifacts/dashboard-widget-suite/phase-03-browser/mobile-home-seeded.png",
+        "artifacts/dashboard-widget-suite/phase-03-browser/mobile-workarea-file-note-modal.png",
+        "artifacts/dashboard-widget-suite/phase-03-browser/mobile-projects-long-names.png"
+      ],
+      "logs": [
+        "artifacts/dashboard-widget-suite/phase-03-browser/browser-proof-results.json",
+        "artifacts/dashboard-widget-suite/phase-03-browser/console-messages.txt",
+        "artifacts/dashboard-widget-suite/phase-03-browser/network-requests.txt"
+      ],
+      "visual_critique": [
+        "Desktop dashboard uses the same compact operational language as /manage and /agents: thin bordered panels, restrained chips, small controls, and scan-friendly rows.",
+        "Notes, Projects, and Contacts/Materials summaries remain bounded; project artifacts render as rows instead of nested card stacks.",
+        "File-note modal stays within the shared modal host and keeps save controls reachable on mobile. Mobile dashboard stacks widgets without horizontal overflow.",
+        "Work Area file-note wording matches the file explorer source/path language closely enough for this widget scope; the widget does not duplicate the full explorer."
+      ]
     }
   },
   "artifacts": [
@@ -610,7 +827,14 @@
     "artifacts/dashboard-widget-suite/phase-02-browser-rerun/",
     "artifacts/dashboard-widget-suite/phase-02-browser-rerun/browser-proof-results.json",
     "artifacts/dashboard-widget-suite/phase-02-browser-rerun/console-messages.txt",
-    "artifacts/dashboard-widget-suite/phase-02-browser-rerun/network-requests.txt"
+    "artifacts/dashboard-widget-suite/phase-02-browser-rerun/network-requests.txt",
+    ".internal-dev/changelogs/2026-05-29-dashboard-widget-suite-phase-03-notes-projects.md",
+    ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-03-validation.md",
+    ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-03-browser-proof.md",
+    "artifacts/dashboard-widget-suite/phase-03-browser/",
+    "artifacts/dashboard-widget-suite/phase-03-browser/browser-proof-results.json",
+    "artifacts/dashboard-widget-suite/phase-03-browser/console-messages.txt",
+    "artifacts/dashboard-widget-suite/phase-03-browser/network-requests.txt"
   ],
   "superseded_artifacts": [
     "artifacts/dashboard-widget-suite/phase-01-browser/",
@@ -618,16 +842,16 @@
   ],
   "tooling_constraints": [],
   "residual_risks": [
+    "Project artifact summaries use fixed typed JSON files and compact row rendering; richer per-artifact editing UX is intentionally limited until browser validation and later polish.",
     "Compatibility Notes route /_dashboards/_notes remains available for legacy/default callers and still resolves by widget type; rendered real Notes widget instances use instance-scoped routes.",
-    "Edit-mode icon clusters remain visually dense on narrow widgets; acceptable for Phase 01 rerun because interactions remained reachable and no clipping/overflow/duplicate roots were observed, but should be watched in later visual polish.",
-    "Later dashboard-widget-suite phases remain pending; this status is limited to Phase 01 code/browser proof and Phase 02 code/browser proof."
+    "Later dashboard-widget-suite phases remain pending; this status covers Phase 01, Phase 02, and Phase 03 browser proof only."
   ],
   "stale_reference_sweep": {
     "status": "not_final_phase",
     "notes": "Final stale-reference sweep is required by the validation matrix before full suite closeout. Phase 01 scoped revalidation checked the repaired evidence index and review artifact only."
   },
   "final_reconciler": {
-    "status": "phase_02_browser_proof_passed_later_phases_pending",
-    "next_step": "Proceed to later dashboard-widget-suite phases and final integration validation; do not claim full suite validation yet."
+    "status": "code_validation_passed_playwright_pending",
+    "next_step": "Run delegated Phase 03 browser proof for Notes personal mode, Work Area file-note mode, Markdown viewer/editor, Projects widget, Contacts/Materials widget, mobile modal scrolling, and visual consistency; do not claim full suite validation yet."
   }
 }

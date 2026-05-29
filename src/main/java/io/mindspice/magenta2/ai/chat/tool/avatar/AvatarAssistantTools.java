@@ -300,6 +300,52 @@ public class AvatarAssistantTools {
         return json(service.noteSearch(query, includeArchived, limit));
     }
 
+    @Tool(name = "avatar_file_note_read", description = "Avatar supervisor only: read one project or Work Area file-backed note through confined services.")
+    public String avatarFileNoteRead(
+        @ToolParam(description = "Source mode: project or work_area.")
+        String source,
+        @ToolParam(description = "Project id or Work Area id, matching source.")
+        String bindingId,
+        @ToolParam(description = "Confined note path to read.")
+        String path
+    ) {
+        return json(service.fileNoteRead(source, bindingId, path));
+    }
+
+    @Tool(name = "avatar_file_note_update", description = "Avatar supervisor only: update one project or Work Area file-backed note through confined services.")
+    public String avatarFileNoteUpdate(
+        @ToolParam(description = "Source mode: project or work_area.")
+        String source,
+        @ToolParam(description = "Project id or Work Area id, matching source.")
+        String bindingId,
+        @ToolParam(description = "Confined note path to update.")
+        String path,
+        @ToolParam(description = "Full replacement note content.")
+        String content
+    ) {
+        return json(service.fileNoteUpdate(source, bindingId, path, content));
+    }
+
+    @Tool(name = "avatar_project_context_get", description = "Avatar supervisor only: read typed household/code project context artifacts, notes, outputs, and progress.")
+    public String avatarProjectContextGet(
+        @ToolParam(description = "Project id to inspect.")
+        String projectId
+    ) {
+        return json(service.projectContextGet(projectId));
+    }
+
+    @Tool(name = "avatar_project_artifact_update", description = "Avatar supervisor only: validate and update one typed project artifact JSON file.")
+    public String avatarProjectArtifactUpdate(
+        @ToolParam(description = "Project id to update.")
+        String projectId,
+        @ToolParam(description = "Artifact type: goals, materials, contacts, blockers, next-actions, or progress.")
+        String artifactType,
+        @ToolParam(description = "Full JSON artifact content matching the artifact schema.")
+        String content
+    ) {
+        return json(service.projectArtifactUpdate(projectId, artifactType, content));
+    }
+
     @Tool(name = "avatar_submit_task", description = "Avatar supervisor only: submit an approved task to an agent assignment queue.")
     public String avatarSubmitTask(
         @ToolParam(description = "Task id to run.")

@@ -147,6 +147,39 @@ class AvatarServiceTest {
     }
 
     @Test
+    void notesAndProjectWidgetSettingsValidateSourceBindingsAndPreservePersonalNotes() {
+        AvatarDashboardRow row = service.addDashboardRow("assistant");
+        AvatarDashboardRowWidget notes = service.addDashboardWidget("assistant", row.id(), "notes", 6);
+        AvatarDashboardRowWidget projects = service.addDashboardWidget("assistant", row.id(), "projects", 6);
+
+        assertThat(service.validateDashboardWidgetSettings("notes", Map.of("noteSourceMode", "project")).errors())
+            .contains("Project note source requires a project id.");
+        assertThat(service.validateDashboardWidgetSettings("notes", Map.of(
+            "noteSourceMode", "mixed",
+            "projectId", "project-1",
+            "workAreaId", "workarea-1",
+            "agentId", "agent-1",
+            "noteQuery", "seed"
+        )).valid()).isTrue();
+        assertThat(service.validateDashboardWidgetSettings("projects", Map.of()).errors())
+            .contains("Project binding is required for Projects");
+
+        service.updateDashboardWidgetSettings("assistant", notes.id(), Map.of(
+            "noteSourceMode", "personal",
+            "lastOpenedNoteId", "note-1",
+            "noteQuery", "plants"
+        ));
+        service.updateDashboardWidgetSettings("assistant", projects.id(), Map.of("projectId", "project-1"));
+        AvatarNote note = service.appendNote(null, "Garden", "Water seedlings", List.of("plants"));
+
+        assertThat(service.note(note.id()).sourceRef()).containsEntry("source", "avatar_tool");
+        assertThat(service.dashboardWidget(notes.id()).settings())
+            .containsEntry("lastOpenedNoteId", "note-1")
+            .containsEntry("noteSourceMode", "personal");
+        assertThat(service.dashboardWidget(projects.id()).settings()).containsEntry("projectId", "project-1");
+    }
+
+    @Test
     void plannerReadModelsKeepDueBlocksRemindersAndRecurrenceSeparate() {
         PlannerTask task = service.savePlannerTask(new PlannerTask(
             null,
