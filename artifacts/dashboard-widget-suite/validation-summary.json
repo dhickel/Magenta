@@ -1,6 +1,6 @@
 {
   "task_slug": "dashboard-widget-suite",
-  "status": "phase_05_browser_proof_passed",
+  "status": "pass_final_integration_validation_browser_reconciled_docs_validation_skipped",
   "model_constraints": {
     "implementation_workers": {
       "required_model": "gpt-5.5",
@@ -19,7 +19,7 @@
   "work_units": [
     {
       "id": "phase-01-platform-foundation",
-      "status": "phase_01_browser_proof_passed_later_phases_pending",
+      "status": "phase_01_browser_proof_passed_final_reconciled",
       "worker_directive": ".internal-dev/plans/dashboard-widget-suite/worker-directives/phase-01-platform-foundation.md",
       "validation_review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-01-validation.md",
       "notes": [
@@ -33,7 +33,7 @@
     },
     {
       "id": "phase-02-personal-planning-core",
-      "status": "phase_02_browser_proof_passed_later_phases_pending",
+      "status": "phase_02_browser_proof_passed_final_reconciled",
       "worker_directive": ".internal-dev/plans/dashboard-widget-suite/worker-directives/phase-02-personal-planning-core.md",
       "notes": [
         "Implemented Today Planner, Tasks/Routines, and Calendar/Schedule widgets on the Phase 01 registry/instance platform.",
@@ -49,7 +49,7 @@
     },
     {
       "id": "phase-03-notes-project-context",
-      "status": "phase_03_browser_proof_passed_later_phases_pending",
+      "status": "phase_03_browser_proof_passed_final_reconciled",
       "worker_directive": ".internal-dev/plans/dashboard-widget-suite/worker-directives/phase-03-notes-project-context.md",
       "notes": [
         "Implemented source-aware Notes widget settings for personal, agent, project, Work Area, and mixed modes.",
@@ -66,7 +66,7 @@
     },
     {
       "id": "phase-04-agent-operational-widgets",
-      "status": "phase_04_browser_proof_passed_later_phases_pending",
+      "status": "phase_04_browser_proof_passed_final_reconciled",
       "validation_review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-04-validation.md",
       "worker_directive": ".internal-dev/plans/dashboard-widget-suite/worker-directives/phase-04-agent-operational-widgets.md",
       "notes": [
@@ -83,7 +83,7 @@
     },
     {
       "id": "phase-05-tracking-alerts-context",
-      "status": "phase_05_browser_proof_passed",
+      "status": "phase_05_browser_proof_passed_final_reconciled",
       "worker_directive": ".internal-dev/plans/dashboard-widget-suite/worker-directives/phase-05-tracking-alerts-context.md",
       "validation_review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-05-validation.md",
       "notes": [
@@ -99,9 +99,44 @@
         "Delegated Phase 05 browser proof rerun on 2026-05-29 passed after scoped repair: habit day/time chips, visible history correction form, readable reminder row action wrapping, reminder/context behavior, desktop/mobile screenshots, and clean console/network evidence."
       ],
       "browser_review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-05-browser-proof.md"
+    },
+    {
+      "id": "phase-06-integration-closeout-prep",
+      "status": "integration_prep_passed_final_integration_validation_passed",
+      "worker_directive": ".internal-dev/plans/dashboard-widget-suite/worker-directives/phase-06-integration-docs-validation.md",
+      "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-06-integration-prep.md",
+      "final_integration_review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-final-integration-validation.md",
+      "notes": [
+        "Documentation drift validation was skipped by latest user instruction and was not treated as a pass/fail concern.",
+        "Runtime integration sweep found widget registry, settings schemas, route families, and visible tool descriptors consistent enough for final validation handoff.",
+        "Advertised widget tool descriptors were cross-checked against registered Avatar and agent operational tool names; no missing descriptor tool was found.",
+        "Evidence-index contradictions were reconciled conservatively without marking the suite fully_validated.",
+        "Required Phase 06 commands passed: full mvn test, bounded startup, jq parse, and diff-check excluding known unrelated dirty files.",
+        "Final integration validation passed runtime/product integration and reconciled existing Phase 01-05 browser proofs as sufficient; no fresh full-suite browser pass is required."
+      ]
     }
   ],
   "commands": [
+    {
+      "command": "mvn test",
+      "result": "passed",
+      "evidence": "Phase 06 integration prep on 2026-05-29: 928 tests run, 0 failures, 0 errors, 0 skipped."
+    },
+    {
+      "command": "timeout 30s mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=0",
+      "result": "started_then_timeout_stopped",
+      "evidence": "Phase 06 integration prep on 2026-05-29: Tomcat started on random port 40771; Magenta2Application started in 3.306 seconds; timeout produced expected exit code 124 after graceful shutdown."
+    },
+    {
+      "command": "jq . artifacts/dashboard-widget-suite/validation-summary.json >/dev/null",
+      "result": "passed",
+      "evidence": "Phase 06 integration prep on 2026-05-29: validation-summary.json parsed successfully after evidence updates."
+    },
+    {
+      "command": "git diff --check -- . ':(exclude).gitignore' ':(exclude).internal-dev/reviews/2026-05-28-model-alias-internal-review.md'",
+      "result": "passed",
+      "evidence": "Phase 06 integration prep on 2026-05-29: no whitespace errors reported after evidence updates, excluding known unrelated dirty files."
+    },
     {
       "command": "BASE_URL=http://127.0.0.1:18081 node artifacts/dashboard-widget-suite/phase-05-browser/browser-proof.mjs",
       "result": "passed_browser_proof",
@@ -566,7 +601,7 @@
   "validators": [
     {
       "id": "phase-01-code-validator",
-      "status": "passed_code_validation_playwright_pending",
+      "status": "passed_code_validation_browser_reconciled",
       "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-01-validation.md",
       "findings": [
         {
@@ -594,7 +629,7 @@
     },
     {
       "id": "phase-01-browser-findings-code-revalidator",
-      "status": "passed_code_validation_browser_rerun_ready",
+      "status": "passed_code_validation_browser_rerun_reconciled",
       "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-01-validation.md",
       "findings": [
         {
@@ -615,7 +650,7 @@
     },
     {
       "id": "phase-02-code-validator",
-      "status": "passed_code_validation_browser_pending",
+      "status": "passed_code_validation_browser_reconciled",
       "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-02-validation.md",
       "findings": [
         {
@@ -643,7 +678,7 @@
     },
     {
       "id": "phase-02-browser-findings-code-revalidator",
-      "status": "passed_code_validation_browser_rerun_ready",
+      "status": "passed_code_validation_browser_rerun_reconciled",
       "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-02-validation.md",
       "findings": [
         {
@@ -678,14 +713,14 @@
     },
     {
       "id": "phase-02-browser-rerun-validator",
-      "status": "passed_browser_proof_later_phases_pending",
+      "status": "passed_browser_proof_final_reconciled",
       "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-02-browser-proof.md",
       "verdict": "PASS_BROWSER_PROOF",
       "findings": []
     },
     {
       "id": "phase-03-code-validator",
-      "status": "passed_code_validation_browser_pending",
+      "status": "passed_code_validation_browser_reconciled",
       "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-03-validation.md",
       "verdict": "PASS_CODE_VALIDATION",
       "findings": [
@@ -711,7 +746,7 @@
     },
     {
       "id": "phase-04-code-validator",
-      "status": "passed_code_validation_playwright_pending",
+      "status": "passed_code_validation_browser_reconciled",
       "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-04-validation.md",
       "verdict": "PASS_CODE_VALIDATION",
       "findings": [
@@ -743,14 +778,43 @@
     },
     {
       "id": "phase-04-browser-proof-validator",
-      "status": "passed_browser_proof_later_phases_pending",
+      "status": "passed_browser_proof_final_reconciled",
       "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-04-browser-proof.md",
       "verdict": "PASS_BROWSER_PROOF",
       "findings": []
+    },
+    {
+      "id": "phase-05-code-validator",
+      "status": "passed_code_validation_browser_proof_passed",
+      "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-05-validation.md",
+      "verdict": "PASS_CODE_VALIDATION",
+      "findings": []
+    },
+    {
+      "id": "phase-05-browser-proof-validator",
+      "status": "passed_browser_proof_final_reconciled",
+      "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-05-browser-proof.md",
+      "verdict": "PASS_BROWSER_PROOF",
+      "findings": []
+    },
+    {
+      "id": "phase-06-integration-prep-worker",
+      "status": "passed_integration_prep_final_integration_passed",
+      "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-06-integration-prep.md",
+      "verdict": "READY_FOR_FINAL_VALIDATOR_AND_BROWSER_RECONCILIATION",
+      "findings": []
+    },
+    {
+      "id": "final-integration-validator",
+      "status": "passed_final_integration_validation_browser_reconciled_docs_validation_skipped",
+      "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-final-integration-validation.md",
+      "verdict": "PASS_FINAL_INTEGRATION_VALIDATION",
+      "findings": [],
+      "browser_reconciliation": "Existing Phase 01-05 browser proofs plus Phase 05 rerun are sufficient for final reconciliation; no fresh full-suite browser pass required."
     }
   ],
   "browser": {
-    "status": "phase_01_02_03_04_browser_proof_passed_later_phases_pending",
+    "status": "phase_01_02_03_04_05_browser_proof_passed_final_reconciled",
     "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-01-browser-proof.md",
     "runtime": {
       "port": 18080,
@@ -851,7 +915,7 @@
       "artifacts/dashboard-widget-suite/phase-01-browser-rerun/reference-agents.png"
     ],
     "phase_02": {
-      "status": "passed_browser_rerun_later_phases_pending",
+      "status": "passed_browser_rerun_final_reconciled",
       "verdict": "PASS_BROWSER_PROOF",
       "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-02-browser-proof.md",
       "artifact_directory": "artifacts/dashboard-widget-suite/phase-02-browser-rerun/",
@@ -970,7 +1034,7 @@
       ]
     },
     "phase_03": {
-      "status": "passed_browser_proof_later_phases_pending",
+      "status": "passed_browser_proof_final_reconciled",
       "verdict": "PASS_BROWSER_PROOF",
       "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-03-browser-proof.md",
       "artifact_directory": "artifacts/dashboard-widget-suite/phase-03-browser/",
@@ -1054,7 +1118,7 @@
       ]
     },
     "phase_04": {
-      "status": "passed_browser_proof_later_phases_pending",
+      "status": "passed_browser_proof_final_reconciled",
       "verdict": "PASS_BROWSER_PROOF",
       "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-04-browser-proof.md",
       "artifact_directory": "artifacts/dashboard-widget-suite/phase-04-browser/",
@@ -1121,6 +1185,31 @@
         "Agent Outputs and Agent Files/Notes use scan-friendly row/list language and avoid exposing internal run or workspace roots.",
         "Mobile stacks widgets without horizontal overflow; long file names wrap in the widget and preview fragment; modal overlay sits above top navigation."
       ]
+    },
+    "phase_05": {
+      "status": "passed_browser_proof_final_reconciled",
+      "verdict": "PASS_BROWSER_PROOF",
+      "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-05-browser-proof.md",
+      "artifact_directory": "artifacts/dashboard-widget-suite/phase-05-browser/",
+      "screenshots": [
+        "artifacts/dashboard-widget-suite/phase-05-browser/desktop-home-seeded.png",
+        "artifacts/dashboard-widget-suite/phase-05-browser/desktop-habits-detail-modal.png",
+        "artifacts/dashboard-widget-suite/phase-05-browser/desktop-reminders-detail-modal.png",
+        "artifacts/dashboard-widget-suite/phase-05-browser/mobile-home-seeded.png",
+        "artifacts/dashboard-widget-suite/phase-05-browser/mobile-reminders-settings-modal.png",
+        "artifacts/dashboard-widget-suite/phase-05-browser/reference-manage-desktop.png",
+        "artifacts/dashboard-widget-suite/phase-05-browser/reference-agents-desktop.png"
+      ],
+      "logs": [
+        "artifacts/dashboard-widget-suite/phase-05-browser/browser-proof-results.json",
+        "artifacts/dashboard-widget-suite/phase-05-browser/console-messages.txt",
+        "artifacts/dashboard-widget-suite/phase-05-browser/network-issues.json"
+      ],
+      "visual_critique": [
+        "Habits/Trackers, Reminders/Alerts, and Dashboard Context retain compact operational panel styling aligned with /manage and /agents.",
+        "Habit day/time chips, correction controls, reminder row wrapping, and mobile modal bounds passed focused browser proof.",
+        "Console and network evidence were clean in the Phase 05 browser rerun."
+      ]
     }
   },
   "artifacts": [
@@ -1148,8 +1237,14 @@
     ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-04-validation.md",
     ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-04-browser-proof.md",
     ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-05-validation.md",
+    ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-05-browser-proof.md",
+    ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-phase-06-integration-prep.md",
+    ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-final-integration-validation.md",
+    ".internal-dev/changelogs/2026-05-29-dashboard-widget-suite-phase-06-integration-prep.md",
     "artifacts/dashboard-widget-suite/phase-04-browser/",
-    "artifacts/dashboard-widget-suite/phase-04-browser/browser-proof-consolidated.json"
+    "artifacts/dashboard-widget-suite/phase-04-browser/browser-proof-consolidated.json",
+    "artifacts/dashboard-widget-suite/phase-05-browser/",
+    "artifacts/dashboard-widget-suite/phase-05-browser/browser-proof-results.json"
   ],
   "superseded_artifacts": [
     "artifacts/dashboard-widget-suite/phase-01-browser/",
@@ -1159,15 +1254,33 @@
   "residual_risks": [
     "Project artifact summaries use fixed typed JSON files and compact row rendering; richer per-artifact editing UX is intentionally limited until browser validation and later polish.",
     "Compatibility Notes route /_dashboards/_notes remains available for legacy/default callers and still resolves by widget type; rendered real Notes widget instances use instance-scoped routes.",
-    "Phase 05 browser proof rerun remains pending after browser-defect repair; local validation passed and browser validation must still check habit metadata/correction controls, reminder row readability, HTMX swaps, desktop/mobile layout, and visual quality."
+    "Documentation drift validation was skipped by user instruction, so docs/spec wording was not treated as a pass/fail gate in Phase 06."
   ],
   "stale_reference_sweep": {
-    "status": "not_final_phase",
-    "notes": "Final stale-reference sweep is required by the validation matrix before full suite closeout. Phase 01 scoped revalidation checked the repaired evidence index and review artifact only."
+    "status": "runtime_and_evidence_sweep_complete_docs_validation_skipped",
+    "notes": "Phase 06 searched runtime/evidence references for stale pending/browser-proof contradictions and reconciled validation-summary.json conservatively. Documentation wording drift was intentionally skipped per latest user instruction."
   },
   "final_reconciler": {
-    "status": "phase_05_browser_repair_local_validation_passed_browser_rerun_pending",
-    "next_step": "Proceed to delegated Phase 05 browser proof rerun; do not claim full suite validation until browser evidence and final integration reconciliation pass."
+    "status": "PASS_FINAL_INTEGRATION_VALIDATION",
+    "browser_reconciliation": "satisfied_existing_phase_browser_proofs_no_fresh_full_suite_browser_pass_required",
+    "documentation_validation": "skipped_by_user_instruction",
+    "fully_validated": false,
+    "fully_validated_note": "Runtime/product integration and browser reconciliation passed. The status is not an unqualified fully_validated claim because documentation validation was explicitly skipped.",
+    "next_step": "No runtime/product remediation or fresh browser pass is required. Documentation drift remains outside this validation gate by user instruction."
+  },
+  "final_integration_validation": {
+    "status": "PASS_FINAL_INTEGRATION_VALIDATION",
+    "review": ".internal-dev/reviews/2026-05-29-dashboard-widget-suite-final-integration-validation.md",
+    "fresh_full_suite_browser_required": false,
+    "browser_reconciliation_basis": [
+      "Phase 01 browser rerun passed instance routing, multi-instance Notes, single-instance disabled catalog state, settings validation, duplicate-root cleanup, dashboard selector switching, desktop/mobile layout, and /manage plus /agents visual references.",
+      "Phase 02 browser rerun passed Today Planner, Tasks/Routines, Calendar/Schedule, HTMX quick capture/review/time-block/reminder flows, recurrence/status visibility, desktop/mobile modals, and visual references.",
+      "Phase 03 browser proof passed personal/file-backed Notes, project file-note confinement negative test, Projects, Contacts/Materials, missing binding recovery, mobile overflow, and /manage /agents /agent /Work Area references.",
+      "Phase 04 browser proof passed Agent Status/Queue, Agent Outputs scoped positive/negative preview, Agent Files/Notes Work Area owner guards and instance routes, mobile overflow/top-nav layering, and superseded harness reconciliation.",
+      "Phase 05 browser rerun passed Habits/Trackers, Reminders/Alerts, Dashboard Context, desktop/mobile screenshots, and clean console/network evidence."
+    ],
+    "runtime_product_integration": "passed",
+    "documentation_validation": "skipped_by_user_instruction"
   },
   "phase_05_browser_proof": {
     "status": "PASS_BROWSER_PROOF",
@@ -1207,5 +1320,11 @@
         "evidence": "browser-proof-results.json recorded PASS_BROWSER_PROOF with 14 passed checks and no console/network errors."
       }
     ]
+  },
+  "fully_validated": false,
+  "documentation_validation": "skipped_by_user_instruction",
+  "final_browser_reconciliation": {
+    "status": "satisfied_existing_phase_browser_proofs_no_fresh_full_suite_browser_pass_required",
+    "fresh_full_suite_browser_required": false
   }
 }
