@@ -11,7 +11,7 @@ import java.util.Locale;
 public enum WorkflowRouteType {
     /** Source output populates downstream input by name mapping. */
     MAP_OUTPUT("map_output"),
-    /** Source output is forwarded unchanged to downstream node. */
+    /** All source outputs are forwarded unchanged to the downstream node inputs. */
     PASS_THROUGH("pass_through"),
     /** Source output is materialized/logged but does not feed a downstream node. */
     LOG("log"),

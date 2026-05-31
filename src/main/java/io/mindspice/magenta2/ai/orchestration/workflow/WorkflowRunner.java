@@ -1129,8 +1129,13 @@ public class WorkflowRunner {
                     values.put(route.targetPort(), sourceOutputs.get(route.sourcePort()));
                 }
             } else if (route.routeType() == WorkflowRouteType.PASS_THROUGH) {
-                if (StringUtils.hasText(route.sourcePort()) && sourceOutputs.containsKey(route.sourcePort())) {
+                if (StringUtils.hasText(route.sourcePort()) && StringUtils.hasText(route.targetPort())
+                    && sourceOutputs.containsKey(route.sourcePort())) {
                     values.put(route.targetPort(), sourceOutputs.get(route.sourcePort()));
+                } else if (!StringUtils.hasText(route.sourcePort()) && !StringUtils.hasText(route.targetPort())) {
+                    sourceOutputs.entrySet().stream()
+                        .sorted(Map.Entry.comparingByKey())
+                        .forEach(entry -> values.put(entry.getKey(), entry.getValue()));
                 }
             }
         }

@@ -6,7 +6,7 @@ import org.springframework.util.StringUtils;
 import java.util.Locale;
 
 /**
- * Explicit route connecting workflow v2 node ports and control branches.
+ * Explicit route connecting workflow v2 node ports, whole-output pass-through, and control branches.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record WorkflowRoute(

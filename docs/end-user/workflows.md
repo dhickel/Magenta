@@ -37,11 +37,15 @@ Routes connect one node to another. A route can specify:
 - Route type.
 - Optional condition.
 
+Use `MAP_OUTPUT` when one named source output should fill one named destination input. Use `PASS_THROUGH` without source or destination port names when the downstream node should receive the complete source output map. Older saved pass-through routes with both port names still run as single-output mappings, but new full-map pass-through routes should leave both port fields blank.
+
 Use route conditions narrowly. They are evaluated by the workflow runtime, so keep condition text aligned with output names and data the previous node can actually produce.
 
 ## Input And Output Mapping
 
 Use node inputs, output names, and route mapping fields to pass data through the graph. A workflow is easiest to debug when each plan node has explicit structured outputs and each downstream node consumes named inputs.
+
+If multiple incoming routes populate the same input name, the later route in the saved route order wins. Values set directly on the node override route-provided values.
 
 For plan inputs that are complex JSON or arrays, expect to write explicit mapping values or JSON in the appropriate field. Searchable selectors choose entities; they do not author JSON bindings for you.
 

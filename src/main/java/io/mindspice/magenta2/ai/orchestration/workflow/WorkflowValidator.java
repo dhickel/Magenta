@@ -48,7 +48,7 @@ public class WorkflowValidator {
         validateRoutes(definition, nodesByKey, taskPlans, errors, warnings);
         validateCycles(definition, errors);
         validateExecutableStartPath(definition, nodesByKey, errors);
-        validateRequiredTaskInputs(definition, taskPlans, errors);
+        validateRequiredTaskInputs(definition, nodesByKey, taskPlans, errors);
         validateApprovalGateBranches(definition, nodesByKey, errors);
 
         return new ValidationResult(errors, warnings);
@@ -176,44 +176,65 @@ public class WorkflowValidator {
                 errors.add("Data route '" + route.id() + "' requires fromNodeKey");
                 continue;
             }
-            if (!StringUtils.hasText(route.sourcePort())) {
-                errors.add("Data route '" + route.id() + "' requires source output port");
+
+            if (route.routeType() == WorkflowRouteType.PASS_THROUGH
+                && !StringUtils.hasText(route.sourcePort())
+                && !StringUtils.hasText(route.targetPort())) {
+                if (target != null && target.isGate()) {
+                    warnings.add("Route '" + route.id() + "' targets a gate node input; only control routes are typically expected for gates");
+                }
                 continue;
             }
-            if (!StringUtils.hasText(route.targetPort())) {
-                errors.add("Data route '" + route.id() + "' requires target input port");
-                continue;
-            }
 
-            PlanFieldType sourceType = resolveOutputType(source, route.sourcePort(), taskPlans);
-            PlanFieldType targetType = resolveInputType(target, route.targetPort(), taskPlans);
-            boolean strictSource = source != null && (source.type() == WorkflowNodeType.TASK || !source.outputPorts().isEmpty());
-            boolean strictTarget = target != null && (target.type() == WorkflowNodeType.TASK || !target.inputPorts().isEmpty());
+            validatePortMappedRoute(route, source, target, taskPlans, errors, warnings);
+        }
+    }
 
-            if (sourceType == null && strictSource) {
-                errors.add("Route '" + route.id() + "' references unknown source port '"
-                    + route.sourcePort() + "' on node '" + route.fromNodeKey() + "'");
-            } else if (sourceType == null) {
-                warnings.add("Route '" + route.id() + "' source port '" + route.sourcePort()
-                    + "' on node '" + route.fromNodeKey() + "' is not explicitly typed");
-            }
-            if (targetType == null && strictTarget) {
-                errors.add("Route '" + route.id() + "' references unknown target port '"
-                    + route.targetPort() + "' on node '" + route.toNodeKey() + "'");
-            } else if (targetType == null) {
-                warnings.add("Route '" + route.id() + "' target port '" + route.targetPort()
-                    + "' on node '" + route.toNodeKey() + "' is not explicitly typed");
-            }
+    private void validatePortMappedRoute(
+        WorkflowRoute route,
+        WorkflowNode source,
+        WorkflowNode target,
+        Map<String, PlanDefinition> taskPlans,
+        List<String> errors,
+        List<String> warnings
+    ) {
+        if (!StringUtils.hasText(route.sourcePort())) {
+            errors.add("Data route '" + route.id() + "' requires source output port");
+            return;
+        }
+        if (!StringUtils.hasText(route.targetPort())) {
+            errors.add("Data route '" + route.id() + "' requires target input port");
+            return;
+        }
 
-            if (sourceType != null && targetType != null && sourceType != targetType) {
-                errors.add("Route '" + route.id() + "' type mismatch: "
-                    + route.fromNodeKey() + "." + route.sourcePort() + " is " + sourceType.wireName()
-                    + " but " + route.toNodeKey() + "." + route.targetPort() + " expects " + targetType.wireName());
-            }
+        PlanFieldType sourceType = resolveOutputType(source, route.sourcePort(), taskPlans);
+        PlanFieldType targetType = resolveInputType(target, route.targetPort(), taskPlans);
+        boolean strictSource = source != null && (source.type() == WorkflowNodeType.TASK || !source.outputPorts().isEmpty());
+        boolean strictTarget = target != null && (target.type() == WorkflowNodeType.TASK || !target.inputPorts().isEmpty());
 
-            if (target != null && target.isGate()) {
-                warnings.add("Route '" + route.id() + "' targets a gate node input; only control routes are typically expected for gates");
-            }
+        if (sourceType == null && strictSource) {
+            errors.add("Route '" + route.id() + "' references unknown source port '"
+                + route.sourcePort() + "' on node '" + route.fromNodeKey() + "'");
+        } else if (sourceType == null) {
+            warnings.add("Route '" + route.id() + "' source port '" + route.sourcePort()
+                + "' on node '" + route.fromNodeKey() + "' is not explicitly typed");
+        }
+        if (targetType == null && strictTarget) {
+            errors.add("Route '" + route.id() + "' references unknown target port '"
+                + route.targetPort() + "' on node '" + route.toNodeKey() + "'");
+        } else if (targetType == null) {
+            warnings.add("Route '" + route.id() + "' target port '" + route.targetPort()
+                + "' on node '" + route.toNodeKey() + "' is not explicitly typed");
+        }
+
+        if (sourceType != null && targetType != null && sourceType != targetType) {
+            errors.add("Route '" + route.id() + "' type mismatch: "
+                + route.fromNodeKey() + "." + route.sourcePort() + " is " + sourceType.wireName()
+                + " but " + route.toNodeKey() + "." + route.targetPort() + " expects " + targetType.wireName());
+        }
+
+        if (target != null && target.isGate()) {
+            warnings.add("Route '" + route.id() + "' targets a gate node input; only control routes are typically expected for gates");
         }
     }
 
@@ -253,6 +274,24 @@ public class WorkflowValidator {
             .map(WorkflowPort::type)
             .findFirst()
             .orElse(null);
+    }
+
+    private Set<String> sourceOutputNames(WorkflowNode node, Map<String, PlanDefinition> taskPlans) {
+        if (node == null) {
+            return Set.of();
+        }
+        if (node.type() == WorkflowNodeType.TASK) {
+            PlanDefinition plan = taskPlans.get(node.key());
+            if (plan == null) {
+                return Set.of();
+            }
+            return plan.outputs().stream()
+                .map(PlanFieldDefinition::name)
+                .collect(java.util.stream.Collectors.toCollection(HashSet::new));
+        }
+        return node.outputPorts().stream()
+            .map(WorkflowPort::name)
+            .collect(java.util.stream.Collectors.toCollection(HashSet::new));
     }
 
     private PlanFieldType resolveInputType(WorkflowNode node, String portName, Map<String, PlanDefinition> taskPlans) {
@@ -372,6 +411,7 @@ public class WorkflowValidator {
 
     private void validateRequiredTaskInputs(
         WorkflowDefinition definition,
+        Map<String, WorkflowNode> nodesByKey,
         Map<String, PlanDefinition> taskPlans,
         List<String> errors
     ) {
@@ -386,10 +426,14 @@ public class WorkflowValidator {
 
             Set<String> satisfied = new HashSet<>();
             for (WorkflowRoute route : definition.incomingRoutes(node.key())) {
-                if ((route.routeType() == WorkflowRouteType.MAP_OUTPUT
-                    || route.routeType() == WorkflowRouteType.PASS_THROUGH)
-                    && StringUtils.hasText(route.targetPort())) {
+                if (route.routeType() == WorkflowRouteType.MAP_OUTPUT && StringUtils.hasText(route.targetPort())) {
                     satisfied.add(route.targetPort());
+                } else if (route.routeType() == WorkflowRouteType.PASS_THROUGH) {
+                    if (StringUtils.hasText(route.targetPort())) {
+                        satisfied.add(route.targetPort());
+                    } else {
+                        satisfied.addAll(sourceOutputNames(nodesByKey.get(route.fromNodeKey()), taskPlans));
+                    }
                 }
             }
             satisfied.addAll(node.config().keySet());

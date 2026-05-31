@@ -22,7 +22,7 @@ Workflow route types and graph traversal semantics for the Operate UI Contract R
 | Type | Purpose | Creates dependency? |
 |---|---|---|
 | `MAP_OUTPUT` | Maps a named output from source node to a named input on target node | Yes (target waits for source) |
-| `PASS_THROUGH` | Forwards all source node outputs as a map to target node | Yes (target waits for source) |
+| `PASS_THROUGH` | Forwards all source node outputs into target node inputs without naming ports | Yes (target waits for source) |
 | `LOG` | Logs a named output from source node (materials output without creating downstream dependency) | No |
 | `CONTROL` | Pure ordering edge (target waits for source, no data passed) | Yes |
 
@@ -79,6 +79,14 @@ The runner computes ready nodes using topological rules:
 3. `LOG` routes do NOT create dependencies.
 4. Nodes with no incoming dependency routes are roots and execute first.
 5. Fan-out is supported in the data model (one source to multiple targets) but parallel execution of ready nodes is deferred.
+
+## PASS_THROUGH data semantics
+
+Canonical `PASS_THROUGH` routes use `fromOutputName=null` and `toInputName=null`. Validation requires a source and destination node but does not require source or target ports. At runtime, the runner merges every source output key into the downstream node input map in sorted key order for deterministic materialization.
+
+Compatibility behavior remains for older saved `PASS_THROUGH` routes that have both a source and target port. Those routes keep the previous single-port behavior and validate like a port-mapped data route. Partially ported `PASS_THROUGH` routes are invalid because they cannot unambiguously choose either compatibility single-port forwarding or canonical full-map forwarding.
+
+When multiple incoming routes write the same input key, later routes in definition order overwrite earlier route values. Node `config` is applied after route resolution and therefore overrides any route-provided value for the same key. This matches existing `MAP_OUTPUT` input materialization behavior and makes operator-authored node config the final local override.
 
 ## Cycle detection
 

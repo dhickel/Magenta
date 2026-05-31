@@ -285,6 +285,105 @@ class WorkflowRunnerTest {
     }
 
     @Test
+    void passThroughRouteWithoutPortsValidatesAndForwardsFullSourceOutputMap() {
+        PlanDefinition source = task("pass-through-source", List.of(), List.of(
+            field("alpha", PlanFieldType.STRING, true),
+            field("beta", PlanFieldType.NUMBER, true)
+        ));
+        PlanDefinition worker = task("pass-through-worker", List.of(
+            field("alpha", PlanFieldType.STRING, true),
+            field("beta", PlanFieldType.NUMBER, true)
+        ), List.of(field("done", PlanFieldType.STRING, true)));
+
+        WorkflowNode sourceNode = taskNode("source", source.id());
+        WorkflowNode workerNode = taskNode("worker", worker.id());
+        WorkflowNode finalNode = new WorkflowNode(
+            "final",
+            WorkflowNodeType.FINAL_OUTPUT,
+            null,
+            "Final",
+            null,
+            List.of(),
+            List.of(new WorkflowPort("done", PlanFieldType.STRING, false, false, null)),
+            Map.of(),
+            false,
+            List.of(),
+            null,
+            null
+        );
+        WorkflowDefinition def = new WorkflowDefinition(
+            null, 2, "No Port Pass Through", "", 1,
+            List.of(sourceNode, workerNode, finalNode),
+            List.of(
+                new WorkflowRoute("pass", "source", null, "worker", null, WorkflowRouteType.PASS_THROUGH, null),
+                new WorkflowRoute("final", "worker", "done", "final", "done", WorkflowRouteType.MAP_OUTPUT, null)
+            ),
+            Map.of(), null, null
+        );
+
+        WorkflowValidator.ValidationResult validation = workflowService.validateGraph(def);
+        assertThat(validation.valid()).isTrue();
+        assertThat(validation.errors()).noneMatch(error -> error.contains("requires source output port")
+            || error.contains("requires target input port"));
+
+        AtomicReference<Map<String, Object>> workerInputs = new AtomicReference<>();
+        workflowRunner.setTaskNodeExecutor((planId, planRunId, inputs, workspacePath) -> {
+            if (planId.equals(source.id())) {
+                return completedPlanRun(planRunId, planId, inputs, Map.of(
+                    "beta", 42,
+                    "alpha", "one"
+                ));
+            }
+            workerInputs.set(inputs);
+            return completedPlanRun(planRunId, planId, inputs, Map.of("done", "ok"));
+        });
+
+        WorkflowDefinition saved = workflowService.saveDefinitionValidated(def);
+        WorkflowRun finished = workflowService.runSynchronously(saved.id());
+
+        assertThat(finished.status()).isEqualTo(WorkflowRunStatus.COMPLETED);
+        assertThat(workerInputs.get()).containsEntry("alpha", "one").containsEntry("beta", 42);
+    }
+
+    @Test
+    void passThroughRouteWithPortsRetainsLegacySinglePortCompatibility() {
+        PlanDefinition source = task("legacy-pass-through-source", List.of(),
+            List.of(field("alpha", PlanFieldType.STRING, true)));
+        PlanDefinition worker = task("legacy-pass-through-worker",
+            List.of(field("legacyAlpha", PlanFieldType.STRING, true)),
+            List.of(field("done", PlanFieldType.STRING, true)));
+
+        WorkflowNode sourceNode = taskNode("source", source.id());
+        WorkflowNode workerNode = taskNode("worker", worker.id());
+        WorkflowDefinition def = new WorkflowDefinition(
+            null, 2, "Legacy Port Pass Through", "", 1,
+            List.of(sourceNode, workerNode),
+            List.of(new WorkflowRoute("pass", "source", "alpha", "worker", "legacyAlpha",
+                WorkflowRouteType.PASS_THROUGH, null)),
+            Map.of(), null, null
+        );
+
+        WorkflowValidator.ValidationResult validation = workflowService.validateGraph(def);
+        assertThat(validation.valid()).isTrue();
+
+        AtomicReference<Map<String, Object>> workerInputs = new AtomicReference<>();
+        workflowRunner.setTaskNodeExecutor((planId, planRunId, inputs, workspacePath) -> {
+            if (planId.equals(source.id())) {
+                return completedPlanRun(planRunId, planId, inputs, Map.of("alpha", "legacy-value"));
+            }
+            workerInputs.set(inputs);
+            return completedPlanRun(planRunId, planId, inputs, Map.of("done", "ok"));
+        });
+
+        WorkflowDefinition saved = workflowService.saveDefinitionValidated(def);
+        WorkflowRun finished = workflowService.runSynchronously(saved.id());
+
+        assertThat(finished.status()).isEqualTo(WorkflowRunStatus.COMPLETED);
+        assertThat(workerInputs.get()).containsEntry("legacyAlpha", "legacy-value");
+        assertThat(workerInputs.get()).doesNotContainKey("alpha");
+    }
+
+    @Test
     void runsParallelFanOutAndProducesFinalOutputsAndArtifacts() throws Exception {
         PlanDefinition source = task("source", List.of(), List.of(field("result", PlanFieldType.STRING, true)));
         PlanDefinition worker = task("worker", List.of(field("in", PlanFieldType.STRING, true)),

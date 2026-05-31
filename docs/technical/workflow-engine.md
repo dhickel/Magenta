@@ -36,6 +36,10 @@ Routes include:
 - Route type from `WorkflowRouteType`.
 - Optional condition/config fields.
 
+`MAP_OUTPUT` routes map one named source output to one named target input. Canonical `PASS_THROUGH` routes omit source and target ports and forward the full source output map into downstream inputs. Older saved `PASS_THROUGH` routes that include both ports remain compatible as single-port mappings.
+
+When route materialization writes the same input key more than once, later incoming routes in definition order overwrite earlier route values. Node config is applied after route materialization and overrides route-provided values for the same key.
+
 `WorkflowValidator` rejects legacy `inputBindings` and validates that route endpoints reference known nodes and valid graph structure.
 
 ## Validation
