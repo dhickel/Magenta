@@ -1,85 +1,173 @@
 {
   "task": "github-issue-backlog-remediation-20260531",
-  "updatedAt": "2026-05-31T11:45:00Z",
-  "phase07": {
-    "candidateCommit": "11a3a200f221458c51209539934ca649fcc0fffc",
-    "scopedPatchApplied": true,
-    "excludedFromBrowserProof": [
-      ".gitignore",
-      "AGENTS.md",
-      ".internal-dev/reviews/2026-05-28-model-alias-internal-review.md",
-      "src/main/java/io/mindspice/magenta2/ai/orchestration/workflow/v2/",
-      "future-only #34 planning docs"
-    ],
-    "codeValidationStatus": "pass",
-    "browserValidationStatus": "pass",
-    "mayProceedToCommitPushIssueCloseout": true,
-    "ports": {
-      "app": 18080,
-      "stub": 18089
-    },
-    "latestBrowserEvidence": {
-      "report": "artifacts/github-issue-backlog-remediation-20260531/phase-07-browser/browser-validation-report.md",
-      "probeJson": "artifacts/github-issue-backlog-remediation-20260531/phase-07-browser/phase07-heartbeat-browser-probe-results.json",
-      "screenshot": "artifacts/github-issue-backlog-remediation-20260531/phase-07-browser/phase07-heartbeat-chat-page.png",
-      "domSnapshot": "artifacts/github-issue-backlog-remediation-20260531/phase-07-browser/phase07-heartbeat-chat-page-snapshot.md",
-      "consoleInitial": "artifacts/github-issue-backlog-remediation-20260531/phase-07-browser/phase07-heartbeat-console-initial.txt",
-      "consoleFinal": "artifacts/github-issue-backlog-remediation-20260531/phase-07-browser/phase07-heartbeat-console-final.txt",
-      "networkInitial": "artifacts/github-issue-backlog-remediation-20260531/phase-07-browser/phase07-heartbeat-network-initial.txt",
-      "networkFinal": "artifacts/github-issue-backlog-remediation-20260531/phase-07-browser/phase07-heartbeat-network-final.txt",
-      "appLog": "artifacts/github-issue-backlog-remediation-20260531/phase-07-browser/app-heartbeat.log",
-      "stubLog": "artifacts/github-issue-backlog-remediation-20260531/phase-07-browser/stub-openai-server-heartbeat.log"
-    },
-    "criteria": {
-      "issue15InterruptAccepted": "pass",
-      "issue14AbortRetryWithinWindow": "pass",
-      "duplicateActiveStreamStillRejected": "pass",
-      "chatPageVisualSanity": "pass",
-      "consoleNetworkSanity": "pass"
-    },
-    "blockingFailure": null,
-    "supersedesPriorFailedBrowserReports": true,
-    "latestHeartbeatResult": "Browser fetch abort followed by same-conversation retry after 1000ms reached start -> context -> chunk -> done with no active-stream conflict."
+  "updatedAt": "2026-05-31T12:05:00Z",
+  "branch": "fix/github-issue-backlog-20260531",
+  "intentionallyOpenIssues": {
+    "8": "Skipped by user direction; dashboard empty-row/density remediation is stale and outside the SlotKey issue.",
+    "34": "Future typed-ID refactor target; tracked by planning commit c6e4c3c0 and intentionally left open."
   },
-  "phase11": {
-    "scopedPatchApplied": true,
-    "excludedFromBrowserProof": [
-      ".gitignore",
-      "AGENTS.md unrelated model-default hunk",
-      ".internal-dev/reviews/2026-05-28-model-alias-internal-review.md",
-      "src/main/java/io/mindspice/magenta2/ai/orchestration/workflow/v2/",
-      "GitHub issue #8 dashboard empty-row/density remediation"
-    ],
-    "codeValidationStatus": "pass_to_browser",
-    "browserValidationStatus": "pass",
-    "mayProceedToCommitPushIssueCloseout": true,
-    "ports": {
-      "app": 18080
+  "phases": {
+    "phase01": {
+      "issues": [9],
+      "status": "pass",
+      "commit": "79bda15b",
+      "validationReport": ".internal-dev/plans/github-issue-backlog-remediation-20260531/validation/phase-01-validation-report.md",
+      "browserValidationStatus": "not_required",
+      "tests": ["mvn -q -Dtest=ChatSessionMetadataRepositoryTest,AuditRepositoryTest,PlanRepositoryTest test"],
+      "githubCloseout": {"closed": true, "commentId": 4586046582},
+      "emailThreadId": "69e48ac0-9358-4aa8-a258-3709a6ea60cc"
     },
-    "latestBrowserEvidence": {
-      "report": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/browser-validation-report.md",
-      "probeJson": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/browser-probe-results.json",
-      "console": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/console-messages.json",
-      "network": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/network-requests.json",
-      "desktopNormal": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/home-dashboard-normal-desktop.png",
-      "desktopEdit": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/home-dashboard-edit-desktop.png",
-      "mobileNormal": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/home-dashboard-normal-mobile.png",
-      "mobileEdit": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/home-dashboard-edit-mobile.png",
-      "detailModal": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/widget-detail-modal-desktop.png",
-      "settingsModal": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/widget-settings-modal-desktop.png",
-      "appLog": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/app.log"
+    "phase02": {
+      "issues": [10],
+      "status": "pass",
+      "commit": "79ccf83c",
+      "validationReport": ".internal-dev/plans/github-issue-backlog-remediation-20260531/validation/phase-02-validation-report.md",
+      "browserValidationStatus": "not_required",
+      "tests": ["mvn -q -Dtest=WorkflowRepositoryTest test", "bounded Spring startup reached Started before timeout"],
+      "githubCloseout": {"closed": true, "commentId": 4586046616},
+      "emailThreadId": "d252eaa5-6521-41a6-8e20-decaef714e27"
     },
-    "criteria": {
-      "homeDashboardNormalDesktop": "pass",
-      "homeDashboardNormalMobile": "pass",
-      "homeDashboardEditDesktop": "pass",
-      "homeDashboardEditMobile": "pass",
-      "selectorSwapStableRootsAndAttrs": "pass",
-      "widgetDetailSettingsFragments": "pass",
-      "duplicateShellChrome": "pass",
-      "consoleNetworkSanity": "pass"
+    "phase03": {
+      "issues": [11],
+      "status": "pass",
+      "commit": "9139e642",
+      "validationReport": ".internal-dev/plans/github-issue-backlog-remediation-20260531/validation/phase-03-validation-report.md",
+      "browserValidationStatus": "not_required",
+      "tests": ["mvn -q -Dtest=GlobalExceptionHandlerTest test", "bounded Spring startup reached Started before timeout"],
+      "githubCloseout": {"closed": true, "commentId": 4586046656},
+      "emailThreadId": "d5a93fc9-3022-4d84-90cc-02a31c674b23"
     },
-    "blockingFailure": null,
-    "visualCaveat": "Empty-dashboard density/wrapping on the throwaway selector-swap dashboard remains out of scope for Phase 11 and #33 per explicit #8 exclusion."
-  }
+    "phase04": {
+      "issues": [12],
+      "status": "pass",
+      "commit": "a2c7b6cd",
+      "validationReport": ".internal-dev/plans/github-issue-backlog-remediation-20260531/validation/phase-04-validation-report.md",
+      "browserValidationStatus": "not_required",
+      "tests": ["mvn -q -Dtest=MagentaWorkExecutorTest test"],
+      "githubCloseout": {"closed": true, "commentId": 4586048490},
+      "emailThreadId": "cf851fe8-3e39-4da0-83b6-feb2355b90f3"
+    },
+    "phase05": {
+      "issues": [13],
+      "status": "pass",
+      "commit": "7baf9066",
+      "validationReport": ".internal-dev/plans/github-issue-backlog-remediation-20260531/validation/phase-05-validation-report.md",
+      "browserValidationStatus": "not_required",
+      "tests": ["mvn -q -Dtest=OrchestrationRuntimeTest test"],
+      "githubCloseout": {"closed": true, "commentId": 4586064095},
+      "emailThreadId": "97d3fc2f-0540-4a66-80b1-06ef52f1506a"
+    },
+    "phase06": {
+      "issues": [19],
+      "status": "pass",
+      "commit": "dd0ce4d5",
+      "validationReport": ".internal-dev/plans/github-issue-backlog-remediation-20260531/validation/phase-06-validation-report.md",
+      "browserValidationStatus": "not_required",
+      "tests": [
+        "mvn -q -Dtest=ChatPendingMessageRepositoryTest,ChatPendingMessageServiceTest test",
+        "legacy SQLite schema replay",
+        "bounded Spring startup"
+      ],
+      "githubCloseout": {"closed": true, "commentId": 4586102702},
+      "emailThreadId": "16bc981a-e4a1-4e36-8d30-113a8d32ebf3"
+    },
+    "phase07": {
+      "issues": [14, 15],
+      "status": "pass",
+      "commit": "c6c66273",
+      "validationReport": ".internal-dev/plans/github-issue-backlog-remediation-20260531/validation/phase-07-validation-report.md",
+      "browserValidationStatus": "pass",
+      "tests": [
+        "mvn -q -Dtest=ChatControllerTest,SseStreamLifecycleTest,ActiveTurnRegistryTest,ChatServiceTest,ContextManagementAdvisorTest test",
+        "bounded Spring startup"
+      ],
+      "browserEvidence": {
+        "report": "artifacts/github-issue-backlog-remediation-20260531/phase-07-browser/browser-validation-report.md",
+        "probeJson": "artifacts/github-issue-backlog-remediation-20260531/phase-07-browser/phase07-heartbeat-browser-probe-results.json",
+        "screenshot": "artifacts/github-issue-backlog-remediation-20260531/phase-07-browser/phase07-heartbeat-chat-page.png"
+      },
+      "criteria": {
+        "issue15InterruptAccepted": "pass",
+        "issue14AbortRetryWithinWindow": "pass",
+        "duplicateActiveStreamStillRejected": "pass",
+        "chatPageVisualSanity": "pass",
+        "consoleNetworkSanity": "pass"
+      },
+      "githubCloseout": {
+        "closed": true,
+        "comments": {"14": 4586420411, "15": 4586420449}
+      },
+      "emailThreadId": "e237d073-c17f-4dd2-a337-e175e3386b35",
+      "supersedesPriorFailedBrowserReports": true
+    },
+    "phase08": {
+      "issues": [16],
+      "status": "pass",
+      "commit": "a2475a21",
+      "validationReport": ".internal-dev/plans/github-issue-backlog-remediation-20260531/validation/phase-08-validation-report.md",
+      "browserValidationStatus": "not_required",
+      "tests": ["mvn -q -Dtest=PublicRunSubmissionControllerTest,AgentOrchestrationControllerTest,PublicApiRouteBindingTest,AssignmentContextServiceTest test", "bounded Spring startup"],
+      "githubCloseout": {"closed": true, "commentId": 4586456318},
+      "emailThreadId": "16338f32-833b-4602-ac70-4fb6004e82a2"
+    },
+    "phase09": {
+      "issues": [17],
+      "status": "pass",
+      "commit": "e5709898",
+      "validationReport": ".internal-dev/plans/github-issue-backlog-remediation-20260531/validation/phase-09-validation-report.md",
+      "browserValidationStatus": "not_required",
+      "tests": ["mvn -q -Dtest=WorkflowRunnerTest test"],
+      "githubCloseout": {"closed": true, "commentId": 4586478903},
+      "emailThreadId": "207b6fc5-4737-41ba-ba37-c078ed5b1bce"
+    },
+    "phase10": {
+      "issues": [18],
+      "status": "pass",
+      "commit": "d7b522ac",
+      "validationReport": ".internal-dev/plans/github-issue-backlog-remediation-20260531/validation/phase-10-validation-report.md",
+      "browserValidationStatus": "not_required",
+      "tests": ["mvn -q -Dtest=WorkflowRunnerTest,OrchestrationControllerTest test", "bounded Spring startup"],
+      "githubCloseout": {"closed": true, "commentId": 4586514550},
+      "emailThreadId": "5f48f05d-2296-4922-9d90-b93116327483"
+    },
+    "phase11": {
+      "issues": [33],
+      "status": "pass",
+      "commit": "8cf995bb",
+      "validationReport": ".internal-dev/plans/github-issue-backlog-remediation-20260531/validation/phase-11-validation-report.md",
+      "browserValidationStatus": "pass",
+      "tests": [
+        "focused AvatarDashboardControllerTest template/fragment tests",
+        "mvn -q -Dtest=FrontendControllerTest,OrchestrationControllerTest test",
+        "bounded Spring startup"
+      ],
+      "browserEvidence": {
+        "report": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/browser-validation-report.md",
+        "probeJson": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/browser-probe-results.json",
+        "desktopNormal": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/home-dashboard-normal-desktop.png",
+        "desktopEdit": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/home-dashboard-edit-desktop.png",
+        "mobileNormal": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/home-dashboard-normal-mobile.png",
+        "mobileEdit": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/home-dashboard-edit-mobile.png"
+      },
+      "criteria": {
+        "slotKeyTemplateRefactor": "pass",
+        "packageGuideEnforcement": "pass",
+        "ofFactoriesForKeyHelpers": "pass",
+        "homeDashboardNormalDesktop": "pass",
+        "homeDashboardNormalMobile": "pass",
+        "homeDashboardEditDesktop": "pass",
+        "homeDashboardEditMobile": "pass",
+        "selectorSwapStableRootsAndAttrs": "pass",
+        "widgetDetailSettingsFragments": "pass",
+        "duplicateShellChrome": "pass",
+        "consoleNetworkSanity": "pass"
+      },
+      "githubCloseout": {"closed": true, "commentId": 4586582490},
+      "emailThreadId": "7b7808e3-88f5-4a72-a2b9-b7b52d32b4f4",
+      "visualCaveat": "Empty-dashboard density/wrapping on the throwaway selector-swap dashboard remains out of scope for Phase 11 and #33 per explicit #8 exclusion.",
+      "ambientTestCaveat": "AvatarDashboardControllerTest.organizerEndpointsMutateAvatarServicesAndReturnWidgets fails on clean HEAD and is not introduced by Phase 11."
+    }
+  },
+  "emailEvidence": ".internal-dev/plans/github-issue-backlog-remediation-20260531/validation/email-closeout-ledger.md",
+  "finalQualityReview": ".internal-dev/plans/github-issue-backlog-remediation-20260531/validation/final-quality-review.md"
 }
