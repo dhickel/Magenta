@@ -26,9 +26,35 @@ create table if not exists ai_chat_pending_messages (
 );
 
 create index if not exists idx_ai_chat_pending_messages_status_order
-    on ai_chat_pending_messages (conversation_id, status, message_order);
+    on ai_chat_pending_messages (conversation_id, status, message_order, created_at, id);
 
 create index if not exists idx_ai_chat_pending_messages_order
+    on ai_chat_pending_messages (conversation_id, message_order);
+
+with duplicate_conversations(conversation_id) as (
+    select conversation_id
+    from ai_chat_pending_messages
+    group by conversation_id, message_order
+    having count(*) > 1
+),
+ordered_rows(id, normalized_order) as (
+    select id,
+           row_number() over (
+               partition by conversation_id
+               order by message_order asc, created_at asc, id asc
+           )
+    from ai_chat_pending_messages
+    where conversation_id in (select conversation_id from duplicate_conversations)
+)
+update ai_chat_pending_messages
+set message_order = (
+    select normalized_order
+    from ordered_rows
+    where ordered_rows.id = ai_chat_pending_messages.id
+)
+where id in (select id from ordered_rows);
+
+create unique index if not exists ux_ai_chat_pending_messages_conversation_order
     on ai_chat_pending_messages (conversation_id, message_order);
 
 create table if not exists ai_chat_session_metadata (
