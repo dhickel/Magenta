@@ -1,6 +1,7 @@
 package io.mindspice.magenta2.api.web;
 
 import java.util.Map;
+import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,7 +25,13 @@ class GlobalExceptionHandlerTest {
 
     @BeforeEach
     void setUp() {
-        handler = new GlobalExceptionHandler();
+        handler = withoutAuditService();
+    }
+
+    @Test
+    void constructorRequiresExplicitAuditPolicy() {
+        assertThat(GlobalExceptionHandler.class.getConstructors())
+            .noneMatch(constructor -> constructor.getParameterCount() == 0);
     }
 
     @Test
@@ -125,5 +132,9 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().get("error")).isEqualTo("not found");
+    }
+
+    private static GlobalExceptionHandler withoutAuditService() {
+        return new GlobalExceptionHandler(Optional.empty());
     }
 }

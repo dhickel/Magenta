@@ -4,6 +4,8 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -33,15 +35,11 @@ public class GlobalExceptionHandler {
         "/chat/(stream|send|plan)/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
     );
 
-    private final AuditService auditService;
-
-    public GlobalExceptionHandler() {
-        this(null);
-    }
+    private final Optional<AuditService> auditService;
 
     @Autowired
-    public GlobalExceptionHandler(@Autowired(required = false) AuditService auditService) {
-        this.auditService = auditService;
+    public GlobalExceptionHandler(Optional<AuditService> auditService) {
+        this.auditService = Objects.requireNonNull(auditService, "auditService");
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -115,10 +113,10 @@ public class GlobalExceptionHandler {
     }
 
     private void recordIfConversation(String errorType, String errorMessage, String stackTrace) {
-        if (auditService == null) return;
+        if (auditService.isEmpty()) return;
         String conversationId = conversationIdFromRequest();
         if (conversationId != null) {
-            auditService.recordError(conversationId, errorType, errorMessage, stackTrace, null);
+            auditService.get().recordError(conversationId, errorType, errorMessage, stackTrace, null);
         }
     }
 
