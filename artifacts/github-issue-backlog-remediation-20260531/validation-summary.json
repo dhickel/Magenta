@@ -1,6 +1,6 @@
 {
   "task": "github-issue-backlog-remediation-20260531",
-  "updatedAt": "2026-05-31T10:25:39Z",
+  "updatedAt": "2026-05-31T11:45:00Z",
   "phase07": {
     "candidateCommit": "11a3a200f221458c51209539934ca649fcc0fffc",
     "scopedPatchApplied": true,
@@ -40,5 +40,46 @@
     "blockingFailure": null,
     "supersedesPriorFailedBrowserReports": true,
     "latestHeartbeatResult": "Browser fetch abort followed by same-conversation retry after 1000ms reached start -> context -> chunk -> done with no active-stream conflict."
+  },
+  "phase11": {
+    "scopedPatchApplied": true,
+    "excludedFromBrowserProof": [
+      ".gitignore",
+      "AGENTS.md unrelated model-default hunk",
+      ".internal-dev/reviews/2026-05-28-model-alias-internal-review.md",
+      "src/main/java/io/mindspice/magenta2/ai/orchestration/workflow/v2/",
+      "GitHub issue #8 dashboard empty-row/density remediation"
+    ],
+    "codeValidationStatus": "pass_to_browser",
+    "browserValidationStatus": "pass",
+    "mayProceedToCommitPushIssueCloseout": true,
+    "ports": {
+      "app": 18080
+    },
+    "latestBrowserEvidence": {
+      "report": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/browser-validation-report.md",
+      "probeJson": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/browser-probe-results.json",
+      "console": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/console-messages.json",
+      "network": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/network-requests.json",
+      "desktopNormal": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/home-dashboard-normal-desktop.png",
+      "desktopEdit": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/home-dashboard-edit-desktop.png",
+      "mobileNormal": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/home-dashboard-normal-mobile.png",
+      "mobileEdit": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/home-dashboard-edit-mobile.png",
+      "detailModal": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/widget-detail-modal-desktop.png",
+      "settingsModal": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/widget-settings-modal-desktop.png",
+      "appLog": "artifacts/github-issue-backlog-remediation-20260531/phase-11-browser/app.log"
+    },
+    "criteria": {
+      "homeDashboardNormalDesktop": "pass",
+      "homeDashboardNormalMobile": "pass",
+      "homeDashboardEditDesktop": "pass",
+      "homeDashboardEditMobile": "pass",
+      "selectorSwapStableRootsAndAttrs": "pass",
+      "widgetDetailSettingsFragments": "pass",
+      "duplicateShellChrome": "pass",
+      "consoleNetworkSanity": "pass"
+    },
+    "blockingFailure": null,
+    "visualCaveat": "Empty-dashboard density/wrapping on the throwaway selector-swap dashboard remains out of scope for Phase 11 and #33 per explicit #8 exclusion."
   }
 }

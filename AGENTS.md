@@ -77,6 +77,10 @@ This is the style we want to take with our UI.
 - Prefer reusable components and modules over one-off page-level markup for frontend work.
 - If functionality appears in multiple places and is more than bare-minimum presentation, treat it as a reusable component/module candidate.
 - If views are similar, prefer shared render structures and slot-key based reuse rather than duplicating near-identical view code.
+- For stable Home dashboard, dashboard widget, static page, status strip, selector/detail, and repeated fragment structures, consider `Template`, `SlotKey`, and per-request `RenderContext` before duplicating component trees.
+- Use slot-keyed reuse where the DOM shape is stable and only labels, counts, hrefs, chips, statuses, or bounded child fragments change. Do not force SlotKeys into highly dynamic structures where rebuilding remains clearer.
+- New SlotKey/template key helper or key-bundle value types must expose concise `.of(...)` factories so controllers/render methods do not scatter direct constructor calls.
+- Do not share mutable SimplyPages component instances across requests; reuse immutable `Template` objects and create fresh `RenderContext` values per request unless confinement is explicit.
 - Use SimplyPages components/modules as reusable building blocks first, and only fall back to ad-hoc page-specific structures when reuse would add unnecessary complexity.
 
 #### SimplyPages Layout and Editing Research Policy
@@ -87,10 +91,10 @@ This is the style we want to take with our UI.
 - For dashboard/module editing, the SimplyPages demo pattern is the baseline: real module cards first, small top-corner decorators, centered add-module controls, and low-emphasis insert-row separators. Do not approve large text-heavy row/widget editor blocks that push content down or make the actual page look like an editor form.
 - When a scratch page is useful for planning or visual experiments, create it as an internal/dev-only surface, keep it out of normal navigation, and use it only to validate ideas with Playwright. Never treat scratch pages as source-of-truth documentation; extract stable examples and lessons into production components, docs, `.internal-dev/knowledge/`, or `.internal-dev/specifications/`.
 
-#### Avatar Dashboard Style Reference
-- Before redesigning `/avatar` or adding Avatar dashboard-like surfaces, read `.internal-dev/specifications/web.md` and `.internal-dev/specifications/simplypages.md`.
-- Keep Avatar styling aligned with the existing `/dashboard` and per-agent dashboard operational console: dense panels, compact controls, thin blue-gray borders, small radii, semantic chips, and HTMX-first fragments.
-- For Avatar layout/editing work, also read `.internal-dev/knowledge/simplypages-avatar-layout-and-editing.md`.
+#### Home Dashboard Style Reference
+- Before redesigning the Home dashboard or adding dashboard-like surfaces, read `.internal-dev/specifications/web.md` and `.internal-dev/specifications/simplypages.md`.
+- Keep Home dashboard styling aligned with the existing `/manage` and `/agents` operational console: dense panels, compact controls, thin blue-gray borders, small radii, semantic chips, and HTMX-first fragments.
+- For Home dashboard layout/editing work, also read `.internal-dev/knowledge/simplypages-avatar-layout-and-editing.md`; that file may still use legacy Avatar implementation names.
 - For Avatar Work Area boundary and persistence decisions, read `.internal-dev/knowledge/avatar-work-area-ui-refactor.md`.
 
 *Always use the libraries coding style and practices, do not try to shoehorn functionality or use raw html strings, raw html is a fallback for advanced cases most functionality from css, js, htmx

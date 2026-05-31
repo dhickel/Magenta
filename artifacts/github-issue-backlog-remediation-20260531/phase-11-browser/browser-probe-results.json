@@ -1,0 +1,820 @@
+{
+  "checks": {
+    "noJsErrors": true,
+    "noUnexpected500s": true,
+    "htmxLoaded": true,
+    "selectorRootsStable": true,
+    "selectorAttrsStable": true,
+    "selectedStateAfterSwap": true,
+    "fragmentNetworkUsed": true,
+    "detailFragmentPractical": true,
+    "settingsFragmentPractical": true,
+    "noHorizontalOverflowMobile": true
+  },
+  "observations": {
+    "desktopNormal": {
+      "url": "http://localhost:18080/",
+      "title": "Assistant Dashboard",
+      "htmxLoaded": true,
+      "counts": {
+        "dashboardHome": 1,
+        "dashboardSelector": 1,
+        "dashboardPanel": 1,
+        "widgetGrid": 1,
+        "topNavs": 1
+      },
+      "selectorItems": [
+        {
+          "text": "Assistant",
+          "active": true,
+          "attrs": {
+            "href": "/dashboards/assistant",
+            "hx-get": "/dashboards/assistant/_page",
+            "hx-target": "#dashboard-home",
+            "hx-swap": "outerHTML",
+            "hx-push-url": "/dashboards/assistant"
+          }
+        },
+        {
+          "text": "Browser Swap Check",
+          "active": false,
+          "attrs": {
+            "href": "/dashboards/dashboard-5f9a5702-2d0f-47bd-81b3-f49f3d7a15a1",
+            "hx-get": "/dashboards/dashboard-5f9a5702-2d0f-47bd-81b3-f49f3d7a15a1/_page",
+            "hx-target": "#dashboard-home",
+            "hx-swap": "outerHTML",
+            "hx-push-url": "/dashboards/dashboard-5f9a5702-2d0f-47bd-81b3-f49f3d7a15a1"
+          }
+        }
+      ],
+      "selectedTexts": [
+        "Assistant"
+      ],
+      "editLink": {
+        "href": "/dashboards/assistant?edit=true",
+        "hx-get": "/dashboards/assistant/_page?edit=true",
+        "hx-target": "#dashboard-home",
+        "hx-swap": "outerHTML",
+        "hx-push-url": "/dashboards/assistant?edit=true"
+      },
+      "exitEditLink": null,
+      "firstDetail": {
+        "href": null,
+        "hx-get": "/dashboards/assistant/widgets/widget-e2503581-12e4-4923-8838-5d235cb4f2b8/detail",
+        "hx-target": "#avatar-edit-container",
+        "hx-swap": "innerHTML",
+        "hx-push-url": null
+      },
+      "firstSettings": {
+        "href": null,
+        "hx-get": "/dashboards/assistant/widgets/widget-e2503581-12e4-4923-8838-5d235cb4f2b8/settings",
+        "hx-target": "#avatar-edit-container",
+        "hx-swap": "innerHTML",
+        "hx-push-url": null
+      },
+      "bodyTextSample": "Assistant\n\nUser dashboards, chat, and operational widgets\n\nHome\nChat\nAgents\nManage\nAssistant\nBrowser Swap Check\n+\nAssistant Chat\nDashboard assistant channel\nsurface home\nnew chat\nReady\nmodel local-qwen\nAsk the assistant for a quick update.\nSend\nDashboard\nToday Planner\n0\nTop\n0\nOverdue\n0\nBlocks\nCapture\nTop priorities\nnone\nNow\nnone\nNext\nnone\nLater\nnone\nOverdue\nnone\nUnscheduled\nnone\nRestart\nReview\nCalendar/Schedule\nSun\nMon\nTue\nWed\nThu\nFri\nSat\n26\n27\n28\n29\n30\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23\n24\n25\n26\n27\n28\n29\n30\n31\n1\n2\n3\n4\n5\n6\nAgenda\nNo scheduled items in range.\nBlock\nAdd Reminder\nTasks/Routines\n0\nTasks\n0\nRecurring\n0\nReminders\nAll statuses\nPlanned\nActive\nWaiting\nDone\nCancelled\nAll ranges\nToday\nNext 7 days\nNext 30 days\nOverdue\nAll repeats\nRecurring\nOne-off\nApply\nNormal\nHigh\nUrgent\nLow\nNo repeat\nDaily\nWeekly\nMonthly\nAdd Task\nNo planner tasks yet.\nNotes\npersonal\nPersonal notes\nSearch\nSave Note\nNo notes yet.\nHabits/Trackers\n0\nActive\n0\nArchived\nMay 31\nToday\nBuild\nQuit\nDaily\nWeekly\nMonthly\nAdd Tracker\nNo habits yet. Add build or quit trackers without penalty language.\nReminders/Alerts\n0\nDue\n0\nUpcoming\n0\nSnoozed\nDashboard inbox only. External push, email, and PWA delivery are deferred.\nAdd Reminder\nNo reminder alerts in the dashboard inbox.\nSystem\n1\nActive agents\n0\nOpen jobs\n0\nQueued work\nDashboard Context\nRead-only dashboard context. These descriptors do not grant chat actions.\n4\nRows\n9\nWidgets\nAssistant\nDashboard\nToday Planner\ntype today-planner / binding none\nread avatar_today_plan_get\ntool avatar_today_plan_update\ntool avatar_quick_capture\ntool avatar_day_restart\nCalendar/Schedule\ntype calendar-schedule / binding none\nread avatar_calendar_schedule_get\ntool avatar_calendar_upsert\ntool avatar_timeblock_upsert\ntool avatar_reminder_upsert\nTasks/Routines\ntype tasks-routines / binding none\nread avatar_tasks_routines_get\ntool avatar_task_upsert\ntool avatar_task_occurrence_update\ntool avatar_reminder_upsert\nNotes\ntype notes / binding optional_work_area\nrea",
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "afterSelectorSwap": {
+      "url": "http://localhost:18080/dashboards/dashboard-5f9a5702-2d0f-47bd-81b3-f49f3d7a15a1",
+      "title": "Assistant Dashboard",
+      "htmxLoaded": true,
+      "counts": {
+        "dashboardHome": 1,
+        "dashboardSelector": 1,
+        "dashboardPanel": 1,
+        "widgetGrid": 1,
+        "topNavs": 1
+      },
+      "selectorItems": [
+        {
+          "text": "Assistant",
+          "active": false,
+          "attrs": {
+            "href": "/dashboards/assistant",
+            "hx-get": "/dashboards/assistant/_page",
+            "hx-target": "#dashboard-home",
+            "hx-swap": "outerHTML",
+            "hx-push-url": "/dashboards/assistant"
+          }
+        },
+        {
+          "text": "Browser Swap Check",
+          "active": true,
+          "attrs": {
+            "href": "/dashboards/dashboard-5f9a5702-2d0f-47bd-81b3-f49f3d7a15a1",
+            "hx-get": "/dashboards/dashboard-5f9a5702-2d0f-47bd-81b3-f49f3d7a15a1/_page",
+            "hx-target": "#dashboard-home",
+            "hx-swap": "outerHTML",
+            "hx-push-url": "/dashboards/dashboard-5f9a5702-2d0f-47bd-81b3-f49f3d7a15a1"
+          }
+        }
+      ],
+      "selectedTexts": [
+        "Browser Swap Check"
+      ],
+      "editLink": {
+        "href": "/dashboards/dashboard-5f9a5702-2d0f-47bd-81b3-f49f3d7a15a1?edit=true",
+        "hx-get": "/dashboards/dashboard-5f9a5702-2d0f-47bd-81b3-f49f3d7a15a1/_page?edit=true",
+        "hx-target": "#dashboard-home",
+        "hx-swap": "outerHTML",
+        "hx-push-url": "/dashboards/dashboard-5f9a5702-2d0f-47bd-81b3-f49f3d7a15a1?edit=true"
+      },
+      "exitEditLink": null,
+      "firstDetail": null,
+      "firstSettings": null,
+      "bodyTextSample": "Assistant\n\nUser dashboards, chat, and operational widgets\n\nHome\nChat\nAgents\nManage\nAssistant\nBrowser Swap Check\n+\nAssistant Chat\nDashboard assistant channel\nsurface home\nnew chat\nReady\nmodel local-qwen\nAsk the assistant for a quick update.\nSend\nDashboard\nBrowser Swap Check is empty\nAdd a row to start placing widgets.Add RowEdit",
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "desktopEdit": {
+      "url": "http://localhost:18080/dashboards/assistant?edit=true",
+      "title": "Assistant Dashboard",
+      "htmxLoaded": true,
+      "counts": {
+        "dashboardHome": 1,
+        "dashboardSelector": 1,
+        "dashboardPanel": 1,
+        "widgetGrid": 1,
+        "topNavs": 1
+      },
+      "selectorItems": [
+        {
+          "text": "Assistant",
+          "active": true,
+          "attrs": {
+            "href": "/dashboards/assistant",
+            "hx-get": "/dashboards/assistant/_page",
+            "hx-target": "#dashboard-home",
+            "hx-swap": "outerHTML",
+            "hx-push-url": "/dashboards/assistant"
+          }
+        },
+        {
+          "text": "Browser Swap Check",
+          "active": false,
+          "attrs": {
+            "href": "/dashboards/dashboard-5f9a5702-2d0f-47bd-81b3-f49f3d7a15a1",
+            "hx-get": "/dashboards/dashboard-5f9a5702-2d0f-47bd-81b3-f49f3d7a15a1/_page",
+            "hx-target": "#dashboard-home",
+            "hx-swap": "outerHTML",
+            "hx-push-url": "/dashboards/dashboard-5f9a5702-2d0f-47bd-81b3-f49f3d7a15a1"
+          }
+        }
+      ],
+      "selectedTexts": [
+        "Assistant"
+      ],
+      "editLink": null,
+      "exitEditLink": {
+        "href": "/dashboards/assistant",
+        "hx-get": "/dashboards/assistant/_page",
+        "hx-target": "#dashboard-home",
+        "hx-swap": "outerHTML",
+        "hx-push-url": "/dashboards/assistant"
+      },
+      "firstDetail": {
+        "href": null,
+        "hx-get": "/dashboards/assistant/widgets/widget-e2503581-12e4-4923-8838-5d235cb4f2b8/detail",
+        "hx-target": "#avatar-edit-container",
+        "hx-swap": "innerHTML",
+        "hx-push-url": null
+      },
+      "firstSettings": {
+        "href": null,
+        "hx-get": "/dashboards/assistant/widgets/widget-e2503581-12e4-4923-8838-5d235cb4f2b8/settings",
+        "hx-target": "#avatar-edit-container",
+        "hx-swap": "innerHTML",
+        "hx-push-url": null
+      },
+      "bodyTextSample": "Assistant\n\nUser dashboards, chat, and operational widgets\n\nHome\nChat\nAgents\nManage\nAssistant\nBrowser Swap Check\n+\nAssistant Chat\nDashboard assistant channel\nsurface home\nnew chat\nReady\nmodel local-qwen\nAsk the assistant for a quick update.\nSend\nDashboard edit mode\nRow 1 · 12/12\nToday Planner\n0\nTop\n0\nOverdue\n0\nBlocks\nCapture\nTop priorities\nnone\nNow\nnone\nNext\nnone\nLater\nnone\nOverdue\nnone\nUnscheduled\nnone\nRestart\nReview\nCalendar/Schedule\nSun\nMon\nTue\nWed\nThu\nFri\nSat\n26\n27\n28\n29\n30\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23\n24\n25\n26\n27\n28\n29\n30\n31\n1\n2\n3\n4\n5\n6\nAgenda\nNo scheduled items in range.\nBlock\nAdd Reminder\n+ Add Widget\n+ Insert Row Below\nRow 2 · 12/12\nTasks/Routines\n0\nTasks\n0\nRecurring\n0\nReminders\nAll statuses\nPlanned\nActive\nWaiting\nDone\nCancelled\nAll ranges\nToday\nNext 7 days\nNext 30 days\nOverdue\nAll repeats\nRecurring\nOne-off\nApply\nNormal\nHigh\nUrgent\nLow\nNo repeat\nDaily\nWeekly\nMonthly\nAdd Task\nNo planner tasks yet.\nNotes\npersonal\nPersonal notes\nSearch\nSave Note\nNo notes yet.\n+ Add Widget\n+ Insert Row Below\nRow 3 · 12/12\nHabits/Trackers\n0\nActive\n0\nArchived\nMay 31\nToday\nBuild\nQuit\nDaily\nWeekly\nMonthly\nAdd Tracker\nNo habits yet. Add build or quit trackers without penalty language.\nReminders/Alerts\n0\nDue\n0\nUpcoming\n0\nSnoozed\nDashboard inbox only. External push, email, and PWA delivery are deferred.\nAdd Reminder\nNo reminder alerts in the dashboard inbox.\n+ Add Widget\n+ Insert Row Below\nRow 4 · 12/12\nSystem\n1\nActive agents\n0\nOpen jobs\n0\nQueued work\nDashboard Context\nRead-only dashboard context. These descriptors do not grant chat actions.\n4\nRows\n9\nWidgets\nAssistant\nDashboard\nToday Planner\ntype today-planner / binding none\nread avatar_today_plan_get\ntool avatar_today_plan_update\ntool avatar_quick_capture\ntool avatar_day_restart\nCalendar/Schedule\ntype calendar-schedule / binding none\nread avatar_calendar_schedule_get\ntool avatar_calendar_upsert\ntool avatar_timeblock_upsert\ntool avatar_reminder_upsert\nTasks/Routines\ntype tasks-routines / binding none\nread ",
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "detailModal": {
+      "editContainerChildren": 1,
+      "detailModalCount": 1,
+      "fullShellInsideModal": 0,
+      "text": "Today Planner\nClose\n0\nTop\n0\nOverdue\n0\nBlocks\nCapture\nTop priorities\nnone\nNow\nnone\nNext\nnone\nLater\nnone\nOverdue\nnone\nUnscheduled\nnone\nRestart\nReview"
+    },
+    "settingsModal": {
+      "editContainerChildren": 1,
+      "settingsModalCount": 1,
+      "fullShellInsideModal": 0,
+      "text": "Today Planner Settings\nWidget instance widget-e2503581-12e4-4923-8838-5d235cb4f2b8\nClose\nType\ntoday-planner\nPolicy\nsingle per dashboard\nBinding\nnone\nSource\ndashboard\nagent\nproject\nwork area\nAgent\nChoose agent\nAvatar (avatar)\nmagenta (fa50bc06-51d5-4484-a8b9-6850bced7b70)\nProject\nChoose project\nWork Area\nChoose Work Area\nHome (avatar)\nDensity\ncompact\ncomfortable\nSave Settings"
+    },
+    "mobileNormal": {
+      "url": "http://localhost:18080/",
+      "title": "Assistant Dashboard",
+      "htmxLoaded": true,
+      "counts": {
+        "dashboardHome": 1,
+        "dashboardSelector": 1,
+        "dashboardPanel": 1,
+        "widgetGrid": 1,
+        "topNavs": 1
+      },
+      "selectorItems": [
+        {
+          "text": "Assistant",
+          "active": true,
+          "attrs": {
+            "href": "/dashboards/assistant",
+            "hx-get": "/dashboards/assistant/_page",
+            "hx-target": "#dashboard-home",
+            "hx-swap": "outerHTML",
+            "hx-push-url": "/dashboards/assistant"
+          }
+        },
+        {
+          "text": "Browser Swap Check",
+          "active": false,
+          "attrs": {
+            "href": "/dashboards/dashboard-5f9a5702-2d0f-47bd-81b3-f49f3d7a15a1",
+            "hx-get": "/dashboards/dashboard-5f9a5702-2d0f-47bd-81b3-f49f3d7a15a1/_page",
+            "hx-target": "#dashboard-home",
+            "hx-swap": "outerHTML",
+            "hx-push-url": "/dashboards/dashboard-5f9a5702-2d0f-47bd-81b3-f49f3d7a15a1"
+          }
+        }
+      ],
+      "selectedTexts": [
+        "Assistant"
+      ],
+      "editLink": {
+        "href": "/dashboards/assistant?edit=true",
+        "hx-get": "/dashboards/assistant/_page?edit=true",
+        "hx-target": "#dashboard-home",
+        "hx-swap": "outerHTML",
+        "hx-push-url": "/dashboards/assistant?edit=true"
+      },
+      "exitEditLink": null,
+      "firstDetail": {
+        "href": null,
+        "hx-get": "/dashboards/assistant/widgets/widget-e2503581-12e4-4923-8838-5d235cb4f2b8/detail",
+        "hx-target": "#avatar-edit-container",
+        "hx-swap": "innerHTML",
+        "hx-push-url": null
+      },
+      "firstSettings": {
+        "href": null,
+        "hx-get": "/dashboards/assistant/widgets/widget-e2503581-12e4-4923-8838-5d235cb4f2b8/settings",
+        "hx-target": "#avatar-edit-container",
+        "hx-swap": "innerHTML",
+        "hx-push-url": null
+      },
+      "bodyTextSample": "Assistant\n\nUser dashboards, chat, and operational widgets\n\nHome\nChat\nAgents\nManage\nAssistant\nBrowser Swap Check\n+\nAssistant Chat\nDashboard assistant channel\nsurface home\nnew chat\nReady\nmodel local-qwen\nAsk the assistant for a quick update.\nSend\nDashboard\nToday Planner\n0\nTop\n0\nOverdue\n0\nBlocks\nCapture\nTop priorities\nnone\nNow\nnone\nNext\nnone\nLater\nnone\nOverdue\nnone\nUnscheduled\nnone\nRestart\nReview\nCalendar/Schedule\nSun\nMon\nTue\nWed\nThu\nFri\nSat\n26\n27\n28\n29\n30\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23\n24\n25\n26\n27\n28\n29\n30\n31\n1\n2\n3\n4\n5\n6\nAgenda\nNo scheduled items in range.\nBlock\nAdd Reminder\nTasks/Routines\n0\nTasks\n0\nRecurring\n0\nReminders\nAll statuses\nPlanned\nActive\nWaiting\nDone\nCancelled\nAll ranges\nToday\nNext 7 days\nNext 30 days\nOverdue\nAll repeats\nRecurring\nOne-off\nApply\nNormal\nHigh\nUrgent\nLow\nNo repeat\nDaily\nWeekly\nMonthly\nAdd Task\nNo planner tasks yet.\nNotes\npersonal\nPersonal notes\nSearch\nSave Note\nNo notes yet.\nHabits/Trackers\n0\nActive\n0\nArchived\nMay 31\nToday\nBuild\nQuit\nDaily\nWeekly\nMonthly\nAdd Tracker\nNo habits yet. Add build or quit trackers without penalty language.\nReminders/Alerts\n0\nDue\n0\nUpcoming\n0\nSnoozed\nDashboard inbox only. External push, email, and PWA delivery are deferred.\nAdd Reminder\nNo reminder alerts in the dashboard inbox.\nSystem\n1\nActive agents\n0\nOpen jobs\n0\nQueued work\nDashboard Context\nRead-only dashboard context. These descriptors do not grant chat actions.\n4\nRows\n9\nWidgets\nAssistant\nDashboard\nToday Planner\ntype today-planner / binding none\nread avatar_today_plan_get\ntool avatar_today_plan_update\ntool avatar_quick_capture\ntool avatar_day_restart\nCalendar/Schedule\ntype calendar-schedule / binding none\nread avatar_calendar_schedule_get\ntool avatar_calendar_upsert\ntool avatar_timeblock_upsert\ntool avatar_reminder_upsert\nTasks/Routines\ntype tasks-routines / binding none\nread avatar_tasks_routines_get\ntool avatar_task_upsert\ntool avatar_task_occurrence_update\ntool avatar_reminder_upsert\nNotes\ntype notes / binding optional_work_area\nrea",
+      "scrollWidth": 390,
+      "clientWidth": 390
+    },
+    "mobileEdit": {
+      "url": "http://localhost:18080/dashboards/assistant?edit=true",
+      "title": "Assistant Dashboard",
+      "htmxLoaded": true,
+      "counts": {
+        "dashboardHome": 1,
+        "dashboardSelector": 1,
+        "dashboardPanel": 1,
+        "widgetGrid": 1,
+        "topNavs": 1
+      },
+      "selectorItems": [
+        {
+          "text": "Assistant",
+          "active": true,
+          "attrs": {
+            "href": "/dashboards/assistant",
+            "hx-get": "/dashboards/assistant/_page",
+            "hx-target": "#dashboard-home",
+            "hx-swap": "outerHTML",
+            "hx-push-url": "/dashboards/assistant"
+          }
+        },
+        {
+          "text": "Browser Swap Check",
+          "active": false,
+          "attrs": {
+            "href": "/dashboards/dashboard-5f9a5702-2d0f-47bd-81b3-f49f3d7a15a1",
+            "hx-get": "/dashboards/dashboard-5f9a5702-2d0f-47bd-81b3-f49f3d7a15a1/_page",
+            "hx-target": "#dashboard-home",
+            "hx-swap": "outerHTML",
+            "hx-push-url": "/dashboards/dashboard-5f9a5702-2d0f-47bd-81b3-f49f3d7a15a1"
+          }
+        }
+      ],
+      "selectedTexts": [
+        "Assistant"
+      ],
+      "editLink": null,
+      "exitEditLink": {
+        "href": "/dashboards/assistant",
+        "hx-get": "/dashboards/assistant/_page",
+        "hx-target": "#dashboard-home",
+        "hx-swap": "outerHTML",
+        "hx-push-url": "/dashboards/assistant"
+      },
+      "firstDetail": {
+        "href": null,
+        "hx-get": "/dashboards/assistant/widgets/widget-e2503581-12e4-4923-8838-5d235cb4f2b8/detail",
+        "hx-target": "#avatar-edit-container",
+        "hx-swap": "innerHTML",
+        "hx-push-url": null
+      },
+      "firstSettings": {
+        "href": null,
+        "hx-get": "/dashboards/assistant/widgets/widget-e2503581-12e4-4923-8838-5d235cb4f2b8/settings",
+        "hx-target": "#avatar-edit-container",
+        "hx-swap": "innerHTML",
+        "hx-push-url": null
+      },
+      "bodyTextSample": "Assistant\n\nUser dashboards, chat, and operational widgets\n\nHome\nChat\nAgents\nManage\nAssistant\nBrowser Swap Check\n+\nAssistant Chat\nDashboard assistant channel\nsurface home\nnew chat\nReady\nmodel local-qwen\nAsk the assistant for a quick update.\nSend\nDashboard edit mode\nRow 1 · 12/12\nToday Planner\n0\nTop\n0\nOverdue\n0\nBlocks\nCapture\nTop priorities\nnone\nNow\nnone\nNext\nnone\nLater\nnone\nOverdue\nnone\nUnscheduled\nnone\nRestart\nReview\nCalendar/Schedule\nSun\nMon\nTue\nWed\nThu\nFri\nSat\n26\n27\n28\n29\n30\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23\n24\n25\n26\n27\n28\n29\n30\n31\n1\n2\n3\n4\n5\n6\nAgenda\nNo scheduled items in range.\nBlock\nAdd Reminder\n+ Add Widget\n+ Insert Row Below\nRow 2 · 12/12\nTasks/Routines\n0\nTasks\n0\nRecurring\n0\nReminders\nAll statuses\nPlanned\nActive\nWaiting\nDone\nCancelled\nAll ranges\nToday\nNext 7 days\nNext 30 days\nOverdue\nAll repeats\nRecurring\nOne-off\nApply\nNormal\nHigh\nUrgent\nLow\nNo repeat\nDaily\nWeekly\nMonthly\nAdd Task\nNo planner tasks yet.\nNotes\npersonal\nPersonal notes\nSearch\nSave Note\nNo notes yet.\n+ Add Widget\n+ Insert Row Below\nRow 3 · 12/12\nHabits/Trackers\n0\nActive\n0\nArchived\nMay 31\nToday\nBuild\nQuit\nDaily\nWeekly\nMonthly\nAdd Tracker\nNo habits yet. Add build or quit trackers without penalty language.\nReminders/Alerts\n0\nDue\n0\nUpcoming\n0\nSnoozed\nDashboard inbox only. External push, email, and PWA delivery are deferred.\nAdd Reminder\nNo reminder alerts in the dashboard inbox.\n+ Add Widget\n+ Insert Row Below\nRow 4 · 12/12\nSystem\n1\nActive agents\n0\nOpen jobs\n0\nQueued work\nDashboard Context\nRead-only dashboard context. These descriptors do not grant chat actions.\n4\nRows\n9\nWidgets\nAssistant\nDashboard\nToday Planner\ntype today-planner / binding none\nread avatar_today_plan_get\ntool avatar_today_plan_update\ntool avatar_quick_capture\ntool avatar_day_restart\nCalendar/Schedule\ntype calendar-schedule / binding none\nread avatar_calendar_schedule_get\ntool avatar_calendar_upsert\ntool avatar_timeblock_upsert\ntool avatar_reminder_upsert\nTasks/Routines\ntype tasks-routines / binding none\nread ",
+      "scrollWidth": 390,
+      "clientWidth": 390
+    },
+    "ignoredConsoleNoise": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 404 ()",
+        "location": {
+          "url": "http://localhost:18080/favicon.ico",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      }
+    ]
+  },
+  "consoleMessages": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 ()",
+      "location": {
+        "url": "http://localhost:18080/favicon.ico",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      }
+    }
+  ],
+  "network": [
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/",
+      "resourceType": "document"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/css/avatar-dashboard.css?v=12",
+      "resourceType": "stylesheet"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/css/magenta.css?v=5",
+      "resourceType": "stylesheet"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/css/framework.css",
+      "resourceType": "stylesheet"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-layout-edit.js?v=1",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-chat.js?v=4",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-workarea-editor.js?v=2",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-shell.js?v=6",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/framework.js",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/webjars/htmx.org/dist/htmx.min.js",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "POST",
+      "url": "http://localhost:18080/dashboards",
+      "resourceType": "fetch"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/",
+      "resourceType": "document"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/css/framework.css",
+      "resourceType": "stylesheet"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/css/magenta.css?v=5",
+      "resourceType": "stylesheet"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/css/avatar-dashboard.css?v=12",
+      "resourceType": "stylesheet"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/webjars/htmx.org/dist/htmx.min.js",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/framework.js",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-chat.js?v=4",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-layout-edit.js?v=1",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-workarea-editor.js?v=2",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-shell.js?v=6",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/dashboards/dashboard-5f9a5702-2d0f-47bd-81b3-f49f3d7a15a1/_page",
+      "resourceType": "xhr"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/",
+      "resourceType": "document"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/css/framework.css",
+      "resourceType": "stylesheet"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/css/magenta.css?v=5",
+      "resourceType": "stylesheet"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/css/avatar-dashboard.css?v=12",
+      "resourceType": "stylesheet"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/webjars/htmx.org/dist/htmx.min.js",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/framework.js",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-chat.js?v=4",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-layout-edit.js?v=1",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-workarea-editor.js?v=2",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-shell.js?v=6",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/dashboards/assistant/_page?edit=true",
+      "resourceType": "xhr"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/dashboards/assistant?edit=true",
+      "resourceType": "document"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/css/framework.css",
+      "resourceType": "stylesheet"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/css/magenta.css?v=5",
+      "resourceType": "stylesheet"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/css/avatar-dashboard.css?v=12",
+      "resourceType": "stylesheet"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/webjars/htmx.org/dist/htmx.min.js",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/framework.js",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-chat.js?v=4",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-layout-edit.js?v=1",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-workarea-editor.js?v=2",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-shell.js?v=6",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/dashboards/assistant/widgets/widget-e2503581-12e4-4923-8838-5d235cb4f2b8/detail",
+      "resourceType": "xhr"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/dashboards/_modal/clear",
+      "resourceType": "fetch"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/dashboards/assistant?edit=true",
+      "resourceType": "document"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/css/framework.css",
+      "resourceType": "stylesheet"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/css/magenta.css?v=5",
+      "resourceType": "stylesheet"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/css/avatar-dashboard.css?v=12",
+      "resourceType": "stylesheet"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/webjars/htmx.org/dist/htmx.min.js",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/framework.js",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-chat.js?v=4",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-layout-edit.js?v=1",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-workarea-editor.js?v=2",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-shell.js?v=6",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/dashboards/assistant/widgets/widget-e2503581-12e4-4923-8838-5d235cb4f2b8/settings",
+      "resourceType": "xhr"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/",
+      "resourceType": "document"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/css/framework.css",
+      "resourceType": "stylesheet"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/css/magenta.css?v=5",
+      "resourceType": "stylesheet"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/css/avatar-dashboard.css?v=12",
+      "resourceType": "stylesheet"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/webjars/htmx.org/dist/htmx.min.js",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/framework.js",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-chat.js?v=4",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-layout-edit.js?v=1",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-workarea-editor.js?v=2",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-shell.js?v=6",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/dashboards/assistant?edit=true",
+      "resourceType": "document"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/css/framework.css",
+      "resourceType": "stylesheet"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/css/magenta.css?v=5",
+      "resourceType": "stylesheet"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/css/avatar-dashboard.css?v=12",
+      "resourceType": "stylesheet"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/webjars/htmx.org/dist/htmx.min.js",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/framework.js",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-chat.js?v=4",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-layout-edit.js?v=1",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-workarea-editor.js?v=2",
+      "resourceType": "script"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "url": "http://localhost:18080/js/avatar-shell.js?v=6",
+      "resourceType": "script"
+    }
+  ]
+}

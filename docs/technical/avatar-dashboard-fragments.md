@@ -82,6 +82,8 @@ The dashboard root must render `data-avatar-shell="true"` around `.avatar-shell-
 
 Dashboard selector links and dashboard edit toggles should target `#dashboard-home` with `hx-swap="outerHTML"` and `hx-push-url` so switching dashboards refreshes the dashboard component without reloading the full shell or top navigation.
 
+The stable selector shell and dashboard panel body are rendered through SimplyPages `Template`/`SlotKey` helpers in `HomeDashboardTemplates`, with a fresh `RenderContext` per render. Dynamic route and id attributes remain request-built in `AvatarDashboardComponents` so fallback links, `hx-get`, `hx-target`, `hx-push-url`, `#dashboard-home`, and `#avatar-widget-grid` stay stable.
+
 ## Notes And Project Context Widgets
 
 Notes widget settings use `noteSourceMode=personal|agent|project|work_area|mixed` plus optional `agentId`, `projectId`, and `workAreaId` bindings. Personal notes remain in `avatar_notes`; file-backed notes are read and saved through `WorkAreaExplorerService` or project owner-root file service paths. Last-opened personal and file references are stored as widget settings metadata.

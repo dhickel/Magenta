@@ -125,10 +125,7 @@ final class AvatarDashboardComponents {
     }
 
     private static Component dashboardSelector(AvatarDashboardData data) {
-        Div selector = new Div()
-            .withId("dashboard-selector")
-            .withClass("dashboard-selector")
-            .withAttribute("data-dashboard-selector", "true");
+        List<Component> items = new ArrayList<>();
         for (UserDashboard dashboard : safeDashboards(data.dashboards())) {
             HtmlTag link = new HtmlTag("a")
                 .withClass("dashboard-selector-item"
@@ -139,17 +136,9 @@ final class AvatarDashboardComponents {
                 .withAttribute("hx-swap", "outerHTML")
                 .withAttribute("hx-push-url", "/dashboards/" + url(dashboard.id()))
                 .withInnerText(dashboard.name());
-            selector.withChild(link);
+            items.add(link);
         }
-        selector.withChild(Button.create("+")
-            .withClass("dashboard-create-button")
-            .withAttribute("type", "button")
-            .withAttribute("title", "Create dashboard")
-            .withAttribute("aria-label", "Create dashboard")
-            .withAttribute("hx-get", "/dashboards/_create")
-            .withAttribute("hx-target", "#avatar-edit-container")
-            .withAttribute("hx-swap", "innerHTML"));
-        return selector;
+        return HomeDashboardTemplates.dashboardSelector(HomeDashboardTemplates.ComponentList.of(items));
     }
 
     static Component createDashboardModal(String name, String error) {
@@ -199,16 +188,12 @@ final class AvatarDashboardComponents {
             .withAttribute("hx-target", "#dashboard-home")
             .withAttribute("hx-swap", "outerHTML")
             .withAttribute("hx-push-url", dashboardUrl);
-        return new Div()
-            .withId("dashboard-panel")
-            .withClass("avatar-tab-panel avatar-tab-panel-dashboard")
-            .withAttribute("data-dashboard-panel", data.dashboard().id())
-            .withChild(new Div().withClass("avatar-shell-strip")
-                .withChild(new HtmlTag("span").withClass("avatar-shell-note")
-                    .withInnerText(editMode ? "Dashboard edit mode" : "Dashboard"))
-                .withChild(editLink))
-            .withChild(new Div().withClass("avatar-dashboard-panel")
-                .withChild(widgetGrid(data, editMode)));
+        return HomeDashboardTemplates.dashboardPanel(
+            data.dashboard().id(),
+            editMode ? "Dashboard edit mode" : "Dashboard",
+            editLink,
+            widgetGrid(data, editMode)
+        );
     }
 
     static Component widgetGrid(AvatarDashboardData data) {

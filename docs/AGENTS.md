@@ -13,6 +13,8 @@ This guide governs files under `docs/`.
 - Any technical change updates the relevant technical docs.
 - Any user-facing behavior change updates the relevant end-user docs.
 - API or controller changes update API docs.
+- Frontend technical docs for Home dashboard, dashboard widget, static page, status strip, selector/detail, or repeated fragment changes should state whether `Template`/`SlotKey`/per-request `RenderContext` reuse is used or deliberately left out.
+- Use Home dashboard/dashboard editor wording for product-facing docs. Treat `AvatarDashboard*`, `AvatarService`, and `avatar.sqlite` as legacy implementation names unless a deliberate rename plan is in scope.
 - New docs must be linked from an index before the task is complete.
 - Avoid speculative future docs unless the content is explicitly marked as future-facing.
 - Do not route current documentation work to retired focus, notes, or inbox stores.

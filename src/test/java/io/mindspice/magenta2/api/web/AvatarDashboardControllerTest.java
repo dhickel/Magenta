@@ -211,8 +211,53 @@ class AvatarDashboardControllerTest {
         assertThat(fragment).contains("hx-get=\"/dashboards/assistant/_page\"");
         assertThat(fragment).contains("hx-get=\"/dashboards/" + dashboard.id() + "/_page\"");
         assertThat(fragment).contains("hx-target=\"#dashboard-home\"");
+        assertThat(fragment).contains("class=\"dashboard-selector-item active\" href=\"/dashboards/" + dashboard.id() + "\"");
+        assertThat(fragment).contains("data-dashboard-panel=\"" + dashboard.id() + "\"");
         assertThat(fragment).doesNotContain("id=\"content-area\"");
         assertThat(fragment).doesNotContain("/js/avatar-shell.js");
+    }
+
+    @Test
+    void homeDashboardTemplatesPreserveStableShellAndRenderDynamicContext() {
+        String selector = HomeDashboardTemplates.dashboardSelector(HomeDashboardTemplates.ComponentList.of(List.of(
+            new io.mindspice.simplypages.core.HtmlTag("a")
+                .withClass("dashboard-selector-item active")
+                .withAttribute("href", "/dashboards/research")
+                .withAttribute("hx-get", "/dashboards/research/_page")
+                .withAttribute("hx-target", "#dashboard-home")
+                .withAttribute("hx-swap", "outerHTML")
+                .withAttribute("hx-push-url", "/dashboards/research")
+                .withInnerText("Research")
+        ))).render();
+        String panel = HomeDashboardTemplates.dashboardPanel(
+            "research",
+            "Dashboard <edit>",
+            new io.mindspice.simplypages.core.HtmlTag("a")
+                .withClass("avatar-icon-link")
+                .withAttribute("href", "/dashboards/research?edit=true")
+                .withAttribute("hx-get", "/dashboards/research/_page?edit=true")
+                .withAttribute("hx-target", "#dashboard-home")
+                .withAttribute("hx-swap", "outerHTML")
+                .withAttribute("hx-push-url", "/dashboards/research?edit=true")
+                .withInnerText("Edit"),
+            new io.mindspice.simplypages.components.Div()
+                .withId("avatar-widget-grid")
+                .withAttribute("data-avatar-widget-grid", "true")
+                .withInnerText("Dynamic widgets")
+        ).render();
+
+        assertThat(selector).contains("id=\"dashboard-selector\"");
+        assertThat(selector).contains("data-dashboard-selector=\"true\"");
+        assertThat(selector).contains("class=\"dashboard-selector-item active\"");
+        assertThat(selector).contains("hx-get=\"/dashboards/research/_page\"");
+        assertThat(selector).contains("hx-target=\"#dashboard-home\"");
+        assertThat(selector).contains("aria-label=\"Create dashboard\"");
+        assertThat(panel).contains("id=\"dashboard-panel\"");
+        assertThat(panel).contains("data-dashboard-panel=\"research\"");
+        assertThat(panel).contains("Dashboard &lt;edit&gt;");
+        assertThat(panel).contains("hx-get=\"/dashboards/research/_page?edit=true\"");
+        assertThat(panel).contains("id=\"avatar-widget-grid\"");
+        assertThat(panel).contains("Dynamic widgets");
     }
 
     private static void assertPrimaryTopNav(String html) {

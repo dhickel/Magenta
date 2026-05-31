@@ -12,6 +12,7 @@ This package owns the Spring Boot application entry point for Magenta.
 - Do not add cross-cutting runtime behavior here unless it truly affects the whole application.
 - Prefer package-local configuration and services for feature work.
 - Keep this guide updated when bootstrap responsibilities or application-wide conventions change.
+- Frontend reuse conventions are owned by `api/web`; stable Home dashboard/static fragment work should use that package guide for `Template`, `SlotKey`, and per-request `RenderContext` expectations.
 
 ### Validation
 - Run focused tests for affected packages.
