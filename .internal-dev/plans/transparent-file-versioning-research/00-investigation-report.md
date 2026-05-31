@@ -9,11 +9,12 @@ Magenta should implement transparent file versioning as a Magenta-owned versione
 The recommended path is a hybrid:
 
 1. Add a `VersionedWorkspaceFileService` under the workspace domain. It becomes the write/delete/move/copy facade for Work Areas, projects, chat files, run-output promotion, future widgets, and agent file tools.
-2. Store immutable file bytes in a Magenta-owned content-addressed blob store under the data root, with SQLite metadata for version chains, path history, operation batches, actor/run/task attribution, retention class, and rollback state.
-3. Keep filesystem files as the live working tree so existing tools, previews, downloads, and shell commands still work.
-4. Capture shell and raw process mutation with staged execution boundaries: create a manifest snapshot before execution, rescan after execution, store changed/deleted/new file versions, and optionally require leases or operation scopes for rollbackable work.
-5. Use Borg/restic/filesystem snapshots as optional backup/export/defense-in-depth integrations, not as the user-facing undo ledger.
-6. Treat Git/JGit as an optional project-repository integration for code-like projects and explicit commits, not the transparent file-versioning substrate for all Magenta files.
+2. Treat file metadata, including tags, as part of the same workspace file abstraction. Directory-applied tags should become recursive policies that affect existing descendant files and future files created under that directory.
+3. Store immutable file bytes in a Magenta-owned content-addressed blob store under the data root, with SQLite metadata for version chains, path history, operation batches, actor/run/task attribution, retention class, and rollback state.
+4. Keep filesystem files as the live working tree so existing tools, previews, downloads, and shell commands still work.
+5. Capture shell and raw process mutation with staged execution boundaries: create a manifest snapshot before execution, rescan after execution, store changed/deleted/new file versions, and optionally require leases or operation scopes for rollbackable work.
+6. Use Borg/restic/filesystem snapshots as optional backup/export/defense-in-depth integrations, not as the user-facing undo ledger.
+7. Treat Git/JGit as an optional project-repository integration for code-like projects and explicit commits, not the transparent file-versioning substrate for all Magenta files.
 
 This is the practical route because Magenta already has centralized workspace layout helpers, Work Areas, project leases, confined file tools, and output-promotion services. Controlled writes can be made atomic and user-attributed inside those services. Raw host writes cannot be captured reliably by wrapping Java APIs alone; they need either OS-level capture, filesystem snapshots, a virtual filesystem, or a pre/post diff strategy.
 
@@ -31,6 +32,7 @@ It should cover these logical surfaces differently:
 | Run-local outputs | Staged model-facing `runs/<runId>/outputs/` during execution. | Capture at execution boundaries and promotion time; rollback normally targets promoted final outputs, not transient staging. |
 | Promoted outputs | Backend-owned final output destinations. | Immutable-ish artifact lineage plus explicit "restore/copy back" flows; avoid silent overwrite of audited outputs. |
 | Chat/output artifacts | Chat files live under `chats/<conversationId>/files/`; output artifacts have metadata rows. | Preserve chat file history and artifact file history separately, with links back to conversation/run. |
+| File metadata and tags | Tags should be a single tag type applied to files directly or through directory inheritance. | Directory tag changes should be auditable policy events, and effective tags for a file should be recomputable from direct assignments plus inherited directory policies. |
 | Scripted/custom widgets | Future widget edits should use the same versioned file API. | Widgets should receive file-version handles and must not write raw host paths when rollback is promised. |
 
 Relevant current contracts:
@@ -39,6 +41,7 @@ Relevant current contracts:
 - `WorkspacePathLayout` centralizes structural path constants and aliases such as `workspace`, `projects`, `chats`, `home`, `workareas`, `outputs`, and `run` (`src/main/java/io/mindspice/magenta2/ai/orchestration/workspaces/WorkspacePathLayout.java`).
 - `WorkspaceDirectoryService` owns directory creation, data-root confinement, chat file roots, project workspace roots, run staging cleanup, and symlink project materialization (`WorkspaceDirectoryService.java`).
 - `WorkAreaExplorerService` owns user-facing Work Area browse, preview, save, create, rename, move, copy, delete, labels, and action logs (`WorkAreaExplorerService.java`).
+- Current Work Area labels distinguish directory/file target types through label metadata and assignment-time guards. The desired future model is one tag definition type, with directory assignment treated as a recursive inheritance rule rather than a separate tag type.
 - `AgentFileToolService` owns model-visible file read/write/append/replace/list/search inside active workspace scopes and records active runtime paths (`AgentFileToolService.java`).
 - `AgentShellToolService` executes allowed commands with `ProcessBuilder` in a confined working directory but cannot observe per-file writes performed by that process (`AgentShellToolService.java`).
 - `OutputArtifactService` materializes, publishes, discovers, and promotes output files with data-root and symlink confinement (`OutputArtifactService.java`).
@@ -49,6 +52,7 @@ Relevant current contracts:
 Known current mutation paths:
 
 - Work Area explorer save text, create text/markdown file, create directory, rename, move, copy, delete, label metadata, and nested Work Area marking.
+- Work Area tag assignment/removal currently acts on the selected file or directory path. A future unified tag model needs directory assignment/removal to affect all current descendant files and to create an inheritance policy for future descendant file creation.
 - Avatar and agent-detail Work Area browser routes that delegate to `WorkAreaExplorerService`.
 - Agent file tools: `file_write`, `file_append`, and `file_replace`.
 - Agent shell tool: allowed command execution in a confined working directory. This can mutate any writable file reachable under the process working tree, and Java does not see individual write calls.
@@ -82,6 +86,7 @@ Wrapping Magenta file APIs can reliably capture:
 - Chat file import/upload when routed through services.
 - Future widgets/plugins if they receive a versioned file service rather than raw `Path`.
 - Metadata-only operations such as labels, descriptions, and logical moves if modeled as file version events.
+- Recursive tag inheritance if directory tag policies and effective file tag projections are owned by the same workspace file service that creates/imports/moves/copies files.
 
 Wrapping Magenta file APIs cannot reliably capture:
 
@@ -405,6 +410,7 @@ Kawa itself is not a filesystem versioning substrate. If Magenta later supports 
 Add a new workspace-domain service surface:
 
 - `VersionedWorkspaceFileService`: controlled create/write/append/replace/delete/move/copy/import/restore/checkpoint operations.
+- `WorkspaceFileTagPolicyService`: unified tag definitions, direct file tag assignment, recursive directory tag policies, effective tag projection, and tag-policy audit events. This can be a separate collaborator or a sub-surface of the versioned file service, but it should not stay as ad hoc path metadata once recursive inheritance is introduced.
 - `FileVersionRepository`: SQLite persistence for blobs, version events, live state, batches, retention policy, restore records.
 - `FileBlobStore`: immutable content-addressed byte storage under data root, with digest verification, temp-write-plus-atomic-move, optional compression, and future encryption hooks.
 - `FileManifestService`: scoped tree scan for pre/post execution snapshots.
@@ -418,6 +424,7 @@ Keep `WorkspaceDirectoryService` as path-layout authority. The versioning servic
 Controlled write integrations:
 
 - `WorkAreaExplorerService.saveText`, create file/directory, rename, move, copy, delete: route through `VersionedWorkspaceFileService` and keep the existing service as the user-facing policy owner.
+- `WorkAreaExplorerService` tag create/assign/remove/list operations: migrate from directory/file tag types to one tag definition model. Applying a tag to a directory should create or update a recursive directory tag policy, immediately project the tag onto existing descendant files, and ensure all future controlled file creation/import/copy/move operations under that directory inherit the effective tag set.
 - `AgentFileToolService.write`, `append`, `replace`: route through versioned service with actor `AGENT_TOOL`, tool call metadata, current context, and expected version when available.
 - `OutputArtifactService.materialize*`, `publishExistingFile`, `publishDirectoryContents`, `promoteDirectoryContents`: record backend-owned version events and artifact lineage.
 - `ChatFileService` future upload/import/delete routes: route through versioned service with actor `USER` or `SYSTEM`.
@@ -443,6 +450,7 @@ Minimum persisted fields:
 - Batch: operation batch id, started/completed timestamps, command/display summary, validation status.
 - Trust flags: controlled API, pre/post diff, external snapshot, skipped symlink, large-file skipped, conflict detected.
 - Retention: class, expires_at, legal/user pin flag.
+- Tag policy: unified tag id/slug, direct vs inherited source, directory policy path, inheritance enabled flag, effective-at version/batch, and tombstone/removal events for unassigning a recursive directory policy without erasing historical effective tags.
 
 Blob storage:
 
@@ -472,6 +480,7 @@ Add routes after service design:
 - Project equivalents under project file APIs when those are first-class.
 - Output artifact lineage route: `GET /api/outputs/{artifactId}/lineage`.
 - Batch audit route: `GET /api/file-version-batches/{batchId}`.
+- Unified tag routes should expose tag definitions independently from target type, then expose direct assignments and effective tags for a file/directory path. Directory assignment routes need an explicit recursive-policy result that reports affected current files and the rule that will apply to future files.
 
 Controller rule: controllers should stay thin and delegate path and rollback policy to workspace services.
 
@@ -485,6 +494,7 @@ Work Area browser:
 - Add restore preview showing files to change, conflicts, deletions, and skipped unsupported items.
 - Add operation-batch history in recent actions, not only single-file actions.
 - For shell/process batches, show "Captured by pre/post scan" and any skipped symlinks/large files.
+- Replace Directory/File tag filters with unified tag browsing once the backend model lands. Directory-applied tags should show as recursive policies with affected-count and future-inheritance language, while file inspectors should distinguish direct tags from inherited tags without making the user manage two separate tag types.
 
 Outputs:
 
@@ -529,6 +539,7 @@ This should integrate with existing workspace file action logs rather than repla
 High-risk areas:
 
 - Shell/process writes cannot be perfectly attributed without OS/filesystem instrumentation.
+- Recursive directory tags can drift if file creation, import, move, copy, restore, or shell/process capture bypasses the tag policy service.
 - Disk-full during blob capture can leave live file changed but history incomplete unless write ordering is carefully designed.
 - Rollback can destroy newer work if expected-version checks are weak.
 - Large binary files can cause storage blowups.
@@ -548,12 +559,14 @@ Design mitigations:
 - Add large-file thresholds and chunked blob support before promising large binary rollback.
 - Provide hard-purge/admin retention tooling with clear warnings.
 - Make pre/post shell capture explicit in UI and tool transcripts.
+- Treat directory tag inheritance as a policy projection, not a one-time bulk write only. Controlled mutation paths must calculate effective tags during create/import/move/copy/restore, while shell/process post-scan must reconcile newly discovered files against inherited policies.
 
 ## Phased Implementation Plan
 
 ### Phase 0: Specification Lock
 
 - Define product language for "transparent" vs "controlled" vs "pre/post captured".
+- Define product language for direct file tags, recursive directory tag policies, inherited effective tags, and whether users can opt a file out of inherited tags.
 - Decide retention defaults and whether historical blobs are encrypted at rest.
 - Decide large-file thresholds and chunking requirement.
 - Decide whether rollback should require explicit user approval when requested by an agent.
@@ -571,6 +584,14 @@ Design mitigations:
 - Preserve existing Work Area confinement, protected path, symlink, text-size, and active-reference guards.
 - Add history/restore service APIs, but keep UI minimal if necessary.
 - Add service/controller tests for rollback and conflicts.
+
+### Phase 2.5: Unified Recursive Tag Policies
+
+- Replace directory/file-specific tag definitions with one tag definition model.
+- Model directory tag assignment as a recursive policy that applies to existing descendant files and to future files created, imported, copied, moved, or restored under that directory.
+- Add an effective-tag projection/query path so file inspectors, search, and future agent tools can show direct and inherited tags without duplicating assignments onto every file as the source of truth.
+- Add migration rules for existing typed directory/file tags, including how to preserve current assignments and descriptions.
+- Ensure shell/process post-scan reconciles newly discovered files against active inherited directory policies.
 
 ### Phase 3: Agent File Tools And Output Promotion
 
@@ -621,6 +642,8 @@ Integration tests:
 
 - Work Area save, create, rename, move, copy, delete followed by rollback.
 - Directory rollback with nested files.
+- Recursive directory tag assignment applies to existing nested files, future created/imported files, copied-in files, moved-in files, and restored files.
+- Removing or changing a directory tag policy updates effective tags without deleting direct file tags.
 - Project workspace mutation under active write lease.
 - Chat file import/history once upload/import exists.
 - Output materialization/promotion lineage.
