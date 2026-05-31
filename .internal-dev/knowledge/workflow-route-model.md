@@ -45,7 +45,7 @@ record WorkflowRoute(
 ```java
 record WorkflowNode(
     String key,              // unique node key (e.g. "node_1")
-    WorkflowNodeType type,   // TASK, GATE, APPROVAL
+    WorkflowNodeType type,   // TASK, approvals/messages, adapters, final/report, etc.
     String planId,           // referenced plan (for TASK nodes)
     String label,            // human-readable label
     String inputName,        // input name mapping
@@ -64,6 +64,8 @@ As of the workflow canonicalization remediation, production callers import `io.m
 As of the 2026-05-18 Domain 08 legacy cleanup, the older `io.mindspice.magenta2.ai.chat.workflow` package has been removed from `src/main/java`. New workflow code should use only `io.mindspice.magenta2.ai.orchestration.workflow`; the old `ai_workflow_*` table names are historical references, not active persistence targets.
 
 Task nodes execute through `WorkflowTaskExecutor`, which calls `ChatService.executeTaskBlocking(...)`. Workflow task outputs must come from persisted `TaskRun.outputValues()` keyed by declared output names; assistant text and default output maps are not valid workflow outputs.
+
+`DELEGATION` remains a serialized enum value for compatibility, but it is not supported execution behavior in the current alpha. Full validation rejects delegation nodes, the `/workflows` editor does not offer them for new authoring, and the runner fails a delegation node if a direct or legacy caller bypasses validation. Do not create child plan runs and mark them complete without real terminal execution evidence.
 
 The runner now has deterministic control-node handling for:
 

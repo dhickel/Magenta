@@ -2581,6 +2581,7 @@ public class OrchestrationController {
         try {
             current = workflowService.getDefinition(workflowId);
             String nodeType = params.getOrDefault("nodeType", "TASK");
+            WorkflowNodeType type = authorableWorkflowNodeType(nodeType);
             List<WorkflowNode> nodes = new ArrayList<>(current.nodes());
             int maxIdx = nodes.stream()
                 .map(n -> n.key().replace("node_", ""))
@@ -2588,7 +2589,7 @@ public class OrchestrationController {
                 .mapToInt(Integer::parseInt)
                 .max().orElse(0);
             String key = "node_" + (maxIdx + 1);
-            nodes.add(new WorkflowNode(key, WorkflowNodeType.fromWireName(nodeType),
+            nodes.add(new WorkflowNode(key, type,
                 nn(params.get("planId")), key, null, Map.of(),
                 false, List.of(),
                 nn(params.get("messageTemplate")),
@@ -2639,7 +2640,7 @@ public class OrchestrationController {
                     WorkflowNode old = nodes.get(i);
                     nodes.set(i, new WorkflowNode(
                         nodeKey,
-                        params.containsKey("nodeType") ? WorkflowNodeType.fromWireName(params.get("nodeType")) : old.type(),
+                        params.containsKey("nodeType") ? authorableWorkflowNodeType(params.get("nodeType")) : old.type(),
                         params.containsKey("planId") ? nn(params.get("planId")) : old.planId(),
                         params.containsKey("label") ? nn(params.get("label")) : old.label(),
                         params.containsKey("inputName") ? nn(params.get("inputName")) : old.inputName(),
@@ -2974,7 +2975,7 @@ public class OrchestrationController {
     private Component addNodeForm(String wfId) {
         Div form = new Div().withClass("field-row");
         Select typeSelect = Select.create("nodeType");
-        for (WorkflowNodeType nt : WorkflowNodeType.values()) {
+        for (WorkflowNodeType nt : authorableWorkflowNodeTypes()) {
             typeSelect.addOption(nt.wireName(), nt.wireName(), nt == WorkflowNodeType.TASK);
         }
         form.withChild(typeSelect);
@@ -3161,7 +3162,14 @@ public class OrchestrationController {
                 .withAttribute("hx-swap", "innerHTML"));
 
             Select nodeType = Select.create("nodeType");
-            for (WorkflowNodeType value : WorkflowNodeType.values()) {
+            if (!isAuthorableWorkflowNodeType(node.type())) {
+                nodeType.withChild(new HtmlTag("option")
+                    .withAttribute("value", node.type().wireName())
+                    .withAttribute("selected", "")
+                    .withAttribute("disabled", "")
+                    .withInnerText(node.type().wireName() + " (unsupported)"));
+            }
+            for (WorkflowNodeType value : authorableWorkflowNodeTypes()) {
                 nodeType.addOption(value.wireName(), value.wireName(), value == node.type());
             }
             nodeType.withAttribute("hx-put", "/workflows/_editor/" + wf.id() + "/nodes/" + node.key())
@@ -3357,6 +3365,24 @@ public class OrchestrationController {
     private HtmlTag nodeTypeBadge(WorkflowNodeType type) {
         String css = type.isGate() ? "orch-status-chip active" : "orch-chip";
         return new HtmlTag("span").withClass(css).withInnerText(type.wireName());
+    }
+
+    private List<WorkflowNodeType> authorableWorkflowNodeTypes() {
+        return java.util.Arrays.stream(WorkflowNodeType.values())
+            .filter(this::isAuthorableWorkflowNodeType)
+            .toList();
+    }
+
+    private boolean isAuthorableWorkflowNodeType(WorkflowNodeType type) {
+        return type != WorkflowNodeType.DELEGATION;
+    }
+
+    private WorkflowNodeType authorableWorkflowNodeType(String value) {
+        WorkflowNodeType type = WorkflowNodeType.fromWireName(value);
+        if (!isAuthorableWorkflowNodeType(type)) {
+            throw new IllegalArgumentException(WorkflowValidator.DELEGATION_UNSUPPORTED_MESSAGE);
+        }
+        return type;
     }
 
     private HtmlTag routeTypeBadge(WorkflowRouteType type) {

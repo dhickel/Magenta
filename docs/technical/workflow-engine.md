@@ -22,6 +22,8 @@ Definitions persist in `workflow_definitions`; nodes/routes/layout are JSON colu
 
 `WorkflowNode` is the node record. Node type values are defined by `WorkflowNodeType`. Current engine concepts include task execution, approval/wait behavior, output mapping, and control/routing semantics represented through node type, config, inputs, outputs, and bindings.
 
+`DELEGATION` remains a serialized enum value for compatibility, but real delegated subagent execution is not implemented in the current alpha. Full validation rejects delegation nodes, the operational editor does not offer delegation for new authoring, and the runner fails the node if a direct caller bypasses validation. Workflow history must not show delegated success unless a future runtime records real child execution evidence.
+
 `WorkflowNodeRun` and `WorkflowNodeRunStatus` capture per-node execution status, input values, output values, and timestamps. Node runs are stored both as JSON in `workflow_runs.node_runs_json` and as queryable rows in `workflow_node_runs`.
 
 ## Routes
@@ -88,6 +90,7 @@ They validate the saved definition, resolve/default an active agent, and create 
 - Resolving bindings through `BindingResolver`.
 - Executing nodes in route order.
 - Delegating task nodes through `WorkflowTaskExecutor`.
+- Failing unsupported delegation nodes instead of fabricating completed child runs.
 - Handling approval/wait nodes and resume policy.
 - Capturing node outputs and final outputs.
 - Recording artifact ids from materialized outputs.

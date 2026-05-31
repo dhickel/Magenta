@@ -20,6 +20,8 @@ import java.util.Set;
  * Strict workflow v2 compile validation.
  */
 public class WorkflowValidator {
+    public static final String DELEGATION_UNSUPPORTED_MESSAGE =
+        "DELEGATION workflow nodes are not supported in the current alpha; use TASK nodes for model-backed execution";
 
     private final PlanService planService;
 
@@ -74,6 +76,10 @@ public class WorkflowValidator {
         for (WorkflowNode node : definition.nodes()) {
             if (nodesByKey.putIfAbsent(node.key(), node) != null) {
                 errors.add("Duplicate node key: '" + node.key() + "'");
+            }
+            if (node.type() == WorkflowNodeType.DELEGATION) {
+                errors.add("DELEGATION node '" + node.key() + "' is unsupported: "
+                    + DELEGATION_UNSUPPORTED_MESSAGE);
             }
             if (!node.inputBindings().isEmpty()) {
                 errors.add("Node '" + node.key() + "' uses legacy inputBindings; v2 requires explicit routes");

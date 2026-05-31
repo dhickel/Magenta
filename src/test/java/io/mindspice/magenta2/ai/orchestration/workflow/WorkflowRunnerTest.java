@@ -604,9 +604,8 @@ class WorkflowRunnerTest {
     }
 
     @Test
-    void workflowAndDelegatedTaskRunsCopyDisplayNameFromOrchestrationContext() throws Exception {
-        PlanDefinition childTask = task("named child", List.of(), List.of());
-        WorkflowNode node = delegationNode("named-child-node", childTask.id());
+    void workflowRunCopiesDisplayNameFromOrchestrationContext() throws Exception {
+        WorkflowNode node = simpleFinalNode("named-final-node");
         WorkflowDefinition def = workflowService.saveDefinitionValidated(new WorkflowDefinition(
             null, 2, "Named Workflow", "", 1,
             List.of(node), List.of(), Map.of(), null, null
@@ -624,15 +623,13 @@ class WorkflowRunnerTest {
             WorkflowRun finished = pollForTerminal(run.id());
 
             assertThat(finished.runDisplayName()).isEqualTo("Daily workflow run");
-            String childRunId = finished.nodeRuns().getFirst().outputValues().get("childRunId").toString();
-            assertThat(planService.getRun(childRunId).runDisplayName()).isEqualTo("Daily workflow run");
         } finally {
             OrchestrationTaskContextHolder.clear();
         }
     }
 
     @Test
-    void delegationChildRunUsesActiveEffectiveWorkspaceContext() throws Exception {
+    void executableValidationRejectsDelegationUntilRealDelegatedExecutionExists() {
         PlanDefinition childTask = task("delegated", List.of(), List.of());
         WorkflowNode delegation = new WorkflowNode(
             "delegate",
@@ -648,33 +645,50 @@ class WorkflowRunnerTest {
             null,
             null
         );
-        WorkflowDefinition def = workflowService.saveDefinitionValidated(new WorkflowDefinition(
+        WorkflowDefinition def = new WorkflowDefinition(
             null, 2, "Delegation Context", "", 1,
             List.of(delegation), List.of(), Map.of(), null, null
+        );
+
+        WorkflowValidator.ValidationResult validation = workflowService.validateGraph(def);
+
+        assertThat(validation.valid()).isFalse();
+        assertThat(validation.errors()).contains(
+            "DELEGATION node 'delegate' is unsupported: " + WorkflowValidator.DELEGATION_UNSUPPORTED_MESSAGE);
+        assertThatThrownBy(() -> workflowService.saveDefinitionValidated(def))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining(WorkflowValidator.DELEGATION_UNSUPPORTED_MESSAGE);
+    }
+
+    @Test
+    void delegationRuntimeFailsWithoutCreatingCompletedChildRun() throws Exception {
+        PlanDefinition childTask = task("delegated", List.of(), List.of());
+        WorkflowDefinition persistedShell = workflowService.saveDefinitionValidated(new WorkflowDefinition(
+            null, 2, "Persisted Runtime Shell", "", 1,
+            List.of(simpleFinalNode("final")), List.of(), Map.of(), null, null
         ));
+        WorkflowNode delegation = delegationNode("delegate", childTask.id());
+        WorkflowDefinition def = new WorkflowDefinition(
+            persistedShell.id(), 2, "Delegation Runtime Guard", "", 1,
+            List.of(delegation), List.of(), Map.of(), null, null
+        );
 
         OrchestrationTaskContextHolder.set(new OrchestrationTaskContext(
             "agent-1", "Agent 1", "job-1", "project-1", "workspace-1", "WORKFLOW_RUN",
             null, null
         ));
         try {
-            WorkflowRun run = workflowService.startRun(def.id());
-            WorkflowRun finished = pollForTerminal(run.id());
+            WorkflowRun finished = workflowRunner.runSynchronously(def);
 
-            assertThat(finished.status()).isEqualTo(WorkflowRunStatus.COMPLETED);
-            String childRunId = finished.nodeRuns().stream()
+            assertThat(finished.status()).isEqualTo(WorkflowRunStatus.FAILED);
+            assertThat(finished.errorText()).contains(WorkflowValidator.DELEGATION_UNSUPPORTED_MESSAGE);
+            WorkflowNodeRun delegateRun = finished.nodeRuns().stream()
                 .filter(node -> node.nodeKey().equals("delegate"))
                 .findFirst()
-                .orElseThrow()
-                .outputValues()
-                .get("childRunId")
-                .toString();
-            PlanRun childRun = planService.getRun(childRunId);
-            assertStoredRelative(childRun.outputDirectory(), "workspace/agent-1/runs/");
-            assertThat(resolveStored(childRun.outputDirectory()))
-                .startsWith(workspaceDirectoryService.dataRoot()
-                    .resolve("workspace/agent-1/runs"));
-            assertThat(childRun.workspaceId()).isNotBlank();
+                .orElseThrow();
+            assertThat(delegateRun.status()).isEqualTo(WorkflowNodeRunStatus.FAILED);
+            assertThat(delegateRun.outputValues()).isEmpty();
+            assertThat(planService.listRuns(childTask.id())).isEmpty();
         } finally {
             OrchestrationTaskContextHolder.clear();
         }

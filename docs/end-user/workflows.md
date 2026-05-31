@@ -24,7 +24,7 @@ Nodes represent work or control points in the graph. The node editor supports no
 
 Where the selector work has landed, plan-backed fields use searchable selectors. If a node form still shows a plain dropdown or text-like plan field, use the visible options or the saved plan ID shown by the UI.
 
-Common node types include task execution and control/waiting behavior such as approval or message waits. The exact node type list comes from the current runtime and may expand during alpha.
+Common node types include task execution and control/waiting behavior such as approval or message waits. The exact node type list comes from the current runtime and may expand during alpha. Delegation/subagent nodes are not available in the current alpha; use task nodes for model-backed work.
 
 ## Routes
 
@@ -81,6 +81,7 @@ Workflow run staging is kept while a run is waiting so resume can continue the s
 - **Workflow not found**: the workflow was deleted or the page is stale.
 - **Title is required**: the definition needs a title before saving.
 - **Validation failed**: fix graph errors before submitting.
+- **DELEGATION workflow nodes are not supported**: replace the node with a supported task/control/output node before submitting.
 - **No active agents available**: create or enable an agent.
 - **Node not found**: a route or selected panel points to a deleted node.
 - **Plan not found**: a node references a deleted plan; choose a valid saved plan.

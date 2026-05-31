@@ -535,14 +535,8 @@ public class WorkflowRunner {
     }
 
     private Map<String, Object> executeDelegationNode(WorkflowNode node, Map<String, Object> inputs) {
-        Map<String, Object> outputs = new LinkedHashMap<>();
-        if (StringUtils.hasText(node.planId())) {
-            PlanRun childRun = planService.startRun(node.planId(), inputs, OrchestrationTaskContextHolder.current());
-            PlanRun completed = planService.completeRun(childRun.id(), Map.of(), "Delegated run completed", List.of());
-            outputs.put("childRunId", completed.id());
-            outputs.put("childStatus", completed.status().name());
-        }
-        return outputs;
+        throw new IllegalStateException(WorkflowValidator.DELEGATION_UNSUPPORTED_MESSAGE
+            + " (node: " + node.key() + ")");
     }
 
     private Map<String, Object> executeValidationNode(WorkflowNode node, Map<String, Object> inputs) {

@@ -624,6 +624,22 @@ class OrchestrationControllerTest {
     }
 
     @Test
+    void workflowEditorDoesNotOfferOrAcceptUnsupportedDelegationNodes() {
+        OrchestrationController ctrl = controller();
+        String html = ctrl.createWorkflowDraftEditor();
+
+        var nodeTypeOptions = Jsoup.parse(html)
+            .select("select[name=nodeType] option")
+            .eachAttr("value");
+        assertThat(nodeTypeOptions).doesNotContain("delegation");
+
+        String addHtml = ctrl.addWorkflowNode("workflow-draft", Map.of("nodeType", "DELEGATION"));
+        assertThat(addHtml).contains("Node save failed");
+        assertThat(addHtml).contains(WorkflowValidator.DELEGATION_UNSUPPORTED_MESSAGE);
+        assertThat(addHtml).doesNotContain("node_1");
+    }
+
+    @Test
     void workflowEditorSavesIncompleteApprovalDraftAndEditsRouteCondition() {
         OrchestrationController ctrl = controller();
         ctrl.createWorkflowDraftEditor();
