@@ -192,10 +192,13 @@ public class OrchestrationRuntimeRepository {
             return Optional.empty();
         }
         Optional<WorkAssignment> current = findAssignment(assignment.id());
-        if (current.isEmpty()
-            || (current.get().status() != OrchestrationStatus.RUNNING
-                && current.get().status() != OrchestrationStatus.CANCEL_REQUESTED)
-            || !leaseOwner.equals(current.get().leaseOwner())) {
+        if (current.isEmpty() || !leaseOwner.equals(current.get().leaseOwner())) {
+            return Optional.empty();
+        }
+        OrchestrationStatus currentStatus = current.get().status();
+        boolean cancelFinalization = currentStatus == OrchestrationStatus.CANCEL_REQUESTED
+            && assignment.status() == OrchestrationStatus.CANCELLED;
+        if (currentStatus != OrchestrationStatus.RUNNING && !cancelFinalization) {
             return Optional.empty();
         }
         Instant now = Instant.now();
@@ -231,7 +234,7 @@ public class OrchestrationRuntimeRepository {
                     updated_at = ?,
                     started_at = ?,
                     completed_at = ?
-                where id = ? and status in (?, ?) and lease_owner = ?
+                where id = ? and status = ? and lease_owner = ?
                 """,
             assignment.agentId(), assignment.jobId(), assignment.jobItemId(), assignment.assignmentType().name(),
             assignment.priority(), assignment.status().name(), assignment.modelOverride(), assignment.runDisplayName(),
@@ -240,8 +243,7 @@ public class OrchestrationRuntimeRepository {
             jsonOrNull(assignment.output()), jsonOrNull(assignment.evidence()), assignment.errorText(),
             assignment.leaseOwner(), instant(assignment.leaseExpiresAt()), instant(lastProgressAt),
             instant(lastHeartbeatAt), now.toString(), instant(assignment.startedAt()),
-            instant(assignment.completedAt()), assignment.id(), OrchestrationStatus.RUNNING.name(),
-            OrchestrationStatus.CANCEL_REQUESTED.name(), leaseOwner
+            instant(assignment.completedAt()), assignment.id(), currentStatus.name(), leaseOwner
         );
         return updated == 1 ? findAssignment(assignment.id()) : Optional.empty();
     }

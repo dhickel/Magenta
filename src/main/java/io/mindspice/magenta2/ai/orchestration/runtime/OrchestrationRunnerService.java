@@ -741,24 +741,27 @@ public class OrchestrationRunnerService {
     }
 
     private WorkAssignment complete(WorkAssignment assignment, Map<String, Object> output, Map<String, Object> evidence) {
-        return assignmentService.saveIfLeaseOwner(assignmentService.copy(
+        WorkAssignment saved = assignmentService.saveIfLeaseOwner(assignmentService.copy(
             assignment, OrchestrationStatus.COMPLETED, assignment.currentItemIndex(), assignment.checkpoint(), output,
             evidence, null, null, null, Instant.now()
         ), leaseOwner);
+        return saved.status() == OrchestrationStatus.CANCEL_REQUESTED ? cancel(saved) : saved;
     }
 
     private WorkAssignment fail(WorkAssignment assignment, String errorText) {
-        return assignmentService.saveIfLeaseOwner(assignmentService.copy(
+        WorkAssignment saved = assignmentService.saveIfLeaseOwner(assignmentService.copy(
             assignment, OrchestrationStatus.FAILED, assignment.currentItemIndex(), assignment.checkpoint(),
             assignment.output(), assignment.evidence(), errorText, null, null, Instant.now()
         ), leaseOwner);
+        return saved.status() == OrchestrationStatus.CANCEL_REQUESTED ? cancel(saved) : saved;
     }
 
     private WorkAssignment waiting(WorkAssignment assignment) {
-        return assignmentService.saveIfLeaseOwner(assignmentService.copy(
+        WorkAssignment saved = assignmentService.saveIfLeaseOwner(assignmentService.copy(
             assignment, OrchestrationStatus.WAITING, assignment.currentItemIndex(), assignment.checkpoint(),
             assignment.output(), assignment.evidence(), null, null, null, null
         ), leaseOwner);
+        return saved.status() == OrchestrationStatus.CANCEL_REQUESTED ? cancel(saved) : saved;
     }
 
     private WorkAssignment cancel(WorkAssignment assignment) {

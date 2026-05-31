@@ -590,6 +590,87 @@ class OrchestrationRuntimeTest {
     }
 
     @Test
+    void cancelRequestedAssignmentRejectsLateLeasedCompletion() {
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate(), new ObjectMapper());
+        WorkAssignment cancelRequested = repository.saveAssignment(cancelRequestedLeasedAssignment("assignment-cancel-complete"));
+        WorkAssignment lateCompletion = lateLeaseWrite(cancelRequested, OrchestrationStatus.COMPLETED,
+            cancelRequested.checkpoint(), Map.of("message", "late success"), null, Instant.now());
+
+        assertThat(repository.saveAssignmentIfLeaseOwner(lateCompletion, "owner-1")).isEmpty();
+        WorkAssignment result = repository.findAssignment(cancelRequested.id()).orElseThrow();
+
+        assertThat(result.status()).isEqualTo(OrchestrationStatus.CANCEL_REQUESTED);
+        assertThat(result.leaseOwner()).isEqualTo("owner-1");
+        assertThat(result.output()).isEmpty();
+        assertThat(result.completedAt()).isNull();
+    }
+
+    @Test
+    void cancelRequestedAssignmentRejectsLateLeasedFailure() {
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate(), new ObjectMapper());
+        WorkAssignment cancelRequested = repository.saveAssignment(cancelRequestedLeasedAssignment("assignment-cancel-fail"));
+        WorkAssignment lateFailure = lateLeaseWrite(cancelRequested, OrchestrationStatus.FAILED,
+            cancelRequested.checkpoint(), cancelRequested.output(), "late failure", Instant.now());
+
+        assertThat(repository.saveAssignmentIfLeaseOwner(lateFailure, "owner-1")).isEmpty();
+        WorkAssignment result = repository.findAssignment(cancelRequested.id()).orElseThrow();
+
+        assertThat(result.status()).isEqualTo(OrchestrationStatus.CANCEL_REQUESTED);
+        assertThat(result.leaseOwner()).isEqualTo("owner-1");
+        assertThat(result.errorText()).isEqualTo("Cancel requested");
+        assertThat(result.completedAt()).isNull();
+    }
+
+    @Test
+    void cancelRequestedAssignmentRejectsLateLeasedWaiting() {
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate(), new ObjectMapper());
+        WorkAssignment cancelRequested = repository.saveAssignment(cancelRequestedLeasedAssignment("assignment-cancel-waiting"));
+        WorkAssignment lateWaiting = lateLeaseWrite(cancelRequested, OrchestrationStatus.WAITING,
+            Map.of("waitingFor", "approval"), cancelRequested.output(), null, null);
+
+        assertThat(repository.saveAssignmentIfLeaseOwner(lateWaiting, "owner-1")).isEmpty();
+        WorkAssignment result = repository.findAssignment(cancelRequested.id()).orElseThrow();
+
+        assertThat(result.status()).isEqualTo(OrchestrationStatus.CANCEL_REQUESTED);
+        assertThat(result.leaseOwner()).isEqualTo("owner-1");
+        assertThat(result.checkpoint()).containsEntry("phase", "cancel-requested");
+        assertThat(result.checkpoint()).doesNotContainKey("waitingFor");
+    }
+
+    @Test
+    void cancelRequestedAssignmentRejectsLateLeasedCheckpointProgress() {
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate(), new ObjectMapper());
+        WorkAssignment cancelRequested = repository.saveAssignment(cancelRequestedLeasedAssignment("assignment-cancel-checkpoint"));
+        WorkAssignment lateCheckpoint = lateLeaseWrite(cancelRequested, OrchestrationStatus.RUNNING,
+            Map.of("phase", "late checkpoint", "nextItemIndex", 2), Map.of("partial", true), null, null);
+
+        assertThat(repository.saveAssignmentIfLeaseOwner(lateCheckpoint, "owner-1")).isEmpty();
+        WorkAssignment result = repository.findAssignment(cancelRequested.id()).orElseThrow();
+
+        assertThat(result.status()).isEqualTo(OrchestrationStatus.CANCEL_REQUESTED);
+        assertThat(result.leaseOwner()).isEqualTo("owner-1");
+        assertThat(result.checkpoint()).containsEntry("phase", "cancel-requested");
+        assertThat(result.checkpoint()).doesNotContainKey("nextItemIndex");
+        assertThat(result.output()).isEmpty();
+    }
+
+    @Test
+    void cancelRequestedAssignmentAllowsExplicitLeasedCancelFinalization() {
+        OrchestrationRuntimeRepository repository = new OrchestrationRuntimeRepository(jdbcTemplate(), new ObjectMapper());
+        WorkAssignment cancelRequested = repository.saveAssignment(cancelRequestedLeasedAssignment("assignment-cancel-finalize"));
+        WorkAssignment finalCancellation = lateLeaseWrite(cancelRequested, OrchestrationStatus.CANCELLED,
+            cancelRequested.checkpoint(), cancelRequested.output(), "Cancelled", Instant.now());
+
+        WorkAssignment result = repository.saveAssignmentIfLeaseOwner(finalCancellation, "owner-1").orElseThrow();
+
+        assertThat(result.status()).isEqualTo(OrchestrationStatus.CANCELLED);
+        assertThat(result.leaseOwner()).isNull();
+        assertThat(result.leaseExpiresAt()).isNull();
+        assertThat(result.errorText()).isEqualTo("Cancelled");
+        assertThat(result.completedAt()).isNotNull();
+    }
+
+    @Test
     void assignmentDeleteRemovesNonRunningAssignment() {
         JdbcTemplate jdbcTemplate = jdbcTemplate();
         ObjectMapper objectMapper = new ObjectMapper();
@@ -1815,6 +1896,37 @@ class OrchestrationRuntimeTest {
             status == OrchestrationStatus.RUNNING ? "owner-1" : null,
             status == OrchestrationStatus.RUNNING ? Instant.now().plusSeconds(300) : null,
             null, null, status == OrchestrationStatus.RUNNING ? Instant.now() : null, null
+        );
+    }
+
+    private WorkAssignment cancelRequestedLeasedAssignment(String id) {
+        Instant startedAt = Instant.now().minusSeconds(30);
+        return new WorkAssignment(
+            id, "agent-1", null, null, AssignmentType.REPORT, 1,
+            OrchestrationStatus.CANCEL_REQUESTED, null, null, 0,
+            Map.of("phase", "cancel-requested"), Map.of(), Map.of(), Map.of(),
+            "Cancel requested", "owner-1", Instant.now().plusSeconds(300),
+            null, null, startedAt, null
+        );
+    }
+
+    private WorkAssignment lateLeaseWrite(
+        WorkAssignment current,
+        OrchestrationStatus status,
+        Map<String, Object> checkpoint,
+        Map<String, Object> output,
+        String errorText,
+        Instant completedAt
+    ) {
+        return new WorkAssignment(
+            current.id(), current.agentId(), current.jobId(), current.jobItemId(),
+            current.assignmentType(), current.priority(), status,
+            current.modelOverride(), current.workspaceId(), current.currentItemIndex(),
+            checkpoint, current.input(), output, current.evidence(),
+            errorText, status == OrchestrationStatus.CANCELLED ? null : current.leaseOwner(),
+            status == OrchestrationStatus.CANCELLED ? null : current.leaseExpiresAt(),
+            current.createdAt(), current.updatedAt(), current.startedAt(), completedAt,
+            current.lastProgressAt(), current.lastHeartbeatAt()
         );
     }
 
