@@ -2,12 +2,50 @@ package io.mindspice.magenta2.ai.orchestration.workflow;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
+import javax.sql.DataSource;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class WorkflowRepositoryTest {
+
+    @Test
+    void createsFreshWorkflowSchema() {
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(
+            new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true)
+        );
+
+        new WorkflowRepository(jdbcTemplate, new ObjectMapper());
+
+        assertThat(columns(jdbcTemplate, "workflow_definitions")).contains(
+            "schema_version", "max_concurrency", "nodes_json", "routes_json", "ui_layout_json");
+        assertThat(columns(jdbcTemplate, "workflow_runs")).contains(
+            "current_node_index", "node_runs_json", "workflow_snapshot_json",
+            "final_outputs_json", "artifact_ids_json", "updated_at", "run_display_name");
+        assertThat(columns(jdbcTemplate, "workflow_node_runs")).contains("workflow_run_id", "node_key", "status");
+        assertThat(columns(jdbcTemplate, "inbox_messages")).contains("message_type", "metadata_json", "updated_at");
+    }
+
+    @Test
+    void currentWorkflowSchemaWarmStartIsIdempotent() {
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(
+            new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true)
+        );
+        new WorkflowRepository(jdbcTemplate, new ObjectMapper());
+
+        WorkflowRepository repository = new WorkflowRepository(jdbcTemplate, new ObjectMapper());
+
+        WorkflowDefinition definition = repository.saveDefinition(new WorkflowDefinition(
+            "warm-workflow", 2, "Warm Workflow", "", 1,
+            java.util.List.of(), java.util.List.of(), java.util.Map.of(), null, null
+        ));
+        assertThat(repository.findDefinition(definition.id())).isPresent();
+    }
 
     @Test
     void migratesLegacyStepWorkflowDefinitionsToGraphColumns() {
@@ -37,6 +75,34 @@ class WorkflowRepositoryTest {
         assertThat(migrated.title()).isEqualTo("Legacy Workflow");
         assertThat(migrated.nodes()).isEmpty();
         assertThat(migrated.routes()).isEmpty();
+    }
+
+    @Test
+    void unexpectedDefinitionMigrationFailureIsVisible() {
+        SingleConnectionDataSource dataSource = new SingleConnectionDataSource(
+            "jdbc:sqlite::memory:?foreign_keys=true",
+            true
+        );
+        JdbcTemplate setup = new JdbcTemplate(dataSource);
+        setup.execute("""
+            create table workflow_definitions (
+                id text primary key,
+                title text not null,
+                summary text,
+                steps_json text not null,
+                created_at text not null,
+                updated_at text not null
+            )
+            """);
+        JdbcTemplate jdbcTemplate = new FailingMigrationJdbcTemplate(
+            dataSource,
+            "alter table workflow_definitions add column routes_json"
+        );
+
+        assertThatThrownBy(() -> new WorkflowRepository(jdbcTemplate, new ObjectMapper()))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("Failed to migrate workflow schema: add column workflow_definitions.routes_json")
+            .hasRootCauseInstanceOf(DataAccessResourceFailureException.class);
     }
 
     @Test
@@ -150,5 +216,22 @@ class WorkflowRepositoryTest {
 
     private java.util.List<String> columns(JdbcTemplate jdbcTemplate, String table) {
         return jdbcTemplate.queryForList("select name from pragma_table_info('" + table + "')", String.class);
+    }
+
+    private static class FailingMigrationJdbcTemplate extends JdbcTemplate {
+        private final String failedSqlFragment;
+
+        private FailingMigrationJdbcTemplate(DataSource dataSource, String failedSqlFragment) {
+            super(dataSource);
+            this.failedSqlFragment = failedSqlFragment;
+        }
+
+        @Override
+        public void execute(String sql) throws DataAccessException {
+            if (sql.startsWith(failedSqlFragment)) {
+                throw new DataAccessResourceFailureException("forced migration failure");
+            }
+            super.execute(sql);
+        }
     }
 }

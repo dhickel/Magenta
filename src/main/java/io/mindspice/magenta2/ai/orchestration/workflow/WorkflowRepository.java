@@ -3,6 +3,9 @@ package io.mindspice.magenta2.ai.orchestration.workflow;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,6 +23,7 @@ import java.util.Optional;
  */
 @Repository("orchestrationWorkflowRepository")
 public class WorkflowRepository {
+    private static final Logger log = LoggerFactory.getLogger(WorkflowRepository.class);
     private static final TypeReference<List<WorkflowNode>> NODE_LIST = new TypeReference<>() { };
     private static final TypeReference<List<WorkflowRoute>> ROUTE_LIST = new TypeReference<>() { };
     private static final TypeReference<List<WorkflowNodeRun>> NODE_RUN_LIST = new TypeReference<>() { };
@@ -52,16 +56,11 @@ public class WorkflowRepository {
             """);
 
         // Migration safety for older definitions table
-        try { jdbcTemplate.execute("alter table workflow_definitions add column schema_version integer not null default 2"); }
-        catch (Exception ignored) { }
-        try { jdbcTemplate.execute("alter table workflow_definitions add column max_concurrency integer not null default 4"); }
-        catch (Exception ignored) { }
-        try { jdbcTemplate.execute("alter table workflow_definitions add column ui_layout_json text not null default '{}' "); }
-        catch (Exception ignored) { }
-        try { jdbcTemplate.execute("alter table workflow_definitions add column nodes_json text not null default '[]'"); }
-        catch (Exception ignored) { }
-        try { jdbcTemplate.execute("alter table workflow_definitions add column routes_json text not null default '[]'"); }
-        catch (Exception ignored) { }
+        addColumnIfMissing("workflow_definitions", "schema_version", "integer not null default 2");
+        addColumnIfMissing("workflow_definitions", "max_concurrency", "integer not null default 4");
+        addColumnIfMissing("workflow_definitions", "ui_layout_json", "text not null default '{}'");
+        addColumnIfMissing("workflow_definitions", "nodes_json", "text not null default '[]'");
+        addColumnIfMissing("workflow_definitions", "routes_json", "text not null default '[]'");
 
         jdbcTemplate.execute("""
             create table if not exists workflow_runs (
@@ -92,48 +91,27 @@ public class WorkflowRepository {
                 foreign key (workflow_id) references workflow_definitions(id) on delete cascade
             )
             """);
-        try { jdbcTemplate.execute("alter table workflow_runs add column final_outputs_json text not null default '{}'"); }
-        catch (Exception ignored) { }
-        try { jdbcTemplate.execute("alter table workflow_runs add column artifact_ids_json text not null default '[]'"); }
-        catch (Exception ignored) { }
-        try { jdbcTemplate.execute("alter table workflow_runs add column current_node_index integer not null default 0"); }
-        catch (Exception ignored) { }
-        try { jdbcTemplate.execute("alter table workflow_runs add column node_runs_json text not null default '[]'"); }
-        catch (Exception ignored) { }
-        try { jdbcTemplate.execute("alter table workflow_runs add column workspace_path text"); }
-        catch (Exception ignored) { }
-        try { jdbcTemplate.execute("alter table workflow_runs add column output_dir text"); }
-        catch (Exception ignored) { }
-        try { jdbcTemplate.execute("alter table workflow_runs add column agent_id text"); }
-        catch (Exception ignored) { }
-        try { jdbcTemplate.execute("alter table workflow_runs add column job_id text"); }
-        catch (Exception ignored) { }
-        try { jdbcTemplate.execute("alter table workflow_runs add column job_assignment_id text"); }
-        catch (Exception ignored) { }
-        try { jdbcTemplate.execute("alter table workflow_runs add column job_run_id text"); }
-        catch (Exception ignored) { }
-        try { jdbcTemplate.execute("alter table workflow_runs add column project_id text"); }
-        catch (Exception ignored) { }
-        try { jdbcTemplate.execute("alter table workflow_runs add column workspace_id text"); }
-        catch (Exception ignored) { }
-        try { jdbcTemplate.execute("alter table workflow_runs add column run_type text"); }
-        catch (Exception ignored) { }
-        try { jdbcTemplate.execute("alter table workflow_runs add column workflow_snapshot_json text"); }
-        catch (Exception ignored) { }
-        try { jdbcTemplate.execute("alter table workflow_runs add column final_message text"); }
-        catch (Exception ignored) { }
-        try { jdbcTemplate.execute("alter table workflow_runs add column error_text text"); }
-        catch (Exception ignored) { }
-        try { jdbcTemplate.execute("alter table workflow_runs add column updated_at text"); }
-        catch (Exception ignored) { }
-        try { jdbcTemplate.execute("alter table workflow_runs add column started_at text"); }
-        catch (Exception ignored) { }
-        try { jdbcTemplate.execute("alter table workflow_runs add column completed_at text"); }
-        catch (Exception ignored) { }
-        try { jdbcTemplate.execute("alter table workflow_runs add column run_display_name text"); }
-        catch (Exception ignored) { }
-        try { jdbcTemplate.update("update workflow_runs set updated_at = created_at where updated_at is null"); }
-        catch (Exception ignored) { }
+        addColumnIfMissing("workflow_runs", "final_outputs_json", "text not null default '{}'");
+        addColumnIfMissing("workflow_runs", "artifact_ids_json", "text not null default '[]'");
+        addColumnIfMissing("workflow_runs", "current_node_index", "integer not null default 0");
+        addColumnIfMissing("workflow_runs", "node_runs_json", "text not null default '[]'");
+        addColumnIfMissing("workflow_runs", "workspace_path", "text");
+        addColumnIfMissing("workflow_runs", "output_dir", "text");
+        addColumnIfMissing("workflow_runs", "agent_id", "text");
+        addColumnIfMissing("workflow_runs", "job_id", "text");
+        addColumnIfMissing("workflow_runs", "job_assignment_id", "text");
+        addColumnIfMissing("workflow_runs", "job_run_id", "text");
+        addColumnIfMissing("workflow_runs", "project_id", "text");
+        addColumnIfMissing("workflow_runs", "workspace_id", "text");
+        addColumnIfMissing("workflow_runs", "run_type", "text");
+        addColumnIfMissing("workflow_runs", "workflow_snapshot_json", "text");
+        addColumnIfMissing("workflow_runs", "final_message", "text");
+        addColumnIfMissing("workflow_runs", "error_text", "text");
+        addColumnIfMissing("workflow_runs", "updated_at", "text");
+        addColumnIfMissing("workflow_runs", "started_at", "text");
+        addColumnIfMissing("workflow_runs", "completed_at", "text");
+        addColumnIfMissing("workflow_runs", "run_display_name", "text");
+        jdbcTemplate.update("update workflow_runs set updated_at = created_at where updated_at is null");
 
         jdbcTemplate.execute("""
             create table if not exists workflow_node_runs (
@@ -172,6 +150,41 @@ public class WorkflowRepository {
             create index if not exists idx_inbox_messages_to
                 on inbox_messages (to_type, to_id, created_at desc)
             """);
+    }
+
+    private void addColumnIfMissing(String tableName, String columnName, String columnDefinition) {
+        if (hasColumn(tableName, columnName)) {
+            return;
+        }
+        String sql = "alter table " + tableName + " add column " + columnName + " " + columnDefinition;
+        try {
+            jdbcTemplate.execute(sql);
+        } catch (DataAccessException e) {
+            if (hasColumn(tableName, columnName)) {
+                log.warn("Workflow schema migration already applied while adding {}.{}", tableName, columnName, e);
+                return;
+            }
+            throw new IllegalStateException(
+                "Failed to migrate workflow schema: add column " + tableName + "." + columnName,
+                e
+            );
+        }
+    }
+
+    private boolean hasColumn(String tableName, String columnName) {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "select count(*) from pragma_table_info('" + tableName + "') where name = ?",
+                Integer.class,
+                columnName
+            );
+            return count != null && count > 0;
+        } catch (DataAccessException e) {
+            throw new IllegalStateException(
+                "Failed to inspect workflow schema column " + tableName + "." + columnName,
+                e
+            );
+        }
     }
 
     public Optional<WorkflowDefinition> findDefinition(String id) {
