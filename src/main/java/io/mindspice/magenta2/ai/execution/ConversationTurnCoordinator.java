@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.RejectedExecutionException;
 
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -91,7 +92,13 @@ public class ConversationTurnCoordinator {
                 }
                 submitted = true;
             }
-            CompletableFuture<T> submittedFuture = workExecutor.submitChat(conversationId, priority, description, work);
+            CompletableFuture<T> submittedFuture;
+            try {
+                submittedFuture = workExecutor.submitChat(conversationId, priority, description, work);
+            } catch (RejectedExecutionException e) {
+                result.completeExceptionally(e);
+                return result;
+            }
             result.whenComplete((ignored, error) -> {
                 if (result.isCancelled()) {
                     submittedFuture.cancel(true);
