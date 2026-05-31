@@ -1,5 +1,6 @@
 package io.mindspice.magenta2.ai.chat.repository;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -14,6 +15,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AuditRepositoryTest {
 
@@ -81,5 +83,54 @@ class AuditRepositoryTest {
             .containsExactly("conversation-b", "conversation-a", "conversation-b");
         assertThat(events).extracting(AuditRepository.AuditEvent::messageText)
             .containsExactly("first", "second", "third");
+    }
+
+    @Test
+    void warmSchemaMigrationAddsOnlyKnownAuditColumns() {
+        JdbcTemplate jt = new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true));
+        jt.execute("""
+            create table audit_event (
+                id integer primary key autoincrement,
+                conversation_id text not null,
+                sequence integer not null,
+                event_type text not null,
+                recorded_at text not null
+            )
+            """);
+
+        AuditRepository repo = new AuditRepository(jt);
+        repo.recordError("conversation-1", "TYPE", "message", "stack", "model");
+
+        List<String> columns = jt.queryForList("select name from pragma_table_info('audit_event')", String.class);
+
+        assertThat(columns).contains("message_text", "result_truncated", "percent_used", "stack_trace");
+        assertThat(columns).doesNotContain("message_text; drop table audit_event; --");
+        assertThat(repo.findByConversationId("conversation-1")).hasSize(1);
+    }
+
+    @Test
+    void auditMigrationColumnWhitelistRejectsUnsafePayloads() throws Throwable {
+        AuditRepository repo = new AuditRepository(
+            new JdbcTemplate(new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true))
+        );
+
+        assertThatThrownBy(() -> invokePrivate(
+            repo,
+            "requireAuditColumn",
+            new Class<?>[] {String.class},
+            "result_large integer default 0); drop table audit_event; --"
+        )).isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("Unsupported audit column");
+    }
+
+    private Object invokePrivate(Object target, String methodName, Class<?>[] parameterTypes, Object... args)
+        throws Throwable {
+        Method method = target.getClass().getDeclaredMethod(methodName, parameterTypes);
+        method.setAccessible(true);
+        try {
+            return method.invoke(target, args);
+        } catch (java.lang.reflect.InvocationTargetException exception) {
+            throw exception.getCause();
+        }
     }
 }

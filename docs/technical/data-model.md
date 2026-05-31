@@ -1,6 +1,6 @@
 # Data Model
 
-Primary Magenta SQLite schema is initialized from [`schema.sql`](../../src/main/resources/schema.sql). Avatar user-centric data is initialized separately from [`avatar-schema.sql`](../../src/main/resources/avatar-schema.sql) into `avatar.sqlite`. Repositories also create tables defensively and add compatibility columns for warm local databases, so code inspection should include the relevant schema file and owning repository before changing schema assumptions.
+Primary Magenta SQLite schema is initialized from [`schema.sql`](../../src/main/resources/schema.sql). Avatar user-centric data is initialized separately from [`avatar-schema.sql`](../../src/main/resources/avatar-schema.sql) into `avatar.sqlite`. Repositories also create tables defensively and add compatibility columns for warm local databases, so code inspection should include the relevant schema file and owning repository before changing schema assumptions. Warm-schema helpers use fixed repository-owned identifier and DDL whitelists because SQLite table, column, and type positions cannot be safely parameterized through JDBC placeholders.
 
 ## Avatar Personal Data
 
@@ -39,6 +39,7 @@ Compatibility notes:
 - `ChatPendingMessageRepository` creates the pending-message table and indexes defensively and recovers stale claimed rows before list/claim operations.
 - `ChatSessionMetadataRepository` can add title, favorite, archived, updated, planning model, active task run, origin, and agent columns.
 - `AuditRepository` can add audit columns as the audit event shape evolves.
+- Chat session flag columns, audit compatibility columns/types, and plan run compatibility DDL are private repository whitelists; arbitrary identifier strings are rejected or unreachable.
 
 ## Plans, Tasks, and Runs
 

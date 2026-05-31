@@ -60,6 +60,7 @@ These checks should stay in tool/workspace services, not controllers.
 ## Additional Safety Controls
 
 - Plain path segment validation for filesystem/path-derived ids.
+- Repository-owned SQLite identifier and migration DDL whitelists for compatibility schema bootstrapping; caller-controlled values stay in bound parameters and cannot supply table, column, or type names.
 - Inert rendering of user-authored workflow graph text.
 - Assignment lifecycle route-agent scoping.
 

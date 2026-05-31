@@ -1,5 +1,6 @@
 package io.mindspice.magenta2.ai.chat.plan;
 
+import java.lang.reflect.Method;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -10,6 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class PlanRepositoryTest {
 
@@ -141,6 +143,76 @@ class PlanRepositoryTest {
         assertThat(saved.steps()).isEmpty();
     }
 
+    @Test
+    void warmRunSchemaMigrationAddsKnownColumns() {
+        JdbcTemplate jt = jdbcTemplate();
+        jt.execute("""
+            create table plan_definitions (
+                id text primary key,
+                kind text not null,
+                status text not null,
+                title text not null,
+                deliverables_json text not null,
+                inputs_json text not null,
+                outputs_json text not null,
+                assumptions_json text not null,
+                steps_json text not null,
+                validation_criteria_json text not null,
+                execution_evidence_json text not null,
+                validation_feedback_json text not null,
+                created_at text not null,
+                updated_at text not null
+            )
+            """);
+        jt.execute("""
+            create table plan_runs (
+                id text primary key,
+                plan_id text not null,
+                status text not null,
+                input_values_json text not null,
+                output_values_json text not null,
+                plan_snapshot_json text not null,
+                execution_evidence_json text not null,
+                validation_feedback_json text not null,
+                deliverable_evidence_json text not null,
+                created_at text not null,
+                updated_at text not null,
+                foreign key (plan_id) references plan_definitions(id) on delete cascade
+            )
+            """);
+
+        new PlanRepository(jt, new ObjectMapper());
+
+        List<String> columns = jt.queryForList("select name from pragma_table_info('plan_runs')", String.class);
+        assertThat(columns).contains("temp_workspace_path", "run_display_name");
+        assertThat(columns).doesNotContain("temp_workspace_path; drop table plan_runs; --");
+    }
+
+    @Test
+    void addColumnIfMissingRejectsUnsafeIdentifierAndDdlPayloads() throws Throwable {
+        PlanRepository repository = new PlanRepository(jdbcTemplate(), new ObjectMapper());
+
+        assertThatThrownBy(() -> invokePrivate(
+            repository,
+            "addColumnIfMissing",
+            new Class<?>[] {String.class, String.class, String.class},
+            "plan_runs; drop table plan_runs; --",
+            "temp_workspace_path",
+            "alter table plan_runs add column temp_workspace_path text"
+        )).isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("Unsupported plan migration column");
+
+        assertThatThrownBy(() -> invokePrivate(
+            repository,
+            "addColumnIfMissing",
+            new Class<?>[] {String.class, String.class, String.class},
+            "plan_runs",
+            "temp_workspace_path",
+            "alter table plan_runs add column temp_workspace_path text; drop table plan_runs"
+        )).isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("Unsupported plan migration column");
+    }
+
     // ── Helpers ──
 
     private PlanDefinition sessionPlan(String id, String title, List<String> stepTexts) {
@@ -193,5 +265,16 @@ class PlanRepositoryTest {
     private JdbcTemplate jdbcTemplate() {
         SingleConnectionDataSource dataSource = new SingleConnectionDataSource("jdbc:sqlite::memory:?foreign_keys=true", true);
         return new JdbcTemplate(dataSource);
+    }
+
+    private Object invokePrivate(Object target, String methodName, Class<?>[] parameterTypes, Object... args)
+        throws Throwable {
+        Method method = target.getClass().getDeclaredMethod(methodName, parameterTypes);
+        method.setAccessible(true);
+        try {
+            return method.invoke(target, args);
+        } catch (java.lang.reflect.InvocationTargetException exception) {
+            throw exception.getCause();
+        }
     }
 }

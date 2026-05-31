@@ -209,11 +209,11 @@ public class ChatSessionMetadataRepository {
     }
 
     public boolean isFavorite(String conversationId) {
-        return booleanValue(conversationId, "favorite");
+        return booleanValue(conversationId, MetadataFlagColumn.FAVORITE.column);
     }
 
     public boolean isArchived(String conversationId) {
-        return booleanValue(conversationId, "archived");
+        return booleanValue(conversationId, MetadataFlagColumn.ARCHIVED.column);
     }
 
     public Optional<String> findUpdatedAt(String conversationId) {
@@ -238,11 +238,11 @@ public class ChatSessionMetadataRepository {
     }
 
     public void setFavorite(String conversationId, boolean favorite) {
-        updateFlag(conversationId, "favorite", favorite);
+        updateFlag(conversationId, MetadataFlagColumn.FAVORITE.column, favorite);
     }
 
     public void setArchived(String conversationId, boolean archived) {
-        updateFlag(conversationId, "archived", archived);
+        updateFlag(conversationId, MetadataFlagColumn.ARCHIVED.column, archived);
     }
 
     public void deleteByConversationId(String conversationId) {
@@ -440,9 +440,10 @@ public class ChatSessionMetadataRepository {
         if (!StringUtils.hasText(conversationId)) {
             return false;
         }
+        String flagColumn = requireMetadataFlagColumn(column);
         return Boolean.TRUE.equals(jdbcTemplate.query(
-            "select " + column + " from ai_chat_session_metadata where conversation_id = ?",
-            rs -> rs.next() && rs.getInt(column) != 0,
+            "select " + flagColumn + " from ai_chat_session_metadata where conversation_id = ?",
+            rs -> rs.next() && rs.getInt(flagColumn) != 0,
             conversationId
         ));
     }
@@ -451,15 +452,36 @@ public class ChatSessionMetadataRepository {
         if (!StringUtils.hasText(conversationId)) {
             return;
         }
+        String flagColumn = requireMetadataFlagColumn(column);
         jdbcTemplate.update(
-            "insert into ai_chat_session_metadata (conversation_id, " + column + ") values (?, ?) "
-                + "on conflict(conversation_id) do update set " + column + " = excluded." + column,
+            "insert into ai_chat_session_metadata (conversation_id, " + flagColumn + ") values (?, ?) "
+                + "on conflict(conversation_id) do update set " + flagColumn + " = excluded." + flagColumn,
             conversationId,
             value ? 1 : 0
         );
     }
 
+    private String requireMetadataFlagColumn(String column) {
+        for (MetadataFlagColumn flagColumn : MetadataFlagColumn.values()) {
+            if (flagColumn.column.equals(column)) {
+                return flagColumn.column;
+            }
+        }
+        throw new IllegalArgumentException("Unsupported metadata flag column");
+    }
+
     private String now() {
         return Instant.now().toString();
+    }
+
+    private enum MetadataFlagColumn {
+        FAVORITE("favorite"),
+        ARCHIVED("archived");
+
+        private final String column;
+
+        MetadataFlagColumn(String column) {
+            this.column = column;
+        }
     }
 }

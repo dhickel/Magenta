@@ -56,7 +56,7 @@ Typical flows:
 
 ## Persistence Shape
 
-SQLite is initialized from `schema.sql` through Spring SQL init. Domain repositories create tables defensively and add compatibility columns where older local databases may predate current schema fields.
+SQLite is initialized from `schema.sql` through Spring SQL init. Domain repositories create tables defensively and add compatibility columns where older local databases may predate current schema fields. Repository warm-migration helpers must resolve table names, column names, and DDL fragments through private whitelists before concatenating SQL identifiers; JDBC parameters remain for values only.
 
 The schema groups into these domains:
 

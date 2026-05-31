@@ -26,6 +26,12 @@ public class PlanRepository {
     private static final TypeReference<List<PlanFieldDefinition>> FIELD_LIST = new TypeReference<>() { };
     private static final TypeReference<List<PlanStep>> STEP_LIST = new TypeReference<>() { };
     private static final TypeReference<Map<String, Object>> VALUE_MAP = new TypeReference<>() { };
+    private static final List<MigrationColumn> MIGRATION_COLUMNS = List.of(
+        new MigrationColumn("plan_runs", "temp_workspace_path",
+            "alter table plan_runs add column temp_workspace_path text"),
+        new MigrationColumn("plan_runs", "run_display_name",
+            "alter table plan_runs add column run_display_name text")
+    );
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
@@ -422,18 +428,25 @@ public class PlanRepository {
     // ── Schema helpers ──
 
     private void addColumnIfMissing(String table, String column, String ddl) {
-        if (!table.matches("[a-zA-Z0-9_]+") || !column.matches("[a-zA-Z0-9_]+")) {
-            throw new IllegalArgumentException("Unsupported table/column identifier");
-        }
+        MigrationColumn migrationColumn = requireMigrationColumn(table, column, ddl);
         Integer count = jdbcTemplate.queryForObject(
             "select count(*) from pragma_table_info(?) where name = ?",
             Integer.class,
-            table,
-            column
+            migrationColumn.table(),
+            migrationColumn.column()
         );
         if (count != null && count == 0) {
-            jdbcTemplate.execute(ddl);
+            jdbcTemplate.execute(migrationColumn.ddl());
         }
+    }
+
+    private MigrationColumn requireMigrationColumn(String table, String column, String ddl) {
+        return MIGRATION_COLUMNS.stream()
+            .filter(candidate -> candidate.table().equals(table)
+                && candidate.column().equals(column)
+                && candidate.ddl().equals(ddl))
+            .findFirst()
+            .orElseThrow(() -> new IllegalArgumentException("Unsupported plan migration column"));
     }
 
     // ── Schema bootstrapping ──
@@ -494,9 +507,10 @@ public class PlanRepository {
                 foreign key (plan_id) references plan_definitions(id) on delete cascade
             )
             """);
-        addColumnIfMissing("plan_runs", "temp_workspace_path",
-            "alter table plan_runs add column temp_workspace_path text");
-        addColumnIfMissing("plan_runs", "run_display_name",
-            "alter table plan_runs add column run_display_name text");
+        for (MigrationColumn column : MIGRATION_COLUMNS) {
+            addColumnIfMissing(column.table(), column.column(), column.ddl());
+        }
     }
+
+    private record MigrationColumn(String table, String column, String ddl) {}
 }

@@ -18,6 +18,31 @@ import org.springframework.stereotype.Repository;
 public class AuditRepository {
     private static final Logger log = LoggerFactory.getLogger(AuditRepository.class);
     private static final int STRIPE_COUNT = 64;
+    private static final List<AuditColumn> REQUIRED_COLUMNS = List.of(
+        new AuditColumn("message_text", "text"),
+        new AuditColumn("message_metadata_json", "text"),
+        new AuditColumn("model", "text"),
+        new AuditColumn("tool_call_id", "text"),
+        new AuditColumn("tool_name", "text"),
+        new AuditColumn("arguments_json", "text"),
+        new AuditColumn("arguments_summary", "text"),
+        new AuditColumn("call_preview", "text"),
+        new AuditColumn("result_text", "text"),
+        new AuditColumn("result_summary", "text"),
+        new AuditColumn("result_preview", "text"),
+        new AuditColumn("tool_status", "text"),
+        new AuditColumn("result_truncated", "integer default 0"),
+        new AuditColumn("result_large", "integer default 0"),
+        new AuditColumn("compaction_method", "text"),
+        new AuditColumn("compaction_summary", "text"),
+        new AuditColumn("used_tokens", "integer"),
+        new AuditColumn("max_tokens", "integer"),
+        new AuditColumn("trigger_tokens", "integer"),
+        new AuditColumn("percent_used", "real"),
+        new AuditColumn("stored_message_count", "integer"),
+        new AuditColumn("error_type", "text"),
+        new AuditColumn("stack_trace", "text")
+    );
 
     private final JdbcTemplate jdbcTemplate;
     private final Object[] lockStripes;
@@ -69,23 +94,8 @@ public class AuditRepository {
         List<String> columns = jdbcTemplate.queryForList(
             "select name from pragma_table_info('audit_event')", String.class
         );
-        List<String> required = List.of(
-            "message_text", "message_metadata_json", "model",
-            "tool_call_id", "tool_name", "arguments_json", "arguments_summary",
-            "call_preview", "result_text", "result_summary", "result_preview",
-            "tool_status", "result_truncated", "result_large",
-            "compaction_method", "compaction_summary",
-            "used_tokens", "max_tokens", "trigger_tokens", "percent_used", "stored_message_count",
-            "error_type", "stack_trace"
-        );
-        for (String col : required) {
-            if (!columns.contains(col)) {
-                String type = col.endsWith("_truncated") || col.endsWith("_large") ? "integer default 0"
-                    : col.endsWith("_tokens") || col.endsWith("_count") ? "integer"
-                    : col.equals("percent_used") ? "real"
-                    : "text";
-                jdbcTemplate.execute("alter table audit_event add column " + col + " " + type);
-            }
+        for (AuditColumn column : REQUIRED_COLUMNS) {
+            addAuditColumnIfMissing(columns, column.name());
         }
 
         // Ensure (conversation_id, sequence) index enforces uniqueness for deterministic ordering
@@ -327,4 +337,20 @@ public class AuditRepository {
         String stackTrace,
         String recordedAt
     ) {}
+
+    private void addAuditColumnIfMissing(List<String> existingColumns, String name) {
+        AuditColumn column = requireAuditColumn(name);
+        if (!existingColumns.contains(column.name())) {
+            jdbcTemplate.execute("alter table audit_event add column " + column.name() + " " + column.ddlType());
+        }
+    }
+
+    private AuditColumn requireAuditColumn(String name) {
+        return REQUIRED_COLUMNS.stream()
+            .filter(column -> column.name().equals(name))
+            .findFirst()
+            .orElseThrow(() -> new IllegalArgumentException("Unsupported audit column"));
+    }
+
+    private record AuditColumn(String name, String ddlType) {}
 }
