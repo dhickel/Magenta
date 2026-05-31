@@ -45,6 +45,7 @@ Run final quality review only after all phase validators pass. It must verify:
 - Canonical evidence index matches phase reports.
 - Browser proof exists and is reconciled for #33 and any chat/browser phase requiring it.
 - #8 remains open and was not dispatched, committed, or closed under this plan.
+- #34 remains open and was not dispatched, committed, or closed under this plan unless the user explicitly approves a dedicated typed-ID refactor scope.
 - Docs/spec/changelog updates are coherent and do not contradict code.
 - The active plan can be moved to `.archive/` only after the whole backlog remediation is finalized.
 

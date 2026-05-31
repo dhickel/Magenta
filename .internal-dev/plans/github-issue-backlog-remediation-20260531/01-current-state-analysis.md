@@ -29,6 +29,7 @@ Workers must run `git status --short --branch` before edits and avoid reverting 
 | #18 | DELEGATION nodes fabricate completed child plan runs | workflow execution | `WorkflowRunner.executeDelegationNode` starts and completes child runs with empty outputs. Needs supported-scope triage and real evidence requirement. |
 | #8 | Avatar edit mode renders excessive empty-row chrome | out of scope/deferred | User correction: the Avatar UI abstraction is stale, dashboard editing has moved, and dashboard work outside the SlotKey issue should be skipped to avoid regressions. Leave this GitHub issue open. |
 | #33 | Refactor dashboard/static pages toward reusable SlotKey templates | UI/SimplyPages refactor/docs | Large refactor. Must include all frontend-related `AGENTS.md` enforcement plus bounded SlotKey/RenderContext audit/refactor of Home dashboard/dashboard widgets/static page structures. |
+| #34 | Refactor target: replace cross-domain raw String IDs with typed ID value objects | future/refactor | Filed from a dedicated scan of raw `String` ID usage across assignment, orchestration, plan/task, workflow, API, workspace, and output domains. Track in the issues list, but leave open for a dedicated typed-ID refactor pass after the current remediation run. |
 
 ## Architecture Fit
 
@@ -45,6 +46,7 @@ Workers must run `git status --short --branch` before edits and avoid reverting 
 - #18 may require a product decision if `DELEGATION` is not supported in current alpha. The bounded fix should reject/hold unsupported delegation rather than fabricate completion.
 - #15 has a contract decision: either make plain stream interrupts actionable or stop advertising interrupt capability for non-interruptible turns. The directive recommends making advertised tokens truthful through phase management where feasible, but requires the worker to verify browser/API behavior first.
 - #33 must not force SlotKeys into highly dynamic structures; use SlotKey templates only where DOM structure is stable and values/fragments change.
+- #34 is intentionally not folded into current workflow fixes; broad cross-domain ID typing would increase rollback and regression risk while active runtime issues remain open.
 
 ## Validation Blind Spots
 

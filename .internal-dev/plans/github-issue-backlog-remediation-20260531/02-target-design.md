@@ -18,12 +18,15 @@ Use sequential issue remediation with rollback-friendly commits. The recommended
 
 #8 is intentionally skipped and left open. Dashboard editing has moved, the issue wording is stale, and the user does not want dashboard work outside the SlotKey issue in this remediation pass.
 
+#34 is tracked as a future typed-ID refactor issue and left open. It should be handled as a dedicated cross-domain refactor after this remediation run, not folded into individual issue fixes.
+
 ## Combined-Fix Decisions
 
 - Combine #14 and #15 only. They share `ChatController`, `ChatService`, `ActiveTurnRegistry`, and browser SSE validation. Fixing one without the other risks contradictory active-turn semantics.
 - Keep #9 and #10 separate despite both being persistence/security because rollback and validation are cleaner by issue.
 - Keep #17 and #18 separate despite both being workflow runner changes because they encode different workflow semantics and require different fixtures.
 - Skip #8 entirely for this pass. #33 remains in scope because SlotKey/package-guide enforcement is explicitly requested and may audit dashboard/static surfaces only for stable-template reuse, not for dashboard editor density changes.
+- Skip #34 entirely for this pass. Typed-ID work spans multiple domains and should get its own plan, migration strategy, and rollback boundary.
 
 ## Design Principles
 

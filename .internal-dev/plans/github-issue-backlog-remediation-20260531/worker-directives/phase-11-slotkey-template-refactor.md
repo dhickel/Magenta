@@ -78,6 +78,7 @@ Add or update guidance so future agents must:
 
 - Consider `Template`, `SlotKey`, and per-request `RenderContext` for stable Home dashboard, dashboard widget, static page, status strip, selector/detail, and repeated fragment structures.
 - Use slot-keyed reuse for stable structures where only labels, counts, hrefs, chips, statuses, or bounded child fragments change.
+- Add concise `.of(...)` factory helpers for any new SlotKey/template key or key-bundle helper types; do not scatter direct `new` construction through controllers or render methods when a named helper can keep call sites readable.
 - Avoid sharing mutable component instances across requests.
 - Preserve HTMX-first interactions and stable swap roots.
 - Use Home dashboard/dashboard editor wording for product surfaces; treat `AvatarDashboard*`, `AvatarService`, and `avatar.sqlite` as legacy implementation names until a deliberate rename is planned.
@@ -92,7 +93,7 @@ Add or update guidance so future agents must:
    - Deferred stale naming debt: broad `Avatar*` code/package rename.
 3. Update frontend-related `AGENTS.md`/package guides first so enforcement is first-class.
 4. Extract one or more reusable template classes/helpers for stable Home dashboard/static fragments using `SlotKey` and `RenderContext`.
-5. Keep controllers thin; move template construction to component/helper classes.
+5. Keep controllers thin; move template construction to component/helper classes, and expose `.of(...)` factories on new key/helper value types instead of requiring repeated constructor calls.
 6. Preserve current HTMX routes/targets and full-page fallbacks.
 7. Add tests proving rendered ids/classes/routes remain stable and dynamic values render through context.
 8. Update specs/docs/knowledge/changelog with current terminology and any deferred naming debt.
@@ -108,6 +109,7 @@ Add or update guidance so future agents must:
 
 - Frontend-related package guides explicitly enforce SlotKey/RenderContext consideration for stable dashboard/static structures.
 - At least one coherent stable Home dashboard/dashboard widget/static surface is refactored to SimplyPages `Template`/`SlotKey`/`RenderContext` without behavior regression.
+- New key/helper value types introduced by the refactor provide `.of(...)` factory helpers and keep direct constructor usage out of repeated frontend call sites.
 - Stale "Avatar UI" product wording is corrected in touched docs/specs/guides; remaining legacy code names are documented as naming debt if not renamed.
 - No dashboard editor density or empty-row behavior changes are introduced for #8.
 - Tests cover stable root ids, HTMX attributes, dynamic context values, and full-page/fragment behavior.

@@ -16,6 +16,8 @@
 
 #8 is skipped by user direction and remains open. Do not dispatch dashboard empty-row/density remediation during this plan.
 
+#34 is tracked in the issue inventory as future typed-ID refactor work and remains open. Do not dispatch it during this plan unless the user explicitly changes scope.
+
 ## Combined Units
 
 Only #14 and #15 are combined. The implementation is likely safer as one coherent chat/SSE active-turn contract fix because both issues involve advertised interrupt metadata, active-turn cleanup, and stream terminal paths.

@@ -7,7 +7,7 @@ Work classification: large
 
 ## Objective
 
-Diagnose the currently open GitHub issues #9 through #19 and #33, then remediate them sequentially through delegated implementation workers and independent validators. Issue #8 is explicitly user-deferred and remains open because dashboard editing has moved and dashboard work outside SlotKey enforcement risks regressions. This plan is execution-ready, but it does not implement product fixes.
+Diagnose the currently open GitHub issues #9 through #19 and #33, then remediate them sequentially through delegated implementation workers and independent validators. Issue #8 is explicitly user-deferred and remains open because dashboard editing has moved and dashboard work outside SlotKey enforcement risks regressions. Issue #34 is tracked as a future typed-ID refactor target and is not part of this remediation pass unless the user explicitly pulls it into scope. This plan is execution-ready, but it does not implement product fixes.
 
 ## Source Inputs
 
@@ -29,6 +29,7 @@ Diagnose the currently open GitHub issues #9 through #19 and #33, then remediate
 
 - Every in-scope issue listed in this plan has a self-contained worker directive with exact issue scope, targets to inspect/edit, reproduction probes, acceptance criteria, validation commands, docs/spec updates, closeout expectations, and stop conditions.
 - #8 is documented as out of scope for this remediation pass and must remain open unless the user later re-accepts dashboard editor density work.
+- #34 is documented as a tracked future/refactor issue and must remain open unless the user later approves a dedicated typed-ID refactor pass.
 - Execution order prioritizes critical security/persistence and runtime correctness before UI/refactor work.
 - Combined-fix decisions are explicit and rollback-friendly.
 - #33 has a first-class SlotKey/package-guide directive that requires SlotKey/RenderContext enforcement in all frontend-related `AGENTS.md` package guides and a concrete SimplyPages audit/refactor path.
@@ -60,6 +61,7 @@ Diagnose the currently open GitHub issues #9 through #19 and #33, then remediate
 - Formal migration tooling such as Flyway/Liquibase unless a worker proves the current issue cannot be safely remediated without it and stops for user approval.
 - A full redesign of workflow orchestration, chat streaming, or Home dashboard/dashboard widget surfaces beyond the issue-specific fixes.
 - Any dashboard editor density/empty-row remediation for #8; leave #8 open for later because the editing system moved and the user does not want regression risk from that stale issue.
+- Any typed-ID refactor remediation for #34; leave #34 open for a dedicated cross-domain ID-type pass after the current issue remediation run.
 - Deep end-to-end browser campaigns beyond focused changed-surface proof unless the user approves expansion.
 
 ## Assumptions
